@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run linter
+        run: yarn lint
+
+      - name: Build application
+        run: yarn build
+        env:
+          # These are placeholder values for the build process
+          # Real values are configured in Vercel
+          DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
+          AUTH0_SECRET: 'placeholder-secret-for-build-only'
+          AUTH0_BASE_URL: 'http://localhost:3000'
+          AUTH0_ISSUER_BASE_URL: 'https://placeholder.auth0.com'
+          AUTH0_CLIENT_ID: 'placeholder'
+          AUTH0_CLIENT_SECRET: 'placeholder'
