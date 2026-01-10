@@ -1,0 +1,37 @@
+{
+  "name": "utils",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libraries/utils/src",
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry install"],
+        "cwd": "libraries/utils"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run ruff check src/"],
+        "cwd": "libraries/utils"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
+        "cwd": "libraries/utils"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run mypy src/"],
+        "cwd": "libraries/utils"
+      }
+    }
+  },
+  "tags": ["library", "python"]
+}

@@ -1,0 +1,1 @@
+"""Palateful OCR service."""

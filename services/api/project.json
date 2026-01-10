@@ -1,0 +1,56 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/api/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "docker build -t palateful-api:{args.tag} -f services/api/Dockerfile ."
+        ],
+        "cwd": "{workspaceRoot}"
+      },
+      "defaultConfiguration": "production",
+      "configurations": {
+        "production": {
+          "commands": [
+            "docker build -t palateful-api:latest -f services/api/Dockerfile --no-cache ."
+          ]
+        }
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "poetry run uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+        ],
+        "cwd": "services/api"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry install"],
+        "cwd": "services/api"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run ruff check src/"],
+        "cwd": "services/api"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
+        "cwd": "services/api"
+      }
+    }
+  },
+  "tags": ["service", "python", "api"]
+}

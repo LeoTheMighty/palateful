@@ -1,0 +1,10 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/auth/[auth0]/route": "/api/auth/[auth0]",
+  "/api/user/complete-onboarding/route": "/api/user/complete-onboarding",
+  "/favicon.ico/route": "/favicon.ico",
+  "/page": "/",
+  "/recipes/page": "/recipes",
+  "/welcome/page": "/welcome"
+}

@@ -1,0 +1,65 @@
+{
+  "name": "terraform",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "terraform",
+  "targets": {
+    "init": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform init"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "plan": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform plan -out=tfplan"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "apply": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform apply tfplan"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "apply-auto": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform apply -auto-approve"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "destroy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform destroy"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "output": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform output"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "validate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform validate"],
+        "cwd": "terraform/environments/{args.env}"
+      }
+    },
+    "fmt": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["terraform fmt -recursive"],
+        "cwd": "terraform"
+      }
+    }
+  },
+  "tags": ["infra", "terraform"]
+}

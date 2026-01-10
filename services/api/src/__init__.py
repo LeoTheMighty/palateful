@@ -1,0 +1,1 @@
+"""Palateful API service."""

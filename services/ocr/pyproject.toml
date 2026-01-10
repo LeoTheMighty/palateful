@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "palateful-ocr"
+version = "0.1.0"
+description = "OCR service for Palateful using HunyuanOCR"
+authors = ["Leonid Belyi"]
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+fastapi = "^0.115"
+uvicorn = {extras = ["standard"], version = "^0.34"}
+torch = "^2.0"
+transformers = "^4.40"
+accelerate = "^1.0"
+pillow = "^11.0"
+python-multipart = "^0.0.20"
+httpx = "^0.28"
+boto3 = "^1.35"
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.0"
+ipykernel = "^6.0"
+matplotlib = "^3.8"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

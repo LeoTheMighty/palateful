@@ -1,0 +1,103 @@
+{
+  "name": "ocr",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/ocr/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "docker build -t palateful-ocr:{args.tag} -f services/ocr/Dockerfile.gpu ."
+        ],
+        "cwd": "{workspaceRoot}",
+        "parallel": false
+      },
+      "configurations": {
+        "production": {
+          "commands": [
+            "docker build -t palateful-ocr:latest -f services/ocr/Dockerfile.gpu --no-cache ."
+          ]
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "docker-login": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "aws ecr get-login-password --region ${AWS_REGION:-us-east-1} | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com"
+        ],
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "push": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build", "docker-login"],
+      "options": {
+        "commands": [
+          "docker tag palateful-ocr:{args.tag} $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/palateful-ocr:{args.tag}",
+          "docker push $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/palateful-ocr:{args.tag}"
+        ],
+        "cwd": "{workspaceRoot}",
+        "parallel": false
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["push"],
+      "options": {
+        "commands": [
+          "echo 'OCR container deployed to ECR. Submit jobs with: nx run ocr:submit-job'"
+        ]
+      }
+    },
+    "submit-job": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "aws batch submit-job --job-name ocr-$(date +%Y%m%d-%H%M%S) --job-queue palateful-ocr-queue-${ENVIRONMENT:-dev} --job-definition palateful-ocr-job-${ENVIRONMENT:-dev} --container-overrides '{\"environment\": [{\"name\": \"INPUT_S3_URI\", \"value\": \"{args.input}\"}, {\"name\": \"OUTPUT_S3_URI\", \"value\": \"{args.output}\"}]}'"
+        ]
+      }
+    },
+    "upload-image": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "aws s3 cp {args.file} s3://palateful-ocr-inputs-${ENVIRONMENT:-dev}/{args.key}"
+        ]
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "poetry run uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload"
+        ],
+        "cwd": "services/ocr"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry install"],
+        "cwd": "services/ocr"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run ruff check src/"],
+        "cwd": "services/ocr"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
+        "cwd": "services/ocr"
+      }
+    }
+  },
+  "tags": ["service", "python", "ocr"]
+}

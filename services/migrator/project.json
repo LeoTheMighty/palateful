@@ -1,0 +1,51 @@
+{
+  "name": "migrator",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/migrator",
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry install"],
+        "cwd": "services/migrator"
+      }
+    },
+    "migrate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run alembic upgrade head"],
+        "cwd": "services/migrator"
+      }
+    },
+    "migrate-down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run alembic downgrade -1"],
+        "cwd": "services/migrator"
+      }
+    },
+    "migrate-revision": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run alembic revision --autogenerate -m \"{args.message}\""],
+        "cwd": "services/migrator"
+      }
+    },
+    "migrate-history": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run alembic history"],
+        "cwd": "services/migrator"
+      }
+    },
+    "migrate-current": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run alembic current"],
+        "cwd": "services/migrator"
+      }
+    }
+  },
+  "tags": ["service", "python", "database"]
+}
