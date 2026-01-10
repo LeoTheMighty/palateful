@@ -4,20 +4,55 @@
   "projectType": "application",
   "sourceRoot": "services/api/src",
   "targets": {
-    "build": {
+    "lock": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": [
-          "docker build -t palateful-api:{args.tag} -f services/api/Dockerfile ."
-        ],
-        "cwd": "{workspaceRoot}"
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "docker-build": {
+      "executor": "@nx-tools/nx-container:build",
+      "options": {
+        "target": "development",
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile",
+        "load": true,
+        "metadata": {
+          "images": ["api"],
+          "tags": ["type=raw,value=latest"]
+        }
       },
-      "defaultConfiguration": "production",
       "configurations": {
-        "production": {
-          "commands": [
-            "docker build -t palateful-api:latest -f services/api/Dockerfile --no-cache ."
-          ]
+        "ci": {
+          "target": "production",
+          "load": false,
+          "platforms": ["linux/arm64/v8"],
+          "metadata": {
+            "images": ["$AWS_ECR_ACCOUNT_URL/palateful/api"],
+            "tags": ["type=raw,value=${IMAGE_TAG}"]
+          }
+        }
+      }
+    },
+    "ecr-login": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker login -u AWS -p $(aws ecr get-login-password --region us-east-1 --profile dev-role-sso) $AWS_ECR_ACCOUNT_URL"
+      }
+    },
+    "deploy": {
+      "executor": "@nx-tools/nx-container:build",
+      "dependsOn": ["docker-build", "ecr-login"],
+      "options": {
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile",
+        "push": true,
+        "metadata": {
+          "images": ["$AWS_ECR_ACCOUNT_URL/palateful/api"],
+          "tags": ["type=raw,value=$AWS_USERNAME"]
         }
       }
     },
@@ -27,28 +62,28 @@
         "commands": [
           "poetry run uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
         ],
-        "cwd": "services/api"
+        "cwd": "{projectRoot}"
       }
     },
     "install": {
       "executor": "nx:run-commands",
       "options": {
         "commands": ["poetry install"],
-        "cwd": "services/api"
+        "cwd": "{projectRoot}"
       }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
         "commands": ["poetry run ruff check src/"],
-        "cwd": "services/api"
+        "cwd": "{projectRoot}"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "options": {
         "commands": ["poetry run pytest"],
-        "cwd": "services/api"
+        "cwd": "{projectRoot}"
       }
     }
   },

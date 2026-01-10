@@ -1,0 +1,29 @@
+[tool.coverage.run]
+branch = true
+source = [ "test_helper" ]
+
+[tool.coverage.report]
+exclude_lines = ['if TYPE_CHECKING:']
+show_missing = true
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report html:'../../coverage/libraries/test-helper/html' --cov-report xml:'../../coverage/libraries/test-helper/coverage.xml' --html='../../reports/libraries/test-helper/unittests/html/index.html' --junitxml='../../reports/libraries/test-helper/unittests/junit.xml'"
+
+[tool.poetry]
+name = "test-helper"
+version = "1.0.0"
+description = "MyCase HAL Testing Helper Library"
+authors = [ ]
+license = 'Proprietary'
+readme = 'README.md'
+
+  [[tool.poetry.packages]]
+  include = "test_helper"
+
+  [tool.poetry.dependencies]
+  python = "3.14.0"
+  hal-utils = { path = "../hal-utils", develop = true }
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

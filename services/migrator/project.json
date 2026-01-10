@@ -4,45 +4,119 @@
   "projectType": "application",
   "sourceRoot": "services/migrator",
   "targets": {
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "docker-build": {
+      "executor": "@nx-tools/nx-container:build",
+      "options": {
+        "target": "migrator",
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile",
+        "load": true,
+        "metadata": {
+          "images": ["migrator"],
+          "tags": ["type=raw,value=latest"]
+        }
+      },
+      "configurations": {
+        "ci": {
+          "target": "migrator",
+          "load": false,
+          "platforms": ["linux/arm64/v8"],
+          "metadata": {
+            "images": ["$AWS_ECR_ACCOUNT_URL/hal/migrator"],
+            "tags": ["type=raw,value=${IMAGE_TAG}"]
+          }
+        }
+      }
+    },
+    "ecr-login": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker login -u AWS -p $(aws ecr get-login-password --region us-east-1 --profile dev-role-sso) $AWS_ECR_ACCOUNT_URL"
+      }
+    },
+    "deploy": {
+      "executor": "@nx-tools/nx-container:build",
+      "dependsOn": ["docker-build", "ecr-login"],
+      "options": {
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile",
+        "push": true,
+        "metadata": {
+          "images": ["$AWS_ECR_ACCOUNT_URL/hal/migrator"],
+          "tags": ["type=raw,value=$AWS_USERNAME"]
+        }
+      }
+    },
     "install": {
       "executor": "nx:run-commands",
       "options": {
         "commands": ["poetry install"],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "init-migrations": {
+      "executor": "@nxlv/python:run-commands",
+      "options": {
+        "command": "poetry run alembic init migrations",
+        "cwd": "services/migrator"
+      }
+    },
+    "create-migration": {
+      "executor": "@nxlv/python:run-commands",
+      "options": {
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic revision --autogenerate -m \"{args.description}\"",
+        "cwd": "services/migrator"
+      }
+    },
+    "migration-status": {
+      "executor": "@nxlv/python:run-commands",
+      "options": {
+        "command": "echo \"Current Revision:\" && DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic current && echo \"History:\" && DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic history",
         "cwd": "services/migrator"
       }
     },
     "migrate": {
-      "executor": "nx:run-commands",
+      "executor": "@nxlv/python:run-commands",
       "options": {
-        "commands": ["poetry run alembic upgrade head"],
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic upgrade head",
         "cwd": "services/migrator"
       }
     },
-    "migrate-down": {
-      "executor": "nx:run-commands",
+    "downgrade": {
+      "executor": "@nxlv/python:run-commands",
       "options": {
-        "commands": ["poetry run alembic downgrade -1"],
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic downgrade",
         "cwd": "services/migrator"
       }
     },
-    "migrate-revision": {
-      "executor": "nx:run-commands",
+    "migrate-test": {
+      "executor": "@nxlv/python:run-commands",
       "options": {
-        "commands": ["poetry run alembic revision --autogenerate -m \"{args.message}\""],
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic upgrade head",
         "cwd": "services/migrator"
       }
     },
-    "migrate-history": {
-      "executor": "nx:run-commands",
+    "check-models": {
+      "executor": "@nxlv/python:run-commands",
+      "dependsOn": ["migrate-test"],
       "options": {
-        "commands": ["poetry run alembic history"],
+        "command": "sh ./check_models.sh",
         "cwd": "services/migrator"
       }
     },
-    "migrate-current": {
-      "executor": "nx:run-commands",
+    "create-model-check": {
+      "executor": "@nxlv/python:run-commands",
       "options": {
-        "commands": ["poetry run alembic current"],
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic revision --autogenerate -m \"Check Models\"",
         "cwd": "services/migrator"
       }
     }

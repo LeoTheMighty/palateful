@@ -74,7 +74,210 @@ This is the **single source of truth** for all planned work on Palateful.
 
 ---
 
-## CURRENT: NX Monorepo Migration
+## NEXT STEPS: MVP Implementation
+
+> **Session Date:** 2025-01-10
+> **Reference:** See `docs/MVP.md` for complete implementation guide
+
+### Quick Start for Next Session
+
+```bash
+# 1. Start services
+docker compose up -d postgres
+
+# 2. Continue with Phase 1 (Foundation Cleanup)
+```
+
+---
+
+### Phase 1: Foundation Cleanup [ ]
+
+> **Goal:** Remove hal_utils dependencies, make codebase self-contained
+
+#### 1.1 Create BaseEnum Class [ ]
+**File:** `libraries/utils/utils/classes/base_enum.py`
+
+```python
+from enum import Enum
+
+class BaseEnum(Enum):
+    """Base enum class with utility methods."""
+
+    @classmethod
+    def from_value(cls, value: int) -> "BaseEnum":
+        """Get enum member by value."""
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"No {cls.__name__} member with value {value}")
+
+    @classmethod
+    def values(cls) -> list[int]:
+        return [member.value for member in cls]
+
+    @classmethod
+    def names(cls) -> list[str]:
+        return [member.name for member in cls]
+```
+
+#### 1.2 Update ErrorCode [ ]
+**File:** `libraries/utils/utils/classes/error_code.py`
+- Change import from `hal_utils.classes.enum import BaseEnum` to `from utils.classes.base_enum import BaseEnum`
+- Add Palateful-specific error codes (100-129 for Recipe/Ingredient errors)
+
+#### 1.3 Update APIException [ ]
+**File:** `libraries/utils/utils/api/api_exception.py`
+- Change import from `hal_utils.classes.error_code import ErrorCode` to `from utils.classes.error_code import ErrorCode`
+
+#### 1.4 Update Endpoint [ ]
+**File:** `libraries/utils/utils/api/endpoint.py`
+- Remove ALL `hal_utils` imports
+- Update to use local modules:
+  - `from utils.classes.error_code import ErrorCode`
+  - Remove `catalyst` import (not needed for Palateful)
+  - Remove Datadog/Sentry imports or make optional
+
+---
+
+### Phase 2: Authentication [ ]
+
+> **Goal:** Implement Auth0 JWT verification
+
+#### 2.1 Create Auth0 Verifier [ ]
+**File:** `libraries/utils/utils/services/auth0.py`
+- Install deps: `poetry add python-jose httpx` in libraries/utils
+- Implement JWKS fetching and caching
+- JWT verification with proper error handling
+
+#### 2.2 Update Dependencies [ ]
+**File:** `services/api/src/dependencies.py`
+- Add `get_current_user` dependency
+- Auto-create user on first login
+- Export `CurrentUser`, `DbSession`, `Db` type aliases
+
+#### 2.3 Add Config [ ]
+**File:** `libraries/utils/utils/config.py` or `services/api/src/config.py`
+- Add Auth0 settings (domain, audience, client_id)
+- Load from environment variables
+
+---
+
+### Phase 3: API Implementation [ ]
+
+> **Goal:** Implement all MVP endpoints
+
+#### 3.1 Pydantic Schemas [ ]
+Create in `services/api/src/schemas/`:
+- [ ] `user.py` - UserResponse
+- [ ] `recipe_book.py` - RecipeBookCreate, RecipeBookResponse, RecipeBookListResponse
+- [ ] `recipe.py` - RecipeCreate, RecipeResponse, RecipeIngredientInput
+- [ ] `ingredient.py` - IngredientSearchResult, IngredientCreate
+
+#### 3.2 Ingredient Endpoints [ ] (do first - needed for recipes)
+Create in `services/api/src/api/v1/ingredient/`:
+- [ ] `search_ingredients.py` - GET /v1/ingredients/search (uses pg_trgm fuzzy search)
+- [ ] `create_ingredient.py` - POST /v1/ingredients
+- [ ] `get_ingredient.py` - GET /v1/ingredients/{id}
+
+Create router:
+- [ ] `services/api/src/routers/v1/ingredient_router.py`
+
+#### 3.3 Recipe Book Endpoints [ ]
+Create in `services/api/src/api/v1/recipe_book/`:
+- [ ] `list_recipe_books.py` - GET /v1/recipe-books
+- [ ] `create_recipe_book.py` - POST /v1/recipe-books
+- [ ] `get_recipe_book.py` - GET /v1/recipe-books/{id}
+- [ ] `update_recipe_book.py` - PUT /v1/recipe-books/{id}
+- [ ] `delete_recipe_book.py` - DELETE /v1/recipe-books/{id}
+
+Create router:
+- [ ] `services/api/src/routers/v1/recipe_book_router.py`
+
+#### 3.4 Recipe Endpoints [ ]
+Create in `services/api/src/api/v1/recipe/`:
+- [ ] `list_recipes.py` - GET /v1/recipe-books/{book_id}/recipes
+- [ ] `create_recipe.py` - POST /v1/recipe-books/{book_id}/recipes
+- [ ] `get_recipe.py` - GET /v1/recipes/{id}
+- [ ] `update_recipe.py` - PUT /v1/recipes/{id}
+- [ ] `delete_recipe.py` - DELETE /v1/recipes/{id}
+
+Create router:
+- [ ] `services/api/src/routers/v1/recipe_router.py`
+
+#### 3.5 User Endpoints [ ]
+Update in `services/api/src/api/v1/user/`:
+- [ ] `get_me.py` - GET /v1/users/me
+- [ ] `complete_onboarding.py` - POST /v1/users/me/complete-onboarding
+
+#### 3.6 Wire Up Routers [ ]
+**File:** `services/api/src/routers/v1_router.py`
+- Include all new routers
+
+---
+
+### Phase 4: Migration [ ]
+
+> **Goal:** Verify database schema matches models
+
+```bash
+# Delete old migration (if needed)
+rm services/migrator/migrations/versions/001_initial.py
+
+# Create fresh migration
+npx nx run migrator:create-migration --description="initial_schema"
+
+# Review generated migration file
+
+# Run migration
+npx nx run migrator:migrate
+
+# Verify
+npx nx run migrator:migration-status
+```
+
+---
+
+### Phase 5: Testing [ ]
+
+> **Goal:** Verify all endpoints work
+
+```bash
+# Start API
+npx nx run api:serve
+
+# Test health
+curl http://localhost:8000/health
+
+# Test ingredient search (no auth)
+curl "http://localhost:8000/v1/ingredients/search?q=tomato"
+
+# Get Auth0 token and test authenticated endpoints
+export TOKEN="..."
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/users/me
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/recipe-books
+```
+
+---
+
+### Phase 6: Flutter Setup [ ]
+
+> **Goal:** Connect Flutter app to API via ngrok
+
+```bash
+# Start ngrok tunnel
+ngrok http 8000
+
+# Note the URL: https://xxx.ngrok-free.app
+
+# Configure Flutter environment.dart with ngrok URL
+
+# Run Flutter app
+cd app && flutter run
+```
+
+---
+
+## ARCHIVED: NX Monorepo Migration
 
 ### Target Directory Structure
 
@@ -412,6 +615,39 @@ palateful/
 ---
 
 ## Notes & Decisions Log
+
+### 2025-01-10 (Session 5) - MVP Planning
+
+**MVP Scope Decisions:**
+- **Cooking UI:** Scrollable view (not step-by-step with timers)
+- **Ingredient Handling:** Fuzzy search → suggest existing → create new if no match
+- **Pantry:** Out of scope for MVP (recipe book only)
+- **Auth:** Auth0 with JWT tokens
+
+**Documentation Created:**
+- `docs/MVP.md` - Complete implementation guide with:
+  - API endpoint specifications
+  - Pydantic schema definitions
+  - Authentication implementation details
+  - Flutter + ngrok setup guide
+  - Error code reference
+  - Testing commands
+
+**Technical Decisions:**
+- Remove `hal_utils` dependencies - make codebase self-contained
+- Create local `BaseEnum` class for `ErrorCode`
+- Palateful-specific error codes start at 100 (recipe/ingredient errors)
+- Ingredient search uses PostgreSQL `search_ingredients_fuzzy()` function (pg_trgm)
+- New user-submitted ingredients marked with `pending_review: true`
+
+**Files to Create:**
+- `libraries/utils/utils/classes/base_enum.py`
+- `libraries/utils/utils/services/auth0.py`
+- 4 schema files in `services/api/src/schemas/`
+- 13 endpoint files in `services/api/src/api/v1/`
+- 3 router files in `services/api/src/routers/v1/`
+
+---
 
 ### 2025-01-08 (Session 4)
 - **Major Decision**: Migrate to NX monorepo with Python/Flutter

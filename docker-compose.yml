@@ -11,8 +11,10 @@ services:
       POSTGRES_DB: palateful
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Uncomment to see all DB statements (helpful for debugging)
+    # command: ["postgres", "-c", "log_statement=all"]
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d palateful']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,36 +33,35 @@ services:
       timeout: 5s
       retries: 5
 
+  migrator:
+    build:
+      context: .
+      dockerfile: services/migrator/Dockerfile
+    image: palateful-migrator
+    container_name: palateful-migrator
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/palateful
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
+
   api:
     build:
       context: .
       dockerfile: services/api/Dockerfile
+      target: development
+    image: palateful-api
     container_name: palateful-api
     restart: unless-stopped
     ports:
       - '8000:8000'
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/palateful
-      REDIS_URL: redis://redis:6379/0
-      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
-      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID}
-      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
-      - ./services/api/src:/app/src:ro
-      - ./libraries:/app/libraries:ro
-
-  worker:
-    build:
-      context: .
-      dockerfile: services/worker/Dockerfile
-    container_name: palateful-worker
-    restart: unless-stopped
+      - ./services/api/src:/services/api/src
+      - ./libraries/utils/utils:/services/api/.venv/lib/python3.13/site-packages/utils
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/palateful
       REDIS_URL: redis://redis:6379/0
@@ -69,9 +70,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./services/worker/src:/app/src:ro
-      - ./libraries:/app/libraries:ro
 
 volumes:
   postgres_data:

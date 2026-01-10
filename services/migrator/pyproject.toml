@@ -1,18 +1,32 @@
+[tool.coverage.run]
+branch = true
+source = [ "migrations" ]
+
+[tool.coverage.report]
+exclude_lines = [ "if TYPE_CHECKING:" ]
+show_missing = true
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report html:'../../coverage/services/migrator/html' --cov-report xml:'../../coverage/services/migrator/coverage.xml' --html='../../reports/services/migrator/unittests/html/index.html' --junitxml='../../reports/services/migrator/unittests/junit.xml'"
+
 [tool.poetry]
-name = "palateful-migrator"
+name = "migrator"
 version = "0.1.0"
 description = "Database migrations for Palateful"
 authors = ["Leonid Belyi"]
-packages = []
+package-mode = true
 
-[tool.poetry.dependencies]
-python = "^3.13"
-alembic = "^1.14"
-sqlalchemy = {extras = ["asyncio"], version = "^2.0"}
-asyncpg = "^0.30"
-pgvector = "^0.4"
-psycopg2-binary = "^2.9"  # Needed for sync Alembic operations
-palateful-utils = {path = "../../libraries/utils", develop = true}
+  [[tool.poetry.packages]]
+  include = "migrations"
+
+    [tool.poetry.dependencies]
+    python = "^3.13"
+    alembic = "^1.14"
+    sqlalchemy = {extras = ["asyncio"], version = "^2.0"}
+    asyncpg = "^0.30"
+    pgvector = "^0.4"
+    psycopg2-binary = "^2.9"  # Needed for sync Alembic operations
+    utils = {path = "../../libraries/utils", develop = true}
 
 [build-system]
 requires = ["poetry-core"]
