@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy import Engine, text
 
-from hal_utils.constants import LOGGING_LEVEL
+from utils.constants import LOGGING_LEVEL
 
 logger = logging.getLogger(__name__)
 logger.setLevel(LOGGING_LEVEL)

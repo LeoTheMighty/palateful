@@ -4,6 +4,13 @@
   "projectType": "application",
   "sourceRoot": "services/ocr/src",
   "targets": {
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "options": {
@@ -87,8 +94,8 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["poetry run ruff check src/"],
-        "cwd": "services/ocr"
+        "commands": ["poetry run ruff check {projectRoot}/src/"],
+        "cwd": "{workspaceRoot}"
       }
     },
     "test": {

@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "palateful-api"
+name = "api"
 version = "0.1.0"
 description = "Palateful FastAPI backend"
 authors = ["Leonid Belyi"]
@@ -15,12 +15,20 @@ pgvector = "^0.4"
 pydantic = {extras = ["email"], version = "^2.0"}
 pydantic-settings = "^2.0"
 python-jose = {extras = ["cryptography"], version = "^3.3"}
-httpx = "^0.28"
+httpx = "^0.27"
 redis = "^5.0"
 openai = "^2.8"
 sse-starlette = "^2.0"
 python-multipart = "^0.0.20"
 utils = {path = "../../libraries/utils", develop = true}
+psycopg2-binary = "^2.9.11"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.11"
+pytest = "^8.0"
+pytest-cov = "^6.0"
+pytest-html = "^4.0"
+pytest-asyncio = "^0.25"
 
 [build-system]
 requires = ["poetry-core"]

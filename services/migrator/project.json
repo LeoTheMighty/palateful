@@ -30,7 +30,7 @@
           "load": false,
           "platforms": ["linux/arm64/v8"],
           "metadata": {
-            "images": ["$AWS_ECR_ACCOUNT_URL/hal/migrator"],
+            "images": ["$AWS_ECR_ACCOUNT_URL/palateful/migrator"],
             "tags": ["type=raw,value=${IMAGE_TAG}"]
           }
         }
@@ -51,7 +51,7 @@
         "file": "{projectRoot}/Dockerfile",
         "push": true,
         "metadata": {
-          "images": ["$AWS_ECR_ACCOUNT_URL/hal/migrator"],
+          "images": ["$AWS_ECR_ACCOUNT_URL/palateful/migrator"],
           "tags": ["type=raw,value=$AWS_USERNAME"]
         }
       }
@@ -60,6 +60,20 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": ["poetry install"],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run ruff check {projectRoot}/migrations/"],
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
         "cwd": "{projectRoot}"
       }
     },
@@ -101,7 +115,7 @@
     "migrate-test": {
       "executor": "@nxlv/python:run-commands",
       "options": {
-        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic upgrade head",
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test poetry run alembic upgrade head",
         "cwd": "services/migrator"
       }
     },
@@ -116,7 +130,14 @@
     "create-model-check": {
       "executor": "@nxlv/python:run-commands",
       "options": {
-        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run alembic revision --autogenerate -m \"Check Models\"",
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/test poetry run alembic revision --autogenerate -m \"Check Models\"",
+        "cwd": "services/migrator"
+      }
+    },
+    "seed": {
+      "executor": "@nxlv/python:run-commands",
+      "options": {
+        "command": "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful poetry run python seeds/ingredients.py",
         "cwd": "services/migrator"
       }
     }

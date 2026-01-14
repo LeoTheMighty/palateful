@@ -1,0 +1,44 @@
+{
+  "name": "agent",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libraries/agent/src",
+  "targets": {
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry install"],
+        "cwd": "libraries/agent"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run ruff check {projectRoot}/agent/"],
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
+        "cwd": "libraries/agent"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run mypy src/"],
+        "cwd": "libraries/agent"
+      }
+    }
+  },
+  "tags": ["library", "python"]
+}

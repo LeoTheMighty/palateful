@@ -1,73 +1,33 @@
-"""User endpoints."""
+"""User endpoints router."""
 
-import secrets
+from fastapi import APIRouter, Depends, Header
 
-from fastapi import APIRouter
-
+from dependencies import get_database, get_current_user
+from schemas.user import OnboardingRequest
 from utils.models.user import User
-from dependencies import get_database
+from utils.services.database import Database
+from api.v1.user import GetMe, CompleteOnboarding
+
 
 user_router = APIRouter(prefix="/users", tags=["users"])
 
 
-@user_router.get("/{user_id}", response_model=GetUser.Response)
-async def get_user(user_id: str, database: Database = Depends(get_database)):
-    """Get user by ID."""
-    return GetUser.call(
-        user_id,
-        database=database
-    )
-
-
-@user_router.post("", response_model=CreateUser.Response)
-@user_router.post("/", response_model=CreateUser.Response)
-async def create_user(params: CreateUser.Params, database: Database = Depends(get_database)):
-    """Create a new user."""
-    return CreateUser.call(
-        params,
-        database=database
-    )
-
-
-@user_router.post("/me/complete-onboarding", response_model=OnboardingResponse)
-async def complete_onboarding(db: DbSession, user: CurrentUser):
-    """Mark user's onboarding as complete."""
-    user.has_completed_onboarding = True
-    await db.commit()
-    return OnboardingResponse(success=True)
-
-
-@users_router.post("/register", response_model=UserResponse)
-async def register_or_get_user(
-    db: DbSession,
-    auth0_id: CurrentUserId,
+@user_router.get("/me")
+async def get_me(
+    user: User = Depends(get_current_user),
+    authorization: str = Header(None),
+    database=Depends(get_database)
 ):
-    """
-    Register a new user or return existing user.
-    Called after Auth0 login to ensure user exists in database.
-    """
-    from sqlalchemy import select
+    """Get the current authenticated user."""
+    return GetMe.call(user=user, database=database)
 
-    # Check if user exists
-    result = await db.execute(select(User).where(User.auth0_id == auth0_id))
-    existing_user = result.scalar_one_or_none()
 
-    if existing_user:
-        return existing_user
-
-    # Create new user
-    # Note: In production, you'd get email/name from Auth0 userinfo endpoint
-    new_user = User(
-        id=secrets.token_urlsafe(16),
-        auth0_id=auth0_id,
-        email=f"{auth0_id.replace('|', '_')}@placeholder.local",  # Placeholder
-        name=None,
-        email_verified=False,
-        has_completed_onboarding=False,
-    )
-
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
-
-    return new_user
+@user_router.post("/me/complete-onboarding")
+async def complete_onboarding(
+    params: OnboardingRequest,
+    user: User = Depends(get_current_user),
+    authorization: str = Header(None),
+    database: Database = Depends(get_database)
+):
+    """Complete user onboarding with name and start method."""
+    return CompleteOnboarding.call(params, user=user, database=database)

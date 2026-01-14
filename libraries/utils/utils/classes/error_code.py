@@ -101,11 +101,11 @@ class ErrorCode(BaseEnum):
     # Document not found Error
     DOCUMENT_NOT_FOUND = 31
 
-    # MyCase API Error
-    MYCASE_API_ERROR = 32
+    # API Error
+    API_ERROR = 32
 
-    # MyCase Webhook Error
-    MYCASE_WEBHOOK_ERROR = 33
+    # Webhook Error
+    WEBHOOK_ERROR = 33
 
     # Unexpected API output - output from an API, tool, or agent is malformed or not as expected.
     UNEXPECTED_API_OUTPUT = 34
@@ -118,3 +118,25 @@ class ErrorCode(BaseEnum):
 
     # Invalid request - The request parameters are invalid or malformed
     INVALID_REQUEST = 37
+
+    # Auth errors (40-49)
+    INVALID_TOKEN = 40
+    TOKEN_EXPIRED = 41
+    USER_NOT_FOUND = 42
+    UNAUTHORIZED = 43
+    FORBIDDEN = 44
+
+    # Recipe Book errors (100-109)
+    RECIPE_BOOK_NOT_FOUND = 100
+    RECIPE_BOOK_ACCESS_DENIED = 101
+    DUPLICATE_RECIPE_BOOK_NAME = 102
+
+    # Recipe errors (110-119)
+    RECIPE_NOT_FOUND = 110
+    RECIPE_ACCESS_DENIED = 111
+    DUPLICATE_RECIPE_NAME = 112
+
+    # Ingredient errors (120-129)
+    INGREDIENT_NOT_FOUND = 120
+    DUPLICATE_INGREDIENT = 121
+    INVALID_INGREDIENT_QUANTITY = 122

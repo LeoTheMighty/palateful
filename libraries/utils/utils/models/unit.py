@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from palateful_utils.db.base import Base
+from utils.models.base import Base
 
 
 class Unit(Base):
@@ -13,7 +13,7 @@ class Unit(Base):
 
     __tablename__ = "units"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # id, created_at, updated_at, archived_at inherited from Base
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     abbreviation: Mapped[str] = mapped_column(String, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)  # volume, weight, count, other

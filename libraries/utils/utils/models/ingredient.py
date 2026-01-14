@@ -1,20 +1,20 @@
-"""Ingredient models."""
+"""Ingredient model."""
 
-from datetime import datetime
-from decimal import Decimal
-from typing import TYPE_CHECKING
+import uuid
+from typing import TYPE_CHECKING, Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, UniqueConstraint, func
+from sqlalchemy import Boolean, ForeignKey, String, UUID
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from palateful_utils.db.base import Base
+from utils.models.base import Base
 
 if TYPE_CHECKING:
-    from palateful_utils.db.models.pantry import PantryIngredient
-    from palateful_utils.db.models.recipe import RecipeIngredient
-    from palateful_utils.db.models.user import User
+    from utils.models.ingredient_substitution import IngredientSubstitution
+    from utils.models.pantry_ingredient import PantryIngredient
+    from utils.models.recipe_ingredient import RecipeIngredient
+    from utils.models.user import User
 
 
 class Ingredient(Base):
@@ -22,7 +22,7 @@ class Ingredient(Base):
 
     __tablename__ = "ingredients"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # id, created_at, updated_at, archived_at inherited from Base
     canonical_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     aliases: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     category: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -31,22 +31,16 @@ class Ingredient(Base):
     is_canonical: Mapped[bool] = mapped_column(Boolean, default=True)
     pending_review: Mapped[bool] = mapped_column(Boolean, default=False)
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
 
     # Vector embedding (384 dimensions for all-MiniLM-L6-v2)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
 
     # Foreign keys
-    submitted_by_id: Mapped[str | None] = mapped_column(
+    submitted_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
-    parent_id: Mapped[str | None] = mapped_column(
-        ForeignKey("ingredients.id"), nullable=True
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID, ForeignKey("ingredients.id"), nullable=True
     )
 
     # Relationships
@@ -72,38 +66,4 @@ class Ingredient(Base):
     )
     children: Mapped[list["Ingredient"]] = relationship(
         "Ingredient", back_populates="parent"
-    )
-
-
-class IngredientSubstitution(Base):
-    """IngredientSubstitution model - substitution relationships."""
-
-    __tablename__ = "ingredient_substitutions"
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    context: Mapped[str | None] = mapped_column(String, nullable=True)  # baking, cooking, raw, any
-    quality: Mapped[str] = mapped_column(String, nullable=False)  # perfect, good, workable
-    ratio: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1.0"))
-    notes: Mapped[str | None] = mapped_column(String, nullable=True)
-
-    # Foreign keys
-    ingredient_id: Mapped[str] = mapped_column(
-        ForeignKey("ingredients.id", ondelete="CASCADE")
-    )
-    substitute_id: Mapped[str] = mapped_column(
-        ForeignKey("ingredients.id", ondelete="CASCADE")
-    )
-
-    # Relationships
-    ingredient: Mapped["Ingredient"] = relationship(
-        foreign_keys=[ingredient_id], back_populates="substitutes_for"
-    )
-    substitute: Mapped["Ingredient"] = relationship(
-        foreign_keys=[substitute_id], back_populates="substituted_by"
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "ingredient_id", "substitute_id", "context", name="uq_ingredient_substitutions"
-        ),
     )

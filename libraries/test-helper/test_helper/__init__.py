@@ -1,1 +1,1 @@
-"""MyCase HAL Testing Helper Library"""
+"""Testing Helper Library"""

@@ -1,7 +1,6 @@
 services:
-  postgres:
+  db:
     image: pgvector/pgvector:pg16
-    container_name: palateful-postgres
     restart: unless-stopped
     ports:
       - '5432:5432'
@@ -11,17 +10,17 @@ services:
       POSTGRES_DB: palateful
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./scripts/docker/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     # Uncomment to see all DB statements (helpful for debugging)
     # command: ["postgres", "-c", "log_statement=all"]
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d palateful']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d palateful && pg_isready -U postgres -d test']
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: palateful-redis
     restart: unless-stopped
     ports:
       - '6379:6379'
@@ -38,14 +37,29 @@ services:
       context: .
       dockerfile: services/migrator/Dockerfile
     image: palateful-migrator
+    command: ["upgrade", "head"]
+    # command: ["downgrade", "-1"]
     container_name: palateful-migrator
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/palateful
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/palateful
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-    profiles:
-      - migrate
+
+  migrator-test:
+    build:
+      context: .
+      dockerfile: services/migrator/Dockerfile
+    image: palateful-migrator
+    command: ["upgrade", "head"]
+    container_name: palateful-migrator-test
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/test
+    depends_on:
+      db:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
 
   api:
     build:
@@ -53,8 +67,7 @@ services:
       dockerfile: services/api/Dockerfile
       target: development
     image: palateful-api
-    container_name: palateful-api
-    restart: unless-stopped
+    # restart: unless-stopped
     ports:
       - '8000:8000'
     volumes:
@@ -63,14 +76,74 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/palateful
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/palateful
       REDIS_URL: redis://redis:6379/0
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
+  localstack:
+    image: localstack/localstack:latest
+    restart: unless-stopped
+    ports:
+      - '4566:4566'
+    environment:
+      SERVICES: sqs
+      DEBUG: 0
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - localstack_data:/var/lib/localstack
+    healthcheck:
+      test: ['CMD', 'awslocal', 'sqs', 'list-queues']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+      target: development
+    image: palateful-worker
+    volumes:
+      - ./services/worker/src:/services/worker/src
+      - ./libraries/utils/utils:/services/worker/.venv/lib/python3.13/site-packages/utils
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/palateful
+      CELERY_BROKER_URL: sqs://
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    # restart: unless-stopped
+    command:
+      - "http"
+      - "http://api:8000"
+      - "--log=stdout"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    ports:
+      - '4040:4040'
+    depends_on:
+      - api
 
 volumes:
   postgres_data:
   redis_data:
+  localstack_data:

@@ -4,21 +4,34 @@ from types import ModuleType
 
 from celery import Celery
 from celery.signals import setup_logging
-from hal_utils.constants import (
+from utils.constants import (
+    AWS_ENDPOINT_URL,
+    AWS_REGION,
     CELERY_BROKER_URL,
     CELERY_QUEUE_PREFIX,
     LOGGING_LEVEL
 )
-from hal_utils import tasks
+from utils import tasks
 
 logger = logging.getLogger(__name__)
 logger.setLevel(LOGGING_LEVEL)
 
 # Create Celery app
 celery_app = Celery('tasks', broker=CELERY_BROKER_URL)
-celery_app.conf.broker_transport_options = {
-    'queue_name_prefix': CELERY_QUEUE_PREFIX
+
+# Configure broker transport options for SQS
+broker_transport_options = {
+    'queue_name_prefix': CELERY_QUEUE_PREFIX,
+    'region': AWS_REGION,
+    'visibility_timeout': 3600,  # 1 hour
+    'polling_interval': 1,
 }
+
+# Add LocalStack endpoint URL if configured (for local development)
+if AWS_ENDPOINT_URL:
+    broker_transport_options['endpoint_url'] = AWS_ENDPOINT_URL
+
+celery_app.conf.broker_transport_options = broker_transport_options
 
 
 @setup_logging.connect

@@ -1,0 +1,58 @@
+{
+  "name": "ingredient-scraper",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/ingredient-scraper/src",
+  "targets": {
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry install",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run ruff check src tests",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run pytest",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "scrape": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main scrape --all",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "scrape-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main scrape --source themealdb --limit 10",
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "tags": ["service", "python", "scraper", "cli"]
+}

@@ -1,16 +1,17 @@
 """CookingLog model."""
 
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, UUID, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from palateful_utils.db.base import Base
+from utils.models.base import Base
 
 if TYPE_CHECKING:
-    from palateful_utils.db.models.recipe import Recipe
+    from utils.models.recipe import Recipe
 
 
 class CookingLog(Base):
@@ -18,7 +19,7 @@ class CookingLog(Base):
 
     __tablename__ = "cooking_logs"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # id, created_at, updated_at, archived_at inherited from Base
     scale_factor: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("1.0"))
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
     cooked_at: Mapped[datetime] = mapped_column(
@@ -26,8 +27,8 @@ class CookingLog(Base):
     )
 
     # Foreign keys
-    recipe_id: Mapped[str] = mapped_column(ForeignKey("recipes.id"))
-    pantry_id: Mapped[str] = mapped_column(String, nullable=False)
+    recipe_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("recipes.id"))
+    pantry_id: Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("pantries.id"))
 
     # Relationships
     recipe: Mapped["Recipe"] = relationship(back_populates="cooking_logs")

@@ -2,7 +2,18 @@
   "name": "@palateful-nx/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "dev": "./scripts/dev.sh",
+    "dev:build": "npx nx run-many -t install && npx nx run-many -t docker-build",
+    "dev:start": "npx nx run-many -t install && npx nx run-many -t docker-build && ./scripts/dev.sh",
+    "dev:up": "docker compose up -d && ./scripts/dev.sh",
+    "dev:down": "docker compose down",
+    "dev:clean": "docker compose down -v",
+    "flutter:run": "./scripts/flutter-run.sh",
+    "flutter:ios": "./scripts/flutter-run.sh -d ios",
+    "flutter:android": "./scripts/flutter-run.sh -d android",
+    "flutter:web": "./scripts/flutter-run.sh -d chrome --web-port=3000"
+  },
   "private": true,
   "dependencies": {},
   "devDependencies": {
@@ -10,6 +21,7 @@
     "@nx/devkit": "22.3.3",
     "@nx/js": "22.3.3",
     "@nx/workspace": "22.3.3",
+    "@nxlv/python": "^21.2.3",
     "dotenv": "^17.2.3",
     "nx": "22.3.3",
     "tslib": "^2.8.1"

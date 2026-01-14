@@ -1,25 +1,15 @@
-import logging
-from hal_utils.classes.error_code import ErrorCode
-from hal_utils.constants import LOGGING_LEVEL
+"""Endpoint base class for FastAPI routes."""
 
-logger = logging.getLogger(__name__)
-logger.setLevel(LOGGING_LEVEL)
-
-import logging
 import json
+import logging
 import typing
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 
-from utils.api.endpoint import endpoint_result_is_valid, failure
+from utils.classes.error_code import ErrorCode
 from utils.constants import LOGGING_LEVEL
-from utils.custom_types.api_types import APIRequest
 from utils.services.helpers.encoder import CustomEncoder
-from utils.exceptions.api_exception import APIException, ErrorCode
-from utils.services.sentry import capture_exception, set_contexts, set_tags
-from utils.services.datadog import set_tags as set_datadog_tags
-from catalyst import catalyst
 
 logger = logging.getLogger(__name__)
 logger.setLevel(LOGGING_LEVEL)
@@ -40,6 +30,24 @@ class CustomJSONResponse(JSONResponse):
             separators=(",", ":"),
             cls=CustomEncoder
         ).encode("utf-8")
+
+
+class APIException(Exception):
+    """Custom exception with error codes for API endpoints."""
+
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        code: ErrorCode = ErrorCode.INTERNAL_ERROR
+    ):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+        self.code = code.value if isinstance(code, ErrorCode) else code
+
+    def __str__(self):
+        return f"APIException(code={self.code}): {self.detail}"
 
 
 class Endpoint:
@@ -85,9 +93,10 @@ class Endpoint:
         self.database = kwargs.pop("database", None)
         if self.database is not None:
             self.db = self.database.db
-        self.catalyst_id = kwargs.pop("catalyst_id", None)
         # Capture the FastAPI request object
         self.request = kwargs.pop("request", None)
+        # Store user if passed
+        self.user = kwargs.pop("user", None)
         self.kwargs = kwargs
 
     @classmethod
@@ -103,72 +112,27 @@ class Endpoint:
                 content=jsonable_encoder(result['data']),
                 status_code=result['status'],
             )
-        # capture exception
-        if result['error']:
+        # Log error
+        if result.get('error'):
             logger.exception(result['error'])
-            capture_exception(result['error'])
         return CustomJSONResponse(
             content={
                 'error_code': result['error_code'],
                 'error_message': result['error_message'],
-                'data': result['data'],
+                'data': result.get('data', {}),
             },
             status_code=result['status'],
         )
 
-    # DON'T OVERRIDE
-    # pylint: disable=inconsistent-return-statements
     def run(self):
-        """Runs the endpoint, handling sentry initialization and error handling."""
-        # No need to add filter here anymore since middleware does it
-
+        """Runs the endpoint, handling error handling."""
         args = self.args
         kwargs = self.kwargs
 
-        # Find the first `args` that is of type `APIRequest`
-        api_request = next((arg for arg in args if isinstance(arg, APIRequest)), None)
-
-        # Only set datadog tags if we have an APIRequest
-        user_uuid = None
-        tenant_uuid = None
-        service = None
-        if api_request:
-            user_uuid = api_request.user_uuid
-            tenant_uuid = api_request.tenant_uuid
-            service = api_request.service.value
-            endpoint_datadog_tags = {
-                'user_uuid': user_uuid,
-                'tenant_uuid': tenant_uuid,
-                'service': service,
-                'endpoint': self.__class__.__name__,
-            }
-
-            if self.request is not None:
-                endpoint_datadog_tags.update(
-                    getattr(self.request.state, 'datadog_tags', None) or {})
-                self.request.state.datadog_tags = endpoint_datadog_tags
-
-            set_datadog_tags(endpoint_datadog_tags)
-
-        logger.info("Args: %s", args)
-        logger.info("Kwargs: %s", kwargs)
+        logger.debug("Endpoint %s - Args: %s, Kwargs: %s",
+                     self.__class__.__name__, args, kwargs)
 
         try:
-            if self.catalyst_id is not None:
-                catalyst.set(self.catalyst_id)
-            set_tags({
-                'user_uuid': user_uuid,
-                'tenant_uuid': tenant_uuid,
-                'service': service,
-            })
-            set_contexts({
-                'execution': {
-                    'endpoint': self.__class__.__name__,
-                    'endpoint_args': str(args),
-                    'endpoint_kwargs': str(kwargs),
-                }
-            })
-
             logger.info("Executing endpoint: %s", self.__class__.__name__)
             result = self.execute(*args, **kwargs)
 
@@ -176,13 +140,12 @@ class Endpoint:
                 return result
             raise APIException(
                 status_code=500,
-                detail=(
-                    f"Endpoint result not valid. Result: {json.dumps(result, cls=CustomEncoder)}"),
+                detail=f"Endpoint result not valid. Result: {json.dumps(result, cls=CustomEncoder)}",
                 code=ErrorCode.INVALID_ENDPOINT_RESULT
             )
         except APIException as e:
-            logger.error("Endpoint %s failed with api error: %s", self.__class__.__name__, str(e),
-                         exc_info=True)
+            logger.error("Endpoint %s failed with api error: %s",
+                         self.__class__.__name__, str(e), exc_info=True)
             return failure(
                 error_code=e.code,
                 error_message=e.detail,
@@ -190,10 +153,9 @@ class Endpoint:
                 data={},
                 error=e
             )
-        # pylint: disable=broad-exception-caught
         except Exception as e:
-            logger.error("Endpoint %s failed with error: %s", self.__class__.__name__, str(e),
-                         exc_info=True)
+            logger.error("Endpoint %s failed with error: %s",
+                         self.__class__.__name__, str(e), exc_info=True)
             return failure(
                 data={},
                 error_message=str(e),
@@ -214,7 +176,7 @@ def ack():
     return {"success": True}
 
 
-def success(data: any = None, status: int = 200):
+def success(data: typing.Any = None, status: int = 200):
     """
     A successful response to the service worker.
 
@@ -229,7 +191,6 @@ def success(data: any = None, status: int = 200):
     }
 
 
-# pylint: disable=too-many-arguments
 def failure(
     error_code: int = ErrorCode.INTERNAL_ERROR.value,
     error_message: str = None,
@@ -250,8 +211,10 @@ def failure(
     """
     if error_message is None:
         error_message = 'Something went wrong.'
+    if data is None:
+        data = {}
     if isinstance(retry_after, int):
-        data.update({"retry_after": str(retry_after)})
+        data["retry_after"] = str(retry_after)
     return {
         "success": False,
         "data": data,

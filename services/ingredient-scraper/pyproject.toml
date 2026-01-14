@@ -1,0 +1,52 @@
+[tool.poetry]
+name = "ingredient-scraper"
+version = "0.1.0"
+description = "CLI tool for scraping and building a comprehensive ingredient database"
+authors = ["Leonid Belyi"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+httpx = "^0.27"
+aiofiles = "^24.1"
+pydantic = "^2.10"
+pydantic-settings = "^2.7"
+typer = "^0.15"
+rich = "^13.9"
+sentence-transformers = "^3.3"
+rapidfuzz = "^3.10"
+inflect = "^7.4"
+openai = "^2.8.1"
+tenacity = "^9.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.11"
+pytest = "^8.0"
+pytest-cov = "^6.0"
+pytest-asyncio = "^0.25"
+pytest-html = "^4.0"
+
+[tool.poetry.scripts]
+ingredient-scraper = "src.main:app"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--cov --cov-report html:'../../coverage/services/ingredient-scraper/html'"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

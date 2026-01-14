@@ -28,6 +28,12 @@ package-mode = true
     psycopg2-binary = "^2.9"  # Needed for sync Alembic operations
     utils = {path = "../../libraries/utils", develop = true}
 
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.11"
+pytest = "^8.0"
+pytest-cov = "^6.0"
+pytest-html = "^4.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

@@ -4,10 +4,10 @@ import datetime
 from pydantic import BaseModel
 from sqlalchemy import UUID
 
-from hal_utils.classes.enum import BaseEnum
+from utils.classes.enum import BaseEnum
 
 class CustomEncoder(json.JSONEncoder):
-    """Custom Encoder for serializing `hal_utils` objects to JSON."""
+    """Custom Encoder for serializing objects to JSON."""
 
     def default(self, obj):
         if isinstance(obj, BaseEnum):

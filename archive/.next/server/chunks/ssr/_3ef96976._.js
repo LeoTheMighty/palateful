@@ -1,3 +1,0 @@
-module.exports=[87924,(a,b,c)=>{"use strict";b.exports=a.r(42602).vendored["react-ssr"].ReactJsxRuntime},47279,a=>{"use strict";var b=a.i(87924),c=a.i(68114);function d({className:a}){return(0,b.jsx)("a",{href:"/api/auth/login",className:(0,c.cn)("inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-lg font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2",a),children:"Sign In"})}a.s(["LoginButton",()=>d])}];
-
-//# sourceMappingURL=_3ef96976._.js.map

@@ -49,9 +49,13 @@ exclude = [
   pillow = ">=11.3.0"
   starlette = "^0.49.1"
   wayfound = "^2.5.0"
+  pgvector = "^0.4"
 
-# [tool.poetry.group.test.dependencies]
-# test-helper = { path = "../../libraries/test-helper", develop = true }
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.11"
+pytest = "^8.0"
+pytest-cov = "^6.0"
+pytest-html = "^4.0"
 
 [build-system]
 requires = ["poetry-core"]

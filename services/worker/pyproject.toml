@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "worker"
+version = "0.1.0"
+description = "Palateful Celery worker for background tasks"
+authors = ["Leonid Belyi"]
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+celery = {extras = ["sqs"], version = "^5.5"}
+pycurl = "^7.45"
+psycopg2-binary = "^2.9.11"
+utils = {path = "../../libraries/utils", develop = true}
+agent = {path = "../../libraries/agent", develop = true}
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.11"
+pytest = "^8.0"
+pytest-cov = "^6.0"
+pytest-html = "^4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

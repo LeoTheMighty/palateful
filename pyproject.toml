@@ -1,19 +1,56 @@
+[tool.nx]
+autoActivate = true
+
 [tool.poetry]
 name = "palateful"
-version = "0.1.0"
+version = "1.0.0"
 description = "Recipe management and cooking assistant"
 authors = ["Leonid Belyi"]
 readme = "README.md"
-packages = []
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.13"
 
+[tool.poetry.dependencies.api]
+path = "services/api"
+develop = true
+
+[tool.poetry.dependencies.worker]
+path = "services/worker"
+develop = true
+
+[tool.poetry.dependencies.migrator]
+path = "services/migrator"
+develop = true
+
+[tool.poetry.dependencies.ocr]
+path = "services/ocr"
+develop = true
+
+[tool.poetry.dependencies.ingredient-scraper]
+path = "services/ingredient-scraper"
+develop = true
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
-pytest-asyncio = "^0.23"
-ruff = "^0.8"
-mypy = "^1.8"
+pytest-asyncio = "^0.25"
+pytest-cov = "^6.0"
+pytest-html = "^4.0"
+ruff = "^0.11"
+factory-boy = "^3.3"
+
+[tool.poetry.group.dev.dependencies.test-helper]
+path = "libraries/test-helper"
+develop = true
+
+[tool.poetry.group.dev.dependencies.utils]
+path = "libraries/utils"
+develop = true
+
+[tool.poetry.group.dev.dependencies.agent]
+path = "libraries/agent"
+develop = true
 
 [build-system]
 requires = ["poetry-core"]
@@ -21,16 +58,11 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
-
-[tool.mypy]
-python_version = "3.11"
-strict = true
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -92,8 +92,6 @@ docker compose up -d postgres
 
 ### Phase 1: Foundation Cleanup [ ]
 
-> **Goal:** Remove hal_utils dependencies, make codebase self-contained
-
 #### 1.1 Create BaseEnum Class [ ]
 **File:** `libraries/utils/utils/classes/base_enum.py`
 
@@ -122,16 +120,15 @@ class BaseEnum(Enum):
 
 #### 1.2 Update ErrorCode [ ]
 **File:** `libraries/utils/utils/classes/error_code.py`
-- Change import from `hal_utils.classes.enum import BaseEnum` to `from utils.classes.base_enum import BaseEnum`
+- Change import from `classes.enum import BaseEnum` to `from utils.classes.base_enum import BaseEnum`
 - Add Palateful-specific error codes (100-129 for Recipe/Ingredient errors)
 
 #### 1.3 Update APIException [ ]
 **File:** `libraries/utils/utils/api/api_exception.py`
-- Change import from `hal_utils.classes.error_code import ErrorCode` to `from utils.classes.error_code import ErrorCode`
+- Change import from `classes.error_code import ErrorCode` to `from utils.classes.error_code import ErrorCode`
 
 #### 1.4 Update Endpoint [ ]
 **File:** `libraries/utils/utils/api/endpoint.py`
-- Remove ALL `hal_utils` imports
 - Update to use local modules:
   - `from utils.classes.error_code import ErrorCode`
   - Remove `catalyst` import (not needed for Palateful)
@@ -634,7 +631,6 @@ palateful/
   - Testing commands
 
 **Technical Decisions:**
-- Remove `hal_utils` dependencies - make codebase self-contained
 - Create local `BaseEnum` class for `ErrorCode`
 - Palateful-specific error codes start at 100 (recipe/ingredient errors)
 - Ingredient search uses PostgreSQL `search_ingredients_fuzzy()` function (pg_trgm)

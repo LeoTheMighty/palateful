@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from palateful_utils.units.constants import ALL_UNITS, UnitDefinition
+from utils.services.units.constants import ALL_UNITS, UnitDefinition
 
 
 @dataclass

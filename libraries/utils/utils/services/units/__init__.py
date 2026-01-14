@@ -1,7 +1,7 @@
 """Unit conversion utilities."""
 
-from palateful_utils.units.constants import ALL_UNITS, UnitDefinition, UnitType
-from palateful_utils.units.conversion import (
+from utils.services.units.constants import ALL_UNITS, UnitDefinition, UnitType
+from utils.services.units.conversion import (
     convert_between_units,
     find_unit,
     format_quantity,

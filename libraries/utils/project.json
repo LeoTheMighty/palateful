@@ -4,6 +4,13 @@
   "projectType": "library",
   "sourceRoot": "libraries/utils/src",
   "targets": {
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
     "install": {
       "executor": "nx:run-commands",
       "options": {
@@ -14,8 +21,8 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["poetry run ruff check src/"],
-        "cwd": "libraries/utils"
+        "commands": ["poetry run ruff check {projectRoot}/utils/"],
+        "cwd": "{workspaceRoot}"
       }
     },
     "test": {

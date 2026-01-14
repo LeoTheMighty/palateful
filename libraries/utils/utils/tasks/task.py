@@ -8,7 +8,7 @@ from celery import Task, group
 from celery.worker import strategy
 from celery.app import trace
 
-from utils.api.endpoint import endpoint_result_is_valid, failure
+from utils.api.endpoint import endpoint_result_is_valid, failure, APIException
 from utils.classes.error_code import ErrorCode
 from utils.constants import (
     EXPONENTIAL_BACKOFF_FACTOR,
@@ -17,18 +17,7 @@ from utils.constants import (
     MAX_BATCH_SIZE,
     MAX_TASK_COUNTDOWN,
 )
-from utils.custom_types.api_types import APIRequest
-from hal_utils.services.aws.appsync_client import AppSyncClient
-from hal_utils.services.database import Database
-from hal_utils.services.responder import Responder
-from hal_utils.services.sentry import capture_exception, set_contexts, set_tags
-from hal_utils.services.datadog import set_tags as set_datadog_tags
-from hal_utils.exceptions.api_exception import APIException
-
-try:
-    from catalyst import catalyst
-except ImportError:
-    catalyst = None
+from utils.services.database import Database
 
 # We want to set internal celery log level to warning
 strategy.logger.setLevel(logging.WARNING)
@@ -55,32 +44,18 @@ class BaseTask(Task):
     args = None
     kwargs = None
     api_request = None
-    user_uuid = None
-    merchant_uuid = None
+    user_id = None
     base_data = None
     service = None
-    responder = None
     stream_client = None
     database = None
     token = None
     catalyst_id = None
     countdown = None
 
-    @property
-    def tenant_uuid(self) -> Optional[str]:
-        """Backwards compatibility alias for merchant_uuid (deprecated)."""
-        return self.merchant_uuid
-
-    @tenant_uuid.setter
-    def tenant_uuid(self, value: Optional[str]):
-        """Backwards compatibility setter for merchant_uuid (deprecated)."""
-        self.merchant_uuid = value
-
     def on_success(self, retval, task_id, args, kwargs):
         """Takes the return value of the task and responds."""
         logger.info("Task %s executed successfully with task id %s", self.name, task_id)
-        if self.responder:
-            self.responder.respond(retval)
         if self.database:
             self.database.close()
 
@@ -88,7 +63,6 @@ class BaseTask(Task):
     def on_failure(self, exc, task_id, args, kwargs, einfo):
         """Takes the failure value of the task and responds."""
         logger.error("Task %s failed with error: %s", self.name, str(exc), exc_info=True)
-        capture_exception(exc)
 
         error_code = ErrorCode.INTERNAL_ERROR.value
         error_string = str(exc)
@@ -100,11 +74,6 @@ class BaseTask(Task):
 
         if self.stream_client:
             self.stream_client.send_error_message(error_code, error_string, status_code)
-
-        if self.responder:
-            self.responder.respond(
-                failure(error_code, error_string, exc, status=status_code, data=self.base_data)
-            )
 
         if self.database:
             self.database.close()
@@ -126,57 +95,15 @@ class BaseTask(Task):
 
         self.args = args
         self.kwargs = kwargs.copy()  # Clone the dictionary to avoid side effects
-        if catalyst:
-            self.catalyst_id = kwargs.pop('catalyst_id', None)
-            if self.catalyst_id:
-                catalyst.set(self.catalyst_id)
-
-        api_request_json = kwargs.pop('api_request_json', None)
-        if api_request_json:
-            self.api_request = APIRequest.from_json(api_request_json)
-
-        # Only set datadog tags if we have an api_request
-        if self.api_request:
-            set_datadog_tags({
-                'user_uuid': self.api_request.user_uuid,
-                'merchant_uuid': self.api_request.merchant_uuid,
-                'service': self.api_request.service.value,
-                'task': self.name,
-            })
-
-        # This is logging everything to DD. Disabling this for now and creating a story to log
-        # only the important stuff here
-        # logger.info("Args: %s", args)
-        # logger.info("Kwargs: %s", kwargs)
 
         stream_channel = None
-        if self.api_request:
-            self.user_uuid = self.api_request.user_uuid
-            self.merchant_uuid = self.api_request.merchant_uuid
-            self.service = self.api_request.service
-            stream_channel = self.api_request.stream_channel
+        self.user_id = kwargs.pop('user_id', None)
         self.token = kwargs.pop('auth_token', None)
         self.base_data = kwargs.pop('base_data', None)
         self.countdown = kwargs.pop('countdown', 0.0)
 
-        set_tags({
-            'user_uuid': self.user_uuid,
-            'merchant_uuid': self.merchant_uuid,
-            'service': self.service.value,
-        })
-        set_contexts({
-            'execution': {
-                'endpoint': self.name,
-                'endpoint_args': str(args),
-                'endpoint_kwargs': str(kwargs),
-            },
-            'base_data': self.base_data,
-        })
-
-        if stream_channel and self.token:
-            self.stream_client = AppSyncClient(stream_channel, auth_token=self.token)
-
-        self.responder = Responder(self.service, self.token)
+        # if stream_channel and self.token:
+        #     self.stream_client = AppSyncClient(stream_channel, auth_token=self.token)
 
         # Give each task a database connection
         self.database = Database()
@@ -205,7 +132,7 @@ class BaseTask(Task):
     async def execute_async(self, *args, **kwargs): # pragma: no cover
         """The specific business logic for the task. Child classes may optionally override this."""
         raise NotImplementedError(
-            'HAL Tasks must implement either the execute() or execute_async() method.'
+            'Tasks must implement either the execute() or execute_async() method.'
         )
 
     def get_child_task_context(self, **kwargs) -> dict:
@@ -219,15 +146,9 @@ class BaseTask(Task):
             dict: Context for child task
         """
         stream_channel = kwargs.pop('stream_channel', None)
-        api_request = self.api_request
-        if api_request and stream_channel:
-            api_request.stream_channel = stream_channel
-
         context = {
-            'api_request_json': api_request.to_json() if api_request else None,
             'base_data': self.base_data,
             'auth_token': self.token,
-            'catalyst_id': self.catalyst_id,
         }
 
         return context

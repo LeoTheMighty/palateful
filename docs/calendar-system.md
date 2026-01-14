@@ -1,0 +1,14 @@
+# Calendar System
+
+We want to have an integrated calendar system such that we can both plan meals,
+coordinate plans with our friends, and have a meal prep system that we can both create both for when we need to have them ready and to also have it based around our ability
+and time commitment to cook. So I want this to be flexible enough to cover these different use cases.
+
+1. I want to be able to creat a meal prep plan, given that I have time to cook on Sundays and Tuesdays. I want to be able to keep switching it up and use my pantry in a smart way. 
+2. I want to plan a dinner in with my fiance and so I will come up with a meal plan and then invite my partner to it so that we can both help get the ingredients and then be able to see the meal that we're making and know approximately what time we need to start on it.
+3. I had a meal prep plan but actually I'm going on vacation and need to skip it, or at very least make it so that it's not super annoying if I'm not going to do the meal thing (i.e the ability to dismiss all notifications for the meal) actually this one isn't super important. Much more important that people have the info to do what they want to do.
+4. There's an involved meal plan for a lot of people. I want to be able to both start it, then for instance set it in the fridge to marinate and then another notification for when to continue the meal. So like not just a "start time" for the meal, but then also have the ability to set it down in the fridge and then set another notification process for when to resume.
+
+Now that I'm writing these down, this seems like I'm also asking for a system is an overall timing/notification/meal-follow system that allows me to go through a meal prep from grocery shopping all the way to cooking for complex cooking processes. A Calendar is definitely important for my first 3 but that fourth one makes me realize that there's a bigger system I'm interested in creating.
+
+I think this goes deep enough to warrant a re-look at the way we're storing the recipes to begin with, we want to incluide the flexibility for us to have these time intervals in the recipe instructions and then the ability to automatically either set a timer or to automatically set an alarm for a notification if that makes sense. And it would be ideal if we could use as little AI in this process as possible, but I'm not necessarily opposed to it. Maybe in fact all I'm thinking about is a timer/alarm sytem in the recipe making process, but it would be nice to at least have a "Need to start prepping by" automatic alarm for a recipe that's on your calendar. And if that "start by" time is a day in advance we want to add that ability. Then my only fear is that we notify them to start, but then they start and forget to continue if that makes sense. Let's think about a clean solution to that. Obviously somewhat of an edge case to be fair, but worth thinking about.

@@ -75,8 +75,8 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["poetry run ruff check src/"],
-        "cwd": "{projectRoot}"
+        "commands": ["poetry run ruff check {projectRoot}/src/"],
+        "cwd": "{workspaceRoot}"
       }
     },
     "test": {

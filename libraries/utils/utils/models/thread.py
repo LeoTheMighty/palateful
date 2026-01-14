@@ -1,16 +1,16 @@
 """Thread model for AI chat conversations."""
 
-from datetime import datetime
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from palateful_utils.db.base import Base
+from utils.models.base import Base
 
 if TYPE_CHECKING:
-    from palateful_utils.db.models.chat import Chat
-    from palateful_utils.db.models.user import User
+    from utils.models.chat import Chat
+    from utils.models.user import User
 
 
 class Thread(Base):
@@ -18,17 +18,11 @@ class Thread(Base):
 
     __tablename__ = "threads"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # id, created_at, updated_at, archived_at inherited from Base
     title: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
 
     # Foreign keys
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="threads")

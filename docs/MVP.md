@@ -917,8 +917,6 @@ class APIException(HTTPException):
 
 **File:** `libraries/utils/utils/api/endpoint.py`
 
-Remove all `hal_utils` imports and update to use local modules:
-
 ```python
 import json
 import logging

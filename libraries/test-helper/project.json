@@ -6,50 +6,33 @@
   "implicitDependencies": ["utils"],
   "targets": {
     "lock": {
-      "executor": "@nxlv/python:run-commands",
-      "options": {
-        "command": "poetry lock",
-        "cwd": "libraries/test-helper"
-      }
-    },
-    "add": {
-      "executor": "@nxlv/python:add",
-      "options": {}
-    },
-    "update": {
-      "executor": "@nxlv/python:update",
-      "dependsOn": ["cleanup-local-libraries"],
-      "options": {}
-    },
-    "remove": {
-      "executor": "@nxlv/python:remove",
-      "options": {}
-    },
-    "cleanup-local-libraries": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run pip uninstall utils -y",
+        "command": "poetry lock",
         "cwd": "{projectRoot}"
       }
     },
     "install": {
-      "executor": "@nxlv/python:install",
+      "executor": "nx:run-commands",
       "options": {
-        "silent": false,
-        "args": "--no-root",
-        "cacheDir": ".cache/pypoetry",
-        "verbose": false,
-        "debug": false
+        "commands": ["poetry install"],
+        "cwd": "{projectRoot}"
       }
     },
     "lint": {
-      "executor": "@nxlv/python:run-commands",
-      "outputs": ["{workspaceRoot}/reports/services/api/pylint.txt"],
+      "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run pylint --recursive=y {projectRoot}",
+        "commands": ["poetry run ruff check {projectRoot}/test_helper/"],
         "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
+        "cwd": "{projectRoot}"
       }
     }
   },
-  "tags": []
+  "tags": ["library", "python", "testing"]
 }

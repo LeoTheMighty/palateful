@@ -1,0 +1,149 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+  nx: nrwl/nx@1.7.0
+
+executors:
+  builder:
+    docker:
+      - image: cimg/python:3.13
+    resource_class: arm.large
+  tester:
+    docker:
+      - image: cimg/python:3.13
+      - image: cimg/postgres:16.0
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+    resource_class: arm.large
+
+commands:
+  cache_poetry_dependencies:
+    steps:
+      - save_cache:
+          key: v1-poetry-venv-{{ checksum "poetry.lock" }}-{{ checksum "libraries/utils/pyproject.toml" }}-{{ checksum "libraries/test-helper/pyproject.toml" }}
+          paths:
+            - .venv
+  set_up_poetry_dependencies:
+    steps:
+      - run:
+          name: Force system Python for Poetry and Nx (disable pyenv)
+          command: |
+            CLEAN_PATH=$(echo $PATH | tr ':' '\n' | grep -v pyenv | tr '\n' ':')
+            echo "export PATH=$CLEAN_PATH" >> "$BASH_ENV"
+            echo "export PYENV_VERSION=system" >> "$BASH_ENV"
+            source "$BASH_ENV"
+      - restore_cache:
+          keys:
+            - v1-poetry-venv-{{ checksum "poetry.lock" }}-{{ checksum "libraries/utils/pyproject.toml" }}-{{ checksum "libraries/test-helper/pyproject.toml" }}
+            - v1-poetry-venv-{{ checksum "poetry.lock" }}
+      - run: poetry install --with dev
+      - run:
+          name: Force reinstall local libraries from source
+          command: |
+            poetry run pip uninstall utils test-helper -y || true
+            poetry install
+  attach_prepared_workspace:
+    description: 'Attach workspace and configure Node/Python environment'
+    steps:
+      - attach_workspace:
+          at: .
+      - node/install:
+          node-version: '22'
+      - run:
+          name: Restore NX environment variables from workspace
+          command: |
+            if [ -f .nx-env ]; then
+              cat .nx-env >> "$BASH_ENV"
+              source "$BASH_ENV"
+            fi
+      - run:
+          name: Force system Python for Poetry and Nx (disable pyenv)
+          command: |
+            CLEAN_PATH=$(echo $PATH | tr ':' '\n' | grep -v pyenv | tr '\n' ':')
+            echo "export PATH=$CLEAN_PATH" >> "$BASH_ENV"
+            echo "export PYENV_VERSION=system" >> "$BASH_ENV"
+            source "$BASH_ENV"
+  install-node-packages:
+    description: 'Install npm dependencies'
+    steps:
+      - node/install:
+          node-version: '22'
+      - node/install-packages
+
+jobs:
+  setup:
+    executor: builder
+    steps:
+      - checkout
+      - install-node-packages
+      - nx/set-shas
+      - run:
+          name: Save NX environment variables for workspace
+          command: |
+            echo "export NX_BASE=$NX_BASE" >> .nx-env
+            echo "export NX_HEAD=$NX_HEAD" >> .nx-env
+      - set_up_poetry_dependencies
+      - cache_poetry_dependencies
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+  lint:
+    executor: builder
+    steps:
+      - attach_prepared_workspace
+      - run: npx nx affected --base=$NX_BASE --head=$NX_HEAD -t lint --parallel=3
+
+  test:
+    executor: tester
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+    steps:
+      - attach_prepared_workspace
+      - run:
+          name: Wait for PostgreSQL to be ready
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
+      - run:
+          name: Run Migrations
+          command: npx nx run migrator:migrate-test
+      - run: npx nx affected --base=$NX_BASE --head=$NX_HEAD -t test --parallel=3
+      - store_test_results:
+          path: reports
+      - store_artifacts:
+          path: reports
+      - store_artifacts:
+          path: coverage
+
+  check_models:
+    executor: tester
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+    steps:
+      - attach_prepared_workspace
+      - run:
+          name: Wait for PostgreSQL to be ready
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
+      - run:
+          name: Run Check Models Command
+          command: npx nx run migrator:check-models
+
+workflows:
+  main:
+    jobs:
+      - setup
+
+      - lint:
+          requires:
+            - setup
+
+      - test:
+          requires:
+            - setup
+
+      - check_models:
+          requires:
+            - setup

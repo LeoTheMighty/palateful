@@ -1,0 +1,91 @@
+{
+  "name": "worker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/worker/src",
+  "targets": {
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "docker-build": {
+      "executor": "@nx-tools/nx-container:build",
+      "options": {
+        "target": "development",
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile",
+        "load": true,
+        "metadata": {
+          "images": ["worker"],
+          "tags": ["type=raw,value=latest"]
+        }
+      },
+      "configurations": {
+        "ci": {
+          "target": "production",
+          "load": false,
+          "platforms": ["linux/arm64/v8"],
+          "metadata": {
+            "images": ["$AWS_ECR_ACCOUNT_URL/palateful/worker"],
+            "tags": ["type=raw,value=${IMAGE_TAG}"]
+          }
+        }
+      }
+    },
+    "ecr-login": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker login -u AWS -p $(aws ecr get-login-password --region us-east-1 --profile dev-role-sso) $AWS_ECR_ACCOUNT_URL"
+      }
+    },
+    "deploy": {
+      "executor": "@nx-tools/nx-container:build",
+      "dependsOn": ["docker-build", "ecr-login"],
+      "options": {
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile",
+        "push": true,
+        "metadata": {
+          "images": ["$AWS_ECR_ACCOUNT_URL/palateful/worker"],
+          "tags": ["type=raw,value=$AWS_USERNAME"]
+        }
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "poetry run celery -A src.main:app worker --loglevel=info"
+        ],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry install"],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run ruff check {projectRoot}/src/"],
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["poetry run pytest"],
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "tags": ["service", "python", "worker"]
+}
