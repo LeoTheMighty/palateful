@@ -1,11 +1,9 @@
 """FastAPI application entry point."""
 
+from config import settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from config import settings
 from routers.v1_router import v1_router
-
 
 app = FastAPI(
     title="Palateful API",

@@ -1,7 +1,6 @@
 """Complete user onboarding endpoint."""
 
-from schemas.user import OnboardingRequest, OnboardingResponse, UserResponse, RecipeBookResponse
-
+from schemas.user import OnboardingRequest, OnboardingResponse, RecipeBookResponse, UserResponse
 from utils.api.endpoint import Endpoint, success
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser

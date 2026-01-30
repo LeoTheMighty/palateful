@@ -1,11 +1,9 @@
 """Create recipe book endpoint."""
 
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
 
+from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
-from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
@@ -57,12 +55,12 @@ class CreateRecipeBook(Endpoint):
 
     class Params(BaseModel):
         name: str
-        description: Optional[str] = None
+        description: str | None = None
 
     class Response(BaseModel):
         id: str
         name: str
-        description: Optional[str] = None
+        description: str | None = None
         recipe_count: int
         created_at: datetime
         updated_at: datetime

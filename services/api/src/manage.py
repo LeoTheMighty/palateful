@@ -1,29 +1,29 @@
 import enum
+import importlib
 import inspect
 import os
-import importlib
 import pkgutil
 from pprint import pprint
 
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import (
-    create_engine,
-    inspect as sqlalchemy_inspect,
-)
-
 # Load env vars
 from dotenv import load_dotenv
+from sqlalchemy import (
+    create_engine,
+)
+from sqlalchemy import (
+    inspect as sqlalchemy_inspect,
+)
+from sqlalchemy.orm import sessionmaker
 
 # Load environment variables from .env.dev
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '../../../.env.dev'))
 
 # pylint: disable=wrong-import-position
-from utils.constants import DATABASE_URL
-
 # Dynamically import all models from the models directory before importing the
 # Base class that stores all the metadata for the database
 from utils import classes as enums_package
 from utils import models as models_package
+from utils.constants import DATABASE_URL
 
 
 def get_imported_objects(package, object_type, predicate, context=None):

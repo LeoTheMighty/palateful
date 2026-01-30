@@ -1,11 +1,9 @@
 """Get recipe book endpoint."""
 
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
-from sqlalchemy import func
 
-from utils.api.endpoint import Endpoint, APIException, success
+from pydantic import BaseModel
+from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -86,17 +84,17 @@ class GetRecipeBook(Endpoint):
     class RecipeItem(BaseModel):
         id: str
         name: str
-        description: Optional[str] = None
-        prep_time: Optional[int] = None
-        cook_time: Optional[int] = None
-        servings: Optional[int] = None
-        image_url: Optional[str] = None
+        description: str | None = None
+        prep_time: int | None = None
+        cook_time: int | None = None
+        servings: int | None = None
+        image_url: str | None = None
         created_at: datetime
 
     class Response(BaseModel):
         id: str
         name: str
-        description: Optional[str] = None
+        description: str | None = None
         recipe_count: int = 0
         recipes: list["GetRecipeBook.RecipeItem"] = []
         created_at: datetime

@@ -1,11 +1,10 @@
 """Update recipe book endpoint."""
 
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
-from sqlalchemy import func
 
-from utils.api.endpoint import Endpoint, APIException, success
+from pydantic import BaseModel
+from sqlalchemy import func
+from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -79,13 +78,13 @@ class UpdateRecipeBook(Endpoint):
         )
 
     class Params(BaseModel):
-        name: Optional[str] = None
-        description: Optional[str] = None
+        name: str | None = None
+        description: str | None = None
 
     class Response(BaseModel):
         id: str
         name: str
-        description: Optional[str] = None
+        description: str | None = None
         recipe_count: int
         created_at: datetime
         updated_at: datetime

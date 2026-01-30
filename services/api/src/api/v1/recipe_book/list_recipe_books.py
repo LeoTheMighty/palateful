@@ -1,10 +1,9 @@
 """List recipe books endpoint."""
 
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
-from sqlalchemy import func
 
+from pydantic import BaseModel
+from sqlalchemy import func
 from utils.api.endpoint import Endpoint, success
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -71,7 +70,7 @@ class ListRecipeBooks(Endpoint):
     class RecipeBookItem(BaseModel):
         id: str
         name: str
-        description: Optional[str] = None
+        description: str | None = None
         recipe_count: int = 0
         created_at: datetime
         updated_at: datetime

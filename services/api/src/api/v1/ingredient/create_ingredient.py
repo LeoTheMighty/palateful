@@ -1,10 +1,9 @@
 """Create ingredient endpoint."""
 
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
 
-from utils.api.endpoint import Endpoint, APIException, success
+from pydantic import BaseModel
+from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.ingredient import Ingredient
 from utils.models.user import User
@@ -64,13 +63,13 @@ class CreateIngredient(Endpoint):
 
     class Params(BaseModel):
         canonical_name: str
-        category: Optional[str] = None
-        default_unit: Optional[str] = None
+        category: str | None = None
+        default_unit: str | None = None
 
     class Response(BaseModel):
         id: str
         canonical_name: str
-        category: Optional[str] = None
-        default_unit: Optional[str] = None
+        category: str | None = None
+        default_unit: str | None = None
         pending_review: bool
         created_at: datetime

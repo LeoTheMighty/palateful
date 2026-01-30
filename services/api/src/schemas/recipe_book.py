@@ -1,27 +1,27 @@
 """Recipe book-related Pydantic schemas."""
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel
 
 
 class RecipeBookCreate(BaseModel):
     """Request schema for creating a recipe book."""
     name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class RecipeBookUpdate(BaseModel):
     """Request schema for updating a recipe book."""
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
 
 
 class RecipeBookResponse(BaseModel):
     """Response schema for a recipe book."""
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     recipe_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -34,11 +34,11 @@ class RecipeListItem(BaseModel):
     """Summary schema for a recipe in a list."""
     id: str
     name: str
-    description: Optional[str] = None
-    prep_time: Optional[int] = None
-    cook_time: Optional[int] = None
-    servings: Optional[int] = None
-    image_url: Optional[str] = None
+    description: str | None = None
+    prep_time: int | None = None
+    cook_time: int | None = None
+    servings: int | None = None
+    image_url: str | None = None
     created_at: datetime
 
     class Config:
@@ -49,7 +49,7 @@ class RecipeBookDetailResponse(BaseModel):
     """Response schema for a recipe book with recipes."""
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     recipe_count: int = 0
     recipes: list[RecipeListItem] = []
     created_at: datetime

@@ -2,17 +2,14 @@
 
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel
-from typing import Optional
 
-from utils.api.endpoint import Endpoint, APIException, success
+from pydantic import BaseModel
+from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
-from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
-
-from utils.models.ingredient import Ingredient
 from utils.models.user import User
 
 
@@ -101,29 +98,29 @@ class GetRecipe(Endpoint):
     class IngredientSummary(BaseModel):
         id: str
         canonical_name: str
-        category: Optional[str] = None
+        category: str | None = None
 
     class IngredientResponse(BaseModel):
         id: str
         ingredient: "GetRecipe.IngredientSummary"
         quantity_display: Decimal
         unit_display: str
-        quantity_normalized: Optional[Decimal] = None
-        unit_normalized: Optional[str] = None
-        notes: Optional[str] = None
+        quantity_normalized: Decimal | None = None
+        unit_normalized: str | None = None
+        notes: str | None = None
         is_optional: bool = False
         order_index: int = 0
 
     class Response(BaseModel):
         id: str
         name: str
-        description: Optional[str] = None
-        instructions: Optional[str] = None
+        description: str | None = None
+        instructions: str | None = None
         servings: int = 1
-        prep_time: Optional[int] = None
-        cook_time: Optional[int] = None
-        image_url: Optional[str] = None
-        source_url: Optional[str] = None
+        prep_time: int | None = None
+        cook_time: int | None = None
+        image_url: str | None = None
+        source_url: str | None = None
         ingredients: list["GetRecipe.IngredientResponse"] = []
         created_at: datetime
         updated_at: datetime

@@ -1,19 +1,17 @@
 """Recipe endpoints router."""
 
-from typing import Optional
-from fastapi import APIRouter, Depends
 
-from dependencies import get_database, get_current_user
+from api.v1.recipe import (
+    CreateRecipe,
+    DeleteRecipe,
+    GetRecipe,
+    ListRecipes,
+    UpdateRecipe,
+)
+from dependencies import get_current_user, get_database
+from fastapi import APIRouter, Depends
 from utils.models.user import User
 from utils.services.database import Database
-from api.v1.recipe import (
-    ListRecipes,
-    CreateRecipe,
-    GetRecipe,
-    UpdateRecipe,
-    DeleteRecipe,
-)
-
 
 recipe_router = APIRouter(tags=["recipes"])
 
@@ -24,7 +22,7 @@ async def list_recipes(
     book_id: str,
     limit: int = 20,
     offset: int = 0,
-    search: Optional[str] = None,
+    search: str | None = None,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):

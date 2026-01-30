@@ -1,9 +1,8 @@
 """Search ingredients endpoint."""
 
-from pydantic import BaseModel
-from typing import Optional
-from sqlalchemy import text
 
+from pydantic import BaseModel
+from sqlalchemy import text
 from utils.api.endpoint import Endpoint, success
 
 
@@ -64,7 +63,7 @@ class SearchIngredients(Endpoint):
     class IngredientMatch(BaseModel):
         id: str
         canonical_name: str
-        category: Optional[str] = None
+        category: str | None = None
         similarity: float
 
     class Response(BaseModel):

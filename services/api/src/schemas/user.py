@@ -1,7 +1,8 @@
 """User-related Pydantic schemas."""
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -9,10 +10,10 @@ class UserResponse(BaseModel):
     """Response schema for user data."""
     id: str
     email: str
-    name: Optional[str] = None
-    picture: Optional[str] = None
+    name: str | None = None
+    picture: str | None = None
     has_completed_onboarding: bool
-    default_recipe_book_id: Optional[str] = None
+    default_recipe_book_id: str | None = None
     created_at: datetime
 
     class Config:
@@ -23,7 +24,7 @@ class RecipeBookResponse(BaseModel):
     """Response schema for recipe book data."""
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_public: bool
     created_at: datetime
 
@@ -40,6 +41,6 @@ class OnboardingRequest(BaseModel):
 class OnboardingResponse(BaseModel):
     """Response schema for onboarding completion."""
     success: bool
-    user: Optional[UserResponse] = None
-    recipe_book: Optional[RecipeBookResponse] = None
-    start_method: Optional[str] = None
+    user: UserResponse | None = None
+    recipe_book: RecipeBookResponse | None = None
+    start_method: str | None = None

@@ -1,12 +1,10 @@
 """Ingredient endpoints router."""
 
+from api.v1.ingredient import CreateIngredient, GetIngredient, SearchIngredients
+from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
-
-from dependencies import get_database, get_current_user
 from utils.models.user import User
 from utils.services.database import Database
-from api.v1.ingredient import SearchIngredients, CreateIngredient, GetIngredient
-
 
 ingredient_router = APIRouter(prefix="/ingredients", tags=["ingredients"])
 

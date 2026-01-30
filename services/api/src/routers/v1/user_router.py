@@ -1,13 +1,11 @@
 """User endpoints router."""
 
+from api.v1.user import CompleteOnboarding, GetMe
+from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends, Header
-
-from dependencies import get_database, get_current_user
 from schemas.user import OnboardingRequest
 from utils.models.user import User
 from utils.services.database import Database
-from api.v1.user import GetMe, CompleteOnboarding
-
 
 user_router = APIRouter(prefix="/users", tags=["users"])
 

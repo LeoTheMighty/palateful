@@ -2,13 +2,13 @@
 
 import logging
 from typing import Annotated
-from fastapi import Depends, Header
 
-from utils.services.database import Database, SessionLocal
-from utils.models.user import User
-from utils.constants import LOGGING_LEVEL
+from fastapi import Depends, Header
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
+from utils.constants import LOGGING_LEVEL
+from utils.models.user import User
+from utils.services.database import Database, SessionLocal
 
 logger = logging.getLogger(__name__)
 logger.setLevel(LOGGING_LEVEL)

@@ -1,11 +1,9 @@
 """Delete recipe endpoint."""
 
 from pydantic import BaseModel
-
-from utils.api.endpoint import Endpoint, APIException, success
+from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
-from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 

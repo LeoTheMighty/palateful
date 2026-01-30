@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from utils.models.cooking_log import CookingLog
     from utils.models.recipe_book import RecipeBook
     from utils.models.recipe_ingredient import RecipeIngredient
+    from utils.models.recipe_step import RecipeStep
     from utils.models.suggestion import Suggestion
 
 
@@ -46,6 +47,9 @@ class Recipe(Base):
     )
     cooking_logs: Mapped[list["CookingLog"]] = relationship(back_populates="recipe")
     suggestions: Mapped[list["Suggestion"]] = relationship(back_populates="recipe")
+    steps: Mapped[list["RecipeStep"]] = relationship(
+        back_populates="recipe", cascade="all, delete-orphan"
+    )
 
     # Indexes
     __table_args__ = (

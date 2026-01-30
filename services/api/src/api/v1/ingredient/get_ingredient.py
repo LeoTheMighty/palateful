@@ -1,10 +1,9 @@
 """Get ingredient endpoint."""
 
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
 
-from utils.api.endpoint import Endpoint, APIException, success
+from pydantic import BaseModel
+from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.ingredient import Ingredient
 
@@ -50,10 +49,10 @@ class GetIngredient(Endpoint):
         id: str
         canonical_name: str
         aliases: list[str] = []
-        category: Optional[str] = None
+        category: str | None = None
         flavor_profile: list[str] = []
-        default_unit: Optional[str] = None
+        default_unit: str | None = None
         is_canonical: bool = True
         pending_review: bool = False
-        image_url: Optional[str] = None
+        image_url: str | None = None
         created_at: datetime

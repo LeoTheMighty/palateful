@@ -1,9 +1,8 @@
 """Get current user endpoint."""
 
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
 
+from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 from utils.models.user import User
 
@@ -30,8 +29,8 @@ class GetMe(Endpoint):
     class Response(BaseModel):
         id: str
         email: str
-        name: Optional[str] = None
-        picture: Optional[str] = None
+        name: str | None = None
+        picture: str | None = None
         has_completed_onboarding: bool
-        default_recipe_book_id: Optional[str] = None
+        default_recipe_book_id: str | None = None
         created_at: datetime
