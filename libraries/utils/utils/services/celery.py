@@ -33,6 +33,16 @@ if AWS_ENDPOINT_URL:
 
 celery_app.conf.broker_transport_options = broker_transport_options
 
+# Celery Beat schedule for periodic tasks
+celery_app.conf.beat_schedule = {
+    'shopping-list-deadline-reminders': {
+        'task': 'shopping_list_deadline_reminder',
+        'schedule': 900.0,  # Every 15 minutes
+        'options': {'queue': 'celery'},
+    },
+}
+celery_app.conf.timezone = 'UTC'
+
 
 @setup_logging.connect
 def config_loggers(*_args, **_kwargs):

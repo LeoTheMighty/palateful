@@ -43,6 +43,7 @@ dependencies:
   json_annotation: ^4.9.0
   flutter_dotenv: ^6.0.0
   wakelock_plus: ^1.2.1
+  web_socket_channel: ^3.0.1
 
 dev_dependencies:
   flutter_test:

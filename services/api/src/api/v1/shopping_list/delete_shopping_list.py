@@ -15,6 +15,8 @@ class DeleteShoppingList(Endpoint):
         """
         Delete (archive) a shopping list.
 
+        Only the owner can delete a shopping list.
+
         Args:
             list_id: The shopping list's ID
 
@@ -32,7 +34,7 @@ class DeleteShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access
+        # Check access - only owner can delete
         if shopping_list.owner_id != user.id:
             raise APIException(
                 status_code=403,
@@ -41,7 +43,7 @@ class DeleteShoppingList(Endpoint):
             )
 
         # Soft delete
-        shopping_list.archived_at = datetime.utcnow()
+        shopping_list.archived_at = datetime.now(datetime.UTC)
         self.database.db.commit()
 
         return success(data={"deleted": True, "id": str(list_id)})

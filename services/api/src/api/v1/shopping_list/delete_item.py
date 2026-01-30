@@ -5,6 +5,7 @@ from datetime import datetime
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
+from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
@@ -33,8 +34,18 @@ class DeleteShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access
-        if shopping_list.owner_id != user.id:
+        # Check access - owner or member with edit permission
+        is_owner = shopping_list.owner_id == user.id
+        membership = self.database.find_by(
+            ShoppingListUser, shopping_list_id=list_id, user_id=user.id
+        )
+        can_edit = is_owner or (
+            membership
+            and membership.role in ("owner", "editor")
+            and not membership.archived_at
+        )
+
+        if not can_edit:
             raise APIException(
                 status_code=403,
                 detail="You don't have permission to delete items from this shopping list",
@@ -53,7 +64,9 @@ class DeleteShoppingListItem(Endpoint):
             )
 
         # Soft delete
-        item.archived_at = datetime.utcnow()
+        item.archived_at = datetime.now(datetime.UTC)
         self.database.db.commit()
+
+        # TODO: Create ShoppingListEvent for item_removed
 
         return success(data={"deleted": True, "id": str(item_id)})

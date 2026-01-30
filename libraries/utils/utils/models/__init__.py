@@ -23,6 +23,8 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
+from utils.models.shopping_list_event import ShoppingListEvent
+from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.suggestion import Suggestion
 from utils.models.thread import Thread
 from utils.models.unit import Unit
@@ -65,6 +67,8 @@ __all__ = [
     "PrepStep",
     "ShoppingList",
     "ShoppingListItem",
+    "ShoppingListUser",
+    "ShoppingListEvent",
     "ActiveTimer",
     # Import System
     "ImportJob",

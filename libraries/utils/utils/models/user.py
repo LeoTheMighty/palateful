@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from utils.models.pantry_user import PantryUser
     from utils.models.recipe_book import RecipeBook
     from utils.models.recipe_book_user import RecipeBookUser
+    from utils.models.shopping_list_user import ShoppingListUser
     from utils.models.suggestion import Suggestion
     from utils.models.thread import Thread
 
@@ -77,5 +78,8 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     import_jobs: Mapped[list["ImportJob"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    shopping_list_memberships: Mapped[list["ShoppingListUser"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
