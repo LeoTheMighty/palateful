@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.models.base import Base
 
 if TYPE_CHECKING:
+    from utils.models.import_job import ImportJob
     from utils.models.ingredient import Ingredient
     from utils.models.notification import Notification
     from utils.models.pantry_user import PantryUser
@@ -73,5 +74,8 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    import_jobs: Mapped[list["ImportJob"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

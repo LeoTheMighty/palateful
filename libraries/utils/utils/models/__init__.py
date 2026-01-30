@@ -5,7 +5,10 @@ from utils.models.joins_base import JoinsBase
 from utils.models.active_timer import ActiveTimer
 from utils.models.chat import Chat
 from utils.models.cooking_log import CookingLog
+from utils.models.import_item import ImportItem
+from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
+from utils.models.ingredient_match import IngredientMatch
 from utils.models.ingredient_substitution import IngredientSubstitution
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
@@ -51,6 +54,7 @@ __all__ = [
     # Ingredient
     "Ingredient",
     "IngredientSubstitution",
+    "IngredientMatch",
     # Units
     "Unit",
     # Logs
@@ -62,4 +66,7 @@ __all__ = [
     "ShoppingList",
     "ShoppingListItem",
     "ActiveTimer",
+    # Import System
+    "ImportJob",
+    "ImportItem",
 ]
