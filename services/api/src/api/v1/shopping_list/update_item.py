@@ -3,6 +3,10 @@
 from datetime import datetime
 from decimal import Decimal
 
+from api.v1.shopping_list.utils.notifications import (
+    notify_item_checked,
+    notify_list_complete,
+)
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -107,8 +111,22 @@ class UpdateShoppingListItem(Endpoint):
         self.database.db.commit()
         self.database.db.refresh(item)
 
-        # TODO: Create ShoppingListEvent for item_updated / item_checked / item_unchecked
-        # TODO: Send notifications if relevant
+        # Send notification when item is checked off
+        if params.is_checked is True:
+            notify_item_checked(shopping_list, item, user, self.database)
+
+            # Check if all items are now complete
+            unchecked_count = (
+                self.database.db.query(ShoppingListItem)
+                .filter(
+                    ShoppingListItem.shopping_list_id == shopping_list.id,
+                    ShoppingListItem.is_checked.is_(False),
+                    ShoppingListItem.archived_at.is_(None),
+                )
+                .count()
+            )
+            if unchecked_count == 0:
+                notify_list_complete(shopping_list, user, self.database)
 
         return success(
             data=UpdateShoppingListItem.Response(

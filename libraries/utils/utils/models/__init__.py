@@ -5,6 +5,8 @@ from utils.models.joins_base import JoinsBase
 from utils.models.active_timer import ActiveTimer
 from utils.models.chat import Chat
 from utils.models.cooking_log import CookingLog
+from utils.models.friend_request import FriendRequest
+from utils.models.friendship import Friendship
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
@@ -36,6 +38,9 @@ __all__ = [
     "JoinsBase",
     # Core
     "User",
+    # Social/Friends
+    "FriendRequest",
+    "Friendship",
     # Chat/AI
     "Thread",
     "Chat",

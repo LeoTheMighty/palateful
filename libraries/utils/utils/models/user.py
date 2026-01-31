@@ -1,15 +1,18 @@
 """User model."""
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
 
 if TYPE_CHECKING:
+    from utils.models.friend_request import FriendRequest
+    from utils.models.friendship import Friendship
     from utils.models.import_job import ImportJob
     from utils.models.ingredient import Ingredient
     from utils.models.notification import Notification
@@ -33,6 +36,14 @@ class User(Base):
     picture: Mapped[str | None] = mapped_column(String, nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     has_completed_onboarding: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Username for social features (@username)
+    username: Mapped[str | None] = mapped_column(
+        String(20), unique=True, index=True, nullable=True
+    )
+    username_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Default recipe book for the user (opened on home screen)
     default_recipe_book_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -82,4 +93,24 @@ class User(Base):
     )
     shopping_list_memberships: Mapped[list["ShoppingListUser"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+
+    # Friendship relationships
+    friendships: Mapped[list["Friendship"]] = relationship(
+        "Friendship",
+        foreign_keys="[Friendship.user_id]",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    sent_friend_requests: Mapped[list["FriendRequest"]] = relationship(
+        "FriendRequest",
+        foreign_keys="[FriendRequest.from_user_id]",
+        back_populates="from_user",
+        cascade="all, delete-orphan",
+    )
+    received_friend_requests: Mapped[list["FriendRequest"]] = relationship(
+        "FriendRequest",
+        foreign_keys="[FriendRequest.to_user_id]",
+        back_populates="to_user",
+        cascade="all, delete-orphan",
     )

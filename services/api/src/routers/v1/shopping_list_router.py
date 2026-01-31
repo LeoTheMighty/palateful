@@ -457,7 +457,7 @@ async def shopping_list_websocket(
         if not user:
             await websocket.close(code=4001, reason="Invalid user")
             return
-    except Exception as e:
+    except Exception:
         await websocket.close(code=4001, reason="Authentication failed")
         return
 

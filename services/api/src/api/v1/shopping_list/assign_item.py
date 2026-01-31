@@ -1,7 +1,6 @@
 """Assign shopping list item to a user endpoint."""
 
 from pydantic import BaseModel
-
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from api.v1.meal_event.utils.notifications import notify_meal_event_invite
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -89,7 +90,8 @@ class InviteParticipant(Endpoint):
             meal_event.is_shared = True
             self.database.db.commit()
 
-        # TODO: Send notification to invited user
+        # Send notification to invited user
+        notify_meal_event_invite(meal_event, invited_user, user, params.message)
 
         return success(
             data=InviteParticipant.Response(

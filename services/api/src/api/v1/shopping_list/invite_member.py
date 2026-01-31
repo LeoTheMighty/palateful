@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from api.v1.shopping_list.utils.notifications import notify_list_shared
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -122,8 +123,8 @@ class InviteShoppingListMember(Endpoint):
             )
             self.database.create(owner_membership)
 
-        # TODO: Create ShoppingListEvent for member_joined
-        # TODO: Send notification to invited user
+        # Send notification to invited user
+        notify_list_shared(shopping_list, invited_user, user, self.database)
 
         return success(
             data=InviteShoppingListMember.Response(

@@ -3,6 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
+from api.v1.shopping_list.utils.notifications import notify_item_added
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -77,8 +78,8 @@ class AddShoppingListItem(Endpoint):
         self.database.create(item)
         self.database.db.refresh(item)
 
-        # TODO: Create ShoppingListEvent for item_added
-        # TODO: Send notifications to members if notify_on_add is enabled
+        # Send notification to members of shared list
+        notify_item_added(shopping_list, item, user, self.database)
 
         return success(
             data=AddShoppingListItem.Response(

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from api.v1.shopping_list.utils.notifications import notify_member_joined
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -67,8 +68,8 @@ class JoinShoppingList(Endpoint):
         self.database.create(membership)
         self.database.db.refresh(membership)
 
-        # TODO: Create ShoppingListEvent for member_joined
-        # TODO: Send notification to existing members
+        # Notify existing members about new member
+        notify_member_joined(shopping_list, user, self.database)
 
         return success(
             data=JoinShoppingList.Response(
