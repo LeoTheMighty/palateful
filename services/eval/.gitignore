@@ -1,0 +1,23 @@
+# Evaluation results (regenerated)
+results/
+
+# Cache files
+datasets/*/cache/
+
+# Environment files
+.env.eval
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

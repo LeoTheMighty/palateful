@@ -1,0 +1,29 @@
+# Palateful Evaluation Suite Configuration
+# This file configures metrics and thresholds for evaluations
+
+metrics:
+  ocr:
+    - character_accuracy    # Percentage of characters correct
+    - word_accuracy         # Percentage of words correct
+    - levenshtein_distance  # Edit distance from expected
+    - bleu_score           # N-gram overlap score
+
+  recipe_extraction:
+    - field_accuracy       # Per-field match rate
+    - ingredient_count_accuracy
+    - instruction_similarity
+    - cost_cents           # AI cost tracking
+    - latency_ms           # Response time
+
+  ingredient_matching:
+    - exact_match_rate     # Exact ID matches
+    - fuzzy_match_rate     # Fuzzy matches above threshold
+    - false_positive_rate  # Incorrect matches
+    - confidence_calibration
+
+# Pass/fail thresholds
+thresholds:
+  ocr_character_accuracy: 0.95  # 95% character accuracy to pass
+  ocr_word_accuracy: 0.90       # 90% word accuracy
+  recipe_field_accuracy: 0.90   # 90% field accuracy to pass
+  ingredient_match_rate: 0.85   # 85% match rate to pass

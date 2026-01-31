@@ -1,0 +1,79 @@
+{
+  "name": "eval",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/eval/src",
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry install",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lock": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry lock",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main run --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run-ocr": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main run --suite ocr --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run-recipe": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main run --suite recipe_extraction --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run-matching": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main run --suite ingredient_matching --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "report": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main report --format html",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "add-case": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main add-case",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run ruff check {projectRoot}/src/",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run pytest",
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "tags": ["service", "python", "eval"]
+}

@@ -81,6 +81,9 @@ ENV/
 .env.*.local
 !.env.example
 
+# Secrets
+secrets/
+
 # Generated files
 app/lib/core/config/environment.generated.dart
 

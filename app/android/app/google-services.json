@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "386854922290",
+    "project_id": "palateful",
+    "storage_bucket": "palateful.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:386854922290:android:5e02d83c6458e03ac8b42b",
+        "android_client_info": {
+          "package_name": "com.palateful.palateful"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYX6oB0_7mWhMHbQ1bZVCLo71QGqBYJrs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

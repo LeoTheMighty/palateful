@@ -1,0 +1,18 @@
+# OCR Evaluation Test Cases
+# Add test images and their expected markdown outputs here
+
+cases: []
+  # Example case (uncomment and add actual files):
+  # - id: recipe-card-01
+  #   image: images/recipe-card-01.jpg
+  #   expected: expected/recipe-card-01.md
+  #   tags: [handwritten, recipe-card]
+
+  # - id: cookbook-page-01
+  #   image: images/cookbook-page-01.png
+  #   expected: expected/cookbook-page-01.md
+  #   tags: [printed, cookbook]
+
+config:
+  timeout_seconds: 60
+  skip_tags: []  # Tags to skip during evaluation

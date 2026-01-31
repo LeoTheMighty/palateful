@@ -1,0 +1,27 @@
+# Ingredient Matching Evaluation Test Cases
+# Input text -> Expected ingredient match
+
+cases: []
+  # Example cases (uncomment when you have ingredient data):
+  # - id: exact-flour
+  #   input: "2 cups all-purpose flour"
+  #   expected_name: "all-purpose flour"
+  #   expected_match_type: exact
+  #   min_confidence: 1.0
+  #   tags: [exact-match, baking]
+
+  # - id: fuzzy-tomatoes
+  #   input: "3 large ripe tomatoes, diced"
+  #   expected_name: "tomato"
+  #   expected_match_type: fuzzy
+  #   min_confidence: 0.7
+  #   tags: [fuzzy-match, vegetables]
+
+  # - id: no-match-exotic
+  #   input: "1 tbsp exotic spice blend"
+  #   expected_id: null  # No match expected
+  #   expected_match_type: none
+  #   tags: [no-match, spices]
+
+config:
+  timeout_seconds: 30

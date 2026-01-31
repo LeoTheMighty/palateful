@@ -1,0 +1,22 @@
+# Recipe Extraction Evaluation Test Cases
+# Add test HTML files and their expected JSON outputs here
+
+cases: []
+  # Example case (uncomment and add actual files):
+  # - id: allrecipes-chocolate-cake
+  #   html: html/allrecipes-chocolate-cake.html
+  #   expected: expected/allrecipes-chocolate-cake.json
+  #   url: https://www.allrecipes.com/recipe/17981/one-bowl-chocolate-cake-iii/
+  #   extractor: auto  # json_ld, ai, or auto
+  #   tags: [json-ld, dessert]
+
+  # - id: nytimes-pasta
+  #   html: html/nytimes-pasta.html
+  #   expected: expected/nytimes-pasta.json
+  #   url: https://cooking.nytimes.com/recipes/pasta
+  #   extractor: ai  # Force AI extraction
+  #   tags: [ai-only, main-course]
+
+config:
+  timeout_seconds: 120
+  skip_tags: []
