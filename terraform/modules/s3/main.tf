@@ -1,4 +1,4 @@
-# S3 buckets for OCR pipeline
+# S3 buckets for parser pipeline
 
 variable "environment" {
   type        = string
@@ -11,26 +11,26 @@ variable "project" {
   description = "Project name"
 }
 
-# OCR Input Bucket
-resource "aws_s3_bucket" "ocr_inputs" {
-  bucket = "${var.project}-ocr-inputs-${var.environment}"
+# Parser Input Bucket
+resource "aws_s3_bucket" "parser_inputs" {
+  bucket = "${var.project}-parser-inputs-${var.environment}"
 
   tags = {
-    Name        = "${var.project}-ocr-inputs"
+    Name        = "${var.project}-parser-inputs"
     Environment = var.environment
     Project     = var.project
   }
 }
 
-resource "aws_s3_bucket_versioning" "ocr_inputs" {
-  bucket = aws_s3_bucket.ocr_inputs.id
+resource "aws_s3_bucket_versioning" "parser_inputs" {
+  bucket = aws_s3_bucket.parser_inputs.id
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "ocr_inputs" {
-  bucket = aws_s3_bucket.ocr_inputs.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "parser_inputs" {
+  bucket = aws_s3_bucket.parser_inputs.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -39,8 +39,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "ocr_inputs" {
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "ocr_inputs" {
-  bucket = aws_s3_bucket.ocr_inputs.id
+resource "aws_s3_bucket_public_access_block" "parser_inputs" {
+  bucket = aws_s3_bucket.parser_inputs.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -48,26 +48,26 @@ resource "aws_s3_bucket_public_access_block" "ocr_inputs" {
   restrict_public_buckets = true
 }
 
-# OCR Output Bucket
-resource "aws_s3_bucket" "ocr_outputs" {
-  bucket = "${var.project}-ocr-outputs-${var.environment}"
+# Parser Output Bucket
+resource "aws_s3_bucket" "parser_outputs" {
+  bucket = "${var.project}-parser-outputs-${var.environment}"
 
   tags = {
-    Name        = "${var.project}-ocr-outputs"
+    Name        = "${var.project}-parser-outputs"
     Environment = var.environment
     Project     = var.project
   }
 }
 
-resource "aws_s3_bucket_versioning" "ocr_outputs" {
-  bucket = aws_s3_bucket.ocr_outputs.id
+resource "aws_s3_bucket_versioning" "parser_outputs" {
+  bucket = aws_s3_bucket.parser_outputs.id
   versioning_configuration {
     status = "Enabled"
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "ocr_outputs" {
-  bucket = aws_s3_bucket.ocr_outputs.id
+resource "aws_s3_bucket_server_side_encryption_configuration" "parser_outputs" {
+  bucket = aws_s3_bucket.parser_outputs.id
 
   rule {
     apply_server_side_encryption_by_default {
@@ -76,8 +76,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "ocr_outputs" {
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "ocr_outputs" {
-  bucket = aws_s3_bucket.ocr_outputs.id
+resource "aws_s3_bucket_public_access_block" "parser_outputs" {
+  bucket = aws_s3_bucket.parser_outputs.id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -86,9 +86,9 @@ resource "aws_s3_bucket_public_access_block" "ocr_outputs" {
 }
 
 # Lifecycle rule for dev environment (expire after 30 days)
-resource "aws_s3_bucket_lifecycle_configuration" "ocr_outputs_lifecycle" {
+resource "aws_s3_bucket_lifecycle_configuration" "parser_outputs_lifecycle" {
   count  = var.environment == "dev" ? 1 : 0
-  bucket = aws_s3_bucket.ocr_outputs.id
+  bucket = aws_s3_bucket.parser_outputs.id
 
   rule {
     id     = "expire-dev-outputs"
@@ -100,18 +100,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "ocr_outputs_lifecycle" {
   }
 }
 
-output "ocr_inputs_bucket_name" {
-  value = aws_s3_bucket.ocr_inputs.bucket
+output "parser_inputs_bucket_name" {
+  value = aws_s3_bucket.parser_inputs.bucket
 }
 
-output "ocr_inputs_bucket_arn" {
-  value = aws_s3_bucket.ocr_inputs.arn
+output "parser_inputs_bucket_arn" {
+  value = aws_s3_bucket.parser_inputs.arn
 }
 
-output "ocr_outputs_bucket_name" {
-  value = aws_s3_bucket.ocr_outputs.bucket
+output "parser_outputs_bucket_name" {
+  value = aws_s3_bucket.parser_outputs.bucket
 }
 
-output "ocr_outputs_bucket_arn" {
-  value = aws_s3_bucket.ocr_outputs.arn
+output "parser_outputs_bucket_arn" {
+  value = aws_s3_bucket.parser_outputs.arn
 }

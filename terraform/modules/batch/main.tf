@@ -1,4 +1,4 @@
-# AWS Batch compute environment for OCR with Spot GPU instances
+# AWS Batch compute environment for parser with Spot GPU instances
 
 variable "environment" {
   type        = string
@@ -39,7 +39,7 @@ variable "spot_fleet_role_arn" {
 
 variable "ecr_repository_url" {
   type        = string
-  description = "ECR repository URL for OCR container"
+  description = "ECR repository URL for parser container"
 }
 
 variable "subnet_ids" {
@@ -59,8 +59,8 @@ variable "max_vcpus" {
 }
 
 # Compute Environment - Spot GPU instances
-resource "aws_batch_compute_environment" "ocr_spot_gpu" {
-  compute_environment_name = "${var.project}-ocr-spot-gpu-${var.environment}"
+resource "aws_batch_compute_environment" "parser_spot_gpu" {
+  compute_environment_name = "${var.project}-parser-spot-gpu-${var.environment}"
   type                     = "MANAGED"
   state                    = "ENABLED"
   service_role             = var.batch_service_role_arn
@@ -84,14 +84,14 @@ resource "aws_batch_compute_environment" "ocr_spot_gpu" {
     spot_iam_fleet_role = var.spot_fleet_role_arn
 
     tags = {
-      Name        = "${var.project}-ocr-batch"
+      Name        = "${var.project}-parser-batch"
       Environment = var.environment
       Project     = var.project
     }
   }
 
   tags = {
-    Name        = "${var.project}-ocr-compute-env"
+    Name        = "${var.project}-parser-compute-env"
     Environment = var.environment
     Project     = var.project
   }
@@ -102,38 +102,38 @@ resource "aws_batch_compute_environment" "ocr_spot_gpu" {
 }
 
 # Job Queue
-resource "aws_batch_job_queue" "ocr" {
-  name     = "${var.project}-ocr-queue-${var.environment}"
+resource "aws_batch_job_queue" "parser" {
+  name     = "${var.project}-parser-queue-${var.environment}"
   state    = "ENABLED"
   priority = 1
 
   compute_environment_order {
     order               = 1
-    compute_environment = aws_batch_compute_environment.ocr_spot_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
   }
 
   tags = {
-    Name        = "${var.project}-ocr-queue"
+    Name        = "${var.project}-parser-queue"
     Environment = var.environment
     Project     = var.project
   }
 }
 
 # CloudWatch Log Group
-resource "aws_cloudwatch_log_group" "ocr_batch" {
-  name              = "/aws/batch/${var.project}-ocr-${var.environment}"
+resource "aws_cloudwatch_log_group" "parser_batch" {
+  name              = "/aws/batch/${var.project}-parser-${var.environment}"
   retention_in_days = var.environment == "prod" ? 30 : 7
 
   tags = {
-    Name        = "${var.project}-ocr-logs"
+    Name        = "${var.project}-parser-logs"
     Environment = var.environment
     Project     = var.project
   }
 }
 
 # Job Definition
-resource "aws_batch_job_definition" "ocr" {
-  name = "${var.project}-ocr-job-${var.environment}"
+resource "aws_batch_job_definition" "parser" {
+  name = "${var.project}-parser-job-${var.environment}"
   type = "container"
 
   platform_capabilities = ["EC2"]
@@ -166,40 +166,40 @@ resource "aws_batch_job_definition" "ocr" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.ocr_batch.name
+        "awslogs-group"         = aws_cloudwatch_log_group.parser_batch.name
         "awslogs-region"        = var.aws_region
-        "awslogs-stream-prefix" = "ocr"
+        "awslogs-stream-prefix" = "parser"
       }
     }
   })
 
   tags = {
-    Name        = "${var.project}-ocr-job-def"
+    Name        = "${var.project}-parser-job-def"
     Environment = var.environment
     Project     = var.project
   }
 }
 
 output "compute_environment_arn" {
-  value = aws_batch_compute_environment.ocr_spot_gpu.arn
+  value = aws_batch_compute_environment.parser_spot_gpu.arn
 }
 
 output "job_queue_arn" {
-  value = aws_batch_job_queue.ocr.arn
+  value = aws_batch_job_queue.parser.arn
 }
 
 output "job_queue_name" {
-  value = aws_batch_job_queue.ocr.name
+  value = aws_batch_job_queue.parser.name
 }
 
 output "job_definition_arn" {
-  value = aws_batch_job_definition.ocr.arn
+  value = aws_batch_job_definition.parser.arn
 }
 
 output "job_definition_name" {
-  value = aws_batch_job_definition.ocr.name
+  value = aws_batch_job_definition.parser.name
 }
 
 output "log_group_name" {
-  value = aws_cloudwatch_log_group.ocr_batch.name
+  value = aws_cloudwatch_log_group.parser_batch.name
 }

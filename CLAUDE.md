@@ -15,7 +15,7 @@ Palateful is an NX monorepo with Python microservices (FastAPI) and Flutter mobi
 
 ```
 palateful/
-├── services/           # Python microservices (api, migrator, ocr, worker)
+├── services/           # Python microservices (api, migrator, parser, worker)
 ├── libraries/          # Shared Python libraries (utils, test_helper)
 ├── docs/               # Documentation
 ├── terraform/          # AWS infrastructure

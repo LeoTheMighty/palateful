@@ -1,4 +1,4 @@
-# IAM roles for AWS Batch OCR pipeline
+# IAM roles for AWS Batch parser pipeline
 
 variable "environment" {
   type        = string
@@ -11,14 +11,14 @@ variable "project" {
   description = "Project name"
 }
 
-variable "ocr_inputs_bucket_arn" {
+variable "parser_inputs_bucket_arn" {
   type        = string
-  description = "ARN of OCR inputs S3 bucket"
+  description = "ARN of parser inputs S3 bucket"
 }
 
-variable "ocr_outputs_bucket_arn" {
+variable "parser_outputs_bucket_arn" {
   type        = string
-  description = "ARN of OCR outputs S3 bucket"
+  description = "ARN of parser outputs S3 bucket"
 }
 
 variable "ecr_repository_arn" {
@@ -100,19 +100,19 @@ resource "aws_iam_role_policy" "batch_job_s3" {
       {
         Effect = "Allow"
         Action = ["s3:GetObject"]
-        Resource = "${var.ocr_inputs_bucket_arn}/*"
+        Resource = "${var.parser_inputs_bucket_arn}/*"
       },
       {
         Effect = "Allow"
         Action = ["s3:PutObject"]
-        Resource = "${var.ocr_outputs_bucket_arn}/*"
+        Resource = "${var.parser_outputs_bucket_arn}/*"
       },
       {
         Effect = "Allow"
         Action = ["s3:ListBucket"]
         Resource = [
-          var.ocr_inputs_bucket_arn,
-          var.ocr_outputs_bucket_arn
+          var.parser_inputs_bucket_arn,
+          var.parser_outputs_bucket_arn
         ]
       }
     ]
@@ -175,6 +175,62 @@ resource "aws_iam_role" "spot_fleet" {
 resource "aws_iam_role_policy_attachment" "spot_fleet" {
   role       = aws_iam_role.spot_fleet.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole"
+}
+
+# API Service Policy (for ECS tasks or local dev with AWS credentials)
+# This policy allows the API to interact with S3 and Batch
+resource "aws_iam_policy" "api_service" {
+  name        = "${var.project}-api-service-${var.environment}"
+  description = "Policy for API service to access parser S3 buckets and Batch"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "S3ParserAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          "${var.parser_inputs_bucket_arn}/*",
+          "${var.parser_outputs_bucket_arn}/*"
+        ]
+      },
+      {
+        Sid    = "S3ListBuckets"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          var.parser_inputs_bucket_arn,
+          var.parser_outputs_bucket_arn
+        ]
+      },
+      {
+        Sid    = "BatchSubmitAndDescribe"
+        Effect = "Allow"
+        Action = [
+          "batch:SubmitJob",
+          "batch:DescribeJobs",
+          "batch:ListJobs"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "${var.project}-api-service"
+    Environment = var.environment
+    Project     = var.project
+  }
+}
+
+output "api_service_policy_arn" {
+  value       = aws_iam_policy.api_service.arn
+  description = "ARN of IAM policy for API service"
 }
 
 output "batch_instance_profile_arn" {

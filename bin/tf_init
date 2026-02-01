@@ -1,0 +1,20 @@
+#!/bin/bash
+# Initialize terraform for development environment (local state)
+
+set -e
+
+root_path=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "${root_path}/terraform"
+
+echo "Initializing Terraform for development..."
+echo "Using local state backend"
+
+# Remove any existing backend configuration
+rm -rf .terraform
+
+# Initialize with local backend (no remote state)
+terraform init
+
+echo ""
+echo "Terraform initialized for development."
+echo "Run 'bin/tf_update' to apply changes."

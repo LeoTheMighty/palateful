@@ -60,7 +60,7 @@ services/eval/
                     │   Code     │
                     │            │
                     │ - utils/   │
-                    │ - ocr/     │
+                    │ - parser/  │
                     └────────────┘
 ```
 
@@ -73,8 +73,8 @@ The eval service imports production code directly:
 from utils.services.recipe_extractors.ai_extractor import AIExtractor
 from utils.services.recipe_extractors.json_ld import JsonLdExtractor
 
-# From OCR service
-from services.ocr.src.model import run_ocr
+# From parser service
+from services.parser.src.model import run_ocr
 ```
 
 This ensures evaluations test the actual code paths used in production.
@@ -87,7 +87,7 @@ This ensures evaluations test the actual code paths used in production.
 
 **Input**: Image files (JPG, PNG)
 **Output**: Markdown text
-**Production Code**: `services/ocr/src/model.py::run_ocr()`
+**Production Code**: `services/parser/src/model.py::run_ocr()`
 
 **Metrics**:
 - `character_accuracy`: 1 - (levenshtein_distance / expected_length)

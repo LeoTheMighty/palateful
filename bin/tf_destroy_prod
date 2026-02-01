@@ -1,0 +1,33 @@
+#!/bin/bash
+# Destroy terraform-managed infrastructure for production environment
+#
+# DANGER: This will DESTROY production infrastructure!
+
+set -e
+
+root_path=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "${root_path}/terraform"
+
+echo "=========================================="
+echo "  ⚠️  PRODUCTION TERRAFORM DESTROY  ⚠️"
+echo "=========================================="
+echo ""
+echo "This will DESTROY all production infrastructure!"
+echo ""
+
+# Require explicit confirmation
+read -p "Type 'destroy-production' to confirm: " confirm
+if [ "$confirm" != "destroy-production" ]; then
+    echo "Aborted."
+    exit 1
+fi
+
+# Check if terraform is initialized
+if [ ! -d ".terraform" ]; then
+    echo "Terraform not initialized. Running tf_init_prod..."
+    "${root_path}/bin/tf_init_prod"
+fi
+
+echo ""
+echo "Destroying Terraform-managed infrastructure for PRODUCTION..."
+terraform destroy -var-file=production.tfvars "$@"

@@ -1,0 +1,37 @@
+# Parser Service Dockerfile for AWS Batch
+# Uses NVIDIA CUDA for GPU support
+
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# Install Python and system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3.11 /usr/bin/python
+
+# Install Poetry
+RUN pip install poetry
+
+# Copy poetry files
+COPY services/parser/pyproject.toml services/parser/poetry.lock* ./
+
+# Install dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi --no-root --only main
+
+# Copy application code
+COPY services/parser/src ./src
+COPY services/parser/run_job.py ./run_job.py
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Run the batch job script
+CMD ["python", "run_job.py"]

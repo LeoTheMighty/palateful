@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "ocr"
+name = "parser"
 version = "0.1.0"
-description = "OCR service for Palateful using HunyuanOCR"
+description = "Parser service for Palateful using HunyuanOCR"
 authors = ["Leonid Belyi"]
 packages = [{include = "src"}]
 

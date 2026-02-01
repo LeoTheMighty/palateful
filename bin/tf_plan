@@ -1,0 +1,16 @@
+#!/bin/bash
+# Plan terraform changes for development environment
+
+set -e
+
+root_path=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "${root_path}/terraform"
+
+# Check if terraform is initialized
+if [ ! -d ".terraform" ]; then
+    echo "Terraform not initialized. Running tf_init..."
+    "${root_path}/bin/tf_init"
+fi
+
+echo "Planning Terraform changes for development..."
+terraform plan -var-file=development.tfvars "$@"

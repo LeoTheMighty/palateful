@@ -1,7 +1,7 @@
-# OCR Service Dockerfile
+# Parser Service Dockerfile
 # For GPU support, use nvidia/cuda base image
 
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -15,14 +15,14 @@ RUN apt-get update && apt-get install -y \
 RUN pip install poetry
 
 # Copy poetry files
-COPY services/ocr/pyproject.toml services/ocr/poetry.lock* ./
+COPY services/parser/pyproject.toml services/parser/poetry.lock* ./
 
 # Install dependencies (without GPU-specific packages)
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root
 
 # Copy application code
-COPY services/ocr/src ./src
+COPY services/parser/src ./src
 
 # Set environment variables
 ENV PYTHONPATH=/app

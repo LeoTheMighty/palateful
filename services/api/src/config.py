@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
 
+    # AWS / Parser
+    aws_region: str = "us-east-1"
+    parser_inputs_bucket: str = "palateful-parser-inputs-dev"
+    parser_outputs_bucket: str = "palateful-parser-outputs-dev"
+    batch_job_queue: str = "palateful-parser-queue-dev"
+    batch_job_definition: str = "palateful-parser-job-dev"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

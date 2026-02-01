@@ -454,10 +454,10 @@ palateful/
 - [ ] `indexing.py` - Index management
 - [ ] `backfill.py` - Backfill missing
 
-### Migration Phase 9: OCR Service (Stubbed)
+### Migration Phase 9: Parser Service (Stubbed)
 > See `docs/ocr-batch-architecture.md` for full design
 
-- [ ] Create `services/ocr/`
+- [x] Create `services/parser/`
 - [ ] Create Dockerfile (CUDA base)
 - [ ] `run_job.py` - Download from S3, run OCR, upload result
 - [ ] Mock OCR function for testing

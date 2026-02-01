@@ -1,9 +1,9 @@
 #!/bin/bash
-# Run the OCR service locally
+# Run the parser service locally
 
 set -e
 
-cd "$(dirname "$0")/../services/ocr"
+cd "$(dirname "$0")/../services/parser"
 
 # Check if poetry is installed
 if ! command -v poetry &> /dev/null; then
@@ -16,6 +16,6 @@ echo "Installing dependencies..."
 poetry install
 
 # Run the service
-echo "Starting OCR service on http://localhost:8001"
+echo "Starting parser service on http://localhost:8001"
 echo "API docs available at http://localhost:8001/docs"
 poetry run uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload

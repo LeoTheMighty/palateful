@@ -106,7 +106,7 @@ class OCREvaluator(BaseEvaluator):
         # Import and run the production OCR code
 
         # Lazy import to avoid loading heavy dependencies unless needed
-        from services.ocr.src.model import run_ocr
+        from services.parser.src.model import run_ocr
 
         image = Image.open(image_path)
 
@@ -121,7 +121,7 @@ class OCREvaluator(BaseEvaluator):
 
         if self.config.ocr_mode != "mock":
             try:
-                from services.ocr.src.model import load_model
+                from services.parser.src.model import load_model
                 load_model()
                 self._model_loaded = True
             except ImportError:

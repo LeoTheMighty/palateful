@@ -24,8 +24,8 @@ develop = true
 path = "services/migrator"
 develop = true
 
-[tool.poetry.dependencies.ocr]
-path = "services/ocr"
+[tool.poetry.dependencies.parser]
+path = "services/parser"
 develop = true
 
 [tool.poetry.dependencies.ingredient-scraper]

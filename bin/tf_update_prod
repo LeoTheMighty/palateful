@@ -1,0 +1,30 @@
+#!/bin/bash
+# Apply terraform changes for production environment
+#
+# CAUTION: This will modify production infrastructure!
+
+set -e
+
+root_path=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "${root_path}/terraform"
+
+echo "=========================================="
+echo "  PRODUCTION TERRAFORM APPLY"
+echo "=========================================="
+echo ""
+
+# Check if terraform is initialized with S3 backend
+if [ ! -d ".terraform" ]; then
+    echo "Terraform not initialized. Running tf_init_prod..."
+    "${root_path}/bin/tf_init_prod"
+fi
+
+# Verify we're using the production backend
+if ! terraform providers | grep -q "backend \"s3\"" 2>/dev/null; then
+    echo "WARNING: May not be using S3 backend. Run 'bin/tf_init_prod' first."
+fi
+
+echo "Planning and applying Terraform changes for PRODUCTION..."
+echo ""
+
+terraform apply -var-file=production.tfvars "$@"

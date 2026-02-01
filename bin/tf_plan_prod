@@ -1,0 +1,23 @@
+#!/bin/bash
+# Plan terraform changes for production environment
+
+set -e
+
+root_path=$(cd "$(dirname "$0")/.." && pwd -P)
+cd "${root_path}/terraform"
+
+echo "=========================================="
+echo "  PRODUCTION TERRAFORM PLAN"
+echo "=========================================="
+echo ""
+
+# Check if terraform is initialized
+if [ ! -d ".terraform" ]; then
+    echo "Terraform not initialized. Running tf_init_prod..."
+    "${root_path}/bin/tf_init_prod"
+fi
+
+echo "Planning Terraform changes for PRODUCTION..."
+echo ""
+
+terraform plan -var-file=production.tfvars "$@"

@@ -81,8 +81,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
+      # redis:
+      #   condition: service_healthy
       migrator:
         condition: service_completed_successfully
 
@@ -130,6 +130,21 @@ services:
       migrator:
         condition: service_completed_successfully
 
+  parser:
+    profiles: ["local-parser"]
+    build:
+      context: .
+      dockerfile: services/parser/Dockerfile
+    image: palateful-parser
+    ports:
+      - '8001:8001'
+    volumes:
+      - ./services/parser/src:/services/parser/src
+    env_file:
+      - .env
+    environment:
+      - DEVICE=cpu
+
   ngrok:
     image: ngrok/ngrok:latest
     # restart: unless-stopped
@@ -146,5 +161,5 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
+  # redis_data:
   localstack_data:
