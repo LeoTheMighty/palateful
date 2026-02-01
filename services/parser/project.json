@@ -15,19 +15,11 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "docker build -t palateful-parser:{args.tag} -f services/parser/Dockerfile.gpu ."
+          "docker build -t palateful-parser:latest -f services/parser/Dockerfile.batch ."
         ],
         "cwd": "{workspaceRoot}",
         "parallel": false
-      },
-      "configurations": {
-        "production": {
-          "commands": [
-            "docker build -t palateful-parser:latest -f services/parser/Dockerfile.gpu --no-cache ."
-          ]
-        }
-      },
-      "defaultConfiguration": "production"
+      }
     },
     "docker-login": {
       "executor": "nx:run-commands",
@@ -43,8 +35,8 @@
       "dependsOn": ["build", "docker-login"],
       "options": {
         "commands": [
-          "docker tag palateful-parser:{args.tag} $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/palateful-parser:{args.tag}",
-          "docker push $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/palateful-parser:{args.tag}"
+          "docker tag palateful-parser:latest $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/palateful-parser:latest",
+          "docker push $(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/palateful-parser:latest"
         ],
         "cwd": "{workspaceRoot}",
         "parallel": false

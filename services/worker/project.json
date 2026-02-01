@@ -11,7 +11,7 @@
         "cwd": "{projectRoot}"
       }
     },
-    "docker-build": {
+    "build": {
       "executor": "@nx-tools/nx-container:build",
       "options": {
         "target": "development",
@@ -44,7 +44,7 @@
     },
     "deploy": {
       "executor": "@nx-tools/nx-container:build",
-      "dependsOn": ["docker-build", "ecr-login"],
+      "dependsOn": ["build", "ecr-login"],
       "options": {
         "context": "{workspaceRoot}",
         "engine": "docker",

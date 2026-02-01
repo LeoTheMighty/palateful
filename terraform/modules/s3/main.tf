@@ -94,6 +94,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "parser_outputs_lifecycle" {
     id     = "expire-dev-outputs"
     status = "Enabled"
 
+    filter {} # Apply to all objects
+
     expiration {
       days = 30
     }
