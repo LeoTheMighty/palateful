@@ -10,9 +10,12 @@
     "dev:down": "docker compose down",
     "dev:clean": "docker compose down -v",
     "flutter:run": "./scripts/flutter-run.sh",
-    "flutter:ios": "./scripts/flutter-run.sh -d ios",
-    "flutter:android": "./scripts/flutter-run.sh -d android",
-    "flutter:web": "./scripts/flutter-run.sh -d chrome --web-port=3000"
+    "flutter:ios": "./scripts/flutter-run.sh --platform ios",
+    "flutter:android": "./scripts/flutter-run.sh --platform android",
+    "flutter:web": "./scripts/flutter-run.sh -d chrome --web-port=3000",
+    "flutter:clean": "cd app && flutter clean && rm -rf ios/Pods ios/Podfile.lock ios/.symlinks ios/Runner.xcworkspace build",
+    "flutter:install": "cd app && flutter pub get && cd ios && pod install --repo-update",
+    "flutter:reinstall": "yarn flutter:clean && yarn flutter:install"
   },
   "private": true,
   "dependencies": {},

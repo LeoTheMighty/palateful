@@ -45,5 +45,20 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Auth0 callback URL scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.palateful.palateful</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Camera and Photo Library permissions for image_picker -->
+	<key>NSCameraUsageDescription</key>
+	<string>Palateful needs camera access to take photos of recipes</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Palateful needs photo library access to import recipe images</string>
 </dict>
 </plist>
