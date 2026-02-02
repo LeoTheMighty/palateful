@@ -79,6 +79,14 @@ module "ecr" {
   project     = var.project
 }
 
+module "quotas" {
+  source = "./modules/quotas"
+
+  environment    = var.environment
+  project        = var.project
+  gpu_spot_vcpus = var.max_vcpus # Match batch compute environment max
+}
+
 module "iam" {
   source = "./modules/iam"
 
@@ -139,4 +147,9 @@ output "vpc_id" {
 output "api_service_policy_arn" {
   value       = module.iam.api_service_policy_arn
   description = "IAM policy ARN for API service"
+}
+
+output "gpu_spot_quota" {
+  value       = module.quotas.gpu_spot_quota_value
+  description = "GPU Spot instance vCPU quota"
 }

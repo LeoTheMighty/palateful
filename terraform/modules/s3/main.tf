@@ -48,6 +48,19 @@ resource "aws_s3_bucket_public_access_block" "parser_inputs" {
   restrict_public_buckets = true
 }
 
+# CORS configuration for browser uploads via presigned URLs
+resource "aws_s3_bucket_cors_configuration" "parser_inputs" {
+  bucket = aws_s3_bucket.parser_inputs.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT", "POST"]
+    allowed_origins = ["*"] # TODO: Restrict to app domains in production
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
+}
+
 # Parser Output Bucket
 resource "aws_s3_bucket" "parser_outputs" {
   bucket = "${var.project}-parser-outputs-${var.environment}"
