@@ -73,6 +73,7 @@ services:
     volumes:
       - ./services/api/src:/services/api/src
       - ./libraries/utils/utils:/services/api/.venv/lib/python3.13/site-packages/utils
+      - ~/.aws:/root/.aws:ro  # Mount AWS credentials for local dev
     env_file:
       - .env
     environment:
