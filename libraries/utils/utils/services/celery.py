@@ -4,14 +4,15 @@ from types import ModuleType
 
 from celery import Celery
 from celery.signals import setup_logging
+
+from utils import tasks
 from utils.constants import (
     AWS_ENDPOINT_URL,
     AWS_REGION,
     CELERY_BROKER_URL,
     CELERY_QUEUE_PREFIX,
-    LOGGING_LEVEL
+    LOGGING_LEVEL,
 )
-from utils import tasks
 
 logger = logging.getLogger(__name__)
 logger.setLevel(LOGGING_LEVEL)

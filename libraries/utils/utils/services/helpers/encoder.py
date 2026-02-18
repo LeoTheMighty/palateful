@@ -1,10 +1,12 @@
+import datetime
 import json
 import uuid
-import datetime
+
 from pydantic import BaseModel
 from sqlalchemy import UUID
 
 from utils.classes.enum import BaseEnum
+
 
 class CustomEncoder(json.JSONEncoder):
     """Custom Encoder for serializing objects to JSON."""
@@ -14,7 +16,7 @@ class CustomEncoder(json.JSONEncoder):
             return obj.value
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
-        if isinstance(obj, (UUID, uuid.UUID)):
+        if isinstance(obj, UUID | uuid.UUID):
             return str(obj)
         if isinstance(obj, Exception):
             return str(obj)

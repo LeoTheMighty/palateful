@@ -2,10 +2,10 @@
 
 import logging
 
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 
-from agent.graph.state import SuggestionState
 from agent.graph import nodes
+from agent.graph.state import SuggestionState
 
 logger = logging.getLogger(__name__)
 

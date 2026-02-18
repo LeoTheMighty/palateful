@@ -6,8 +6,8 @@ No API key required for basic access.
 
 from rich.console import Console
 
-from .base import BaseScraper
 from ..models import ScrapedIngredient
+from .base import BaseScraper
 
 console = Console()
 
@@ -39,7 +39,7 @@ class TheMealDBScraper(BaseScraper):
         Returns:
             List of scraped ingredients
         """
-        console.print(f"[bold blue]Scraping TheMealDB...[/bold blue]")
+        console.print("[bold blue]Scraping TheMealDB...[/bold blue]")
 
         # Fetch the ingredient list
         url = f"{self.BASE_URL}/list.php"
@@ -119,8 +119,6 @@ class TheMealDBScraper(BaseScraper):
         """
         name_lower = name.lower()
         desc_lower = (description or "").lower()
-        combined = f"{name_lower} {desc_lower}"
-
         # Protein indicators
         protein_keywords = [
             "chicken", "beef", "pork", "lamb", "turkey", "duck", "goose",

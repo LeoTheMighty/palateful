@@ -1,7 +1,7 @@
 """Tests for agent tools."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from agent.tools import GetPantryTool, SearchRecipesTool, GetUserPreferencesTool
 from agent.tools.base import ToolResult
@@ -20,13 +20,12 @@ class TestGetPantryTool:
         assert "pantry" in tool.description.lower()
         assert "properties" in tool.parameters
 
-    @pytest.mark.asyncio
-    async def test_execute_no_pantry(self, tool):
+    def test_execute_no_pantry(self, tool):
         """Test execution when user has no pantry."""
-        mock_db = AsyncMock()
+        mock_db = MagicMock()
         mock_db.execute.return_value.scalars.return_value.all.return_value = []
 
-        result = await tool.execute(mock_db, "test-user-id")
+        result = tool.execute(mock_db, "test-user-id")
 
         assert result.success
         assert result.data["items"] == []
@@ -69,13 +68,12 @@ class TestGetUserPreferencesTool:
         assert tool.name == "get_user_preferences"
         assert "preferences" in tool.description.lower()
 
-    @pytest.mark.asyncio
-    async def test_execute_user_not_found(self, tool):
+    def test_execute_user_not_found(self, tool):
         """Test execution when user not found."""
-        mock_db = AsyncMock()
+        mock_db = MagicMock()
         mock_db.execute.return_value.scalar_one_or_none.return_value = None
 
-        result = await tool.execute(mock_db, "nonexistent-user")
+        result = tool.execute(mock_db, "nonexistent-user")
 
         assert not result.success
         assert "not found" in result.error.lower()

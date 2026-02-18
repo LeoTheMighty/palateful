@@ -1,6 +1,6 @@
 """Tests for meal event endpoints."""
 
-from datetime import date
+from datetime import UTC, datetime
 
 from conftest import (
     MockMealEvent,
@@ -15,15 +15,20 @@ class TestListMealEvents:
 
     def test_list_meal_events_success(self, client, mock_db, mock_user):
         """Test listing meal events."""
-        event = MockMealEvent(owner_id=str(mock_user.id))
-        participant = MockMealEventParticipant(
-            meal_event_id=str(event.id),
-            user_id=str(mock_user.id),
+        event = MockMealEvent(
+            owner_id=str(mock_user.id),
+            participants=[],
+            recipe=None,
         )
-        mock_db.db.query.return_value = MockQuery([(event, participant)])
+        # ListMealEvents uses db.query(MealEvent).outerjoin(...).filter(...)
+        # Returns MealEvent objects directly
+        mock_db.db.query.return_value = MockQuery([event])
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
 
     def test_list_meal_events_empty(self, client, mock_db, mock_user):
         """Test listing when no meal events exist."""
@@ -31,6 +36,9 @@ class TestListMealEvents:
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestCreateMealEvent:
@@ -43,7 +51,7 @@ class TestCreateMealEvent:
             json={
                 "title": "Sunday Dinner",
                 "meal_type": "dinner",
-                "event_date": str(date.today()),
+                "scheduled_at": datetime.now(UTC).isoformat(),
             }
         )
         assert response.status_code == 201
@@ -55,7 +63,10 @@ class TestCreateMealEvent:
         """Test creating a meal event without title fails."""
         response = client.post(
             "/v1/meal-events",
-            json={"meal_type": "dinner", "event_date": str(date.today())}
+            json={
+                "meal_type": "dinner",
+                "scheduled_at": datetime.now(UTC).isoformat(),
+            }
         )
         assert response.status_code == 422
 
@@ -66,17 +77,16 @@ class TestGetMealEvent:
     def test_get_meal_event_success(self, client, mock_db, mock_user):
         """Test getting a meal event."""
         event_id = "test-event-id"
-        event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
-        participant = MockMealEventParticipant(
-            meal_event_id=event_id,
-            user_id=str(mock_user.id),
-            role="host",
+        event = MockMealEvent(
+            id=event_id,
+            owner_id=str(mock_user.id),
+            participants=[],
+            recipe=None,
         )
 
         from utils.models.meal_event import MealEvent
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.db.query.return_value = MockQuery([(participant, mock_user)])
 
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200

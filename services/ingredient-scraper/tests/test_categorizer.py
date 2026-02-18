@@ -2,8 +2,8 @@
 
 import pytest
 
+from src.models import IngredientCategory, ScrapedIngredient
 from src.pipeline.categorizer import IngredientCategorizer
-from src.models import ScrapedIngredient, IngredientCategory
 
 
 class TestIngredientCategorizer:

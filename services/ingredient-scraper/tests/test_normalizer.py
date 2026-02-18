@@ -2,8 +2,8 @@
 
 import pytest
 
-from src.pipeline.normalizer import IngredientNormalizer
 from src.models import ScrapedIngredient
+from src.pipeline.normalizer import IngredientNormalizer
 
 
 class TestIngredientNormalizer:

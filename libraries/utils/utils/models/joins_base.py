@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -18,7 +17,7 @@ class JoinsBase(DeclarativeBase):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
-    archived_at: Mapped[Optional[datetime]] = mapped_column(
+    archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

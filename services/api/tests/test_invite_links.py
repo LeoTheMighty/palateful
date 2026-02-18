@@ -1,6 +1,11 @@
 """Tests for invite link endpoints."""
 
-from conftest import MockInviteLink, MockRecipeBook
+from conftest import (
+    MockExecuteResult,
+    MockInviteLink,
+    MockRecipeBookUser,
+    MockUser,
+)
 
 
 class TestCreateInviteLink:
@@ -16,29 +21,22 @@ class TestCreateInviteLink:
 
     def test_create_invite_link_success(self, client, mock_db, mock_user):
         """Test creating an invite link."""
-        from utils.models.recipe_book import RecipeBook
-        from utils.models.recipe_book_user import RecipeBookUser
-        from conftest import MockRecipeBookUser
-
         book_id = "test-book-id"
-        book = MockRecipeBook(id=book_id)
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
             role="owner",
         )
 
-        mock_db.set_find_by(RecipeBookUser, membership,
-                           user_id=str(mock_user.id),
-                           recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        # CreateInviteLink uses self.db.execute() for permission check
+        mock_db.db.execute.return_value = MockExecuteResult([membership])
 
         response = client.post(
             "/v1/invite-links",
             json={
                 "resource_type": "recipe_book",
                 "resource_id": book_id,
-                "role": "viewer",
+                "role_offered": "viewer",
             }
         )
         assert response.status_code in (200, 201)
@@ -55,19 +53,30 @@ class TestPreviewInviteLink:
     def test_preview_invite_link_success(self, client, mock_db, mock_user):
         """Test previewing an invite link."""
         token = "test-token"
+        creator = MockUser(
+            id=str(mock_user.id),
+            name="Test User",
+            username="testuser",
+        )
         link = MockInviteLink(
             token=token,
             resource_type="recipe_book",
             resource_id="test-book-id",
             created_by_id=str(mock_user.id),
+            role_offered="viewer",
+            is_active=True,
+            created_by=creator,
         )
-        book = MockRecipeBook(id="test-book-id", name="Shared Book")
 
-        from utils.models.invite_link import InviteLink
-        from utils.models.recipe_book import RecipeBook
-
-        mock_db.set_find_by(InviteLink, link, token=token)
-        mock_db.set_find_by(RecipeBook, book, id="test-book-id")
+        # PreviewInviteLink uses self.db.execute() multiple times:
+        # 1. Fetch invite link with joinedload
+        # 2. check_existing_membership (RecipeBookUser)
+        # 3. get_resource_name (RecipeBook.name)
+        mock_db.db.execute.side_effect = [
+            MockExecuteResult([link]),          # invite link query
+            MockExecuteResult([]),              # not already a member
+            MockExecuteResult(["Shared Book"]), # resource name
+        ]
 
         response = client.get(f"/v1/invite-links/{token}")
         assert response.status_code == 200

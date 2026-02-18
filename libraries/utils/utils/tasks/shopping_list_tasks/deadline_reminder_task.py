@@ -3,8 +3,6 @@
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_
-
 from utils.api.endpoint import success
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
@@ -214,7 +212,7 @@ class DeadlineReminderTask(BaseTask):
 
         notifications_sent = 0
 
-        for list_id, list_data in by_list.items():
+        for _list_id, list_data in by_list.items():
             items = list_data["items"]
 
             # Determine overall urgency (use most urgent)

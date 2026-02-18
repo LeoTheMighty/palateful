@@ -1,4 +1,4 @@
-from factory import Factory, Faker, SubFactory, LazyAttribute
+from factory import Factory, Faker, LazyAttribute, SubFactory
 from utils.models.thread import Thread
 
 

@@ -6,7 +6,8 @@ from utils.services.celery import celery_app, import_tasks
 import_tasks()
 
 # Register agent tasks
-from agent import register_agent_tasks
+from agent import register_agent_tasks  # noqa: E402
+
 register_agent_tasks()
 
 # Re-export celery_app for the worker command

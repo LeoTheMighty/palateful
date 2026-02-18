@@ -192,9 +192,8 @@ class PushNotificationService:
             # Track invalid tokens for cleanup
             invalid_tokens = []
             for idx, send_response in enumerate(response.responses):
-                if not send_response.success:
-                    if isinstance(send_response.exception, messaging.UnregisteredError):
-                        invalid_tokens.append(tokens[idx])
+                if not send_response.success and isinstance(send_response.exception, messaging.UnregisteredError):
+                    invalid_tokens.append(tokens[idx])
 
             logger.info(
                 "Sent %d/%d push notifications, %d invalid tokens",

@@ -1,21 +1,21 @@
 import asyncio
-import logging
 import json
+import logging
 import math
 import random
-from typing import Optional
-from celery import Task, group
-from celery.worker import strategy
-from celery.app import trace
 
-from utils.api.endpoint import endpoint_result_is_valid, failure, APIException
+from celery import Task, group
+from celery.app import trace
+from celery.worker import strategy
+
+from utils.api.endpoint import APIException, endpoint_result_is_valid
 from utils.classes.error_code import ErrorCode
 from utils.constants import (
     EXPONENTIAL_BACKOFF_FACTOR,
     LOGGING_LEVEL,
-    MIN_BATCH_SIZE,
     MAX_BATCH_SIZE,
     MAX_TASK_COUNTDOWN,
+    MIN_BATCH_SIZE,
 )
 from utils.services.database import Database
 
@@ -96,7 +96,6 @@ class BaseTask(Task):
         self.args = args
         self.kwargs = kwargs.copy()  # Clone the dictionary to avoid side effects
 
-        stream_channel = None
         self.user_id = kwargs.pop('user_id', None)
         self.token = kwargs.pop('auth_token', None)
         self.base_data = kwargs.pop('base_data', None)
@@ -145,7 +144,7 @@ class BaseTask(Task):
         Returns:
             dict: Context for child task
         """
-        stream_channel = kwargs.pop('stream_channel', None)
+        kwargs.pop('stream_channel', None)
         context = {
             'base_data': self.base_data,
             'auth_token': self.token,
@@ -199,7 +198,7 @@ class BaseTask(Task):
         self,
         parallelized_args_list,
         *args,
-        chunk_arg_name: Optional[str] = None,
+        chunk_arg_name: str | None = None,
         **kwargs
     ):
         """

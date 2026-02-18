@@ -11,24 +11,15 @@ Main components:
 - Tasks: Celery tasks for background processing
 """
 
-from agent.config import settings, AgentSettings
-from agent.runner import run_suggestion_agent, run_daily_suggestions_for_all
-from agent.tasks import (
-    AutoAgentTask,
-    DailySuggestionsTask,
-    ExpiringIngredientsSuggestionsTask,
-    register_agent_tasks,
-    trigger_user_suggestion,
-    trigger_daily_suggestions,
-    trigger_expiring_suggestions,
-)
+from agent.config import AgentSettings, settings
+from agent.runner import run_daily_suggestions_for_all, run_suggestion_agent
 
 __all__ = [
     "settings",
     "AgentSettings",
     "run_suggestion_agent",
     "run_daily_suggestions_for_all",
-    # Tasks
+    # Tasks (lazy imports - celery only available in worker context)
     "AutoAgentTask",
     "DailySuggestionsTask",
     "ExpiringIngredientsSuggestionsTask",
@@ -37,3 +28,20 @@ __all__ = [
     "trigger_daily_suggestions",
     "trigger_expiring_suggestions",
 ]
+
+
+def __getattr__(name):
+    """Lazy import for celery-dependent task symbols."""
+    _task_names = {
+        "AutoAgentTask",
+        "DailySuggestionsTask",
+        "ExpiringIngredientsSuggestionsTask",
+        "register_agent_tasks",
+        "trigger_daily_suggestions",
+        "trigger_expiring_suggestions",
+        "trigger_user_suggestion",
+    }
+    if name in _task_names:
+        from agent import tasks
+        return getattr(tasks, name)
+    raise AttributeError(f"module 'agent' has no attribute {name!r}")

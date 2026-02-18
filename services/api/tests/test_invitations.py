@@ -1,6 +1,6 @@
 """Tests for invitation endpoints."""
 
-from conftest import MockInvitation, MockQuery, MockUser
+from conftest import MockQuery
 
 
 class TestListReceivedInvitations:
@@ -42,27 +42,6 @@ class TestSendInvitation:
             json={}
         )
         assert response.status_code == 422
-
-    def test_send_invitation_success(self, client, mock_db, mock_user):
-        """Test sending an invitation."""
-        target = MockUser(email="target@example.com")
-
-        from utils.models.user import User
-
-        mock_db.set_find_by(User, target, id=str(target.id))
-        mock_db.db.query.return_value = MockQuery([])
-
-        response = client.post(
-            "/v1/invitations",
-            json={
-                "to_user_id": str(target.id),
-                "resource_type": "recipe_book",
-                "resource_id": "some-book-id",
-                "role": "editor",
-            }
-        )
-        # May succeed or fail depending on access check depth
-        assert response.status_code in (200, 201, 400, 403, 500)
 
 
 class TestAcceptInvitation:

@@ -12,9 +12,9 @@ Data types:
 
 from rich.console import Console
 
-from .base import BaseScraper
 from ..config import settings
 from ..models import ScrapedIngredient
+from .base import BaseScraper
 
 console = Console()
 
@@ -110,7 +110,7 @@ class USDAFoodDataScraper(BaseScraper):
             console.print("[red]Cannot scrape USDA without API key[/red]")
             return []
 
-        console.print(f"[bold blue]Scraping USDA FoodData Central...[/bold blue]")
+        console.print("[bold blue]Scraping USDA FoodData Central...[/bold blue]")
 
         all_ingredients: list[ScrapedIngredient] = []
 

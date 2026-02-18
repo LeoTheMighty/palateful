@@ -1,13 +1,15 @@
 import json
-from typing import Any, Generic, Optional, TypeVar, Type, Union
+from typing import Any, Generic, TypeVar
+
 from pydantic import BaseModel, Field, model_validator
+from starlette.datastructures import QueryParams
+
 from utils.classes.service import Service
 from utils.services.helpers.encoder import CustomEncoder
-from starlette.datastructures import QueryParams
 
 T = TypeVar('T', bound=BaseModel)
 
-def parse_dict(params: Union[dict, list]) -> Union[dict, list]:
+def parse_dict(params: dict | list) -> dict | list:
     """
     Deeply parse dictionary values, converting string JSON into Python objects.
     Only converts strings that look like JSON objects/arrays.
@@ -20,7 +22,7 @@ def parse_dict(params: Union[dict, list]) -> Union[dict, list]:
         dict|list: Parsed dictionary/list with JSON strings converted to Python objects
     """
     if isinstance(params, list):
-        return [parse_dict(item) if isinstance(item, (dict, list)) else item
+        return [parse_dict(item) if isinstance(item, dict | list) else item
                 for item in params]
 
     parsed = {}
@@ -29,14 +31,14 @@ def parse_dict(params: Union[dict, list]) -> Union[dict, list]:
             try:
                 parsed_value = json.loads(value)
                 # Only convert if the parsed value is a complex type (dict/list)
-                if isinstance(parsed_value, (dict, list)):
+                if isinstance(parsed_value, dict | list):
                     parsed[key] = parse_dict(parsed_value)  # Recursively parse the result
                 else:
                     # Keep original string for simple types (including numbers)
                     parsed[key] = value
             except (json.JSONDecodeError, TypeError):
                 parsed[key] = value
-        elif isinstance(value, (dict, list)):
+        elif isinstance(value, dict | list):
             parsed[key] = parse_dict(value)
         else:
             parsed[key] = value
@@ -48,17 +50,17 @@ class APIRequest(BaseModel, Generic[T]):
     """Model for any API request"""
     user_uuid: str = Field(..., description="Unique identifier for the user making the request")
     service: Service
-    merchant_uuid: Optional[str] = Field(None,
+    merchant_uuid: str | None = Field(None,
                                          description="Unique identifier for the "
                                                      "merchant (law firm)")
-    stream_channel: Optional[str] = Field(None,
+    stream_channel: str | None = Field(None,
                                           description="Channel identifier for streaming responses")
-    location: Optional[str] = Field(None,
+    location: str | None = Field(None,
                                     description="Location the API request was made from"
                                                 " for product analytics")
-    stream: Optional[bool] = True
-    catalyst_id: Optional[str] = Field(None, description="Unique identifier for the catalyst")
-    data: Optional[T] = Field(None, description="Payload data specific to the endpoint")
+    stream: bool | None = True
+    catalyst_id: str | None = Field(None, description="Unique identifier for the catalyst")
+    data: T | None = Field(None, description="Payload data specific to the endpoint")
 
     @model_validator(mode='before')
     @classmethod
@@ -74,17 +76,17 @@ class APIRequest(BaseModel, Generic[T]):
         return data
 
     @property
-    def tenant_uuid(self) -> Optional[str]:
+    def tenant_uuid(self) -> str | None:
         """Backwards compatibility alias for merchant_uuid (deprecated)."""
         return self.merchant_uuid
 
     @classmethod
-    def from_json(cls: Type['APIRequest'], json_str: str) -> 'APIRequest':
+    def from_json(cls: type['APIRequest'], json_str: str) -> 'APIRequest':
         """Create an instance of the Pydantic model from a JSON string."""
         return cls.parse_raw(json_str)
 
     @classmethod
-    def from_query_params(cls: Type['APIRequest'], query_params: QueryParams) -> 'APIRequest':
+    def from_query_params(cls: type['APIRequest'], query_params: QueryParams) -> 'APIRequest':
         """Create an instance of the Pydantic model from query parameters."""
         query_params = parse_dict(query_params)
 

@@ -15,13 +15,11 @@ CSV columns match the database schema:
 - embedding (JSON array as string, 384 floats)
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
-import csv
-import json
-from io import StringIO
 
 
 class IngredientCategory(str, Enum):

@@ -2,8 +2,8 @@
 
 from agent.tools.base import BaseTool, ToolResult
 from agent.tools.pantry import GetPantryTool
-from agent.tools.recipes import SearchRecipesTool, SuggestRecipeTool
 from agent.tools.preferences import GetUserPreferencesTool
+from agent.tools.recipes import SearchRecipesTool, SuggestRecipeTool
 
 __all__ = [
     "BaseTool",

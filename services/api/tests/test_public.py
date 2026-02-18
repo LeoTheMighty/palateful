@@ -6,6 +6,7 @@ from conftest import (
     MockRecipe,
     MockRecipeBook,
     MockRecipeIngredient,
+    MockRecipeStep,
 )
 
 
@@ -21,9 +22,11 @@ class TestGetPublicRecipe:
 
         from utils.models.recipe import Recipe
         from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_step import RecipeStep
 
         mock_db.set_find_by(Recipe, recipe, id=recipe_id)
         mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.set_where(RecipeStep, [])
         mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}/public")
@@ -64,9 +67,11 @@ class TestGetPublicRecipe:
 
         from utils.models.recipe import Recipe
         from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_step import RecipeStep
 
         mock_db.set_find_by(Recipe, recipe, id=recipe_id)
         mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.set_where(RecipeStep, [])
         mock_db.db.query.return_value = MockQuery([(ri, ingredient)])
 
         response = client.get(f"/v1/recipes/{recipe_id}/public")

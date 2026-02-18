@@ -1,9 +1,9 @@
 """Tests for LLM providers."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from agent.llm.provider import LLMProvider, LLMResponse, Message, Tool, get_llm_provider
+from agent.llm.provider import LLMResponse, Message, Tool, get_llm_provider
 
 
 class TestLLMResponse:
@@ -122,13 +122,11 @@ class TestGetLLMProvider:
 class TestOpenAIProvider:
     """Tests for OpenAI provider."""
 
-    @pytest.mark.asyncio
-    async def test_chat(self):
+    def test_chat(self):
         """Test chat completion."""
         from agent.llm.openai import OpenAIProvider
 
-        with patch("agent.llm.openai.AsyncOpenAI") as mock_client:
-            # Mock the response
+        with patch("agent.llm.openai.OpenAI") as mock_client:
             mock_response = MagicMock()
             mock_response.choices = [
                 MagicMock(
@@ -143,12 +141,10 @@ class TestOpenAIProvider:
                 total_tokens=15,
             )
 
-            mock_client.return_value.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.chat.completions.create.return_value = mock_response
 
             provider = OpenAIProvider(api_key="test-key", model="gpt-4o-mini")
-            response = await provider.chat([Message(role="user", content="Hello")])
+            response = provider.chat([Message(role="user", content="Hello")])
 
             assert response.content == "Test response"
             assert response.model == "gpt-4o-mini"
@@ -161,7 +157,7 @@ class TestAnthropicProvider:
         """Test provider name."""
         from agent.llm.anthropic import AnthropicProvider
 
-        with patch("agent.llm.anthropic.AsyncAnthropic"):
+        with patch("agent.llm.anthropic.Anthropic"):
             provider = AnthropicProvider(api_key="test-key")
             assert provider.provider_name == "anthropic"
 

@@ -94,9 +94,9 @@ def get_llm_provider(provider_name: str | None = None) -> LLMProvider:
     Returns:
         An LLMProvider instance
     """
-    from agent.llm.openai import OpenAIProvider
     from agent.llm.anthropic import AnthropicProvider
     from agent.llm.ollama import OllamaProvider
+    from agent.llm.openai import OpenAIProvider
 
     name = provider_name or settings.agent_default_provider
 

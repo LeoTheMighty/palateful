@@ -1,7 +1,7 @@
 """ActiveTimer model - An active timer for cooking."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
@@ -69,7 +69,7 @@ class ActiveTimer(Base):
         if self.status == "paused":
             return self.duration_seconds - self.elapsed_when_paused
         elif self.status == "running":
-            elapsed = (datetime.now(tz=timezone.utc) - self.started_at).total_seconds()
+            elapsed = (datetime.now(tz=UTC) - self.started_at).total_seconds()
             return max(0, self.duration_seconds - int(elapsed) - self.elapsed_when_paused)
         return 0
 

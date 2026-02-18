@@ -21,9 +21,9 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '../../../.env.d
 # pylint: disable=wrong-import-position
 # Dynamically import all models from the models directory before importing the
 # Base class that stores all the metadata for the database
-from utils import classes as enums_package
-from utils import models as models_package
-from utils.constants import DATABASE_URL
+from utils import classes as enums_package  # noqa: E402
+from utils import models as models_package  # noqa: E402
+from utils.constants import DATABASE_URL  # noqa: E402
 
 
 def get_imported_objects(package, object_type, predicate, context=None):

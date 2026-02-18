@@ -1,6 +1,6 @@
 """Delete shopping list endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -43,7 +43,7 @@ class DeleteShoppingList(Endpoint):
             )
 
         # Soft delete
-        shopping_list.archived_at = datetime.now(datetime.UTC)
+        shopping_list.archived_at = datetime.now(UTC)
         self.database.db.commit()
 
         return success(data={"deleted": True, "id": str(list_id)})

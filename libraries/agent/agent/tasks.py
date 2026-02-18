@@ -174,8 +174,9 @@ class ExpiringIngredientsSuggestionsTask(Task):
 
     def _run_expiring_check(self, days_threshold: int) -> dict[str, Any]:
         """Implementation of expiring check."""
-        from agent import run_suggestion_agent
         from utils.models import PantryIngredient, PantryUser
+
+        from agent import run_suggestion_agent
 
         session_factory = _get_session_factory()
 

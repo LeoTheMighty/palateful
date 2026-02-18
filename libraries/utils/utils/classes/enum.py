@@ -11,7 +11,7 @@ References:
 - PostgreSQL ARRAY type: https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#array-types
 """
 from enum import Enum
-from typing import Type, Optional
+
 from sqlalchemy import Integer, String
 from sqlalchemy.types import TypeDecorator
 
@@ -72,11 +72,11 @@ class IntEnum(TypeDecorator):  # pylint: disable=too-many-ancestors
     impl = Integer
     cache_ok = True
 
-    def __init__(self, enum_class: Type[Enum], *args, **kwargs):
+    def __init__(self, enum_class: type[Enum], *args, **kwargs):
         self.enum_class = enum_class
         super().__init__(*args, **kwargs)
 
-    def process_bind_param(self, value: Optional[Enum], dialect) -> Optional[int]:
+    def process_bind_param(self, value: Enum | None, dialect) -> int | None:
         """
         Convert Python enum to integer for database storage.
 
@@ -101,7 +101,7 @@ class IntEnum(TypeDecorator):  # pylint: disable=too-many-ancestors
             return value
         raise ValueError(f"Expected {self.enum_class.__name__} or int, got {type(value)}")
 
-    def process_result_value(self, value: Optional[int], dialect) -> Optional[Enum]:
+    def process_result_value(self, value: int | None, dialect) -> Enum | None:
         """
         Convert integer from database to Python enum.
 
@@ -153,11 +153,11 @@ class StringEnum(TypeDecorator):  # pylint: disable=too-many-ancestors
     impl = String
     cache_ok = True
 
-    def __init__(self, enum_class: Type[Enum], *args, **kwargs):
+    def __init__(self, enum_class: type[Enum], *args, **kwargs):
         self.enum_class = enum_class
         super().__init__(*args, **kwargs)
 
-    def process_bind_param(self, value: Optional[Enum], dialect) -> Optional[str]:
+    def process_bind_param(self, value: Enum | None, dialect) -> str | None:
         """
         Convert Python enum to string for database storage.
 
@@ -182,7 +182,7 @@ class StringEnum(TypeDecorator):  # pylint: disable=too-many-ancestors
             return value
         raise ValueError(f"Expected {self.enum_class.__name__} or str, got {type(value)}")
 
-    def process_result_value(self, value: Optional[str], dialect) -> Optional[Enum]:
+    def process_result_value(self, value: str | None, dialect) -> Enum | None:
         """
         Convert string from database to Python enum.
 
@@ -239,14 +239,14 @@ class StringEnumArray(TypeDecorator):  # pylint: disable=too-many-ancestors
     impl = String
     cache_ok = True
 
-    def __init__(self, enum_class: Type[Enum], *args, **kwargs):
+    def __init__(self, enum_class: type[Enum], *args, **kwargs):
         self.enum_class = enum_class
         # Import here to avoid circular imports
         from sqlalchemy.dialects.postgresql import ARRAY
         self.impl = ARRAY(String)
         super().__init__(*args, **kwargs)
 
-    def process_bind_param(self, value: Optional[list], dialect) -> Optional[list]:
+    def process_bind_param(self, value: list | None, dialect) -> list | None:
         """
         Convert Python enum list to string list for database storage.
 
@@ -277,7 +277,7 @@ class StringEnumArray(TypeDecorator):  # pylint: disable=too-many-ancestors
                 )
         return result
 
-    def process_result_value(self, value: Optional[list], dialect) -> Optional[list]:
+    def process_result_value(self, value: list | None, dialect) -> list | None:
         """
         Convert string list from database to Python enum list.
 

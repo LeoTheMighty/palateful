@@ -9,26 +9,25 @@ class TestGetActiveTimers:
     def test_get_active_timers_success(self, client, mock_db, mock_user):
         """Test getting active timers."""
         timer = MockActiveTimer(user_id=str(mock_user.id))
-
-        from utils.models.active_timer import ActiveTimer
-
-        mock_db.set_where(ActiveTimer, [timer])
+        # GetActiveTimers uses db.query(ActiveTimer).filter(...)
+        mock_db.db.query.return_value = MockQuery([timer])
 
         response = client.get("/v1/timers/active")
         assert response.status_code == 200
         data = response.json()
-        assert "timers" in data
+        assert "items" in data
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
 
     def test_get_active_timers_empty(self, client, mock_db, mock_user):
         """Test getting active timers when none exist."""
-        from utils.models.active_timer import ActiveTimer
-
-        mock_db.set_where(ActiveTimer, [])
+        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get("/v1/timers/active")
         assert response.status_code == 200
         data = response.json()
-        assert data["timers"] == []
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestCreateTimer:
@@ -76,7 +75,7 @@ class TestUpdateTimer:
 
         response = client.put(
             f"/v1/timers/{timer_id}",
-            json={"action": "pause"}
+            json={"status": "paused"}
         )
         assert response.status_code == 200
 
@@ -84,7 +83,7 @@ class TestUpdateTimer:
         """Test updating a nonexistent timer."""
         response = client.put(
             "/v1/timers/nonexistent",
-            json={"action": "pause"}
+            json={"status": "paused"}
         )
         assert response.status_code == 404
 

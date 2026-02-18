@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 
 

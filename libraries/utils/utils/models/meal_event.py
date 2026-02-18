@@ -11,12 +11,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.models.base import Base
 
 if TYPE_CHECKING:
-    from utils.models.pantry import Pantry
-    from utils.models.recipe import Recipe
-    from utils.models.user import User
     from utils.models.meal_event_participant import MealEventParticipant
+    from utils.models.pantry import Pantry
     from utils.models.prep_step import PrepStep
+    from utils.models.recipe import Recipe
     from utils.models.shopping_list import ShoppingList
+    from utils.models.user import User
 
 
 class MealEvent(Base):

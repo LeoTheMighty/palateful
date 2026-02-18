@@ -33,15 +33,15 @@ import typer
 from rich.console import Console
 
 from .config import settings
-from .models import ScrapedIngredient, Substitution
-from .scrapers import TheMealDBScraper, USDAFoodDataScraper, OpenFoodFactsScraper
-from .pipeline import (
-    IngredientNormalizer,
-    IngredientDeduplicator,
-    IngredientCategorizer,
-    IngredientEnricher,
-)
+from .models import ScrapedIngredient
 from .output import CSVWriter, StatsGenerator
+from .pipeline import (
+    IngredientCategorizer,
+    IngredientDeduplicator,
+    IngredientEnricher,
+    IngredientNormalizer,
+)
+from .scrapers import OpenFoodFactsScraper, TheMealDBScraper, USDAFoodDataScraper
 
 console = Console()
 app = typer.Typer(

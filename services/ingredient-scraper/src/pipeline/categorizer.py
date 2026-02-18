@@ -8,7 +8,7 @@ import re
 
 from rich.console import Console
 
-from ..models import ScrapedIngredient, IngredientCategory
+from ..models import IngredientCategory, ScrapedIngredient
 
 console = Console()
 
@@ -254,15 +254,19 @@ class IngredientCategorizer:
         """
         text = f"{name} {description or ''}".lower()
 
-        # Check each category's keywords
+        # Find all matching categories with their keyword lengths,
+        # then return the one with the longest (most specific) match
+        best_category = None
+        best_length = 0
+
         for category, keywords in CATEGORY_KEYWORDS.items():
             for keyword in keywords:
-                # Match as whole word or at word boundaries
                 pattern = rf"\b{re.escape(keyword)}\b"
-                if re.search(pattern, text):
-                    return category
+                if re.search(pattern, text) and len(keyword) > best_length:
+                    best_category = category
+                    best_length = len(keyword)
 
-        return None
+        return best_category
 
     def get_category_stats(
         self, ingredients: list[ScrapedIngredient]

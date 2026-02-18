@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -90,7 +91,7 @@ class GetRecipe(Endpoint):
                     canonical_name=ing.canonical_name,
                     category=ing.category
                 ),
-                quantity_display=ri.quantity_display,
+                quantity_display=format_quantity(ri.quantity_display, ri.unit_display),
                 unit_display=ri.unit_display,
                 quantity_normalized=ri.quantity_normalized,
                 unit_normalized=ri.unit_normalized,
@@ -127,7 +128,7 @@ class GetRecipe(Endpoint):
     class IngredientResponse(BaseModel):
         id: str
         ingredient: "GetRecipe.IngredientSummary"
-        quantity_display: Decimal
+        quantity_display: str
         unit_display: str
         quantity_normalized: Decimal | None = None
         unit_normalized: str | None = None

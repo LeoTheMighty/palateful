@@ -1,4 +1,5 @@
 from enum import unique
+
 from utils.classes.enum import BaseEnum
 
 

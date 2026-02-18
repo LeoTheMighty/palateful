@@ -1,15 +1,13 @@
 """Tests for data models."""
 
 import json
-import pytest
-from datetime import datetime
 
 from src.models import (
+    INGREDIENT_CSV_COLUMNS,
     ScrapedIngredient,
     Substitution,
     SubstitutionContext,
     SubstitutionQuality,
-    INGREDIENT_CSV_COLUMNS,
 )
 
 

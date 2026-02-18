@@ -1,6 +1,6 @@
 """State definition for the suggestion agent."""
 
-from typing import TypedDict, Any
+from typing import Any, TypedDict
 
 
 class PantryItem(TypedDict):

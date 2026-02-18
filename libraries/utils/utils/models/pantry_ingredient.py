@@ -3,9 +3,9 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, UUID, UniqueConstraint
+from sqlalchemy import UUID, DateTime, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.joins_base import JoinsBase
@@ -25,7 +25,7 @@ class PantryIngredient(JoinsBase):
     unit_display: Mapped[str] = mapped_column(String, nullable=False)
     quantity_normalized: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
     unit_normalized: Mapped[str] = mapped_column(String, nullable=False)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Foreign keys (composite primary key)
     pantry_id: Mapped[uuid.UUID] = mapped_column(

@@ -41,6 +41,7 @@ exclude = [
   pydantic = "^2.0"
   pydantic-settings = "^2.0"
   sqlalchemy = "^2.0"
+  utils = {path = "../../libraries/utils", develop = true}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.11"

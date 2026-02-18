@@ -24,10 +24,7 @@ class ToolResult:
 
         if isinstance(self.data, str):
             return self.data
-        elif isinstance(self.data, dict):
-            import json
-            return json.dumps(self.data, indent=2, default=str)
-        elif isinstance(self.data, list):
+        elif isinstance(self.data, dict | list):
             import json
             return json.dumps(self.data, indent=2, default=str)
         else:

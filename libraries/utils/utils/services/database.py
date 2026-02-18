@@ -1,12 +1,15 @@
 import logging
 import pkgutil
-from typing import Optional, Union
-from sqlalchemy import and_, desc as sa_desc, asc as sa_asc, create_engine, Engine
-from sqlalchemy.orm import sessionmaker, Session
+
+from sqlalchemy import Engine, and_, create_engine
+from sqlalchemy import asc as sa_asc
+from sqlalchemy import desc as sa_desc
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.orm.exc import ObjectDeletedError
-from utils.constants import DATABASE_URL, DB_POOL_SIZE, DB_MAX_OVERFLOW
-from utils.services.advisory_lock import AdvisoryLock
+
 from utils import models as models_package
+from utils.constants import DATABASE_URL, DB_MAX_OVERFLOW, DB_POOL_SIZE
+from utils.services.advisory_lock import AdvisoryLock
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +64,9 @@ class Database:
     def find_by(
         self,
         model_class,
-        desc: Optional[Union[str, list]] = None,
-        asc: Optional[Union[str, list]] = None,
-        include_archived: Optional[bool] = False,
+        desc: str | list | None = None,
+        asc: str | list | None = None,
+        include_archived: bool | None = False,
         **kwargs
     ):
         """Find the first record that matches the filters from the database."""
@@ -78,10 +81,10 @@ class Database:
     def find_or_create_by(
         self,
         model_class,
-        defaults: Optional[dict] = None,
-        desc: Optional[Union[str, list]] = None,
-        asc: Optional[Union[str, list]] = None,
-        include_archived: Optional[bool] = False,
+        defaults: dict | None = None,
+        desc: str | list | None = None,
+        asc: str | list | None = None,
+        include_archived: bool | None = False,
         **kwargs
     ):
         """Find a record in the database based on params or create it if it does not exist."""
@@ -109,9 +112,9 @@ class Database:
     def where(
         self,
         model,
-        desc: Optional[Union[str, list]] = None,
-        asc: Optional[Union[str, list]] = None,
-        include_archived: Optional[bool] = False,
+        desc: str | list | None = None,
+        asc: str | list | None = None,
+        include_archived: bool | None = False,
         **kwargs
     ):
         """Builds complex queries based on the conditions and ordering provided."""
@@ -217,7 +220,7 @@ class Database:
         self,
         model_class,
         updates: dict,
-        include_archived: Optional[bool] = False,
+        include_archived: bool | None = False,
         **filters
     ):
         """Find records matching filters and bulk update them without loading into memory.

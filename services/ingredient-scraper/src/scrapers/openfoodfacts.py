@@ -9,8 +9,8 @@ We use it to supplement ingredient data by searching for simple, unprocessed foo
 
 from rich.console import Console
 
-from .base import BaseScraper
 from ..models import ScrapedIngredient
+from .base import BaseScraper
 
 console = Console()
 
@@ -88,7 +88,7 @@ class OpenFoodFactsScraper(BaseScraper):
         Returns:
             List of scraped ingredients
         """
-        console.print(f"[bold blue]Scraping Open Food Facts...[/bold blue]")
+        console.print("[bold blue]Scraping Open Food Facts...[/bold blue]")
 
         all_ingredients: list[ScrapedIngredient] = []
         seen_names: set[str] = set()

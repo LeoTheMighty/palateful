@@ -53,7 +53,7 @@ class GetPantryTool(BaseTool):
         category: str | None = None,
     ) -> ToolResult:
         """Get pantry items for the user."""
-        from utils.models import PantryUser, PantryIngredient
+        from utils.models import PantryIngredient, PantryUser
 
         try:
             # Get user's pantry memberships

@@ -5,8 +5,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from agent.tools.base import BaseTool, ToolResult
 from agent.config import settings
+from agent.tools.base import BaseTool, ToolResult
 
 
 class SearchRecipesTool(BaseTool):
@@ -59,7 +59,7 @@ class SearchRecipesTool(BaseTool):
         pantry_match: bool = False,
     ) -> ToolResult:
         """Search recipes using semantic search."""
-        from utils.models import Recipe, RecipeIngredient, RecipeBookUser
+        from utils.models import Recipe, RecipeBookUser, RecipeIngredient
 
         try:
             # Generate embedding for the query
@@ -236,7 +236,7 @@ class SuggestRecipeTool(BaseTool):
         difficulty: str = "medium",
     ) -> ToolResult:
         """Generate a recipe suggestion using LLM."""
-        from agent.llm import get_llm_provider, Message
+        from agent.llm import Message, get_llm_provider
 
         try:
             provider = get_llm_provider()

@@ -1,15 +1,16 @@
 import os
-from test_helper.environment import setup_environment
-from test_helper.factories.user_factory import UserFactory
-from test_helper.factories.pantry_factory import PantryFactory
-from test_helper.factories.ingredient_factory import IngredientFactory
-from test_helper.factories.thread_factory import ThreadFactory
-from test_helper.factories.recipe_book_factory import RecipeBookFactory
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
-from sqlalchemy import event
+
+from test_helper.environment import setup_environment
+from test_helper.factories.ingredient_factory import IngredientFactory
+from test_helper.factories.pantry_factory import PantryFactory
+from test_helper.factories.recipe_book_factory import RecipeBookFactory
+from test_helper.factories.thread_factory import ThreadFactory
+from test_helper.factories.user_factory import UserFactory
 
 
 def pytest_configure():

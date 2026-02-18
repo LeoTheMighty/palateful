@@ -1,5 +1,7 @@
 """Start import endpoint."""
 
+from datetime import datetime
+
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -137,4 +139,4 @@ class StartImport(Endpoint):
         source_type: str
         total_items: int
         recipe_book_id: str
-        created_at: str
+        created_at: datetime

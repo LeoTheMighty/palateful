@@ -6,9 +6,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from agent.graph.state import SuggestionState, SuggestionOutput
+from agent.graph.state import SuggestionOutput, SuggestionState
+from agent.llm import Message, get_llm_provider
 from agent.tools import GetPantryTool, GetUserPreferencesTool
-from agent.llm import get_llm_provider, Message
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ def create_notifications(state: SuggestionState, db: Session) -> dict[str, Any]:
 
     This node persists the generated suggestions and triggers notifications.
     """
-    from utils.models import Suggestion, Notification
+    from utils.models import Notification, Suggestion
 
     user_id = state["user_id"]
     suggestions = state.get("suggestions", [])

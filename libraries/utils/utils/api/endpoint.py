@@ -3,9 +3,10 @@
 import json
 import logging
 import typing
-from pydantic import BaseModel
-from fastapi.responses import JSONResponse
+
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from utils.classes.error_code import ErrorCode
 from utils.constants import LOGGING_LEVEL

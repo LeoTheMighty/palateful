@@ -8,43 +8,41 @@ from conftest import MockParserJob
 class TestGetUploadUrl:
     """Tests for POST /v1/parser/upload-url."""
 
-    def test_get_upload_url_success(self, client, mock_db, mock_user):
+    @patch("api.v1.parser.get_upload_url.AWSService")
+    def test_get_upload_url_success(self, mock_aws_cls, client, mock_db, mock_user):
         """Test generating a presigned upload URL."""
-        with patch("api.v1.parser.get_upload_url.boto3") as mock_boto:
-            mock_s3 = MagicMock()
-            mock_boto.client.return_value = mock_s3
-            mock_s3.generate_presigned_url.return_value = "https://s3.example.com/presigned"
+        mock_aws = MagicMock()
+        mock_aws_cls.return_value = mock_aws
+        mock_aws.generate_presigned_upload_url.return_value = "https://s3.example.com/presigned"
 
-            response = client.post(
-                "/v1/parser/upload-url",
-                json={
-                    "filename": "recipe.jpg",
-                    "content_type": "image/jpeg",
-                }
-            )
-            assert response.status_code == 200
-            data = response.json()
-            assert "upload_url" in data
-            assert "s3_key" in data
+        response = client.post(
+            "/v1/parser/upload-url",
+            json={"filename": "recipe.jpg"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "upload_url" in data
+        assert "s3_key" in data
 
 
 class TestSubmitParserJob:
     """Tests for POST /v1/parser/jobs."""
 
-    def test_submit_parser_job_success(self, client, mock_db, mock_user):
+    @patch("api.v1.parser.submit_parser_job.AWSService")
+    def test_submit_parser_job_success(self, mock_aws_cls, client, mock_db, mock_user):
         """Test submitting a parser job."""
-        with patch("api.v1.parser.submit_parser_job.boto3") as mock_boto:
-            mock_batch = MagicMock()
-            mock_boto.client.return_value = mock_batch
-            mock_batch.submit_job.return_value = {"jobId": "batch-123"}
+        mock_aws = MagicMock()
+        mock_aws_cls.return_value = mock_aws
+        mock_aws.submit_batch_job.return_value = "batch-123"
 
-            response = client.post(
-                "/v1/parser/jobs",
-                json={"s3_key": "uploads/test.jpg"}
-            )
-            assert response.status_code == 201
-            data = response.json()
-            assert "id" in data
+        response = client.post(
+            "/v1/parser/jobs",
+            json={"s3_key": "uploads/test.jpg"}
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert "id" in data
+        assert data["batch_job_id"] == "batch-123"
 
 
 class TestGetParserJob:
@@ -53,7 +51,11 @@ class TestGetParserJob:
     def test_get_parser_job_success(self, client, mock_db, mock_user):
         """Test getting a parser job."""
         job_id = "test-job-id"
-        job = MockParserJob(id=job_id, user_id=str(mock_user.id))
+        job = MockParserJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            status="succeeded",
+        )
 
         from utils.models.parser_job import ParserJob
 

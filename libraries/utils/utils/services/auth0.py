@@ -1,10 +1,9 @@
 """Auth0 JWT verification service."""
 
+
 import httpx
-from functools import lru_cache
-from jose import jwt, JWTError
+from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError
-from typing import Optional
 
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
@@ -17,7 +16,7 @@ class Auth0Verifier:
         self.domain = domain
         self.audience = audience
         self.algorithms = ["RS256"]
-        self._jwks: Optional[dict] = None
+        self._jwks: dict | None = None
 
     async def _get_jwks(self) -> dict:
         """Fetch JWKS from Auth0 (cached in instance)."""
@@ -95,23 +94,23 @@ class Auth0Verifier:
                 status_code=401,
                 detail="Token has expired",
                 code=ErrorCode.TOKEN_EXPIRED
-            )
+            ) from None
         except JWTError as e:
             raise APIException(
                 status_code=401,
                 detail=f"Invalid token: {str(e)}",
                 code=ErrorCode.INVALID_TOKEN
-            )
+            ) from e
         except httpx.HTTPError as e:
             raise APIException(
                 status_code=500,
                 detail=f"Failed to fetch JWKS: {str(e)}",
                 code=ErrorCode.INTERNAL_ERROR
-            )
+            ) from e
 
 
 # Global verifier instance (cached)
-_verifier: Optional[Auth0Verifier] = None
+_verifier: Auth0Verifier | None = None
 
 
 def get_auth0_verifier() -> Auth0Verifier:
@@ -119,7 +118,7 @@ def get_auth0_verifier() -> Auth0Verifier:
     global _verifier
     if _verifier is None:
         # Import settings lazily to avoid circular imports
-        from utils.constants import AUTH0_DOMAIN, AUTH0_AUDIENCE
+        from utils.constants import AUTH0_AUDIENCE, AUTH0_DOMAIN
         _verifier = Auth0Verifier(
             domain=AUTH0_DOMAIN,
             audience=AUTH0_AUDIENCE

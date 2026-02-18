@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -83,7 +84,7 @@ class GetPublicRecipe(Endpoint):
                     canonical_name=ing.canonical_name,
                     category=ing.category
                 ),
-                quantity_display=ri.quantity_display,
+                quantity_display=format_quantity(ri.quantity_display, ri.unit_display),
                 unit_display=ri.unit_display,
                 quantity_normalized=ri.quantity_normalized,
                 unit_normalized=ri.unit_normalized,
@@ -106,6 +107,7 @@ class GetPublicRecipe(Endpoint):
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
                 ingredients=ingredient_responses,
+                steps=step_responses,
                 recipe_book_name=recipe_book.name,
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at
@@ -120,13 +122,24 @@ class GetPublicRecipe(Endpoint):
     class IngredientResponse(BaseModel):
         id: str
         ingredient: "GetPublicRecipe.IngredientSummary"
-        quantity_display: Decimal
+        quantity_display: str
         unit_display: str
         quantity_normalized: Decimal | None = None
         unit_normalized: str | None = None
         notes: str | None = None
         is_optional: bool = False
         order_index: int = 0
+
+    class StepResponse(BaseModel):
+        id: str
+        step_number: int
+        instruction: str
+        active_time_minutes: int | None = None
+        timers: list[dict] | None = None
+        wait_time_minutes: int | None = None
+        wait_type: str | None = None
+        can_prep_ahead: bool = False
+        is_optional: bool = False
 
     class Response(BaseModel):
         id: str
@@ -139,6 +152,7 @@ class GetPublicRecipe(Endpoint):
         image_url: str | None = None
         source_url: str | None = None
         ingredients: list["GetPublicRecipe.IngredientResponse"] = []
+        steps: list["GetPublicRecipe.StepResponse"] = []
         recipe_book_name: str
         created_at: datetime
         updated_at: datetime

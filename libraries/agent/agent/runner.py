@@ -6,9 +6,9 @@ from typing import Any
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from agent.graph.state import SuggestionState
-from agent.graph.graph import create_suggestion_graph
 from agent.config import settings
+from agent.graph.graph import create_suggestion_graph
+from agent.graph.state import SuggestionState
 
 logger = logging.getLogger(__name__)
 

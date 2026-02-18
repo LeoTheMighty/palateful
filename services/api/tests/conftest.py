@@ -4,7 +4,7 @@ import os
 import sys
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -158,6 +158,25 @@ class MockRecipeIngredient(MockModel):
         super().__init__(**defaults)
 
 
+class MockRecipeStep(MockModel):
+    """Mock RecipeStep model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "recipe_id": str(uuid.uuid4()),
+            "step_number": 1,
+            "instruction": "Test step",
+            "active_time_minutes": None,
+            "timers": None,
+            "wait_time_minutes": None,
+            "wait_type": None,
+            "can_prep_ahead": False,
+            "is_optional": False,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockFriendRequest(MockModel):
     """Mock FriendRequest model."""
 
@@ -166,6 +185,9 @@ class MockFriendRequest(MockModel):
             "from_user_id": str(uuid.uuid4()),
             "to_user_id": str(uuid.uuid4()),
             "status": "pending",
+            "message": None,
+            "from_user": None,
+            "to_user": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -178,6 +200,7 @@ class MockFriendship(MockModel):
         defaults = {
             "user_id": str(uuid.uuid4()),
             "friend_id": str(uuid.uuid4()),
+            "friend": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -191,13 +214,22 @@ class MockMealEvent(MockModel):
             "title": "Test Dinner",
             "description": None,
             "meal_type": "dinner",
-            "event_date": datetime.now(UTC).date(),
-            "event_time": "18:00",
+            "scheduled_at": datetime.now(UTC),
             "status": "planned",
             "recipe_id": None,
+            "recipe": None,
             "owner_id": str(uuid.uuid4()),
-            "notify_before_minutes": 30,
+            "pantry_id": None,
+            "notify_prep_start": True,
+            "prep_start_offset_minutes": 60,
+            "notify_cook_start": True,
+            "cook_start_offset_minutes": 30,
+            "is_shared": False,
+            "is_recurring": False,
             "recurrence_rule": None,
+            "recurrence_end_date": None,
+            "parent_event_id": None,
+            "participants": [],
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -212,6 +244,8 @@ class MockMealEventParticipant(MockModel):
             "user_id": str(uuid.uuid4()),
             "role": "host",
             "status": "accepted",
+            "assigned_tasks": [],
+            "user": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -223,11 +257,17 @@ class MockShoppingList(MockModel):
     def __init__(self, **kwargs):
         defaults = {
             "name": "Test Shopping List",
-            "description": None,
-            "status": "active",
+            "status": "pending",
             "owner_id": str(uuid.uuid4()),
+            "is_shared": False,
             "share_code": None,
-            "share_code_expires_at": None,
+            "meal_event_id": None,
+            "pantry_id": None,
+            "default_deadline": None,
+            "sort_by": "deadline",
+            "auto_populate_from_calendar": True,
+            "items": [],
+            "members": [],
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -242,6 +282,7 @@ class MockShoppingListUser(MockModel):
             "user_id": str(uuid.uuid4()),
             "role": "owner",
             "notify_on_changes": True,
+            "last_seen_at": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -259,14 +300,21 @@ class MockShoppingListItem(MockModel):
             "unit": "each",
             "category": None,
             "is_checked": False,
-            "checked_by_id": None,
+            "checked_by_user_id": None,
             "checked_at": None,
-            "added_by_id": str(uuid.uuid4()),
-            "assigned_to_id": None,
+            "added_by_user_id": None,
+            "assigned_to_user_id": None,
             "ingredient_id": None,
+            "recipe_id": None,
             "notes": None,
             "store_section": None,
+            "store_order": None,
             "sort_order": 0,
+            "due_at": None,
+            "meal_event_id": None,
+            "due_reason": None,
+            "priority": 3,
+            "already_have_quantity": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -280,14 +328,16 @@ class MockActiveTimer(MockModel):
             "user_id": str(uuid.uuid4()),
             "label": "Test Timer",
             "duration_seconds": 300,
-            "elapsed_seconds": 0,
             "status": "running",
             "started_at": datetime.now(UTC),
             "paused_at": None,
-            "completed_at": None,
+            "elapsed_when_paused": 0,
+            "notify_on_complete": True,
+            "notification_sent": False,
+            "remaining_seconds": 300,
+            "is_expired": False,
             "meal_event_id": None,
             "recipe_step_id": None,
-            "notify_on_complete": True,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -303,9 +353,11 @@ class MockInvitation(MockModel):
             "to_email": "invitee@example.com",
             "resource_type": "recipe_book",
             "resource_id": str(uuid.uuid4()),
-            "role": "editor",
+            "role_offered": "editor",
             "status": "pending",
             "message": None,
+            "expires_at": None,
+            "responded_at": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -319,8 +371,9 @@ class MockInviteLink(MockModel):
             "token": str(uuid.uuid4()),
             "resource_type": "recipe_book",
             "resource_id": str(uuid.uuid4()),
-            "role": "viewer",
+            "role_offered": "viewer",
             "created_by_id": str(uuid.uuid4()),
+            "created_by": None,
             "is_active": True,
             "expires_at": None,
             "max_uses": None,
@@ -338,13 +391,16 @@ class MockImportJob(MockModel):
             "user_id": str(uuid.uuid4()),
             "recipe_book_id": str(uuid.uuid4()),
             "source_type": "url",
+            "source_filename": None,
             "status": "pending",
             "total_items": 1,
             "processed_items": 0,
             "succeeded_items": 0,
             "failed_items": 0,
             "pending_review_items": 0,
-            "ai_cost_usd": 0.0,
+            "total_ai_cost_cents": 0,
+            "started_at": None,
+            "completed_at": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -356,13 +412,13 @@ class MockImportItem(MockModel):
     def __init__(self, **kwargs):
         defaults = {
             "import_job_id": str(uuid.uuid4()),
+            "source_type": "url",
             "source_url": "https://example.com/recipe",
+            "source_reference": None,
             "status": "pending",
-            "raw_data": None,
             "parsed_recipe": None,
-            "user_edits": None,
             "error_message": None,
-            "ai_cost_usd": 0.0,
+            "ai_cost_cents": 0,
             "needs_review": False,
             "recipe_name": None,
         }
@@ -376,12 +432,13 @@ class MockParserJob(MockModel):
     def __init__(self, **kwargs):
         defaults = {
             "user_id": str(uuid.uuid4()),
-            "s3_key": "uploads/test.jpg",
+            "input_s3_key": "uploads/test.jpg",
             "output_s3_key": "results/test.json",
             "status": "pending",
             "batch_job_id": None,
-            "result": None,
+            "extracted_text": None,
             "error_message": None,
+            "completed_at": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -421,6 +478,15 @@ class MockQuery:
     def limit(self, n):
         return self
 
+    def distinct(self, *args, **kwargs):
+        return self
+
+    def subquery(self):
+        return MagicMock()
+
+    def options(self, *args, **kwargs):
+        return self
+
     def all(self):
         return self._items
 
@@ -444,11 +510,17 @@ class MockQuery:
     def scalars(self):
         return self
 
+    def unique(self):
+        return self
+
     def update(self, values, **kwargs):
         pass
 
     def delete(self, **kwargs):
         pass
+
+    def in_(self, *args, **kwargs):
+        return True
 
 
 class MockExecuteResult:
@@ -469,8 +541,45 @@ class MockExecuteResult:
     def all(self):
         return self._items
 
+    def unique(self):
+        return self
+
     def __iter__(self):
         return iter(self._items)
+
+
+# ---------------------------------------------------------------------------
+# Helper to apply SQLAlchemy column defaults (simulating DB behavior)
+# ---------------------------------------------------------------------------
+
+def _apply_column_defaults(obj):
+    """Apply SQLAlchemy column defaults to a model instance."""
+    if getattr(obj, 'id', None) is None:
+        obj.id = str(uuid.uuid4())
+    if getattr(obj, 'created_at', None) is None:
+        obj.created_at = datetime.now(UTC)
+    if getattr(obj, 'updated_at', None) is None:
+        obj.updated_at = datetime.now(UTC)
+    try:
+        from sqlalchemy import inspect as sa_inspect
+        mapper = sa_inspect(type(obj))
+        for attr in mapper.column_attrs:
+            col = attr.columns[0]
+            val = getattr(obj, attr.key, None)
+            if val is None and col.default is not None:
+                default = col.default
+                if default.is_scalar:
+                    setattr(obj, attr.key, default.arg)
+                elif default.is_callable:
+                    try:
+                        setattr(obj, attr.key, default.arg(None))
+                    except TypeError:
+                        try:
+                            setattr(obj, attr.key, default.arg())
+                        except Exception:
+                            pass
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -490,8 +599,9 @@ class MockDatabase:
         self.db.execute.return_value = MockExecuteResult()
         self.db.commit = MagicMock()
         self.db.flush = MagicMock()
-        self.db.refresh = MagicMock()
+        self.db.refresh = MagicMock(side_effect=_apply_column_defaults)
         self.db.add = MagicMock()
+        self.db.delete = MagicMock()
 
     def find_by(self, model_class, **kwargs):
         """Mock find_by - returns configured result or None."""
@@ -532,13 +642,8 @@ class MockDatabase:
         self._where_results[model_class.__name__] = items
 
     def create(self, model):
-        """Mock create."""
-        if not hasattr(model, 'id') or model.id is None:
-            model.id = str(uuid.uuid4())
-        if not hasattr(model, 'created_at') or model.created_at is None:
-            model.created_at = datetime.now(UTC)
-        if not hasattr(model, 'updated_at') or model.updated_at is None:
-            model.updated_at = datetime.now(UTC)
+        """Mock create - applies column defaults like a real DB would."""
+        _apply_column_defaults(model)
         return model
 
     def create_all(self, models):

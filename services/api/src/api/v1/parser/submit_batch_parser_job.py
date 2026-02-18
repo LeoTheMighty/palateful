@@ -28,7 +28,7 @@ class SubmitBatchParserJob(Endpoint):
         # Create a ParserJob record and manifest item for each image
         items = []
         parser_jobs = []
-        for i, s3_key in enumerate(params.s3_keys):
+        for _i, s3_key in enumerate(params.s3_keys):
             unique_id = str(uuid.uuid4())[:8]
             output_s3_key = f"results/{self.user.id}/{timestamp}_{unique_id}.json"
 

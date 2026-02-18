@@ -1,11 +1,11 @@
 """Unified search endpoint - recipes (my + public) and users."""
 
 from pydantic import BaseModel
-from sqlalchemy import or_, select, exists
+from sqlalchemy import exists, or_, select
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
-from utils.models.friendship import Friendship
 from utils.models.friend_request import FriendRequest
+from utils.models.friendship import Friendship
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -113,13 +113,6 @@ class UnifiedSearch(Endpoint):
 
     def _search_public_recipes(self, query: str, limit: int, user: User):
         """Search recipes in public books the user does NOT have access to."""
-        # Subquery: book IDs the user already has access to
-        my_book_ids = (
-            select(RecipeBookUser.recipe_book_id)
-            .where(RecipeBookUser.user_id == user.id)
-            .scalar_subquery()
-        )
-
         # Find the owner of each public book
         owner_subq = (
             select(

@@ -1,7 +1,7 @@
-from .normalizer import IngredientNormalizer
-from .deduplicator import IngredientDeduplicator
 from .categorizer import IngredientCategorizer
+from .deduplicator import IngredientDeduplicator
 from .enricher import IngredientEnricher
+from .normalizer import IngredientNormalizer
 
 __all__ = [
     "IngredientNormalizer",

@@ -1,4 +1,5 @@
 from fastapi import HTTPException
+
 from utils.classes.error_code import ErrorCode
 
 

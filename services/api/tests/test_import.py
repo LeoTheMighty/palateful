@@ -3,7 +3,6 @@
 from unittest.mock import patch
 
 from conftest import (
-    MockImportItem,
     MockImportJob,
     MockQuery,
     MockRecipeBook,
@@ -14,7 +13,8 @@ from conftest import (
 class TestStartImport:
     """Tests for POST /v1/recipe-books/{book_id}/import."""
 
-    def test_start_import_success(self, client, mock_db, mock_user):
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_start_import_success(self, mock_task, client, mock_db, mock_user):
         """Test starting an import job."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -32,17 +32,16 @@ class TestStartImport:
                            recipe_book_id=book_id)
         mock_db.set_find_by(RecipeBook, book, id=book_id)
 
-        with patch("api.v1.import_job.start_import.parse_source_task") as mock_task:
-            mock_task.delay.return_value = None
+        mock_task.delay.return_value = None
 
-            response = client.post(
-                f"/v1/recipe-books/{book_id}/import",
-                json={
-                    "source_type": "url",
-                    "urls": ["https://example.com/recipe"],
-                }
-            )
-            assert response.status_code == 201
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+            }
+        )
+        assert response.status_code == 201
 
     def test_start_import_no_access(self, client, mock_db, mock_user):
         """Test starting import without access."""
@@ -50,7 +49,7 @@ class TestStartImport:
             "/v1/recipe-books/no-access/import",
             json={
                 "source_type": "url",
-                "urls": ["https://example.com/recipe"],
+                "url": "https://example.com/recipe",
             }
         )
         assert response.status_code == 403
@@ -62,7 +61,12 @@ class TestGetImportJob:
     def test_get_import_job_success(self, client, mock_db, mock_user):
         """Test getting an import job."""
         job_id = "test-job-id"
-        job = MockImportJob(id=job_id, user_id=str(mock_user.id))
+        book_id = "test-book-id"
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
 
         from utils.models.import_job import ImportJob
 
@@ -85,15 +89,26 @@ class TestCancelImportJob:
     def test_cancel_import_job_success(self, client, mock_db, mock_user):
         """Test cancelling an import job."""
         job_id = "test-job-id"
+        book_id = "test-book-id"
         job = MockImportJob(
             id=job_id,
             user_id=str(mock_user.id),
+            recipe_book_id=book_id,
             status="pending",
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
         )
 
         from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
 
         mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
 
         response = client.delete(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 200
@@ -110,7 +125,12 @@ class TestListImportItems:
     def test_list_import_items_success(self, client, mock_db, mock_user):
         """Test listing import items."""
         job_id = "test-job-id"
-        job = MockImportJob(id=job_id, user_id=str(mock_user.id))
+        book_id = "test-book-id"
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
 
         from utils.models.import_job import ImportJob
 

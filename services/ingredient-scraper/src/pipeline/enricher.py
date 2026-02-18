@@ -6,11 +6,10 @@ Generates:
 """
 
 import json
-from typing import Any
 
 from openai import OpenAI
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TaskProgressColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 from sentence_transformers import SentenceTransformer
 
 from ..config import settings
