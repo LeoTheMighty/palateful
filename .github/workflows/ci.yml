@@ -8,40 +8,206 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '22'
+  POETRY_VIRTUALENVS_IN_PROJECT: 'true'
+
 jobs:
-  build:
+  setup:
     runs-on: ubuntu-latest
-
+    outputs:
+      nx_base: ${{ steps.set-shas.outputs.base }}
+      nx_head: ${{ steps.set-shas.outputs.head }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
         with:
-          node-version: '20'
-          cache: 'yarn'
+          fetch-depth: 0
 
-      - name: Install dependencies
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('poetry.lock', 'libraries/utils/pyproject.toml', 'libraries/test-helper/pyproject.toml', 'libraries/agent/pyproject.toml') }}
+          restore-keys: |
+            venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+
+      - name: Install Python dependencies
+        run: |
+          poetry install --with dev
+          poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
+          poetry install
+
+      - name: Install Node dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma Client
-        run: npx prisma generate
+      - uses: nrwl/nx-set-shas@v4
+        id: set-shas
 
-      - name: Run TypeScript check
-        run: npx tsc --noEmit
+      - name: Save workspace
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .
+            !.git
+          key: workspace-${{ github.sha }}-${{ github.run_id }}
 
-      - name: Run linter
-        run: yarn lint
+  lint:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Build application
-        run: yarn build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Restore workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .
+            !.git
+          key: workspace-${{ github.sha }}-${{ github.run_id }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - name: Run lint
+        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t lint --parallel=3
+
+  test:
+    runs-on: ubuntu-latest
+    needs: setup
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
         env:
-          # These are placeholder values for the build process
-          # Real values are configured in Vercel
-          DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
-          AUTH0_SECRET: 'placeholder-secret-for-build-only'
-          AUTH0_BASE_URL: 'http://localhost:3000'
-          AUTH0_ISSUER_BASE_URL: 'https://placeholder.auth0.com'
-          AUTH0_CLIENT_ID: 'placeholder'
-          AUTH0_CLIENT_SECRET: 'placeholder'
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Restore workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .
+            !.git
+          key: workspace-${{ github.sha }}-${{ github.run_id }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - name: Run migrations
+        run: npx nx run migrator:migrate-test
+
+      - name: Run tests
+        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: reports/
+          if-no-files-found: ignore
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: coverage/
+          if-no-files-found: ignore
+
+  check-models:
+    runs-on: ubuntu-latest
+    needs: setup
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Restore workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .
+            !.git
+          key: workspace-${{ github.sha }}-${{ github.run_id }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - name: Check models match migrations
+        run: npx nx run migrator:check-models

@@ -4,10 +4,12 @@
 from api.v1.recipe import (
     CreateRecipe,
     DeleteRecipe,
+    GetPublicRecipe,
     GetRecipe,
     ListRecipes,
     UpdateRecipe,
 )
+from api.v1.recipe_book import GetPublicRecipeBook
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
 from utils.models.user import User
@@ -94,5 +96,30 @@ async def delete_recipe(
     return DeleteRecipe.call(
         recipe_id=recipe_id,
         user=user,
+        database=database
+    )
+
+
+# Public endpoints (no auth required)
+@recipe_router.get("/recipes/{recipe_id}/public")
+async def get_public_recipe(
+    recipe_id: str,
+    database: Database = Depends(get_database)
+):
+    """Get a publicly shared recipe (no auth required)."""
+    return GetPublicRecipe.call(
+        recipe_id=recipe_id,
+        database=database
+    )
+
+
+@recipe_router.get("/recipe-books/{book_id}/public")
+async def get_public_recipe_book(
+    book_id: str,
+    database: Database = Depends(get_database)
+):
+    """Get a publicly shared recipe book (no auth required)."""
+    return GetPublicRecipeBook.call(
+        recipe_book_id=book_id,
         database=database
     )

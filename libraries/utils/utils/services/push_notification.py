@@ -46,6 +46,10 @@ class NotificationType(str, Enum):
     FRIEND_REQUEST = "friend_request"
     FRIEND_REQUEST_ACCEPTED = "friend_request_accepted"
 
+    # Invitations
+    INVITATION_RECEIVED = "invitation_received"
+    INVITATION_ACCEPTED = "invitation_accepted"
+
     # General
     MEMBER_JOINED = "member_joined"
     SYSTEM = "system"

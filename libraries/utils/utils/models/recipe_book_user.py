@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, UUID, UniqueConstraint
+from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.joins_base import JoinsBase
@@ -29,8 +29,13 @@ class RecipeBookUser(JoinsBase):
         UUID, ForeignKey("recipe_books.id", ondelete="CASCADE"), primary_key=True
     )
 
+    # Who invited this user (null for owners / original members)
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="recipe_book_memberships")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="recipe_book_memberships")
     recipe_book: Mapped["RecipeBook"] = relationship(back_populates="members")
 
     __table_args__ = (

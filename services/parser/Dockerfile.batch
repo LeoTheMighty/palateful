@@ -1,7 +1,7 @@
 # Parser Service Dockerfile for AWS Batch
 # Uses NVIDIA CUDA for GPU support
 
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+FROM --platform=linux/amd64 nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 WORKDIR /app
 
@@ -44,6 +44,16 @@ COPY services/parser/run_job.py ./run_job.py
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/app/models
+
+# Pre-download model weights so they're baked into the image.
+# Eliminates ~3-5 min HuggingFace download on every job.
+# Use huggingface_hub directly to download files without loading into memory
+# (avoids OOM during cross-arch build).
+RUN pip install --break-system-packages huggingface_hub \
+    && python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download('tencent/HunyuanOCR')"
 
 # Run the batch job script
 CMD ["python", "run_job.py"]

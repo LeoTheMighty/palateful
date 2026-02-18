@@ -1,6 +1,6 @@
 """Parser endpoints router."""
 
-from api.v1.parser import GetParserJob, GetUploadUrl, SubmitParserJob
+from api.v1.parser import GetParserJob, GetUploadUrl, SubmitBatchParserJob, SubmitParserJob
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
 from utils.models.user import User
@@ -29,8 +29,22 @@ async def submit_parser_job(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
-    """Submit a parser job to AWS Batch."""
+    """Submit a single-image parser job to AWS Batch."""
     return SubmitParserJob.call(
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@parser_router.post("/jobs/batch")
+async def submit_batch_parser_job(
+    params: SubmitBatchParserJob.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Submit a multi-image parser job to AWS Batch."""
+    return SubmitBatchParserJob.call(
         params=params,
         user=user,
         database=database,

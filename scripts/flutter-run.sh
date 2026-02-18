@@ -25,7 +25,7 @@ cd "$(dirname "$0")/../app"
 
 # Parse arguments
 PLATFORM=""
-BUILD_MODE="--release"
+BUILD_MODE="--debug"
 EXTRA_ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in

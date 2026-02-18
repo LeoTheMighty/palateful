@@ -1,11 +1,10 @@
 """Get presigned upload URL endpoint."""
 
 import uuid
-from datetime import datetime, timezone
-
-from pydantic import BaseModel
+from datetime import UTC, datetime
 
 from config import settings
+from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 from utils.services.aws import AWSService
 
@@ -24,7 +23,7 @@ class GetUploadUrl(Endpoint):
             Presigned upload URL and S3 key.
         """
         # Generate unique S3 key
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         extension = params.filename.split(".")[-1] if "." in params.filename else "jpg"
         s3_key = f"uploads/{self.user.id}/{timestamp}_{unique_id}.{extension}"

@@ -50,12 +50,22 @@ class UpdateRecipeBook(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND
             )
 
+        # Only owners can change is_public
+        if params.is_public is not None and membership.role != "owner":
+            raise APIException(
+                status_code=403,
+                detail="Only the owner can change public visibility",
+                code=ErrorCode.RECIPE_BOOK_ACCESS_DENIED
+            )
+
         # Build update dict
         updates = {}
         if params.name is not None:
             updates["name"] = params.name
         if params.description is not None:
             updates["description"] = params.description
+        if params.is_public is not None:
+            updates["is_public"] = params.is_public
 
         # Update if there are changes
         if updates:
@@ -71,6 +81,7 @@ class UpdateRecipeBook(Endpoint):
                 id=recipe_book.id,
                 name=recipe_book.name,
                 description=recipe_book.description,
+                is_public=recipe_book.is_public,
                 recipe_count=recipe_count,
                 created_at=recipe_book.created_at,
                 updated_at=recipe_book.updated_at
@@ -80,11 +91,13 @@ class UpdateRecipeBook(Endpoint):
     class Params(BaseModel):
         name: str | None = None
         description: str | None = None
+        is_public: bool | None = None
 
     class Response(BaseModel):
         id: str
         name: str
         description: str | None = None
+        is_public: bool = False
         recipe_count: int
         created_at: datetime
         updated_at: datetime

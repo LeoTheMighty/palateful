@@ -74,6 +74,7 @@ class GetRecipeBook(Endpoint):
                 id=str(recipe_book.id),
                 name=recipe_book.name,
                 description=recipe_book.description,
+                is_public=recipe_book.is_public,
                 recipe_count=len(recipes),
                 recipes=recipe_items,
                 created_at=recipe_book.created_at,
@@ -95,6 +96,7 @@ class GetRecipeBook(Endpoint):
         id: str
         name: str
         description: str | None = None
+        is_public: bool = False
         recipe_count: int = 0
         recipes: list["GetRecipeBook.RecipeItem"] = []
         created_at: datetime

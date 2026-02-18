@@ -1,0 +1,9 @@
+#!/bin/bash
+# Open a psql console to the local development database
+
+set -e
+
+DB_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/palateful}"
+
+echo "Connecting to: $DB_URL"
+exec psql "$DB_URL"

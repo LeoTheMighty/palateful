@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UUID
+from sqlalchemy import UUID, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -47,6 +47,17 @@ class Notification(Base):
         UUID, ForeignKey("suggestions.id", ondelete="CASCADE"), nullable=True
     )
 
+    # Collaboration context
+    source_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    resource_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    resource_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+    invitation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("invitations.id", ondelete="SET NULL"), nullable=True
+    )
+    cta_action: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # Push-specific fields
     push_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
     fcm_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -61,8 +72,11 @@ class Notification(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="notifications")
+    user: Mapped["User"] = relationship(
+        foreign_keys=[user_id], back_populates="notifications"
+    )
     suggestion: Mapped["Suggestion | None"] = relationship(back_populates="notifications")
+    source_user: Mapped["User | None"] = relationship(foreign_keys=[source_user_id])
 
     def __repr__(self) -> str:
         return self.get_repr(["id", "channel", "status", "notification_type"])

@@ -1,10 +1,9 @@
 """Get parser job endpoint."""
 
-from datetime import datetime, timezone
-
-from pydantic import BaseModel
+from datetime import UTC, datetime
 
 from config import settings
+from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.parser_job import ParserJob
@@ -82,17 +81,17 @@ class GetParserJob(Endpoint):
             try:
                 result = aws.get_s3_object(parser_job.output_s3_key)
                 parser_job.extracted_text = result.get("extracted_markdown", "")
-                parser_job.completed_at = datetime.now(timezone.utc)
+                parser_job.completed_at = datetime.now(UTC)
             except Exception as e:
                 parser_job.error_message = f"Failed to fetch results: {str(e)}"
                 parser_job.status = "failed"
-                parser_job.completed_at = datetime.now(timezone.utc)
+                parser_job.completed_at = datetime.now(UTC)
 
         # If failed, capture error message
         elif new_status == "failed":
             status_reason = batch_job.get("statusReason", "Unknown error")
             parser_job.error_message = status_reason
-            parser_job.completed_at = datetime.now(timezone.utc)
+            parser_job.completed_at = datetime.now(UTC)
 
         self.database.db.commit()
 

@@ -37,6 +37,13 @@ class ShoppingListUser(JoinsBase):
     # Role: owner | editor | viewer
     role: Mapped[str] = mapped_column(String(20), default="editor")
 
+    # Who invited this user (null for owners / original members)
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Notification preferences per user per list
     notify_on_add: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_on_check: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -49,7 +56,7 @@ class ShoppingListUser(JoinsBase):
 
     # Relationships
     shopping_list: Mapped["ShoppingList"] = relationship(back_populates="members")
-    user: Mapped["User"] = relationship(back_populates="shopping_list_memberships")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="shopping_list_memberships")
 
     __table_args__ = (
         UniqueConstraint(

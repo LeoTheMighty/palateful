@@ -1,10 +1,19 @@
 """
-One-shot OCR job for AWS Batch.
-Reads image from S3, runs OCR, uploads results to S3.
+OCR batch job for AWS Batch.
+Supports single image or batch manifest with multiple images.
+
+Single mode (backwards compatible):
+  INPUT_S3_URI=s3://bucket/image.jpg OUTPUT_S3_URI=s3://bucket/result.json
+
+Batch mode:
+  BATCH_MANIFEST_URI=s3://bucket/manifest.json
+  Manifest format: {"items": [{"input_s3_uri": "...", "output_s3_uri": "..."}, ...]}
 """
 
+import io
 import json
 import os
+import sys
 from datetime import datetime, timezone
 
 import boto3
@@ -14,50 +23,21 @@ from transformers import AutoModelForVision2Seq, AutoProcessor
 
 
 def get_device() -> str:
-    """Determine the best available device."""
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
 
 
 def parse_s3_uri(uri: str) -> tuple[str, str]:
-    """Parse s3://bucket/key into (bucket, key)."""
     parts = uri.replace("s3://", "").split("/", 1)
     return parts[0], parts[1]
 
 
-def main():
-    """Main entry point for batch job."""
-    # 1. Read environment variables
-    input_uri = os.environ.get("INPUT_S3_URI")
-    output_uri = os.environ.get("OUTPUT_S3_URI")
-    model_name = os.environ.get("MODEL_NAME", "tencent/HunyuanOCR")
-
-    if not input_uri or not output_uri:
-        raise ValueError("INPUT_S3_URI and OUTPUT_S3_URI environment variables required")
-
-    print(f"Input: {input_uri}")
-    print(f"Output: {output_uri}")
-    print(f"Model: {model_name}")
-
-    # 2. Download input image from S3
-    s3 = boto3.client("s3")
-    input_bucket, input_key = parse_s3_uri(input_uri)
-    local_input = "/tmp/input_image"
-
-    print(f"Downloading from s3://{input_bucket}/{input_key}...")
-    s3.download_file(input_bucket, input_key, local_input)
-
-    # 3. Load and prepare image
-    image = Image.open(local_input)
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-    print(f"Image size: {image.width}x{image.height}")
-
-    # 4. Load model
+def load_model(model_name: str):
+    """Load model and processor once."""
     device = get_device()
     dtype = torch.float16 if device == "cuda" else torch.float32
-    print(f"Loading model on {device} with {dtype}...")
+    print(f"Loading model {model_name} on {device} with {dtype}...")
 
     processor = AutoProcessor.from_pretrained(model_name)
     model = AutoModelForVision2Seq.from_pretrained(
@@ -70,9 +50,11 @@ def main():
         model = model.to(device)
 
     print("Model loaded successfully")
+    return model, processor, device
 
-    # 5. Run OCR inference
-    print("Running OCR...")
+
+def run_ocr(model, processor, device, image: Image.Image) -> str:
+    """Run OCR on a single image."""
     inputs = processor(images=image, return_tensors="pt")
     if device != "cpu":
         inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -84,14 +66,36 @@ def main():
             do_sample=False,
         )
 
-    extracted_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    print(f"Extracted {len(extracted_text)} characters")
+    return processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-    # 6. Build output
+
+def process_single(s3, model, processor, device, model_name, input_uri, output_uri):
+    """Process a single image: download, OCR, upload result."""
+    print(f"\n--- Processing: {input_uri}")
+
+    # Download
+    input_bucket, input_key = parse_s3_uri(input_uri)
+    response = s3.get_object(Bucket=input_bucket, Key=input_key)
+    image_bytes = response["Body"].read()
+
+    # Open and convert
+    warnings = []
+    image = Image.open(io.BytesIO(image_bytes))
+    if image.mode != "RGB":
+        warnings.append(f"Converted image from {image.mode} to RGB")
+        image = image.convert("RGB")
+    print(f"  Image: {image.width}x{image.height}")
+
+    # OCR
+    print("  Running OCR...")
+    extracted_text = run_ocr(model, processor, device, image)
+    print(f"  Extracted {len(extracted_text)} characters")
+
+    # Build and upload output
     output = {
         "source_image": input_uri,
         "extracted_markdown": extracted_text,
-        "warnings": [],
+        "warnings": warnings,
         "meta": {
             "model": model_name,
             "runtime": "batch",
@@ -101,21 +105,84 @@ def main():
         },
     }
 
-    # 7. Upload to S3
     output_bucket, output_key = parse_s3_uri(output_uri)
-    print(f"Uploading to s3://{output_bucket}/{output_key}...")
-
     s3.put_object(
         Bucket=output_bucket,
         Key=output_key,
         Body=json.dumps(output, indent=2),
         ContentType="application/json",
     )
+    print(f"  Result uploaded to {output_uri}")
+    return True
 
-    print(f"OCR complete. Output: {output_uri}")
-    print("=" * 50)
-    print("Extracted text preview:")
-    print(extracted_text[:500] + "..." if len(extracted_text) > 500 else extracted_text)
+
+def main():
+    model_name = os.environ.get("MODEL_NAME", "tencent/HunyuanOCR")
+    input_uri = os.environ.get("INPUT_S3_URI")
+    output_uri = os.environ.get("OUTPUT_S3_URI")
+    manifest_uri = os.environ.get("BATCH_MANIFEST_URI")
+
+    s3 = boto3.client("s3")
+
+    # Determine items to process
+    if manifest_uri:
+        # Batch mode: read manifest
+        print(f"Batch mode: loading manifest from {manifest_uri}")
+        manifest_bucket, manifest_key = parse_s3_uri(manifest_uri)
+        response = s3.get_object(Bucket=manifest_bucket, Key=manifest_key)
+        manifest = json.loads(response["Body"].read().decode("utf-8"))
+        items = manifest["items"]
+        print(f"Found {len(items)} items to process")
+    elif input_uri and output_uri:
+        # Single mode (backwards compatible)
+        items = [{"input_s3_uri": input_uri, "output_s3_uri": output_uri}]
+    else:
+        print("ERROR: Set INPUT_S3_URI+OUTPUT_S3_URI or BATCH_MANIFEST_URI")
+        sys.exit(1)
+
+    # Load model once
+    model, processor, device = load_model(model_name)
+
+    # Process all items
+    succeeded = 0
+    failed = 0
+    for i, item in enumerate(items):
+        print(f"\n[{i + 1}/{len(items)}]")
+        try:
+            process_single(
+                s3, model, processor, device, model_name,
+                item["input_s3_uri"], item["output_s3_uri"],
+            )
+            succeeded += 1
+        except Exception as e:
+            print(f"  FAILED: {e}")
+            failed += 1
+            # Write error output so the caller knows what happened
+            try:
+                error_output = {
+                    "source_image": item["input_s3_uri"],
+                    "error": str(e),
+                    "meta": {
+                        "model": model_name,
+                        "runtime": "batch",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }
+                out_bucket, out_key = parse_s3_uri(item["output_s3_uri"])
+                s3.put_object(
+                    Bucket=out_bucket,
+                    Key=out_key,
+                    Body=json.dumps(error_output, indent=2),
+                    ContentType="application/json",
+                )
+            except Exception:
+                pass
+
+    print(f"\n{'=' * 50}")
+    print(f"Done. {succeeded} succeeded, {failed} failed out of {len(items)} items.")
+
+    if failed > 0 and succeeded == 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

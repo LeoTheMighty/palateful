@@ -1,11 +1,10 @@
 """Submit parser job endpoint."""
 
 import uuid
-from datetime import datetime, timezone
-
-from pydantic import BaseModel
+from datetime import UTC, datetime
 
 from config import settings
+from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 from utils.models.parser_job import ParserJob
 from utils.services.aws import AWSService
@@ -25,7 +24,7 @@ class SubmitParserJob(Endpoint):
             Created parser job with job ID and status.
         """
         # Generate output S3 key
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         output_s3_key = f"results/{self.user.id}/{timestamp}_{unique_id}.json"
 

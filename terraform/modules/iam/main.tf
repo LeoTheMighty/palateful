@@ -148,6 +148,31 @@ resource "aws_iam_role_policy_attachment" "batch_service" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
 }
 
+# Supplement the legacy AWSBatchServiceRole managed policy with newer
+# EC2 permissions that Batch now requires to launch instances.
+resource "aws_iam_role_policy" "batch_service_ec2_supplement" {
+  name = "${var.project}-batch-service-ec2-supplement-${var.environment}"
+  role = aws_iam_role.batch_service.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EC2PermissionsForBatch"
+        Effect = "Allow"
+        Action = [
+          "ec2:GetSecurityGroupsForVpc",
+          "ec2:CreateLaunchTemplate",
+          "ec2:DeleteLaunchTemplate",
+          "ec2:DescribeLaunchTemplates",
+          "ec2:DescribeLaunchTemplateVersions",
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # Spot Fleet Role
 resource "aws_iam_role" "spot_fleet" {
   name = "${var.project}-spot-fleet-${var.environment}"

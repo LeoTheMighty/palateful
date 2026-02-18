@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from utils.models.friendship import Friendship
     from utils.models.import_job import ImportJob
     from utils.models.ingredient import Ingredient
+    from utils.models.invitation import Invitation
     from utils.models.notification import Notification
     from utils.models.pantry_user import PantryUser
     from utils.models.parser_job import ParserJob
@@ -72,10 +73,14 @@ class User(Base):
         foreign_keys=[default_recipe_book_id],
     )
     pantry_memberships: Mapped[list["PantryUser"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        "PantryUser",
+        foreign_keys="[PantryUser.user_id]",
+        back_populates="user", cascade="all, delete-orphan",
     )
     recipe_book_memberships: Mapped[list["RecipeBookUser"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        "RecipeBookUser",
+        foreign_keys="[RecipeBookUser.user_id]",
+        back_populates="user", cascade="all, delete-orphan",
     )
     submitted_ingredients: Mapped[list["Ingredient"]] = relationship(
         back_populates="submitted_by"
@@ -87,7 +92,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     notifications: Mapped[list["Notification"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        "Notification",
+        foreign_keys="[Notification.user_id]",
+        back_populates="user", cascade="all, delete-orphan",
     )
     import_jobs: Mapped[list["ImportJob"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -96,7 +103,22 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     shopping_list_memberships: Mapped[list["ShoppingListUser"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        "ShoppingListUser",
+        foreign_keys="[ShoppingListUser.user_id]",
+        back_populates="user", cascade="all, delete-orphan",
+    )
+
+    # Invitation relationships
+    sent_invitations: Mapped[list["Invitation"]] = relationship(
+        "Invitation",
+        foreign_keys="[Invitation.from_user_id]",
+        back_populates="from_user",
+        cascade="all, delete-orphan",
+    )
+    received_invitations: Mapped[list["Invitation"]] = relationship(
+        "Invitation",
+        foreign_keys="[Invitation.to_user_id]",
+        back_populates="to_user",
     )
 
     # Friendship relationships

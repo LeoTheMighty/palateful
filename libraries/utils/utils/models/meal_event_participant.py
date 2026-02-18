@@ -31,6 +31,13 @@ class MealEventParticipant(JoinsBase):
         JSONB, default=list, nullable=True
     )
 
+    # Who invited this user (null for hosts / original participants)
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Foreign keys (composite primary key)
     meal_event_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -45,7 +52,7 @@ class MealEventParticipant(JoinsBase):
 
     # Relationships
     meal_event: Mapped["MealEvent"] = relationship(back_populates="participants")
-    user: Mapped["User"] = relationship()
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
 
     __table_args__ = (
         UniqueConstraint(

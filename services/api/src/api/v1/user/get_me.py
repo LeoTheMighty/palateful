@@ -3,7 +3,9 @@
 from datetime import datetime
 
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from utils.api.endpoint import Endpoint, success
+from utils.models.invitation import Invitation
 from utils.models.user import User
 
 
@@ -13,6 +15,15 @@ class GetMe(Endpoint):
     def execute(self):
         """Return the current user's data."""
         user: User = self.user
+
+        # Count pending invitations for badge
+        pending_count = self.db.execute(
+            select(func.count(Invitation.id)).where(
+                Invitation.to_user_id == user.id,
+                Invitation.status == "pending",
+                Invitation.archived_at.is_(None),
+            )
+        ).scalar() or 0
 
         return success(
             data=GetMe.Response(
@@ -24,7 +35,8 @@ class GetMe(Endpoint):
                 has_completed_onboarding=user.has_completed_onboarding,
                 default_recipe_book_id=str(user.default_recipe_book_id) if user.default_recipe_book_id else None,
                 created_at=user.created_at,
-                username_changed_at=user.username_changed_at
+                username_changed_at=user.username_changed_at,
+                pending_invitation_count=pending_count,
             )
         )
 
@@ -38,3 +50,4 @@ class GetMe(Endpoint):
         default_recipe_book_id: str | None = None
         created_at: datetime
         username_changed_at: datetime | None = None
+        pending_invitation_count: int = 0

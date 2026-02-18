@@ -106,7 +106,7 @@ class AWSService:
         output_s3_key: str,
     ) -> str:
         """
-        Submit a parser job to AWS Batch.
+        Submit a single-image parser job to AWS Batch.
 
         Args:
             job_name: Name for the Batch job.
@@ -127,6 +127,59 @@ class AWSService:
                 "environment": [
                     {"name": "INPUT_S3_URI", "value": input_uri},
                     {"name": "OUTPUT_S3_URI", "value": output_uri},
+                ],
+            },
+        )
+
+        return response["jobId"]
+
+    def submit_batch_manifest_job(
+        self,
+        job_name: str,
+        items: list[dict[str, str]],
+        manifest_s3_key: str,
+    ) -> str:
+        """
+        Submit a multi-image parser job using a batch manifest.
+
+        Creates a manifest JSON in S3, then submits a Batch job
+        with BATCH_MANIFEST_URI pointing to it.
+
+        Args:
+            job_name: Name for the Batch job.
+            items: List of dicts with "input_s3_key" and "output_s3_key".
+            manifest_s3_key: S3 key where the manifest will be stored.
+
+        Returns:
+            Batch job ID.
+        """
+        manifest = {
+            "items": [
+                {
+                    "input_s3_uri": f"s3://{self.parser_inputs_bucket}/{item['input_s3_key']}",
+                    "output_s3_uri": f"s3://{self.parser_outputs_bucket}/{item['output_s3_key']}",
+                }
+                for item in items
+            ]
+        }
+
+        # Upload manifest to the outputs bucket (it's metadata, not an input image)
+        self._s3.put_object(
+            Bucket=self.parser_outputs_bucket,
+            Key=manifest_s3_key,
+            Body=json.dumps(manifest, indent=2),
+            ContentType="application/json",
+        )
+
+        manifest_uri = f"s3://{self.parser_outputs_bucket}/{manifest_s3_key}"
+
+        response = self._batch.submit_job(
+            jobName=job_name,
+            jobQueue=self.batch_job_queue,
+            jobDefinition=self.batch_job_definition,
+            containerOverrides={
+                "environment": [
+                    {"name": "BATCH_MANIFEST_URI", "value": manifest_uri},
                 ],
             },
         )

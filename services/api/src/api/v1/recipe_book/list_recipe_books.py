@@ -51,6 +51,7 @@ class ListRecipeBooks(Endpoint):
                 id=str(recipe_book.id),
                 name=recipe_book.name,
                 description=recipe_book.description,
+                is_public=recipe_book.is_public,
                 recipe_count=recipe_count,
                 created_at=recipe_book.created_at,
                 updated_at=recipe_book.updated_at
@@ -71,6 +72,7 @@ class ListRecipeBooks(Endpoint):
         id: str
         name: str
         description: str | None = None
+        is_public: bool = False
         recipe_count: int = 0
         created_at: datetime
         updated_at: datetime

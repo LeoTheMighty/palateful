@@ -1,8 +1,8 @@
 """SQLAlchemy models."""
 
-from utils.models.base import Base
-from utils.models.joins_base import JoinsBase
 from utils.models.active_timer import ActiveTimer
+from utils.models.activity import Activity
+from utils.models.base import Base
 from utils.models.chat import Chat
 from utils.models.cooking_log import CookingLog
 from utils.models.friend_request import FriendRequest
@@ -12,6 +12,9 @@ from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
 from utils.models.ingredient_match import IngredientMatch
 from utils.models.ingredient_substitution import IngredientSubstitution
+from utils.models.invitation import Invitation
+from utils.models.invite_link import InviteLink
+from utils.models.joins_base import JoinsBase
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.notification import Notification
@@ -39,6 +42,10 @@ __all__ = [
     "JoinsBase",
     # Core
     "User",
+    # Collaboration
+    "Invitation",
+    "InviteLink",
+    "Activity",
     # Social/Friends
     "FriendRequest",
     "Friendship",

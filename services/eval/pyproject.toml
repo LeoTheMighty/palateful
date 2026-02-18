@@ -29,6 +29,17 @@ pytest-cov = "^6.0"
 [tool.poetry.scripts]
 eval = "src.main:cli"
 
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = ['if TYPE_CHECKING:', 'pragma: no cover']
+show_missing = true
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report html:'../../coverage/services/eval/html' --cov-report xml:'../../coverage/services/eval/coverage.xml' --html='../../reports/services/eval/unittests/html/index.html' --junitxml='../../reports/services/eval/unittests/junit.xml'"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

@@ -151,7 +151,7 @@ resource "aws_batch_job_definition" "parser" {
 
     resourceRequirements = [
       { type = "VCPU", value = "4" },
-      { type = "MEMORY", value = "16384" },  # 16GB
+      { type = "MEMORY", value = "15360" },  # 15GB (leave headroom for ECS agent/OS)
       { type = "GPU", value = "1" }
     ]
 

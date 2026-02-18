@@ -10,6 +10,7 @@ from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
+from utils.models.recipe_step import RecipeStep
 from utils.models.user import User
 
 
@@ -50,6 +51,28 @@ class GetRecipe(Endpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED
             )
 
+        # Get recipe steps
+        steps = self.database.where(
+            RecipeStep,
+            asc="step_number",
+            recipe_id=recipe.id
+        ).all()
+
+        step_responses = [
+            GetRecipe.StepResponse(
+                id=str(step.id),
+                step_number=step.step_number,
+                instruction=step.instruction,
+                active_time_minutes=step.active_time_minutes,
+                timers=step.timers,
+                wait_time_minutes=step.wait_time_minutes,
+                wait_type=step.wait_type,
+                can_prep_ahead=step.can_prep_ahead,
+                is_optional=step.is_optional
+            )
+            for step in steps
+        ]
+
         # Get ingredients with ingredient details
         recipe_ingredients = (
             self.db.query(RecipeIngredient, Ingredient)
@@ -61,9 +84,9 @@ class GetRecipe(Endpoint):
 
         ingredient_responses = [
             GetRecipe.IngredientResponse(
-                id=ri.id,
+                id=str(ri.ingredient_id),
                 ingredient=GetRecipe.IngredientSummary(
-                    id=ing.id,
+                    id=str(ing.id),
                     canonical_name=ing.canonical_name,
                     category=ing.category
                 ),
@@ -80,7 +103,7 @@ class GetRecipe(Endpoint):
 
         return success(
             data=GetRecipe.Response(
-                id=recipe.id,
+                id=str(recipe.id),
                 name=recipe.name,
                 description=recipe.description,
                 instructions=recipe.instructions,
@@ -90,6 +113,7 @@ class GetRecipe(Endpoint):
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
                 ingredients=ingredient_responses,
+                steps=step_responses,
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at
             )
@@ -111,6 +135,17 @@ class GetRecipe(Endpoint):
         is_optional: bool = False
         order_index: int = 0
 
+    class StepResponse(BaseModel):
+        id: str
+        step_number: int
+        instruction: str
+        active_time_minutes: int | None = None
+        timers: list[dict] | None = None
+        wait_time_minutes: int | None = None
+        wait_type: str | None = None
+        can_prep_ahead: bool = False
+        is_optional: bool = False
+
     class Response(BaseModel):
         id: str
         name: str
@@ -122,5 +157,6 @@ class GetRecipe(Endpoint):
         image_url: str | None = None
         source_url: str | None = None
         ingredients: list["GetRecipe.IngredientResponse"] = []
+        steps: list["GetRecipe.StepResponse"] = []
         created_at: datetime
         updated_at: datetime

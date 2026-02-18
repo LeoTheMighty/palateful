@@ -1,0 +1,46 @@
+#!/bin/bash
+# Populate the database with invitation system test data
+
+set -e
+
+PSQL="docker exec -i palateful-db-1 psql -U postgres -d palateful"
+
+root_path=$(cd "$(dirname "$0")/.." && pwd -P)
+seed_file="${root_path}/seeds/invitation_test_data.sql"
+
+if [ ! -f "$seed_file" ]; then
+    echo "Error: Seed file not found at $seed_file"
+    exit 1
+fi
+
+echo "Adding invitation test data..."
+$PSQL -f - < "$seed_file"
+
+# Find the first real (non-test) user and add them to the test recipe books
+real_user_id=$($PSQL -t -A -c "SELECT id FROM users WHERE auth0_id NOT LIKE 'test-%' ORDER BY created_at LIMIT 1;")
+
+if [ -n "$real_user_id" ]; then
+    echo "Linking test data to user: $real_user_id"
+    $PSQL -c "
+        INSERT INTO recipe_book_users (user_id, recipe_book_id, role, created_at, updated_at)
+        VALUES
+            ('$real_user_id', 'b0000000-0000-0000-0000-000000000001', 'editor', now(), now()),
+            ('$real_user_id', 'b0000000-0000-0000-0000-000000000002', 'editor', now(), now()),
+            ('$real_user_id', 'b0000000-0000-0000-0000-000000000003', 'editor', now(), now())
+        ON CONFLICT DO NOTHING;
+    "
+else
+    echo "Warning: No real user found to link test data to."
+fi
+
+echo ""
+echo "Done! Test data added successfully."
+echo ""
+echo "Test users (all have auth0_id 'test-*' prefix):"
+echo "  @alice   - alice@test.com"
+echo "  @bob     - bob@test.com"
+echo "  @charlie - charlie@test.com"
+echo "  @diana   - diana@test.com"
+echo "  @eve     - eve@test.com (no account yet, email-only invites)"
+echo ""
+echo "Run './bin/console' to inspect the data."
