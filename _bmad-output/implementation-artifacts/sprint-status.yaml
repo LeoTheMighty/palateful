@@ -1,0 +1,142 @@
+# generated: 2026-03-12
+# project: palateful
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-12
+project: palateful
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Foundation & Authentication
+  epic-1: in-progress
+  1-1-app-shell-with-design-system-and-navigation: done
+  1-2-sign-in-with-google-and-apple: backlog
+  1-3-user-profile-management: backlog
+  1-4-onboarding-flow: backlog
+  1-5-empty-states-with-contextual-prompts: backlog
+  1-6-ci-cd-pipeline-setup: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Recipe Management & Organization
+  epic-2: backlog
+  2-1-recipe-crud-with-structured-fields: backlog
+  2-2-personal-recipe-books: backlog
+  2-3-recipe-photos: backlog
+  2-4-favorites-and-quick-access: backlog
+  2-5-archive-and-restore-recipes: backlog
+  2-6-move-and-copy-recipes-between-books: backlog
+  2-7-bulk-operations: backlog
+  2-8-archive-recipe-books: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Recipe Import Pipeline
+  epic-3: backlog
+  3-1-url-recipe-import: backlog
+  3-2-ocr-photo-import: backlog
+  3-3-bulk-import-from-csv-url-list: backlog
+  3-4-exception-review-queue: backlog
+  3-5-share-sheet-import: backlog
+  3-6-push-notifications-and-notification-preferences: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Recipe Versioning & Notes
+  epic-4: backlog
+  4-1-auto-versioning-on-recipe-edit: backlog
+  4-2-version-history-and-diffs: backlog
+  4-3-restore-previous-version: backlog
+  4-4-recipe-notes: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Search & Discovery
+  epic-5: backlog
+  5-1-recipe-search-by-name-ingredient-tag-and-free-text: backlog
+  5-2-fuzzy-and-semantic-search: backlog
+  5-3-search-filters: backlog
+  5-4-contextual-zero-scroll-home-screen: backlog
+  5-5-archive-view: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Cooking Mode
+  epic-6: backlog
+  6-1-cooking-mode-core-experience: backlog
+  6-2-gesture-navigation-for-messy-hands: backlog
+  6-3-concurrent-timers-with-background-notifications: backlog
+  6-4-offline-cooking-mode: backlog
+  6-5-post-cook-feedback-flow: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Household Collaboration
+  epic-7: backlog
+  7-1-shared-recipe-books-with-role-based-access: backlog
+  7-2-invitation-system: backlog
+  7-3-recipe-forking-with-lineage: backlog
+  7-4-real-time-shared-book-updates: backlog
+  7-5-partner-activity-notifications: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Shopping Lists
+  epic-8: backlog
+  8-1-shared-real-time-shopping-list: backlog
+  8-2-add-recipe-ingredients-to-shopping-list: backlog
+  8-3-check-off-items-with-real-time-sync: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: Meal Planning
+  epic-9: backlog
+  9-1-schedule-recipes-to-meal-calendar: backlog
+  9-2-browse-planned-meals-and-navigate-to-recipe: backlog
+  9-3-add-planned-meal-ingredients-to-shopping-list: backlog
+  9-4-aggregate-shopping-list-from-date-range: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10: Sharing, Export & Cross-Platform
+  epic-10: backlog
+  10-1-export-recipe-collection: backlog
+  10-2-share-recipe-via-public-link: backlog
+  10-3-native-platform-sharing: backlog
+  10-4-flutter-web-with-responsive-layout: backlog
+  10-5-mobile-app-store-builds: backlog
+  epic-10-retrospective: optional
+
+  # Epic 11: AI Assistant
+  epic-11: backlog
+  11-1-ai-chat-with-tool-calling: backlog
+  11-2-ai-recipe-search: backlog
+  11-3-ai-adds-notes-to-recipes: backlog
+  11-4-ai-recipe-suggestions: backlog
+  11-5-ai-in-cooking-mode-questions-and-answers: backlog
+  11-6-hands-free-voice-input-in-cooking-mode: backlog
+  epic-11-retrospective: optional
