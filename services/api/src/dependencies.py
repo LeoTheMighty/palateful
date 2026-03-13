@@ -60,13 +60,12 @@ async def get_current_user(
     # Get or create user
     logger.info(f"Claims: {claims}")
     auth0_id = claims["sub"]
-    user = database.find_by(User, auth0_id=auth0_id)
 
     user = database.find_or_create_by(
         User,
         auth0_id=auth0_id, 
         defaults={
-            "email": claims.get("email", ""),
+            "email": claims.get("email") or None,
             "name": claims.get("name"),
             "picture": claims.get("picture"),
             "email_verified": claims.get("email_verified", False)

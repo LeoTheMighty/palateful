@@ -43,7 +43,7 @@ development_status:
   # Epic 1: Foundation & Authentication
   epic-1: in-progress
   1-1-app-shell-with-design-system-and-navigation: done
-  1-2-sign-in-with-google-and-apple: backlog
+  1-2-sign-in-with-google-and-apple: in-progress
   1-3-user-profile-management: backlog
   1-4-onboarding-flow: backlog
   1-5-empty-states-with-contextual-prompts: backlog

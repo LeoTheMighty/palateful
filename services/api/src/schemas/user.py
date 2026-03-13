@@ -9,7 +9,7 @@ from pydantic import BaseModel
 class UserResponse(BaseModel):
     """Response schema for user data."""
     id: str
-    email: str
+    email: str | None = None
     name: str | None = None
     picture: str | None = None
     has_completed_onboarding: bool

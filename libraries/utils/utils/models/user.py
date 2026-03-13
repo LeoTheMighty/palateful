@@ -33,7 +33,7 @@ class User(Base):
 
     # Override id to use String (auth0_id based)
     auth0_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    email: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     picture: Mapped[str | None] = mapped_column(String, nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)

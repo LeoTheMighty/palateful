@@ -146,6 +146,117 @@ Click **Save Changes** at the bottom of the page.
    - Client Secret Signing Key (contents of downloaded key file)
 5. Click **Save**
 
+## Automatic Account Linking
+
+When users sign in with different providers (Google and Apple) using the same email address, Auth0 creates separate user profiles by default. This causes duplicate accounts in the database. The solution is a Post Login Action that automatically links accounts with matching verified emails.
+
+### Step 1: Create a Machine-to-Machine Application
+
+The Action needs Management API access to search and link users.
+
+1. In Auth0 Dashboard, go to **Applications > Applications**
+2. Click **Create Application**
+3. Name: `Palateful Account Linking`
+4. Type: **Machine to Machine Applications**
+5. Select the **Auth0 Management API**
+6. Grant these scopes:
+   - `read:users`
+   - `update:users`
+7. Click **Authorize**
+8. Note the **Client ID** and **Client Secret** from the application settings
+
+### Step 2: Create the Post Login Action
+
+1. Go to **Actions > Flows > Login**
+2. Click **+** (Add Action) > **Build from scratch**
+3. Name: `Link Accounts by Email`
+4. Runtime: **Node 22**
+5. Paste the following code:
+
+```javascript
+const { ManagementClient } = require('auth0');
+
+exports.onExecutePostLogin = async (event, api) => {
+  // Only link accounts with verified emails to prevent account takeover
+  if (!event.user.email || !event.user.email_verified) {
+    return;
+  }
+
+  // Skip if this user already has linked identities (already resolved)
+  if (event.user.identities && event.user.identities.length > 1) {
+    return;
+  }
+
+  const management = new ManagementClient({
+    domain: event.secrets.domain,
+    clientId: event.secrets.clientId,
+    clientSecret: event.secrets.clientSecret,
+  });
+
+  // Search for existing users with the same email
+  // getUsersByEmail is the v3 ManagementClient method (used in Auth0 Actions runtime)
+  const users = await management.getUsersByEmail(event.user.email);
+
+  // Find an existing verified account that isn't this one
+  const existingUser = users.find(
+    (u) => u.email_verified && u.user_id !== event.user.user_id
+  );
+
+  if (!existingUser) {
+    return; // No existing accounts to link
+  }
+
+  // Link: current user becomes secondary identity of existing user
+  const [provider, ...userIdParts] = event.user.user_id.split('|');
+  const providerUserId = userIdParts.join('|');
+
+  await management.linkUsers(existingUser.user_id, {
+    provider,
+    user_id: providerUserId,
+  });
+
+  // Deny this login so the user re-authenticates with the primary identity.
+  // On next sign-in (with either provider), Auth0 will resolve to the primary
+  // user automatically. The Flutter app catches this message and shows a
+  // friendly prompt.
+  api.access.deny('Your account has been linked. Please sign in again.');
+};
+```
+
+6. Click **Deploy**
+
+### Step 3: Add Secrets to the Action
+
+1. In the Action editor, click **Secrets** (key icon on the left)
+2. Add three secrets:
+   - `domain`: Your Auth0 domain (e.g., `dev-t08v6dtzszs25fnh.us.auth0.com`)
+   - `clientId`: The Client ID from the M2M app created in Step 1
+   - `clientSecret`: The Client Secret from the M2M app created in Step 1
+
+### Step 4: Add the Action to the Login Flow
+
+1. Go to **Actions > Flows > Login**
+2. Drag `Link Accounts by Email` from the right panel into the flow
+3. Place it after the default Login action
+4. Click **Apply**
+
+### How It Works
+
+1. User signs in with Google → account created as `google-oauth2|123`
+2. Same email signs in with Apple → Action detects existing Google account
+3. Action links Apple identity as secondary to the Google account
+4. Current login is denied with "Your account has been linked" message
+5. Flutter app shows "Your accounts have been linked! Please sign in again."
+6. User signs in again (with either provider) → resolves to primary account
+7. All subsequent logins work seamlessly with either provider
+
+### Important Notes
+
+- Only verified emails are linked (prevents account takeover via unverified emails)
+- The first provider used becomes the "primary" identity
+- After linking, the user can sign in with any linked provider
+- The `sub` claim in JWTs will always be the primary user's ID
+
 ## Configure Environment Variables
 
 Update your `.env` file with Auth0 credentials:
