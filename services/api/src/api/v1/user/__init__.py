@@ -11,6 +11,7 @@ from api.v1.user.push_tokens import (
 )
 from api.v1.user.search_users import SearchUsers
 from api.v1.user.set_username import SetUsername
+from api.v1.user.update_me import UpdateMe
 
 __all__ = [
     "GetMe",
@@ -22,4 +23,5 @@ __all__ = [
     "SetUsername",
     "CheckUsername",
     "SearchUsers",
+    "UpdateMe",
 ]

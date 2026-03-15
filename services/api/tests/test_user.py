@@ -112,6 +112,75 @@ class TestSetUsername:
         assert response.status_code == 422
 
 
+class TestUpdateMe:
+    """Tests for PUT /v1/users/me."""
+
+    def test_update_name_success(self, client, mock_user, mock_db):
+        """Test updating user name."""
+        mock_db.db.commit = MagicMock()
+        mock_db.db.refresh = MagicMock()
+
+        response = client.put(
+            "/v1/users/me",
+            json={"name": "New Name"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["message"] == "Profile updated successfully"
+        assert mock_user.name == "New Name"
+
+    def test_update_with_null_name(self, client, mock_user, mock_db):
+        """Test that sending null name doesn't change existing name."""
+        original_name = mock_user.name
+        mock_db.db.commit = MagicMock()
+        mock_db.db.refresh = MagicMock()
+
+        response = client.put(
+            "/v1/users/me",
+            json={"name": None}
+        )
+        assert response.status_code == 200
+        assert mock_user.name == original_name
+
+    def test_update_with_empty_body(self, client, mock_user, mock_db):
+        """Test that empty body still returns success."""
+        mock_db.db.commit = MagicMock()
+        mock_db.db.refresh = MagicMock()
+
+        response = client.put(
+            "/v1/users/me",
+            json={}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+
+    def test_update_with_whitespace_only_name(self, client, mock_user, mock_db):
+        """Test that whitespace-only name is rejected."""
+        response = client.put(
+            "/v1/users/me",
+            json={"name": "   "}
+        )
+        assert response.status_code == 400
+
+    def test_update_with_empty_string_name(self, client, mock_user, mock_db):
+        """Test that empty string name is rejected."""
+        response = client.put(
+            "/v1/users/me",
+            json={"name": ""}
+        )
+        assert response.status_code == 400
+
+    def test_update_with_too_long_name(self, client, mock_user, mock_db):
+        """Test that name over 100 characters is rejected."""
+        response = client.put(
+            "/v1/users/me",
+            json={"name": "A" * 101}
+        )
+        assert response.status_code == 422
+
+
 class TestSearchUsers:
     """Tests for GET /v1/users/search."""
 

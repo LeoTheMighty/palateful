@@ -9,6 +9,7 @@ from api.v1.user import (
     SearchUsers,
     SetUsername,
     UnregisterPushToken,
+    UpdateMe,
     UpdateNotificationPreferences,
 )
 from dependencies import get_current_user, get_database
@@ -28,6 +29,17 @@ async def get_me(
 ):
     """Get the current authenticated user."""
     return GetMe.call(user=user, database=database)
+
+
+@user_router.put("/me")
+async def update_me(
+    params: UpdateMe.Params,
+    user: User = Depends(get_current_user),
+    authorization: str = Header(None),
+    database: Database = Depends(get_database),
+):
+    """Update the current user's profile."""
+    return UpdateMe.call(params, user=user, database=database)
 
 
 @user_router.post("/me/complete-onboarding")

@@ -11,10 +11,13 @@ class UserResponse(BaseModel):
     id: str
     email: str | None = None
     name: str | None = None
+    username: str | None = None
     picture: str | None = None
     has_completed_onboarding: bool
     default_recipe_book_id: str | None = None
     created_at: datetime
+    username_changed_at: datetime | None = None
+    pending_invitation_count: int = 0
 
     class Config:
         from_attributes = True

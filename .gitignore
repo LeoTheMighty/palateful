@@ -90,5 +90,8 @@ app/lib/core/config/environment.generated.dart
 celerybeat-schedule
 celerybeat.pid
 
+# Test reports
+reports/
+
 # Alembic
 alembic/versions/__pycache__/
