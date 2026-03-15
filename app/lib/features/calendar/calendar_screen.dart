@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../shared/widgets/empty_state.dart';
 
 /// Placeholder screen for the Calendar tab.
 /// Will be replaced with meal planning functionality in Epic 9.
@@ -9,15 +10,10 @@ class CalendarScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Calendar')),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.calendar_today_outlined, size: 64),
-            SizedBox(height: 16),
-            Text('Meal planning coming soon'),
-          ],
-        ),
+      body: const EmptyStateWidget(
+        icon: Icons.calendar_today_outlined,
+        title: 'No meals planned yet',
+        subtitle: 'Your weekly meal plan will appear here',
       ),
     );
   }

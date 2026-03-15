@@ -46,7 +46,7 @@ development_status:
   1-2-sign-in-with-google-and-apple: done
   1-3-user-profile-management: done
   1-4-onboarding-flow: review
-  1-5-empty-states-with-contextual-prompts: backlog
+  1-5-empty-states-with-contextual-prompts: review
   1-6-ci-cd-pipeline-setup: backlog
   epic-1-retrospective: optional
 

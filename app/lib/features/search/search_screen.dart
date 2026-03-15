@@ -1,0 +1,353 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/di/injection.dart';
+import '../../core/services/api_client.dart';
+
+class SearchScreen extends StatefulWidget {
+  const SearchScreen({super.key});
+
+  @override
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  final _apiClient = getIt<ApiClient>();
+  final _searchController = TextEditingController();
+  Timer? _debounce;
+
+  bool _isLoading = false;
+  String? _error;
+  List<dynamic> _myRecipes = [];
+  List<dynamic> _publicRecipes = [];
+  List<dynamic> _users = [];
+  bool _hasSearched = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    if (query.length < 2) {
+      setState(() {
+        _myRecipes = [];
+        _publicRecipes = [];
+        _users = [];
+        _hasSearched = false;
+        _error = null;
+      });
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _performSearch(query);
+    });
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final response = await _apiClient.search(query);
+      if (mounted) {
+        setState(() {
+          _myRecipes = response.data['my_recipes'] ?? [];
+          _publicRecipes = response.data['public_recipes'] ?? [];
+          _users = response.data['users'] ?? [];
+          _isLoading = false;
+          _hasSearched = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Search failed: $e';
+          _isLoading = false;
+          _hasSearched = true;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.pop(),
+        ),
+        title: TextField(
+          controller: _searchController,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Search recipes, people...',
+            border: InputBorder.none,
+            hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          style: const TextStyle(fontSize: 16),
+          onChanged: _onSearchChanged,
+        ),
+        actions: [
+          if (_searchController.text.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: () {
+                _searchController.clear();
+                _onSearchChanged('');
+              },
+            ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            _error!,
+            style: TextStyle(color: colorScheme.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (!_hasSearched) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Search your recipes',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Find recipes by name, ingredient, or tag',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final hasResults =
+        _myRecipes.isNotEmpty || _publicRecipes.isNotEmpty || _users.isNotEmpty;
+
+    if (!hasResults) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 48, color: colorScheme.outline),
+            const SizedBox(height: 16),
+            Text(
+              'No results for "${_searchController.text}"',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        if (_myRecipes.isNotEmpty) ...[
+          _buildSectionHeader('My Recipes'),
+          ..._myRecipes.map((r) => _buildRecipeTile(r, isPublic: false)),
+        ],
+        if (_publicRecipes.isNotEmpty) ...[
+          _buildSectionHeader('Public Recipes'),
+          ..._publicRecipes.map((r) => _buildRecipeTile(r, isPublic: true)),
+        ],
+        if (_users.isNotEmpty) ...[
+          _buildSectionHeader('People'),
+          ..._users.map(_buildUserTile),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: colorScheme.outline,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecipeTile(dynamic recipe, {required bool isPublic}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final prepTime = recipe['prep_time'] as int?;
+    final cookTime = recipe['cook_time'] as int?;
+    final totalTime = (prepTime ?? 0) + (cookTime ?? 0);
+    final bookName = recipe['recipe_book_name'] as String? ?? '';
+    final ingredients = (recipe['ingredients'] as List?)?.cast<String>() ?? [];
+
+    String subtitle = bookName;
+    if (isPublic) {
+      final owner = recipe['owner'];
+      final username = owner?['username'] as String?;
+      if (username != null) {
+        subtitle = 'by @$username';
+      }
+    }
+    if (totalTime > 0) {
+      subtitle += ' · ${totalTime}m';
+    }
+
+    return ListTile(
+      leading: recipe['image_url'] != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                recipe['image_url'],
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildRecipeIcon(),
+              ),
+            )
+          : _buildRecipeIcon(),
+      title: Text(
+        recipe['name'] ?? 'Untitled',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: colorScheme.outline,
+              fontSize: 13,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (ingredients.isNotEmpty)
+            Text(
+              ingredients.take(3).join(', '),
+              style: TextStyle(
+                color: colorScheme.outline,
+                fontSize: 12,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
+      ),
+      trailing: Icon(Icons.chevron_right, color: colorScheme.outline),
+      onTap: () => context.push('/recipes/${recipe['id']}'),
+    );
+  }
+
+  Widget _buildRecipeIcon() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(Icons.restaurant, color: colorScheme.onSurfaceVariant),
+    );
+  }
+
+  Widget _buildUserTile(dynamic user) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final username = user['username'] as String?;
+    final name = user['name'] as String?;
+    final status = user['friendship_status'] as String? ?? 'none';
+
+    String statusLabel = '';
+    if (status == 'friends') statusLabel = 'Friends';
+    if (status == 'request_sent') statusLabel = 'Request sent';
+    if (status == 'request_received') statusLabel = 'Pending';
+
+    return ListTile(
+      leading: CircleAvatar(
+        radius: 24,
+        backgroundColor: colorScheme.primaryContainer,
+        backgroundImage:
+            user['picture'] != null ? NetworkImage(user['picture']) : null,
+        child: user['picture'] == null
+            ? Icon(Icons.person, color: colorScheme.onSurfaceVariant)
+            : null,
+      ),
+      title: Text(username != null ? '@$username' : 'Unknown'),
+      subtitle: Row(
+        children: [
+          if (name != null)
+            Flexible(
+              child: Text(
+                name,
+                style: TextStyle(
+                  color: colorScheme.outline,
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          if (name != null && statusLabel.isNotEmpty)
+            Text(
+              ' · ',
+              style: TextStyle(color: colorScheme.outline, fontSize: 13),
+            ),
+          if (statusLabel.isNotEmpty)
+            Text(
+              statusLabel,
+              style: TextStyle(
+                color: colorScheme.outline,
+                fontSize: 13,
+              ),
+            ),
+        ],
+      ),
+      trailing: Icon(Icons.chevron_right, color: colorScheme.outline),
+      onTap: () {
+        // TODO: Navigate to user profile
+      },
+    );
+  }
+}

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../shared/widgets/buttons.dart';
+import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
 import '../recipes/add_recipe/batch_parser_service.dart';
@@ -342,49 +343,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildEmptyState() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Icon(
-                Icons.restaurant_menu,
-                size: 56,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No recipes yet',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Add your first recipe to get started',
-              style: TextStyle(color: colorScheme.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _showAddRecipeSheet,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Recipe'),
-            ),
-          ],
-        ),
-      ),
+    return EmptyStateWidget(
+      icon: Icons.restaurant_menu,
+      title: 'No recipes yet',
+      subtitle: 'Add your first recipe to get started',
+      actionLabel: 'Add Recipe',
+      onAction: _showAddRecipeSheet,
+      actionIcon: Icons.add,
     );
   }
 
