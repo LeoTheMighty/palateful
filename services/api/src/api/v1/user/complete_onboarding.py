@@ -1,7 +1,8 @@
 """Complete user onboarding endpoint."""
 
 from schemas.user import OnboardingRequest, OnboardingResponse, RecipeBookResponse, UserResponse
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import APIException, Endpoint, success
+from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
@@ -13,7 +14,7 @@ class CompleteOnboarding(Endpoint):
     def execute(self, params: OnboardingRequest):
         """
         Complete the onboarding process:
-        1. Update user's name
+        1. Validate and update user's name
         2. Create a default recipe book
         3. Add user as owner of the recipe book
         4. Set the recipe book as user's default
@@ -21,8 +22,36 @@ class CompleteOnboarding(Endpoint):
         """
         user: User = self.user
 
-        # 1. Update user's name
-        user.name = params.name
+        # Guard against double-completion
+        if user.has_completed_onboarding:
+            user_response = UserResponse(
+                id=str(user.id),
+                email=user.email,
+                name=user.name,
+                username=user.username,
+                picture=user.picture,
+                has_completed_onboarding=user.has_completed_onboarding,
+                default_recipe_book_id=str(user.default_recipe_book_id) if user.default_recipe_book_id else None,
+                created_at=user.created_at,
+                username_changed_at=user.username_changed_at,
+            )
+            return success(
+                data=OnboardingResponse(
+                    success=True,
+                    user=user_response,
+                    start_method=params.start_method,
+                )
+            )
+
+        # 1. Validate and update user's name
+        name = params.name.strip()
+        if not name:
+            raise APIException(
+                status_code=400,
+                detail="Name cannot be empty",
+                code=ErrorCode.VALIDATION_ERROR,
+            )
+        user.name = name
 
         # 2. Create default recipe book
         recipe_book = RecipeBook(
@@ -57,10 +86,12 @@ class CompleteOnboarding(Endpoint):
             id=str(user.id),
             email=user.email,
             name=user.name,
+            username=user.username,
             picture=user.picture,
             has_completed_onboarding=user.has_completed_onboarding,
             default_recipe_book_id=str(user.default_recipe_book_id) if user.default_recipe_book_id else None,
             created_at=user.created_at,
+            username_changed_at=user.username_changed_at,
         )
 
         recipe_book_response = RecipeBookResponse(

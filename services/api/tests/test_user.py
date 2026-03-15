@@ -1,5 +1,6 @@
 """Tests for user endpoints."""
 
+import uuid
 from unittest.mock import MagicMock
 
 from conftest import MockExecuteResult, MockUser
@@ -266,3 +267,88 @@ class TestPushTokens:
             json={"token": "test-token-123"}
         )
         assert response.status_code == 200
+
+
+class TestCompleteOnboarding:
+    """Tests for POST /v1/users/me/complete-onboarding."""
+
+    def test_complete_onboarding_success(self, client, mock_user, mock_db):
+        """Test successful onboarding creates recipe book and marks user as onboarded."""
+        from datetime import UTC, datetime
+
+        mock_user.has_completed_onboarding = False
+        mock_user.username = None
+        mock_user.username_changed_at = None
+        mock_db.db.commit = MagicMock()
+        mock_db.db.flush = MagicMock()
+        mock_db.db.add = MagicMock()
+
+        def refresh_with_defaults(obj):
+            """Apply defaults that the DB would normally set."""
+            if not hasattr(obj, 'id') or obj.id is None:
+                obj.id = str(uuid.uuid4())
+            if hasattr(obj, 'created_at') and obj.created_at is None:
+                obj.created_at = datetime.now(UTC)
+            if hasattr(obj, 'updated_at') and obj.updated_at is None:
+                obj.updated_at = datetime.now(UTC)
+
+        mock_db.db.refresh = MagicMock(side_effect=refresh_with_defaults)
+
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "Leo", "start_method": "browse"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["start_method"] == "browse"
+        assert data["recipe_book"] is not None
+        assert data["recipe_book"]["name"] == "My Recipes"
+        assert mock_user.name == "Leo"
+        assert mock_user.has_completed_onboarding is True
+
+    def test_complete_onboarding_empty_name(self, client, mock_user, mock_db):
+        """Test that empty name is rejected."""
+        mock_user.has_completed_onboarding = False
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "", "start_method": "browse"}
+        )
+        assert response.status_code == 400
+
+    def test_complete_onboarding_whitespace_name(self, client, mock_user, mock_db):
+        """Test that whitespace-only name is rejected."""
+        mock_user.has_completed_onboarding = False
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "   ", "start_method": "browse"}
+        )
+        assert response.status_code == 400
+
+    def test_complete_onboarding_too_long_name(self, client, mock_user, mock_db):
+        """Test that name over 100 characters is rejected."""
+        mock_user.has_completed_onboarding = False
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "A" * 101, "start_method": "browse"}
+        )
+        assert response.status_code == 422
+
+    def test_complete_onboarding_already_onboarded(self, client, mock_user, mock_db):
+        """Test that already-onboarded user returns existing data without side effects."""
+        mock_user.has_completed_onboarding = True
+        mock_user.name = "Existing Name"
+        mock_user.default_recipe_book_id = "existing-book-id"
+        mock_db.db.add = MagicMock()
+
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "New Name", "start_method": "import"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        # Name should NOT have changed
+        assert mock_user.name == "Existing Name"
+        # db.add should NOT have been called (no new recipe book)
+        mock_db.db.add.assert_not_called()

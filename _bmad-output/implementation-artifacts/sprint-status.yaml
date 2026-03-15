@@ -44,8 +44,8 @@ development_status:
   epic-1: in-progress
   1-1-app-shell-with-design-system-and-navigation: done
   1-2-sign-in-with-google-and-apple: done
-  1-3-user-profile-management: in-progress
-  1-4-onboarding-flow: backlog
+  1-3-user-profile-management: done
+  1-4-onboarding-flow: review
   1-5-empty-states-with-contextual-prompts: backlog
   1-6-ci-cd-pipeline-setup: backlog
   epic-1-retrospective: optional

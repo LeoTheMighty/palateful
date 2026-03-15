@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class UserResponse(BaseModel):
@@ -39,6 +39,13 @@ class OnboardingRequest(BaseModel):
     """Request schema for completing onboarding."""
     name: str
     start_method: Literal["browse", "import", "scratch"]
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if len(v.strip()) > 100:
+            raise ValueError("Name must be at most 100 characters")
+        return v
 
 
 class OnboardingResponse(BaseModel):
