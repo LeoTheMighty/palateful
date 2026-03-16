@@ -6,6 +6,7 @@ import '../../features/auth/login_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
 import '../../features/onboarding/onboarding_start_screen.dart';
+import '../../features/recipe_books/archived_recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_detail_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
@@ -187,6 +188,12 @@ GoRouter get appRouter {
                 path: '/recipe-books',
                 builder: (context, state) => const RecipeBooksScreen(),
                 routes: [
+                  // Archived books (must be before :id to avoid path collision)
+                  GoRoute(
+                    path: 'archived',
+                    builder: (context, state) =>
+                        const ArchivedRecipeBooksScreen(),
+                  ),
                   GoRoute(
                     path: ':id',
                     builder: (context, state) {

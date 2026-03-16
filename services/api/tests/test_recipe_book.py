@@ -271,3 +271,189 @@ class TestDeleteRecipeBook:
         """Test deleting without any access fails."""
         response = client.delete("/v1/recipe-books/no-access-id")
         assert response.status_code == 403
+
+
+class TestArchiveRecipeBook:
+    """Tests for POST /v1/recipe-books/{id}/archive."""
+
+    def test_archive_recipe_book_success(self, client, mock_db, mock_user):
+        """Test archiving a recipe book as owner."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/archive")
+        assert response.status_code == 200
+        assert book.archived_at is not None
+
+    def test_archive_recipe_book_not_owner(self, client, mock_db, mock_user):
+        """Test that non-owner cannot archive."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="editor",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/archive")
+        assert response.status_code == 403
+
+    def test_archive_recipe_book_not_found(self, client, mock_db, mock_user):
+        """Test archiving nonexistent book."""
+        book_id = "nonexistent"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/archive")
+        assert response.status_code == 404
+
+    def test_archive_recipe_book_already_archived(self, client, mock_db, mock_user):
+        """Test archiving an already archived book."""
+        from datetime import UTC, datetime
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id, archived_at=datetime.now(UTC))
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/archive")
+        assert response.status_code == 400
+
+
+class TestRestoreRecipeBook:
+    """Tests for POST /v1/recipe-books/{id}/restore."""
+
+    def test_restore_recipe_book_success(self, client, mock_db, mock_user):
+        """Test restoring an archived recipe book."""
+        from datetime import UTC, datetime
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id, archived_at=datetime.now(UTC))
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/restore")
+        assert response.status_code == 200
+        assert book.archived_at is None
+
+    def test_restore_recipe_book_not_owner(self, client, mock_db, mock_user):
+        """Test that non-owner cannot restore."""
+        from datetime import UTC, datetime
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id, archived_at=datetime.now(UTC))
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="editor",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/restore")
+        assert response.status_code == 403
+
+    def test_restore_recipe_book_not_found(self, client, mock_db, mock_user):
+        """Test restoring nonexistent book."""
+        response = client.post("/v1/recipe-books/nonexistent/restore")
+        assert response.status_code == 404
+
+    def test_restore_recipe_book_not_archived(self, client, mock_db, mock_user):
+        """Test restoring a book that isn't archived."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)  # archived_at is None
+
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/restore")
+        assert response.status_code == 400
+
+
+class TestListArchivedRecipeBooks:
+    """Tests for GET /v1/recipe-books/archived."""
+
+    def test_list_archived_empty(self, client, mock_db, mock_user):
+        """Test listing archived books when none exist."""
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/recipe-books/archived")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_list_archived_with_results(self, client, mock_db, mock_user):
+        """Test listing archived books with results."""
+        from datetime import UTC, datetime
+
+        book = MockRecipeBook(
+            id="archived-book",
+            name="Old Book",
+            archived_at=datetime.now(UTC),
+        )
+        mock_db.db.query.return_value = MockQuery([(book, 3)])
+
+        response = client.get("/v1/recipe-books/archived")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["name"] == "Old Book"
+        assert data["items"][0]["recipe_count"] == 3
+        assert data["total"] == 1

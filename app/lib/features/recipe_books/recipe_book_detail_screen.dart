@@ -89,15 +89,13 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     });
   }
 
-  Future<void> _deleteRecipeBook() async {
-    final colorScheme = Theme.of(context).colorScheme;
-
+  Future<void> _archiveRecipeBook() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Recipe Book?'),
+        title: const Text('Archive Recipe Book?'),
         content: const Text(
-          'This will permanently delete this recipe book and all its recipes.',
+          'This book and its recipes will be moved to your archive. You can restore it anytime.',
         ),
         actions: [
           TextButton(
@@ -105,12 +103,8 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colorScheme.error,
-              foregroundColor: colorScheme.onError,
-            ),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: const Text('Archive'),
           ),
         ],
       ),
@@ -118,14 +112,18 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
 
     if (confirm == true) {
       try {
-        await _apiClient.deleteRecipeBook(widget.recipeBookId);
+        HapticFeedback.selectionClick();
+        await _apiClient.archiveRecipeBook(widget.recipeBookId);
         if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recipe book archived')),
+          );
           context.pop();
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not delete recipe book. Please try again.')),
+            const SnackBar(content: Text('Could not archive recipe book. Please try again.')),
           );
         }
       }
@@ -606,8 +604,8 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                   onSelected: (value) {
                     if (value == 'edit') {
                       _renameRecipeBook();
-                    } else if (value == 'delete') {
-                      _deleteRecipeBook();
+                    } else if (value == 'archive') {
+                      _archiveRecipeBook();
                     }
                   },
                   itemBuilder: (context) => [
@@ -622,12 +620,12 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                       ),
                     ),
                     PopupMenuItem(
-                      value: 'delete',
+                      value: 'archive',
                       child: Row(
                         children: [
-                          Icon(Icons.delete, color: colorScheme.error),
+                          Icon(Icons.archive_outlined, color: colorScheme.error),
                           const SizedBox(width: 8),
-                          Text('Delete', style: TextStyle(color: colorScheme.error)),
+                          Text('Archive', style: TextStyle(color: colorScheme.error)),
                         ],
                       ),
                     ),

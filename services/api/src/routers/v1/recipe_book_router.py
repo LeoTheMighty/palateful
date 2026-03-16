@@ -1,10 +1,13 @@
 """Recipe book endpoints router."""
 
 from api.v1.recipe_book import (
+    ArchiveRecipeBook,
     CreateRecipeBook,
     DeleteRecipeBook,
     GetRecipeBook,
+    ListArchivedRecipeBooks,
     ListRecipeBooks,
+    RestoreRecipeBook,
     UpdateRecipeBook,
 )
 from dependencies import get_current_user, get_database
@@ -39,6 +42,19 @@ async def create_recipe_book(
 ):
     """Create a new recipe book."""
     return CreateRecipeBook.call(params, user=user, database=database)
+
+
+# Archived recipe books (must be before /{recipe_book_id} to avoid path collision)
+@recipe_book_router.get("/archived")
+async def list_archived_recipe_books(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """List the user's archived recipe books."""
+    return ListArchivedRecipeBooks.call(
+        user=user,
+        database=database,
+    )
 
 
 @recipe_book_router.get("/{recipe_book_id}")
@@ -82,4 +98,32 @@ async def delete_recipe_book(
         recipe_book_id=recipe_book_id,
         user=user,
         database=database
+    )
+
+
+@recipe_book_router.post("/{recipe_book_id}/archive")
+async def archive_recipe_book(
+    recipe_book_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Archive a recipe book."""
+    return ArchiveRecipeBook.call(
+        recipe_book_id=recipe_book_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_book_router.post("/{recipe_book_id}/restore")
+async def restore_recipe_book(
+    recipe_book_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Restore an archived recipe book."""
+    return RestoreRecipeBook.call(
+        recipe_book_id=recipe_book_id,
+        user=user,
+        database=database,
     )

@@ -58,8 +58,8 @@ development_status:
   2-4-favorites-and-quick-access: done
   2-5-archive-and-restore-recipes: done
   2-6-move-and-copy-recipes-between-books: done
-  2-7-bulk-operations: review
-  2-8-archive-recipe-books: backlog
+  2-7-bulk-operations: done
+  2-8-archive-recipe-books: done
   epic-2-retrospective: optional
 
   # Epic 3: Recipe Import Pipeline

@@ -127,6 +127,18 @@ class ApiClient {
     return _dio.delete('/v1/recipe-books/$id');
   }
 
+  Future<Response> archiveRecipeBook(String id) {
+    return _dio.post('/v1/recipe-books/$id/archive');
+  }
+
+  Future<Response> restoreRecipeBook(String id) {
+    return _dio.post('/v1/recipe-books/$id/restore');
+  }
+
+  Future<Response> getArchivedRecipeBooks() {
+    return _dio.get('/v1/recipe-books/archived');
+  }
+
   // Recipe endpoints
   Future<Response> getRecipes(String bookId,
       {int limit = 20, int offset = 0, String? search}) {

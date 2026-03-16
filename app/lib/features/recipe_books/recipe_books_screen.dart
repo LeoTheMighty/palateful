@@ -152,6 +152,16 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/'),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.archive_outlined),
+            tooltip: 'Archived Books',
+            onPressed: () async {
+              await context.push('/recipe-books/archived');
+              _loadRecipeBooks();
+            },
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _createRecipeBook,
