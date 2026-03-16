@@ -554,3 +554,110 @@ class TestUpdateRecipeStepsAndTags:
         assert response.status_code == 200
         data = response.json()
         assert data["items"][0]["tags"] == ["quick", "easy"]
+
+
+class TestGetRecipePhotoUploadUrl:
+    """Tests for POST /v1/recipes/{recipe_id}/photo-upload-url."""
+
+    def test_get_photo_upload_url_success(self, client, mock_db, mock_user):
+        """Test getting a presigned URL for recipe photo upload."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/photo-upload-url",
+            json={"filename": "photo.jpg"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "upload_url" in data
+        assert "s3_key" in data
+        assert "content_type" in data
+        assert "image_url" in data
+        assert data["content_type"] == "image/jpeg"
+
+    def test_get_photo_upload_url_s3_key_pattern(self, client, mock_db, mock_user):
+        """Test that S3 key follows the expected pattern."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/photo-upload-url",
+            json={"filename": "my_photo.png"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        s3_key = data["s3_key"]
+        assert s3_key.startswith(f"recipe-photos/{mock_user.id}/{recipe_id}/")
+        assert s3_key.endswith(".png")
+        assert data["content_type"] == "image/png"
+
+    def test_get_photo_upload_url_requires_auth(self, unauthed_client, mock_db):
+        """Test that endpoint requires authentication."""
+        response = unauthed_client.post(
+            "/v1/recipes/some-id/photo-upload-url",
+            json={"filename": "photo.jpg"},
+        )
+        # FastAPI security dependency returns 422 when Authorization header is missing
+        assert response.status_code in (401, 403, 422)
+
+    def test_get_photo_upload_url_recipe_not_found(self, client, mock_db, mock_user):
+        """Test 404 when recipe doesn't exist."""
+        response = client.post(
+            "/v1/recipes/nonexistent/photo-upload-url",
+            json={"filename": "photo.jpg"},
+        )
+        assert response.status_code == 404
+
+    def test_get_photo_upload_url_no_permission(self, client, mock_db, mock_user):
+        """Test 403 when user doesn't have edit access."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/photo-upload-url",
+            json={"filename": "photo.jpg"},
+        )
+        assert response.status_code == 403

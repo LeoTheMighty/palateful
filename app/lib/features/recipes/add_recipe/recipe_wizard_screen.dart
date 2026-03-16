@@ -1,6 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 
@@ -29,6 +33,8 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
 
   // Form data
   String? _imageUrl;
+  Uint8List? _imageBytes;
+  String? _imageFileName;
   List<Map<String, dynamic>> _ingredients = [];
   List<Map<String, dynamic>> _steps = [];
   String? _mealType;
@@ -138,19 +144,50 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
         'steps': structuredSteps.isEmpty ? [] : structuredSteps,
       };
 
-      await _apiClient.createRecipe(_selectedRecipeBookId!, recipeData);
+      final createResponse = await _apiClient.createRecipe(_selectedRecipeBookId!, recipeData);
+
+      // If image was picked, upload to S3 and update recipe with image_url
+      var photoFailed = false;
+      if (_imageBytes != null && _imageFileName != null) {
+        final recipeId = createResponse.data['id'] as String;
+        final uploadUrlResponse = await _apiClient.getRecipePhotoUploadUrl(
+          recipeId,
+          _imageFileName!,
+        );
+        final uploadUrl = uploadUrlResponse.data['upload_url'] as String;
+        final contentType = uploadUrlResponse.data['content_type'] as String;
+        final imageUrl = uploadUrlResponse.data['image_url'] as String;
+
+        final uploadResponse = await http.put(
+          Uri.parse(uploadUrl),
+          headers: {'Content-Type': contentType},
+          body: _imageBytes,
+        );
+
+        if (uploadResponse.statusCode == 200) {
+          await _apiClient.updateRecipe(recipeId, {'image_url': imageUrl});
+        } else {
+          photoFailed = true;
+        }
+      }
 
       if (mounted) {
         HapticFeedback.heavyImpact();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recipe created successfully!')),
+          SnackBar(
+            content: Text(
+              photoFailed
+                  ? 'Recipe created, but photo could not be saved. You can add it from the edit screen.'
+                  : 'Recipe created successfully!',
+            ),
+          ),
         );
         context.pop();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create recipe: $e')),
+          const SnackBar(content: Text('Could not create recipe. Please try again.')),
         );
         setState(() => _isSaving = false);
       }
@@ -194,8 +231,11 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
               children: [
                 _StepName(
                   nameController: _nameController,
-                  imageUrl: _imageUrl,
-                  onImageChanged: (v) => setState(() => _imageUrl = v),
+                  imageBytes: _imageBytes,
+                  onImagePicked: (bytes, fileName) => setState(() {
+                    _imageBytes = bytes;
+                    _imageFileName = fileName;
+                  }),
                 ),
                 _StepIngredients(
                   ingredients: _ingredients,
@@ -316,14 +356,61 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
 // Step 1: Name & Photo
 class _StepName extends StatelessWidget {
   final TextEditingController nameController;
-  final String? imageUrl;
-  final ValueChanged<String?> onImageChanged;
+  final Uint8List? imageBytes;
+  final void Function(Uint8List bytes, String fileName) onImagePicked;
 
   const _StepName({
     required this.nameController,
-    required this.imageUrl,
-    required this.onImageChanged,
+    required this.imageBytes,
+    required this.onImagePicked,
   });
+
+  Future<void> _pickImage(BuildContext context) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take Photo'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    try {
+      final image = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 85,
+      );
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        onImagePicked(bytes, image.name);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not pick image. Please try again.')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -362,20 +449,17 @@ class _StepName extends StatelessWidget {
           ),
           const SizedBox(height: 32),
 
-          // Photo placeholder
+          // Photo section
           Text(
             'Add a photo (optional)',
             style: textTheme.titleSmall,
           ),
           const SizedBox(height: 12),
           GestureDetector(
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Photo picker coming soon!')),
-              );
-            },
+            onTap: () => _pickImage(context),
             child: Container(
               height: 180,
+              width: double.infinity,
               decoration: BoxDecoration(
                 color: colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
@@ -383,25 +467,52 @@ class _StepName extends StatelessWidget {
                   color: colorScheme.outlineVariant,
                 ),
               ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_a_photo_outlined,
-                      size: 48,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Tap to add photo',
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+              clipBehavior: Clip.antiAlias,
+              child: imageBytes != null
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.memory(
+                          imageBytes!,
+                          fit: BoxFit.cover,
+                        ),
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface.withValues(alpha: 0.8),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.edit,
+                              size: 20,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.add_a_photo_outlined,
+                            size: 48,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Tap to add photo',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
             ),
           ),
         ],

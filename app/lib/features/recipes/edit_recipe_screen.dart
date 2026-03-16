@@ -1,6 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 
@@ -34,6 +39,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   final _tagController = TextEditingController();
 
   // Form data
+  String? _imageUrl;
+  bool _isUploadingPhoto = false;
   List<Map<String, dynamic>> _steps = [];
   final List<TextEditingController> _stepControllers = [];
   List<String> _tags = [];
@@ -77,6 +84,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       _cookTimeController.text = data['cook_time']?.toString() ?? '';
       _servingsController.text = data['servings']?.toString() ?? '';
       _sourceUrlController.text = data['source_url'] ?? '';
+      _imageUrl = data['image_url'] as String?;
       _tags = List<String>.from(data['tags'] ?? []);
 
       final stepsData = data['steps'] as List? ?? [];
@@ -95,7 +103,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Failed to load recipe: $e';
+          _error = 'Failed to load recipe. Please try again.';
           _isLoading = false;
         });
       }
@@ -154,7 +162,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       if (mounted) {
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save: $e')),
+          const SnackBar(content: Text('Failed to save. Please try again.')),
         );
       }
     }
@@ -197,6 +205,80 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       _tags.remove(tag);
     });
     _scheduleSave();
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take Photo'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (source == null) return;
+
+    try {
+      final image = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+
+      setState(() => _isUploadingPhoto = true);
+
+      final bytes = await image.readAsBytes();
+      final uploadUrlResponse = await _apiClient.getRecipePhotoUploadUrl(
+        widget.recipeId,
+        image.name,
+      );
+      final uploadUrl = uploadUrlResponse.data['upload_url'] as String;
+      final contentType = uploadUrlResponse.data['content_type'] as String;
+      final imageUrl = uploadUrlResponse.data['image_url'] as String;
+
+      final uploadResponse = await http.put(
+        Uri.parse(uploadUrl),
+        headers: {'Content-Type': contentType},
+        body: bytes,
+      );
+
+      if (uploadResponse.statusCode == 200) {
+        await _apiClient.updateRecipe(widget.recipeId, {'image_url': imageUrl});
+        if (mounted) {
+          setState(() {
+            _imageUrl = imageUrl;
+            _isUploadingPhoto = false;
+          });
+        }
+      } else {
+        throw Exception('Upload failed');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not upload photo. Please try again.')),
+        );
+      }
+    }
   }
 
   @override
@@ -257,6 +339,94 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Photo section
+                      GestureDetector(
+                        onTap: _isUploadingPhoto ? null : _pickAndUploadPhoto,
+                        child: Container(
+                          height: 180,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: colorScheme.outlineVariant),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _isUploadingPhoto
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const CircularProgressIndicator(strokeWidth: 2),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'Uploading photo...',
+                                        style: textTheme.bodySmall?.copyWith(
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : _imageUrl != null
+                                  ? Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        CachedNetworkImage(
+                                          imageUrl: _imageUrl!,
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) => Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                          errorWidget: (context, url, error) => Icon(
+                                            Icons.restaurant,
+                                            size: 48,
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        Positioned(
+                                          bottom: 8,
+                                          right: 8,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: colorScheme.surface.withValues(alpha: 0.8),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Icon(
+                                              Icons.edit,
+                                              size: 20,
+                                              color: colorScheme.onSurface,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.add_a_photo_outlined,
+                                            size: 48,
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Tap to add photo',
+                                            style: textTheme.bodySmall?.copyWith(
+                                              color: colorScheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       // Name
                       TextField(
                         controller: _nameController,

@@ -2,6 +2,7 @@
 
 from api.v1.recipe.create_recipe import CreateRecipe
 from api.v1.recipe.delete_recipe import DeleteRecipe
+from api.v1.recipe.get_photo_upload_url import GetRecipePhotoUploadUrl
 from api.v1.recipe.get_public_recipe import GetPublicRecipe
 from api.v1.recipe.get_recipe import GetRecipe
 from api.v1.recipe.list_recipes import ListRecipes
@@ -12,6 +13,7 @@ __all__ = [
     "CreateRecipe",
     "GetRecipe",
     "GetPublicRecipe",
+    "GetRecipePhotoUploadUrl",
     "UpdateRecipe",
     "DeleteRecipe",
 ]

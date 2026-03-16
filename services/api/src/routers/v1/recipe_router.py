@@ -6,6 +6,7 @@ from api.v1.recipe import (
     DeleteRecipe,
     GetPublicRecipe,
     GetRecipe,
+    GetRecipePhotoUploadUrl,
     ListRecipes,
     UpdateRecipe,
 )
@@ -83,6 +84,22 @@ async def update_recipe(
         params=params,
         user=user,
         database=database
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/photo-upload-url")
+async def get_recipe_photo_upload_url(
+    recipe_id: str,
+    params: GetRecipePhotoUploadUrl.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Generate a presigned URL for uploading a recipe photo."""
+    return GetRecipePhotoUploadUrl.call(
+        recipe_id=recipe_id,
+        params=params,
+        user=user,
+        database=database,
     )
 
 
