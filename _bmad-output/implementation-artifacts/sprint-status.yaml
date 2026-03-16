@@ -51,8 +51,8 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Recipe Management & Organization
-  epic-2: backlog
-  2-1-recipe-crud-with-structured-fields: backlog
+  epic-2: in-progress
+  2-1-recipe-crud-with-structured-fields: done
   2-2-personal-recipe-books: backlog
   2-3-recipe-photos: backlog
   2-4-favorites-and-quick-access: backlog

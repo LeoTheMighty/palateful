@@ -106,6 +106,7 @@ class GetPublicRecipe(Endpoint):
                 cook_time=recipe.cook_time,
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
+                tags=recipe.tags or [],
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 recipe_book_name=recipe_book.name,
@@ -151,6 +152,7 @@ class GetPublicRecipe(Endpoint):
         cook_time: int | None = None
         image_url: str | None = None
         source_url: str | None = None
+        tags: list[str] = []
         ingredients: list["GetPublicRecipe.IngredientResponse"] = []
         steps: list["GetPublicRecipe.StepResponse"] = []
         recipe_book_name: str

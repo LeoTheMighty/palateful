@@ -110,6 +110,7 @@ class MockRecipe(MockModel):
             "cook_time": 20,
             "image_url": None,
             "source_url": None,
+            "tags": [],
             "recipe_book_id": str(uuid.uuid4()),
             "embedding": None,
         }

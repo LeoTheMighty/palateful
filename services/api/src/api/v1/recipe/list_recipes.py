@@ -75,6 +75,7 @@ class ListRecipes(Endpoint):
                 cook_time=recipe.cook_time,
                 servings=recipe.servings,
                 image_url=recipe.image_url,
+                tags=recipe.tags or [],
                 created_at=recipe.created_at
             )
             for recipe in recipes
@@ -97,6 +98,7 @@ class ListRecipes(Endpoint):
         cook_time: int | None = None
         servings: int | None = None
         image_url: str | None = None
+        tags: list[str] = []
         created_at: datetime
 
     class Response(BaseModel):

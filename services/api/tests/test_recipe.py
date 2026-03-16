@@ -7,6 +7,7 @@ from conftest import (
     MockRecipeBook,
     MockRecipeBookUser,
     MockRecipeIngredient,
+    MockRecipeStep,
 )
 
 
@@ -252,3 +253,304 @@ class TestDeleteRecipe:
 
         response = client.delete(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 403
+
+
+class TestCreateRecipeWithStepsAndTags:
+    """Tests for creating recipes with steps and tags."""
+
+    def test_create_recipe_with_steps(self, client, mock_db, mock_user):
+        """Test creating a recipe with structured steps."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={
+                "name": "Pasta Carbonara",
+                "steps": [
+                    {"step_number": 1, "instruction": "Boil water and cook pasta"},
+                    {"step_number": 2, "instruction": "Fry guanciale until crispy"},
+                    {"step_number": 3, "instruction": "Mix eggs and cheese"},
+                ],
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert len(data["steps"]) == 3
+        assert data["steps"][0]["instruction"] == "Boil water and cook pasta"
+        assert data["steps"][0]["step_number"] == 1
+        assert data["steps"][2]["step_number"] == 3
+
+    def test_create_recipe_with_tags(self, client, mock_db, mock_user):
+        """Test creating a recipe with tags."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={
+                "name": "Quick Pasta",
+                "tags": ["italian", "quick", "weeknight"],
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["tags"] == ["italian", "quick", "weeknight"]
+
+    def test_create_recipe_without_steps_tags(self, client, mock_db, mock_user):
+        """Test backward compat: create recipe without steps or tags."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={"name": "Simple Recipe"}
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["tags"] == []
+        assert data["steps"] == []
+
+    def test_create_recipe_step_ordering(self, client, mock_db, mock_user):
+        """Test that steps preserve step_number ordering."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={
+                "name": "Ordered Steps",
+                "steps": [
+                    {"instruction": "First step"},
+                    {"instruction": "Second step"},
+                    {"instruction": "Third step"},
+                ],
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        # step_number auto-assigned from index+1 when not provided
+        assert data["steps"][0]["step_number"] == 1
+        assert data["steps"][1]["step_number"] == 2
+        assert data["steps"][2]["step_number"] == 3
+
+
+class TestUpdateRecipeStepsAndTags:
+    """Tests for updating recipe steps and tags."""
+
+    def _setup_update(self, mock_db, mock_user, recipe_id="test-recipe-id",
+                      book_id="test-book-id", tags=None):
+        """Helper to set up common update test fixtures."""
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, tags=tags or [])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([])
+        return recipe
+
+    def test_update_recipe_tags(self, client, mock_db, mock_user):
+        """Test updating recipe tags replaces them."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"tags": ["dinner", "healthy"]}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tags"] == ["dinner", "healthy"]
+
+    def test_update_recipe_steps(self, client, mock_db, mock_user):
+        """Test updating recipe steps replaces them."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        from utils.models.recipe_step import RecipeStep
+
+        # Simulate the steps that would be returned after delete+recreate
+        step1 = MockRecipeStep(recipe_id=recipe_id, step_number=1, instruction="New step 1")
+        step2 = MockRecipeStep(recipe_id=recipe_id, step_number=2, instruction="New step 2")
+        mock_db.set_where(RecipeStep, [step1, step2])
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={
+                "steps": [
+                    {"step_number": 1, "instruction": "New step 1"},
+                    {"step_number": 2, "instruction": "New step 2"},
+                ]
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["steps"]) == 2
+        assert data["steps"][0]["instruction"] == "New step 1"
+        assert data["steps"][1]["instruction"] == "New step 2"
+
+    def test_update_recipe_without_steps_tags(self, client, mock_db, mock_user):
+        """Test updating recipe name only doesn't affect steps/tags."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id,
+                          tags=["existing"])
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"name": "Updated Name"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Updated Name"
+        # tags should still be the existing ones
+        assert data["tags"] == ["existing"]
+
+    def test_get_recipe_returns_tags(self, client, mock_db, mock_user):
+        """Test that get recipe includes tags in response."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(
+            id=recipe_id,
+            recipe_book_id=book_id,
+            tags=["italian", "pasta"]
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tags"] == ["italian", "pasta"]
+
+    def test_get_recipe_returns_steps(self, client, mock_db, mock_user):
+        """Test that get recipe includes steps in order."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        step1 = MockRecipeStep(
+            recipe_id=recipe_id, step_number=1, instruction="Heat oil"
+        )
+        step2 = MockRecipeStep(
+            recipe_id=recipe_id, step_number=2, instruction="Add garlic"
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_step import RecipeStep
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_where(RecipeStep, [step1, step2])
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["steps"]) == 2
+        assert data["steps"][0]["step_number"] == 1
+        assert data["steps"][0]["instruction"] == "Heat oil"
+        assert data["steps"][1]["step_number"] == 2
+        assert data["steps"][1]["instruction"] == "Add garlic"
+
+    def test_list_recipes_returns_tags(self, client, mock_db, mock_user):
+        """Test that list recipes includes tags."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        recipe = MockRecipe(
+            recipe_book_id=book_id,
+            name="Tagged Recipe",
+            tags=["quick", "easy"]
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([recipe])
+
+        response = client.get(f"/v1/recipe-books/{book_id}/recipes")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"][0]["tags"] == ["quick", "easy"]

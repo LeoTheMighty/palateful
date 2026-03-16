@@ -11,6 +11,7 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
+from utils.models.recipe_step import RecipeStep
 from utils.models.user import User
 from utils.services.units.conversion import normalize_quantity
 
@@ -63,6 +64,7 @@ class CreateRecipe(Endpoint):
             cook_time=params.cook_time,
             image_url=params.image_url,
             source_url=params.source_url,
+            tags=params.tags or [],
             recipe_book_id=book_id
         )
         self.database.create(recipe)
@@ -123,6 +125,36 @@ class CreateRecipe(Endpoint):
                 )
             )
 
+        # Create recipe steps
+        step_responses = []
+        for idx, step_input in enumerate(params.steps):
+            step = RecipeStep(
+                recipe_id=recipe.id,
+                step_number=step_input.step_number if step_input.step_number is not None else idx + 1,
+                instruction=step_input.instruction,
+                active_time_minutes=step_input.active_time_minutes,
+                timers=step_input.timers,
+                wait_time_minutes=step_input.wait_time_minutes,
+                wait_type=step_input.wait_type,
+                can_prep_ahead=step_input.can_prep_ahead,
+                is_optional=step_input.is_optional,
+            )
+            self.database.create(step)
+            self.database.db.refresh(step)
+            step_responses.append(
+                CreateRecipe.StepResponse(
+                    id=str(step.id),
+                    step_number=step.step_number,
+                    instruction=step.instruction,
+                    active_time_minutes=step.active_time_minutes,
+                    timers=step.timers,
+                    wait_time_minutes=step.wait_time_minutes,
+                    wait_type=step.wait_type,
+                    can_prep_ahead=step.can_prep_ahead,
+                    is_optional=step.is_optional,
+                )
+            )
+
         return success(
             data=CreateRecipe.Response(
                 id=recipe.id,
@@ -134,7 +166,9 @@ class CreateRecipe(Endpoint):
                 cook_time=recipe.cook_time,
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
+                tags=recipe.tags or [],
                 ingredients=ingredient_responses,
+                steps=step_responses,
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at
             ),
@@ -148,6 +182,16 @@ class CreateRecipe(Endpoint):
         notes: str | None = None
         is_optional: bool = False
 
+    class StepInput(BaseModel):
+        step_number: int | None = None
+        instruction: str
+        active_time_minutes: int | None = None
+        timers: list[dict] | None = None
+        wait_time_minutes: int | None = None
+        wait_type: str | None = None
+        can_prep_ahead: bool = False
+        is_optional: bool = False
+
     class Params(BaseModel):
         name: str
         description: str | None = None
@@ -157,7 +201,9 @@ class CreateRecipe(Endpoint):
         cook_time: int | None = None
         image_url: str | None = None
         source_url: str | None = None
+        tags: list[str] = []
         ingredients: list["CreateRecipe.IngredientInput"] = []
+        steps: list["CreateRecipe.StepInput"] = []
 
     class IngredientSummary(BaseModel):
         id: str
@@ -173,6 +219,17 @@ class CreateRecipe(Endpoint):
         is_optional: bool = False
         order_index: int = 0
 
+    class StepResponse(BaseModel):
+        id: str
+        step_number: int
+        instruction: str
+        active_time_minutes: int | None = None
+        timers: list[dict] | None = None
+        wait_time_minutes: int | None = None
+        wait_type: str | None = None
+        can_prep_ahead: bool = False
+        is_optional: bool = False
+
     class Response(BaseModel):
         id: str
         name: str
@@ -183,6 +240,8 @@ class CreateRecipe(Endpoint):
         cook_time: int | None = None
         image_url: str | None = None
         source_url: str | None = None
+        tags: list[str] = []
         ingredients: list["CreateRecipe.IngredientResponse"] = []
+        steps: list["CreateRecipe.StepResponse"] = []
         created_at: datetime
         updated_at: datetime

@@ -113,6 +113,8 @@ class GetRecipe(Endpoint):
                 cook_time=recipe.cook_time,
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
+                tags=recipe.tags or [],
+                can_edit=membership.role in ("owner", "editor"),
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 created_at=recipe.created_at,
@@ -157,6 +159,8 @@ class GetRecipe(Endpoint):
         cook_time: int | None = None
         image_url: str | None = None
         source_url: str | None = None
+        tags: list[str] = []
+        can_edit: bool = False
         ingredients: list["GetRecipe.IngredientResponse"] = []
         steps: list["GetRecipe.StepResponse"] = []
         created_at: datetime

@@ -10,6 +10,7 @@ import '../../features/recipe_books/recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_detail_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
 import '../../features/recipes/cook_mode/cook_mode_screen.dart';
+import '../../features/recipes/edit_recipe_screen.dart';
 import '../../features/recipes/add_recipe/recipe_wizard_screen.dart';
 import '../../features/recipes/add_recipe/photo_capture_screen.dart';
 import '../../features/recipes/add_recipe/file_import_screen.dart';
@@ -104,6 +105,18 @@ GoRouter get appRouter {
             context: context,
             state: state,
             child: RecipeDetailScreen(recipeId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/recipes/:id/edit',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return buildReduceMotionPage(
+            context: context,
+            state: state,
+            child: EditRecipeScreen(recipeId: id),
           );
         },
       ),

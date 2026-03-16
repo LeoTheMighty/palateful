@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import UUID, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import ARRAY, UUID, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -31,6 +31,7 @@ class Recipe(Base):
     cook_time: Mapped[int | None] = mapped_column(Integer, nullable=True)  # minutes
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     source_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=list)
 
     # Embedding for semantic search (384 dimensions from all-MiniLM-L6-v2)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
