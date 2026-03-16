@@ -2,6 +2,7 @@
 
 
 from api.v1.recipe import (
+    CopyRecipe,
     CreateRecipe,
     DeleteRecipe,
     GetPublicRecipe,
@@ -10,6 +11,7 @@ from api.v1.recipe import (
     ListArchivedRecipes,
     ListFavorites,
     ListRecipes,
+    MoveRecipe,
     RestoreRecipe,
     ToggleFavorite,
     UpdateRecipe,
@@ -169,6 +171,38 @@ async def restore_recipe(
     """Restore an archived recipe."""
     return RestoreRecipe.call(
         recipe_id=recipe_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/move")
+async def move_recipe(
+    recipe_id: str,
+    params: MoveRecipe.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Move a recipe to a different book."""
+    return MoveRecipe.call(
+        recipe_id=recipe_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/copy")
+async def copy_recipe(
+    recipe_id: str,
+    params: CopyRecipe.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Copy a recipe to a different book."""
+    return CopyRecipe.call(
+        recipe_id=recipe_id,
+        params=params,
         user=user,
         database=database,
     )

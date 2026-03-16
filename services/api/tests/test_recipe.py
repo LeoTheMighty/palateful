@@ -952,3 +952,302 @@ class TestGetRecipeFavoriteField:
         assert response.status_code == 200
         data = response.json()
         assert data["is_favorite"] is False
+
+
+class TestMoveRecipe:
+    """Tests for POST /v1/recipes/{recipe_id}/move."""
+
+    def test_move_recipe_success(self, client, mock_db, mock_user):
+        """Test moving a recipe to another book."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        dest_book_id = "dest-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=src_book_id)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="owner",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/move",
+            json={"destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == recipe_id
+        assert data["recipe_book_id"] == dest_book_id
+        assert recipe.recipe_book_id == dest_book_id
+
+    def test_move_recipe_not_found(self, client, mock_db, mock_user):
+        """Test moving a nonexistent recipe."""
+        response = client.post(
+            "/v1/recipes/nonexistent/move",
+            json={"destination_book_id": "some-book"},
+        )
+        assert response.status_code == 404
+
+    def test_move_recipe_same_book(self, client, mock_db, mock_user):
+        """Test moving recipe to same book fails."""
+        recipe_id = "test-recipe-id"
+        book_id = "same-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/move",
+            json={"destination_book_id": book_id},
+        )
+        assert response.status_code == 400
+
+    def test_move_recipe_no_source_permission(self, client, mock_db, mock_user):
+        """Test moving recipe without source book edit permission."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=src_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/move",
+            json={"destination_book_id": "dest-book-id"},
+        )
+        assert response.status_code == 403
+
+    def test_move_recipe_no_dest_permission(self, client, mock_db, mock_user):
+        """Test moving recipe without destination book edit permission."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        dest_book_id = "dest-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=src_book_id)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="owner",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/move",
+            json={"destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 403
+
+    def test_move_recipe_dest_not_found(self, client, mock_db, mock_user):
+        """Test moving recipe to nonexistent destination book."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=src_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/move",
+            json={"destination_book_id": "nonexistent-book"},
+        )
+        assert response.status_code == 404
+
+
+class TestCopyRecipe:
+    """Tests for POST /v1/recipes/{recipe_id}/copy."""
+
+    def test_copy_recipe_success(self, client, mock_db, mock_user):
+        """Test copying a recipe to another book."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        dest_book_id = "dest-book-id"
+        recipe = MockRecipe(
+            id=recipe_id,
+            recipe_book_id=src_book_id,
+            name="Pasta",
+            tags=["italian"],
+        )
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="viewer",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_step import RecipeStep
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+        mock_db.set_where(RecipeIngredient, [
+            MockRecipeIngredient(recipe_id=recipe_id, order_index=0),
+        ])
+        mock_db.set_where(RecipeStep, [
+            MockRecipeStep(recipe_id=recipe_id, step_number=1, instruction="Boil"),
+        ])
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/copy",
+            json={"destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert "id" in data
+        # New recipe should have a different ID
+        assert data["id"] != recipe_id
+
+    def test_copy_recipe_not_found(self, client, mock_db, mock_user):
+        """Test copying a nonexistent recipe."""
+        response = client.post(
+            "/v1/recipes/nonexistent/copy",
+            json={"destination_book_id": "some-book"},
+        )
+        assert response.status_code == 404
+
+    def test_copy_recipe_no_source_access(self, client, mock_db, mock_user):
+        """Test copying recipe without source book access."""
+        recipe_id = "test-recipe-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/copy",
+            json={"destination_book_id": "dest-book"},
+        )
+        assert response.status_code == 403
+
+    def test_copy_recipe_no_dest_permission(self, client, mock_db, mock_user):
+        """Test copying recipe without destination book edit permission."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        dest_book_id = "dest-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=src_book_id)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="viewer",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/copy",
+            json={"destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 403
+
+    def test_copy_recipe_dest_not_found(self, client, mock_db, mock_user):
+        """Test copying recipe to nonexistent destination book."""
+        recipe_id = "test-recipe-id"
+        src_book_id = "src-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=src_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/copy",
+            json={"destination_book_id": "nonexistent-book"},
+        )
+        assert response.status_code == 404

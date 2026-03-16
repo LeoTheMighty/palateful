@@ -21,6 +21,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   List<dynamic> _recipes = [];
   bool _isLoading = true;
   String? _error;
+  bool _isMovingOrCopying = false;
 
   @override
   void initState() {
@@ -168,6 +169,167 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     } finally {
       nameController.dispose();
       descriptionController.dispose();
+    }
+  }
+
+  Future<Map<String, dynamic>?> _showBookPicker({String? excludeBookId}) async {
+    try {
+      final response = await _apiClient.getRecipeBooks();
+      final books = ((response.data['items'] as List?) ?? [])
+          .where((b) => b['id']?.toString() != excludeBookId)
+          .toList();
+
+      if (!mounted) return null;
+      if (books.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No other books available')),
+        );
+        return null;
+      }
+
+      return showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'Choose a book',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: books.map((book) => ListTile(
+                          leading: const Icon(Icons.menu_book_outlined),
+                          title: Text(book['name'] ?? 'Untitled'),
+                          subtitle: Text('${book['recipe_count'] ?? 0} recipes'),
+                          onTap: () => Navigator.pop(context, book),
+                        )).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load books. Please try again.')),
+        );
+      }
+      return null;
+    }
+  }
+
+  void _showRecipeActions(dynamic recipe) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final recipeId = recipe['id']?.toString();
+    if (recipeId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (recipe['can_edit'] != false)
+              ListTile(
+                leading: const Icon(Icons.drive_file_move_outlined),
+                title: const Text('Move to Book...'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _moveRecipe(recipe);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: const Text('Copy to Book...'),
+              onTap: () {
+                Navigator.pop(context);
+                _copyRecipe(recipe);
+              },
+            ),
+            if (recipe['can_edit'] != false)
+              ListTile(
+                leading: Icon(Icons.archive_outlined, color: colorScheme.error),
+                title: Text('Archive', style: TextStyle(color: colorScheme.error)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _archiveRecipe(recipe);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _moveRecipe(dynamic recipe) async {
+    if (_isMovingOrCopying) return;
+    final recipeId = recipe['id']?.toString();
+    if (recipeId == null) return;
+
+    final book = await _showBookPicker(excludeBookId: widget.recipeBookId);
+    if (book == null) return;
+
+    setState(() => _isMovingOrCopying = true);
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.moveRecipe(recipeId, book['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recipe moved to ${book['name']}')),
+        );
+        _loadRecipeBook();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not move recipe. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMovingOrCopying = false);
+    }
+  }
+
+  Future<void> _copyRecipe(dynamic recipe) async {
+    if (_isMovingOrCopying) return;
+    final recipeId = recipe['id']?.toString();
+    if (recipeId == null) return;
+
+    final book = await _showBookPicker(excludeBookId: widget.recipeBookId);
+    if (book == null) return;
+
+    setState(() => _isMovingOrCopying = true);
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.copyRecipe(recipeId, book['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recipe copied to ${book['name']}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not copy recipe. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMovingOrCopying = false);
     }
   }
 
@@ -350,9 +512,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                                 await context.push('/recipes/${recipe['id']}');
                                 _loadRecipeBook();
                               },
-                              onLongPress: recipe['can_edit'] != false
-                                  ? () => _archiveRecipe(recipe)
-                                  : null,
+                              onLongPress: () => _showRecipeActions(recipe),
                             ))),
                     ],
                   ),

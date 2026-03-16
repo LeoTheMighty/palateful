@@ -23,6 +23,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   final Set<int> _checkedIngredients = {};
   bool _isFavorite = false;
   bool _isTogglingFavorite = false;
+  bool _isMovingOrCopying = false;
 
   @override
   void initState() {
@@ -118,6 +119,120 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
+  Future<Map<String, dynamic>?> _showBookPicker({String? excludeBookId}) async {
+    try {
+      final response = await _apiClient.getRecipeBooks();
+      final books = ((response.data['items'] as List?) ?? [])
+          .where((b) => b['id']?.toString() != excludeBookId)
+          .toList();
+
+      if (!mounted) return null;
+      if (books.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No other books available')),
+        );
+        return null;
+      }
+
+      return showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'Choose a book',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: books.map((book) => ListTile(
+                          leading: const Icon(Icons.menu_book_outlined),
+                          title: Text(book['name'] ?? 'Untitled'),
+                          subtitle: Text('${book['recipe_count'] ?? 0} recipes'),
+                          onTap: () => Navigator.pop(context, book),
+                        )).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load books. Please try again.')),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<void> _moveRecipe() async {
+    if (_isMovingOrCopying) return;
+    final currentBookId = _recipe?['recipe_book_id']?.toString();
+    final book = await _showBookPicker(excludeBookId: currentBookId);
+    if (book == null) return;
+
+    setState(() => _isMovingOrCopying = true);
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.moveRecipe(widget.recipeId, book['id']);
+      if (mounted) {
+        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recipe moved to ${book['name']}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not move recipe. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMovingOrCopying = false);
+    }
+  }
+
+  Future<void> _copyRecipe() async {
+    if (_isMovingOrCopying) return;
+    final currentBookId = _recipe?['recipe_book_id']?.toString();
+    final book = await _showBookPicker(excludeBookId: currentBookId);
+    if (book == null) return;
+
+    setState(() => _isMovingOrCopying = true);
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.copyRecipe(widget.recipeId, book['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Recipe copied to ${book['name']}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not copy recipe. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMovingOrCopying = false);
+    }
+  }
+
   void _startCooking() {
     context.push('/recipes/${widget.recipeId}/cook');
   }
@@ -201,14 +316,39 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               _loadRecipe();
                             },
                           ),
-                        if (_recipe?['can_edit'] == true)
-                          PopupMenuButton<String>(
-                            onSelected: (value) {
-                              if (value == 'archive') {
-                                _archiveRecipe();
-                              }
-                            },
-                            itemBuilder: (context) => [
+                        PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'move') {
+                              _moveRecipe();
+                            } else if (value == 'copy') {
+                              _copyRecipe();
+                            } else if (value == 'archive') {
+                              _archiveRecipe();
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            if (_recipe?['can_edit'] == true)
+                              const PopupMenuItem(
+                                value: 'move',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.drive_file_move_outlined),
+                                    SizedBox(width: 8),
+                                    Text('Move to Book...'),
+                                  ],
+                                ),
+                              ),
+                            const PopupMenuItem(
+                              value: 'copy',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.copy_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Copy to Book...'),
+                                ],
+                              ),
+                            ),
+                            if (_recipe?['can_edit'] == true)
                               PopupMenuItem(
                                 value: 'archive',
                                 child: Row(
@@ -222,8 +362,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
+                        ),
                       ],
                     ),
 

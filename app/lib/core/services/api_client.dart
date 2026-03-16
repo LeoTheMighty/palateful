@@ -178,6 +178,19 @@ class ApiClient {
     return _dio.post('/v1/recipes/$recipeId/restore');
   }
 
+  // Move & Copy
+  Future<Response> moveRecipe(String recipeId, String destinationBookId) {
+    return _dio.post('/v1/recipes/$recipeId/move', data: {
+      'destination_book_id': destinationBookId,
+    });
+  }
+
+  Future<Response> copyRecipe(String recipeId, String destinationBookId) {
+    return _dio.post('/v1/recipes/$recipeId/copy', data: {
+      'destination_book_id': destinationBookId,
+    });
+  }
+
   // Search
   Future<Response> search(String query, {int limit = 20}) {
     return _dio.get('/v1/search', queryParameters: {
