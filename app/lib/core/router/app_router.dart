@@ -16,6 +16,7 @@ import '../../features/recipes/edit_recipe_screen.dart';
 import '../../features/recipes/add_recipe/recipe_wizard_screen.dart';
 import '../../features/recipes/add_recipe/photo_capture_screen.dart';
 import '../../features/recipes/add_recipe/file_import_screen.dart';
+import '../../features/recipes/add_recipe/url_import_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
@@ -158,6 +159,15 @@ GoRouter get appRouter {
         path: '/recipes/add/files',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const FileImportScreen(),
+      ),
+      GoRoute(
+        path: '/recipes/add/url',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final recipeBookId = extra?['recipeBookId'] as String?;
+          return UrlImportScreen(recipeBookId: recipeBookId);
+        },
       ),
 
       // Shell route with bottom navigation

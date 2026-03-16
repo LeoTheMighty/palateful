@@ -604,6 +604,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                   onSelected: (value) {
                     if (value == 'edit') {
                       _renameRecipeBook();
+                    } else if (value == 'import_url') {
+                      context.push('/recipes/add/url', extra: {
+                        'recipeBookId': widget.recipeBookId,
+                      }).then((_) => _loadRecipeBook());
                     } else if (value == 'archive') {
                       _archiveRecipeBook();
                     }
@@ -616,6 +620,16 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           Icon(Icons.edit_outlined),
                           SizedBox(width: 8),
                           Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'import_url',
+                      child: Row(
+                        children: [
+                          Icon(Icons.link),
+                          SizedBox(width: 8),
+                          Text('Import from URL'),
                         ],
                       ),
                     ),

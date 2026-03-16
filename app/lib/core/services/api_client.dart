@@ -378,4 +378,33 @@ class ApiClient {
   Future<Response> getParserJob(String jobId) {
     return _dio.get('/v1/parser/jobs/$jobId');
   }
+
+  // Import endpoints
+  Future<Response> startImport(String bookId, {required String sourceType, String? url, List<String>? urls}) {
+    return _dio.post('/v1/recipe-books/$bookId/import', data: {
+      'source_type': sourceType,
+      if (url != null) 'url': url,
+      if (urls != null) 'urls': urls,
+    });
+  }
+
+  Future<Response> getImportJob(String jobId) {
+    return _dio.get('/v1/import-jobs/$jobId');
+  }
+
+  Future<Response> listImportItems(String jobId) {
+    return _dio.get('/v1/import-jobs/$jobId/items');
+  }
+
+  Future<Response> approveImportItem(String itemId) {
+    return _dio.post('/v1/import-items/$itemId/approve');
+  }
+
+  Future<Response> skipImportItem(String itemId) {
+    return _dio.post('/v1/import-items/$itemId/skip');
+  }
+
+  Future<Response> cancelImportJob(String jobId) {
+    return _dio.delete('/v1/import-jobs/$jobId');
+  }
 }

@@ -63,8 +63,8 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Recipe Import Pipeline
-  epic-3: backlog
-  3-1-url-recipe-import: backlog
+  epic-3: in-progress
+  3-1-url-recipe-import: done
   3-2-ocr-photo-import: backlog
   3-3-bulk-import-from-csv-url-list: backlog
   3-4-exception-review-queue: backlog
