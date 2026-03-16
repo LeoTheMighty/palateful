@@ -35,6 +35,7 @@ from utils.models.suggestion import Suggestion
 from utils.models.thread import Thread
 from utils.models.unit import Unit
 from utils.models.user import User
+from utils.models.user_favorite import UserFavorite
 
 __all__ = [
     # Base classes
@@ -88,4 +89,6 @@ __all__ = [
     "ImportItem",
     # Parser System
     "ParserJob",
+    # Favorites
+    "UserFavorite",
 ]

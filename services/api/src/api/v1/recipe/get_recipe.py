@@ -13,6 +13,7 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.models.user import User
+from utils.models.user_favorite import UserFavorite
 
 
 class GetRecipe(Endpoint):
@@ -102,6 +103,13 @@ class GetRecipe(Endpoint):
             for ri, ing in recipe_ingredients
         ]
 
+        # Check if user has favorited this recipe
+        favorite = self.database.find_by(
+            UserFavorite,
+            user_id=user.id,
+            recipe_id=recipe_id,
+        )
+
         return success(
             data=GetRecipe.Response(
                 id=str(recipe.id),
@@ -115,6 +123,7 @@ class GetRecipe(Endpoint):
                 source_url=recipe.source_url,
                 tags=recipe.tags or [],
                 can_edit=membership.role in ("owner", "editor"),
+                is_favorite=favorite is not None,
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 created_at=recipe.created_at,
@@ -161,6 +170,7 @@ class GetRecipe(Endpoint):
         source_url: str | None = None
         tags: list[str] = []
         can_edit: bool = False
+        is_favorite: bool = False
         ingredients: list["GetRecipe.IngredientResponse"] = []
         steps: list["GetRecipe.StepResponse"] = []
         created_at: datetime

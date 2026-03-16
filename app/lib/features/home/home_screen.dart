@@ -27,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _imagePicker = ImagePicker();
 
   List<dynamic> _recipes = [];
+  List<dynamic> _favorites = [];
+  Set<String> _favoriteIds = {};
   bool _isLoading = true;
   String? _error;
 
@@ -46,20 +48,22 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // Load from all recipe books
+      // Load recipes and favorites in parallel
       final booksResponse = await _apiClient.getRecipeBooks();
       final books = booksResponse.data['items'] ?? [];
 
-      List<dynamic> allRecipes = [];
-      for (final book in books) {
-        final bookDetail = await _apiClient.getRecipeBook(book['id']);
-        final recipes = bookDetail.data['recipes'] ?? [];
-        // Add book info to each recipe
-        for (final recipe in recipes) {
-          recipe['recipe_book_id'] = book['id'];
-          recipe['recipe_book_name'] = book['name'];
-        }
-        allRecipes.addAll(recipes);
+      final recipesFuture = _loadAllRecipesFromBooks(books);
+      final favFuture = _apiClient.getFavorites();
+
+      final results = await Future.wait([recipesFuture, favFuture]);
+      List<dynamic> allRecipes = results[0] as List<dynamic>;
+      final favResponse = results[1];
+      final favItems = ((favResponse as dynamic).data['items'] as List<dynamic>?) ?? [];
+      final favIds = favItems.map((f) => f['id'].toString()).toSet();
+
+      // Merge is_favorite into recipes
+      for (final recipe in allRecipes) {
+        recipe['is_favorite'] = favIds.contains(recipe['id']?.toString());
       }
 
       // Apply filters and sorting
@@ -69,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _recipes = allRecipes;
+          _favorites = favItems;
+          _favoriteIds = favIds;
           _isLoading = false;
         });
       }
@@ -77,6 +83,56 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _error = 'Failed to load recipes: $e';
           _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<List<dynamic>> _loadAllRecipesFromBooks(List<dynamic> books) async {
+    List<dynamic> allRecipes = [];
+    for (final book in books) {
+      final bookDetail = await _apiClient.getRecipeBook(book['id']);
+      final recipes = bookDetail.data['recipes'] ?? [];
+      for (final recipe in recipes) {
+        recipe['recipe_book_id'] = book['id'];
+        recipe['recipe_book_name'] = book['name'];
+      }
+      allRecipes.addAll(recipes);
+    }
+    return allRecipes;
+  }
+
+  Future<void> _toggleFavorite(dynamic recipe) async {
+    final recipeId = recipe['id']?.toString();
+    if (recipeId == null) return;
+
+    // Optimistic update
+    final wasFavorite = _favoriteIds.contains(recipeId);
+    setState(() {
+      recipe['is_favorite'] = !wasFavorite;
+      if (wasFavorite) {
+        _favoriteIds.remove(recipeId);
+        _favorites.removeWhere((f) => f['id']?.toString() == recipeId);
+      } else {
+        _favoriteIds.add(recipeId);
+        _favorites.insert(0, recipe);
+      }
+    });
+
+    try {
+      await _apiClient.toggleFavorite(recipeId);
+    } catch (e) {
+      // Revert on failure
+      if (mounted) {
+        setState(() {
+          recipe['is_favorite'] = wasFavorite;
+          if (wasFavorite) {
+            _favoriteIds.add(recipeId);
+            _favorites.insert(0, recipe);
+          } else {
+            _favoriteIds.remove(recipeId);
+            _favorites.removeWhere((f) => f['id']?.toString() == recipeId);
+          }
         });
       }
     }
@@ -237,6 +293,9 @@ class _HomeScreenState extends State<HomeScreen> {
             // Batch Import Status
             const BatchImportStatusWidget(),
 
+            // Favorites Section
+            if (_favorites.isNotEmpty) _buildFavoritesSection(),
+
             // Recipe Grid
             Expanded(
               child: _buildRecipeGrid(),
@@ -295,6 +354,93 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildFavoritesSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(
+            children: [
+              Icon(Icons.favorite, size: 18, color: Colors.red.shade400),
+              const SizedBox(width: 8),
+              Text(
+                'Favorites',
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _favorites.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final recipe = _favorites[index];
+              final imageUrl = recipe['image_url'];
+              final name = recipe['name'] ?? 'Untitled';
+
+              return GestureDetector(
+                onTap: () async {
+                  await context.push('/recipes/${recipe['id']}');
+                  _loadRecipes();
+                },
+                child: SizedBox(
+                  width: 120,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: SizedBox(
+                          height: 100,
+                          width: 120,
+                          child: imageUrl != null
+                              ? Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    child: Icon(Icons.restaurant,
+                                        color: colorScheme.onSurfaceVariant),
+                                  ),
+                                )
+                              : Container(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Icon(Icons.restaurant,
+                                      color: colorScheme.onSurfaceVariant),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        name,
+                        style: textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Divider(color: colorScheme.outlineVariant, height: 1),
+      ],
+    );
+  }
+
   Widget _buildRecipeGrid() {
     if (_isLoading) {
       return GridView.builder(
@@ -334,8 +480,12 @@ class _HomeScreenState extends State<HomeScreen> {
           final recipe = _recipes[index];
           return RecipeCard(
             recipe: recipe,
-            onTap: () => context.push('/recipes/${recipe['id']}'),
+            onTap: () async {
+              await context.push('/recipes/${recipe['id']}');
+              _loadRecipes();
+            },
             onLongPress: () => _quickStartCooking(recipe),
+            onFavoriteToggle: () => _toggleFavorite(recipe),
           );
         },
       ),

@@ -8,6 +8,7 @@ from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
+from utils.models.user_favorite import UserFavorite
 
 
 class ListRecipes(Endpoint):
@@ -66,6 +67,20 @@ class ListRecipes(Endpoint):
             .all()
         )
 
+        # Get user's favorites for these recipes
+        recipe_ids = [r.id for r in recipes]
+        favorited_ids = set()
+        if recipe_ids:
+            favorites = (
+                self.db.query(UserFavorite.recipe_id)
+                .filter(
+                    UserFavorite.user_id == user.id,
+                    UserFavorite.recipe_id.in_(recipe_ids)
+                )
+                .all()
+            )
+            favorited_ids = {f.recipe_id for f in favorites}
+
         items = [
             ListRecipes.RecipeItem(
                 id=recipe.id,
@@ -76,6 +91,7 @@ class ListRecipes(Endpoint):
                 servings=recipe.servings,
                 image_url=recipe.image_url,
                 tags=recipe.tags or [],
+                is_favorite=recipe.id in favorited_ids,
                 created_at=recipe.created_at
             )
             for recipe in recipes
@@ -99,6 +115,7 @@ class ListRecipes(Endpoint):
         servings: int | None = None
         image_url: str | None = None
         tags: list[str] = []
+        is_favorite: bool = False
         created_at: datetime
 
     class Response(BaseModel):

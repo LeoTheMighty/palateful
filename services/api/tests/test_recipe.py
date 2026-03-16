@@ -8,6 +8,7 @@ from conftest import (
     MockRecipeBookUser,
     MockRecipeIngredient,
     MockRecipeStep,
+    MockUserFavorite,
 )
 
 
@@ -28,7 +29,8 @@ class TestListRecipes:
         mock_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([recipe])
+        # First call returns recipes, second call returns empty favorites
+        mock_db.db.query.side_effect = [MockQuery([recipe]), MockQuery([])]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes")
         assert response.status_code == 200
@@ -548,7 +550,7 @@ class TestUpdateRecipeStepsAndTags:
         mock_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([recipe])
+        mock_db.db.query.side_effect = [MockQuery([recipe]), MockQuery([])]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes")
         assert response.status_code == 200
@@ -661,3 +663,160 @@ class TestGetRecipePhotoUploadUrl:
             json={"filename": "photo.jpg"},
         )
         assert response.status_code == 403
+
+
+class TestToggleFavorite:
+    """Tests for POST /v1/recipes/{recipe_id}/favorite."""
+
+    def _setup(self, mock_db, mock_user, recipe_id="test-recipe-id",
+               book_id="test-book-id", has_favorite=False):
+        """Helper to set up common test fixtures."""
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.user_favorite import UserFavorite
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=mock_user.id,
+                           recipe_book_id=book_id)
+
+        if has_favorite:
+            fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=recipe_id)
+            mock_db.set_find_by(UserFavorite, fav,
+                               user_id=mock_user.id,
+                               recipe_id=recipe_id)
+
+        return recipe
+
+    def test_toggle_favorite_add(self, client, mock_db, mock_user):
+        """Test adding a recipe to favorites."""
+        recipe_id = "test-recipe-id"
+        self._setup(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/favorite")
+        assert response.status_code == 201
+        data = response.json()
+        assert data["is_favorite"] is True
+
+    def test_toggle_favorite_remove(self, client, mock_db, mock_user):
+        """Test removing a recipe from favorites."""
+        recipe_id = "test-recipe-id"
+        self._setup(mock_db, mock_user, recipe_id=recipe_id, has_favorite=True)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/favorite")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_favorite"] is False
+
+    def test_toggle_favorite_recipe_not_found(self, client, mock_db, mock_user):
+        """Test toggling favorite on nonexistent recipe."""
+        response = client.post("/v1/recipes/nonexistent/favorite")
+        assert response.status_code == 404
+
+    def test_toggle_favorite_no_access(self, client, mock_db, mock_user):
+        """Test toggling favorite without recipe book access."""
+        recipe_id = "test-recipe-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/favorite")
+        assert response.status_code == 403
+
+
+class TestListFavorites:
+    """Tests for GET /v1/favorites."""
+
+    def test_list_favorites_empty(self, client, mock_db, mock_user):
+        """Test listing favorites when user has none."""
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/favorites")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_list_favorites_with_results(self, client, mock_db, mock_user):
+        """Test listing favorites returns recipe data."""
+        recipe = MockRecipe(name="Favorite Pasta", tags=["italian"])
+        fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=str(recipe.id))
+        mock_db.db.query.return_value = MockQuery([(fav, recipe)])
+
+        response = client.get("/v1/favorites")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["name"] == "Favorite Pasta"
+        assert data["items"][0]["is_favorite"] is True
+
+    def test_list_favorites_requires_auth(self, unauthed_client, mock_db):
+        """Test that favorites endpoint requires authentication."""
+        response = unauthed_client.get("/v1/favorites")
+        # FastAPI security dependency returns 422 when Authorization header is missing
+        assert response.status_code in (401, 403, 422)
+
+
+class TestGetRecipeFavoriteField:
+    """Tests for is_favorite field in GET /v1/recipes/{recipe_id}."""
+
+    def test_get_recipe_shows_favorited(self, client, mock_db, mock_user):
+        """Test that get recipe shows is_favorite=true when favorited."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=recipe_id)
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.user_favorite import UserFavorite
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(UserFavorite, fav,
+                           user_id=mock_user.id,
+                           recipe_id=recipe_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_favorite"] is True
+
+    def test_get_recipe_shows_not_favorited(self, client, mock_db, mock_user):
+        """Test that get recipe shows is_favorite=false when not favorited."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_favorite"] is False

@@ -20,6 +20,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   bool _isLoading = true;
   String? _error;
   final Set<int> _checkedIngredients = {};
+  bool _isFavorite = false;
+  bool _isTogglingFavorite = false;
 
   @override
   void initState() {
@@ -39,6 +41,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         setState(() {
           _recipe = response.data;
           _ingredients = response.data['ingredients'] ?? [];
+          _isFavorite = response.data['is_favorite'] == true;
           _isLoading = false;
         });
       }
@@ -48,6 +51,27 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           _error = 'Failed to load recipe: $e';
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (_isTogglingFavorite) return;
+    setState(() => _isTogglingFavorite = true);
+
+    // Optimistic update
+    final wasFavorite = _isFavorite;
+    setState(() => _isFavorite = !_isFavorite);
+
+    try {
+      await _apiClient.toggleFavorite(widget.recipeId);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isFavorite = wasFavorite);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTogglingFavorite = false);
       }
     }
   }
@@ -120,6 +144,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           : null,
                       title: Text(_recipe?['name'] ?? 'Recipe'),
                       actions: [
+                        IconButton(
+                          icon: Icon(
+                            _isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: _isFavorite ? Colors.red : null,
+                          ),
+                          onPressed: _toggleFavorite,
+                        ),
                         if (_recipe?['can_edit'] == true)
                           IconButton(
                             icon: const Icon(Icons.edit_outlined),

@@ -384,6 +384,18 @@ class MockInviteLink(MockModel):
         super().__init__(**defaults)
 
 
+class MockUserFavorite(MockModel):
+    """Mock UserFavorite model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "user_id": str(uuid.uuid4()),
+            "recipe_id": str(uuid.uuid4()),
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockImportJob(MockModel):
     """Mock ImportJob model."""
 

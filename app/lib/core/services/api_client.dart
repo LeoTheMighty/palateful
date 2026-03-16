@@ -160,6 +160,15 @@ class ApiClient {
     });
   }
 
+  // Favorites
+  Future<Response> toggleFavorite(String recipeId) {
+    return _dio.post('/v1/recipes/$recipeId/favorite');
+  }
+
+  Future<Response> getFavorites() {
+    return _dio.get('/v1/favorites');
+  }
+
   // Search
   Future<Response> search(String query, {int limit = 20}) {
     return _dio.get('/v1/search', queryParameters: {

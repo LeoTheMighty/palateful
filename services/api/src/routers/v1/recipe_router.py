@@ -7,7 +7,9 @@ from api.v1.recipe import (
     GetPublicRecipe,
     GetRecipe,
     GetRecipePhotoUploadUrl,
+    ListFavorites,
     ListRecipes,
+    ToggleFavorite,
     UpdateRecipe,
 )
 from api.v1.recipe_book import GetPublicRecipeBook
@@ -98,6 +100,32 @@ async def get_recipe_photo_upload_url(
     return GetRecipePhotoUploadUrl.call(
         recipe_id=recipe_id,
         params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/favorite")
+async def toggle_favorite(
+    recipe_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Toggle favorite status on a recipe."""
+    return ToggleFavorite.call(
+        recipe_id=recipe_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.get("/favorites")
+async def list_favorites(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """List the current user's favorite recipes."""
+    return ListFavorites.call(
         user=user,
         database=database,
     )
