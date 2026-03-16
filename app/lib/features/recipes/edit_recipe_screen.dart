@@ -182,17 +182,6 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     _scheduleSave();
   }
 
-  void _onReorderSteps(int oldIndex, int newIndex) {
-    if (newIndex > oldIndex) newIndex--;
-    setState(() {
-      final step = _steps.removeAt(oldIndex);
-      _steps.insert(newIndex, step);
-      final ctrl = _stepControllers.removeAt(oldIndex);
-      _stepControllers.insert(newIndex, ctrl);
-    });
-    _scheduleSave();
-  }
-
   void _addTag() {
     final text = _tagController.text.trim();
     if (text.isEmpty || _tags.contains(text)) return;

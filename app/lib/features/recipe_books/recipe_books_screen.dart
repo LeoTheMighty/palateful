@@ -40,7 +40,7 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Failed to load recipe books: $e';
+          _error = 'Could not load recipe books. Please try again.';
           _isLoading = false;
         });
       }
@@ -54,41 +54,51 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
     try {
       final result = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('New Recipe Book'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Name',
-                  hintText: 'My Recipe Book',
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              final nameIsEmpty = nameController.text.trim().isEmpty;
+              return AlertDialog(
+                title: const Text('New Recipe Book'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Name',
+                        hintText: 'My Recipe Book',
+                      ),
+                      autofocus: true,
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Description (optional)',
+                        hintText: 'A collection of my favorite recipes',
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
                 ),
-                autofocus: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description (optional)',
-                  hintText: 'A collection of my favorite recipes',
-                ),
-                maxLines: 2,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Create'),
-            ),
-          ],
-        ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: nameIsEmpty
+                        ? null
+                        : () => Navigator.pop(context, true),
+                    child: const Text('Create'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
       );
 
       if (result == true && nameController.text.isNotEmpty) {
@@ -103,7 +113,7 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to create recipe book: $e')),
+              const SnackBar(content: Text('Could not create recipe book. Please try again.')),
             );
           }
         }
@@ -114,9 +124,26 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
     }
   }
 
+  String _formatUpdatedAt(String? updatedAt) {
+    if (updatedAt == null) return '';
+    try {
+      final date = DateTime.parse(updatedAt);
+      final now = DateTime.now();
+      final diff = now.difference(date);
+      if (diff.inDays == 0) return 'Updated today';
+      if (diff.inDays == 1) return 'Updated yesterday';
+      if (diff.inDays < 7) return 'Updated ${diff.inDays}d ago';
+      if (diff.inDays < 30) return 'Updated ${diff.inDays ~/ 7}w ago';
+      return 'Updated ${date.month}/${date.day}/${date.year}';
+    } catch (_) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -183,32 +210,91 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                           itemCount: _recipeBooks.length,
                           itemBuilder: (context, index) {
                             final book = _recipeBooks[index];
+                            final recipeCount = book['recipe_count'] ?? 0;
+                            final description = book['description'] as String?;
+                            final updatedAt = _formatUpdatedAt(book['updated_at']?.toString());
+
                             return Card(
                               margin: const EdgeInsets.only(bottom: 12),
-                              child: ListTile(
-                                leading: Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: colorScheme.primaryContainer,
-                                    borderRadius: BorderRadius.circular(10),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () async {
+                                  await context.push('/recipe-books/${book['id']}');
+                                  _loadRecipeBooks();
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: colorScheme.primaryContainer,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.book,
+                                          color: colorScheme.onPrimaryContainer,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              book['name'] ?? 'Untitled',
+                                              style: textTheme.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            if (description != null && description.isNotEmpty) ...[
+                                              Text(
+                                                description,
+                                                style: textTheme.bodySmall?.copyWith(
+                                                  color: colorScheme.onSurfaceVariant,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                              const SizedBox(height: 4),
+                                            ],
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  '$recipeCount ${recipeCount == 1 ? 'recipe' : 'recipes'}',
+                                                  style: textTheme.bodySmall?.copyWith(
+                                                    color: colorScheme.outline,
+                                                  ),
+                                                ),
+                                                if (updatedAt.isNotEmpty) ...[
+                                                  Text(
+                                                    ' · ',
+                                                    style: textTheme.bodySmall?.copyWith(
+                                                      color: colorScheme.outline,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    updatedAt,
+                                                    style: textTheme.bodySmall?.copyWith(
+                                                      color: colorScheme.outline,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.chevron_right,
+                                        color: colorScheme.outline,
+                                      ),
+                                    ],
                                   ),
-                                  child: Icon(
-                                    Icons.book,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
                                 ),
-                                title: Text(book['name'] ?? 'Untitled'),
-                                subtitle: Text(
-                                  book['description'] ??
-                                      '${book['recipe_count'] ?? 0} recipes',
-                                ),
-                                trailing: Icon(
-                                  Icons.chevron_right,
-                                  color: colorScheme.outline,
-                                ),
-                                onTap: () =>
-                                    context.go('/recipe-books/${book['id']}'),
                               ),
                             );
                           },

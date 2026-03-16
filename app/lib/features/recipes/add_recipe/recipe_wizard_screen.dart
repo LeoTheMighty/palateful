@@ -3,10 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
-import '../../../core/theme/app_colors.dart';
 
 class RecipeWizardScreen extends StatefulWidget {
-  const RecipeWizardScreen({super.key});
+  final String? recipeBookId;
+
+  const RecipeWizardScreen({super.key, this.recipeBookId});
 
   @override
   State<RecipeWizardScreen> createState() => _RecipeWizardScreenState();
@@ -38,6 +39,7 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedRecipeBookId = widget.recipeBookId;
     _loadRecipeBooks();
   }
 
@@ -55,9 +57,11 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
   Future<void> _loadRecipeBooks() async {
     try {
       final response = await _apiClient.getRecipeBooks();
+      if (!mounted) return;
       setState(() {
         _recipeBooks = response.data['items'] ?? [];
-        if (_recipeBooks.isNotEmpty) {
+        // Only auto-select first book if no pre-selected book
+        if (_selectedRecipeBookId == null && _recipeBooks.isNotEmpty) {
           _selectedRecipeBookId = _recipeBooks.first['id'];
         }
       });
@@ -139,12 +143,9 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
       if (mounted) {
         HapticFeedback.heavyImpact();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Recipe created successfully!'),
-            backgroundColor: AppColors.success,
-          ),
+          const SnackBar(content: Text('Recipe created successfully!')),
         );
-        context.go('/');
+        context.pop();
       }
     } catch (e) {
       if (mounted) {
@@ -158,10 +159,13 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Scaffold(
-      backgroundColor: AppColors.cream,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: AppColors.cream,
+        backgroundColor: colorScheme.surface,
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
@@ -178,7 +182,7 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
       body: Column(
         children: [
           // Progress indicator
-          _buildProgressBar(),
+          _buildProgressBar(colorScheme, textTheme),
 
           // Step content
           Expanded(
@@ -220,13 +224,13 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
           ),
 
           // Navigation buttons
-          _buildNavigation(),
+          _buildNavigation(colorScheme),
         ],
       ),
     );
   }
 
-  Widget _buildProgressBar() {
+  Widget _buildProgressBar(ColorScheme colorScheme, TextTheme textTheme) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -246,8 +250,8 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   decoration: BoxDecoration(
                     color: isActive || isCompleted
-                        ? AppColors.chocolate
-                        : AppColors.beigeAccent,
+                        ? colorScheme.primary
+                        : colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(5),
                   ),
                 ),
@@ -260,9 +264,8 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
           Text(
             ['Name & Photo', 'Ingredients', 'Instructions', 'Details']
                 [_currentStep],
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textTertiary,
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ],
@@ -270,7 +273,7 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
     );
   }
 
-  Widget _buildNavigation() {
+  Widget _buildNavigation(ColorScheme colorScheme) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -291,12 +294,12 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
             ElevatedButton(
               onPressed: _isSaving ? null : _nextStep,
               child: _isSaving
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppColors.cream,
+                        color: colorScheme.onPrimary,
                       ),
                     )
                   : Text(
@@ -324,23 +327,26 @@ class _StepName extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'What are you cooking?',
-            style: TextStyle(
-              fontSize: 24,
+            style: textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Give your recipe a name',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -357,18 +363,13 @@ class _StepName extends StatelessWidget {
           const SizedBox(height: 32),
 
           // Photo placeholder
-          const Text(
+          Text(
             'Add a photo (optional)',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
-            ),
+            style: textTheme.titleSmall,
           ),
           const SizedBox(height: 12),
           GestureDetector(
             onTap: () {
-              // TODO: Implement image picker
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Photo picker coming soon!')),
               );
@@ -376,26 +377,27 @@ class _StepName extends StatelessWidget {
             child: Container(
               height: 180,
               decoration: BoxDecoration(
-                color: AppColors.beige,
+                color: colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: AppColors.beigeAccent,
-                  style: BorderStyle.solid,
+                  color: colorScheme.outlineVariant,
                 ),
               ),
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.add_a_photo_outlined,
                       size: 48,
-                      color: AppColors.hazelnut,
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       'Tap to add photo',
-                      style: TextStyle(color: AppColors.textTertiary),
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -467,23 +469,26 @@ class _StepIngredientsState extends State<_StepIngredients> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Add ingredients',
-            style: TextStyle(
-              fontSize: 24,
+            style: textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Type ingredient with amount (e.g., "2 cups flour")',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -505,8 +510,8 @@ class _StepIngredientsState extends State<_StepIngredients> {
                 onPressed: _addIngredient,
                 icon: const Icon(Icons.add),
                 style: IconButton.styleFrom(
-                  backgroundColor: AppColors.chocolate,
-                  foregroundColor: AppColors.cream,
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
                 ),
               ),
             ],
@@ -516,10 +521,12 @@ class _StepIngredientsState extends State<_StepIngredients> {
           // Ingredients list
           Expanded(
             child: widget.ingredients.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text(
                       'No ingredients added yet',
-                      style: TextStyle(color: AppColors.textTertiary),
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -537,15 +544,15 @@ class _StepIngredientsState extends State<_StepIngredients> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: AppColors.beige,
+                            color: colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Center(
                             child: Text(
                               '${index + 1}',
-                              style: const TextStyle(
+                              style: textTheme.bodyMedium?.copyWith(
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.hazelnut,
+                                color: colorScheme.secondary,
                               ),
                             ),
                           ),
@@ -554,7 +561,7 @@ class _StepIngredientsState extends State<_StepIngredients> {
                         trailing: IconButton(
                           icon: const Icon(Icons.close, size: 20),
                           onPressed: () => _removeIngredient(index),
-                          color: AppColors.textTertiary,
+                          color: colorScheme.onSurfaceVariant,
                         ),
                       );
                     },
@@ -650,23 +657,26 @@ class _StepStepsState extends State<_StepSteps> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'How do you make it?',
-            style: TextStyle(
-              fontSize: 24,
+            style: textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Add each step individually — drag to reorder',
-            style: TextStyle(color: AppColors.textSecondary),
+            style: textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 24),
 
@@ -677,9 +687,11 @@ class _StepStepsState extends State<_StepSteps> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
+                        Text(
                           'No steps added yet',
-                          style: TextStyle(color: AppColors.textTertiary),
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
@@ -708,15 +720,15 @@ class _StepStepsState extends State<_StepSteps> {
                                 height: 36,
                                 margin: const EdgeInsets.only(top: 8),
                                 decoration: BoxDecoration(
-                                  color: AppColors.beige,
+                                  color: colorScheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Center(
                                   child: Text(
                                     '${index + 1}',
-                                    style: const TextStyle(
+                                    style: textTheme.bodyMedium?.copyWith(
                                       fontWeight: FontWeight.w600,
-                                      color: AppColors.hazelnut,
+                                      color: colorScheme.secondary,
                                     ),
                                   ),
                                 ),
@@ -740,7 +752,7 @@ class _StepStepsState extends State<_StepSteps> {
                             IconButton(
                               icon: const Icon(Icons.close, size: 20),
                               onPressed: () => _removeStep(index),
-                              color: AppColors.textTertiary,
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ],
                         ),
@@ -818,29 +830,28 @@ class _StepDetailsState extends State<_StepDetails> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Final details',
-            style: TextStyle(
-              fontSize: 24,
+            style: textTheme.headlineSmall?.copyWith(
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
             ),
           ),
           const SizedBox(height: 24),
 
           // Recipe Book selector
           if (widget.recipeBooks.isNotEmpty) ...[
-            const Text(
+            Text(
               'Save to Recipe Book',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textSecondary,
+              style: textTheme.labelLarge?.copyWith(
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
@@ -912,12 +923,10 @@ class _StepDetailsState extends State<_StepDetails> {
           const SizedBox(height: 24),
 
           // Tags
-          const Text(
+          Text(
             'Tags',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+            style: textTheme.labelLarge?.copyWith(
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -938,8 +947,8 @@ class _StepDetailsState extends State<_StepDetails> {
                 onPressed: _addTag,
                 icon: const Icon(Icons.add),
                 style: IconButton.styleFrom(
-                  backgroundColor: AppColors.chocolate,
-                  foregroundColor: AppColors.cream,
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
                 ),
               ),
             ],
@@ -953,19 +962,17 @@ class _StepDetailsState extends State<_StepDetails> {
                   .map((tag) => InputChip(
                         label: Text(tag),
                         onDeleted: () => _removeTag(tag),
-                        backgroundColor: AppColors.beige,
+                        backgroundColor: colorScheme.surfaceContainerHighest,
                       ))
                   .toList(),
             ),
           const SizedBox(height: 24),
 
           // Meal type
-          const Text(
+          Text(
             'Meal Type',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+            style: textTheme.labelLarge?.copyWith(
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -1038,7 +1045,9 @@ class _MealChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isSelected ? AppColors.cream : AppColors.textPrimary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final fgColor = isSelected ? colorScheme.onPrimary : colorScheme.onSurface;
+
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -1047,20 +1056,22 @@ class _MealChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.chocolate : AppColors.beige,
+          color: isSelected
+              ? colorScheme.primary
+              : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: color),
+            Icon(icon, size: 16, color: fgColor),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: color,
+                color: fgColor,
               ),
             ),
           ],

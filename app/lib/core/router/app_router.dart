@@ -135,7 +135,11 @@ GoRouter get appRouter {
       GoRoute(
         path: '/recipes/add/wizard',
         parentNavigatorKey: _rootNavigatorKey,
-        builder: (context, state) => const RecipeWizardScreen(),
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final recipeBookId = extra?['recipeBookId'] as String?;
+          return RecipeWizardScreen(recipeBookId: recipeBookId);
+        },
       ),
       GoRoute(
         path: '/recipes/add/photo',

@@ -53,7 +53,7 @@ development_status:
   # Epic 2: Recipe Management & Organization
   epic-2: in-progress
   2-1-recipe-crud-with-structured-fields: done
-  2-2-personal-recipe-books: backlog
+  2-2-personal-recipe-books: done
   2-3-recipe-photos: backlog
   2-4-favorites-and-quick-access: backlog
   2-5-archive-and-restore-recipes: backlog
