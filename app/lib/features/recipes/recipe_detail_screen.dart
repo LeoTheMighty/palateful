@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
@@ -72,6 +73,47 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     } finally {
       if (mounted) {
         setState(() => _isTogglingFavorite = false);
+      }
+    }
+  }
+
+  Future<void> _archiveRecipe() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Archive Recipe?'),
+        content: const Text(
+          'This recipe will be moved to your archive. You can restore it anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.deleteRecipe(widget.recipeId);
+      if (mounted) {
+        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe archived')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not archive recipe. Please try again.')),
+        );
       }
     }
   }
@@ -158,6 +200,29 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               await context.push('/recipes/${widget.recipeId}/edit');
                               _loadRecipe();
                             },
+                          ),
+                        if (_recipe?['can_edit'] == true)
+                          PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'archive') {
+                                _archiveRecipe();
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem(
+                                value: 'archive',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.archive_outlined,
+                                        color: Theme.of(context).colorScheme.error),
+                                    const SizedBox(width: 8),
+                                    Text('Archive',
+                                        style: TextStyle(
+                                            color: Theme.of(context).colorScheme.error)),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                       ],
                     ),

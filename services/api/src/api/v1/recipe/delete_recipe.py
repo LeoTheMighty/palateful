@@ -1,4 +1,6 @@
-"""Delete recipe endpoint."""
+"""Delete (archive) recipe endpoint."""
+
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
@@ -9,11 +11,11 @@ from utils.models.user import User
 
 
 class DeleteRecipe(Endpoint):
-    """Delete a recipe."""
+    """Delete (archive) a recipe via soft delete."""
 
     def execute(self, recipe_id: str):
         """
-        Delete a recipe.
+        Archive a recipe by setting archived_at.
 
         Args:
             recipe_id: The recipe's ID
@@ -35,7 +37,7 @@ class DeleteRecipe(Endpoint):
         # Check access - must be owner or editor
         membership = self.database.find_by(
             RecipeBookUser,
-            user_id=user.id,
+            user_id=str(user.id),
             recipe_book_id=recipe.recipe_book_id
         )
         if not membership or membership.role not in ("owner", "editor"):
@@ -45,8 +47,9 @@ class DeleteRecipe(Endpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED
             )
 
-        # Delete recipe (cascades to recipe ingredients)
-        self.database.delete(recipe)
+        # Soft delete by setting archived_at
+        recipe.archived_at = datetime.now(UTC)
+        self.database.db.commit()
 
         return success(
             data=DeleteRecipe.Response(success=True),

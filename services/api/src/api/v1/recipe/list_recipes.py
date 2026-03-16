@@ -48,8 +48,11 @@ class ListRecipes(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_ACCESS_DENIED
             )
 
-        # Build query
-        query = self.db.query(Recipe).filter(Recipe.recipe_book_id == book_id)
+        # Build query (exclude archived recipes)
+        query = self.db.query(Recipe).filter(
+            Recipe.recipe_book_id == book_id,
+            Recipe.archived_at.is_(None),
+        )
 
         # Apply search filter
         if search:

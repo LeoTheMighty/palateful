@@ -565,6 +565,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           const SizedBox(height: 32),
 
+          // Recipes section
+          _buildSectionHeader('Recipes', textTheme),
+          const SizedBox(height: 12),
+          _buildProfileTile(
+            icon: Icons.archive_outlined,
+            label: 'Archived Recipes',
+            value: 'View and restore archived recipes',
+            onTap: () => context.push('/recipes/archived'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+
+          const SizedBox(height: 32),
+
           // Account section
           _buildSectionHeader('Account', textTheme),
           const SizedBox(height: 12),

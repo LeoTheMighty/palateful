@@ -81,6 +81,7 @@ class UnifiedSearch(Endpoint):
                 .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
                 .where(
                     Recipe.recipe_book_id.in_(my_book_ids),
+                    Recipe.archived_at.is_(None),
                     self._recipe_matches(query),
                 )
                 .order_by(
@@ -142,6 +143,7 @@ class UnifiedSearch(Endpoint):
                 )
                 .where(
                     RecipeBook.is_public == True,  # noqa: E712
+                    Recipe.archived_at.is_(None),
                     Recipe.recipe_book_id.notin_(
                         select(RecipeBookUser.recipe_book_id)
                         .where(RecipeBookUser.user_id == user.id)

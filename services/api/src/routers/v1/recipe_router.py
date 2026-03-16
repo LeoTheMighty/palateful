@@ -7,8 +7,10 @@ from api.v1.recipe import (
     GetPublicRecipe,
     GetRecipe,
     GetRecipePhotoUploadUrl,
+    ListArchivedRecipes,
     ListFavorites,
     ListRecipes,
+    RestoreRecipe,
     ToggleFavorite,
     UpdateRecipe,
 )
@@ -55,6 +57,19 @@ async def create_recipe(
         params=params,
         user=user,
         database=database
+    )
+
+
+# Archived recipes (must be before /recipes/{recipe_id} to avoid path collision)
+@recipe_router.get("/recipes/archived")
+async def list_archived_recipes(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """List the current user's archived recipes."""
+    return ListArchivedRecipes.call(
+        user=user,
+        database=database,
     )
 
 
@@ -137,11 +152,25 @@ async def delete_recipe(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database)
 ):
-    """Delete a recipe."""
+    """Delete (archive) a recipe."""
     return DeleteRecipe.call(
         recipe_id=recipe_id,
         user=user,
         database=database
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/restore")
+async def restore_recipe(
+    recipe_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Restore an archived recipe."""
+    return RestoreRecipe.call(
+        recipe_id=recipe_id,
+        user=user,
+        database=database,
     )
 
 

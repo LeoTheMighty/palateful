@@ -169,6 +169,15 @@ class ApiClient {
     return _dio.get('/v1/favorites');
   }
 
+  // Archive
+  Future<Response> getArchivedRecipes() {
+    return _dio.get('/v1/recipes/archived');
+  }
+
+  Future<Response> restoreRecipe(String recipeId) {
+    return _dio.post('/v1/recipes/$recipeId/restore');
+  }
+
   // Search
   Future<Response> search(String query, {int limit = 20}) {
     return _dio.get('/v1/search', queryParameters: {

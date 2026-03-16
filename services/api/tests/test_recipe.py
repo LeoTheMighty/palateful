@@ -203,10 +203,10 @@ class TestCreateRecipe:
 
 
 class TestDeleteRecipe:
-    """Tests for DELETE /v1/recipes/{recipe_id}."""
+    """Tests for DELETE /v1/recipes/{recipe_id} (soft delete / archive)."""
 
-    def test_delete_recipe_success(self, client, mock_db, mock_user):
-        """Test deleting a recipe."""
+    def test_delete_recipe_archives(self, client, mock_db, mock_user):
+        """Test deleting a recipe sets archived_at (soft delete)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
@@ -224,10 +224,13 @@ class TestDeleteRecipe:
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
+        assert recipe.archived_at is None
         response = client.delete(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+        # Verify soft delete: archived_at should be set
+        assert recipe.archived_at is not None
 
     def test_delete_recipe_not_found(self, client, mock_db):
         """Test deleting a recipe that doesn't exist."""
@@ -255,6 +258,135 @@ class TestDeleteRecipe:
 
         response = client.delete(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 403
+
+
+class TestRestoreRecipe:
+    """Tests for POST /v1/recipes/{recipe_id}/restore."""
+
+    def test_restore_recipe_success(self, client, mock_db, mock_user):
+        """Test restoring an archived recipe."""
+        from datetime import datetime, UTC
+
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(
+            id=recipe_id,
+            recipe_book_id=book_id,
+            archived_at=datetime.now(UTC),
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/restore")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == recipe_id
+        # Verify restored
+        assert recipe.archived_at is None
+
+    def test_restore_recipe_not_found(self, client, mock_db, mock_user):
+        """Test restoring a nonexistent recipe."""
+        response = client.post("/v1/recipes/nonexistent/restore")
+        assert response.status_code == 404
+
+    def test_restore_recipe_not_archived(self, client, mock_db, mock_user):
+        """Test restoring a recipe that is not archived."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/restore")
+        assert response.status_code == 400
+
+    def test_restore_recipe_no_permission(self, client, mock_db, mock_user):
+        """Test restoring without owner/editor role fails."""
+        from datetime import datetime, UTC
+
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(
+            id=recipe_id,
+            recipe_book_id=book_id,
+            archived_at=datetime.now(UTC),
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/restore")
+        assert response.status_code == 403
+
+
+class TestListArchivedRecipes:
+    """Tests for GET /v1/recipes/archived."""
+
+    def test_list_archived_empty(self, client, mock_db, mock_user):
+        """Test listing archived recipes when none exist."""
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_where(RecipeBookUser, [])
+
+        response = client.get("/v1/recipes/archived")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_list_archived_with_results(self, client, mock_db, mock_user):
+        """Test listing archived recipes returns archived recipe data."""
+        from datetime import datetime, UTC
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.set_where(RecipeBookUser, [membership])
+
+        archived_recipe = MockRecipe(
+            name="Old Recipe",
+            recipe_book_id=book_id,
+            archived_at=datetime.now(UTC),
+        )
+        mock_db.db.query.return_value = MockQuery([archived_recipe])
+
+        response = client.get("/v1/recipes/archived")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["name"] == "Old Recipe"
+        assert data["items"][0]["archived_at"] is not None
+
+    def test_list_archived_requires_auth(self, unauthed_client, mock_db):
+        """Test that archived endpoint requires authentication."""
+        response = unauthed_client.get("/v1/recipes/archived")
+        assert response.status_code in (401, 403, 422)
 
 
 class TestCreateRecipeWithStepsAndTags:

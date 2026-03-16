@@ -42,6 +42,9 @@ class MockModel:
         for key, value in defaults.items():
             setattr(self, key, value)
 
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
+
 
 class MockUser(MockModel):
     """Mock User model."""

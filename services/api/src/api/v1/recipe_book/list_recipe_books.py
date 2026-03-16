@@ -34,7 +34,7 @@ class ListRecipeBooks(Endpoint):
                 func.count(Recipe.id).label('recipe_count')
             )
             .join(RecipeBookUser, RecipeBook.id == RecipeBookUser.recipe_book_id)
-            .outerjoin(Recipe, RecipeBook.id == Recipe.recipe_book_id)
+            .outerjoin(Recipe, (RecipeBook.id == Recipe.recipe_book_id) & (Recipe.archived_at.is_(None)))
             .filter(RecipeBookUser.user_id == user.id)
             .group_by(RecipeBook.id)
             .order_by(RecipeBook.updated_at.desc())

@@ -136,6 +136,7 @@ class ErrorCode(BaseEnum):
     RECIPE_NOT_FOUND = 110
     RECIPE_ACCESS_DENIED = 111
     DUPLICATE_RECIPE_NAME = 112
+    RECIPE_NOT_ARCHIVED = 113
 
     # Ingredient errors (120-129)
     INGREDIENT_NOT_FOUND = 120

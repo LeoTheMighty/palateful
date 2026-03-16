@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -170,6 +171,50 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     }
   }
 
+  Future<void> _archiveRecipe(dynamic recipe) async {
+    final recipeId = recipe['id']?.toString();
+    if (recipeId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Archive Recipe?'),
+        content: const Text(
+          'This recipe will be moved to your archive. You can restore it anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.deleteRecipe(recipeId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe archived')),
+        );
+        _loadRecipeBook();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not archive recipe. Please try again.')),
+        );
+      }
+    }
+  }
+
   Future<void> _addRecipe() async {
     await context.push('/recipes/add/wizard', extra: {
       'recipeBookId': widget.recipeBookId,
@@ -305,6 +350,9 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                                 await context.push('/recipes/${recipe['id']}');
                                 _loadRecipeBook();
                               },
+                              onLongPress: recipe['can_edit'] != false
+                                  ? () => _archiveRecipe(recipe)
+                                  : null,
                             ))),
                     ],
                   ),
@@ -316,8 +364,9 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
 class _RecipeCard extends StatelessWidget {
   final dynamic recipe;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  const _RecipeCard({required this.recipe, required this.onTap});
+  const _RecipeCard({required this.recipe, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -331,6 +380,7 @@ class _RecipeCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

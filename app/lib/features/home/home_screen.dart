@@ -207,8 +207,83 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showRecipeActions(dynamic recipe) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.restaurant),
+              title: const Text('Start Cooking'),
+              onTap: () {
+                Navigator.pop(context);
+                _quickStartCooking(recipe);
+              },
+            ),
+            if (recipe['can_edit'] != false)
+              ListTile(
+                leading: Icon(Icons.archive_outlined, color: colorScheme.error),
+                title: Text('Archive', style: TextStyle(color: colorScheme.error)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _archiveRecipe(recipe);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _quickStartCooking(dynamic recipe) {
     context.push('/recipes/${recipe['id']}/cook');
+  }
+
+  Future<void> _archiveRecipe(dynamic recipe) async {
+    final recipeId = recipe['id']?.toString();
+    if (recipeId == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Archive Recipe?'),
+        content: const Text(
+          'This recipe will be moved to your archive. You can restore it anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.deleteRecipe(recipeId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe archived')),
+        );
+        _loadRecipes();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not archive recipe. Please try again.')),
+        );
+      }
+    }
   }
 
   Future<void> _pickMultiplePhotos() async {
@@ -489,7 +564,7 @@ class _HomeScreenState extends State<HomeScreen> {
               await context.push('/recipes/${recipe['id']}');
               _loadRecipes();
             },
-            onLongPress: () => _quickStartCooking(recipe),
+            onLongPress: () => _showRecipeActions(recipe),
             onFavoriteToggle: () => _toggleFavorite(recipe),
           );
         },

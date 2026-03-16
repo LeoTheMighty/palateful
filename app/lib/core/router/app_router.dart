@@ -9,6 +9,7 @@ import '../../features/onboarding/onboarding_start_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_detail_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
+import '../../features/recipes/archived_recipes_screen.dart';
 import '../../features/recipes/cook_mode/cook_mode_screen.dart';
 import '../../features/recipes/edit_recipe_screen.dart';
 import '../../features/recipes/add_recipe/recipe_wizard_screen.dart';
@@ -94,6 +95,12 @@ GoRouter get appRouter {
           final name = extra?['name'] as String? ?? '';
           return OnboardingStartScreen(name: name);
         },
+      ),
+      // Archived recipes (must be before /recipes/:id to avoid path collision)
+      GoRoute(
+        path: '/recipes/archived',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const ArchivedRecipesScreen(),
       ),
       // Recipe detail and cook mode are outside shell (full-screen)
       GoRoute(
