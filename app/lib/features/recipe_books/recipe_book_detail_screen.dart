@@ -23,6 +23,11 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   String? _error;
   bool _isMovingOrCopying = false;
 
+  // Multi-select state
+  bool _isSelectMode = false;
+  final Set<String> _selectedRecipeIds = {};
+  bool _isBulkOperating = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +57,36 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
         });
       }
     }
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _isSelectMode = false;
+      _selectedRecipeIds.clear();
+    });
+  }
+
+  void _enterSelectMode({String? initialRecipeId}) {
+    setState(() {
+      _isSelectMode = true;
+      _selectedRecipeIds.clear();
+      if (initialRecipeId != null) {
+        _selectedRecipeIds.add(initialRecipeId);
+      }
+    });
+  }
+
+  void _toggleRecipeSelection(String recipeId) {
+    setState(() {
+      if (_selectedRecipeIds.contains(recipeId)) {
+        _selectedRecipeIds.remove(recipeId);
+        if (_selectedRecipeIds.isEmpty) {
+          _isSelectMode = false;
+        }
+      } else {
+        _selectedRecipeIds.add(recipeId);
+      }
+    });
   }
 
   Future<void> _deleteRecipeBook() async {
@@ -233,49 +268,6 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     }
   }
 
-  void _showRecipeActions(dynamic recipe) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final recipeId = recipe['id']?.toString();
-    if (recipeId == null) return;
-
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (recipe['can_edit'] != false)
-              ListTile(
-                leading: const Icon(Icons.drive_file_move_outlined),
-                title: const Text('Move to Book...'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _moveRecipe(recipe);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.copy_outlined),
-              title: const Text('Copy to Book...'),
-              onTap: () {
-                Navigator.pop(context);
-                _copyRecipe(recipe);
-              },
-            ),
-            if (recipe['can_edit'] != false)
-              ListTile(
-                leading: Icon(Icons.archive_outlined, color: colorScheme.error),
-                title: Text('Archive', style: TextStyle(color: colorScheme.error)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _archiveRecipe(recipe);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _moveRecipe(dynamic recipe) async {
     if (_isMovingOrCopying) return;
     final recipeId = recipe['id']?.toString();
@@ -377,6 +369,184 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     }
   }
 
+  // Bulk action handlers
+  Future<void> _bulkMove() async {
+    if (_isBulkOperating || _selectedRecipeIds.isEmpty) return;
+
+    final book = await _showBookPicker(excludeBookId: widget.recipeBookId);
+    if (book == null) return;
+
+    setState(() => _isBulkOperating = true);
+    try {
+      HapticFeedback.selectionClick();
+      final count = _selectedRecipeIds.length;
+      await _apiClient.bulkMoveRecipes(_selectedRecipeIds.toList(), book['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$count recipes moved to ${book['name']}')),
+        );
+        _exitSelectMode();
+        _loadRecipeBook();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not move recipes. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
+  }
+
+  Future<void> _bulkArchive() async {
+    if (_isBulkOperating || _selectedRecipeIds.isEmpty) return;
+
+    final count = _selectedRecipeIds.length;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Archive $count recipes?'),
+        content: const Text(
+          'These recipes will be moved to your archive. You can restore them anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Archive'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isBulkOperating = true);
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.bulkArchiveRecipes(_selectedRecipeIds.toList());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$count recipes archived')),
+        );
+        _exitSelectMode();
+        _loadRecipeBook();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not archive recipes. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
+  }
+
+  Future<void> _bulkTags() async {
+    if (_isBulkOperating || _selectedRecipeIds.isEmpty) return;
+
+    final tagController = TextEditingController();
+    bool isAddMode = true;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Update Tags'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: true, label: Text('Add Tags')),
+                      ButtonSegment(value: false, label: Text('Remove Tags')),
+                    ],
+                    selected: {isAddMode},
+                    onSelectionChanged: (selected) {
+                      setDialogState(() => isAddMode = selected.first);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: tagController,
+                    decoration: InputDecoration(
+                      labelText: isAddMode ? 'Tags to add' : 'Tags to remove',
+                      hintText: 'e.g. quick, easy, italian',
+                    ),
+                    autofocus: true,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final tags = tagController.text
+                        .split(',')
+                        .map((t) => t.trim())
+                        .where((t) => t.isNotEmpty)
+                        .toList();
+                    if (tags.isEmpty) return;
+                    Navigator.pop(context, {
+                      'isAdd': isAddMode,
+                      'tags': tags,
+                    });
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) {
+      tagController.dispose();
+      return;
+    }
+
+    tagController.dispose();
+
+    setState(() => _isBulkOperating = true);
+    try {
+      HapticFeedback.selectionClick();
+      final tags = result['tags'] as List<String>;
+      final count = _selectedRecipeIds.length;
+      await _apiClient.bulkUpdateTags(
+        _selectedRecipeIds.toList(),
+        addTags: result['isAdd'] == true ? tags : null,
+        removeTags: result['isAdd'] == false ? tags : null,
+      );
+      if (mounted) {
+        final action = result['isAdd'] == true ? 'added to' : 'removed from';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tags $action $count recipes')),
+        );
+        _exitSelectMode();
+        _loadRecipeBook();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update tags. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
+  }
+
   Future<void> _addRecipe() async {
     await context.push('/recipes/add/wizard', extra: {
       'recipeBookId': widget.recipeBookId,
@@ -390,50 +560,115 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_recipeBook?['name'] ?? 'Recipe Book'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'edit') {
-                _renameRecipeBook();
-              } else if (value == 'delete') {
-                _deleteRecipeBook();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'edit',
+      appBar: _isSelectMode
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: _exitSelectMode,
+              ),
+              title: Text('${_selectedRecipeIds.length} selected'),
+              actions: [
+                IconButton(
+                  icon: Icon(
+                    _selectedRecipeIds.length == _recipes.length
+                        ? Icons.deselect
+                        : Icons.select_all,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (_selectedRecipeIds.length == _recipes.length) {
+                        _selectedRecipeIds.clear();
+                      } else {
+                        _selectedRecipeIds.clear();
+                        for (final recipe in _recipes) {
+                          final id = recipe['id']?.toString();
+                          if (id != null) _selectedRecipeIds.add(id);
+                        }
+                      }
+                    });
+                  },
+                ),
+              ],
+            )
+          : AppBar(
+              title: Text(_recipeBook?['name'] ?? 'Recipe Book'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.pop(),
+              ),
+              actions: [
+                if (_recipes.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.checklist),
+                    onPressed: () => _enterSelectMode(),
+                  ),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'edit') {
+                      _renameRecipeBook();
+                    } else if (value == 'delete') {
+                      _deleteRecipeBook();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_outlined),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete, color: colorScheme.error),
+                          const SizedBox(width: 8),
+                          Text('Delete', style: TextStyle(color: colorScheme.error)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+      floatingActionButton: _isSelectMode
+          ? null
+          : FloatingActionButton(
+              onPressed: _addRecipe,
+              child: const Icon(Icons.add),
+            ),
+      bottomNavigationBar: _isSelectMode && _selectedRecipeIds.isNotEmpty
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    Icon(Icons.edit_outlined),
-                    SizedBox(width: 8),
-                    Text('Edit'),
+                    _BulkActionButton(
+                      icon: Icons.drive_file_move_outlined,
+                      label: 'Move',
+                      onTap: _isBulkOperating ? null : _bulkMove,
+                    ),
+                    _BulkActionButton(
+                      icon: Icons.label_outlined,
+                      label: 'Tags',
+                      onTap: _isBulkOperating ? null : _bulkTags,
+                    ),
+                    _BulkActionButton(
+                      icon: Icons.archive_outlined,
+                      label: 'Archive',
+                      color: colorScheme.error,
+                      onTap: _isBulkOperating ? null : _bulkArchive,
+                    ),
                   ],
                 ),
               ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, color: colorScheme.error),
-                    const SizedBox(width: 8),
-                    Text('Delete', style: TextStyle(color: colorScheme.error)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addRecipe,
-        child: const Icon(Icons.add),
-      ),
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -506,17 +741,73 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           ),
                         )
                       else
-                        ...(_recipes.map((recipe) => _RecipeCard(
-                              recipe: recipe,
-                              onTap: () async {
-                                await context.push('/recipes/${recipe['id']}');
-                                _loadRecipeBook();
-                              },
-                              onLongPress: () => _showRecipeActions(recipe),
-                            ))),
+                        ...(_recipes.map((recipe) {
+                          final recipeId = recipe['id']?.toString();
+                          final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
+                          return _RecipeCard(
+                            recipe: recipe,
+                            isSelectMode: _isSelectMode,
+                            isSelected: isSelected,
+                            onTap: _isSelectMode
+                                ? () {
+                                    if (recipeId != null) _toggleRecipeSelection(recipeId);
+                                  }
+                                : () async {
+                                    await context.push('/recipes/${recipe['id']}');
+                                    _loadRecipeBook();
+                                  },
+                            onLongPress: _isSelectMode
+                                ? null
+                                : () {
+                                    if (recipeId != null) {
+                                      _enterSelectMode(initialRecipeId: recipeId);
+                                    }
+                                  },
+                          );
+                        })),
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _BulkActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+  final VoidCallback? onTap;
+
+  const _BulkActionButton({
+    required this.icon,
+    required this.label,
+    this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = color ?? Theme.of(context).colorScheme.primary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: onTap != null ? effectiveColor : effectiveColor.withValues(alpha: 0.4)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: onTap != null ? effectiveColor : effectiveColor.withValues(alpha: 0.4),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -525,8 +816,16 @@ class _RecipeCard extends StatelessWidget {
   final dynamic recipe;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final bool isSelectMode;
+  final bool isSelected;
 
-  const _RecipeCard({required this.recipe, required this.onTap, this.onLongPress});
+  const _RecipeCard({
+    required this.recipe,
+    required this.onTap,
+    this.onLongPress,
+    this.isSelectMode = false,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -538,107 +837,141 @@ class _RecipeCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
+      shape: isSelected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: colorScheme.primary, width: 2),
+            )
+          : null,
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
           children: [
-            // Hero image area (~60% of card)
-            SizedBox(
-              height: 180,
-              width: double.infinity,
-              child: imageUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Hero image area (~60% of card)
+                SizedBox(
+                  height: 180,
+                  width: double.infinity,
+                  child: imageUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.restaurant,
+                              size: 48,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.restaurant,
+                            size: 48,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                      errorWidget: (context, url, error) => Container(
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.restaurant,
-                          size: 48,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  : Container(
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Icon(
-                        Icons.restaurant,
-                        size: 48,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-            ),
+                ),
 
-            // Recipe info
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    recipe['name'] ?? 'Untitled',
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-
-                  // Metadata chips
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
+                // Recipe info
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (recipe['prep_time'] != null)
-                        _MetadataChip(
-                          icon: Icons.timer_outlined,
-                          label: 'Prep ${recipe['prep_time']}m',
+                      Text(
+                        recipe['name'] ?? 'Untitled',
+                        style: textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
-                      if (recipe['cook_time'] != null)
-                        _MetadataChip(
-                          icon: Icons.local_fire_department_outlined,
-                          label: 'Cook ${recipe['cook_time']}m',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Metadata chips
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          if (recipe['prep_time'] != null)
+                            _MetadataChip(
+                              icon: Icons.timer_outlined,
+                              label: 'Prep ${recipe['prep_time']}m',
+                            ),
+                          if (recipe['cook_time'] != null)
+                            _MetadataChip(
+                              icon: Icons.local_fire_department_outlined,
+                              label: 'Cook ${recipe['cook_time']}m',
+                            ),
+                          if (recipe['servings'] != null)
+                            _MetadataChip(
+                              icon: Icons.people_outline,
+                              label: 'Serves ${recipe['servings']}',
+                            ),
+                        ],
+                      ),
+
+                      // Tags
+                      if (tags.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: tags
+                              .map((tag) => Chip(
+                                    label: Text(tag),
+                                    labelStyle: textTheme.labelSmall,
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                    backgroundColor:
+                                        colorScheme.surfaceContainerHighest,
+                                    padding: EdgeInsets.zero,
+                                  ))
+                              .toList(),
                         ),
-                      if (recipe['servings'] != null)
-                        _MetadataChip(
-                          icon: Icons.people_outline,
-                          label: 'Serves ${recipe['servings']}',
-                        ),
+                      ],
                     ],
                   ),
-
-                  // Tags
-                  if (tags.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: tags
-                          .map((tag) => Chip(
-                                label: Text(tag),
-                                labelStyle: textTheme.labelSmall,
-                                materialTapTargetSize:
-                                    MaterialTapTargetSize.shrinkWrap,
-                                visualDensity: VisualDensity.compact,
-                                backgroundColor:
-                                    colorScheme.surfaceContainerHighest,
-                                padding: EdgeInsets.zero,
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
+            // Selection checkbox overlay
+            if (isSelectMode)
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? colorScheme.primary
+                        : colorScheme.surface.withValues(alpha: 0.8),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? colorScheme.primary : colorScheme.outline,
+                      width: 2,
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    isSelected ? Icons.check : null,
+                    size: 18,
+                    color: isSelected ? colorScheme.onPrimary : Colors.transparent,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

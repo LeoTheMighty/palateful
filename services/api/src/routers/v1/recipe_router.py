@@ -2,6 +2,9 @@
 
 
 from api.v1.recipe import (
+    BulkArchiveRecipes,
+    BulkMoveRecipes,
+    BulkUpdateTags,
     CopyRecipe,
     CreateRecipe,
     DeleteRecipe,
@@ -70,6 +73,49 @@ async def list_archived_recipes(
 ):
     """List the current user's archived recipes."""
     return ListArchivedRecipes.call(
+        user=user,
+        database=database,
+    )
+
+
+# Bulk recipe operations (must be before /recipes/{recipe_id} to avoid path collision)
+@recipe_router.post("/recipes/bulk/move")
+async def bulk_move_recipes(
+    params: BulkMoveRecipes.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Move multiple recipes to a different book."""
+    return BulkMoveRecipes.call(
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/bulk/archive")
+async def bulk_archive_recipes(
+    params: BulkArchiveRecipes.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Archive multiple recipes at once."""
+    return BulkArchiveRecipes.call(
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/bulk/tags")
+async def bulk_update_tags(
+    params: BulkUpdateTags.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Add or remove tags on multiple recipes."""
+    return BulkUpdateTags.call(
+        params=params,
         user=user,
         database=database,
     )

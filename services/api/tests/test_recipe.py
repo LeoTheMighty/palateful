@@ -1251,3 +1251,367 @@ class TestCopyRecipe:
             json={"destination_book_id": "nonexistent-book"},
         )
         assert response.status_code == 404
+
+
+class TestBulkMoveRecipes:
+    """Tests for POST /v1/recipes/bulk/move."""
+
+    def test_bulk_move_success(self, client, mock_db, mock_user):
+        """Test bulk moving recipes to another book."""
+        src_book_id = "src-book-id"
+        dest_book_id = "dest-book-id"
+        recipe1 = MockRecipe(id="recipe-1", recipe_book_id=src_book_id)
+        recipe2 = MockRecipe(id="recipe-2", recipe_book_id=src_book_id)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="owner",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={"recipe_ids": ["recipe-1", "recipe-2"], "destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["moved_count"] == 2
+        assert recipe1.recipe_book_id == dest_book_id
+        assert recipe2.recipe_book_id == dest_book_id
+
+    def test_bulk_move_empty_list(self, client, mock_db, mock_user):
+        """Test bulk move with empty recipe list."""
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={"recipe_ids": [], "destination_book_id": "some-book"},
+        )
+        assert response.status_code == 400
+
+    def test_bulk_move_no_dest_permission(self, client, mock_db, mock_user):
+        """Test bulk move without destination book permission."""
+        dest_book_id = "dest-book-id"
+        dest_book = MockRecipeBook(id=dest_book_id)
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={"recipe_ids": ["recipe-1"], "destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 403
+
+    def test_bulk_move_dest_not_found(self, client, mock_db, mock_user):
+        """Test bulk move to nonexistent destination."""
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={"recipe_ids": ["recipe-1"], "destination_book_id": "nonexistent"},
+        )
+        assert response.status_code == 404
+
+    def test_bulk_move_no_source_permission(self, client, mock_db, mock_user):
+        """Test bulk move without source book permission."""
+        src_book_id = "src-book-id"
+        dest_book_id = "dest-book-id"
+        recipe = MockRecipe(id="recipe-1", recipe_book_id=src_book_id)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="viewer",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={"recipe_ids": ["recipe-1"], "destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 403
+
+    def test_bulk_move_skips_already_in_dest(self, client, mock_db, mock_user):
+        """Test that recipes already in the destination book are skipped."""
+        dest_book_id = "dest-book-id"
+        src_book_id = "src-book-id"
+        recipe_already_there = MockRecipe(id="recipe-1", recipe_book_id=dest_book_id)
+        recipe_to_move = MockRecipe(id="recipe-2", recipe_book_id=src_book_id)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="owner",
+        )
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe_already_there, id="recipe-1")
+        mock_db.set_find_by(Recipe, recipe_to_move, id="recipe-2")
+        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_db.set_find_by(RecipeBookUser, src_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=src_book_id)
+        mock_db.set_find_by(RecipeBookUser, dest_membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=dest_book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={"recipe_ids": ["recipe-1", "recipe-2"], "destination_book_id": dest_book_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["moved_count"] == 1  # Only recipe-2 was moved
+        assert recipe_to_move.recipe_book_id == dest_book_id
+
+
+class TestBulkArchiveRecipes:
+    """Tests for POST /v1/recipes/bulk/archive."""
+
+    def test_bulk_archive_success(self, client, mock_db, mock_user):
+        """Test bulk archiving recipes."""
+        book_id = "test-book-id"
+        recipe1 = MockRecipe(id="recipe-1", recipe_book_id=book_id)
+        recipe2 = MockRecipe(id="recipe-2", recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/archive",
+            json={"recipe_ids": ["recipe-1", "recipe-2"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["archived_count"] == 2
+        assert recipe1.archived_at is not None
+        assert recipe2.archived_at is not None
+
+    def test_bulk_archive_empty_list(self, client, mock_db, mock_user):
+        """Test bulk archive with empty recipe list."""
+        response = client.post(
+            "/v1/recipes/bulk/archive",
+            json={"recipe_ids": []},
+        )
+        assert response.status_code == 400
+
+    def test_bulk_archive_no_permission(self, client, mock_db, mock_user):
+        """Test bulk archive without permission."""
+        book_id = "test-book-id"
+        recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/archive",
+            json={"recipe_ids": ["recipe-1"]},
+        )
+        assert response.status_code == 403
+
+    def test_bulk_archive_recipe_not_found(self, client, mock_db, mock_user):
+        """Test bulk archive with nonexistent recipe."""
+        response = client.post(
+            "/v1/recipes/bulk/archive",
+            json={"recipe_ids": ["nonexistent"]},
+        )
+        assert response.status_code == 404
+
+
+class TestBulkUpdateTags:
+    """Tests for POST /v1/recipes/bulk/tags."""
+
+    def test_bulk_add_tags(self, client, mock_db, mock_user):
+        """Test bulk adding tags to recipes."""
+        book_id = "test-book-id"
+        recipe1 = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=["italian"])
+        recipe2 = MockRecipe(id="recipe-2", recipe_book_id=book_id, tags=[])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": ["recipe-1", "recipe-2"], "add_tags": ["quick", "easy"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["updated_count"] == 2
+        assert "quick" in recipe1.tags
+        assert "easy" in recipe1.tags
+        assert "italian" in recipe1.tags  # preserved
+        assert "quick" in recipe2.tags
+
+    def test_bulk_remove_tags(self, client, mock_db, mock_user):
+        """Test bulk removing tags from recipes."""
+        book_id = "test-book-id"
+        recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=["italian", "quick", "easy"])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": ["recipe-1"], "remove_tags": ["quick", "easy"]},
+        )
+        assert response.status_code == 200
+        assert recipe.tags == ["italian"]
+
+    def test_bulk_add_and_remove_tags(self, client, mock_db, mock_user):
+        """Test bulk adding and removing tags simultaneously."""
+        book_id = "test-book-id"
+        recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=["old-tag"])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": ["recipe-1"], "add_tags": ["new-tag"], "remove_tags": ["old-tag"]},
+        )
+        assert response.status_code == 200
+        assert "new-tag" in recipe.tags
+        assert "old-tag" not in recipe.tags
+
+    def test_bulk_tags_empty_list(self, client, mock_db, mock_user):
+        """Test bulk tags with empty recipe list."""
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": [], "add_tags": ["tag"]},
+        )
+        assert response.status_code == 400
+
+    def test_bulk_tags_no_changes(self, client, mock_db, mock_user):
+        """Test bulk tags with no tag changes specified."""
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": ["recipe-1"]},
+        )
+        assert response.status_code == 400
+
+    def test_bulk_tags_no_permission(self, client, mock_db, mock_user):
+        """Test bulk tags without permission."""
+        book_id = "test-book-id"
+        recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=[])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": ["recipe-1"], "add_tags": ["tag"]},
+        )
+        assert response.status_code == 403

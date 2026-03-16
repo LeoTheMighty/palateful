@@ -191,6 +191,28 @@ class ApiClient {
     });
   }
 
+  // Bulk operations
+  Future<Response> bulkMoveRecipes(List<String> recipeIds, String destinationBookId) {
+    return _dio.post('/v1/recipes/bulk/move', data: {
+      'recipe_ids': recipeIds,
+      'destination_book_id': destinationBookId,
+    });
+  }
+
+  Future<Response> bulkArchiveRecipes(List<String> recipeIds) {
+    return _dio.post('/v1/recipes/bulk/archive', data: {
+      'recipe_ids': recipeIds,
+    });
+  }
+
+  Future<Response> bulkUpdateTags(List<String> recipeIds, {List<String>? addTags, List<String>? removeTags}) {
+    return _dio.post('/v1/recipes/bulk/tags', data: {
+      'recipe_ids': recipeIds,
+      if (addTags != null) 'add_tags': addTags,
+      if (removeTags != null) 'remove_tags': removeTags,
+    });
+  }
+
   // Search
   Future<Response> search(String query, {int limit = 20}) {
     return _dio.get('/v1/search', queryParameters: {
