@@ -1,3 +1,20 @@
+# CI/CD Pipeline for Palateful
+#
+# Required GitHub Secrets:
+#   AWS_ACCESS_KEY_ID       - AWS IAM access key for ECR push and Terraform
+#   AWS_SECRET_ACCESS_KEY   - AWS IAM secret key
+#   AWS_ECR_ACCOUNT_URL     - ECR registry URL (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com)
+#   AWS_REGION              - AWS region (e.g., us-east-1)
+#
+# Jobs:
+#   setup          - Install dependencies, cache workspace (PR + push)
+#   lint           - Python ruff lint via NX affected (PR + push)
+#   test           - Python pytest via NX affected with PostgreSQL (PR + push)
+#   check-models   - Verify SQLAlchemy models match Alembic migrations (PR + push)
+#   flutter-test   - Flutter analyze + test (PR + push)
+#   terraform      - Terraform validate + fmt check + plan (PR + push)
+#   deploy-images  - Docker build + ECR push for api/migrator/worker (push to main only)
+
 name: CI
 
 on:
@@ -211,3 +228,130 @@ jobs:
 
       - name: Check models match migrations
         run: npx nx run migrator:check-models
+
+  flutter-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0-0.3.pre'
+          channel: master
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Install dependencies
+        working-directory: app
+        run: |
+          touch .env
+          flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze
+
+      - name: Test
+        working-directory: app
+        run: flutter test
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Terraform init
+        run: terraform init
+        working-directory: terraform/environments/dev
+
+      - name: Terraform validate
+        run: terraform validate
+        working-directory: terraform/environments/dev
+
+      - name: Terraform plan
+        run: terraform plan -no-color -input=false
+        working-directory: terraform/environments/dev
+
+      # NOTE: Terraform apply is not enabled yet. The S3 backend in
+      # terraform/environments/dev/main.tf must be uncommented and
+      # initialized before CI can safely run apply (local state is
+      # not shared between CI runs). Once S3 backend is active, add:
+      #
+      # - name: Terraform apply
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      #   run: terraform apply -auto-approve -input=false
+      #   working-directory: terraform/environments/dev
+
+  deploy-images:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test, check-models, flutter-test]
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Restore workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .
+            !.git
+          key: workspace-${{ github.sha }}-${{ github.run_id }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API
+        run: npx nx run api:build:ci --push --cache-from=type=gha,scope=api --cache-to=type=gha,scope=api,mode=max
+        env:
+          INPUT_PUSH: 'true'
+
+      - name: Build and push Migrator
+        run: npx nx run migrator:build:ci --push --cache-from=type=gha,scope=migrator --cache-to=type=gha,scope=migrator,mode=max
+        env:
+          INPUT_PUSH: 'true'
+
+      - name: Build and push Worker
+        run: npx nx run worker:build:ci --push --cache-from=type=gha,scope=worker --cache-to=type=gha,scope=worker,mode=max
+        env:
+          INPUT_PUSH: 'true'
