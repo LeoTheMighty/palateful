@@ -1,6 +1,6 @@
 # Story 2.4: Favorites & Quick Access
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -223,6 +223,13 @@ if (_favorites.isNotEmpty) ...[
 - [Source: app/lib/features/recipe_books/recipe_book_detail_screen.dart] — Book detail (add star to _RecipeCard)
 - [Source: services/migrator/migrations/versions/20260315000001_add_tags_to_recipes.py] — Migration pattern
 - [Source: services/api/tests/conftest.py] — Test fixtures (MockModel, MockUser, etc.)
+
+## Review Action Items
+
+- [x] [AI-Review][MEDIUM] `home_screen.dart:105`: `_toggleFavorite()` has no inflight guard — rapid double-tap fires two concurrent API calls, leaving the recipe in the wrong state. Add a `_togglingFavoriteIds = <String>{}` set and guard with `if (_togglingFavoriteIds.contains(recipeId)) return;`. Compare with `recipe_detail_screen.dart` which correctly uses `_isTogglingFavorite`.
+- [x] [AI-Review][LOW] `list_favorites.py:25`: No `RecipeBookUser` membership check — users removed from a recipe book still see those recipe details (name, ingredients, image) in their favorites list. Add a join/filter on `RecipeBookUser` before shared books are implemented in Epic 7.
+- [x] [AI-Review][LOW] `list_favorites.py:26`: Uses raw `self.db.query()` instead of `self.database.*` helpers — inconsistent with the rest of the codebase. Use `self.database.db.query()` to match the pattern in `update_recipe.py`.
+- [x] [AI-Review][LOW] `toggle_favorite.py:39`: `user_id=user.id` (UUID object) in `find_by(RecipeBookUser, ...)` — inconsistent with `get_photo_upload_url.py` which uses `user_id=str(self.user.id)` for the same check. Standardize to `str(user.id)`.
 
 ## Dev Agent Record
 

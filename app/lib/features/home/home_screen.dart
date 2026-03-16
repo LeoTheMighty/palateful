@@ -29,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _recipes = [];
   List<dynamic> _favorites = [];
   Set<String> _favoriteIds = {};
+  final Set<String> _togglingFavoriteIds = {};
   bool _isLoading = true;
   String? _error;
 
@@ -105,6 +106,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _toggleFavorite(dynamic recipe) async {
     final recipeId = recipe['id']?.toString();
     if (recipeId == null) return;
+    if (_togglingFavoriteIds.contains(recipeId)) return;
+    _togglingFavoriteIds.add(recipeId);
 
     // Optimistic update
     final wasFavorite = _favoriteIds.contains(recipeId);
@@ -135,6 +138,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         });
       }
+    } finally {
+      _togglingFavoriteIds.remove(recipeId);
     }
   }
 

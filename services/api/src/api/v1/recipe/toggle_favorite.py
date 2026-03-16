@@ -36,7 +36,7 @@ class ToggleFavorite(Endpoint):
         # Verify user has access via recipe book membership
         membership = self.database.find_by(
             RecipeBookUser,
-            user_id=user.id,
+            user_id=str(user.id),
             recipe_book_id=recipe.recipe_book_id,
         )
         if not membership:

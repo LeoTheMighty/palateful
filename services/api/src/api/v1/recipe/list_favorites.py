@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 from utils.models.recipe import Recipe
+from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.models.user_favorite import UserFavorite
 
@@ -21,10 +22,14 @@ class ListFavorites(Endpoint):
         """
         user: User = self.user
 
-        # Query favorites joined with recipes, ordered newest first
+        # Query favorites joined with recipes, filtered by active membership
         results = (
-            self.db.query(UserFavorite, Recipe)
+            self.database.db.query(UserFavorite, Recipe)
             .join(Recipe, UserFavorite.recipe_id == Recipe.id)
+            .join(RecipeBookUser, (
+                (RecipeBookUser.recipe_book_id == Recipe.recipe_book_id)
+                & (RecipeBookUser.user_id == user.id)
+            ))
             .filter(UserFavorite.user_id == user.id)
             .filter(Recipe.archived_at.is_(None))
             .order_by(UserFavorite.created_at.desc())
