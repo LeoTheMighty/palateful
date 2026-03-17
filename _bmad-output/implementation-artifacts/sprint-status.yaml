@@ -67,7 +67,7 @@ development_status:
   3-1-url-recipe-import: done
   3-2-ocr-photo-import: done
   3-3-bulk-import-from-csv-url-list: done
-  3-4-exception-review-queue: backlog
+  3-4-exception-review-queue: done
   3-5-share-sheet-import: backlog
   3-6-push-notifications-and-notification-preferences: backlog
   epic-3-retrospective: optional

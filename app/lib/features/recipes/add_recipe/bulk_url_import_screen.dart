@@ -590,14 +590,32 @@ class _BulkUrlImportScreenState extends State<BulkUrlImportScreen> {
           ),
         ),
 
-        // Approve all button if there are items to review
+        // Action buttons for items needing review
         if (reviewItems.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: FilledButton.icon(
-              onPressed: _approveAll,
-              icon: const Icon(Icons.done_all),
-              label: Text('Approve All (${reviewItems.length})'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      if (_importJobId == null) return;
+                      await context.push('/recipes/import/review-list/$_importJobId');
+                      if (mounted) _loadImportItems();
+                    },
+                    icon: const Icon(Icons.edit_note),
+                    label: const Text('Review & Edit'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _approveAll,
+                    icon: const Icon(Icons.done_all),
+                    label: Text('Approve All (${reviewItems.length})'),
+                  ),
+                ),
+              ],
             ),
           ),
 

@@ -393,8 +393,20 @@ class ApiClient {
     return _dio.get('/v1/import-jobs/$jobId');
   }
 
-  Future<Response> listImportItems(String jobId) {
-    return _dio.get('/v1/import-jobs/$jobId/items');
+  Future<Response> listImportItems(String jobId, {String? status}) {
+    return _dio.get('/v1/import-jobs/$jobId/items', queryParameters: {
+      if (status != null) 'status': status,
+    });
+  }
+
+  Future<Response> getImportItem(String itemId) {
+    return _dio.get('/v1/import-items/$itemId');
+  }
+
+  Future<Response> updateImportItem(String itemId, Map<String, dynamic> userEdits) {
+    return _dio.put('/v1/import-items/$itemId', data: {
+      'user_edits': userEdits,
+    });
   }
 
   Future<Response> approveImportItem(String itemId) {

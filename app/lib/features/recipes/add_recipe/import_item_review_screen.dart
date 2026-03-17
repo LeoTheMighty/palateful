@@ -1,0 +1,524 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/di/injection.dart';
+import '../../../core/services/api_client.dart';
+
+class ImportItemReviewScreen extends StatefulWidget {
+  final String itemId;
+
+  const ImportItemReviewScreen({super.key, required this.itemId});
+
+  @override
+  State<ImportItemReviewScreen> createState() => _ImportItemReviewScreenState();
+}
+
+class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
+  final _apiClient = getIt<ApiClient>();
+
+  // Loading state
+  bool _isLoading = true;
+  String? _error;
+  Map<String, dynamic>? _item;
+  // Edit controllers
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _prepTimeController = TextEditingController();
+  final _cookTimeController = TextEditingController();
+  final _servingsController = TextEditingController();
+  final _instructionsController = TextEditingController();
+  final _ingredientControllers = <TextEditingController>[];
+
+  // Action state
+  bool _isApproving = false;
+  bool _isSaving = false;
+  bool _hasEdits = false;
+  Timer? _saveTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadItem();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _prepTimeController.dispose();
+    _cookTimeController.dispose();
+    _servingsController.dispose();
+    _instructionsController.dispose();
+    for (final c in _ingredientControllers) {
+      c.dispose();
+    }
+    _saveTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadItem() async {
+    try {
+      final response = await _apiClient.getImportItem(widget.itemId);
+      if (!mounted) return;
+
+      final item = response.data as Map<String, dynamic>;
+      final parsed = item['parsed_recipe'] as Map<String, dynamic>?;
+      final edits = item['user_edits'] as Map<String, dynamic>?;
+
+      // Merge: user_edits override parsed_recipe
+      final recipe = <String, dynamic>{};
+      if (parsed != null) recipe.addAll(parsed);
+      if (edits != null) recipe.addAll(edits);
+
+      _populateControllers(recipe);
+
+      setState(() {
+        _item = item;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Could not load import item.';
+        });
+      }
+    }
+  }
+
+  void _populateControllers(Map<String, dynamic> recipe) {
+    _nameController.text = recipe['name'] as String? ?? '';
+    _descriptionController.text = recipe['description'] as String? ?? '';
+    final prepTime = recipe['prep_time_minutes'];
+    _prepTimeController.text = prepTime != null ? prepTime.toString() : '';
+    final cookTime = recipe['cook_time_minutes'];
+    _cookTimeController.text = cookTime != null ? cookTime.toString() : '';
+    final servings = recipe['servings'];
+    _servingsController.text = servings != null ? servings.toString() : '';
+    _instructionsController.text = recipe['instructions'] as String? ?? '';
+
+    // Build ingredient controllers
+    for (final c in _ingredientControllers) {
+      c.dispose();
+    }
+    _ingredientControllers.clear();
+
+    final ingredients = recipe['ingredients'] as List? ?? [];
+    for (final ing in ingredients) {
+      final text = ing is Map ? (ing['text'] ?? '') : ing.toString();
+      _ingredientControllers.add(TextEditingController(text: text));
+    }
+  }
+
+  void _onFieldChanged() {
+    if (!_hasEdits) {
+      setState(() => _hasEdits = true);
+    }
+    _debounceSave();
+  }
+
+  void _debounceSave() {
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(seconds: 2), _saveEdits);
+  }
+
+  Map<String, dynamic> _buildUserEdits() {
+    final ingredients = _ingredientControllers
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .map((t) => {'text': t})
+        .toList();
+
+    final edits = <String, dynamic>{
+      'name': _nameController.text.trim(),
+      'description': _descriptionController.text.trim(),
+      'instructions': _instructionsController.text.trim(),
+      'ingredients': ingredients,
+    };
+
+    final prepText = _prepTimeController.text.trim();
+    edits['prep_time_minutes'] = prepText.isNotEmpty ? int.tryParse(prepText) : null;
+
+    final cookText = _cookTimeController.text.trim();
+    edits['cook_time_minutes'] = cookText.isNotEmpty ? int.tryParse(cookText) : null;
+
+    final servingsText = _servingsController.text.trim();
+    edits['servings'] = servingsText.isNotEmpty ? int.tryParse(servingsText) : null;
+
+    return edits;
+  }
+
+  Future<void> _saveEdits() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+
+    try {
+      await _apiClient.updateImportItem(widget.itemId, _buildUserEdits());
+    } catch (_) {
+      // Silent save — don't disrupt editing
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _approve() async {
+    if (_isApproving) return;
+
+    // Cancel any pending debounce timer and save edits
+    _saveTimer?.cancel();
+    if (_hasEdits) {
+      await _saveEdits();
+    }
+
+    setState(() => _isApproving = true);
+    try {
+      HapticFeedback.selectionClick();
+      await _apiClient.approveImportItem(widget.itemId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recipe imported successfully!')),
+        );
+        context.pop(true);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isApproving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not approve recipe.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _skip() async {
+    try {
+      await _apiClient.skipImportItem(widget.itemId);
+    } catch (_) {}
+    if (mounted) context.pop(false);
+  }
+
+  void _addIngredient() {
+    setState(() {
+      _ingredientControllers.add(TextEditingController());
+    });
+    _onFieldChanged();
+  }
+
+  void _removeIngredient(int index) {
+    setState(() {
+      _ingredientControllers[index].dispose();
+      _ingredientControllers.removeAt(index);
+    });
+    _onFieldChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Review Import'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+        actions: [
+          if (_isSaving)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (_hasEdits)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Icon(Icons.check, size: 16, color: colorScheme.primary),
+            ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _buildError(colorScheme)
+              : _item?['status'] == 'failed'
+                  ? _buildFailedView(colorScheme)
+                  : _buildEditForm(colorScheme),
+    );
+  }
+
+  Widget _buildError(ColorScheme colorScheme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _error!,
+                style: TextStyle(color: colorScheme.onErrorContainer),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _isLoading = true;
+                  _error = null;
+                });
+                _loadItem();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFailedView(ColorScheme colorScheme) {
+    final textTheme = Theme.of(context).textTheme;
+    final errorMessage = _item?['error_message'] as String? ?? 'Unknown error';
+    final sourceUrl = _item?['source_url'] as String? ?? '';
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 64, color: colorScheme.error),
+          const SizedBox(height: 16),
+          Text(
+            'Import Failed',
+            style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (sourceUrl.isNotEmpty) ...[
+            Text(
+              sourceUrl,
+              style: textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+          ],
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              errorMessage,
+              style: TextStyle(color: colorScheme.onErrorContainer),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _skip,
+            child: const Text('Skip This Item'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditForm(ColorScheme colorScheme) {
+    final textTheme = Theme.of(context).textTheme;
+    final sourceUrl = _item?['source_url'] as String? ?? '';
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Source info
+              if (sourceUrl.isNotEmpty) ...[
+                Text(
+                  'Source: $sourceUrl',
+                  style: textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Recipe name
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Recipe Name',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _onFieldChanged(),
+              ),
+              const SizedBox(height: 16),
+
+              // Description
+              TextField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+                onChanged: (_) => _onFieldChanged(),
+              ),
+              const SizedBox(height: 16),
+
+              // Metadata row
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _prepTimeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Prep (min)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => _onFieldChanged(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _cookTimeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Cook (min)',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => _onFieldChanged(),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _servingsController,
+                      decoration: const InputDecoration(
+                        labelText: 'Servings',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => _onFieldChanged(),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Ingredients
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Ingredients (${_ingredientControllers.length})',
+                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: _addIngredient,
+                    tooltip: 'Add ingredient',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...List.generate(_ingredientControllers.length, (i) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _ingredientControllers[i],
+                          decoration: InputDecoration(
+                            hintText: 'e.g. 2 cups flour',
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            suffixIcon: IconButton(
+                              icon: Icon(Icons.remove_circle_outline,
+                                  size: 20, color: colorScheme.error),
+                              onPressed: () => _removeIngredient(i),
+                            ),
+                          ),
+                          onChanged: (_) => _onFieldChanged(),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              const SizedBox(height: 24),
+
+              // Instructions
+              Text(
+                'Instructions',
+                style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _instructionsController,
+                decoration: const InputDecoration(
+                  hintText: 'Step-by-step instructions...',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+                maxLines: 8,
+                onChanged: (_) => _onFieldChanged(),
+              ),
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+
+        // Bottom action bar
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                OutlinedButton(
+                  onPressed: _isApproving ? null : _skip,
+                  child: const Text('Skip'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _isApproving ? null : _approve,
+                    icon: _isApproving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check),
+                    label: const Text('Save Recipe'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
