@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'firebase_options.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
@@ -81,8 +85,70 @@ void main() async {
   runApp(const ProviderScope(child: PalatefulApp()));
 }
 
-class PalatefulApp extends StatelessWidget {
+class PalatefulApp extends StatefulWidget {
   const PalatefulApp({super.key});
+
+  @override
+  State<PalatefulApp> createState() => _PalatefulAppState();
+}
+
+class _PalatefulAppState extends State<PalatefulApp> {
+  StreamSubscription? _shareSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb) {
+      _initShareListener();
+    }
+  }
+
+  void _initShareListener() {
+    // Cold start: app was launched from share
+    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
+      _handleSharedFiles(files);
+      ReceiveSharingIntent.instance.reset();
+    });
+
+    // Hot share: app was already running
+    _shareSubscription = ReceiveSharingIntent.instance
+        .getMediaStream()
+        .listen(_handleSharedFiles, onError: (_) {});
+  }
+
+  void _handleSharedFiles(List<SharedMediaFile> files) {
+    for (final file in files) {
+      final path = file.path.trim();
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        // Navigate after first frame (router may not be ready on cold start)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final authService = getIt<AuthService>();
+          if (authService.isAuthenticated) {
+            appRouter.go('/recipes/add/share?url=${Uri.encodeComponent(path)}');
+          }
+        });
+        return;
+      }
+      // Try to extract URL from text
+      final urlMatch = RegExp(r'https?://\S+').firstMatch(path);
+      if (urlMatch != null) {
+        final url = urlMatch.group(0)!;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final authService = getIt<AuthService>();
+          if (authService.isAuthenticated) {
+            appRouter.go('/recipes/add/share?url=${Uri.encodeComponent(url)}');
+          }
+        });
+        return;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _shareSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

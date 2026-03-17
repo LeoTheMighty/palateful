@@ -19,6 +19,7 @@ import '../../features/recipes/add_recipe/bulk_url_import_screen.dart';
 import '../../features/recipes/add_recipe/file_import_screen.dart';
 import '../../features/recipes/add_recipe/import_item_review_screen.dart';
 import '../../features/recipes/add_recipe/import_review_list_screen.dart';
+import '../../features/recipes/add_recipe/share_import_screen.dart';
 import '../../features/recipes/add_recipe/url_import_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
@@ -186,6 +187,14 @@ GoRouter get appRouter {
         },
       ),
 
+      GoRoute(
+        path: '/recipes/add/share',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final url = state.uri.queryParameters['url'] ?? '';
+          return ShareImportScreen(initialUrl: url);
+        },
+      ),
       GoRoute(
         path: '/recipes/import/review-list/:jobId',
         parentNavigatorKey: _rootNavigatorKey,
