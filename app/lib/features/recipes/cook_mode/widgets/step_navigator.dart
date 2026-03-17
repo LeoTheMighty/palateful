@@ -184,7 +184,7 @@ class _NavButton extends StatelessWidget {
             : null,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
           child: Row(
             mainAxisAlignment: alignment,
             children: alignment == MainAxisAlignment.start

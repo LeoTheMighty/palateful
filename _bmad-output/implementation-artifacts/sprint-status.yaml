@@ -92,7 +92,7 @@ development_status:
   # Epic 6: Cooking Mode
   epic-6: in-progress
   6-1-cooking-mode-core-experience: done
-  6-2-gesture-navigation-for-messy-hands: backlog
+  6-2-gesture-navigation-for-messy-hands: done
   6-3-concurrent-timers-with-background-notifications: backlog
   6-4-offline-cooking-mode: backlog
   6-5-post-cook-feedback-flow: backlog

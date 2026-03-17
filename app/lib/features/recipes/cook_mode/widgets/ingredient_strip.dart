@@ -58,7 +58,8 @@ class _IngredientStripState extends State<IngredientStrip> {
                     setState(() => _isExpanded = !_isExpanded);
                   },
                   child: Padding(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 23),
                     child: Row(
                       children: [
                         Text(

@@ -298,6 +298,17 @@ class _CookModeScreenState extends State<CookModeScreen> {
                     }
                   }
                 },
+                // Left 25% = go back, right 25% = go next, middle 50% = no-op
+                // Invisible tap zones for messy-hands navigation (AC: Story 6.2)
+                onTapUp: (details) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final tapX = details.localPosition.dx;
+                  if (tapX < screenWidth * 0.25) {
+                    if (_currentStep > 0) _previousStep();
+                  } else if (tapX > screenWidth * 0.75) {
+                    if (_currentStep < _steps.length - 1) _nextStep();
+                  }
+                },
                 child: _buildStepContent(),
               ),
             ),
@@ -329,6 +340,8 @@ class _CookModeScreenState extends State<CookModeScreen> {
           IconButton(
             icon: const Icon(Icons.arrow_back, color: AppColors.warmIvory),
             onPressed: _exitCookMode,
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+            padding: EdgeInsets.zero,
           ),
 
           // Recipe name
@@ -373,6 +386,8 @@ class _CookModeScreenState extends State<CookModeScreen> {
           IconButton(
             icon: const Icon(Icons.close, color: AppColors.warmIvory),
             onPressed: _exitCookMode,
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+            padding: EdgeInsets.zero,
           ),
         ],
       ),
