@@ -15,6 +15,7 @@ import '../../features/recipes/cook_mode/cook_mode_screen.dart';
 import '../../features/recipes/edit_recipe_screen.dart';
 import '../../features/recipes/add_recipe/recipe_wizard_screen.dart';
 import '../../features/recipes/add_recipe/photo_capture_screen.dart';
+import '../../features/recipes/add_recipe/bulk_url_import_screen.dart';
 import '../../features/recipes/add_recipe/file_import_screen.dart';
 import '../../features/recipes/add_recipe/url_import_screen.dart';
 import '../../features/search/search_screen.dart';
@@ -163,6 +164,15 @@ GoRouter get appRouter {
         path: '/recipes/add/files',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const FileImportScreen(),
+      ),
+      GoRoute(
+        path: '/recipes/add/bulk-urls',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final recipeBookId = extra?['recipeBookId'] as String?;
+          return BulkUrlImportScreen(recipeBookId: recipeBookId);
+        },
       ),
       GoRoute(
         path: '/recipes/add/url',

@@ -81,25 +81,13 @@ class ParseSourceTask(BaseTask):
             raise
 
     def _parse_url_list(self, job: ImportJob) -> int:
-        """Parse a list of URLs from the job's raw_data.
+        """Handle URL list imports.
 
-        The URLs should be stored in source_s3_key as newline-separated URLs,
-        or in the job's metadata.
+        Items are already pre-created by StartImport, so just return the count.
         """
-        # For URL list imports, the URLs are stored in the source_s3_key field
-        # as a newline-separated list (or we could use JSON in a metadata field)
-        # For now, we'll expect the caller to have passed URLs via the API
-        # and stored them in a way we can retrieve
-
-        # This is a simplified implementation - in production, we'd read from S3
-        # or have the URLs passed directly in the job creation
-
-        # For MVP, we'll check if there's a source_filename that contains URLs
-        # or if URLs were stored in a JSON file in S3
-
-        items_created = 0
-        # Implementation will be completed when integrated with API
-        return items_created
+        # URL list items are already created by StartImport with source_type="url"
+        # and source_url set. total_items is already set by StartImport.
+        return job.total_items
 
     def _parse_single_url(self, job: ImportJob) -> int:
         """Create a single ImportItem for a single URL import."""

@@ -150,7 +150,7 @@ class StartImport(Endpoint):
 
     class Params(BaseModel):
         source_type: str
-        urls: list[str] | None = None
+        urls: list[str] | None = Field(default=None, max_length=50)
         url: str | None = None
         ocr_texts: list[str] | None = Field(default=None, max_length=10)
 

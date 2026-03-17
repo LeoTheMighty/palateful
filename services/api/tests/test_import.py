@@ -87,6 +87,70 @@ class TestStartImport:
         data = response.json()
         assert data["source_type"] == "photo"
 
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_start_import_url_list_success(self, mock_task, client, mock_db, mock_user):
+        """Test starting a URL list import job."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url_list",
+                "urls": [
+                    "https://example.com/recipe1",
+                    "https://example.com/recipe2",
+                    "https://example.com/recipe3",
+                ],
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["source_type"] == "url_list"
+        assert data["total_items"] == 3
+
+    def test_start_import_url_list_empty(self, client, mock_db, mock_user):
+        """Test URL list import with empty URLs."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url_list",
+                "urls": [],
+            }
+        )
+        assert response.status_code == 400
+
     def test_start_import_photo_no_texts(self, client, mock_db, mock_user):
         """Test photo import without OCR texts."""
         book_id = "test-book-id"
