@@ -2,194 +2,137 @@
 
 This guide walks through the complete setup process for Palateful, from cloning the repository to running the application locally.
 
+## Architecture Overview
+
+Palateful is an NX monorepo with:
+- **Backend**: Python FastAPI services (`services/api`, `services/worker`, `services/parser`)
+- **Database**: PostgreSQL 16 with pgvector, managed by Alembic migrations (`services/migrator`)
+- **Task Queue**: Celery + AWS SQS (LocalStack for local dev)
+- **Mobile**: Flutter app (`app/`)
+- **Infrastructure**: Docker Compose for local development
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js 20+** - [Download here](https://nodejs.org/)
-- **Docker Desktop** - [Download here](https://www.docker.com/products/docker-desktop/)
-- **Yarn** - Install with `npm install -g yarn`
-- **Git** - [Download here](https://git-scm.com/)
-- **Flutter SDK 3.19+** - [Install guide](https://docs.flutter.dev/get-started/install)
-- **Xcode 15+** (macOS only, for iOS) - Install from Mac App Store
-- **Android Studio** (for Android) - [Download here](https://developer.android.com/studio)
-- **Python 3.13+** - [Download here](https://www.python.org/downloads/)
-- **Poetry** - Install with `curl -sSL https://install.python-poetry.org | python3 -`
+- **Node.js 20+** and **Yarn** — for NX monorepo tooling
+  ```bash
+  npm install -g yarn
+  ```
+- **Docker Desktop** — [Download here](https://www.docker.com/products/docker-desktop/) — runs all backend services
+- **Flutter SDK 3.24+** — [Install guide](https://docs.flutter.dev/get-started/install)
+- **Python 3.13+** and **Poetry** — only needed when editing Python services locally
+  ```bash
+  curl -sSL https://install.python-poetry.org | python3 -
+  ```
+- **Xcode 15+** (macOS, for iOS simulator) — install from Mac App Store
+- **Android Studio** (for Android emulator) — [Download here](https://developer.android.com/studio)
 
 You'll also need accounts for:
-- **Auth0** - [Sign up free](https://auth0.com/)
-- **Firebase** - [Sign up free](https://firebase.google.com/) (for push notifications)
-- **OpenAI** - [Sign up](https://platform.openai.com/) (for AI recipe features)
-- **Apple Developer Program** - [$99/year](https://developer.apple.com/programs/) (required for iOS App Store & push notifications)
-- **Vercel** (for deployment) - [Sign up free](https://vercel.com/)
+- **Auth0** — [Sign up free](https://auth0.com/) — handles user authentication
+- **OpenAI** — [Sign up](https://platform.openai.com/) — AI recipe parsing and features
+- **Firebase** — [Sign up free](https://firebase.google.com/) — push notifications (required for Story 6.3+)
+- **AWS** account (or LocalStack for local dev — already included in Docker Compose)
 
-## Step 1: Clone the Repository
+## Step 1: Clone and Install
 
 ```bash
 git clone <your-repo-url>
-cd palate
-```
-
-## Step 2: Install Dependencies
-
-```bash
+cd palateful
 yarn install
 ```
 
-This installs all required npm packages including:
-- Next.js and React
-- Prisma ORM
-- Auth0 SDK
-- Tailwind CSS
-- And other utilities
+This installs NX and build tooling. Python dependencies are managed per-service via Poetry and installed inside Docker images.
+
+## Step 2: Configure Backend Environment
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your values:
+
+```env
+# Database — used by API, worker, and migrator
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful
+
+# Redis — currently unused (commented out in docker-compose), reserve for future
+REDIS_URL=redis://localhost:6379/0
+
+# Auth0 — create an API in Auth0 dashboard and use its identifier as AUDIENCE
+AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+AUTH0_AUDIENCE=https://api.palateful.app
+
+# OpenAI — for recipe import parsing
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+
+# App
+DEBUG=true
+CORS_ORIGINS=["http://localhost:3000","http://localhost:8080"]
+
+# ngrok — for exposing local API to mobile device/simulator
+NGROK_AUTHTOKEN=your-ngrok-authtoken
+```
 
 ## Step 3: Configure Auth0
 
-Before setting up environment variables, you need to create an Auth0 application.
+### Create Auth0 API
 
-1. Go to [Auth0 Dashboard](https://manage.auth0.com/)
-2. Navigate to **Applications > Applications**
-3. Click **Create Application**
-4. Name it "Palateful" and select "Regular Web Applications"
-5. Click **Create**
+1. Go to [Auth0 Dashboard](https://manage.auth0.com/) → **Applications > APIs**
+2. Click **Create API**
+3. Set Name: "Palateful API", Identifier: `https://api.palateful.app`
+4. Click **Create**
 
-In the application settings, configure:
+### Create Auth0 Native App (for Flutter)
 
-**Application URIs:**
-- Allowed Callback URLs: `http://localhost:3000/api/auth/callback`
-- Allowed Logout URLs: `http://localhost:3000`
-- Allowed Web Origins: `http://localhost:3000`
-
-Click **Save Changes**.
-
-Now copy your credentials:
-- Domain (e.g., `dev-xxxxx.us.auth0.com`)
-- Client ID
-- Client Secret
+1. Go to **Applications > Applications** → **Create Application**
+2. Name: "Palateful Mobile", Type: **Native**
+3. In Settings, set:
+   - **Allowed Callback URLs**: `com.palateful.app://login-callback`
+   - **Allowed Logout URLs**: `com.palateful.app://logout-callback`
+4. Note the **Domain**, **Client ID** — you'll need these for the Flutter app
 
 See [AUTH0.md](./AUTH0.md) for detailed Auth0 configuration including Google and Apple OAuth setup.
 
-## Step 4: Set Up Environment Variables
+## Step 4: Start All Backend Services
 
-1. Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` with your values:
-   ```env
-   # Database
-   DATABASE_URL="postgresql://postgres:postgres@localhost:5432/palate?schema=public"
-   REDIS_URL="redis://localhost:6379"
-
-   # Auth0
-   AUTH0_DOMAIN="your-domain.us.auth0.com"
-   AUTH0_CLIENT_ID="your-client-id"
-   AUTH0_CLIENT_SECRET="your-client-secret"
-   AUTH0_AUDIENCE="your-api-audience"
-
-   # OpenAI (add after Step 6)
-   OPENAI_API_KEY="sk-..."
-
-   # Firebase (add after Step 5)
-   FIREBASE_CREDENTIALS_PATH="/path/to/firebase-credentials.json"
-
-   # Environment
-   NODE_ENV="development"
-   ```
-
-## Step 5: Configure Firebase (Push Notifications)
-
-Firebase Cloud Messaging (FCM) provides free unlimited push notifications for iOS and Android.
-
-### Create Firebase Project
-
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Click **Add project**
-3. Name it "Palateful" and follow the setup wizard
-4. Once created, go to **Project Settings** (gear icon)
-
-### Get Service Account Credentials (Backend)
-
-1. In Project Settings, go to **Service Accounts** tab
-2. Click **Generate new private key**
-3. Save the JSON file securely (do NOT commit to git)
-4. Set the environment variable:
-   ```bash
-   # Option 1: Path to the JSON file
-   export FIREBASE_CREDENTIALS_PATH="/path/to/your/firebase-credentials.json"
-
-   # Option 2: JSON content directly (useful for Docker/production)
-   export FIREBASE_CREDENTIALS_JSON='{"type":"service_account",...}'
-   ```
-
-### Configure iOS (APNs)
-
-1. In Firebase Console, go to **Project Settings > Cloud Messaging**
-2. Under "Apple app configuration", click **Upload** next to APNs Authentication Key
-3. To get an APNs key:
-   - Go to [Apple Developer Portal](https://developer.apple.com/account/resources/authkeys/list)
-   - Click **Keys > +** to create a new key
-   - Enable **Apple Push Notifications service (APNs)**
-   - Download the `.p8` file (you can only download once!)
-   - Note the **Key ID** and your **Team ID** (from Membership details)
-4. Upload the `.p8` file to Firebase with the Key ID and Team ID
-
-### Configure Flutter App
-
-1. Install the FlutterFire CLI:
-   ```bash
-   dart pub global activate flutterfire_cli
-   ```
-
-2. Run the configuration command from the `app/` directory:
-   ```bash
-   cd app
-   flutterfire configure --project=your-firebase-project-id
-   ```
-
-3. This generates `lib/firebase_options.dart` and platform-specific config files
-
-### Add to Environment
-
-Add to your `.env` file (or production environment):
-```env
-# Firebase - for push notifications
-FIREBASE_CREDENTIALS_PATH="/path/to/firebase-credentials.json"
-# OR
-FIREBASE_CREDENTIALS_JSON='{"type":"service_account",...}'
+```bash
+docker compose up
 ```
 
-## Step 6: Configure OpenAI
+This starts:
+| Service | Port | Description |
+|---------|------|-------------|
+| `db` | 5432 | PostgreSQL 16 with pgvector |
+| `migrator` | — | Runs Alembic migrations, then exits |
+| `api` | 8000 | FastAPI REST API |
+| `worker` | — | Celery task worker |
+| `localstack` | 4566 | AWS SQS emulator for Celery broker |
+| `ngrok` | 4040 | Public tunnel to API (for mobile) |
 
-OpenAI powers the AI recipe features including recipe parsing, ingredient extraction, and smart suggestions.
+Migrations run automatically on every `docker compose up` via the `migrator` service.
 
-### Get API Key
+> **Note:** The `parser` (OCR) service is in the `local-parser` profile and is **not started by default**. Start it only when needed:
+> ```bash
+> docker compose --profile local-parser up parser
+> ```
 
-1. Go to [OpenAI Platform](https://platform.openai.com/)
-2. Sign in or create an account
-3. Navigate to **API Keys** in the left sidebar
-4. Click **Create new secret key**
-5. Name it "Palateful" and copy the key (you won't see it again!)
-
-### Add to Environment
-
-Add to your `.env` file:
-```env
-# OpenAI - for AI recipe features
-OPENAI_API_KEY="sk-..."
+Verify everything is running:
+```bash
+docker compose ps
 ```
 
-### Pricing Note
+API health check:
+```bash
+curl http://localhost:8000/health
+```
 
-OpenAI API is pay-per-use. For recipe parsing with `gpt-4o-mini`:
-- ~$0.15 per 1M input tokens, ~$0.60 per 1M output tokens
-- A typical recipe parse costs < $0.001
-- Set usage limits in OpenAI dashboard to control costs
-
-## Step 7: Set Up Flutter Mobile App
-
-The Flutter app is located in the `app/` directory.
+## Step 5: Configure Flutter App
 
 ### Install Flutter Dependencies
 
@@ -198,159 +141,258 @@ cd app
 flutter pub get
 ```
 
+### Create App Environment File
+
+```bash
+cp app/.env.example app/.env
+```
+
+Edit `app/.env`:
+```env
+# For simulator (API running in Docker locally)
+API_BASE_URL=http://localhost:8000
+
+# For physical device (use ngrok URL — see Step 6)
+# API_BASE_URL=https://abc123.ngrok.io
+
+# Auth0 (use the Native app credentials from Step 3)
+AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_CLIENT_ID=your-native-client-id
+AUTH0_AUDIENCE=https://api.palateful.app
+```
+
 ### Configure iOS
 
-1. Open the iOS project in Xcode:
+1. Open the iOS project:
    ```bash
-   open ios/Runner.xcworkspace
+   open app/ios/Runner.xcworkspace
    ```
-
-2. In Xcode, select the **Runner** target and go to **Signing & Capabilities**
-
-3. Select your **Team** (requires Apple Developer account)
-
-4. Update the **Bundle Identifier** to your unique identifier (e.g., `com.yourcompany.palateful`)
-
-5. Enable required capabilities:
-   - **Push Notifications** - Click "+ Capability" and add it
-   - **Background Modes** - Enable "Remote notifications"
+2. Select the **Runner** target → **Signing & Capabilities**
+3. Select your **Team** (requires Apple Developer account for device builds)
+4. Update **Bundle Identifier** (e.g., `com.yourcompany.palateful`)
+5. Capabilities are already configured in `Info.plist` — review if bundle ID changes
 
 ### Configure Android
 
-1. Update `app/android/app/build.gradle`:
-   - Set your `applicationId` (e.g., `com.yourcompany.palateful`)
-
+1. Update `app/android/app/build.gradle` with your `applicationId`
 2. For release builds, create a signing key:
    ```bash
-   keytool -genkey -v -keystore ~/upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   keytool -genkey -v -keystore ~/upload-keystore.jks \
+     -keyalg RSA -keysize 2048 -validity 10000 -alias upload
    ```
-
-3. Create `app/android/key.properties`:
-   ```properties
-   storePassword=<your-password>
-   keyPassword=<your-password>
-   keyAlias=upload
-   storeFile=/Users/<you>/upload-keystore.jks
-   ```
-
-### Create App Environment File
-
-Create `app/.env` with your API endpoint:
-```env
-API_BASE_URL=http://localhost:8000
-AUTH0_DOMAIN=your-domain.auth0.com
-AUTH0_CLIENT_ID=your-client-id
-AUTH0_AUDIENCE=your-api-audience
-```
 
 ### Run the App
 
 ```bash
 # iOS Simulator
-flutter run -d ios
+cd app && flutter run -d ios
 
 # Android Emulator
-flutter run -d android
+cd app && flutter run -d android
 
 # List available devices
 flutter devices
 ```
 
-## Step 8: Start PostgreSQL
+## Step 6: Mobile Testing with Physical Device (ngrok)
 
-Start the local PostgreSQL database using Docker:
+When testing on a physical device, the device can't reach `localhost`. ngrok creates a public tunnel automatically.
+
+1. Get your ngrok authtoken from [ngrok dashboard](https://dashboard.ngrok.com/)
+2. Add it to `.env`: `NGROK_AUTHTOKEN=your-token`
+3. Start services: `docker compose up`
+4. View the ngrok URL at: **http://localhost:4040** (ngrok web UI)
+5. Update `app/.env`:
+   ```env
+   API_BASE_URL=https://abc123.ngrok-free.app
+   ```
+6. Rebuild and run the app on your device
+
+## Step 7: Development Commands
 
 ```bash
+# Build Docker images
+npx nx run api:docker-build
+npx nx run migrator:docker-build
+
+# Start all services (primary dev workflow)
+docker compose up
+
+# Run Alembic migrations manually (requires DATABASE_URL set)
+npx nx run migrator:migrate
+
+# Install Python dependencies for a service
+npx nx run api:install
+npx nx run worker:install
+
+# Run backend tests
+npx nx run api:test
+
+# Run backend linting
+npx nx run api:lint
+
+# Generate all lock files
+npx nx run-many -t lock
+
+# Flutter tests
+cd app && flutter test
+```
+
+## Step 8: Configure Firebase (Push Notifications)
+
+Firebase is used for push notifications in cooking mode timers and import job completion alerts.
+
+> **Note:** Firebase is required for Story 6.3+ and 3.6+. The Flutter app already has `firebase_options.dart` configured. If starting fresh:
+
+### Create Firebase Project
+
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Click **Add project** → name it "Palateful"
+3. Add an **iOS app** with your bundle ID and an **Android app** with your applicationId
+4. Download the config files:
+   - iOS: `GoogleService-Info.plist` → place in `app/ios/Runner/`
+   - Android: `google-services.json` → place in `app/android/app/`
+
+### Configure FlutterFire
+
+```bash
+dart pub global activate flutterfire_cli
+cd app
+flutterfire configure --project=your-firebase-project-id
+```
+
+This regenerates `app/lib/firebase_options.dart`.
+
+### Configure APNs (iOS Push Notifications)
+
+1. Firebase Console → **Project Settings > Cloud Messaging**
+2. Under "Apple app configuration", upload your APNs Authentication Key:
+   - Get from [Apple Developer Portal](https://developer.apple.com/account/resources/authkeys/list) → Keys → create with APNs enabled
+   - Download the `.p8` file, note Key ID and Team ID
+3. Upload to Firebase with Key ID and Team ID
+
+### Backend Firebase Credentials
+
+Add to `.env`:
+```env
+# Path to Firebase service account JSON (do NOT commit this file)
+FIREBASE_CREDENTIALS_PATH=/path/to/firebase-credentials.json
+
+# OR inline JSON (for Docker/production)
+FIREBASE_CREDENTIALS_JSON='{"type":"service_account",...}'
+```
+
+## Step 9: Running Tests
+
+### Backend Tests
+
+```bash
+# All API tests
+npx nx run api:test
+
+# Watch mode (requires pytest-watch)
+docker compose exec api pytest --watch services/api/tests/
+```
+
+### Flutter Tests
+
+```bash
+cd app && flutter test
+```
+
+### Integration Tests (against live Docker stack)
+
+```bash
+# Start stack first
 docker compose up -d
+
+# Run integration tests
+npx nx run api:test
 ```
-
-Verify it's running:
-```bash
-docker compose ps
-```
-
-You should see `palate-postgres` with status "Up".
-
-## Step 9: Run Database Migrations
-
-Apply the database schema:
-
-```bash
-npx prisma migrate dev
-```
-
-This creates the `users` table and generates the Prisma client.
-
-If you make changes to `prisma/schema.prisma`, run:
-```bash
-npx prisma migrate dev --name description_of_change
-npx prisma generate
-```
-
-## Step 10: Start the Development Server
-
-```bash
-yarn dev
-```
-
-The application will be available at http://localhost:3000
-
-## Step 11: Test the Application
-
-1. Open http://localhost:3000
-2. You should see the Palateful landing page
-3. Click "Sign In"
-4. You'll be redirected to Auth0
-5. Sign in with Google (or Apple if configured)
-6. You'll be redirected back to the welcome page
-7. Click "Let's Go" to complete onboarding
-8. You should now see the empty recipe list
 
 ## Common Issues
 
 ### Port 5432 Already in Use
 
-If you have another PostgreSQL instance running:
-
 ```bash
-# Find what's using port 5432
+# Find what's using it
 lsof -i :5432
-
-# Either stop that service, or change the port in docker-compose.yml
+# Stop the conflicting service, or change the port in docker-compose.yml
 ```
 
-### Docker Not Running
-
-Make sure Docker Desktop is running before starting PostgreSQL:
+### Docker Build Fails (Python Dependencies)
 
 ```bash
-docker info
+# Force rebuild without cache
+docker compose build --no-cache api
+docker compose up
 ```
 
-### Prisma Client Not Generated
-
-If you see "Cannot find module '@/generated/prisma'":
+### Migrations Failed
 
 ```bash
-npx prisma generate
+# Check migrator logs
+docker compose logs migrator
+
+# Manually run migrations
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful \
+  npx nx run migrator:migrate
 ```
 
-### Auth0 Callback Error
+### Flutter: Cannot Connect to API
 
-If you get a callback URL mismatch error:
-1. Check your Auth0 Application Settings
-2. Ensure callback URLs exactly match (no trailing slashes)
-3. Verify AUTH0_BASE_URL in `.env` matches
+1. Check Docker is running: `docker compose ps`
+2. For simulator: ensure `API_BASE_URL=http://localhost:8000` in `app/.env`
+3. For physical device: use ngrok URL (Step 6)
+4. Check API is healthy: `curl http://localhost:8000/health`
 
-### Database Connection Failed
+### Auth0: Token Validation Fails
 
-If Prisma can't connect to the database:
-1. Ensure Docker is running: `docker compose ps`
-2. Check DATABASE_URL format in `.env`
-3. Try restarting PostgreSQL: `docker compose restart`
+1. Verify `AUTH0_DOMAIN` and `AUTH0_AUDIENCE` match exactly between `.env` and `app/.env`
+2. The audience in `.env` must match the Auth0 API identifier created in Step 3
+3. Check API logs: `docker compose logs api`
+
+### ngrok: Tunnel Not Starting
+
+1. Verify `NGROK_AUTHTOKEN` is set in `.env`
+2. Check ngrok logs: `docker compose logs ngrok`
+3. Free ngrok accounts allow 1 tunnel at a time — ensure no other tunnels are active
+
+### LocalStack / SQS: Worker Not Processing Tasks
+
+```bash
+# Check LocalStack health
+docker compose logs localstack
+
+# Check worker logs
+docker compose logs worker
+```
+
+## Project Structure
+
+```
+palateful/
+├── services/
+│   ├── api/          # FastAPI REST API (port 8000)
+│   ├── worker/       # Celery async task worker
+│   ├── parser/       # HunyuanOCR service (port 8001, local-parser profile)
+│   └── migrator/     # Alembic database migrations
+├── libraries/
+│   └── utils/        # Shared Python models and business logic
+├── app/              # Flutter mobile app
+│   ├── lib/          # Dart source
+│   └── test/         # Widget tests
+├── terraform/        # AWS infrastructure (ECS, RDS, SQS, etc.)
+├── docs/             # Project documentation
+├── scripts/          # Utility and Docker init scripts
+├── docker-compose.yml
+├── .env.example
+└── nx.json
+```
 
 ## Next Steps
 
 - [Configure Google and Apple OAuth](./AUTH0.md)
-- [Set up Vercel deployment](./VERCEL.md)
-- [Learn about database management](./DATABASE.md)
+- [Database schema reference](./DATABASE.md)
+- [API reference](./api-reference.md)
+- [Recipe import system](./RECIPE_IMPORT_SYSTEM.md)
