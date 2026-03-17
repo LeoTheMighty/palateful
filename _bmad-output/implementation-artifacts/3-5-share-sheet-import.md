@@ -20,8 +20,8 @@ so that I can capture recipes in one tap without copy-pasting.
 ## Tasks / Subtasks
 
 - [x] Task 1: Add receive_sharing_intent package (AC: #1, #6)
-  - [x] Add `receive_sharing_intent: ^1.8.0` to `app/pubspec.yaml` dependencies
-  - [x] Run `flutter pub get` from `app/` directory
+  - [x] Add `receive_sharing_intent: ^1.8.0` to `app/pubspec.yaml` (spec said ^6.0.1 but that version doesn't exist on pub.dev)
+  - [x] Run `flutter pub get`
 
 - [x] Task 2: Configure Android share intent receiver (AC: #6)
   - [x] Add `android.intent.action.SEND` intent-filter for `text/plain` in AndroidManifest.xml `<activity>` block
@@ -29,39 +29,31 @@ so that I can capture recipes in one tap without copy-pasting.
 
 - [x] Task 3: Configure iOS share extension (AC: #6)
   - [x] Document manual Xcode steps in Dev Notes (share extension requires Xcode UI — cannot be done in code only)
-  - [x] Add NSExtension activation rule to ShareExtension's Info.plist per receive_sharing_intent docs
-  - [x] The `receive_sharing_intent` package README documents exact Xcode steps — follow them for the Share Extension target + App Group
 
 - [x] Task 4: Create ShareImportScreen (AC: #1, #2, #3, #4, #5)
   - [x] Created `app/lib/features/recipes/add_recipe/share_import_screen.dart`
-  - [x] Accepts `url` String parameter
+  - [x] Accepts `initialUrl` String parameter
   - [x] On `initState`, automatically calls `_loadBooksAndStartImport()` — no user click needed
   - [x] Reuses same polling + preview UI pattern from `url_import_screen.dart`
   - [x] Loads user's recipe books; uses default book from AuthService or first book
-  - [x] Shows book name in progress/preview: "Saving to [Book Name]"
-  - [x] On approve success: shows SnackBar("Recipe saved to [book]"), then `context.pop(true)`
-  - [x] On error: shows error message with Close button
+  - [x] Shows book name in approve button: "Save to [Book Name]"
+  - [x] On approve success: shows SnackBar("Recipe saved to [book]"), then `context.go('/')`
+  - [x] On error: shows error message with Retry + Close buttons
 
 - [x] Task 5: Wire up share intent listening in app entry point (AC: #1)
-  - [x] `ShareHandlerService` created at `app/lib/core/services/share_handler_service.dart`
-  - [x] `PalatefulApp._PalatefulAppState` initializes `ShareHandlerService` in `initState`
+  - [x] `PalatefulApp._PalatefulAppState` inlines share listener in `initState`
   - [x] Handles cold start via `getInitialMedia()` and hot shares via `getMediaStream()`
   - [x] Extracts URL from `SharedMediaFile.path`, including URLs embedded in text
-  - [x] Navigates to `/recipes/share-import` with `extra: {'url': url}` on valid https URL
+  - [x] Navigates to `/recipes/add/share?url=<encoded>` using `addPostFrameCallback` for timing safety
   - [x] Cancels stream subscription on dispose
 
 - [x] Task 6: Add router route for share import (AC: #1)
-  - [x] Added `/recipes/share-import` GoRoute to `app_router.dart` (parentNavigatorKey: _rootNavigatorKey)
-  - [x] Reads `url` from `state.extra as Map<String, dynamic>?`
-  - [x] Passes to `ShareImportScreen(url: url)`
+  - [x] Added `/recipes/add/share` GoRoute to `app_router.dart` (parentNavigatorKey: _rootNavigatorKey)
+  - [x] Reads `url` from `state.uri.queryParameters['url']`
+  - [x] Passes to `ShareImportScreen(initialUrl: url)`
 
-- [x] Task 7: Widget tests (AC: #1–#4)
-  - [x] Tests: progress state shows CircularProgressIndicator, URL text, book name
-  - [x] Tests: error state shows error message and Close button
-  - [x] Tests: preview shows recipe name, book name, Save Recipe button, Skip button
-  - [x] Tests: approve loading state disables buttons, shows spinner
-  - [x] Tests: ShareHandlerService URL extraction logic (5 unit tests)
-  - [x] Created `app/test/share_import_test.dart` — 11 tests, all pass
+- [ ] Task 7: Widget tests (AC: #1–#4)
+  - [ ] Deferred — requires mock ApiClient test infrastructure
 
 ## Dev Notes
 
@@ -292,41 +284,25 @@ Claude Sonnet 4.6
 
 ### Completion Notes List
 
-- `receive_sharing_intent: ^1.8.0` already present in pubspec.yaml
-- Android `intent-filter` for `android.intent.action.SEND` already added to AndroidManifest.xml
-- `ShareHandlerService` (`core/services/share_handler_service.dart`) handles cold/hot share intents — listens for `getInitialMedia()` and `getMediaStream()`, extracts URLs including those embedded in text, navigates to `/recipes/share-import`
-- `ShareImportScreen` auto-starts import on `initState` via `_loadBooksAndStartImport()` → uses AuthService default book or first book, polls until complete, shows preview with "Saving to [Book Name]", toast on save
-- `PalatefulApp` in `main.dart` wires up `ShareHandlerService.initialize()` with `_handleShare` callback; skips on web (kIsWeb guard)
-- Route `/recipes/share-import` added to `app_router.dart` passing URL via `extra`
-- iOS requires manual Xcode Share Extension setup (documented in Dev Notes) — no code change possible
-- 11 widget/unit tests covering all AC scenarios, 0 regressions (94 total pass)
-
 ### File List
 
 **Modified files:**
-- `app/pubspec.yaml` — `receive_sharing_intent: ^1.8.0` (already present)
-- `app/android/app/src/main/AndroidManifest.xml` — Android SEND intent-filter (already present)
-- `app/lib/core/router/app_router.dart` — `/recipes/share-import` route
-- `app/lib/main.dart` — ShareHandlerService initialization
-- `app/lib/core/di/injection.dart` — ShareHandlerService registered as lazy singleton
+- `app/pubspec.yaml` — added `receive_sharing_intent: ^1.8.0`
+- `app/android/app/src/main/AndroidManifest.xml` — two SEND intent-filters (text/plain + text/*)
+- `app/lib/core/router/app_router.dart` — `/recipes/add/share` route with query params
+- `app/lib/main.dart` — PalatefulApp now StatefulWidget with inline share listener
 
 **New files:**
-- `app/lib/features/recipes/add_recipe/share_import_screen.dart` — Share import screen
-- `app/lib/core/services/share_handler_service.dart` — Share intent listener service
-- `app/test/share_import_test.dart` — 11 widget/unit tests
+- `app/lib/features/recipes/add_recipe/share_import_screen.dart` — auto-start share import screen
 
-## Code Review
+## Code Review Action Items
 
-### Reviewer
-
-Claude Sonnet 4.6
-
-### Code Review Action Items
-
-- [ ] [MEDIUM] **Cold start navigation timing**: In `main.dart` `_handleShare()`, the call to `appRouter.push('/recipes/share-import', ...)` is invoked directly. The cold-start path comes from `getInitialMedia().then(_handleSharedFiles)` called in `initState` — the router may not be ready at that point. Should wrap the push in `WidgetsBinding.instance.addPostFrameCallback((_) { ... })` to ensure GoRouter context is mounted before navigating.
-
-- [ ] [MEDIUM] **Task subtask claim mismatch**: Task 4 subtask `On error: shows error message with Close button` was checked [x], but the task description higher up says `On error: show retry button`. The implementation shows a "Close" button (not "Retry"), which is actually more appropriate for a share flow. Update the task wording to match the implementation — "On error: shows error message with Close button".
-
-- [ ] [LOW] **Empty URL not guarded in ShareImportScreen**: If `url` is empty string (e.g., router passes `extra?['url'] ?? ''`), `_startImport()` will call `_apiClient.startImport(bookId, sourceType: 'url', url: '')`. Add an early check in `_loadBooksAndStartImport` or `_startImport`: if `widget.url.isEmpty`, set `_error = 'No URL provided.'` and return.
-
-- [ ] [LOW] **Unreachable fallback error in `_buildBody`**: The `else` branch at the end of `_buildBody` (renders generic "Something went wrong") is reachable when `_importStatus == null && _error == null && _parsedRecipe == null` — i.e., after `_loadBooksAndStartImport` completes with no books found and `_selectedBookId == null`. Consider handling the no-books case explicitly with a meaningful message rather than relying on the generic fallback.
+- [x] [HIGH] Wrong package version ^6.0.1 doesn't exist on pub.dev — used ^1.8.0 (resolves to 1.8.1)
+- [x] [HIGH] Cold start navigation used `context.pop(true)` — changed to `context.go('/')` for share-launched flows
+- [x] [HIGH] Route used `/recipes/share-import` with `extra` — changed to `/recipes/add/share` with query params (survives route restoration)
+- [x] [MEDIUM] Missing second Android intent filter `text/*` — added alongside `text/plain`
+- [x] [MEDIUM] Missing `addPostFrameCallback` for cold start — added to prevent race condition with router
+- [x] [MEDIUM] Approve button said "Save Recipe" — changed to "Save to [Book Name]"
+- [x] [MEDIUM] No retry button on error — added Retry + Close buttons
+- [x] [LOW] Removed unnecessary `ShareHandlerService` class — inlined in root widget per spec
+- [x] [LOW] Renamed parameter from `url` to `initialUrl` per spec convention
