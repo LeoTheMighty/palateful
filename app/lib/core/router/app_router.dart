@@ -24,12 +24,16 @@ import '../../features/recipes/add_recipe/url_import_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
+import '../../features/profile/notification_preferences_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
 import 'page_transitions.dart';
 
 /// Navigation keys for each bottom nav branch
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Public accessor for the root navigator key (used by PushNotificationService).
+GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 final _homeNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'home');
 final _booksNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'books');
 final _cartNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'cart');
@@ -284,6 +288,13 @@ GoRouter get appRouter {
               GoRoute(
                 path: '/profile',
                 builder: (context, state) => const ProfileScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'notifications',
+                    builder: (context, state) =>
+                        const NotificationPreferencesScreen(),
+                  ),
+                ],
               ),
             ],
           ),

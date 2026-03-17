@@ -98,6 +98,10 @@ class _PalatefulAppState extends State<PalatefulApp> {
   @override
   void initState() {
     super.initState();
+    // Pass navigator key to push notification service for in-app banners
+    final pushService = getIt<PushNotificationService>();
+    pushService.setNavigatorKey(rootNavigatorKey);
+
     if (!kIsWeb) {
       _initShareListener();
     }

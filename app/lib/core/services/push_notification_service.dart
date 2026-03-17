@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
+import '../router/app_router.dart';
 import 'api_client.dart';
 
 /// Background message handler - must be top-level function
@@ -20,6 +22,7 @@ class PushNotificationService {
 
   String? _currentToken;
   bool _initialized = false;
+  GlobalKey<NavigatorState>? _navigatorKey;
 
   PushNotificationService(this._apiClient);
 
@@ -28,6 +31,11 @@ class PushNotificationService {
 
   /// Get the current FCM token.
   String? get currentToken => _currentToken;
+
+  /// Set the navigator key for showing in-app notifications.
+  void setNavigatorKey(GlobalKey<NavigatorState> key) {
+    _navigatorKey = key;
+  }
 
   /// Initialize Firebase and set up push notifications.
   Future<void> initialize() async {
@@ -62,10 +70,10 @@ class PushNotificationService {
         // Handle notification taps when app is in background
         FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
 
-        // Check if app was opened from a notification
+        // Check if app was opened from a notification (cold start)
         final initialMessage = await _messaging.getInitialMessage();
         if (initialMessage != null) {
-          _handleNotificationTap(initialMessage);
+          _navigateToRoute(initialMessage, usePush: false);
         }
 
         _initialized = true;
@@ -92,7 +100,7 @@ class PushNotificationService {
   }
 
   /// Handle token refresh.
-  void _onTokenRefresh(String token) async {
+  Future<void> _onTokenRefresh(String token) async {
     debugPrint('FCM token refreshed');
     _currentToken = token;
     await _registerTokenWithBackend(token);
@@ -125,77 +133,108 @@ class PushNotificationService {
     _currentToken = null;
   }
 
-  /// Handle foreground messages.
+  /// Handle foreground messages — show in-app banner.
   void _onForegroundMessage(RemoteMessage message) {
     debugPrint('Foreground message: ${message.notification?.title}');
 
-    // You can show a local notification here or update UI
-    // For now, we'll just log it - in a real app, you'd want to
-    // show an in-app notification or update relevant state
-    _handleNotificationData(message);
+    final context = _navigatorKey?.currentContext;
+    if (context == null) return;
+
+    final title = message.notification?.title ?? '';
+    final body = message.notification?.body ?? '';
+    if (title.isEmpty && body.isEmpty) return;
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (title.isNotEmpty)
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              if (body.isNotEmpty) Text(body),
+            ],
+          ),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'View',
+            onPressed: () => _navigateToRoute(message, usePush: true),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Failed to show foreground notification banner: $e');
+    }
   }
 
   /// Handle notification tap when app is in background.
   void _onMessageOpenedApp(RemoteMessage message) {
     debugPrint('Notification opened app: ${message.notification?.title}');
-    _handleNotificationTap(message);
+    _navigateToRoute(message, usePush: false);
   }
 
-  /// Handle notification data payload.
-  void _handleNotificationData(RemoteMessage message) {
-    final data = message.data;
-    final notificationType = data['notification_type'];
-
-    debugPrint('Notification type: $notificationType');
-    debugPrint('Notification data: $data');
-
-    // Handle different notification types
-    // This would typically update app state or trigger navigation
-  }
-
-  /// Handle notification tap - navigate to relevant screen.
-  void _handleNotificationTap(RemoteMessage message) {
+  /// Navigate to the route for a notification.
+  /// [usePush] true for foreground taps (preserves nav stack), false for cold/background start.
+  void _navigateToRoute(RemoteMessage message, {required bool usePush}) {
     final data = message.data;
     final notificationType = data['notification_type'];
 
     debugPrint('Handling notification tap: $notificationType');
 
-    // Navigate based on notification type
-    // This would typically use your router to navigate to the relevant screen
+    final route = _routeForNotification(notificationType, data);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (usePush) {
+        appRouter.push(route);
+      } else {
+        appRouter.go(route);
+      }
+    });
+  }
+
+  /// Map notification type to a deep link route.
+  String _routeForNotification(String? notificationType, Map<String, dynamic> data) {
     switch (notificationType) {
+      case 'import_complete':
+      case 'import_needs_attention':
+        final jobId = data['import_job_id'];
+        if (jobId != null) return '/recipes/import/review-list/$jobId';
+        return '/';
+
       case 'shopping_item_added':
       case 'shopping_item_checked':
       case 'shopping_list_shared':
       case 'shopping_deadline_reminder':
       case 'shopping_list_complete':
-        final shoppingListId = data['shopping_list_id'];
-        if (shoppingListId != null) {
-          // Navigate to shopping list
-          debugPrint('Navigate to shopping list: $shoppingListId');
-        }
-        break;
+        return '/cart';
 
       case 'recipe_book_shared':
+        final bookId = data['recipe_book_id'];
+        if (bookId != null) return '/recipe-books/$bookId';
+        return '/recipe-books';
+
       case 'recipe_added':
-        final recipeBookId = data['recipe_book_id'];
-        if (recipeBookId != null) {
-          // Navigate to recipe book
-          debugPrint('Navigate to recipe book: $recipeBookId');
-        }
-        break;
+        final recipeId = data['recipe_id'];
+        if (recipeId != null) return '/recipes/$recipeId';
+        final bookId = data['recipe_book_id'];
+        if (bookId != null) return '/recipe-books/$bookId';
+        return '/';
 
       case 'meal_event_invite':
       case 'meal_event_reminder':
       case 'meal_event_updated':
-        final mealEventId = data['meal_event_id'];
-        if (mealEventId != null) {
-          // Navigate to meal event
-          debugPrint('Navigate to meal event: $mealEventId');
-        }
-        break;
+        return '/calendar';
+
+      case 'friend_request':
+      case 'friend_request_accepted':
+      case 'invitation_received':
+      case 'invitation_accepted':
+      case 'member_joined':
+        return '/profile';
 
       default:
-        debugPrint('Unknown notification type: $notificationType');
+        return '/';
     }
   }
 
