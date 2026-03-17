@@ -13,6 +13,7 @@ from utils.services.recipe_extractors.base import (
     ExtractionResult,
 )
 from utils.services.recipe_extractors.json_ld import JsonLdExtractor
+from utils.services.recipe_extractors.text_extractor import extract_recipe_from_text
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ __all__ = [
     "RecipeExtractorRegistry",
     "extract_recipe_from_url",
     "extract_recipe_from_html",
+    "extract_recipe_from_text",
 ]
 
 

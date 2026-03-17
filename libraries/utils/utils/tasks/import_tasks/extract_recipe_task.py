@@ -7,7 +7,7 @@ from utils.api.endpoint import success
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.services.celery import celery_app
-from utils.services.recipe_extractors import ExtractionResult, extract_recipe_from_url
+from utils.services.recipe_extractors import ExtractionResult, extract_recipe_from_url, extract_recipe_from_text
 from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,12 @@ class ExtractRecipeTask(BaseTask):
         self.database.db.commit()
 
         try:
-            if item.source_url:
+            if item.source_type == "photo":
+                # Extract from OCR text using AI
+                ocr_text = (item.raw_data or {}).get("text", "")
+                result = extract_recipe_from_text(ocr_text)
+                self._update_item_from_result(item, result)
+            elif item.source_url:
                 # Extract from URL
                 result = asyncio.run(
                     extract_recipe_from_url(

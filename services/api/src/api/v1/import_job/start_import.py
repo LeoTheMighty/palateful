@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
@@ -68,6 +68,14 @@ class StartImport(Endpoint):
                     code=ErrorCode.INVALID_REQUEST,
                 )
             source_filename = None
+        elif params.source_type == "photo":
+            if not params.ocr_texts or len(params.ocr_texts) == 0:
+                raise APIException(
+                    status_code=400,
+                    detail="OCR texts are required for photo source type",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            source_filename = "photo_import"
         else:
             raise APIException(
                 status_code=400,
@@ -109,6 +117,18 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
+        elif params.source_type == "photo" and params.ocr_texts:
+            # Concatenate all OCR texts into a single import item
+            combined_text = "\n\n---\n\n".join(params.ocr_texts)
+            item = ImportItem(
+                import_job_id=job.id,
+                source_type="photo",
+                raw_data={"text": combined_text},
+                status="pending",
+            )
+            self.database.create(item)
+            job.total_items = 1
+            self.database.db.commit()
 
         # Dispatch background processing
         parse_source_task.delay(
@@ -132,6 +152,7 @@ class StartImport(Endpoint):
         source_type: str
         urls: list[str] | None = None
         url: str | None = None
+        ocr_texts: list[str] | None = Field(default=None, max_length=10)
 
     class Response(BaseModel):
         id: str

@@ -608,6 +608,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                       context.push('/recipes/add/url', extra: {
                         'recipeBookId': widget.recipeBookId,
                       }).then((_) => _loadRecipeBook());
+                    } else if (value == 'import_photo') {
+                      context.push('/recipes/add/photo', extra: {
+                        'recipeBookId': widget.recipeBookId,
+                      }).then((_) => _loadRecipeBook());
                     } else if (value == 'archive') {
                       _archiveRecipeBook();
                     }
@@ -630,6 +634,16 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           Icon(Icons.link),
                           SizedBox(width: 8),
                           Text('Import from URL'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'import_photo',
+                      child: Row(
+                        children: [
+                          Icon(Icons.camera_alt),
+                          SizedBox(width: 8),
+                          Text('Import from Photo'),
                         ],
                       ),
                     ),
