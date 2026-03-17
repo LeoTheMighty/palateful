@@ -1,0 +1,146 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:palateful/core/theme/app_colors.dart';
+import 'package:palateful/features/recipes/cook_mode/widgets/ingredient_strip.dart';
+import 'package:palateful/features/recipes/cook_mode/widgets/step_navigator.dart';
+
+void main() {
+  group('CookModeScreen widget tests', () {
+    testWidgets('step instruction text renders at 24px', (tester) async {
+      const instruction = 'Mince the garlic and set aside.';
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            backgroundColor: AppColors.chocolate,
+            body: Center(
+              child: Text(
+                instruction,
+                style: TextStyle(fontSize: 24, height: 1.5),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text(instruction), findsOneWidget);
+      final textWidget =
+          tester.widget<Text>(find.text(instruction));
+      expect(textWidget.style?.fontSize, 24);
+    });
+
+    testWidgets('step number and total display renders', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: AppColors.chocolate,
+            body: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: const [
+                Text(
+                  '1',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.warmIvory,
+                  ),
+                ),
+                SizedBox(width: 6),
+                Text(
+                  'of 3',
+                  style: TextStyle(fontSize: 14, color: AppColors.cream),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('1'), findsOneWidget);
+      expect(find.text('of 3'), findsOneWidget);
+      final stepNumber = tester.widget<Text>(find.text('1'));
+      expect(stepNumber.style?.fontSize, 32);
+    });
+
+    testWidgets('IngredientStrip renders ingredient names', (tester) async {
+      final ingredients = [
+        {
+          'ingredient': {'canonical_name': 'Garlic'},
+          'quantity_display': '3',
+          'unit_display': 'cloves',
+        },
+        {
+          'ingredient': {'canonical_name': 'Olive oil'},
+          'quantity_display': '2',
+          'unit_display': 'tbsp',
+        },
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: IngredientStrip(
+              ingredients: ingredients,
+              checkedIndices: const {},
+              onToggle: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Garlic'), findsOneWidget);
+      expect(find.text('Olive oil'), findsOneWidget);
+    });
+
+    testWidgets('StepNavigator renders Next and Done buttons', (tester) async {
+      bool nextTapped = false;
+      bool doneTapped = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StepNavigator(
+              currentStep: 1,
+              totalSteps: 3,
+              completedSteps: const {},
+              onPrevious: () {},
+              onNext: () { nextTapped = true; },
+              onDone: () { doneTapped = true; },
+              onStepTap: (_) {},
+              onLongPressStep: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Next'), findsOneWidget);
+      expect(find.text('Done'), findsNothing);
+
+      await tester.tap(find.text('Next'));
+      expect(nextTapped, isTrue);
+
+      // On last step, Done appears
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StepNavigator(
+              currentStep: 2,
+              totalSteps: 3,
+              completedSteps: const {},
+              onPrevious: () {},
+              onNext: null,
+              onDone: () { doneTapped = true; },
+              onStepTap: (_) {},
+              onLongPressStep: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Done'), findsOneWidget);
+      await tester.tap(find.text('Done'));
+      expect(doneTapped, isTrue);
+    });
+  });
+}

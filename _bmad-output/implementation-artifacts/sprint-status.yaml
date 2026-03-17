@@ -90,8 +90,8 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Cooking Mode
-  epic-6: backlog
-  6-1-cooking-mode-core-experience: backlog
+  epic-6: in-progress
+  6-1-cooking-mode-core-experience: done
   6-2-gesture-navigation-for-messy-hands: backlog
   6-3-concurrent-timers-with-background-notifications: backlog
   6-4-offline-cooking-mode: backlog
