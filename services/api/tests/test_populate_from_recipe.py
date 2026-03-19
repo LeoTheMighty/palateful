@@ -12,7 +12,6 @@ from conftest import (
     MockShoppingList,
     MockShoppingListItem,
     MockShoppingListUser,
-    MockUser,
 )
 
 
@@ -254,7 +253,6 @@ class TestPopulateFromRecipeErrors:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
-        from utils.models.shopping_list_user import ShoppingListUser
 
         mock_db.set_find_by(Recipe, recipe, id=recipe_id)
         mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
@@ -267,6 +265,46 @@ class TestPopulateFromRecipeErrors:
         )
 
         assert response.status_code == 403
+
+    def test_populate_from_recipe_editor_member_can_add_items(self, client, mock_db, mock_user):
+        """A non-owner member with 'editor' role can successfully add items."""
+        list_id = str(uuid.uuid4())
+        recipe_id = str(uuid.uuid4())
+        ingredient_id = str(uuid.uuid4())
+        other_owner_id = str(uuid.uuid4())
+
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=str(uuid.uuid4()))
+        ri = make_recipe_ingredient(ingredient_id, recipe_id)
+        recipe.ingredients = [ri]
+
+        # List owned by someone else
+        sl = MockShoppingList(id=list_id, owner_id=other_owner_id, items=[])
+
+        # mock_user is an editor member
+        editor_membership = MockShoppingListUser(
+            shopping_list_id=list_id,
+            user_id=str(mock_user.id),
+            role="editor",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.shopping_list import ShoppingList
+        from utils.models.shopping_list_user import ShoppingListUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_db.set_find_by(ShoppingListUser, editor_membership, shopping_list_id=list_id, user_id=str(mock_user.id))
+
+        response = client.post(
+            f"/v1/shopping-lists/{list_id}/populate-from-recipe",
+            json={"recipe_id": recipe_id},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items_added"] == 1
 
 
 class TestPopulateFromRecipeBroadcast:
@@ -312,6 +350,8 @@ class TestPopulateFromRecipeBroadcast:
             assert isinstance(args[2], dict)
             assert "id" in args[2], "broadcast data must include item id"
             assert "name" in args[2]
+            kwargs = call[1]
+            assert kwargs.get("user_id") == str(mock_user.id), "broadcast must carry actor user_id"
 
     def test_populate_from_recipe_no_broadcast_when_all_skipped(self, client, mock_db, mock_user):
         """No broadcast when all items are duplicates (nothing added)."""

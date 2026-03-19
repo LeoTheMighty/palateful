@@ -130,6 +130,21 @@ void main() {
     });
   });
 
+  group('Add to Cart — error snackbar', () {
+    testWidgets('shows error snackbar when populateFromRecipe throws',
+        (tester) async {
+      final list = _makeList(name: 'My List');
+      await tester.pumpWidget(MaterialApp(
+        home: _AddToCartTester(lists: [list], itemsAdded: 0, throwError: true),
+      ));
+
+      await tester.tap(find.text('Add to Cart'));
+      await tester.pump();
+
+      expect(find.text('Failed to add ingredients to cart'), findsOneWidget);
+    });
+  });
+
   group('Add to Cart — list picker', () {
     testWidgets('shows bottom sheet picker when multiple lists exist',
         (tester) async {
@@ -158,8 +173,10 @@ void main() {
 class _AddToCartTester extends StatelessWidget {
   final List<ShoppingList> lists;
   final int itemsAdded;
+  final bool throwError;
 
-  const _AddToCartTester({required this.lists, this.itemsAdded = 0});
+  const _AddToCartTester(
+      {required this.lists, this.itemsAdded = 0, this.throwError = false});
 
   @override
   Widget build(BuildContext context) {
@@ -203,15 +220,23 @@ class _AddToCartTester extends StatelessWidget {
     if (selectedList == null) return;
     if (!context.mounted) return;
 
-    final listName =
-        selectedList.name.isEmpty ? 'Shopping List' : selectedList.name;
-    final count = itemsAdded;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            'Added $count ingredient${count == 1 ? '' : 's'} to $listName'),
-      ),
-    );
+    try {
+      if (throwError) throw Exception('network error');
+      final listName =
+          selectedList.name.isEmpty ? 'Shopping List' : selectedList.name;
+      final count = itemsAdded;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Added $count ingredient${count == 1 ? '' : 's'} to $listName'),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to add ingredients to cart')),
+      );
+    }
   }
 }
 

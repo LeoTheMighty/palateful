@@ -1,6 +1,6 @@
 # Story 8.2: Add Recipe Ingredients to Shopping List
 
-Status: review
+Status: done
 
 ## Story
 
@@ -318,7 +318,7 @@ claude-sonnet-4-6
 - Updated `__init__.py` and `shopping_list_router.py` with import and route; broadcasts `item_added` per added item
 - Added `populateShoppingListFromRecipe()` to `ApiClient` and `populateFromRecipe()` returning Dart record to `ShoppingCartService`
 - Added `_addIngredientsToCart()` to `RecipeDetailScreen` with empty-list snackbar, single-list auto-select, multi-list picker, success/error snackbars; "Add to Cart" is first popup menu item
-- 10 backend tests in 5 classes; 7 Flutter widget tests in 4 groups; 305 backend + all Flutter tests pass
+- 11 backend tests in 5 classes (added editor-role test H1, `user_id` kwarg assertion M2, removed unused imports M1); 8 Flutter widget tests (added error path test M3); 306 backend + all Flutter tests pass
 
 ### File List
 
