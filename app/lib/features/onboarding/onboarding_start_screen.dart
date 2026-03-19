@@ -50,6 +50,12 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
               data?['user']?['default_recipe_book_id'],
         );
 
+        // Claim any pending email invitations (best-effort, ignore errors)
+        try {
+          await _apiClient.claimInvitations();
+        } catch (_) {}
+
+        if (!mounted) return;
         setState(() {
           _isLoading = false;
         });

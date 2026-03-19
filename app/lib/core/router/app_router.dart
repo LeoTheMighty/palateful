@@ -27,6 +27,8 @@ import '../../features/recipes/recipe_version_history_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
+import '../../features/invitations/invitations_screen.dart';
+import '../../features/invitations/invite_link_preview_screen.dart';
 import '../../features/profile/notification_preferences_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
@@ -242,6 +244,20 @@ GoRouter get appRouter {
         builder: (context, state) {
           final itemId = state.pathParameters['itemId']!;
           return ImportItemReviewScreen(itemId: itemId);
+        },
+      ),
+
+      GoRoute(
+        path: '/invitations',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const InvitationsScreen(),
+      ),
+      GoRoute(
+        path: '/invite/:token',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return InviteLinkPreviewScreen(token: token);
         },
       ),
 

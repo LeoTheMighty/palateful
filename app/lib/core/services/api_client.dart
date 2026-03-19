@@ -481,4 +481,39 @@ class ApiClient {
   Future<Response> getRecentlyCookedRecipes({int limit = 5}) {
     return _dio.get('/v1/cooking-logs', queryParameters: {'limit': limit});
   }
+
+  // Invitations
+  Future<Response> listReceivedInvitations() =>
+      _dio.get('/v1/invitations');
+
+  Future<Response> listSentInvitations() =>
+      _dio.get('/v1/invitations/sent');
+
+  Future<Response> sendInvitation(Map<String, dynamic> data) =>
+      _dio.post('/v1/invitations', data: data);
+
+  Future<Response> acceptInvitation(String invitationId) =>
+      _dio.post('/v1/invitations/$invitationId/accept');
+
+  Future<Response> declineInvitation(String invitationId) =>
+      _dio.post('/v1/invitations/$invitationId/decline');
+
+  Future<Response> revokeInvitation(String invitationId) =>
+      _dio.delete('/v1/invitations/$invitationId');
+
+  Future<Response> claimInvitations() =>
+      _dio.post('/v1/invitations/claim');
+
+  // Invite Links
+  Future<Response> createInviteLink(Map<String, dynamic> data) =>
+      _dio.post('/v1/invite-links', data: data);
+
+  Future<Response> previewInviteLink(String token) =>
+      _dio.get('/v1/invite-links/$token');
+
+  Future<Response> joinViaLink(String token) =>
+      _dio.post('/v1/invite-links/$token/join');
+
+  Future<Response> deactivateInviteLink(String inviteLinkId) =>
+      _dio.delete('/v1/invite-links/$inviteLinkId');
 }

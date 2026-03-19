@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 
@@ -191,6 +193,222 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
     }
   }
 
+  Future<void> _showInviteBottomSheet() async {
+    final inputController = TextEditingController();
+    String selectedRole = 'viewer';
+    String? generatedLink;
+    bool isSending = false;
+    bool isGenerating = false;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return DefaultTabController(
+              length: 2,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const TabBar(
+                      tabs: [
+                        Tab(text: 'By username/email'),
+                        Tab(text: 'Invite link'),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 300,
+                      child: TabBarView(
+                        children: [
+                          // Tab 1: Direct invite
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  controller: inputController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Username or email',
+                                    hintText: 'e.g. @alice or alice@example.com',
+                                  ),
+                                  autofocus: false,
+                                  onChanged: (_) => setSheetState(() {}),
+                                ),
+                                const SizedBox(height: 12),
+                                DropdownButtonFormField<String>(
+                                  initialValue: selectedRole,
+                                  decoration: const InputDecoration(labelText: 'Role'),
+                                  items: const [
+                                    DropdownMenuItem(value: 'editor', child: Text('Editor')),
+                                    DropdownMenuItem(value: 'viewer', child: Text('Viewer')),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      setSheetState(() => selectedRole = value);
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: inputController.text.trim().isEmpty || isSending
+                                      ? null
+                                      : () async {
+                                          setSheetState(() => isSending = true);
+                                          final input = inputController.text.trim();
+                                          final isEmail = input.contains('@') && input.contains('.');
+                                          final data = {
+                                            'resource_type': 'recipe_book',
+                                            'resource_id': widget.recipeBookId,
+                                            'role_offered': selectedRole,
+                                            if (isEmail) 'to_email': input
+                                            else 'to_username': input.replaceFirst('@', ''),
+                                          };
+                                          try {
+                                            await _apiClient.sendInvitation(data);
+                                            if (mounted) {
+                                              Navigator.pop(sheetContext);
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Invitation sent')),
+                                              );
+                                            }
+                                          } catch (e) {
+                                            setSheetState(() => isSending = false);
+                                            if (mounted) {
+                                              showDialog(
+                                                context: context,
+                                                builder: (ctx) => AlertDialog(
+                                                  title: const Text('Could not send invitation'),
+                                                  content: const Text('The user may not exist or is already a member.'),
+                                                  actions: [
+                                                    TextButton(
+                                                      onPressed: () => Navigator.pop(ctx),
+                                                      child: const Text('OK'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                  child: isSending
+                                      ? const SizedBox(
+                                          height: 16,
+                                          width: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Text('Send Invite'),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // Tab 2: Invite link
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (generatedLink == null) ...[
+                                  const Text(
+                                    'Generate a shareable link. Anyone with the link can join as viewer.',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  ElevatedButton(
+                                    onPressed: isGenerating
+                                        ? null
+                                        : () async {
+                                            setSheetState(() => isGenerating = true);
+                                            try {
+                                              final response = await _apiClient.createInviteLink({
+                                                'resource_type': 'recipe_book',
+                                                'resource_id': widget.recipeBookId,
+                                                'role_offered': 'viewer',
+                                              });
+                                              final link = response.data['deep_link'] as String?;
+                                              setSheetState(() {
+                                                generatedLink = link;
+                                                isGenerating = false;
+                                              });
+                                            } catch (e) {
+                                              setSheetState(() => isGenerating = false);
+                                            }
+                                          },
+                                    child: isGenerating
+                                        ? const SizedBox(
+                                            height: 16,
+                                            width: 16,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : const Text('Generate Link'),
+                                  ),
+                                ] else ...[
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      generatedLink!,
+                                      style: Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () {
+                                            Clipboard.setData(ClipboardData(text: generatedLink!));
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Link copied')),
+                                            );
+                                          },
+                                          icon: const Icon(Icons.copy),
+                                          label: const Text('Copy'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: () {
+                                            Share.share(generatedLink!);
+                                          },
+                                          icon: const Icon(Icons.share),
+                                          label: const Text('Share'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    inputController.dispose();
+  }
+
   Color _roleChipColor(BuildContext context, String role) {
     final colorScheme = Theme.of(context).colorScheme;
     switch (role) {
@@ -228,6 +446,14 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          if (isOwner)
+            TextButton.icon(
+              onPressed: _showInviteBottomSheet,
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Invite'),
+            ),
+        ],
       ),
       floatingActionButton: isOwner
           ? FloatingActionButton(

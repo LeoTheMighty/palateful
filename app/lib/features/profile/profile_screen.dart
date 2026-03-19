@@ -583,6 +583,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildSectionHeader('Settings', textTheme),
           const SizedBox(height: 12),
           _buildProfileTile(
+            icon: Icons.mail_outline,
+            label: 'Invitations',
+            value: 'View and manage invitations',
+            onTap: () => context.push('/invitations'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+          const SizedBox(height: 8),
+          _buildProfileTile(
             icon: Icons.notifications_outlined,
             label: 'Notifications',
             value: 'Push notifications & quiet hours',
