@@ -7,6 +7,7 @@ import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
 import '../../features/onboarding/onboarding_start_screen.dart';
 import '../../features/recipe_books/archived_recipe_books_screen.dart';
+import '../../features/recipe_books/recipe_book_members_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_detail_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
@@ -284,6 +285,20 @@ GoRouter get appRouter {
                       final id = state.pathParameters['id']!;
                       return RecipeBookDetailScreen(recipeBookId: id);
                     },
+                    routes: [
+                      GoRoute(
+                        path: 'members',
+                        builder: (context, state) {
+                          final id = state.pathParameters['id']!;
+                          final role =
+                              state.uri.queryParameters['role'] ?? 'viewer';
+                          return RecipeBookMembersScreen(
+                            recipeBookId: id,
+                            userRole: role,
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),

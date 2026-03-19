@@ -139,6 +139,18 @@ class ApiClient {
     return _dio.get('/v1/recipe-books/archived');
   }
 
+  Future<Response> addRecipeBookMember(String bookId, Map<String, dynamic> data) {
+    return _dio.post('/v1/recipe-books/$bookId/members', data: data);
+  }
+
+  Future<Response> removeRecipeBookMember(String bookId, String userId) {
+    return _dio.delete('/v1/recipe-books/$bookId/members/$userId');
+  }
+
+  Future<Response> updateRecipeBookMemberRole(String bookId, String userId, Map<String, dynamic> data) {
+    return _dio.patch('/v1/recipe-books/$bookId/members/$userId', data: data);
+  }
+
   // Recipe endpoints
   Future<Response> getRecipes(String bookId,
       {int limit = 20, int offset = 0, String? search}) {

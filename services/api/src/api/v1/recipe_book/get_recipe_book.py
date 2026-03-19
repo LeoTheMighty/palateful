@@ -16,13 +16,13 @@ class GetRecipeBook(Endpoint):
 
     def execute(self, recipe_book_id: str):
         """
-        Get recipe book details including recipes.
+        Get recipe book details including recipes and members.
 
         Args:
             recipe_book_id: The recipe book's ID
 
         Returns:
-            Recipe book details with recipe list
+            Recipe book details with recipe list and member list
         """
         user: User = self.user
 
@@ -48,12 +48,16 @@ class GetRecipeBook(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND
             )
 
-        # Get recipes
-        recipes = self.database.where(
-            Recipe,
-            recipe_book_id=recipe_book_id,
-            asc='name'
-        ).all()
+        # Get recipes (exclude archived)
+        recipes = (
+            self.db.query(Recipe)
+            .filter(
+                Recipe.recipe_book_id == recipe_book_id,
+                Recipe.archived_at.is_(None),
+            )
+            .order_by(Recipe.name.asc())
+            .all()
+        )
 
         recipe_items = [
             GetRecipeBook.RecipeItem(
@@ -69,14 +73,36 @@ class GetRecipeBook(Endpoint):
             for recipe in recipes
         ]
 
+        # Get all members with their user info
+        all_memberships = (
+            self.db.query(RecipeBookUser, User)
+            .join(User, RecipeBookUser.user_id == User.id)
+            .filter(
+                RecipeBookUser.recipe_book_id == recipe_book_id,
+                RecipeBookUser.archived_at.is_(None),
+            )
+            .all()
+        )
+        members = [
+            GetRecipeBook.MemberItem(
+                user_id=str(rbu.user_id),
+                name=u.name,
+                role=rbu.role,
+            )
+            for rbu, u in all_memberships
+        ]
+
         return success(
             data=GetRecipeBook.Response(
                 id=str(recipe_book.id),
                 name=recipe_book.name,
                 description=recipe_book.description,
                 is_public=recipe_book.is_public,
+                is_shared=recipe_book.is_shared,
+                user_role=membership.role,
                 recipe_count=len(recipes),
                 recipes=recipe_items,
+                members=members,
                 created_at=recipe_book.created_at,
                 updated_at=recipe_book.updated_at
             )
@@ -92,12 +118,20 @@ class GetRecipeBook(Endpoint):
         image_url: str | None = None
         created_at: datetime
 
+    class MemberItem(BaseModel):
+        user_id: str
+        name: str | None = None
+        role: str
+
     class Response(BaseModel):
         id: str
         name: str
         description: str | None = None
         is_public: bool = False
+        is_shared: bool = False
+        user_role: str = "owner"
         recipe_count: int = 0
         recipes: list["GetRecipeBook.RecipeItem"] = []
+        members: list["GetRecipeBook.MemberItem"] = []
         created_at: datetime
         updated_at: datetime

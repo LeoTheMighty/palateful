@@ -223,6 +223,30 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                             final recipeCount = book['recipe_count'] ?? 0;
                             final description = book['description'] as String?;
                             final updatedAt = _formatUpdatedAt(book['updated_at']?.toString());
+                            final isShared = book['is_shared'] as bool? ?? false;
+                            final userRole = book['user_role'] as String? ?? 'owner';
+
+                            Color roleChipColor(String role) {
+                              switch (role) {
+                                case 'owner':
+                                  return colorScheme.primaryContainer;
+                                case 'editor':
+                                  return colorScheme.tertiaryContainer;
+                                default:
+                                  return colorScheme.surfaceContainerHighest;
+                              }
+                            }
+
+                            Color roleChipTextColor(String role) {
+                              switch (role) {
+                                case 'owner':
+                                  return colorScheme.onPrimaryContainer;
+                                case 'editor':
+                                  return colorScheme.onTertiaryContainer;
+                                default:
+                                  return colorScheme.onSurfaceVariant;
+                              }
+                            }
 
                             return Card(
                               margin: const EdgeInsets.only(bottom: 12),
@@ -240,12 +264,16 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                                         width: 48,
                                         height: 48,
                                         decoration: BoxDecoration(
-                                          color: colorScheme.primaryContainer,
+                                          color: isShared
+                                              ? colorScheme.secondaryContainer
+                                              : colorScheme.primaryContainer,
                                           borderRadius: BorderRadius.circular(12),
                                         ),
                                         child: Icon(
-                                          Icons.book,
-                                          color: colorScheme.onPrimaryContainer,
+                                          isShared ? Icons.book_outlined : Icons.book,
+                                          color: isShared
+                                              ? colorScheme.onSecondaryContainer
+                                              : colorScheme.onPrimaryContainer,
                                         ),
                                       ),
                                       const SizedBox(width: 16),
@@ -295,6 +323,24 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                                                 ],
                                               ],
                                             ),
+                                            if (isShared) ...[
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: roleChipColor(userRole),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: Text(
+                                                  userRole,
+                                                  style: textTheme.labelSmall?.copyWith(
+                                                    color: roleChipTextColor(userRole),
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),

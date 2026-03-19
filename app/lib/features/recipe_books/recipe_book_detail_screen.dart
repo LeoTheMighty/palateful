@@ -22,6 +22,8 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   bool _isLoading = true;
   String? _error;
   bool _isMovingOrCopying = false;
+  String _userRole = 'owner';
+  bool _isShared = false;
 
   // Multi-select state
   bool _isSelectMode = false;
@@ -46,6 +48,8 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
         setState(() {
           _recipeBook = response.data;
           _recipes = response.data['recipes'] ?? [];
+          _userRole = response.data['user_role'] as String? ?? 'owner';
+          _isShared = response.data['is_shared'] as bool? ?? false;
           _isLoading = false;
         });
       }
@@ -595,87 +599,99 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                 onPressed: () => context.pop(),
               ),
               actions: [
-                if (_recipes.isNotEmpty)
+                if (_isShared && _userRole == 'owner')
+                  IconButton(
+                    icon: const Icon(Icons.group),
+                    tooltip: 'Members',
+                    onPressed: () async {
+                      await context.push(
+                        '/recipe-books/${widget.recipeBookId}/members?role=$_userRole',
+                      );
+                    },
+                  ),
+                if (_recipes.isNotEmpty && _userRole != 'viewer')
                   IconButton(
                     icon: const Icon(Icons.checklist),
                     onPressed: () => _enterSelectMode(),
                   ),
-                PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      _renameRecipeBook();
-                    } else if (value == 'import_url') {
-                      context.push('/recipes/add/url', extra: {
-                        'recipeBookId': widget.recipeBookId,
-                      }).then((_) => _loadRecipeBook());
-                    } else if (value == 'import_photo') {
-                      context.push('/recipes/add/photo', extra: {
-                        'recipeBookId': widget.recipeBookId,
-                      }).then((_) => _loadRecipeBook());
-                    } else if (value == 'bulk_import') {
-                      context.push('/recipes/add/bulk-urls', extra: {
-                        'recipeBookId': widget.recipeBookId,
-                      }).then((_) => _loadRecipeBook());
-                    } else if (value == 'archive') {
-                      _archiveRecipeBook();
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit_outlined),
-                          SizedBox(width: 8),
-                          Text('Edit'),
-                        ],
+                if (_userRole != 'viewer')
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _renameRecipeBook();
+                      } else if (value == 'import_url') {
+                        context.push('/recipes/add/url', extra: {
+                          'recipeBookId': widget.recipeBookId,
+                        }).then((_) => _loadRecipeBook());
+                      } else if (value == 'import_photo') {
+                        context.push('/recipes/add/photo', extra: {
+                          'recipeBookId': widget.recipeBookId,
+                        }).then((_) => _loadRecipeBook());
+                      } else if (value == 'bulk_import') {
+                        context.push('/recipes/add/bulk-urls', extra: {
+                          'recipeBookId': widget.recipeBookId,
+                        }).then((_) => _loadRecipeBook());
+                      } else if (value == 'archive') {
+                        _archiveRecipeBook();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'import_url',
-                      child: Row(
-                        children: [
-                          Icon(Icons.link),
-                          SizedBox(width: 8),
-                          Text('Import from URL'),
-                        ],
+                      const PopupMenuItem(
+                        value: 'import_url',
+                        child: Row(
+                          children: [
+                            Icon(Icons.link),
+                            SizedBox(width: 8),
+                            Text('Import from URL'),
+                          ],
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'import_photo',
-                      child: Row(
-                        children: [
-                          Icon(Icons.camera_alt),
-                          SizedBox(width: 8),
-                          Text('Import from Photo'),
-                        ],
+                      const PopupMenuItem(
+                        value: 'import_photo',
+                        child: Row(
+                          children: [
+                            Icon(Icons.camera_alt),
+                            SizedBox(width: 8),
+                            Text('Import from Photo'),
+                          ],
+                        ),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'bulk_import',
-                      child: Row(
-                        children: [
-                          Icon(Icons.playlist_add),
-                          SizedBox(width: 8),
-                          Text('Bulk Import URLs'),
-                        ],
+                      const PopupMenuItem(
+                        value: 'bulk_import',
+                        child: Row(
+                          children: [
+                            Icon(Icons.playlist_add),
+                            SizedBox(width: 8),
+                            Text('Bulk Import URLs'),
+                          ],
+                        ),
                       ),
-                    ),
-                    PopupMenuItem(
-                      value: 'archive',
-                      child: Row(
-                        children: [
-                          Icon(Icons.archive_outlined, color: colorScheme.error),
-                          const SizedBox(width: 8),
-                          Text('Archive', style: TextStyle(color: colorScheme.error)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                      if (_userRole == 'owner')
+                        PopupMenuItem(
+                          value: 'archive',
+                          child: Row(
+                            children: [
+                              Icon(Icons.archive_outlined, color: colorScheme.error),
+                              const SizedBox(width: 8),
+                              Text('Archive', style: TextStyle(color: colorScheme.error)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
               ],
             ),
-      floatingActionButton: _isSelectMode
+      floatingActionButton: _isSelectMode || _userRole == 'viewer'
           ? null
           : FloatingActionButton(
               onPressed: _addRecipe,
@@ -796,7 +812,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                                     await context.push('/recipes/${recipe['id']}');
                                     _loadRecipeBook();
                                   },
-                            onLongPress: _isSelectMode
+                            onLongPress: _isSelectMode || _userRole == 'viewer'
                                 ? null
                                 : () {
                                     if (recipeId != null) {

@@ -27,16 +27,37 @@ class ListRecipeBooks(Endpoint):
         """
         user: User = self.user
 
-        # Query recipe books with recipe count
+        # Subquery: total member count per book
+        member_count_subq = (
+            self.db.query(
+                RecipeBookUser.recipe_book_id,
+                func.count(RecipeBookUser.user_id).label("member_count"),
+            )
+            .filter(RecipeBookUser.archived_at.is_(None))
+            .group_by(RecipeBookUser.recipe_book_id)
+            .subquery()
+        )
+
+        # Main query: recipe books with recipe count, user role, and member count
         query = (
             self.db.query(
                 RecipeBook,
-                func.count(Recipe.id).label('recipe_count')
+                func.count(Recipe.id).label("recipe_count"),
+                RecipeBookUser.role.label("user_role"),
+                func.coalesce(member_count_subq.c.member_count, 1).label("member_count"),
             )
-            .join(RecipeBookUser, RecipeBook.id == RecipeBookUser.recipe_book_id)
-            .outerjoin(Recipe, (RecipeBook.id == Recipe.recipe_book_id) & (Recipe.archived_at.is_(None)))
-            .filter(RecipeBookUser.user_id == user.id, RecipeBook.archived_at.is_(None))
-            .group_by(RecipeBook.id)
+            .join(
+                RecipeBookUser,
+                (RecipeBook.id == RecipeBookUser.recipe_book_id)
+                & (RecipeBookUser.user_id == user.id),
+            )
+            .outerjoin(
+                Recipe,
+                (RecipeBook.id == Recipe.recipe_book_id) & (Recipe.archived_at.is_(None)),
+            )
+            .outerjoin(member_count_subq, RecipeBook.id == member_count_subq.c.recipe_book_id)
+            .filter(RecipeBook.archived_at.is_(None))
+            .group_by(RecipeBook.id, RecipeBookUser.role, member_count_subq.c.member_count)
             .order_by(RecipeBook.updated_at.desc())
         )
 
@@ -52,11 +73,14 @@ class ListRecipeBooks(Endpoint):
                 name=recipe_book.name,
                 description=recipe_book.description,
                 is_public=recipe_book.is_public,
+                is_shared=recipe_book.is_shared,
+                user_role=user_role,
                 recipe_count=recipe_count,
+                member_count=member_count,
                 created_at=recipe_book.created_at,
-                updated_at=recipe_book.updated_at
+                updated_at=recipe_book.updated_at,
             )
-            for recipe_book, recipe_count in results
+            for recipe_book, recipe_count, user_role, member_count in results
         ]
 
         return success(
@@ -64,7 +88,7 @@ class ListRecipeBooks(Endpoint):
                 items=items,
                 total=total,
                 limit=limit,
-                offset=offset
+                offset=offset,
             )
         )
 
@@ -73,7 +97,10 @@ class ListRecipeBooks(Endpoint):
         name: str
         description: str | None = None
         is_public: bool = False
+        is_shared: bool = False
+        user_role: str = "owner"
         recipe_count: int = 0
+        member_count: int = 1
         created_at: datetime
         updated_at: datetime
 

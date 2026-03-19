@@ -16,7 +16,8 @@ class TestListRecipeBooks:
     def test_list_recipe_books_success(self, client, mock_db, mock_user):
         """Test listing recipe books."""
         book = MockRecipeBook()
-        mock_db.db.query.return_value = MockQuery([(book, 3)])
+        # Query now returns (RecipeBook, recipe_count, user_role, member_count) tuples
+        mock_db.db.query.return_value = MockQuery([(book, 3, "owner", 1)])
 
         response = client.get("/v1/recipe-books")
         assert response.status_code == 200
@@ -91,7 +92,8 @@ class TestGetRecipeBook:
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
         mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.set_where(Recipe, [])
+        # Two db.query calls: recipes and members — both return empty
+        mock_db.db.query.side_effect = [MockQuery([]), MockQuery([])]
 
         response = client.get(f"/v1/recipe-books/{book_id}")
         assert response.status_code == 200
@@ -123,7 +125,8 @@ class TestGetRecipeBook:
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
         mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.set_where(Recipe, [recipe])
+        # Two db.query calls: recipes (returns [recipe]) then members (returns [])
+        mock_db.db.query.side_effect = [MockQuery([recipe]), MockQuery([])]
 
         response = client.get(f"/v1/recipe-books/{book_id}")
         assert response.status_code == 200

@@ -1,14 +1,17 @@
 """Recipe book endpoints router."""
 
 from api.v1.recipe_book import (
+    AddRecipeBookMember,
     ArchiveRecipeBook,
     CreateRecipeBook,
     DeleteRecipeBook,
     GetRecipeBook,
     ListArchivedRecipeBooks,
     ListRecipeBooks,
+    RemoveRecipeBookMember,
     RestoreRecipeBook,
     UpdateRecipeBook,
+    UpdateRecipeBookMemberRole,
 )
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
@@ -124,6 +127,56 @@ async def restore_recipe_book(
     """Restore an archived recipe book."""
     return RestoreRecipeBook.call(
         recipe_book_id=recipe_book_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_book_router.post("/{recipe_book_id}/members")
+async def add_recipe_book_member(
+    recipe_book_id: str,
+    params: AddRecipeBookMember.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Add a member to a recipe book (owner only)."""
+    return AddRecipeBookMember.call(
+        recipe_book_id=recipe_book_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_book_router.patch("/{recipe_book_id}/members/{target_user_id}")
+async def update_recipe_book_member_role(
+    recipe_book_id: str,
+    target_user_id: str,
+    params: UpdateRecipeBookMemberRole.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Update a member's role in a recipe book (owner only)."""
+    return UpdateRecipeBookMemberRole.call(
+        recipe_book_id=recipe_book_id,
+        target_user_id=target_user_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_book_router.delete("/{recipe_book_id}/members/{target_user_id}")
+async def remove_recipe_book_member(
+    recipe_book_id: str,
+    target_user_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Remove a member from a recipe book (owner only)."""
+    return RemoveRecipeBookMember.call(
+        recipe_book_id=recipe_book_id,
+        target_user_id=target_user_id,
         user=user,
         database=database,
     )

@@ -27,7 +27,8 @@ class CreateRecipeBook(Endpoint):
         # Create recipe book
         recipe_book = RecipeBook(
             name=params.name,
-            description=params.description
+            description=params.description,
+            is_shared=params.is_shared,
         )
         self.database.create(recipe_book)
         self.database.db.refresh(recipe_book)
@@ -46,6 +47,7 @@ class CreateRecipeBook(Endpoint):
                 id=recipe_book.id,
                 name=recipe_book.name,
                 description=recipe_book.description,
+                is_shared=recipe_book.is_shared,
                 recipe_count=0,
                 created_at=recipe_book.created_at,
                 updated_at=recipe_book.updated_at
@@ -56,11 +58,13 @@ class CreateRecipeBook(Endpoint):
     class Params(BaseModel):
         name: str
         description: str | None = None
+        is_shared: bool = False
 
     class Response(BaseModel):
         id: str
         name: str
         description: str | None = None
+        is_shared: bool = False
         recipe_count: int
         created_at: datetime
         updated_at: datetime

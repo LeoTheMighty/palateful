@@ -22,6 +22,7 @@ class RecipeBook(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
     members: Mapped[list["RecipeBookUser"]] = relationship(

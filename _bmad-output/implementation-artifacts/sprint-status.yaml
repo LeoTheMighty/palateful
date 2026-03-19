@@ -99,8 +99,8 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: Household Collaboration
-  epic-7: backlog
-  7-1-shared-recipe-books-with-role-based-access: backlog
+  epic-7: in-progress
+  7-1-shared-recipe-books-with-role-based-access: done
   7-2-invitation-system: backlog
   7-3-recipe-forking-with-lineage: backlog
   7-4-real-time-shared-book-updates: backlog
