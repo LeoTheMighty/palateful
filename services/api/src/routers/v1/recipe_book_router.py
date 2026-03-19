@@ -210,8 +210,9 @@ async def recipe_book_websocket(
         return
 
     try:
-        from dependencies import decode_jwt
-        payload = decode_jwt(f"Bearer {token}")
+        from utils.services.auth0 import get_auth0_verifier
+        verifier = get_auth0_verifier()
+        payload = await verifier.verify_token(token)
         user = database.find_by(User, auth0_id=payload.get("sub"))
         if not user:
             await websocket.close(code=4001, reason="Invalid user")

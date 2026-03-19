@@ -74,7 +74,9 @@ class RecipeBookConnectionManager:
         message_json = json.dumps(message, default=str)
         disconnected = []
 
-        for _user_id, websocket in self.active_connections[book_id]:
+        # Snapshot to list to avoid RuntimeError if connections change during awaits
+        connections = list(self.active_connections.get(book_id, set()))
+        for _user_id, websocket in connections:
             if websocket == exclude_websocket:
                 continue
             try:

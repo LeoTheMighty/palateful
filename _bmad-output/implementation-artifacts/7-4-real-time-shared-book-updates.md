@@ -1,6 +1,6 @@
 # Story 7.4: Real-Time Shared Book Updates
 
-Status: review
+Status: done
 
 ## Story
 

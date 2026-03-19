@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../core/di/injection.dart';
@@ -28,6 +29,7 @@ class RecipeBookSyncService {
   Timer? _pingTimer;
 
   String? _currentBookId;
+  int _reconnectAttempts = 0;
 
   RecipeBookSyncService({ApiClient? apiClient}) {
     _apiClient = apiClient ?? getIt<ApiClient>();
@@ -96,6 +98,9 @@ class RecipeBookSyncService {
     }
   }
 
+  @visibleForTesting
+  void handleMessageForTest(dynamic data) => _handleMessage(data);
+
   void _handleMessage(dynamic data) {
     try {
       final message = jsonDecode(data as String) as Map<String, dynamic>;
@@ -118,6 +123,7 @@ class RecipeBookSyncService {
           _recipeRemovedController.add(recipeId);
           break;
         case 'connected':
+          _reconnectAttempts = 0;
           _updateState(RecipeBookWebSocketState.connected);
           break;
         case 'pong':
@@ -141,7 +147,10 @@ class RecipeBookSyncService {
 
   void _scheduleReconnect() {
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 5), _doConnect);
+    // Exponential back-off: 5s, 10s, 20s, 40s, capped at 60s
+    final delaySecs = (5 * (1 << _reconnectAttempts)).clamp(5, 60);
+    _reconnectAttempts++;
+    _reconnectTimer = Timer(Duration(seconds: delaySecs), _doConnect);
   }
 
   void _startPingTimer() {
@@ -170,6 +179,7 @@ class RecipeBookSyncService {
     _wsChannel?.sink.close();
     _wsChannel = null;
     _currentBookId = null;
+    _reconnectAttempts = 0;
     _updateState(RecipeBookWebSocketState.disconnected);
   }
 
