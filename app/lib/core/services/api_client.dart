@@ -388,6 +388,7 @@ class ApiClient {
     String? quietHoursStart,
     String? quietHoursEnd,
     String? timezone,
+    bool? partnerActivity,
   }) {
     return _dio.put('/v1/users/me/notification-preferences', data: {
       if (pushEnabled != null) 'push_enabled': pushEnabled,
@@ -395,6 +396,7 @@ class ApiClient {
       if (quietHoursStart != null) 'quiet_hours_start': quietHoursStart,
       if (quietHoursEnd != null) 'quiet_hours_end': quietHoursEnd,
       if (timezone != null) 'timezone': timezone,
+      if (partnerActivity != null) 'partner_activity': partnerActivity,
     });
   }
 

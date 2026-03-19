@@ -14,8 +14,10 @@ from api.v1.recipe_book import (
     UpdateRecipeBookMemberRole,
     recipe_book_websocket_handler,
 )
+from api.v1.recipe_book.notifications import notify_book_shared
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends, WebSocket
+from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
 from utils.services.database import Database
 
@@ -141,12 +143,24 @@ async def add_recipe_book_member(
     database: Database = Depends(get_database),
 ):
     """Add a member to a recipe book (owner only)."""
-    return AddRecipeBookMember.call(
+    result = AddRecipeBookMember.call(
         recipe_book_id=recipe_book_id,
         params=params,
         user=user,
         database=database,
     )
+    # Notify the newly added member
+    target_user = database.find_by(User, id=params.user_id)
+    book = database.find_by(RecipeBook, id=recipe_book_id)
+    if target_user and book:
+        notify_book_shared(
+            recipe_book_id=str(recipe_book_id),
+            recipe_book_name=book.name or "Shared Recipe Book",
+            invited_user=target_user,
+            invited_by=user,
+            database=database,
+        )
+    return result
 
 
 @recipe_book_router.patch("/{recipe_book_id}/members/{target_user_id}")

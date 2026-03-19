@@ -26,10 +26,12 @@ from api.v1.recipe import (
     UpdateRecipe,
 )
 from api.v1.recipe_book import GetPublicRecipeBook
+from api.v1.recipe_book.notifications import notify_recipe_added
 from api.v1.recipe_book.websocket import broadcast_event_to_recipe_book
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
 from utils.models.recipe import Recipe
+from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
 from utils.services.database import Database
 
@@ -76,6 +78,16 @@ async def create_recipe(
         {"name": params.name},
         user_id=str(user.id),
     )
+    # Push notification to other book members (shared books only)
+    book = database.find_by(RecipeBook, id=book_id)
+    if book and book.is_shared:
+        notify_recipe_added(
+            recipe_book_id=str(book_id),
+            recipe_book_name=book.name or "Shared Recipe Book",
+            recipe_name=params.name,
+            added_by_user=user,
+            database=database,
+        )
     return result
 
 

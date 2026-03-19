@@ -20,6 +20,7 @@ class _NotificationPreferencesScreenState
   String? _error;
 
   bool _pushEnabled = true;
+  bool _partnerActivity = true;
   String _quietHoursStart = '22:00';
   String _quietHoursEnd = '08:00';
   String _timezone = 'America/Denver';
@@ -43,6 +44,7 @@ class _NotificationPreferencesScreenState
       final data = response.data as Map<String, dynamic>;
       setState(() {
         _pushEnabled = data['push_enabled'] as bool? ?? true;
+        _partnerActivity = data['partner_activity'] as bool? ?? true;
         _quietHoursStart = data['quiet_hours_start'] as String? ?? '22:00';
         _quietHoursEnd = data['quiet_hours_end'] as String? ?? '08:00';
         _timezone = data['timezone'] as String? ?? 'America/Denver';
@@ -59,6 +61,7 @@ class _NotificationPreferencesScreenState
 
   Future<void> _updatePreference({
     bool? pushEnabled,
+    bool? partnerActivity,
     String? quietHoursStart,
     String? quietHoursEnd,
     String? timezone,
@@ -66,6 +69,7 @@ class _NotificationPreferencesScreenState
     try {
       await _apiClient.updateNotificationPreferences(
         pushEnabled: pushEnabled,
+        partnerActivity: partnerActivity,
         quietHoursStart: quietHoursStart,
         quietHoursEnd: quietHoursEnd,
         timezone: timezone,
@@ -169,6 +173,24 @@ class _NotificationPreferencesScreenState
           onChanged: (value) {
             setState(() => _pushEnabled = value);
             _updatePreference(pushEnabled: value);
+          },
+          colorScheme: colorScheme,
+          textTheme: textTheme,
+        ),
+
+        const SizedBox(height: 32),
+
+        // Household notifications
+        _buildSectionHeader('Household', textTheme),
+        const SizedBox(height: 12),
+        _buildToggleTile(
+          icon: Icons.people_outlined,
+          label: 'Partner Activity',
+          subtitle: 'Notify when a partner shares a book or adds a recipe',
+          value: _partnerActivity,
+          onChanged: (value) {
+            setState(() => _partnerActivity = value);
+            _updatePreference(partnerActivity: value);
           },
           colorScheme: colorScheme,
           textTheme: textTheme,

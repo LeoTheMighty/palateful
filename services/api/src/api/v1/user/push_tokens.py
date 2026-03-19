@@ -122,6 +122,8 @@ class UpdateNotificationPreferences(Endpoint):
             prefs["quiet_hours_end"] = params.quiet_hours_end
         if params.timezone is not None:
             prefs["timezone"] = params.timezone
+        if params.partner_activity is not None:
+            prefs["partner_activity"] = params.partner_activity
 
         user.notification_preferences = prefs
         self.database.db.commit()
@@ -133,6 +135,7 @@ class UpdateNotificationPreferences(Endpoint):
                 quiet_hours_start=prefs.get("quiet_hours_start", "22:00"),
                 quiet_hours_end=prefs.get("quiet_hours_end", "08:00"),
                 timezone=prefs.get("timezone", "America/Denver"),
+                partner_activity=prefs.get("partner_activity", True),
             )
         )
 
@@ -142,6 +145,7 @@ class UpdateNotificationPreferences(Endpoint):
         quiet_hours_start: str | None = None  # "HH:MM" format
         quiet_hours_end: str | None = None  # "HH:MM" format
         timezone: str | None = None
+        partner_activity: bool | None = None
 
     class Response(BaseModel):
         push_enabled: bool
@@ -149,6 +153,7 @@ class UpdateNotificationPreferences(Endpoint):
         quiet_hours_start: str
         quiet_hours_end: str
         timezone: str
+        partner_activity: bool
 
 
 class GetNotificationPreferences(Endpoint):
@@ -172,6 +177,7 @@ class GetNotificationPreferences(Endpoint):
                 quiet_hours_start=prefs.get("quiet_hours_start", "22:00"),
                 quiet_hours_end=prefs.get("quiet_hours_end", "08:00"),
                 timezone=prefs.get("timezone", "America/Denver"),
+                partner_activity=prefs.get("partner_activity", True),
                 token_count=len(user.push_tokens or []),
             )
         )
@@ -182,4 +188,5 @@ class GetNotificationPreferences(Endpoint):
         quiet_hours_start: str
         quiet_hours_end: str
         timezone: str
+        partner_activity: bool
         token_count: int
