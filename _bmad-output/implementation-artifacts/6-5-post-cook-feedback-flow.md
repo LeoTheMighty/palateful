@@ -1,6 +1,6 @@
 # Story 6.5: Post-Cook Feedback Flow
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -18,31 +18,31 @@ So that I can capture how it went and add notes while the experience is fresh.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extend `RecipeCacheService` with cook log storage (AC: #2)
-  - [ ] Add `static const _cookLogsKeyPrefix = 'palateful_cook_logs_'` constant
-  - [ ] Add `logCook(String recipeId, int rating, DateTime cookedAt)`: appends `{recipe_id, rating, cooked_at}` entry to SharedPreferences list under key `palateful_cook_logs_{recipeId}`
-  - [ ] Add `getCookLogs(String recipeId)`: returns `List<Map<String, dynamic>>` of stored cook log entries for that recipe (empty list if none)
+- [x] Task 1: Extend `RecipeCacheService` with cook log storage (AC: #2)
+  - [x] Add `static const _cookLogsKeyPrefix = 'palateful_cook_logs_'` constant
+  - [x] Add `logCook(String recipeId, int rating, DateTime cookedAt)`: appends `{recipe_id, rating, cooked_at}` entry to SharedPreferences list under key `palateful_cook_logs_{recipeId}`
+  - [x] Add `getCookLogs(String recipeId)`: returns `List<Map<String, dynamic>>` of stored cook log entries for that recipe (empty list if none)
 
-- [ ] Task 2: Create `PostCookFeedbackSheet` widget (AC: #1, #2, #3, #4)
-  - [ ] Create `app/lib/features/recipes/cook_mode/widgets/post_cook_feedback_sheet.dart`
-  - [ ] `PostCookFeedbackSheet` is a `StatefulWidget` with params: `recipeId`, `recipeName`, `apiClient`, `recipeCache`, `isOffline`, `onComplete` callback
-  - [ ] State: `int _selectedRating = 0` (0 = no star selected), `TextEditingController _notesController`, `bool _isSaving = false`
-  - [ ] Render: dark sheet (no AppBar), drag handle at top, heading "How did it go?", subtitle = `recipeName`, 5-star rating row, notes TextField (optional, multiline), Save button + Skip button
-  - [ ] Star rating row: 5 `IconButton`s — icon is `Icons.star` (filled) when `_selectedRating >= i`, `Icons.star_border` (empty) otherwise, `color: AppColors.terracotta`, `iconSize: 36`; tapping sets `_selectedRating = i`
-  - [ ] Notes field: hint "Add a note... (optional)", maxLines: 3, unfocusedBorderColor: `AppColors.chocolateLight`, focusedBorderColor: `AppColors.terracotta`, textColor: `AppColors.warmIvory`
-  - [ ] Save button: `FilledButton`, `backgroundColor: AppColors.terracotta`, label "Save", `minimumSize: Size.fromHeight(48)`, shows `CircularProgressIndicator` when `_isSaving`; disabled when `_isSaving`
-  - [ ] Skip button: `TextButton`, label "Skip", `foregroundColor: AppColors.withOpacity(AppColors.warmIvory, 0.6)`, `minimumSize: Size.fromHeight(48)`, calls `onComplete` directly (no saving)
-  - [ ] `_saveFeedback()` method:
+- [x] Task 2: Create `PostCookFeedbackSheet` widget (AC: #1, #2, #3, #4)
+  - [x] Create `app/lib/features/recipes/cook_mode/widgets/post_cook_feedback_sheet.dart`
+  - [x] `PostCookFeedbackSheet` is a `StatefulWidget` with params: `recipeId`, `recipeName`, `apiClient`, `recipeCache`, `isOffline`, `onComplete` callback
+  - [x] State: `int _selectedRating = 0` (0 = no star selected), `TextEditingController _notesController`, `bool _isSaving = false`
+  - [x] Render: dark sheet (no AppBar), drag handle at top, heading "How did it go?", subtitle = `recipeName`, 5-star rating row, notes TextField (optional, multiline), Save button + Skip button
+  - [x] Star rating row: 5 `IconButton`s — icon is `Icons.star` (filled) when `_selectedRating >= i`, `Icons.star_border` (empty) otherwise, `color: AppColors.terracotta`, `iconSize: 36`; tapping sets `_selectedRating = i`
+  - [x] Notes field: hint "Add a note... (optional)", maxLines: 3, unfocusedBorderColor: `AppColors.chocolateLight`, focusedBorderColor: `AppColors.terracotta`, textColor: `AppColors.warmIvory`
+  - [x] Save button: `FilledButton`, `backgroundColor: AppColors.terracotta`, label "Save", `minimumSize: Size.fromHeight(48)`, shows `CircularProgressIndicator` when `_isSaving`; disabled when `_isSaving`
+  - [x] Skip button: `TextButton`, label "Skip", `foregroundColor: AppColors.withOpacity(AppColors.warmIvory, 0.6)`, `minimumSize: Size.fromHeight(48)`, calls `onComplete` directly (no saving)
+  - [x] `_saveFeedback()` method:
     - If `_selectedRating > 0`: `await recipeCache.logCook(recipeId, _selectedRating, DateTime.now())`
     - If notes field not empty: if `!isOffline` → `await apiClient.addRecipeNote(recipeId, notes)`, else → `await recipeCache.queueNoteAdd(recipeId, notes)` (offline queue from Story 6.4)
     - Wrap in `try/catch` — silently continue on error (call `onComplete` regardless)
     - Always calls `onComplete` at end
-  - [ ] Wrap Save tap in `setState(() => _isSaving = true)` before call, but rely on `onComplete` to close sheet (no need to reset `_isSaving`)
-  - [ ] `dispose()` must call `_notesController.dispose()`
+  - [x] Wrap Save tap in `setState(() => _isSaving = true)` before call, but rely on `onComplete` to close sheet (no need to reset `_isSaving`)
+  - [x] `dispose()` must call `_notesController.dispose()`
 
-- [ ] Task 3: Update `_finishCooking()` in `CookModeScreen` to show feedback sheet (AC: #1, #5)
-  - [ ] Replace current `_finishCooking()` body with: stop stopwatch, heavy haptic, call `_showPostCookFeedbackSheet()`
-  - [ ] Add `Future<void> _showPostCookFeedbackSheet()` method:
+- [x] Task 3: Update `_finishCooking()` in `CookModeScreen` to show feedback sheet (AC: #1, #5)
+  - [x] Replace current `_finishCooking()` body with: stop stopwatch, heavy haptic, call `_showPostCookFeedbackSheet()`
+  - [x] Add `Future<void> _showPostCookFeedbackSheet()` method:
     ```dart
     await showModalBottomSheet<void>(
       context: context,
@@ -64,18 +64,18 @@ So that I can capture how it went and add notes while the experience is fresh.
     );
     if (mounted) context.pop(); // Exit cook mode after feedback sheet closes
     ```
-  - [ ] Add import: `import 'widgets/post_cook_feedback_sheet.dart'`
-  - [ ] Remove the old SnackBar from `_finishCooking()` — the feedback sheet replaces it as the completion UX
+  - [x] Add import: `import 'widgets/post_cook_feedback_sheet.dart'`
+  - [x] Remove the old SnackBar from `_finishCooking()` — the feedback sheet replaces it as the completion UX
 
-- [ ] Task 4: Widget tests (AC: #1–#5)
-  - [ ] Create `app/test/post_cook_feedback_test.dart`
-  - [ ] Test: `RecipeCacheService.logCook` stores entry under correct key
-  - [ ] Test: `RecipeCacheService.getCookLogs` returns empty list for unknown recipe
-  - [ ] Test: `RecipeCacheService.getCookLogs` returns logs after `logCook`
-  - [ ] Test: `PostCookFeedbackSheet` renders star rating (5 star icons visible)
-  - [ ] Test: Skip button fires `onComplete` without any data saved
-  - [ ] Test: Save button fires `onComplete` after selecting a rating
-  - [ ] 5+ tests, all must pass
+- [x] Task 4: Widget tests (AC: #1–#5)
+  - [x] Create `app/test/post_cook_feedback_test.dart`
+  - [x] Test: `RecipeCacheService.logCook` stores entry under correct key
+  - [x] Test: `RecipeCacheService.getCookLogs` returns empty list for unknown recipe
+  - [x] Test: `RecipeCacheService.getCookLogs` returns logs after `logCook`
+  - [x] Test: `PostCookFeedbackSheet` renders star rating (5 star icons visible)
+  - [x] Test: Skip button fires `onComplete` without any data saved
+  - [x] Test: Save button fires `onComplete` after selecting a rating
+  - [x] 5+ tests, all must pass
 
 ## Dev Notes
 
@@ -423,6 +423,29 @@ Claude Sonnet 4.6
 
 ### Debug Log References
 
+None.
+
 ### Completion Notes List
 
+- `apiClient` made nullable (`ApiClient?`) to support test harness that passes `null` when `isOffline: true`
+- 9 tests implemented (4 unit + 5 widget), all passing
+- Full regression suite: 122 tests passing
+
+### Code Review
+
+**M1 (FIXED)**: Silent note data loss — when `isOffline == false` but `apiClient == null`, `?.addRecipeNote` silently returned null instead of queuing. Fixed: fall through to `queueNoteAdd` when apiClient is absent.
+
+**M2 (DOCUMENTED)**: `_finishCooking()` integration path untested — CookModeScreen integration test requires significant DI mocking infrastructure beyond story scope. Acceptable known limitation.
+
+**L1 (FIXED)**: Unused `_FakeApiClient` class removed from `post_cook_feedback_test.dart`.
+
+**L2 (FIXED)**: `_isSaving` now reset to `false` via `setState()` before calling `onComplete()`. Allows tests to use `pumpAndSettle` cleanly; eliminates the `pump(Duration(milliseconds: 100))` workaround.
+
+**L3 (DOCUMENTED)**: `isOffline` snapshot in sheet doesn't reflect mid-session connectivity restore — acceptable trade-off; `_syncPendingNotes()` on resume handles queued notes.
+
 ### File List
+
+- app/lib/core/services/recipe_cache_service.dart
+- app/lib/features/recipes/cook_mode/cook_mode_screen.dart
+- app/lib/features/recipes/cook_mode/widgets/post_cook_feedback_sheet.dart
+- app/test/post_cook_feedback_test.dart

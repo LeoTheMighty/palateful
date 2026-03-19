@@ -6,11 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Service for caching recipe data locally and queuing offline note additions.
 ///
 /// Keys use the `palateful_` prefix to avoid collisions with other packages:
-/// - `palateful_recipe_{recipeId}` — cached recipe JSON
-/// - `palateful_pending_notes`     — JSON-encoded list of pending note additions
+/// - `palateful_recipe_{recipeId}`    — cached recipe JSON
+/// - `palateful_pending_notes`        — JSON-encoded list of pending note additions
+/// - `palateful_cook_logs_{recipeId}` — JSON-encoded list of cook log entries
 class RecipeCacheService {
   static const _recipeKeyPrefix = 'palateful_recipe_';
   static const _pendingNotesKey = 'palateful_pending_notes';
+  static const _cookLogsKeyPrefix = 'palateful_cook_logs_';
 
   /// Serializes [data] to JSON and stores it under `palateful_recipe_[recipeId]`.
   Future<void> cacheRecipe(String recipeId, Map<String, dynamic> data) async {
@@ -87,6 +89,40 @@ class RecipeCacheService {
       await prefs.remove(_pendingNotesKey);
     } catch (e) {
       debugPrint('RecipeCacheService: failed to clear pending notes: $e');
+    }
+  }
+
+  /// Records a cook session for [recipeId] with the given [rating] (1–5) and
+  /// timestamp. Stored under `palateful_cook_logs_{recipeId}`.
+  Future<void> logCook(String recipeId, int rating, DateTime cookedAt) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _cookLogsKeyPrefix + recipeId;
+      final existing = prefs.getString(key);
+      final List<dynamic> logs =
+          existing != null ? jsonDecode(existing) as List<dynamic> : [];
+      logs.add({
+        'recipe_id': recipeId,
+        'rating': rating,
+        'cooked_at': cookedAt.toIso8601String(),
+      });
+      await prefs.setString(key, jsonEncode(logs));
+    } catch (e) {
+      debugPrint('RecipeCacheService: failed to log cook $recipeId: $e');
+    }
+  }
+
+  /// Returns all cook log entries for [recipeId], ordered oldest-first.
+  Future<List<Map<String, dynamic>>> getCookLogs(String recipeId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cookLogsKeyPrefix + recipeId);
+      if (raw == null) return [];
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('RecipeCacheService: failed to get cook logs $recipeId: $e');
+      return [];
     }
   }
 }

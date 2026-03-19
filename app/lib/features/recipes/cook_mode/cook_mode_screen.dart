@@ -12,6 +12,7 @@ import '../../../core/services/cook_timer_notification_service.dart';
 import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/app_colors.dart';
 import 'widgets/ingredient_strip.dart';
+import 'widgets/post_cook_feedback_sheet.dart';
 import 'widgets/step_navigator.dart';
 
 class CookModeScreen extends StatefulWidget {
@@ -330,14 +331,30 @@ class _CookModeScreenState extends State<CookModeScreen>
   void _finishCooking() {
     _completedSteps.add(_currentStep);
     HapticFeedback.heavyImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Recipe completed! Great job! 🎉'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
+    _cookingStopwatch.stop();
+    _showPostCookFeedbackSheet();
+  }
+
+  Future<void> _showPostCookFeedbackSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: AppColors.chocolateDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => PostCookFeedbackSheet(
+        recipeId: widget.recipeId,
+        recipeName: _recipe?['name'] as String? ?? 'Recipe',
+        apiClient: _apiClient,
+        recipeCache: _recipeCache,
+        isOffline: _isOffline,
+        onComplete: () => Navigator.of(sheetContext).pop(),
       ),
     );
-    context.pop();
+    if (mounted) context.pop(); // Exit cook mode screen after sheet closes
   }
 
   String _formatDuration(Duration d) {
