@@ -69,20 +69,21 @@ class _CookModeScreenState extends State<CookModeScreen>
   /// Reconcile timer countdowns after the app returns from background.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && mounted) {
       final now = DateTime.now();
       final expired = <_ActiveTimer>[];
-      for (final t in _activeTimers) {
-        final elapsed = now.difference(t.startTime);
-        final remaining = t.duration - elapsed;
-        if (remaining.isNegative || remaining == Duration.zero) {
-          expired.add(t);
-        } else {
-          setState(() {
+      // Batch all remaining updates into a single setState to avoid per-timer rebuilds
+      setState(() {
+        for (final t in _activeTimers) {
+          final elapsed = now.difference(t.startTime);
+          final remaining = t.duration - elapsed;
+          if (remaining.isNegative || remaining == Duration.zero) {
+            expired.add(t);
+          } else {
             t.remaining = remaining;
-          });
+          }
         }
-      }
+      });
       for (final t in expired) {
         t.timer?.cancel();
         _onTimerComplete(t);
@@ -235,15 +236,14 @@ class _CookModeScreenState extends State<CookModeScreen>
     HapticFeedback.heavyImpact();
     // Cancel the OS notification in case the timer fired in-app
     _timerNotifService.cancelTimerNotification(timer.notifId);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Timer done: ${timer.label}'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Timer done: ${timer.label}'),
+        backgroundColor: AppColors.success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
     setState(() {
       _activeTimers.remove(timer);
     });
@@ -282,16 +282,16 @@ class _CookModeScreenState extends State<CookModeScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) {
+      builder: (sheetContext) {
         return _TimerDetailSheet(
           timer: timer,
           formatDuration: _formatDuration,
           onCancel: () {
-            Navigator.of(context).pop();
+            Navigator.of(sheetContext).pop();
             _cancelTimer(timer);
           },
           onRestart: () {
-            Navigator.of(context).pop();
+            Navigator.of(sheetContext).pop();
             _restartTimer(timer);
           },
         );

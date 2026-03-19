@@ -32,6 +32,10 @@ void main() async {
   final authService = getIt<AuthService>();
   await authService.initialize();
 
+  // Initialize local timer notifications unconditionally (no auth required — purely local OS APIs)
+  final timerService = getIt<CookTimerNotificationService>();
+  await timerService.initialize();
+
   // If already authenticated (from restored credentials or redirect), set up the session
   if (authService.isAuthenticated && authService.accessToken != null) {
     // Refresh token if expired/expiring before making API calls
@@ -81,10 +85,6 @@ void main() async {
     // Initialize push notifications after auth
     final pushService = getIt<PushNotificationService>();
     await pushService.initialize();
-
-    // Initialize local timer notifications (no permission request at start)
-    final timerService = getIt<CookTimerNotificationService>();
-    await timerService.initialize();
   }
 
   runApp(const ProviderScope(child: PalatefulApp()));

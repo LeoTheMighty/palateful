@@ -8,6 +8,18 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../router/app_router.dart';
 
+/// Top-level background handler: fires on Android when app is killed and user
+/// taps a timer notification. Must be top-level + @pragma('vm:entry-point').
+@pragma('vm:entry-point')
+void _cookTimerBackgroundNotificationHandler(NotificationResponse response) {
+  final payload = response.payload;
+  if (payload != null && payload.isNotEmpty) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      appRouter.push('/recipes/$payload/cook');
+    });
+  }
+}
+
 const _channelId = 'cook_timers';
 const _channelName = 'Cooking Timers';
 const _channelDesc = 'Alerts when a cooking timer finishes';
@@ -43,6 +55,8 @@ class CookTimerNotificationService {
       await _plugin.initialize(
         initSettings,
         onDidReceiveNotificationResponse: _onNotificationResponse,
+        onDidReceiveBackgroundNotificationResponse:
+            _cookTimerBackgroundNotificationHandler,
       );
 
       // Create Android notification channel

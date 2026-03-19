@@ -222,6 +222,20 @@ Claude Sonnet 4.6
 - `_TimerDetailSheet` is a live-countdown `StatefulWidget` (own `Timer.periodic`) rather than the static-snapshot described in dev notes — provides better UX at no extra complexity cost.
 - `_restartTimer` helper added to consolidate cancel + re-start logic (cleaner than inline).
 
+### Code Review Action Items
+
+**H1 (FIXED):** `CookTimerNotificationService.initialize()` was gated inside auth block → moved to unconditional init before auth check in `main.dart`. Purely local service needs no auth; silently failing on first-launch auth flow was a real bug.
+
+**M1 (FIXED):** `setState` called outside `mounted` guard in `_onTimerComplete` → changed to `if (!mounted) return;` early-exit pattern covering both SnackBar and setState.
+
+**M2 (FIXED):** Multiple `setState` calls in `didChangeAppLifecycleState` loop (one per timer) → batched all `remaining` mutations into a single `setState`. Also added `mounted` guard to the lifecycle handler.
+
+**M3 (FIXED):** Missing `onDidReceiveBackgroundNotificationResponse` background handler for Android killed-app notification taps → added `@pragma('vm:entry-point')` top-level function `_cookTimerBackgroundNotificationHandler` and wired it into `_plugin.initialize()`.
+
+**L1 (FIXED):** `_showTimerDetailSheet` callbacks used parent screen `context` for `Navigator.of(context).pop()` → changed `builder: (_)` to `builder: (sheetContext)` and use `Navigator.of(sheetContext).pop()`.
+
+**L2 (NOT FIXED):** `_TimerDetailSheet` stays open with 00:00 display when parent `_onTimerComplete` fires concurrently. Acceptable UX trade-off — user can dismiss manually. Auto-close would require a stream/callback mechanism adding complexity.
+
 ### File List
 
 - app/pubspec.yaml
