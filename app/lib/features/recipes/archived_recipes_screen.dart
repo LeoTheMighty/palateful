@@ -18,11 +18,27 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
   bool _isLoading = true;
   String? _error;
   final Set<String> _restoringIds = {};
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadArchivedRecipes();
+    _searchController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<dynamic> get _filteredRecipes {
+    final query = _searchController.text.toLowerCase().trim();
+    if (query.isEmpty) return _archivedRecipes;
+    return _archivedRecipes
+        .where((r) => (r['name'] as String? ?? '').toLowerCase().contains(query))
+        .toList();
   }
 
   Future<void> _loadArchivedRecipes() async {
@@ -138,11 +154,44 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                     )
                   : RefreshIndicator(
                       onRefresh: _loadArchivedRecipes,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _archivedRecipes.length,
-                        itemBuilder: (context, index) {
-                          final recipe = _archivedRecipes[index];
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: const InputDecoration(
+                                hintText: 'Search archived recipes...',
+                                prefixIcon: Icon(Icons.search),
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: _filteredRecipes.isEmpty &&
+                                    _searchController.text.trim().isNotEmpty
+                                ? LayoutBuilder(
+                                    builder: (context, constraints) =>
+                                        SingleChildScrollView(
+                                      physics:
+                                          const AlwaysScrollableScrollPhysics(),
+                                      child: SizedBox(
+                                        height: constraints.maxHeight,
+                                        child: EmptyStateWidget(
+                                          icon: Icons.search_off,
+                                          title: 'No results',
+                                          subtitle:
+                                              'No archived recipes match your search',
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 0, 16, 16),
+                                    itemCount: _filteredRecipes.length,
+                                    itemBuilder: (context, index) {
+                                      final recipe = _filteredRecipes[index];
                           final imageUrl = recipe['image_url'] as String?;
                           final name = recipe['name'] ?? 'Untitled';
                           final archivedDate = _formatArchivedDate(
@@ -226,7 +275,10 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                               ),
                             ),
                           );
-                        },
+                                    },
+                                  ),
+                          ),
+                        ],
                       ),
                     ),
     );

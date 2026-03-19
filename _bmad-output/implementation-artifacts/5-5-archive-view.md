@@ -1,6 +1,6 @@
 # Story 5.5: Archive View
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -18,28 +18,28 @@ So that my active collection stays clean while nothing is ever truly gone.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Verify existing backend coverage (AC: #1, #2, #3, #4)
-  - [ ] Confirm `GET /v1/recipes/archived` returns all archived recipes (already implemented in `list_archived_recipes.py`)
-  - [ ] Confirm `POST /v1/recipes/{id}/restore` restores recipes (already implemented in `restore_recipe.py`)
-  - [ ] Confirm all search tiers in `unified_search.py` filter `archived_at.is_(None)` (already done — no changes needed)
-  - [ ] Confirm `list_recipes.py` excludes archived recipes (already done — no changes needed)
+- [x] Task 1: Verify existing backend coverage (AC: #1, #2, #3, #4)
+  - [x] Confirm `GET /v1/recipes/archived` returns all archived recipes (already implemented in `list_archived_recipes.py`)
+  - [x] Confirm `POST /v1/recipes/{id}/restore` restores recipes (already implemented in `restore_recipe.py`)
+  - [x] Confirm all search tiers in `unified_search.py` filter `archived_at.is_(None)` (already done — no changes needed)
+  - [x] Confirm `list_recipes.py` excludes archived recipes (already done — no changes needed)
 
-- [ ] Task 2: Flutter — add search bar to `ArchivedRecipesScreen` (AC: #5)
-  - [ ] Add `TextEditingController _searchController = TextEditingController()` state variable
-  - [ ] In `initState()`, call `_searchController.addListener(() => setState(() {}))` to trigger rebuild on input
-  - [ ] Override `dispose()` to call `_searchController.dispose()` (in addition to `super.dispose()`)
-  - [ ] Add `List<dynamic> get _filteredRecipes` getter: when `_searchController.text.isEmpty` return `_archivedRecipes`; otherwise filter by `recipe['name']?.toString().toLowerCase().contains(query.toLowerCase())`
-  - [ ] Add `TextField` search bar with hint `'Search archived recipes...'` above the ListView in the body, using `InputDecoration` matching the design system (outlined, prefixIcon: Icons.search)
-  - [ ] Replace `_archivedRecipes` with `_filteredRecipes` in `ListView.builder itemCount` and `itemBuilder`
-  - [ ] When `_filteredRecipes.isEmpty` and `_searchController.text.isNotEmpty`, show `EmptyStateWidget` with message "No archived recipes match your search"
+- [x] Task 2: Flutter — add search bar to `ArchivedRecipesScreen` (AC: #5)
+  - [x] Add `TextEditingController _searchController = TextEditingController()` state variable
+  - [x] In `initState()`, call `_searchController.addListener(() => setState(() {}))` to trigger rebuild on input
+  - [x] Override `dispose()` to call `_searchController.dispose()` (in addition to `super.dispose()`)
+  - [x] Add `List<dynamic> get _filteredRecipes` getter: when `_searchController.text.isEmpty` return `_archivedRecipes`; otherwise filter by `recipe['name']?.toString().toLowerCase().contains(query.toLowerCase())`
+  - [x] Add `TextField` search bar with hint `'Search archived recipes...'` above the ListView in the body, using `InputDecoration` matching the design system (outlined, prefixIcon: Icons.search)
+  - [x] Replace `_archivedRecipes` with `_filteredRecipes` in `ListView.builder itemCount` and `itemBuilder`
+  - [x] When `_filteredRecipes.isEmpty` and `_searchController.text.isNotEmpty`, show `EmptyStateWidget` with message "No archived recipes match your search"
 
-- [ ] Task 3: Tests (AC: all)
-  - [ ] Add `app/test/archived_recipes_screen_test.dart` with isolated widget tests:
+- [x] Task 3: Tests (AC: all)
+  - [x] Add `app/test/archived_recipes_screen_test.dart` with isolated widget tests:
     - `'archive view shows recipe name'` — build isolated Card widget with recipe name text; verify it renders
     - `'restore button is present on card'` — build card widget with restore button; verify TextButton 'Restore' renders
     - `'search bar filters recipes by name'` — build isolated list widget, simulate text input, verify non-matching recipe names are hidden
     - `'empty state shown when search has no results'` — build with search text that matches nothing; verify empty-state-like text renders
-  - [ ] Run `flutter test app/test/archived_recipes_screen_test.dart` — all pass
+  - [x] Run `flutter test app/test/archived_recipes_screen_test.dart` — all pass (4/4)
 
 ## Dev Notes
 
@@ -275,5 +275,16 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+- Backend fully pre-implemented from Story 2.5: `GET /v1/recipes/archived` and `POST /v1/recipes/{id}/restore` — no changes needed
+- Search exclusion confirmed: all three tiers in `unified_search.py` and `list_recipes.py` already filter `archived_at.is_(None)` / `AND r.archived_at IS NULL`
+- Added `TextEditingController _searchController` with `addListener(() => setState(() {}))` for real-time filtering
+- Added `_filteredRecipes` getter with case-insensitive name matching; falls back to full list when query is empty
+- Search bar `TextField` with `OutlineInputBorder` and search icon injected above the ListView via `Column(children: [Padding(search), Expanded(list)])`
+- Search-empty state uses `EmptyStateWidget(icon: Icons.search_off, ...)` — distinct from the no-archived-recipes empty state which remains
+- 4 Flutter widget tests pass; 227 API tests pass; no regressions
+
 ### File List
+
+- app/lib/features/recipes/archived_recipes_screen.dart
+- app/test/archived_recipes_screen_test.dart
 
