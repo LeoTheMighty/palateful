@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
+from sqlalchemy import func
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.ingredient import Ingredient
@@ -11,8 +12,12 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
+from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
 from utils.services.units.conversion import normalize_quantity
+
+# Fields that trigger a new version snapshot
+VERSION_TRIGGERING_FIELDS = {"name", "instructions", "ingredients", "steps"}
 
 
 class UpdateRecipe(Endpoint):
@@ -52,6 +57,21 @@ class UpdateRecipe(Endpoint):
                 detail="You don't have permission to edit this recipe",
                 code=ErrorCode.RECIPE_ACCESS_DENIED
             )
+
+        # Determine which version-triggering fields are actually changing
+        changed_fields = []
+        if params.name is not None and params.name != recipe.name:
+            changed_fields.append("name")
+        if params.instructions is not None and params.instructions != recipe.instructions:
+            changed_fields.append("instructions")
+        if params.ingredients is not None:
+            changed_fields.append("ingredients")
+        if params.steps is not None:
+            changed_fields.append("steps")
+
+        # Create version snapshot BEFORE applying updates
+        if changed_fields:
+            self._create_version_snapshot(recipe, recipe_id, changed_fields, user)
 
         # Build update dict
         updates = {}
@@ -196,6 +216,12 @@ class UpdateRecipe(Endpoint):
             for ri, ing in recipe_ingredients
         ]
 
+        # Get version count
+        version_count = self.database.where(
+            RecipeVersion,
+            recipe_id=recipe_id,
+        ).count()
+
         return success(
             data=UpdateRecipe.Response(
                 id=recipe.id,
@@ -211,9 +237,77 @@ class UpdateRecipe(Endpoint):
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 created_at=recipe.created_at,
-                updated_at=recipe.updated_at
+                updated_at=recipe.updated_at,
+                version_count=version_count,
             )
         )
+
+    def _create_version_snapshot(self, recipe, recipe_id, changed_fields, user):
+        """Snapshot the current recipe state before applying updates."""
+        # Fetch current ingredients
+        current_ingredients = self.database.where(
+            RecipeIngredient,
+            recipe_id=recipe_id
+        ).all()
+
+        # Fetch current steps
+        current_steps = self.database.where(
+            RecipeStep,
+            asc="step_number",
+            recipe_id=recipe_id
+        ).all()
+
+        snapshot = {
+            "name": recipe.name,
+            "description": recipe.description,
+            "instructions": recipe.instructions,
+            "servings": recipe.servings,
+            "prep_time": recipe.prep_time,
+            "cook_time": recipe.cook_time,
+            "image_url": recipe.image_url,
+            "source_url": recipe.source_url,
+            "tags": recipe.tags or [],
+            "ingredients": [
+                {
+                    "ingredient_id": str(ri.ingredient_id),
+                    "quantity_display": str(ri.quantity_display),
+                    "unit_display": ri.unit_display,
+                    "notes": ri.notes,
+                    "is_optional": ri.is_optional,
+                    "order_index": ri.order_index,
+                }
+                for ri in current_ingredients
+            ],
+            "steps": [
+                {
+                    "step_number": step.step_number,
+                    "instruction": step.instruction,
+                    "active_time_minutes": step.active_time_minutes,
+                    "timers": step.timers,
+                    "wait_time_minutes": step.wait_time_minutes,
+                    "wait_type": step.wait_type,
+                    "can_prep_ahead": step.can_prep_ahead,
+                    "is_optional": step.is_optional,
+                }
+                for step in current_steps
+            ],
+        }
+
+        # Get next version number
+        max_version = (
+            self.database.db.query(func.max(RecipeVersion.version_number))
+            .filter(RecipeVersion.recipe_id == recipe_id)
+            .scalar()
+        ) or 0
+
+        version = RecipeVersion(
+            recipe_id=recipe_id,
+            version_number=max_version + 1,
+            snapshot=snapshot,
+            changed_fields=changed_fields,
+            created_by=user.id,
+        )
+        self.database.db.add(version)
 
     class IngredientInput(BaseModel):
         ingredient_id: str
@@ -285,3 +379,4 @@ class UpdateRecipe(Endpoint):
         steps: list["UpdateRecipe.StepResponse"] = []
         created_at: datetime
         updated_at: datetime
+        version_count: int = 0

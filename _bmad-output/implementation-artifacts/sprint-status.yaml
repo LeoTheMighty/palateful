@@ -63,7 +63,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Recipe Import Pipeline
-  epic-3: in-progress
+  epic-3: done
   3-1-url-recipe-import: done
   3-2-ocr-photo-import: done
   3-3-bulk-import-from-csv-url-list: done
@@ -73,8 +73,8 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Recipe Versioning & Notes
-  epic-4: backlog
-  4-1-auto-versioning-on-recipe-edit: backlog
+  epic-4: in-progress
+  4-1-auto-versioning-on-recipe-edit: done
   4-2-version-history-and-diffs: backlog
   4-3-restore-previous-version: backlog
   4-4-recipe-notes: backlog
@@ -93,7 +93,7 @@ development_status:
   epic-6: in-progress
   6-1-cooking-mode-core-experience: done
   6-2-gesture-navigation-for-messy-hands: done
-  6-3-concurrent-timers-with-background-notifications: backlog
+  6-3-concurrent-timers-with-background-notifications: ready-for-dev
   6-4-offline-cooking-mode: backlog
   6-5-post-cook-feedback-flow: backlog
   epic-6-retrospective: optional

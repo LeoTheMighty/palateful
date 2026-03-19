@@ -12,6 +12,7 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
+from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
 from utils.models.user_favorite import UserFavorite
 
@@ -110,6 +111,12 @@ class GetRecipe(Endpoint):
             recipe_id=recipe_id,
         )
 
+        # Get version count
+        version_count = self.database.where(
+            RecipeVersion,
+            recipe_id=recipe_id,
+        ).count()
+
         return success(
             data=GetRecipe.Response(
                 id=str(recipe.id),
@@ -127,7 +134,8 @@ class GetRecipe(Endpoint):
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 created_at=recipe.created_at,
-                updated_at=recipe.updated_at
+                updated_at=recipe.updated_at,
+                version_count=version_count,
             )
         )
 
@@ -175,3 +183,4 @@ class GetRecipe(Endpoint):
         steps: list["GetRecipe.StepResponse"] = []
         created_at: datetime
         updated_at: datetime
+        version_count: int = 0

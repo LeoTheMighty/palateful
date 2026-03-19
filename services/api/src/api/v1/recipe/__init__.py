@@ -9,6 +9,7 @@ from api.v1.recipe.delete_recipe import DeleteRecipe
 from api.v1.recipe.get_photo_upload_url import GetRecipePhotoUploadUrl
 from api.v1.recipe.get_public_recipe import GetPublicRecipe
 from api.v1.recipe.get_recipe import GetRecipe
+from api.v1.recipe.get_recipe_versions import GetRecipeVersions
 from api.v1.recipe.list_archived_recipes import ListArchivedRecipes
 from api.v1.recipe.list_favorites import ListFavorites
 from api.v1.recipe.list_recipes import ListRecipes
@@ -27,6 +28,7 @@ __all__ = [
     "BulkArchiveRecipes",
     "BulkUpdateTags",
     "GetRecipe",
+    "GetRecipeVersions",
     "GetPublicRecipe",
     "GetRecipePhotoUploadUrl",
     "MoveRecipe",
