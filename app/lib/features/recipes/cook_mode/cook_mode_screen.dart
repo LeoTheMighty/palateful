@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/cook_timer_notification_service.dart';
+import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/app_colors.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/step_navigator.dart';
@@ -24,11 +27,13 @@ class _CookModeScreenState extends State<CookModeScreen>
     with WidgetsBindingObserver {
   final _apiClient = getIt<ApiClient>();
   final _timerNotifService = getIt<CookTimerNotificationService>();
+  final _recipeCache = getIt<RecipeCacheService>();
 
   Map<String, dynamic>? _recipe;
   List<dynamic> _ingredients = [];
   List<String> _steps = [];
   bool _isLoading = true;
+  bool _isOffline = false;
   String? _error;
 
   int _currentStep = 0;
@@ -66,7 +71,8 @@ class _CookModeScreenState extends State<CookModeScreen>
     super.dispose();
   }
 
-  /// Reconcile timer countdowns after the app returns from background.
+  /// Reconcile timer countdowns after the app returns from background,
+  /// and attempt to sync any pending offline note additions.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
@@ -88,6 +94,33 @@ class _CookModeScreenState extends State<CookModeScreen>
         t.timer?.cancel();
         _onTimerComplete(t);
       }
+      _syncPendingNotes();
+    }
+  }
+
+  /// Attempts to sync queued offline note additions when connectivity is restored.
+  /// Silently no-ops on failure — will retry on next app resume.
+  Future<void> _syncPendingNotes() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      if (results.contains(ConnectivityResult.none)) return;
+
+      final pending = await _recipeCache.getPendingNotes();
+      if (pending.isEmpty) return;
+
+      for (final note in pending) {
+        await _apiClient.addRecipeNote(
+          note['recipe_id'] as String,
+          note['body'] as String,
+        );
+      }
+      await _recipeCache.clearPendingNotes();
+
+      if (mounted && _isOffline) {
+        setState(() => _isOffline = false);
+      }
+    } catch (_) {
+      // Silently ignore — will retry on next resume
     }
   }
 
@@ -108,21 +141,33 @@ class _CookModeScreenState extends State<CookModeScreen>
   Future<void> _loadRecipe() async {
     try {
       final response = await _apiClient.getRecipe(widget.recipeId);
+      // Cache on successful fetch so subsequent offline loads work
+      await _recipeCache.cacheRecipe(
+          widget.recipeId, response.data as Map<String, dynamic>);
       if (mounted) {
-        final recipe = response.data;
-        setState(() {
-          _recipe = recipe;
-          _ingredients = recipe['ingredients'] ?? [];
-          final stepsData = List<dynamic>.from(recipe['steps'] as List? ?? []);
-          stepsData.sort((a, b) =>
-              (a['step_number'] as int? ?? 0)
-                  .compareTo(b['step_number'] as int? ?? 0));
-          _steps = stepsData
-              .map((s) => s['instruction'] as String? ?? '')
-              .where((s) => s.isNotEmpty)
-              .toList();
-          _isLoading = false;
-        });
+        _populateFromData(response.data as Map<String, dynamic>);
+      }
+    } on DioException catch (e) {
+      if (_isNetworkError(e)) {
+        final cached = await _recipeCache.loadCachedRecipe(widget.recipeId);
+        if (cached != null && mounted) {
+          setState(() => _isOffline = true);
+          _populateFromData(cached);
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _error = 'No cached data. Connect to internet and retry.';
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _error = 'Failed to load recipe: $e';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -132,6 +177,28 @@ class _CookModeScreenState extends State<CookModeScreen>
         });
       }
     }
+  }
+
+  bool _isNetworkError(DioException e) {
+    return e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout;
+  }
+
+  void _populateFromData(Map<String, dynamic> recipe) {
+    final stepsData = List<dynamic>.from(recipe['steps'] as List? ?? []);
+    stepsData.sort((a, b) =>
+        (a['step_number'] as int? ?? 0).compareTo(b['step_number'] as int? ?? 0));
+    setState(() {
+      _recipe = recipe;
+      _ingredients = recipe['ingredients'] ?? [];
+      _steps = stepsData
+          .map((s) => s['instruction'] as String? ?? '')
+          .where((s) => s.isNotEmpty)
+          .toList();
+      _isLoading = false;
+    });
   }
 
   void _goToStep(int step) {
@@ -442,6 +509,22 @@ class _CookModeScreenState extends State<CookModeScreen>
               overflow: TextOverflow.ellipsis,
             ),
           ),
+
+          // Offline indicator (subtle — not alarming)
+          if (_isOffline) ...[
+            const SizedBox(width: 8),
+            const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.wifi_off, size: 14, color: AppColors.terracotta),
+                SizedBox(width: 2),
+                Text(
+                  'Offline',
+                  style: TextStyle(fontSize: 11, color: AppColors.terracotta),
+                ),
+              ],
+            ),
+          ],
 
           // Cooking time
           Container(

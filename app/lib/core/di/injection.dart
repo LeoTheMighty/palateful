@@ -3,6 +3,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/cook_timer_notification_service.dart';
 import '../services/push_notification_service.dart';
+import '../services/recipe_cache_service.dart';
 import '../../features/shopping_cart/services/shopping_cart_service.dart';
 import '../../features/recipes/add_recipe/batch_parser_service.dart';
 
@@ -21,4 +22,5 @@ void setupDependencies() {
   getIt.registerLazySingleton<CookTimerNotificationService>(
     () => CookTimerNotificationService(),
   );
+  getIt.registerLazySingleton<RecipeCacheService>(() => RecipeCacheService());
 }
