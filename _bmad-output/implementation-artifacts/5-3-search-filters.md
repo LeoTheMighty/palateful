@@ -347,6 +347,9 @@ Claude Sonnet 4.6
 - `_availableBooks()` extracts unique `{id, name}` pairs from `_myRecipes`; `_availableTags()` counts tags across all results, returns top 10
 - Filter row hidden when `!_hasSearched || _isLoading || (myRecipes.isEmpty && publicRecipes.isEmpty)`
 - 223 backend tests pass; 4 Flutter widget tests pass
+- Code Review (H1 FIXED): Added `book_id` authorization check — validates supplied `book_id` against `my_book_ids` before creating `effective_book_ids`; unauthorized/unknown book_id is silently ignored (falls back to all user's books), preventing private recipe enumeration
+- Code Review (M1 FIXED): Removed `book_id` from `_filter_conditions()` — book filtering is handled exclusively via `effective_book_ids` for my-recipes tiers and implicitly by `.notin_()` for public tiers; `_filter_conditions()` now only handles tags and time filters
+- Code Review (L1 FIXED): Added `mock_db.db.execute.reset_mock()` and `assert mock_db.db.execute.call_count >= 1` to all three filter tests to verify DB was actually queried
 
 ### File List
 

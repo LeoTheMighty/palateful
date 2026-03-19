@@ -48,9 +48,15 @@ class TestUnifiedSearch:
         assert mock_db.db.execute.call_count >= 1
 
     def test_search_filter_book_id(self, client, mock_db, mock_user):
-        """Test that book_id filter param is accepted and returns 200 with correct shape."""
+        """Test that book_id filter param is accepted and returns 200 with correct shape.
+
+        book_id must be validated against user's books — an unrecognized book_id
+        is silently ignored (returns all my-recipes instead of 401/400).
+        The execute path is still invoked (DB queried, not early return).
+        """
         mock_db.db.query.return_value = MockQuery([])
         mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=pasta&book_id=00000000-0000-0000-0000-000000000001")
 
@@ -59,11 +65,13 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
+        assert mock_db.db.execute.call_count >= 1
 
     def test_search_filter_max_prep_time(self, client, mock_db, mock_user):
         """Test that max_prep_time filter param is accepted and returns 200 with correct shape."""
         mock_db.db.query.return_value = MockQuery([])
         mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=pasta&max_prep_time=30")
 
@@ -72,11 +80,13 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
+        assert mock_db.db.execute.call_count >= 1
 
     def test_search_filter_tags(self, client, mock_db, mock_user):
         """Test that tags filter param is accepted and returns 200 with correct shape."""
         mock_db.db.query.return_value = MockQuery([])
         mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=pasta&tags=vegetarian")
 
@@ -85,6 +95,7 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
+        assert mock_db.db.execute.call_count >= 1
 
     def test_search_fuzzy_returns_200(self, client, mock_db, mock_user):
         """Test that a misspelled query returns 200 and preserves the query string.

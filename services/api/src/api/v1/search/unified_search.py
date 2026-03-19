@@ -41,8 +41,15 @@ class UnifiedSearch(Endpoint):
 
         # Cache book IDs — reused by exact, fuzzy, and semantic tiers
         my_book_ids = self._get_my_book_ids(user)
-        effective_book_ids = [book_id] if book_id else my_book_ids
-        filter_conditions = self._filter_conditions(book_id, filter_tags, max_prep_time, max_cook_time)
+        # Validate book_id belongs to the user before using it as a filter.
+        # Without this check, any authenticated user could pass an arbitrary book_id
+        # and access recipes from books they are not a member of.
+        if book_id:
+            my_book_id_strs = {str(bid) for bid in my_book_ids}
+            if book_id not in my_book_id_strs:
+                book_id = None  # ignore unauthorized/non-existent book filter
+        effective_book_ids = [bid for bid in my_book_ids if str(bid) == book_id] if book_id else my_book_ids
+        filter_conditions = self._filter_conditions(filter_tags, max_prep_time, max_cook_time)
 
         # Tier 1: exact ILIKE search (name, description, ingredient, tag)
         my_exact = self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
@@ -148,15 +155,16 @@ class UnifiedSearch(Endpoint):
 
     def _filter_conditions(
         self,
-        book_id: str | None,
         filter_tags: list[str],
         max_prep_time: int | None,
         max_cook_time: int | None,
     ) -> list:
-        """Build SQLAlchemy WHERE conditions from active filters."""
+        """Build SQLAlchemy WHERE conditions for tags and time filters.
+
+        Book filtering is handled separately: my-recipes tiers use effective_book_ids,
+        and public-recipes tiers already exclude the user's own books via .notin_().
+        """
         conditions = []
-        if book_id:
-            conditions.append(Recipe.recipe_book_id == book_id)
         for tag in filter_tags:
             conditions.append(func.array_to_string(Recipe.tags, ",").ilike(f"%{tag}%"))
         if max_prep_time is not None:
