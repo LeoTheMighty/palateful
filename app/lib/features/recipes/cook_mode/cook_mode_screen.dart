@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/cook_timer_notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/step_navigator.dart';
@@ -19,8 +20,10 @@ class CookModeScreen extends StatefulWidget {
   State<CookModeScreen> createState() => _CookModeScreenState();
 }
 
-class _CookModeScreenState extends State<CookModeScreen> {
+class _CookModeScreenState extends State<CookModeScreen>
+    with WidgetsBindingObserver {
   final _apiClient = getIt<ApiClient>();
+  final _timerNotifService = getIt<CookTimerNotificationService>();
 
   Map<String, dynamic>? _recipe;
   List<dynamic> _ingredients = [];
@@ -35,6 +38,7 @@ class _CookModeScreenState extends State<CookModeScreen> {
   // Timers
   final List<_ActiveTimer> _activeTimers = [];
   Timer? _timerTick;
+  int _nextNotifId = 0;
 
   // Total cooking time tracker
   final Stopwatch _cookingStopwatch = Stopwatch();
@@ -42,6 +46,7 @@ class _CookModeScreenState extends State<CookModeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadRecipe();
     _enableWakelock();
     _cookingStopwatch.start();
@@ -50,13 +55,39 @@ class _CookModeScreenState extends State<CookModeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disableWakelock();
     _timerTick?.cancel();
     _cookingStopwatch.stop();
     for (final timer in _activeTimers) {
       timer.timer?.cancel();
+      _timerNotifService.cancelTimerNotification(timer.notifId);
     }
     super.dispose();
+  }
+
+  /// Reconcile timer countdowns after the app returns from background.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      final expired = <_ActiveTimer>[];
+      for (final t in _activeTimers) {
+        final elapsed = now.difference(t.startTime);
+        final remaining = t.duration - elapsed;
+        if (remaining.isNegative || remaining == Duration.zero) {
+          expired.add(t);
+        } else {
+          setState(() {
+            t.remaining = remaining;
+          });
+        }
+      }
+      for (final t in expired) {
+        t.timer?.cancel();
+        _onTimerComplete(t);
+      }
+    }
   }
 
   void _enableWakelock() async {
@@ -145,11 +176,24 @@ class _CookModeScreenState extends State<CookModeScreen> {
   void _startTimer(Duration duration, String label) {
     HapticFeedback.mediumImpact();
 
+    final notifId = _nextNotifId++;
+    final startTime = DateTime.now();
+    final expiresAt = startTime.add(duration);
+
     final activeTimer = _ActiveTimer(
       label: label,
       duration: duration,
       remaining: duration,
-      startTime: DateTime.now(),
+      startTime: startTime,
+      notifId: notifId,
+    );
+
+    // Schedule OS-level notification so timer fires even when app is suspended
+    _timerNotifService.scheduleTimerNotification(
+      id: notifId,
+      label: label,
+      expiresAt: expiresAt,
+      recipeId: widget.recipeId,
     );
 
     activeTimer.timer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -173,15 +217,33 @@ class _CookModeScreenState extends State<CookModeScreen> {
     });
   }
 
+  void _cancelTimer(_ActiveTimer timer) {
+    timer.timer?.cancel();
+    _timerNotifService.cancelTimerNotification(timer.notifId);
+    setState(() => _activeTimers.remove(timer));
+  }
+
+  void _restartTimer(_ActiveTimer timer) {
+    // Cancel existing and start fresh with same label/duration
+    timer.timer?.cancel();
+    _timerNotifService.cancelTimerNotification(timer.notifId);
+    setState(() => _activeTimers.remove(timer));
+    _startTimer(timer.duration, timer.label);
+  }
+
   void _onTimerComplete(_ActiveTimer timer) {
     HapticFeedback.heavyImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Timer done: ${timer.label}'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    // Cancel the OS notification in case the timer fired in-app
+    _timerNotifService.cancelTimerNotification(timer.notifId);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Timer done: ${timer.label}'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
     setState(() {
       _activeTimers.remove(timer);
     });
@@ -211,6 +273,30 @@ class _CookModeScreenState extends State<CookModeScreen> {
     final minutes = d.inMinutes;
     final seconds = d.inSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  void _showTimerDetailSheet(_ActiveTimer timer) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.chocolateDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return _TimerDetailSheet(
+          timer: timer,
+          formatDuration: _formatDuration,
+          onCancel: () {
+            Navigator.of(context).pop();
+            _cancelTimer(timer);
+          },
+          onRestart: () {
+            Navigator.of(context).pop();
+            _restartTimer(timer);
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -407,47 +493,47 @@ class _CookModeScreenState extends State<CookModeScreen> {
           final progress =
               1 - (timer.remaining.inSeconds / timer.duration.inSeconds);
 
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: AppColors.withOpacity(AppColors.terracotta, 0.15),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: AppColors.terracotta),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 2,
-                    color: AppColors.terracotta,
-                    backgroundColor:
-                        AppColors.withOpacity(AppColors.terracotta, 0.2),
+          return GestureDetector(
+            onTap: () => _showTimerDetailSheet(timer),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: AppColors.withOpacity(AppColors.terracotta, 0.15),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: AppColors.terracotta),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 2,
+                      color: AppColors.terracotta,
+                      backgroundColor:
+                          AppColors.withOpacity(AppColors.terracotta, 0.2),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  _formatDuration(timer.remaining),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.terracotta,
-                    fontFeatures: [FontFeature.tabularFigures()],
+                  const SizedBox(width: 8),
+                  Text(
+                    _formatDuration(timer.remaining),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.terracotta,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () {
-                    timer.timer?.cancel();
-                    setState(() => _activeTimers.remove(timer));
-                  },
-                  child: const Icon(Icons.close,
-                      size: 16, color: AppColors.terracotta),
-                ),
-              ],
+                  const SizedBox(width: 4),
+                  GestureDetector(
+                    onTap: () => _cancelTimer(timer),
+                    child: const Icon(Icons.close,
+                        size: 16, color: AppColors.terracotta),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -615,11 +701,132 @@ class _CookModeScreenState extends State<CookModeScreen> {
   }
 }
 
+/// Bottom sheet showing timer detail: label, live countdown, cancel and restart.
+class _TimerDetailSheet extends StatefulWidget {
+  final _ActiveTimer timer;
+  final String Function(Duration) formatDuration;
+  final VoidCallback onCancel;
+  final VoidCallback onRestart;
+
+  const _TimerDetailSheet({
+    required this.timer,
+    required this.formatDuration,
+    required this.onCancel,
+    required this.onRestart,
+  });
+
+  @override
+  State<_TimerDetailSheet> createState() => _TimerDetailSheetState();
+}
+
+class _TimerDetailSheetState extends State<_TimerDetailSheet> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final elapsed =
+        DateTime.now().difference(widget.timer.startTime);
+    final remaining = widget.timer.duration - elapsed;
+    final display =
+        remaining.isNegative ? Duration.zero : remaining;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.withOpacity(AppColors.warmIvory, 0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Label
+          Text(
+            widget.timer.label,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AppColors.warmIvory,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Large countdown
+          Text(
+            widget.formatDuration(display),
+            style: const TextStyle(
+              fontSize: 72,
+              fontWeight: FontWeight.w700,
+              color: AppColors.terracotta,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: widget.onCancel,
+                  icon: const Icon(Icons.close),
+                  label: const Text('Cancel Timer'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.warmIvory,
+                    side: BorderSide(
+                        color:
+                            AppColors.withOpacity(AppColors.warmIvory, 0.5)),
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: widget.onRestart,
+                  icon: const Icon(Icons.replay),
+                  label: const Text('Restart'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.terracotta,
+                    foregroundColor: AppColors.warmIvory,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ActiveTimer {
   final String label;
   final Duration duration;
   Duration remaining;
   final DateTime startTime;
+  final int notifId;
   Timer? timer;
 
   _ActiveTimer({
@@ -627,6 +834,7 @@ class _ActiveTimer {
     required this.duration,
     required this.remaining,
     required this.startTime,
+    required this.notifId,
     this.timer,
   });
 }

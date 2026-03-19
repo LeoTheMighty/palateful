@@ -11,6 +11,7 @@ import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/api_client.dart';
+import 'core/services/cook_timer_notification_service.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/theme/app_theme.dart';
 
@@ -80,6 +81,10 @@ void main() async {
     // Initialize push notifications after auth
     final pushService = getIt<PushNotificationService>();
     await pushService.initialize();
+
+    // Initialize local timer notifications (no permission request at start)
+    final timerService = getIt<CookTimerNotificationService>();
+    await timerService.initialize();
   }
 
   runApp(const ProviderScope(child: PalatefulApp()));
