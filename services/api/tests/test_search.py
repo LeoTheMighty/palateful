@@ -23,3 +23,26 @@ class TestUnifiedSearch:
         """Test search without query parameter."""
         response = client.get("/v1/search")
         assert response.status_code == 422
+
+    def test_search_by_tag(self, client, mock_db, mock_user):
+        """Test searching by tag term returns 200 with expected response shape.
+
+        Due to mock abstraction the tag-match SQL expression cannot be
+        executed, but we verify: (a) the endpoint processes a tag-like query
+        without errors, (b) all three result sections are present, and
+        (c) the DB execute path was actually invoked (proving _recipe_matches
+        and _search_users ran their query logic, not just returning early).
+        """
+        mock_db.db.query.return_value = MockQuery([])
+        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_db.db.execute.reset_mock()
+
+        response = client.get("/v1/search?q=vegetarian")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "my_recipes" in data
+        assert "public_recipes" in data
+        assert "users" in data
+        # Verify DB was actually queried (not a no-op early return)
+        assert mock_db.db.execute.call_count >= 1

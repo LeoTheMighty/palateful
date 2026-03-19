@@ -1,7 +1,7 @@
 """Unified search endpoint - recipes (my + public) and users."""
 
 from pydantic import BaseModel
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, func, or_, select
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
@@ -54,10 +54,15 @@ class UnifiedSearch(Endpoint):
             )
         )
 
+        # array_to_string(tags, ',') converts ['italian','dinner'] → 'italian,dinner'
+        # NULL tags → NULL ilike → NULL (falsy) → no false positives on null tags
+        tag_match = func.array_to_string(Recipe.tags, ",").ilike(f"%{query}%")
+
         return or_(
             Recipe.name.ilike(f"%{query}%"),
             Recipe.description.ilike(f"%{query}%"),
             ingredient_match,
+            tag_match,
         )
 
     def _search_my_recipes(self, query: str, limit: int, user: User):

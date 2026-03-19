@@ -220,76 +220,115 @@ class _SearchScreenState extends State<SearchScreen> {
     final bookName = recipe['recipe_book_name'] as String? ?? '';
     final ingredients = (recipe['ingredients'] as List?)?.cast<String>() ?? [];
 
-    String subtitle = bookName;
+    String contextLine = bookName;
     if (isPublic) {
       final owner = recipe['owner'];
       final username = owner?['username'] as String?;
       if (username != null) {
-        subtitle = 'by @$username';
+        contextLine = 'by @$username';
       }
     }
     if (totalTime > 0) {
-      subtitle += ' · ${totalTime}m';
+      contextLine += ' · ${totalTime}m';
     }
 
-    return ListTile(
-      leading: recipe['image_url'] != null
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                recipe['image_url'],
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildRecipeIcon(),
-              ),
-            )
-          : _buildRecipeIcon(),
-      title: Text(
-        recipe['name'] ?? 'Untitled',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: colorScheme.outline,
-              fontSize: 13,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: InkWell(
+          onTap: () => context.push('/recipes/${recipe['id']}'),
+          child: SizedBox(
+            height: 100,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Photo-dominant image: 100×100
+                SizedBox(
+                  width: 100,
+                  child: recipe['image_url'] != null
+                      ? Image.network(
+                          recipe['image_url'] as String,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, progress) =>
+                              progress == null ? child : _buildRecipeIcon(size: 100),
+                          errorBuilder: (context, error, stack) => _buildRecipeIcon(size: 100),
+                        )
+                      : _buildRecipeIcon(size: 100),
+                ),
+
+                // Recipe details
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          recipe['name'] as String? ?? 'Untitled',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (contextLine.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            contextLine,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.outline,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                        if (ingredients.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            ingredients.take(3).join(', '),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.outline,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Chevron
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(Icons.chevron_right, color: colorScheme.outline),
+                ),
+              ],
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-          if (ingredients.isNotEmpty)
-            Text(
-              ingredients.take(3).join(', '),
-              style: TextStyle(
-                color: colorScheme.outline,
-                fontSize: 12,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-        ],
+        ),
       ),
-      trailing: Icon(Icons.chevron_right, color: colorScheme.outline),
-      onTap: () => context.push('/recipes/${recipe['id']}'),
     );
   }
 
-  Widget _buildRecipeIcon() {
+  Widget _buildRecipeIcon({double size = 100}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
+      width: size,
+      height: size,
+      color: colorScheme.primaryContainer,
+      child: Icon(
+        Icons.restaurant,
+        size: size * 0.4,
+        color: colorScheme.onSurfaceVariant,
       ),
-      child: Icon(Icons.restaurant, color: colorScheme.onSurfaceVariant),
     );
   }
 
