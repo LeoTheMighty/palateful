@@ -12,9 +12,10 @@ from api.v1.recipe_book import (
     RestoreRecipeBook,
     UpdateRecipeBook,
     UpdateRecipeBookMemberRole,
+    recipe_book_websocket_handler,
 )
 from dependencies import get_current_user, get_database
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, WebSocket
 from utils.models.user import User
 from utils.services.database import Database
 
@@ -179,4 +180,49 @@ async def remove_recipe_book_member(
         target_user_id=target_user_id,
         user=user,
         database=database,
+    )
+
+
+@recipe_book_router.websocket("/ws/{book_id}")
+async def recipe_book_websocket(
+    websocket: WebSocket,
+    book_id: str,
+    database: Database = Depends(get_database),
+):
+    """
+    WebSocket endpoint for real-time recipe book sync.
+
+    Connect with: ws://host/v1/recipe-books/ws/{book_id}?token=JWT
+
+    Message types from client:
+    - ping: {"type": "ping"}
+
+    Message types from server:
+    - connected: Initial confirmation with online users
+    - recipe_added: A recipe was added to this book
+    - recipe_updated: A recipe in this book was updated
+    - recipe_removed: A recipe in this book was archived/deleted
+    - pong: Response to ping
+    """
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing token")
+        return
+
+    try:
+        from dependencies import decode_jwt
+        payload = decode_jwt(f"Bearer {token}")
+        user = database.find_by(User, auth0_id=payload.get("sub"))
+        if not user:
+            await websocket.close(code=4001, reason="Invalid user")
+            return
+    except Exception:
+        await websocket.close(code=4001, reason="Authentication failed")
+        return
+
+    await recipe_book_websocket_handler(
+        websocket=websocket,
+        book_id=book_id,
+        user=user,
+        db=database.db,
     )

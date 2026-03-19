@@ -12,6 +12,10 @@ from api.v1.recipe_book.remove_recipe_book_member import RemoveRecipeBookMember
 from api.v1.recipe_book.restore_recipe_book import RestoreRecipeBook
 from api.v1.recipe_book.update_recipe_book import UpdateRecipeBook
 from api.v1.recipe_book.update_recipe_book_member_role import UpdateRecipeBookMemberRole
+from api.v1.recipe_book.websocket import (
+    broadcast_event_to_recipe_book,
+    recipe_book_websocket_handler,
+)
 
 __all__ = [
     "ListRecipeBooks",
@@ -26,4 +30,6 @@ __all__ = [
     "AddRecipeBookMember",
     "RemoveRecipeBookMember",
     "UpdateRecipeBookMemberRole",
+    "broadcast_event_to_recipe_book",
+    "recipe_book_websocket_handler",
 ]

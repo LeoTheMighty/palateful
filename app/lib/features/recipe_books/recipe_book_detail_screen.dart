@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../shared/widgets/empty_state.dart';
+import 'services/recipe_book_sync_service.dart';
 
 class RecipeBookDetailScreen extends StatefulWidget {
   final String recipeBookId;
@@ -17,6 +20,7 @@ class RecipeBookDetailScreen extends StatefulWidget {
 
 class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   final _apiClient = getIt<ApiClient>();
+  late final RecipeBookSyncService _syncService;
   Map<String, dynamic>? _recipeBook;
   List<dynamic> _recipes = [];
   bool _isLoading = true;
@@ -24,6 +28,14 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   bool _isMovingOrCopying = false;
   String _userRole = 'owner';
   bool _isShared = false;
+
+  // Real-time sync state
+  StreamSubscription? _addedSub;
+  StreamSubscription? _updatedSub;
+  StreamSubscription? _removedSub;
+  StreamSubscription? _stateSub;
+  bool _wsConnected = false;
+  bool _subscribed = false;
 
   // Multi-select state
   bool _isSelectMode = false;
@@ -33,7 +45,43 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _syncService = getIt<RecipeBookSyncService>();
     _loadRecipeBook();
+  }
+
+  @override
+  void dispose() {
+    _addedSub?.cancel();
+    _updatedSub?.cancel();
+    _removedSub?.cancel();
+    _stateSub?.cancel();
+    _syncService.disconnectWebSocket();
+    super.dispose();
+  }
+
+  void _subscribeToRealTime() {
+    if (_subscribed) return;
+    _subscribed = true;
+    _syncService.connectWebSocket(widget.recipeBookId);
+
+    _addedSub = _syncService.onRecipeAdded.listen((_) {
+      if (mounted) _loadRecipeBook();
+    });
+    _updatedSub = _syncService.onRecipeUpdated.listen((_) {
+      if (mounted) _loadRecipeBook();
+    });
+    _removedSub = _syncService.onRecipeRemoved.listen((recipeId) {
+      if (!mounted) return;
+      setState(() {
+        _recipes.removeWhere((r) => r['id']?.toString() == recipeId);
+      });
+    });
+    _stateSub = _syncService.onConnectionStateChange.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _wsConnected = state == RecipeBookWebSocketState.connected;
+      });
+    });
   }
 
   Future<void> _loadRecipeBook() async {
@@ -45,13 +93,15 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     try {
       final response = await _apiClient.getRecipeBook(widget.recipeBookId);
       if (mounted) {
+        final isShared = response.data['is_shared'] as bool? ?? false;
         setState(() {
           _recipeBook = response.data;
           _recipes = response.data['recipes'] ?? [];
           _userRole = response.data['user_role'] as String? ?? 'owner';
-          _isShared = response.data['is_shared'] as bool? ?? false;
+          _isShared = isShared;
           _isLoading = false;
         });
+        if (isShared) _subscribeToRealTime();
       }
     } catch (e) {
       if (mounted) {
@@ -593,7 +643,28 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
               ],
             )
           : AppBar(
-              title: Text(_recipeBook?['name'] ?? 'Recipe Book'),
+              title: _isShared
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _recipeBook?['name'] ?? 'Recipe Book',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _wsConnected ? Colors.green : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Text(_recipeBook?['name'] ?? 'Recipe Book'),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => context.pop(),

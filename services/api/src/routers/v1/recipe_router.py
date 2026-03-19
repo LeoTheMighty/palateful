@@ -26,8 +26,10 @@ from api.v1.recipe import (
     UpdateRecipe,
 )
 from api.v1.recipe_book import GetPublicRecipeBook
+from api.v1.recipe_book.websocket import broadcast_event_to_recipe_book
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
+from utils.models.recipe import Recipe
 from utils.models.user import User
 from utils.services.database import Database
 
@@ -63,12 +65,18 @@ async def create_recipe(
     database: Database = Depends(get_database)
 ):
     """Create a new recipe in a recipe book."""
-    return CreateRecipe.call(
+    result = CreateRecipe.call(
         book_id=book_id,
         params=params,
         user=user,
         database=database
     )
+    await broadcast_event_to_recipe_book(
+        book_id, "recipe_added",
+        {"name": params.name},
+        user_id=str(user.id),
+    )
+    return result
 
 
 # Archived recipes (must be before /recipes/{recipe_id} to avoid path collision)
@@ -150,12 +158,21 @@ async def update_recipe(
     database: Database = Depends(get_database)
 ):
     """Update a recipe."""
-    return UpdateRecipe.call(
+    existing = database.find_by(Recipe, id=recipe_id)
+    book_id = str(existing.recipe_book_id) if existing else None
+    result = UpdateRecipe.call(
         recipe_id=recipe_id,
         params=params,
         user=user,
         database=database
     )
+    if book_id:
+        await broadcast_event_to_recipe_book(
+            book_id, "recipe_updated",
+            {"recipe_id": recipe_id},
+            user_id=str(user.id),
+        )
+    return result
 
 
 @recipe_router.get("/recipes/{recipe_id}/versions")
@@ -285,11 +302,20 @@ async def delete_recipe(
     database: Database = Depends(get_database)
 ):
     """Delete (archive) a recipe."""
-    return DeleteRecipe.call(
+    existing = database.find_by(Recipe, id=recipe_id)
+    book_id = str(existing.recipe_book_id) if existing else None
+    result = DeleteRecipe.call(
         recipe_id=recipe_id,
         user=user,
         database=database
     )
+    if book_id:
+        await broadcast_event_to_recipe_book(
+            book_id, "recipe_removed",
+            {"recipe_id": recipe_id},
+            user_id=str(user.id),
+        )
+    return result
 
 
 @recipe_router.post("/recipes/{recipe_id}/restore")
@@ -330,7 +356,13 @@ async def fork_recipe(
     database: Database = Depends(get_database),
 ):
     """Fork a recipe into a book you own, preserving lineage."""
-    return ForkRecipe.call(recipe_id=recipe_id, params=params, user=user, database=database)
+    result = ForkRecipe.call(recipe_id=recipe_id, params=params, user=user, database=database)
+    await broadcast_event_to_recipe_book(
+        params.destination_book_id, "recipe_added",
+        {"forked_from_recipe_id": recipe_id},
+        user_id=str(user.id),
+    )
+    return result
 
 
 @recipe_router.post("/recipes/{recipe_id}/copy")
