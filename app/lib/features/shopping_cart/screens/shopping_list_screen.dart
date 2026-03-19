@@ -33,6 +33,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   bool _isLoading = true;
   String? _error;
   bool _showChecked = true;
+  // Items with an in-flight check/uncheck request — prevents double-tap races
+  final _pendingItemIds = <String>{};
 
   // Stream subscriptions
   StreamSubscription? _itemAddedSub;
@@ -126,16 +128,25 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Future<void> _toggleItemChecked(ShoppingListItem item) async {
+    if (_list == null || _pendingItemIds.contains(item.id)) return;
     HapticFeedback.lightImpact();
+    _pendingItemIds.add(item.id);
+    // Optimistic update — UI responds instantly before server confirms
+    final optimistic = item.copyWith(isChecked: !item.isChecked);
+    _handleItemUpdated(optimistic);
     try {
       final updated = await _service.toggleItemChecked(_list!.id, item);
       _handleItemUpdated(updated);
     } catch (e) {
+      // Rollback to original state
+      _handleItemUpdated(item);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to update item')),
         );
       }
+    } finally {
+      _pendingItemIds.remove(item.id);
     }
   }
 
