@@ -10,6 +10,7 @@ from api.v1.recipe import (
     CreateRecipe,
     DeleteRecipe,
     DeleteRecipeNote,
+    ForkRecipe,
     GetPublicRecipe,
     GetRecipe,
     GetRecipePhotoUploadUrl,
@@ -319,6 +320,17 @@ async def move_recipe(
         user=user,
         database=database,
     )
+
+
+@recipe_router.post("/recipes/{recipe_id}/fork", status_code=201)
+async def fork_recipe(
+    recipe_id: str,
+    params: ForkRecipe.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Fork a recipe into a book you own, preserving lineage."""
+    return ForkRecipe.call(recipe_id=recipe_id, params=params, user=user, database=database)
 
 
 @recipe_router.post("/recipes/{recipe_id}/copy")

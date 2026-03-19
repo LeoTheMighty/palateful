@@ -5,6 +5,7 @@ from api.v1.recipe.bulk_archive_recipes import BulkArchiveRecipes
 from api.v1.recipe.bulk_move_recipes import BulkMoveRecipes
 from api.v1.recipe.bulk_update_tags import BulkUpdateTags
 from api.v1.recipe.copy_recipe import CopyRecipe
+from api.v1.recipe.fork_recipe import ForkRecipe
 from api.v1.recipe.delete_recipe_note import DeleteRecipeNote
 from api.v1.recipe.create_recipe import CreateRecipe
 from api.v1.recipe.delete_recipe import DeleteRecipe
@@ -30,6 +31,7 @@ __all__ = [
     "ListFavorites",
     "CreateRecipe",
     "CopyRecipe",
+    "ForkRecipe",
     "BulkMoveRecipes",
     "BulkArchiveRecipes",
     "BulkUpdateTags",

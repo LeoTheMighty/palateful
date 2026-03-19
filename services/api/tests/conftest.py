@@ -117,6 +117,10 @@ class MockRecipe(MockModel):
             "tags": [],
             "recipe_book_id": str(uuid.uuid4()),
             "embedding": None,
+            "forked_from_recipe_id": None,
+            "forked_from_book_id": None,
+            "forked_from_recipe_name": None,
+            "forked_from_book_name": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

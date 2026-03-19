@@ -155,6 +155,10 @@ class GetRecipe(Endpoint):
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at,
                 version_count=version_count,
+                forked_from_recipe_id=str(recipe.forked_from_recipe_id) if recipe.forked_from_recipe_id else None,
+                forked_from_book_id=str(recipe.forked_from_book_id) if recipe.forked_from_book_id else None,
+                forked_from_recipe_name=recipe.forked_from_recipe_name,
+                forked_from_book_name=recipe.forked_from_book_name,
             )
         )
 
@@ -210,3 +214,7 @@ class GetRecipe(Endpoint):
         created_at: datetime
         updated_at: datetime
         version_count: int = 0
+        forked_from_recipe_id: str | None = None
+        forked_from_book_id: str | None = None
+        forked_from_recipe_name: str | None = None
+        forked_from_book_name: str | None = None

@@ -243,6 +243,99 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
+  Future<Map<String, dynamic>?> _showOwnedBookPicker({String? excludeBookId}) async {
+    try {
+      final response = await _apiClient.getRecipeBooks();
+      final books = ((response.data['items'] as List?) ?? [])
+          .where((b) =>
+              b['id']?.toString() != excludeBookId &&
+              b['user_role'] == 'owner')
+          .toList();
+
+      if (!mounted) return null;
+      if (books.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No personal books available to fork into')),
+        );
+        return null;
+      }
+
+      return showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6,
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'Fork into...',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: books.map((book) => ListTile(
+                          leading: const Icon(Icons.menu_book_outlined),
+                          title: Text(book['name'] ?? 'Untitled'),
+                          subtitle: Text('${book['recipe_count'] ?? 0} recipes'),
+                          onTap: () => Navigator.pop(context, book),
+                        )).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not load books. Please try again.')),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<void> _forkRecipe() async {
+    if (_isMovingOrCopying) return;
+    final currentBookId = _recipe?['recipe_book_id']?.toString();
+    final messenger = ScaffoldMessenger.of(context);
+    final book = await _showOwnedBookPicker(excludeBookId: currentBookId);
+    if (book == null) return;
+
+    setState(() => _isMovingOrCopying = true);
+    try {
+      HapticFeedback.selectionClick();
+      final response = await _apiClient.forkRecipe(
+          widget.recipeId, book['id']);
+      final forkedId = response.data['id'] as String?;
+      if (mounted && forkedId != null) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Forked to ${book['name']}')),
+        );
+        context.push('/recipes/$forkedId');
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Could not fork recipe. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMovingOrCopying = false);
+    }
+  }
+
   void _startCooking() {
     context.push('/recipes/${widget.recipeId}/cook');
   }
@@ -332,6 +425,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               _moveRecipe();
                             } else if (value == 'copy') {
                               _copyRecipe();
+                            } else if (value == 'fork') {
+                              _forkRecipe();
                             } else if (value == 'archive') {
                               _archiveRecipe();
                             }
@@ -355,6 +450,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   Icon(Icons.copy_outlined),
                                   SizedBox(width: 8),
                                   Text('Copy to Book...'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'fork',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.call_split_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Make My Copy'),
                                 ],
                               ),
                             ),
@@ -382,6 +487,33 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       padding: const EdgeInsets.all(16),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
+                          // Lineage badge (fork provenance)
+                          if (_recipe?['forked_from_recipe_name'] != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.call_split_outlined,
+                                      size: 14, color: colorScheme.onSecondaryContainer),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      'Forked from: ${_recipe!['forked_from_recipe_name']} (${_recipe!['forked_from_book_name'] ?? 'unknown book'})',
+                                      style: textTheme.labelSmall?.copyWith(
+                                          color: colorScheme.onSecondaryContainer),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+
                           // Recipe info
                           if (_recipe?['description'] != null) ...[
                             Text(

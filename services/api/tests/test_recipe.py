@@ -137,6 +137,69 @@ class TestGetRecipe:
         assert len(data["ingredients"]) == 1
         assert data["ingredients"][0]["ingredient"]["canonical_name"] == "flour"
 
+    def test_get_recipe_returns_lineage_fields_for_forked_recipe(self, client, mock_db, mock_user):
+        """Test that forked recipe returns lineage fields in response."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        src_recipe_id = "original-recipe-id"
+        src_book_id = "source-book-id"
+        recipe = MockRecipe(
+            id=recipe_id,
+            recipe_book_id=book_id,
+            forked_from_recipe_id=src_recipe_id,
+            forked_from_book_id=src_book_id,
+            forked_from_recipe_name="Nonna's Pasta",
+            forked_from_book_name="Family Recipes",
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["forked_from_recipe_name"] == "Nonna's Pasta"
+        assert data["forked_from_book_name"] == "Family Recipes"
+        assert data["forked_from_recipe_id"] == src_recipe_id
+        assert data["forked_from_book_id"] == src_book_id
+
+    def test_get_recipe_lineage_fields_null_for_non_forked(self, client, mock_db, mock_user):
+        """Test that non-forked recipe returns null lineage fields."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["forked_from_recipe_id"] is None
+        assert data["forked_from_book_id"] is None
+        assert data["forked_from_recipe_name"] is None
+        assert data["forked_from_book_name"] is None
+
 
 class TestCreateRecipe:
     """Tests for POST /v1/recipe-books/{book_id}/recipes."""

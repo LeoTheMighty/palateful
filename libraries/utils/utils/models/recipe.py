@@ -32,6 +32,10 @@ class Recipe(Base):
     cook_time: Mapped[int | None] = mapped_column(Integer, nullable=True)  # minutes
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     source_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    forked_from_recipe_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+    forked_from_book_id: Mapped[uuid.UUID | None] = mapped_column(UUID, nullable=True)
+    forked_from_recipe_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    forked_from_book_name: Mapped[str | None] = mapped_column(String, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=list)
 
     # Embedding for semantic search (384 dimensions from all-MiniLM-L6-v2)

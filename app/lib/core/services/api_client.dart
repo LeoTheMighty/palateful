@@ -227,6 +227,12 @@ class ApiClient {
     });
   }
 
+  Future<Response> forkRecipe(String recipeId, String destinationBookId) {
+    return _dio.post('/v1/recipes/$recipeId/fork', data: {
+      'destination_book_id': destinationBookId,
+    });
+  }
+
   // Bulk operations
   Future<Response> bulkMoveRecipes(List<String> recipeIds, String destinationBookId) {
     return _dio.post('/v1/recipes/bulk/move', data: {

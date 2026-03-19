@@ -101,8 +101,8 @@ development_status:
   # Epic 7: Household Collaboration
   epic-7: in-progress
   7-1-shared-recipe-books-with-role-based-access: done
-  7-2-invitation-system: review
-  7-3-recipe-forking-with-lineage: backlog
+  7-2-invitation-system: done
+  7-3-recipe-forking-with-lineage: done
   7-4-real-time-shared-book-updates: backlog
   7-5-partner-activity-notifications: backlog
   epic-7-retrospective: optional
