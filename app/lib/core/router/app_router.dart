@@ -21,6 +21,8 @@ import '../../features/recipes/add_recipe/import_item_review_screen.dart';
 import '../../features/recipes/add_recipe/import_review_list_screen.dart';
 import '../../features/recipes/add_recipe/share_import_screen.dart';
 import '../../features/recipes/add_recipe/url_import_screen.dart';
+import '../../features/recipes/recipe_version_diff_screen.dart';
+import '../../features/recipes/recipe_version_history_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
@@ -111,6 +113,32 @@ GoRouter get appRouter {
         path: '/recipes/archived',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const ArchivedRecipesScreen(),
+      ),
+      // Version history (must be before /recipes/:id to avoid path collision)
+      GoRoute(
+        path: '/recipes/:id/versions',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          final extra = state.extra as Map<String, dynamic>?;
+          final recipeName = extra?['recipeName'] as String? ?? '';
+          return RecipeVersionHistoryScreen(recipeId: id, recipeName: recipeName);
+        },
+      ),
+      GoRoute(
+        path: '/recipes/:id/versions/:versionId',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          final versionId = state.pathParameters['versionId']!;
+          final extra = state.extra as Map<String, dynamic>?;
+          final versionNumber = extra?['versionNumber'] as int? ?? 0;
+          return RecipeVersionDiffScreen(
+            recipeId: id,
+            versionId: versionId,
+            versionNumber: versionNumber,
+          );
+        },
       ),
       // Recipe detail and cook mode are outside shell (full-screen)
       GoRoute(

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -270,7 +271,7 @@ class UpdateRecipe(Endpoint):
             "ingredients": [
                 {
                     "ingredient_id": str(ri.ingredient_id),
-                    "quantity_display": str(ri.quantity_display),
+                    "quantity_display": format_quantity(ri.quantity_display, ri.unit_display),
                     "unit_display": ri.unit_display,
                     "notes": ri.notes,
                     "is_optional": ri.is_optional,

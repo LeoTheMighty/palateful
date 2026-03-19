@@ -11,6 +11,7 @@ from api.v1.recipe import (
     GetPublicRecipe,
     GetRecipe,
     GetRecipePhotoUploadUrl,
+    GetRecipeVersion,
     GetRecipeVersions,
     ListArchivedRecipes,
     ListFavorites,
@@ -162,6 +163,22 @@ async def get_recipe_versions(
     """Get version history for a recipe."""
     return GetRecipeVersions.call(
         recipe_id=recipe_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.get("/recipes/{recipe_id}/versions/{version_id}")
+async def get_recipe_version(
+    recipe_id: str,
+    version_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Get the full snapshot for a specific recipe version."""
+    return GetRecipeVersion.call(
+        recipe_id=recipe_id,
+        version_id=version_id,
         user=user,
         database=database,
     )

@@ -387,6 +387,20 @@ class MockInviteLink(MockModel):
         super().__init__(**defaults)
 
 
+class MockRecipeVersion(MockModel):
+    """Mock RecipeVersion model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "recipe_id": str(uuid.uuid4()),
+            "version_number": 1,
+            "snapshot": {"name": "Old Name", "ingredients": [], "steps": []},
+            "changed_fields": ["name"],
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockUserFavorite(MockModel):
     """Mock UserFavorite model."""
 

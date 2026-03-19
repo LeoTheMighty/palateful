@@ -169,6 +169,10 @@ class ApiClient {
     return _dio.get('/v1/recipes/$recipeId/versions');
   }
 
+  Future<Response> getRecipeVersion(String recipeId, String versionId) {
+    return _dio.get('/v1/recipes/$recipeId/versions/$versionId');
+  }
+
   // Recipe photo upload
   Future<Response> getRecipePhotoUploadUrl(String recipeId, String filename) {
     return _dio.post('/v1/recipes/$recipeId/photo-upload-url', data: {

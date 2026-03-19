@@ -8,6 +8,7 @@ from conftest import (
     MockRecipeBookUser,
     MockRecipeIngredient,
     MockRecipeStep,
+    MockRecipeVersion,
     MockUserFavorite,
 )
 
@@ -1615,3 +1616,83 @@ class TestBulkUpdateTags:
             json={"recipe_ids": ["recipe-1"], "add_tags": ["tag"]},
         )
         assert response.status_code == 403
+
+
+class TestGetRecipeVersion:
+    """Tests for GET /v1/recipes/{recipe_id}/versions/{version_id}."""
+
+    def test_get_recipe_version_success(self, client, mock_db, mock_user):
+        """Test getting a specific recipe version snapshot."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        version_id = "test-version-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        version = MockRecipeVersion(
+            id=version_id,
+            recipe_id=recipe_id,
+            version_number=1,
+            snapshot={"name": "Old Name", "ingredients": [], "steps": []},
+            changed_fields=["name"],
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+
+        response = client.get(f"/v1/recipes/{recipe_id}/versions/{version_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == version_id
+        assert data["version_number"] == 1
+        assert "snapshot" in data
+        assert data["snapshot"]["name"] == "Old Name"
+        assert data["changed_fields"] == ["name"]
+
+    def test_get_recipe_version_recipe_not_found(self, client, mock_db, mock_user):
+        """Test getting a version for a non-existent recipe."""
+        response = client.get("/v1/recipes/nonexistent/versions/some-version")
+        assert response.status_code == 404
+
+    def test_get_recipe_version_access_denied(self, client, mock_db, mock_user):
+        """Test getting a version without recipe book access."""
+        recipe_id = "test-recipe-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+
+        response = client.get(f"/v1/recipes/{recipe_id}/versions/some-version")
+        assert response.status_code == 403
+
+    def test_get_recipe_version_not_found(self, client, mock_db, mock_user):
+        """Test getting a version that doesn't exist."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        # RecipeVersion not set — find_by returns None
+
+        response = client.get(f"/v1/recipes/{recipe_id}/versions/nonexistent-version")
+        assert response.status_code == 404

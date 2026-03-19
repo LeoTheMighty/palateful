@@ -404,6 +404,20 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                 ),
                             ],
                           ),
+                          // Version history badge
+                          if ((_recipe?['version_count'] as int? ?? 0) > 0) ...[
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: () => context.push(
+                                '/recipes/${widget.recipeId}/versions',
+                                extra: {'recipeName': _recipe?['name'] ?? ''},
+                              ),
+                              child: _InfoChip(
+                                icon: Icons.history,
+                                label: 'v${_recipe!['version_count']} — tap to view history',
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 24),
 
                           // Ingredients section
