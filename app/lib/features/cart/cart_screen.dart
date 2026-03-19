@@ -54,105 +54,113 @@ class _CartScreenState extends State<CartScreen> {
 
   Future<void> _createList() async {
     final nameController = TextEditingController();
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'New Shopping List',
-          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
-        ),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'List name (e.g. Weekly Groceries)',
-            border: OutlineInputBorder(),
-          ),
-          textCapitalization: TextCapitalization.sentences,
-          onSubmitted: (_) => Navigator.of(context).pop(true),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Create'),
-          ),
-        ],
-      ),
-    );
-
-    if (created != true || !mounted) return;
-
-    final name = nameController.text.trim();
-    if (name.isEmpty) return;
-
     try {
-      final list = await _service.createShoppingList(name);
-      if (mounted) {
-        context.push('/shopping-lists/${list.id}');
-        _loadLists();
+      final created = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'New Shopping List',
+            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+          ),
+          content: TextField(
+            controller: nameController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'List name (e.g. Weekly Groceries)',
+              border: OutlineInputBorder(),
+            ),
+            textCapitalization: TextCapitalization.sentences,
+            onSubmitted: (_) => Navigator.of(context).pop(true),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      );
+
+      if (created != true || !mounted) return;
+
+      final name = nameController.text.trim();
+      if (name.isEmpty) return;
+
+      try {
+        final list = await _service.createShoppingList(name);
+        if (mounted) {
+          context.push('/shopping-lists/${list.id}');
+          _loadLists();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to create shopping list.')),
+          );
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to create shopping list.')),
-        );
-      }
+    } finally {
+      nameController.dispose();
     }
   }
 
   Future<void> _joinList() async {
     final codeController = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Join a Shopping List',
-          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
-        ),
-        content: TextField(
-          controller: codeController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Enter share code',
-            border: OutlineInputBorder(),
-          ),
-          textCapitalization: TextCapitalization.characters,
-          onSubmitted: (_) => Navigator.of(context).pop(true),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Join'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    final code = codeController.text.trim();
-    if (code.isEmpty) return;
-
     try {
-      final list = await _service.joinList(code);
-      if (mounted) {
-        context.push('/shopping-lists/${list.id}');
-        _loadLists();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Join a Shopping List',
+            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+          ),
+          content: TextField(
+            controller: codeController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Enter share code',
+              border: OutlineInputBorder(),
+            ),
+            textCapitalization: TextCapitalization.characters,
+            onSubmitted: (_) => Navigator.of(context).pop(true),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Join'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      final code = codeController.text.trim();
+      if (code.isEmpty) return;
+
+      try {
+        final list = await _service.joinList(code);
+        if (mounted) {
+          context.push('/shopping-lists/${list.id}');
+          _loadLists();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid share code or list not found.')),
+          );
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invalid share code or list not found.')),
-        );
-      }
+    } finally {
+      codeController.dispose();
     }
   }
 

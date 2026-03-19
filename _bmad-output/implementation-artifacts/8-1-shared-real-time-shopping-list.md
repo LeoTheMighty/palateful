@@ -1,6 +1,6 @@
 # Story 8.1: Shared Real-Time Shopping List
 
-Status: review
+Status: done
 
 ## Story
 
@@ -274,15 +274,18 @@ claude-sonnet-4-6
 - Fixed `datetime.UTC` → `timezone.utc` in `update_item.py` and `delete_item.py` (Python < 3.11 compat)
 - `Endpoint.call()` body is the raw data dict — no `["data"]` wrapper needed when parsing with `json.loads(result.body)`
 - `ShoppingList.fromJson` null name fixed: `json['name'] as String? ?? ''`
+- Code review fixes: `TextEditingController.dispose()` in `_createList`/`_joinList`, sort by `updated_at`, `id` assertion in broadcast test, `datetime.utcnow()` → `datetime.now(timezone.utc)` in `websocket.py`
 
 ### File List
 
 - Modified: `services/api/src/api/v1/shopping_list/list_shopping_lists.py`
 - Modified: `services/api/src/api/v1/shopping_list/update_item.py`
 - Modified: `services/api/src/api/v1/shopping_list/delete_item.py`
+- Modified: `services/api/src/api/v1/shopping_list/websocket.py`
 - Modified: `services/api/src/routers/v1/shopping_list_router.py`
 - Modified: `app/lib/features/cart/cart_screen.dart`
 - Modified: `app/lib/features/shopping_cart/models/shopping_list.dart`
 - Modified: `app/lib/core/router/app_router.dart`
 - New: `services/api/tests/test_shopping_list_router_broadcasts.py`
 - New: `app/test/features/cart/cart_screen_test.dart`
+- New: `app/test/features/shopping_cart/shopping_list_model_test.dart`

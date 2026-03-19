@@ -34,9 +34,10 @@ class TestAddItemBroadcast:
         args = mock_broadcast.call_args[0]
         assert args[0] == list_id
         assert args[1] == "item_added"
-        # item_data is the third arg — must be a dict with 'name'
+        # item_data is the third arg — must be a dict with 'name' and 'id'
         assert isinstance(args[2], dict)
         assert args[2]["name"] == "Apples"
+        assert "id" in args[2], "broadcast data must include item id for client-side state"
 
     def test_add_item_broadcast_includes_user_id(self, client, mock_db, mock_user):
         """Broadcast carries the actor's user_id as kwarg."""

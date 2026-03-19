@@ -65,7 +65,7 @@ class ListShoppingLists(Endpoint):
 
         # Apply ordering and pagination
         shopping_lists = (
-            query.order_by(ShoppingList.created_at.desc())
+            query.order_by(ShoppingList.updated_at.desc())
             .offset(offset)
             .limit(limit)
             .all()

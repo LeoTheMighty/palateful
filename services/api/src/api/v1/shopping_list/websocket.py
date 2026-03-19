@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -58,7 +58,7 @@ class ConnectionManager:
                 "user_id": user_id,
                 "user_name": user.name,
                 "status": "online",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
             exclude_websocket=websocket,
         )
@@ -171,7 +171,7 @@ async def shopping_list_websocket_handler(
         "shopping_list_id": list_id,
         "current_sequence": current_sequence,
         "online_users": online_users,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     try:
@@ -190,7 +190,7 @@ async def shopping_list_websocket_handler(
                         "user_id": str(user.id),
                         "user_name": user.name,
                         "status": message.get("status", "online"),
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 )
 
@@ -218,7 +218,7 @@ async def shopping_list_websocket_handler(
                         for e in events
                     ],
                     "current_sequence": event_service.get_current_sequence(shopping_list.id),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
 
             elif message_type == "ping":
@@ -237,7 +237,7 @@ async def shopping_list_websocket_handler(
                 "user_id": str(user.id),
                 "user_name": user.name,
                 "status": "offline",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -264,6 +264,6 @@ async def broadcast_event_to_list(
             "data": event_data,
             "user_id": str(user_id) if user_id else None,
             "sequence": sequence,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )

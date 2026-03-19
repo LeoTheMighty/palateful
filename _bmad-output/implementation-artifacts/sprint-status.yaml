@@ -109,7 +109,7 @@ development_status:
 
   # Epic 8: Shopping Lists
   epic-8: in-progress
-  8-1-shared-real-time-shopping-list: review
+  8-1-shared-real-time-shopping-list: done
   8-2-add-recipe-ingredients-to-shopping-list: backlog
   8-3-check-off-items-with-real-time-sync: backlog
   epic-8-retrospective: optional
