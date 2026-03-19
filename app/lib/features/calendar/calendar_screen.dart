@@ -374,6 +374,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ),
                   ),
+                  if (event.recipe?.totalMinutes != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '${event.recipe!.totalMinutes} min',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textDisabled,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

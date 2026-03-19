@@ -31,18 +31,30 @@ class RecipeSummary {
   final String id;
   final String name;
   final String? imageUrl;
+  final int? prepTime;
+  final int? cookTime;
 
   const RecipeSummary({
     required this.id,
     required this.name,
     this.imageUrl,
+    this.prepTime,
+    this.cookTime,
   });
+
+  /// Total prep + cook time in minutes, or null if both are absent/zero.
+  int? get totalMinutes {
+    final total = (prepTime ?? 0) + (cookTime ?? 0);
+    return total > 0 ? total : null;
+  }
 
   factory RecipeSummary.fromJson(Map<String, dynamic> json) {
     return RecipeSummary(
       id: json['id'] as String,
       name: json['name'] as String,
       imageUrl: json['image_url'] as String?,
+      prepTime: json['prep_time'] as int?,
+      cookTime: json['cook_time'] as int?,
     );
   }
 }

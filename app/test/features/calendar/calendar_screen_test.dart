@@ -157,6 +157,60 @@ void main() {
 
       expect(find.text('Breakfast'), findsOneWidget);
     });
+
+    testWidgets('event tile shows total time when recipe has prep+cook time',
+        (tester) async {
+      final today = DateTime.now();
+      final event = MealEvent(
+        id: 'e1',
+        title: 'Pasta Night',
+        scheduledAt: today,
+        mealType: MealType.dinner,
+        status: 'planned',
+        isShared: true,
+        ownerId: 'u1',
+        recipe: const RecipeSummary(
+          id: 'r1',
+          name: 'Pasta Carbonara',
+          prepTime: 15,
+          cookTime: 20,
+        ),
+      );
+
+      _registerFake(_FakeMealCalendarService(events: [event]));
+
+      await tester.pumpWidget(
+        const MaterialApp(home: CalendarScreen()),
+      );
+      await tester.pump();
+
+      expect(find.text('35 min'), findsOneWidget);
+    });
+
+    testWidgets('event tile hides timing row when recipe has no time info',
+        (tester) async {
+      final today = DateTime.now();
+      final event = MealEvent(
+        id: 'e1',
+        title: 'Quick Snack',
+        scheduledAt: today,
+        mealType: MealType.snack,
+        status: 'planned',
+        isShared: true,
+        ownerId: 'u1',
+        recipe: const RecipeSummary(id: 'r1', name: 'Quick Snack'),
+      );
+
+      _registerFake(_FakeMealCalendarService(events: [event]));
+
+      await tester.pumpWidget(
+        const MaterialApp(home: CalendarScreen()),
+      );
+      await tester.pump();
+
+      // No timing text should appear
+      expect(find.textContaining('min'), findsNothing);
+    });
   });
 
   group('CalendarScreen — week navigation', () {

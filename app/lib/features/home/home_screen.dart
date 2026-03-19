@@ -573,6 +573,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final recipe = _todayMealEvent!['recipe'];
     final imageUrl = recipe['image_url'] as String?;
     final name = recipe['name'] as String? ?? 'Tonight\'s Recipe';
+    final prepTime = recipe['prep_time'] as int? ?? 0;
+    final cookTime = recipe['cook_time'] as int? ?? 0;
+    final totalMinutes = prepTime + cookTime;
 
     return SizedBox(
       height: 220,
@@ -631,6 +634,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (totalMinutes > 0) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$totalMinutes min',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   FilledButton(
                     onPressed: () => _quickStartCooking(recipe),
