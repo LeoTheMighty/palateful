@@ -77,7 +77,7 @@ development_status:
   4-1-auto-versioning-on-recipe-edit: done
   4-2-version-history-and-diffs: done
   4-3-restore-previous-version: done
-  4-4-recipe-notes: backlog
+  4-4-recipe-notes: review
   epic-4-retrospective: optional
 
   # Epic 5: Search & Discovery

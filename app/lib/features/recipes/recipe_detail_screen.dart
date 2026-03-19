@@ -18,17 +18,26 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   final _apiClient = getIt<ApiClient>();
   Map<String, dynamic>? _recipe;
   List<dynamic> _ingredients = [];
+  List<dynamic> _notes = [];
   bool _isLoading = true;
   String? _error;
   final Set<int> _checkedIngredients = {};
   bool _isFavorite = false;
   bool _isTogglingFavorite = false;
   bool _isMovingOrCopying = false;
+  bool _isAddingNote = false;
+  final _noteController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadRecipe();
+  }
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRecipe() async {
@@ -43,6 +52,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         setState(() {
           _recipe = response.data;
           _ingredients = response.data['ingredients'] ?? [];
+          _notes = (response.data['notes'] as List?) ?? [];
           _isFavorite = response.data['is_favorite'] == true;
           _isLoading = false;
         });
@@ -579,6 +589,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             const SizedBox(height: 24),
                           ],
 
+                          // Notes section
+                          if (_notes.isNotEmpty || (_recipe?['can_edit'] == true)) ...[
+                            Text('Notes', style: textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            ..._notes.map((note) => _buildNoteCard(note, colorScheme, textTheme)),
+                            const SizedBox(height: 12),
+                            _buildAddNoteInput(colorScheme),
+                            const SizedBox(height: 24),
+                          ],
+
                           const SizedBox(height: 32),
                         ]),
                       ),
@@ -586,6 +606,124 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                   ],
                 ),
     );
+  }
+
+  Widget _buildNoteCard(Map<String, dynamic> note, ColorScheme colorScheme, TextTheme textTheme) {
+    final canDelete = _recipe?['can_edit'] == true;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(note['body'] as String, style: textTheme.bodyMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatNoteDate(note['created_at'] as String?),
+                    style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            if (canDelete)
+              IconButton(
+                icon: Icon(Icons.delete_outline, size: 18, color: colorScheme.onSurfaceVariant),
+                onPressed: () => _deleteNote(note['id'] as String),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddNoteInput(ColorScheme colorScheme) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _noteController,
+            decoration: const InputDecoration(hintText: 'Add a note...'),
+            maxLines: null,
+            textInputAction: TextInputAction.newline,
+          ),
+        ),
+        IconButton(
+          icon: _isAddingNote
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.send),
+          onPressed: _isAddingNote ? null : _submitNote,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _submitNote() async {
+    final body = _noteController.text.trim();
+    if (body.isEmpty) return;
+    setState(() => _isAddingNote = true);
+    try {
+      final response = await _apiClient.addRecipeNote(widget.recipeId, body);
+      if (mounted) {
+        final newNote = response.data as Map<String, dynamic>;
+        setState(() {
+          _notes = [..._notes, newNote];
+          _isAddingNote = false;
+        });
+        _noteController.clear();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isAddingNote = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add note: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteNote(String noteId) async {
+    try {
+      await _apiClient.deleteRecipeNote(widget.recipeId, noteId);
+      if (mounted) {
+        setState(() {
+          _notes = _notes.where((n) => (n as Map)['id'] != noteId).toList();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete note: $e')),
+        );
+      }
+    }
+  }
+
+  String _formatNoteDate(String? isoDate) {
+    if (isoDate == null) return '';
+    try {
+      final dt = DateTime.parse(isoDate).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'just now';
+      if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+      if (diff.inDays < 1) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.day}/${dt.month}/${dt.year}';
+    } catch (_) {
+      return isoDate;
+    }
   }
 }
 

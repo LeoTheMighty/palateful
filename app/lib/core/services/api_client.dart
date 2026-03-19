@@ -432,4 +432,13 @@ class ApiClient {
   Future<Response> cancelImportJob(String jobId) {
     return _dio.delete('/v1/import-jobs/$jobId');
   }
+
+  // Recipe notes
+  Future<Response> addRecipeNote(String recipeId, String body) {
+    return _dio.post('/v1/recipes/$recipeId/notes', data: {'body': body});
+  }
+
+  Future<Response> deleteRecipeNote(String recipeId, String noteId) {
+    return _dio.delete('/v1/recipes/$recipeId/notes/$noteId');
+  }
 }

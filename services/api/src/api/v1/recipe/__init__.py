@@ -1,9 +1,11 @@
 """Recipe endpoint implementations."""
 
+from api.v1.recipe.add_recipe_note import AddRecipeNote
 from api.v1.recipe.bulk_archive_recipes import BulkArchiveRecipes
 from api.v1.recipe.bulk_move_recipes import BulkMoveRecipes
 from api.v1.recipe.bulk_update_tags import BulkUpdateTags
 from api.v1.recipe.copy_recipe import CopyRecipe
+from api.v1.recipe.delete_recipe_note import DeleteRecipeNote
 from api.v1.recipe.create_recipe import CreateRecipe
 from api.v1.recipe.delete_recipe import DeleteRecipe
 from api.v1.recipe.get_photo_upload_url import GetRecipePhotoUploadUrl
@@ -21,6 +23,8 @@ from api.v1.recipe.toggle_favorite import ToggleFavorite
 from api.v1.recipe.update_recipe import UpdateRecipe
 
 __all__ = [
+    "AddRecipeNote",
+    "DeleteRecipeNote",
     "ListRecipes",
     "ListArchivedRecipes",
     "ListFavorites",

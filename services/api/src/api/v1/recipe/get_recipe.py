@@ -11,6 +11,7 @@ from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
+from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
@@ -117,6 +118,23 @@ class GetRecipe(Endpoint):
             recipe_id=recipe_id,
         ).count()
 
+        # Get notes (active only, oldest first)
+        notes = self.database.where(
+            RecipeNote,
+            recipe_id=recipe_id,
+            asc="created_at",
+        ).all()
+
+        note_responses = [
+            GetRecipe.NoteResponse(
+                id=str(n.id),
+                body=n.body,
+                created_by=str(n.created_by) if n.created_by else None,
+                created_at=n.created_at,
+            )
+            for n in notes
+        ]
+
         return success(
             data=GetRecipe.Response(
                 id=str(recipe.id),
@@ -133,6 +151,7 @@ class GetRecipe(Endpoint):
                 is_favorite=favorite is not None,
                 ingredients=ingredient_responses,
                 steps=step_responses,
+                notes=note_responses,
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at,
                 version_count=version_count,
@@ -166,6 +185,12 @@ class GetRecipe(Endpoint):
         can_prep_ahead: bool = False
         is_optional: bool = False
 
+    class NoteResponse(BaseModel):
+        id: str
+        body: str
+        created_by: str | None = None
+        created_at: datetime
+
     class Response(BaseModel):
         id: str
         name: str
@@ -181,6 +206,7 @@ class GetRecipe(Endpoint):
         is_favorite: bool = False
         ingredients: list["GetRecipe.IngredientResponse"] = []
         steps: list["GetRecipe.StepResponse"] = []
+        notes: list["GetRecipe.NoteResponse"] = []
         created_at: datetime
         updated_at: datetime
         version_count: int = 0

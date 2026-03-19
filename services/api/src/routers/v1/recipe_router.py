@@ -2,12 +2,14 @@
 
 
 from api.v1.recipe import (
+    AddRecipeNote,
     BulkArchiveRecipes,
     BulkMoveRecipes,
     BulkUpdateTags,
     CopyRecipe,
     CreateRecipe,
     DeleteRecipe,
+    DeleteRecipeNote,
     GetPublicRecipe,
     GetRecipe,
     GetRecipePhotoUploadUrl,
@@ -196,6 +198,38 @@ async def restore_recipe_version(
     return RestoreRecipeVersion.call(
         recipe_id=recipe_id,
         version_id=version_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/notes", status_code=201)
+async def add_recipe_note(
+    recipe_id: str,
+    params: AddRecipeNote.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Add a note to a recipe."""
+    return AddRecipeNote.call(
+        recipe_id=recipe_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.delete("/recipes/{recipe_id}/notes/{note_id}")
+async def delete_recipe_note(
+    recipe_id: str,
+    note_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Delete a recipe note (soft delete)."""
+    return DeleteRecipeNote.call(
+        recipe_id=recipe_id,
+        note_id=note_id,
         user=user,
         database=database,
     )

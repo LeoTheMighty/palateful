@@ -565,6 +565,42 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
                           ),
                       ],
 
+                      // Notes at this version (from snapshot)
+                      Builder(builder: (context) {
+                        final snapshotNotes = (_snapshot?['notes'] as List?) ?? [];
+                        if (snapshotNotes.isEmpty) return const SizedBox.shrink();
+                        return _buildSection(
+                          context,
+                          title: 'Notes at this version',
+                          children: snapshotNotes.map<Widget>((note) {
+                            final n = note as Map<String, dynamic>;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(n['body'] as String, style: textTheme.bodyMedium),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _formatDate(n['created_at'] as String?),
+                                      style: textTheme.labelSmall?.copyWith(
+                                        color: colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      }),
+
                       const SizedBox(height: 32),
 
                       // Restore button — visible only to owners/editors

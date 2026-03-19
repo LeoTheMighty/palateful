@@ -401,6 +401,19 @@ class MockRecipeVersion(MockModel):
         super().__init__(**defaults)
 
 
+class MockRecipeNote(MockModel):
+    """Mock RecipeNote model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "recipe_id": str(uuid.uuid4()),
+            "body": "A test note",
+            "created_by": str(uuid.uuid4()),
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockUserFavorite(MockModel):
     """Mock UserFavorite model."""
 

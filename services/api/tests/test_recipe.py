@@ -7,6 +7,7 @@ from conftest import (
     MockRecipeBook,
     MockRecipeBookUser,
     MockRecipeIngredient,
+    MockRecipeNote,
     MockRecipeStep,
     MockRecipeVersion,
     MockUserFavorite,
@@ -1795,4 +1796,111 @@ class TestRestoreRecipeVersion:
         # RecipeVersion not set — find_by returns None
 
         response = client.post(f"/v1/recipes/{recipe_id}/versions/nonexistent/restore")
+        assert response.status_code == 404
+
+
+class TestAddRecipeNote:
+    """Tests for POST /v1/recipes/{recipe_id}/notes."""
+
+    def test_add_recipe_note_success(self, client, mock_db, mock_user):
+        """Test adding a note to a recipe returns 201 with note body."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/notes",
+            json={"body": "great with extra garlic"},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["body"] == "great with extra garlic"
+        assert "id" in data
+        assert "created_at" in data
+
+    def test_add_recipe_note_access_denied(self, client, mock_db, mock_user):
+        """Test adding a note to a recipe without access returns 404."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        # No membership set → find_by returns None → 404
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/notes",
+            json={"body": "should fail"},
+        )
+        assert response.status_code == 404
+
+
+class TestDeleteRecipeNote:
+    """Tests for DELETE /v1/recipes/{recipe_id}/notes/{note_id}."""
+
+    def test_delete_recipe_note_success(self, client, mock_db, mock_user):
+        """Test deleting own note returns 200."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        note_id = "test-note-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+        note = MockRecipeNote(
+            id=note_id,
+            recipe_id=recipe_id,
+            created_by=str(mock_user.id),
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeNote, note, id=note_id)
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] is True
+
+    def test_delete_recipe_note_not_found(self, client, mock_db, mock_user):
+        """Test deleting a non-existent note returns 404."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        # RecipeNote not set → find_by returns None → 404
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/nonexistent")
         assert response.status_code == 404

@@ -13,6 +13,7 @@ from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
+from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
@@ -227,6 +228,9 @@ class RestoreRecipeVersion(Endpoint):
         current_steps = self.database.where(
             RecipeStep, asc="step_number", recipe_id=recipe_id
         ).all()
+        current_notes = self.database.where(
+            RecipeNote, recipe_id=recipe_id, asc="created_at"
+        ).all()
 
         snapshot = {
             "name": recipe.name,
@@ -254,6 +258,14 @@ class RestoreRecipeVersion(Endpoint):
                     "is_optional": s.is_optional,
                 }
                 for s in current_steps
+            ],
+            "notes": [
+                {
+                    "body": n.body,
+                    "created_by": str(n.created_by) if n.created_by else None,
+                    "created_at": n.created_at.isoformat(),
+                }
+                for n in current_notes
             ],
         }
 
