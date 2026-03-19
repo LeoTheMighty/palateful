@@ -70,6 +70,13 @@ class CreateRecipe(Endpoint):
         self.database.create(recipe)
         self.database.db.refresh(recipe)
 
+        # Generate embedding for semantic search (non-blocking)
+        from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
+        embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags)
+        if embedding is not None:
+            recipe.embedding = embedding
+            self.database.db.commit()
+
         # Create recipe ingredients
         ingredient_responses = []
         for idx, ing_input in enumerate(params.ingredients):

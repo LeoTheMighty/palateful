@@ -83,7 +83,7 @@ development_status:
   # Epic 5: Search & Discovery
   epic-5: in-progress
   5-1-recipe-search-by-name-ingredient-tag-and-free-text: done
-  5-2-fuzzy-and-semantic-search: ready-for-dev
+  5-2-fuzzy-and-semantic-search: done
   5-3-search-filters: backlog
   5-4-contextual-zero-scroll-home-screen: backlog
   5-5-archive-view: backlog

@@ -1,6 +1,6 @@
 # Story 5.2: Fuzzy & Semantic Search
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -19,68 +19,37 @@ So that I always find what I'm looking for.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Alembic migration — add pg_trgm GIN indexes on recipes (AC: #2, #6)
-  - [ ] Create new migration in `services/migrator/migrations/versions/`
-  - [ ] Add GIN trgm index on `recipes.name`: `CREATE INDEX IF NOT EXISTS idx_recipes_name_trgm ON recipes USING gin (name gin_trgm_ops)`
-  - [ ] Add GIN trgm index on `recipes.description`: `CREATE INDEX IF NOT EXISTS idx_recipes_description_trgm ON recipes USING gin (description gin_trgm_ops)`
-  - [ ] pg_trgm extension is already installed (initial migration) — do NOT re-add it
-  - [ ] Set minimum pg_trgm similarity threshold in migration: `SET pg_trgm.similarity_threshold = 0.2` (via `op.execute("ALTER DATABASE ... SET ...")`  — or just leave as app-level setting)
+- [x] Task 1: Alembic migration — add pg_trgm GIN indexes on recipes (AC: #2, #6)
+  - [x] Create new migration in `services/migrator/migrations/versions/`
+  - [x] Add GIN trgm index on `recipes.name`: `CREATE INDEX IF NOT EXISTS idx_recipes_name_trgm ON recipes USING gin (name gin_trgm_ops)`
+  - [x] Add GIN trgm index on `recipes.description`: `CREATE INDEX IF NOT EXISTS idx_recipes_description_trgm ON recipes USING gin (description gin_trgm_ops)`
+  - [x] pg_trgm extension is already installed (initial migration) — do NOT re-add it
 
-- [ ] Task 2: Add fuzzy search tier to `unified_search.py` (AC: #1, #2, #4, #6)
-  - [ ] Open `services/api/src/api/v1/search/unified_search.py`
-  - [ ] Add `text` to the `sqlalchemy` imports: `from sqlalchemy import exists, func, or_, select, text`
-  - [ ] Add `_fuzzy_recipe_filter()` method using raw SQL `similarity(name, :query) > 0.2 OR name % :query`
-  - [ ] Update `_search_my_recipes()` to:
-    1. Run exact ILIKE query (existing), collect result IDs
-    2. If fewer than `limit` results, run fuzzy pg_trgm query excluding already-found IDs
-    3. Combine and return up to `limit` results (exact first, then fuzzy)
-  - [ ] Apply same two-pass pattern to `_search_public_recipes()`
-  - [ ] Use raw SQL `text(...)` for pg_trgm (same pattern as `search_ingredients.py`)
-  - [ ] Wrap pg_trgm pass in try/except with ILIKE fallback (extension might not be available in some environments)
+- [x] Task 2: Add fuzzy search tier to `unified_search.py` (AC: #1, #2, #4, #6)
+  - [x] Open `services/api/src/api/v1/search/unified_search.py`
+  - [x] Add `text` to the `sqlalchemy` imports
+  - [x] Extract `_get_my_book_ids()` helper to avoid duplicate DB calls
+  - [x] Add `_search_my_recipes_fuzzy()` using raw SQL `similarity(r.name, :query) > 0.2 OR r.name % :query`
+  - [x] Add `_search_public_recipes_fuzzy()` with same pattern
+  - [x] Updated `execute()` with two-pass exact+fuzzy, deduplicating by recipe ID
+  - [x] Wrapped pg_trgm tier in try/except (degrades gracefully without pg_trgm)
 
-- [ ] Task 3: Add semantic search tier to `unified_search.py` (AC: #3, #4, #5)
-  - [ ] Add `_generate_query_embedding(query: str) -> list[float] | None` method:
-    - Call `openai.OpenAI().embeddings.create(model="text-embedding-3-small", input=query, dimensions=384)`
-    - Return `list[float]` or `None` if OpenAI unavailable/fails
-    - Wrap entire call in try/except — semantic tier degrades gracefully
-  - [ ] After exact + fuzzy passes, call `_generate_query_embedding(query)` once
-  - [ ] If embedding is not None, run semantic pass:
-    - Query `Recipe.embedding.cosine_distance(query_embedding)` ordered ascending (lower = more similar)
-    - Filter: `Recipe.embedding.is_not(None)`, `Recipe.id.notin_(already_found_ids)`, `archived_at.is_(None)`
-    - Threshold: cosine distance < 0.7 (similarity > 0.3) — tune as needed
-    - Limit: append up to `limit` more results (not already in exact/fuzzy)
-  - [ ] Use `pgvector.sqlalchemy` `Vector` for the cosine_distance call (already imported in recipe model)
-    - Pattern from `libraries/agent/agent/tools/recipes.py:92`: `Recipe.embedding.cosine_distance(query_embedding).label("distance")`
-  - [ ] Do NOT fail the entire search if semantic tier fails — catch exceptions and continue
+- [x] Task 3: Add semantic search tier to `unified_search.py` (AC: #3, #4, #5)
+  - [x] Added `_generate_query_embedding(query)` using OpenAI text-embedding-3-small dimensions=384
+  - [x] Added `_search_my_recipes_semantic()` using `Recipe.embedding.cosine_distance(query_embedding) < 0.7`
+  - [x] Added `_search_public_recipes_semantic()` with same pattern
+  - [x] Semantic tier only runs when exact+fuzzy don't fill the limit, deduplicates by ID
+  - [x] All semantic methods wrapped in try/except — degrade gracefully on failure
 
-- [ ] Task 4: Add recipe embedding generation on create/update (AC: #5)
-  - [ ] Open `services/api/src/config.py`
-  - [ ] Add `openai_api_key: str = ""` to `Settings` (reads from `OPENAI_API_KEY` env var)
-  - [ ] Create `services/api/src/api/v1/search/generate_recipe_embedding.py` helper:
-    ```python
-    def generate_recipe_embedding(recipe_name: str, description: str | None, tags: list[str] | None) -> list[float] | None:
-        """Generate 384-dim embedding for a recipe via OpenAI text-embedding-3-small."""
-        text = f"{recipe_name}. {description or ''}. Tags: {', '.join(tags or [])}"
-        try:
-            from openai import OpenAI
-            client = OpenAI()
-            resp = client.embeddings.create(model="text-embedding-3-small", input=text, dimensions=384)
-            return resp.data[0].embedding
-        except Exception:
-            return None
-    ```
-  - [ ] In `services/api/src/api/v1/recipe/create_recipe.py`:
-    - After `db.refresh(recipe)`, call `generate_recipe_embedding()`
-    - If not None, set `recipe.embedding = embedding` and `db.commit()` (or just set before commit)
-  - [ ] In `services/api/src/api/v1/recipe/update_recipe.py`:
-    - After saving recipe changes, regenerate embedding if name, description, or tags changed
-    - Same pattern: call helper, set `recipe.embedding`, commit
+- [x] Task 4: Add recipe embedding generation on create/update (AC: #5)
+  - [x] Added `openai_api_key: str = ""` to `Settings` in `services/api/src/config.py`
+  - [x] Created `services/api/src/api/v1/search/generate_recipe_embedding.py` helper
+  - [x] Updated `create_recipe.py` — generates embedding after `db.refresh(recipe)`, non-blocking
+  - [x] Updated `update_recipe.py` — regenerates embedding when name/description/tags change, non-blocking
 
-- [ ] Task 5: Backend tests (AC: #2, #3, #6)
-  - [ ] Add `test_search_fuzzy_returns_200()` to `services/api/tests/test_search.py`:
-    - Mock DB, call `GET /v1/search?q=chiken`, assert 200 + response shape
-  - [ ] Verify existing `test_search_by_tag` still passes
-  - [ ] Note: pg_trgm try/except fallback means tests pass even without real pg_trgm
+- [x] Task 5: Backend tests (AC: #2, #3, #6)
+  - [x] Added `test_search_fuzzy_returns_200()` to `services/api/tests/test_search.py`
+  - [x] Verified existing `test_search_by_tag` still passes (220 total passing)
 
 ## Dev Notes
 
@@ -319,4 +288,27 @@ Claude Sonnet 4.6
 
 ### Completion Notes List
 
+- Three-tier search pipeline: exact ILIKE → fuzzy pg_trgm → semantic pgvector, dedup by recipe ID sets
+- `_get_my_book_ids()` extracted to avoid duplicate DB queries across tiers
+- Fuzzy tier uses raw SQL `text()` with f-string for conditional `exclude_ids` clause (avoids empty-array bind issues)
+- `similarity(r.name, :query) > 0.2 OR r.name % :query OR similarity(r.description, :query) > 0.2`
+- Semantic tier uses `Recipe.embedding.cosine_distance(query_embedding) < 0.7`, notin_ only added when exclude_ids non-empty
+- All additional tiers wrapped in try/except — exact ILIKE always works, fuzzy/semantic degrade gracefully
+- `generate_recipe_embedding()` uses text-embedding-3-small with dimensions=384 to match existing Vector(384) column
+- Embedding generation in create/update is non-blocking (None return means recipe saves fine without embedding)
+- pg_trgm try/except fallback means all 220 tests pass even without real pg_trgm in mock environment
+- Code Review (M1 FIXED): Removed `openai_api_key` from config.py — dead code; `OpenAI()` reads `OPENAI_API_KEY` directly from OS env
+- Code Review (M2 FIXED): `test_search_fuzzy_returns_200` now asserts `data["query"] == "chiken"` — proves original (misspelled) query is preserved unchanged, differentiates from `test_search_success`
+- Code Review (L1 FIXED): `cosine_distance(query_embedding)` now computed once as `distance` variable — used in both `.where(distance < 0.7)` and `.order_by(distance)` to avoid double expression
+- Code Review (L2 NOTE): Fuzzy tier returns `ingredients=[]` — acceptable tradeoff; raw SQL doesn't join ingredients; exact and semantic tiers lazy-load via ORM
+- Code Review (L3 NOTE): N+1 on `recipe.ingredients[:5]` still not resolved — deferred from Story 5.1, not in Story 5.2 scope; planned for Story 5.3 or later
+- Code Review (L4 NOTE): `generate_recipe_embedding()` uses name/description/tags only — by design per story spec; ingredients in embedding would require call after ingredient creation
+
 ### File List
+
+- `services/migrator/migrations/versions/20260319000002_add_recipe_trgm_indexes.py` — GIN trgm indexes on recipes.name and recipes.description
+- `services/api/src/api/v1/search/unified_search.py` — three-tier search pipeline (exact → fuzzy → semantic), cosine_distance deduplicated
+- `services/api/src/api/v1/search/generate_recipe_embedding.py` — OpenAI embedding helper
+- `services/api/src/api/v1/recipe/create_recipe.py` — generate embedding on recipe create
+- `services/api/src/api/v1/recipe/update_recipe.py` — regenerate embedding on name/description/tags change
+- `services/api/tests/test_search.py` — added test_search_fuzzy_returns_200() with query preservation assertion
