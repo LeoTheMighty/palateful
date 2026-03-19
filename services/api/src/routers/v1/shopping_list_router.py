@@ -1,5 +1,7 @@
 """Shopping list endpoints router."""
 
+import json
+
 from api.v1.shopping_list import (
     AddShoppingListItem,
     AssignItem,
@@ -23,6 +25,7 @@ from api.v1.shopping_list import (
     UpdateShoppingList,
     UpdateShoppingListItem,
     UpdateShoppingListMember,
+    broadcast_event_to_list,
     shopping_list_websocket_handler,
 )
 from dependencies import get_current_user, get_database
@@ -127,12 +130,15 @@ async def add_shopping_list_item(
     database: Database = Depends(get_database),
 ):
     """Add an item to a shopping list."""
-    return AddShoppingListItem.call(
+    result = AddShoppingListItem.call(
         list_id=list_id,
         params=params,
         user=user,
         database=database,
     )
+    item_data = json.loads(result.body)
+    await broadcast_event_to_list(list_id, "item_added", item_data, user_id=str(user.id))
+    return result
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}/items/{item_id}")
@@ -144,13 +150,17 @@ async def update_shopping_list_item(
     database: Database = Depends(get_database),
 ):
     """Update a shopping list item."""
-    return UpdateShoppingListItem.call(
+    result = UpdateShoppingListItem.call(
         list_id=list_id,
         item_id=item_id,
         params=params,
         user=user,
         database=database,
     )
+    item_data = json.loads(result.body)
+    event_type = "item_checked" if params.is_checked is not None else "item_updated"
+    await broadcast_event_to_list(list_id, event_type, item_data, user_id=str(user.id))
+    return result
 
 
 @shopping_list_router.delete("/shopping-lists/{list_id}/items/{item_id}")
@@ -161,12 +171,16 @@ async def delete_shopping_list_item(
     database: Database = Depends(get_database),
 ):
     """Delete a shopping list item."""
-    return DeleteShoppingListItem.call(
+    result = DeleteShoppingListItem.call(
         list_id=list_id,
         item_id=item_id,
         user=user,
         database=database,
     )
+    await broadcast_event_to_list(
+        list_id, "item_removed", {"item_id": item_id}, user_id=str(user.id)
+    )
+    return result
 
 
 # ============================================================

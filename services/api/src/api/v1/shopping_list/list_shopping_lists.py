@@ -107,6 +107,7 @@ class ListShoppingLists(Endpoint):
                     owner_id=str(sl.owner_id),
                     default_deadline=sl.default_deadline,
                     created_at=sl.created_at,
+                    updated_at=sl.updated_at,
                 )
             )
 
@@ -129,6 +130,7 @@ class ListShoppingLists(Endpoint):
         owner_id: str
         default_deadline: datetime | None = None
         created_at: datetime
+        updated_at: datetime
 
     class Response(BaseModel):
         items: list["ListShoppingLists.ShoppingListItem"]

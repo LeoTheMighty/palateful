@@ -33,7 +33,7 @@ class ShoppingList {
   factory ShoppingList.fromJson(Map<String, dynamic> json) {
     return ShoppingList(
       id: json['id'] as String,
-      name: json['name'] as String,
+      name: json['name'] as String? ?? '',
       status: json['status'] as String? ?? 'active',
       ownerId: json['owner_id'] as String,
       isShared: json['is_shared'] as bool? ?? false,

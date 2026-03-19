@@ -1,6 +1,6 @@
 """Update shopping list item endpoint."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from api.v1.shopping_list.utils.notifications import (
@@ -85,7 +85,7 @@ class UpdateShoppingListItem(Endpoint):
             item.is_checked = params.is_checked
             if params.is_checked:
                 item.checked_by_user_id = user.id
-                item.checked_at = datetime.now(datetime.UTC)
+                item.checked_at = datetime.now(timezone.utc)
             else:
                 item.checked_by_user_id = None
                 item.checked_at = None

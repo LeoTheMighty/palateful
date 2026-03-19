@@ -26,6 +26,7 @@ import '../../features/recipes/recipe_version_diff_screen.dart';
 import '../../features/recipes/recipe_version_history_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
+import '../../features/shopping_cart/screens/shopping_list_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/invitations/invitations_screen.dart';
 import '../../features/invitations/invite_link_preview_screen.dart';
@@ -327,6 +328,13 @@ GoRouter get appRouter {
               GoRoute(
                 path: '/cart',
                 builder: (context, state) => const CartScreen(),
+              ),
+              GoRoute(
+                path: '/shopping-lists/:id',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ShoppingListScreen(listId: id);
+                },
               ),
             ],
           ),
