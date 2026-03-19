@@ -1,6 +1,6 @@
 # Story 7.5: Partner Activity Notifications
 
-Status: review
+Status: done
 
 ## Story
 
