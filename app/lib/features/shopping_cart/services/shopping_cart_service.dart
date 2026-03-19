@@ -127,6 +127,20 @@ class ShoppingCartService {
     return result;
   }
 
+  /// Add all ingredients from a recipe to a shopping list.
+  Future<({int itemsAdded, int itemsSkipped})> populateFromRecipe(
+    String listId,
+    String recipeId,
+  ) async {
+    final response = await _apiClient.populateShoppingListFromRecipe(
+        listId, {'recipe_id': recipeId});
+    final data = response.data as Map<String, dynamic>;
+    return (
+      itemsAdded: data['items_added'] as int,
+      itemsSkipped: data['items_skipped'] as int,
+    );
+  }
+
   /// Share a shopping list and get share code.
   Future<String> shareList(String listId) async {
     final response = await _apiClient.shareShoppingList(listId);

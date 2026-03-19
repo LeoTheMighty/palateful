@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../shopping_cart/models/shopping_list.dart';
+import '../shopping_cart/services/shopping_cart_service.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final String recipeId;
@@ -85,6 +87,71 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       if (mounted) {
         setState(() => _isTogglingFavorite = false);
       }
+    }
+  }
+
+  Future<void> _addIngredientsToCart() async {
+    final recipeId = _recipe?['id'] as String?;
+    if (recipeId == null) return;
+
+    final service = getIt<ShoppingCartService>();
+    List<ShoppingList> lists;
+    try {
+      lists = await service.getShoppingLists();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load shopping lists')),
+      );
+      return;
+    }
+
+    if (lists.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('No shopping lists — tap + to create one')),
+      );
+      return;
+    }
+
+    ShoppingList? selectedList;
+    if (lists.length == 1) {
+      selectedList = lists.first;
+    } else {
+      if (!mounted) return;
+      selectedList = await showModalBottomSheet<ShoppingList>(
+        context: context,
+        builder: (context) => ListView.builder(
+          itemCount: lists.length,
+          itemBuilder: (context, i) => ListTile(
+            leading: const Icon(Icons.shopping_cart_outlined),
+            title: Text(lists[i].name.isEmpty ? 'Shopping List' : lists[i].name),
+            subtitle: Text('${lists[i].uncheckedCount} items'),
+            onTap: () => Navigator.of(context).pop(lists[i]),
+          ),
+        ),
+      );
+    }
+
+    if (selectedList == null) return;
+    if (!mounted) return;
+
+    try {
+      final result = await service.populateFromRecipe(selectedList.id, recipeId);
+      if (!mounted) return;
+      final count = result.itemsAdded;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Added $count ingredient${count == 1 ? '' : 's'} to ${selectedList.name.isEmpty ? 'Shopping List' : selectedList.name}'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to add ingredients to cart')),
+      );
     }
   }
 
@@ -421,7 +488,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           ),
                         PopupMenuButton<String>(
                           onSelected: (value) {
-                            if (value == 'move') {
+                            if (value == 'add_to_cart') {
+                              _addIngredientsToCart();
+                            } else if (value == 'move') {
                               _moveRecipe();
                             } else if (value == 'copy') {
                               _copyRecipe();
@@ -432,6 +501,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             }
                           },
                           itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'add_to_cart',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.shopping_cart_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Add to Cart'),
+                                ],
+                              ),
+                            ),
                             if (_recipe?['can_edit'] == true)
                               const PopupMenuItem(
                                 value: 'move',

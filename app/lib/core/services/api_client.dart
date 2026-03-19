@@ -350,6 +350,12 @@ class ApiClient {
     return _dio.post('/v1/shopping-lists/join/$shareCode');
   }
 
+  Future<Response> populateShoppingListFromRecipe(
+      String listId, Map<String, dynamic> data) {
+    return _dio.post('/v1/shopping-lists/$listId/populate-from-recipe',
+        data: data);
+  }
+
   /// Get auth token for WebSocket connections
   String? get authToken => _authToken;
 

@@ -15,6 +15,7 @@ from .list_members import ListShoppingListMembers
 from .list_shopping_lists import ListShoppingLists
 from .organize_by_store import GetStoreSections, OrganizeByStore
 from .populate_from_calendar import PopulateFromCalendar
+from .populate_from_recipe import PopulateFromRecipe
 from .remove_member import RemoveShoppingListMember
 from .share_shopping_list import ShareShoppingList
 from .update_item import UpdateShoppingListItem
@@ -45,6 +46,7 @@ __all__ = [
     "RemoveShoppingListMember",
     # Deadline system
     "PopulateFromCalendar",
+    "PopulateFromRecipe",
     "GetShoppingListDeadlines",
     # Store organization
     "OrganizeByStore",
