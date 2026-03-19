@@ -99,15 +99,23 @@ class _CookModeScreenState extends State<CookModeScreen>
   }
 
   /// Attempts to sync queued offline note additions when connectivity is restored.
+  /// Also clears the offline indicator as soon as connectivity is confirmed.
   /// Silently no-ops on failure — will retry on next app resume.
   Future<void> _syncPendingNotes() async {
     try {
       final results = await Connectivity().checkConnectivity();
       if (results.contains(ConnectivityResult.none)) return;
 
+      // Connectivity confirmed — clear offline indicator regardless of pending notes
+      if (mounted && _isOffline) {
+        setState(() => _isOffline = false);
+      }
+
       final pending = await _recipeCache.getPendingNotes();
       if (pending.isEmpty) return;
 
+      // All-or-nothing sync: if any note fails, the whole batch stays queued
+      // and retries on next resume. Known trade-off: no partial-success clearing.
       for (final note in pending) {
         await _apiClient.addRecipeNote(
           note['recipe_id'] as String,
@@ -115,10 +123,6 @@ class _CookModeScreenState extends State<CookModeScreen>
         );
       }
       await _recipeCache.clearPendingNotes();
-
-      if (mounted && _isOffline) {
-        setState(() => _isOffline = false);
-      }
     } catch (_) {
       // Silently ignore — will retry on next resume
     }

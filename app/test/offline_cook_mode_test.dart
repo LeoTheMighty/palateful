@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:palateful/core/services/recipe_cache_service.dart';
+import 'package:palateful/core/theme/app_colors.dart';
 
 /// Tests for RecipeCacheService and the offline indicator widget.
 ///
@@ -88,12 +89,15 @@ void main() {
             children: [
               if (isOffline) ...[
                 const Icon(Icons.wifi_off,
-                    key: Key('offline_icon'), size: 14, color: Colors.red),
+                    key: Key('offline_icon'),
+                    size: 14,
+                    color: AppColors.terracotta),
                 const SizedBox(width: 2),
                 const Text(
                   'Offline',
                   key: Key('offline_text'),
-                  style: TextStyle(fontSize: 11),
+                  style: TextStyle(
+                      fontSize: 11, color: AppColors.terracotta),
                 ),
               ],
             ],

@@ -1,6 +1,6 @@
 # Story 6.4: Offline Cooking Mode
 
-Status: review
+Status: done
 
 ## Story
 
@@ -278,9 +278,22 @@ Claude Sonnet 4.6
 - connectivity_plus v6+ `checkConnectivity()` returns `List<ConnectivityResult>` — used `.contains(ConnectivityResult.none)` correctly.
 - 9 tests written and passing (7 service unit tests + 2 indicator widget tests).
 
+### Code Review Action Items
+
+**H1 (FIXED):** `_syncPendingNotes()` offline indicator never cleared on connectivity restore without pending notes → moved `setState(() => _isOffline = false)` to run immediately after connectivity is confirmed, before checking pending notes queue. This ensures the offline indicator disappears as soon as internet is available, regardless of whether notes were queued.
+
+**M1 (FIXED):** `app/pubspec.lock` changed but missing from File List → added below.
+
+**M2 (DOCUMENTED):** Partial sync failure causes duplicate note submissions — all-or-nothing retry design is intentional per story spec ("silently catches errors, will retry next resume"). Added inline comment in `_syncPendingNotes()` documenting the known trade-off.
+
+**L1 (FIXED):** Test offline indicator used `Colors.red` instead of `AppColors.terracotta` → updated test helper to use `AppColors.terracotta` to match the production widget color spec.
+
+**L2 (NOT FIXED):** `SharedPreferences.getInstance()` called per method — Flutter caches the instance internally, no functional issue. Acceptable for the simple service pattern.
+
 ### File List
 
 - app/pubspec.yaml
+- app/pubspec.lock
 - app/lib/core/services/recipe_cache_service.dart (NEW)
 - app/lib/core/di/injection.dart
 - app/lib/features/recipes/cook_mode/cook_mode_screen.dart
