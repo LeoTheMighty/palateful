@@ -131,10 +131,9 @@ void main() {
       );
       await tester.pump();
 
-      // Today's day number should be rendered inside a circle
-      // (the Container with shape: BoxShape.circle uses chocolate color)
-      // We verify by checking the day number text is present
-      expect(find.text('${today.day}'), findsOneWidget);
+      // Today's day number text should be white (rendered inside chocolate circle)
+      final dayText = tester.widget<Text>(find.text('${today.day}'));
+      expect(dayText.style?.color, Colors.white);
     });
 
     testWidgets('meal type chip is shown on event tile', (tester) async {

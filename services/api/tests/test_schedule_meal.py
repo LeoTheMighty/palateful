@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 
 from conftest import (
     MockMealEvent,
-    MockMealEventParticipant,
     MockQuery,
     MockRecipe,
 )
@@ -201,6 +200,7 @@ class TestUpdateMealEventReschedule:
         assert response.status_code == 200
         data = response.json()
         assert data["meal_type"] == "lunch"
+        assert "2026-03-20" in data["scheduled_at"]
 
     def test_non_owner_non_cohost_cannot_update(self, client, mock_db, mock_user):
         """Non-owner with no role gets 403."""

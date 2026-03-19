@@ -25,6 +25,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _isLoading = true;
   String? _error;
 
+  /// Incremented on every load; prevents stale responses from overwriting newer state.
+  int _loadGeneration = 0;
+
   @override
   void initState() {
     super.initState();
@@ -47,12 +50,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
   DateTime _dayKey(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
   Future<void> _loadEvents() async {
+    _loadGeneration++;
+    final generation = _loadGeneration;
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
       final events = await _service.listMealEvents(_weekStart, _weekEnd);
+      if (generation != _loadGeneration) return;
       final Map<DateTime, List<MealEvent>> byDay = {};
       for (final e in events) {
         final key = _dayKey(e.scheduledAt);
@@ -65,6 +71,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         });
       }
     } catch (e) {
+      if (generation != _loadGeneration) return;
       if (mounted) {
         setState(() {
           _error = 'Failed to load calendar';

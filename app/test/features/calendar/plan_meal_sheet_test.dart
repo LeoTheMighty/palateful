@@ -4,7 +4,6 @@ import 'package:get_it/get_it.dart';
 import 'package:palateful/features/calendar/models/meal_event.dart';
 import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
 import 'package:palateful/features/calendar/widgets/plan_meal_sheet.dart';
-import 'package:palateful/core/services/api_client.dart';
 
 /// Minimal fake service — no real network.
 class _FakeMealCalendarService implements MealCalendarService {
