@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 
@@ -153,6 +154,18 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         const SnackBar(content: Text('Failed to add ingredients to cart')),
       );
     }
+  }
+
+  void _planForDate() {
+    if (_recipe == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => PlanMealSheet(
+        recipeId: widget.recipeId,
+        recipeName: _recipe!['name'] as String,
+      ),
+    );
   }
 
   Future<void> _archiveRecipe() async {
@@ -490,6 +503,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           onSelected: (value) {
                             if (value == 'add_to_cart') {
                               _addIngredientsToCart();
+                            } else if (value == 'plan') {
+                              _planForDate();
                             } else if (value == 'move') {
                               _moveRecipe();
                             } else if (value == 'copy') {
@@ -508,6 +523,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   Icon(Icons.shopping_cart_outlined),
                                   SizedBox(width: 8),
                                   Text('Add to Cart'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'plan',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.calendar_today_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Plan for...'),
                                 ],
                               ),
                             ),

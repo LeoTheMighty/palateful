@@ -491,6 +491,26 @@ class ApiClient {
     });
   }
 
+  Future<Response> listMealEventsForRange(DateTime start, DateTime end) {
+    return _dio.get('/v1/meal-events', queryParameters: {
+      'start_date': start.toIso8601String().substring(0, 10),
+      'end_date': end.toIso8601String().substring(0, 10),
+      'limit': 50,
+    });
+  }
+
+  Future<Response> createMealEvent(Map<String, dynamic> data) {
+    return _dio.post('/v1/meal-events', data: data);
+  }
+
+  Future<Response> updateMealEvent(String eventId, Map<String, dynamic> data) {
+    return _dio.put('/v1/meal-events/$eventId', data: data);
+  }
+
+  Future<Response> deleteMealEvent(String eventId) {
+    return _dio.delete('/v1/meal-events/$eventId');
+  }
+
   // Cooking logs
   Future<Response> getRecentlyCookedRecipes({int limit = 5}) {
     return _dio.get('/v1/cooking-logs', queryParameters: {'limit': limit});
