@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
@@ -19,6 +19,13 @@ class AddRecipeNote(Endpoint):
 
     class Params(BaseModel):
         body: str
+
+        @field_validator("body")
+        @classmethod
+        def body_not_empty(cls, v: str) -> str:
+            if not v.strip():
+                raise ValueError("Note body cannot be empty")
+            return v
 
     def execute(self, recipe_id: str, params: "AddRecipeNote.Params"):
         user: User = self.user

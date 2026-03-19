@@ -1,6 +1,6 @@
 # Story 4.4: Recipe Notes
 
-Status: review
+Status: done
 
 ## Story
 
@@ -386,6 +386,15 @@ Modified files:
 Claude Sonnet 4.6
 
 ### Debug Log References
+
+### Code Review Action Items
+
+All issues found and auto-fixed:
+- [x] H1: Notes section hidden from viewers with no notes — changed to always show
+- [x] H2: Viewer couldn't delete own notes — always show delete button (backend enforces auth)
+- [x] M1: Empty body accepted in AddRecipeNote — added `@field_validator` to reject empty/whitespace
+- [x] M2: Missing 403 test for unauthorized delete — added `test_delete_recipe_note_unauthorized`
+- [x] L1: `note` parameter type annotation improved — explicit cast in spread
 
 ### Completion Notes List
 

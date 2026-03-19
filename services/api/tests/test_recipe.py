@@ -1904,3 +1904,35 @@ class TestDeleteRecipeNote:
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/nonexistent")
         assert response.status_code == 404
+
+    def test_delete_recipe_note_unauthorized(self, client, mock_db, mock_user):
+        """Test deleting another user's note as editor returns 403."""
+        import uuid
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        note_id = "test-note-id"
+        other_user_id = str(uuid.uuid4())
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="editor",  # editor, not owner
+        )
+        note = MockRecipeNote(
+            id=note_id,
+            recipe_id=recipe_id,
+            created_by=other_user_id,  # someone else's note
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeNote, note, id=note_id)
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
+        assert response.status_code == 403

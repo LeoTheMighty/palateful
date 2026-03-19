@@ -589,11 +589,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             const SizedBox(height: 24),
                           ],
 
-                          // Notes section
-                          if (_notes.isNotEmpty || (_recipe?['can_edit'] == true)) ...[
+                          // Notes section — visible to all recipe members
+                          ...[
                             Text('Notes', style: textTheme.titleLarge),
                             const SizedBox(height: 8),
-                            ..._notes.map((note) => _buildNoteCard(note, colorScheme, textTheme)),
+                            ..._notes.map((note) => _buildNoteCard(note as Map<String, dynamic>, colorScheme, textTheme)),
                             const SizedBox(height: 12),
                             _buildAddNoteInput(colorScheme),
                             const SizedBox(height: 24),
@@ -609,7 +609,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   }
 
   Widget _buildNoteCard(Map<String, dynamic> note, ColorScheme colorScheme, TextTheme textTheme) {
-    final canDelete = _recipe?['can_edit'] == true;
+    // Show delete for all members — backend enforces authorization
+    // (creator OR book owner may delete; editor on others' notes will get 403 with snackbar)
+    const canDelete = true;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
