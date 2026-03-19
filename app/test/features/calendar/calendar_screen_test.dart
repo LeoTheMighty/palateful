@@ -187,6 +187,35 @@ void main() {
       expect(find.text('35 min'), findsOneWidget);
     });
 
+    testWidgets('event tile shows prep-only time when only prepTime is set',
+        (tester) async {
+      final today = DateTime.now();
+      final event = MealEvent(
+        id: 'e1',
+        title: 'Quick Eggs',
+        scheduledAt: today,
+        mealType: MealType.breakfast,
+        status: 'planned',
+        isShared: true,
+        ownerId: 'u1',
+        recipe: const RecipeSummary(
+          id: 'r1',
+          name: 'Scrambled Eggs',
+          prepTime: 15,
+          // cookTime omitted → null
+        ),
+      );
+
+      _registerFake(_FakeMealCalendarService(events: [event]));
+
+      await tester.pumpWidget(
+        const MaterialApp(home: CalendarScreen()),
+      );
+      await tester.pump();
+
+      expect(find.text('15 min'), findsOneWidget);
+    });
+
     testWidgets('event tile hides timing row when recipe has no time info',
         (tester) async {
       final today = DateTime.now();
@@ -208,8 +237,8 @@ void main() {
       );
       await tester.pump();
 
-      // No timing text should appear
-      expect(find.textContaining('min'), findsNothing);
+      // No timing text should appear (matches only "N min" timing labels)
+      expect(find.textContaining(RegExp(r'^\d+ min$')), findsNothing);
     });
   });
 

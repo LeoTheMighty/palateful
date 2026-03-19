@@ -53,8 +53,8 @@ class RecipeSummary {
       id: json['id'] as String,
       name: json['name'] as String,
       imageUrl: json['image_url'] as String?,
-      prepTime: json['prep_time'] as int?,
-      cookTime: json['cook_time'] as int?,
+      prepTime: (json['prep_time'] as num?)?.toInt(),
+      cookTime: (json['cook_time'] as num?)?.toInt(),
     );
   }
 }

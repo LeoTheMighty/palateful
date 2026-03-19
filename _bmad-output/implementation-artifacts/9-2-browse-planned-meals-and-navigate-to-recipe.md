@@ -1,6 +1,6 @@
 # Story 9.2: Browse Planned Meals & Navigate to Recipe
 
-Status: review
+Status: done
 
 ## Story
 

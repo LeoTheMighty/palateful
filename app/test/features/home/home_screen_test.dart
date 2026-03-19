@@ -126,7 +126,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
       await tester.pump();
 
-      expect(find.textContaining('min'), findsNothing);
+      expect(find.textContaining(RegExp(r'^\d+ min$')), findsNothing);
     });
   });
 }
