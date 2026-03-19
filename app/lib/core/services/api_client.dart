@@ -453,4 +453,20 @@ class ApiClient {
   Future<Response> deleteRecipeNote(String recipeId, String noteId) {
     return _dio.delete('/v1/recipes/$recipeId/notes/$noteId');
   }
+
+  // Meal events
+  Future<Response> getMealEventsForToday() {
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    return _dio.get('/v1/meal-events', queryParameters: {
+      'start_date': today,
+      'end_date': today,
+      'status': 'planned',
+      'limit': 1,
+    });
+  }
+
+  // Cooking logs
+  Future<Response> getRecentlyCookedRecipes({int limit = 5}) {
+    return _dio.get('/v1/cooking-logs', queryParameters: {'limit': limit});
+  }
 }

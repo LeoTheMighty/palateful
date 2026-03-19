@@ -85,7 +85,7 @@ development_status:
   5-1-recipe-search-by-name-ingredient-tag-and-free-text: done
   5-2-fuzzy-and-semantic-search: done
   5-3-search-filters: done
-  5-4-contextual-zero-scroll-home-screen: backlog
+  5-4-contextual-zero-scroll-home-screen: done
   5-5-archive-view: backlog
   epic-5-retrospective: optional
 

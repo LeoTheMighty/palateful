@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -36,10 +37,14 @@ class _HomeScreenState extends State<HomeScreen> {
   MealFilter _mealFilter = MealFilter.all;
   SortOption _sortOption = SortOption.best;
 
+  dynamic _todayMealEvent; // null = no planned meal today
+  List<dynamic> _recentlyCooked = [];
+
   @override
   void initState() {
     super.initState();
     _loadRecipes();
+    _loadHomeContext();
   }
 
   Future<void> _loadRecipes() async {
@@ -101,6 +106,30 @@ class _HomeScreenState extends State<HomeScreen> {
       allRecipes.addAll(recipes);
     }
     return allRecipes;
+  }
+
+  Future<void> _loadHomeContext() async {
+    // Load each section independently so one failure doesn't drop the other
+    dynamic todayMeal;
+    List<dynamic> recentlyCooked = [];
+
+    await Future.wait([
+      _apiClient.getMealEventsForToday().then((r) {
+        final items = r.data['items'] as List?;
+        if (items != null && items.isNotEmpty && items[0]['recipe'] != null) {
+          todayMeal = items[0];
+        }
+      }).catchError((_) {}),
+      _apiClient.getRecentlyCookedRecipes().then((r) {
+        recentlyCooked = (r.data['items'] as List?) ?? [];
+      }).catchError((_) {}),
+    ]);
+
+    if (!mounted) return;
+    setState(() {
+      _todayMealEvent = todayMeal;
+      _recentlyCooked = recentlyCooked;
+    });
   }
 
   Future<void> _toggleFavorite(dynamic recipe) async {
@@ -357,6 +386,24 @@ class _HomeScreenState extends State<HomeScreen> {
             // Search Header
             _buildSearchHeader(),
 
+            // Contextual sections — capped to ensure recipe grid always gets space
+            if (_todayMealEvent != null || _recentlyCooked.isNotEmpty)
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.42,
+                ),
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_todayMealEvent != null) _buildHeroCard(),
+                      if (_recentlyCooked.isNotEmpty) _buildRecentlyCookedSection(),
+                    ],
+                  ),
+                ),
+              ),
+
             // Meal Filter Bar
             MealFilterBar(
               selected: _mealFilter,
@@ -519,6 +566,185 @@ class _HomeScreenState extends State<HomeScreen> {
         Divider(color: colorScheme.outlineVariant, height: 1),
       ],
     );
+  }
+
+  Widget _buildHeroCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final recipe = _todayMealEvent!['recipe'];
+    final imageUrl = recipe['image_url'] as String?;
+    final name = recipe['name'] as String? ?? 'Tonight\'s Recipe';
+
+    return SizedBox(
+      height: 220,
+      width: double.infinity,
+      child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Background image or placeholder
+            imageUrl != null
+                ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(Icons.restaurant,
+                          size: 64, color: colorScheme.onSurfaceVariant),
+                    ),
+                  )
+                : Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Icon(Icons.restaurant,
+                        size: 64, color: colorScheme.onSurfaceVariant),
+                  ),
+
+            // Gradient overlay
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.7),
+                  ],
+                  stops: const [0.4, 1.0],
+                ),
+              ),
+            ),
+
+            // Recipe name and CTA
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    name,
+                    style: GoogleFonts.playfairDisplay(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton(
+                    onPressed: () => _quickStartCooking(recipe),
+                    child: const Text('Start Cooking'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+
+  Widget _buildRecentlyCookedSection() {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Text(
+            'Recently Cooked',
+            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+        SizedBox(
+          height: 110,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _recentlyCooked.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final item = _recentlyCooked[index];
+              final imageUrl = item['recipe_image_url'] as String?;
+              final name = item['recipe_name'] as String? ?? 'Recipe';
+              final cookedAt = item['cooked_at'] as String?;
+              final dateLabel = _formatRelativeDate(cookedAt);
+
+              return GestureDetector(
+                onTap: () => context.push('/recipes/${item['recipe_id']}'),
+                child: SizedBox(
+                  width: 80,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: SizedBox(
+                          height: 72,
+                          width: 80,
+                          child: imageUrl != null
+                              ? Image.network(
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    child: Icon(Icons.restaurant,
+                                        size: 28,
+                                        color: colorScheme.onSurfaceVariant),
+                                  ),
+                                )
+                              : Container(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Icon(Icons.restaurant,
+                                      size: 28,
+                                      color: colorScheme.onSurfaceVariant),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        name,
+                        style: textTheme.bodySmall
+                            ?.copyWith(fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        dateLabel,
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontSize: 10,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Divider(color: colorScheme.outlineVariant, height: 1),
+      ],
+    );
+  }
+
+  String _formatRelativeDate(String? isoDate) {
+    if (isoDate == null) return '';
+    try {
+      final dt = DateTime.parse(isoDate);
+      final diff = DateTime.now().difference(dt);
+      if (diff.inDays == 0) return 'Today';
+      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays < 7) return '${diff.inDays} days ago';
+      if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} wk ago';
+      return '${(diff.inDays / 30).floor()} mo ago';
+    } catch (_) {
+      return '';
+    }
   }
 
   Widget _buildRecipeGrid() {
