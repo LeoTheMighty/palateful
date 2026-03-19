@@ -1,7 +1,7 @@
 """Add recipe_versions table for auto-versioning on recipe edit
 
 Revision ID: g7h8i9j0k1l2
-Revises: a1b2c3d4e5f6
+Revises: a2b3c4d5e6f7
 Create Date: 2026-03-17
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # revision identifiers, used by Alembic.
 revision: str = "g7h8i9j0k1l2"
-down_revision: str | None = "a1b2c3d4e5f6"
+down_revision: str | None = "a2b3c4d5e6f7"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
