@@ -274,9 +274,39 @@ class _RecipeVersionHistoryScreenState
                                               runSpacing: 4,
                                               children: changedFields
                                                   .map((field) {
-                                                final label = _fieldLabels[
-                                                        field.toString()] ??
-                                                    field.toString();
+                                                final fieldStr = field.toString();
+                                                final isRestore = fieldStr.startsWith('restore:');
+                                                if (isRestore) {
+                                                  final fromVersion = fieldStr.substring('restore:'.length);
+                                                  return Container(
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: colorScheme.tertiaryContainer.withValues(alpha: 0.7),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.restore,
+                                                          size: 12,
+                                                          color: colorScheme.onTertiaryContainer,
+                                                        ),
+                                                        const SizedBox(width: 3),
+                                                        Text(
+                                                          'Restored from v$fromVersion',
+                                                          style: textTheme.labelSmall?.copyWith(
+                                                            color: colorScheme.onTertiaryContainer,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  );
+                                                }
+                                                final label = _fieldLabels[fieldStr] ?? fieldStr;
                                                 return Container(
                                                   padding: const EdgeInsets
                                                       .symmetric(

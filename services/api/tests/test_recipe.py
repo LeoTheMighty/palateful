@@ -1696,3 +1696,103 @@ class TestGetRecipeVersion:
 
         response = client.get(f"/v1/recipes/{recipe_id}/versions/nonexistent-version")
         assert response.status_code == 404
+
+
+class TestRestoreRecipeVersion:
+    """Tests for POST /v1/recipes/{recipe_id}/versions/{version_id}/restore."""
+
+    def test_restore_recipe_version_success(self, client, mock_db, mock_user):
+        """Test restoring a recipe to a previous version."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        version_id = "test-version-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, name="Current Name")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        version = MockRecipeVersion(
+            id=version_id,
+            recipe_id=recipe_id,
+            version_number=1,
+            snapshot={
+                "name": "Old Name",
+                "instructions": "Old instructions",
+                "ingredients": [],
+                "steps": [],
+            },
+            changed_fields=["name"],
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
+        assert response.status_code == 200
+        data = response.json()
+        # Recipe name should be updated to snapshot value
+        assert data["name"] == "Old Name"
+        # A new version snapshot should have been added (db.add called)
+        mock_db.db.add.assert_called()
+        # The new snapshot version must have changed_fields = ["restore:1"] (AC #3)
+        call_args = mock_db.db.add.call_args_list
+        added_versions = [a.args[0] for a in call_args if hasattr(a.args[0], 'changed_fields')]
+        assert any(v.changed_fields == ["restore:1"] for v in added_versions)
+
+    def test_restore_recipe_version_access_denied(self, client, mock_db, mock_user):
+        """Test that viewers cannot restore a recipe version."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/some-version/restore")
+        assert response.status_code == 403
+
+    def test_restore_recipe_version_recipe_not_found(self, client, mock_db, mock_user):
+        """Test restoring a version for a non-existent recipe."""
+        response = client.post("/v1/recipes/nonexistent/versions/some-version/restore")
+        assert response.status_code == 404
+
+    def test_restore_recipe_version_not_found(self, client, mock_db, mock_user):
+        """Test restoring a version that doesn't exist."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        # RecipeVersion not set — find_by returns None
+
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/nonexistent/restore")
+        assert response.status_code == 404

@@ -18,6 +18,7 @@ from api.v1.recipe import (
     ListRecipes,
     MoveRecipe,
     RestoreRecipe,
+    RestoreRecipeVersion,
     ToggleFavorite,
     UpdateRecipe,
 )
@@ -177,6 +178,22 @@ async def get_recipe_version(
 ):
     """Get the full snapshot for a specific recipe version."""
     return GetRecipeVersion.call(
+        recipe_id=recipe_id,
+        version_id=version_id,
+        user=user,
+        database=database,
+    )
+
+
+@recipe_router.post("/recipes/{recipe_id}/versions/{version_id}/restore")
+async def restore_recipe_version(
+    recipe_id: str,
+    version_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Restore a recipe to a previous version snapshot."""
+    return RestoreRecipeVersion.call(
         recipe_id=recipe_id,
         version_id=version_id,
         user=user,

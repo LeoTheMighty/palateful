@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 
+
 /// Diff change type for an ingredient or step.
 enum _DiffType { added, removed, changed, unchanged }
 
@@ -31,6 +32,8 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
   String? _createdAt;
   bool _isLoading = true;
   String? _error;
+  bool _canEdit = false;
+  bool _isRestoring = false;
 
   @override
   void initState() {
@@ -58,6 +61,7 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
                   .toList();
           _createdAt = versionData['created_at'] as String?;
           _currentRecipe = results[1].data as Map<String, dynamic>?;
+          _canEdit = _currentRecipe?['can_edit'] as bool? ?? false;
           _isLoading = false;
         });
       }
@@ -331,6 +335,52 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
     );
   }
 
+  Future<void> _confirmRestore() async {
+    final versionNum = widget.versionNumber;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restore version?'),
+        content: Text(
+          'This will restore Version $versionNum as a new version. '
+          'Your current recipe will be saved in the history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isRestoring = true);
+    try {
+      await _apiClient.restoreRecipeVersion(widget.recipeId, widget.versionId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restored to Version $versionNum')),
+        );
+        context.go('/recipes/${widget.recipeId}');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isRestoring = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Restore failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildSection(
     BuildContext context, {
     required String title,
@@ -421,8 +471,32 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
                                 spacing: 4,
                                 runSpacing: 4,
                                 children: _changedFields.map((field) {
-                                  final label =
-                                      _fieldLabels[field] ?? field;
+                                  final isRestore = field.startsWith('restore:');
+                                  if (isRestore) {
+                                    final fromVersion = field.substring('restore:'.length);
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.tertiaryContainer.withValues(alpha: 0.7),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.restore, size: 12, color: colorScheme.onTertiaryContainer),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            'Restored from v$fromVersion',
+                                            style: textTheme.labelSmall?.copyWith(
+                                              color: colorScheme.onTertiaryContainer,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                  final label = _fieldLabels[field] ?? field;
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 2),
@@ -473,12 +547,16 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
                             title: 'Steps',
                             children: _buildStepsDiff(context),
                           ),
-                        if (_changedFields.isEmpty)
+                        if (_changedFields.isEmpty ||
+                            _changedFields.every((f) => f.startsWith('restore:')))
                           Center(
                             child: Padding(
                               padding: const EdgeInsets.all(24),
                               child: Text(
-                                'No changes tracked for this version.',
+                                _changedFields.any((f) => f.startsWith('restore:'))
+                                    ? 'This version was created by a restore operation.'
+                                    : 'No changes tracked for this version.',
+                                textAlign: TextAlign.center,
                                 style: textTheme.bodyMedium?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
                                 ),
@@ -489,24 +567,26 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
 
                       const SizedBox(height: 32),
 
-                      // Restore button (stub — wired in Story 4.3)
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.restore),
-                          label: const Text('Restore this version'),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Restore coming soon — available in the next update.',
-                                ),
-                              ),
-                            );
-                          },
+                      // Restore button — visible only to owners/editors
+                      if (_canEdit) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: _isRestoring
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.restore),
+                            label: Text(
+                                _isRestoring ? 'Restoring...' : 'Restore this version'),
+                            onPressed: _isRestoring ? null : _confirmRestore,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
+                        const SizedBox(height: 16),
+                      ],
                     ],
                   ),
                 ),

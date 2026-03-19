@@ -16,6 +16,7 @@ from api.v1.recipe.list_favorites import ListFavorites
 from api.v1.recipe.list_recipes import ListRecipes
 from api.v1.recipe.move_recipe import MoveRecipe
 from api.v1.recipe.restore_recipe import RestoreRecipe
+from api.v1.recipe.restore_recipe_version import RestoreRecipeVersion
 from api.v1.recipe.toggle_favorite import ToggleFavorite
 from api.v1.recipe.update_recipe import UpdateRecipe
 
@@ -35,6 +36,7 @@ __all__ = [
     "GetRecipePhotoUploadUrl",
     "MoveRecipe",
     "RestoreRecipe",
+    "RestoreRecipeVersion",
     "ToggleFavorite",
     "UpdateRecipe",
     "DeleteRecipe",

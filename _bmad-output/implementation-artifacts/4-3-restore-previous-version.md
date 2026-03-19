@@ -1,6 +1,6 @@
 # Story 4.3: Restore Previous Version
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -20,40 +20,40 @@ so that I can go back to what worked without losing any history.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `RestoreRecipeVersion` backend endpoint `POST /recipes/:id/versions/:version_id/restore` (AC: #2, #3, #4, #6)
-  - [ ] Create `services/api/src/api/v1/recipe/restore_recipe_version.py`
-  - [ ] Access check: user must be owner or editor (403 for viewers)
-  - [ ] Load recipe + version snapshot; 404 if not found
-  - [ ] Call `_create_version_snapshot` to save current state with `changed_fields = [f"restore:{version.version_number}"]`
-  - [ ] Delete current ingredients and recreate from snapshot (parse formatted qty string with `_parse_quantity_display`)
-  - [ ] Delete current steps and recreate from snapshot
-  - [ ] Update recipe name and instructions from snapshot
-  - [ ] Return updated recipe (same `Response` shape as `UpdateRecipe.Response`)
-  - [ ] Register in `services/api/src/api/v1/recipe/__init__.py`
-  - [ ] Add route `POST /recipes/{recipe_id}/versions/{version_id}/restore` to `recipe_router.py`
+- [x] Task 1: Create `RestoreRecipeVersion` backend endpoint `POST /recipes/:id/versions/:version_id/restore` (AC: #2, #3, #4, #6)
+  - [x] Create `services/api/src/api/v1/recipe/restore_recipe_version.py`
+  - [x] Access check: user must be owner or editor (403 for viewers)
+  - [x] Load recipe + version snapshot; 404 if not found
+  - [x] Call `_create_version_snapshot` to save current state with `changed_fields = [f"restore:{version.version_number}"]`
+  - [x] Delete current ingredients and recreate from snapshot (parse formatted qty string with `_parse_quantity_display`)
+  - [x] Delete current steps and recreate from snapshot
+  - [x] Update recipe name and instructions from snapshot
+  - [x] Return updated recipe (same `Response` shape as `UpdateRecipe.Response`)
+  - [x] Register in `services/api/src/api/v1/recipe/__init__.py`
+  - [x] Add route `POST /recipes/{recipe_id}/versions/{version_id}/restore` to `recipe_router.py`
 
-- [ ] Task 2: Add `restoreRecipeVersion` to API client (AC: #5)
-  - [ ] In `app/lib/core/services/api_client.dart`, add `restoreRecipeVersion(recipeId, versionId)`
+- [x] Task 2: Add `restoreRecipeVersion` to API client (AC: #5)
+  - [x] In `app/lib/core/services/api_client.dart`, add `restoreRecipeVersion(recipeId, versionId)`
 
-- [ ] Task 3: Wire up restore button in `RecipeVersionDiffScreen` (AC: #1, #5, #6, #7)
-  - [ ] Replace stub SnackBar with real logic
-  - [ ] Read `can_edit` from `_currentRecipe['can_edit']`; hide or disable restore button when `can_edit == false`
-  - [ ] On tap: show `AlertDialog` confirmation ("Restore to Version {N}?" + confirm/cancel)
-  - [ ] On confirm: set `_isRestoring = true` (show loading spinner on button, disable taps)
-  - [ ] Call `_apiClient.restoreRecipeVersion(widget.recipeId, widget.versionId)`
-  - [ ] On success: show success SnackBar, then `context.go('/recipes/${widget.recipeId}')` to recipe detail
-  - [ ] On error: set `_isRestoring = false`, show error SnackBar with message
+- [x] Task 3: Wire up restore button in `RecipeVersionDiffScreen` (AC: #1, #5, #6, #7)
+  - [x] Replace stub SnackBar with real logic
+  - [x] Read `can_edit` from `_currentRecipe['can_edit']`; hide or disable restore button when `can_edit == false`
+  - [x] On tap: show `AlertDialog` confirmation ("Restore to Version {N}?" + confirm/cancel)
+  - [x] On confirm: set `_isRestoring = true` (show loading spinner on button, disable taps)
+  - [x] Call `_apiClient.restoreRecipeVersion(widget.recipeId, widget.versionId)`
+  - [x] On success: show success SnackBar, then `context.go('/recipes/${widget.recipeId}')` to recipe detail
+  - [x] On error: set `_isRestoring = false`, show error SnackBar with message
 
-- [ ] Task 4: Display "Restored from v{N}" label in `RecipeVersionHistoryScreen` (AC: #3)
-  - [ ] In `itemBuilder`, detect `changed_fields` entries starting with `"restore:"`
-  - [ ] Extract version number from `"restore:{N}"` → display chip as "Restored from v{N}" with `Icons.restore` icon
-  - [ ] Style: use `colorScheme.tertiaryContainer` background to visually distinguish from normal change chips
+- [x] Task 4: Display "Restored from v{N}" label in `RecipeVersionHistoryScreen` (AC: #3)
+  - [x] In `itemBuilder`, detect `changed_fields` entries starting with `"restore:"`
+  - [x] Extract version number from `"restore:{N}"` → display chip as "Restored from v{N}" with `Icons.restore` icon
+  - [x] Style: use `colorScheme.tertiaryContainer` background to visually distinguish from normal change chips
 
-- [ ] Task 5: Add API tests for `RestoreRecipeVersion` (AC: #2, #6)
-  - [ ] `test_restore_recipe_version_success` — verifies 200, recipe updated, new version created
-  - [ ] `test_restore_recipe_version_access_denied` — viewer gets 403
-  - [ ] `test_restore_recipe_version_recipe_not_found` — 404 for unknown recipe
-  - [ ] `test_restore_recipe_version_not_found` — 404 for unknown version id
+- [x] Task 5: Add API tests for `RestoreRecipeVersion` (AC: #2, #6)
+  - [x] `test_restore_recipe_version_success` — verifies 200, recipe updated, new version created
+  - [x] `test_restore_recipe_version_access_denied` — viewer gets 403
+  - [x] `test_restore_recipe_version_recipe_not_found` — 404 for unknown recipe
+  - [x] `test_restore_recipe_version_not_found` — 404 for unknown version id
 
 ## Dev Notes
 
@@ -432,6 +432,24 @@ Claude Sonnet 4.6
 
 ### Debug Log References
 
+### Code Review Action Items
+
+All issues found and auto-fixed during review:
+
+- [x] [H1] Diff screen chip showed raw `"restore:2"` label — added `restore:` prefix detection matching history screen behavior (`recipe_version_diff_screen.dart`)
+- [x] [H2] Diff screen showed blank content for restore versions — added `_changedFields.every((f) => f.startsWith('restore:'))` condition and descriptive fallback text (`recipe_version_diff_screen.dart`)
+- [x] [M1] Story File List was empty — populated with all 7 modified/new files
+- [x] [M2] Test didn't verify `changed_fields` on new snapshot version — added assertion that `changed_fields == ["restore:1"]` (`test_recipe.py`)
+- [x] [M3] Extra `SizedBox(height: 16)` always rendered for non-editors — moved inside `if (_canEdit)` block (`recipe_version_diff_screen.dart`)
+
 ### Completion Notes List
 
 ### File List
+
+- `services/api/src/api/v1/recipe/restore_recipe_version.py` (new)
+- `services/api/src/api/v1/recipe/__init__.py` (modified — register RestoreRecipeVersion)
+- `services/api/src/routers/v1/recipe_router.py` (modified — add POST restore route)
+- `app/lib/core/services/api_client.dart` (modified — add restoreRecipeVersion)
+- `app/lib/features/recipes/recipe_version_diff_screen.dart` (modified — restore button + restore chip fix)
+- `app/lib/features/recipes/recipe_version_history_screen.dart` (modified — Restored from vN chip)
+- `services/api/tests/test_recipe.py` (modified — TestRestoreRecipeVersion)

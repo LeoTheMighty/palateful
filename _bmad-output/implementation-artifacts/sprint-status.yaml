@@ -76,7 +76,7 @@ development_status:
   epic-4: in-progress
   4-1-auto-versioning-on-recipe-edit: done
   4-2-version-history-and-diffs: done
-  4-3-restore-previous-version: ready-for-dev
+  4-3-restore-previous-version: done
   4-4-recipe-notes: backlog
   epic-4-retrospective: optional
 
