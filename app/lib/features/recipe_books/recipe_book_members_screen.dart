@@ -272,29 +272,21 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
                                             if (isEmail) 'to_email': input
                                             else 'to_username': input.replaceFirst('@', ''),
                                           };
+                                          final sheetNavigator = Navigator.of(sheetContext);
+                                          final scaffoldMessenger = ScaffoldMessenger.of(context);
                                           try {
                                             await _apiClient.sendInvitation(data);
                                             if (mounted) {
-                                              Navigator.pop(sheetContext);
-                                              ScaffoldMessenger.of(context).showSnackBar(
+                                              sheetNavigator.pop();
+                                              scaffoldMessenger.showSnackBar(
                                                 const SnackBar(content: Text('Invitation sent')),
                                               );
                                             }
                                           } catch (e) {
                                             setSheetState(() => isSending = false);
                                             if (mounted) {
-                                              showDialog(
-                                                context: context,
-                                                builder: (ctx) => AlertDialog(
-                                                  title: const Text('Could not send invitation'),
-                                                  content: const Text('The user may not exist or is already a member.'),
-                                                  actions: [
-                                                    TextButton(
-                                                      onPressed: () => Navigator.pop(ctx),
-                                                      child: const Text('OK'),
-                                                    ),
-                                                  ],
-                                                ),
+                                              scaffoldMessenger.showSnackBar(
+                                                const SnackBar(content: Text('Could not send invitation. The user may not exist or is already a member.')),
                                               );
                                             }
                                           }

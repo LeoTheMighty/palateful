@@ -173,7 +173,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: _received.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final inv = _received[index] as Map<String, dynamic>;
           final id = inv['id'] as String? ?? '';
@@ -222,15 +222,16 @@ class _InvitationsScreenState extends State<InvitationsScreen>
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: _sent.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final inv = _sent[index] as Map<String, dynamic>;
           final id = inv['id'] as String? ?? '';
           final resourceName = inv['resource_name'] as String? ?? 'a book';
           final role = inv['role_offered'] as String? ?? 'viewer';
-          final toUserId = inv['to_user_id'] as String?;
+          final toUsername = inv['to_username'] as String?;
           final toEmail = inv['to_email'] as String?;
-          final recipientDisplay = toUserId ?? toEmail ?? 'unknown';
+          final toUserId = inv['to_user_id'] as String?;
+          final recipientDisplay = toUsername != null ? '@$toUsername' : toEmail ?? toUserId ?? 'unknown';
 
           return ListTile(
             leading: CircleAvatar(
