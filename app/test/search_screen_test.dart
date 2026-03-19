@@ -101,5 +101,45 @@ void main() {
       expect(find.text(recipeName), findsOneWidget);
       expect(find.byIcon(Icons.restaurant), findsOneWidget);
     });
+
+    testWidgets('filter chip renders in unselected state', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: FilterChip(
+                label: Text('Breakfast'),
+                selected: false,
+                onSelected: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Breakfast'), findsOneWidget);
+      final chip = tester.widget<FilterChip>(find.byType(FilterChip));
+      expect(chip.selected, isFalse);
+    });
+
+    testWidgets('filter chip renders in selected state', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: FilterChip(
+                label: Text('Vegetarian'),
+                selected: true,
+                onSelected: null,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Vegetarian'), findsOneWidget);
+      final chip = tester.widget<FilterChip>(find.byType(FilterChip));
+      expect(chip.selected, isTrue);
+    });
   });
 }

@@ -23,6 +23,12 @@ class _SearchScreenState extends State<SearchScreen> {
   List<dynamic> _users = [];
   bool _hasSearched = false;
 
+  // Filter state — reset when query text changes
+  String? _filterBookId;
+  String? _filterBookName;
+  Set<String> _filterTags = {};
+  int? _maxTotalTime;
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -32,6 +38,13 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onSearchChanged(String query) {
     _debounce?.cancel();
+    // Reset stale filters when user types a new query
+    setState(() {
+      _filterBookId = null;
+      _filterBookName = null;
+      _filterTags.clear();
+      _maxTotalTime = null;
+    });
     if (query.length < 2) {
       setState(() {
         _myRecipes = [];
@@ -47,6 +60,10 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
+  void _onFilterChanged() {
+    _performSearch(_searchController.text);
+  }
+
   Future<void> _performSearch(String query) async {
     setState(() {
       _isLoading = true;
@@ -54,7 +71,13 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final response = await _apiClient.search(query);
+      final response = await _apiClient.search(
+        query,
+        bookId: _filterBookId,
+        tags: _filterTags.isEmpty ? null : _filterTags.toList(),
+        maxPrepTime: _maxTotalTime,
+        maxCookTime: _maxTotalTime,
+      );
       if (mounted) {
         setState(() {
           _myRecipes = response.data['my_recipes'] ?? [];
@@ -107,7 +130,105 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          if (_hasSearched && !_isLoading && (_myRecipes.isNotEmpty || _publicRecipes.isNotEmpty))
+            _buildFilterRow(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  List<MapEntry<String, String>> _availableBooks() {
+    final seen = <String>{};
+    final books = <MapEntry<String, String>>[];
+    for (final r in _myRecipes) {
+      final id = r['recipe_book_id'] as String?;
+      final name = r['recipe_book_name'] as String?;
+      if (id != null && name != null && seen.add(id)) {
+        books.add(MapEntry(id, name));
+      }
+    }
+    return books;
+  }
+
+  List<String> _availableTags() {
+    final tagCounts = <String, int>{};
+    for (final r in [..._myRecipes, ..._publicRecipes]) {
+      for (final tag in (r['tags'] as List? ?? [])) {
+        final t = tag as String;
+        tagCounts[t] = (tagCounts[t] ?? 0) + 1;
+      }
+    }
+    final sorted = tagCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.take(10).map((e) => e.key).toList();
+  }
+
+  Widget _buildFilterRow() {
+    final availableBooks = _availableBooks();
+    final availableTags = _availableTags();
+    const timeOptions = [15, 30, 60];
+
+    if (availableBooks.isEmpty && availableTags.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          for (final entry in availableBooks)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(
+                label: Text(entry.value),
+                selected: _filterBookId == entry.key,
+                onSelected: (selected) {
+                  setState(() {
+                    _filterBookId = selected ? entry.key : null;
+                    _filterBookName = selected ? entry.value : null;
+                  });
+                  _onFilterChanged();
+                },
+              ),
+            ),
+          for (final t in timeOptions)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(
+                label: Text('≤${t}min'),
+                selected: _maxTotalTime == t,
+                onSelected: (selected) {
+                  setState(() {
+                    _maxTotalTime = selected ? t : null;
+                  });
+                  _onFilterChanged();
+                },
+              ),
+            ),
+          for (final tag in availableTags)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(
+                label: Text('#$tag'),
+                selected: _filterTags.contains(tag),
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _filterTags.add(tag);
+                    } else {
+                      _filterTags.remove(tag);
+                    }
+                  });
+                  _onFilterChanged();
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 

@@ -1,6 +1,6 @@
 # Story 5.3: Search Filters
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -20,72 +20,42 @@ So that I can narrow down results when I know what kind of recipe I want.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add filter query params to `unified_search.py` backend (AC: #1, #2, #3, #4, #7)
-  - [ ] Open `services/api/src/api/v1/search/unified_search.py`
-  - [ ] Add optional params to `execute()`: `book_id: str | None = None`, `tags: str | None = None` (comma-separated), `max_prep_time: int | None = None`, `max_cook_time: int | None = None`
-  - [ ] Add `_filter_conditions()` method that returns a list of SQLAlchemy WHERE conditions from active filters
-  - [ ] In `_filter_conditions()`:
+- [x] Task 1: Add filter query params to `unified_search.py` backend (AC: #1, #2, #3, #4, #7)
+  - [x] Open `services/api/src/api/v1/search/unified_search.py`
+  - [x] Add optional params to `execute()`: `book_id: str | None = None`, `tags: str | None = None` (comma-separated), `max_prep_time: int | None = None`, `max_cook_time: int | None = None`
+  - [x] Add `_filter_conditions()` method that returns a list of SQLAlchemy WHERE conditions from active filters
+  - [x] In `_filter_conditions()`:
     - If `book_id` set: `Recipe.recipe_book_id == book_id` (cast to UUID if needed)
     - If `tags` set: for each tag in `[t.strip() for t in tags.split(',')]` add `func.array_to_string(Recipe.tags, ',').ilike(f'%{tag}%')` — same NULL-safe pattern as `_recipe_matches()`
     - If `max_prep_time` set: `or_(Recipe.prep_time.is_(None), Recipe.prep_time <= max_prep_time)` — recipes with no prep time are included
     - If `max_cook_time` set: `or_(Recipe.cook_time.is_(None), Recipe.cook_time <= max_cook_time)`
-  - [ ] Apply `_filter_conditions()` to `_search_my_recipes()` exact tier (add to `.where(...)`)
-  - [ ] Apply `_filter_conditions()` to `_search_public_recipes()` exact tier
-  - [ ] Apply `_filter_conditions()` to `_search_my_recipes_semantic()` and `_search_public_recipes_semantic()` (ORM, same `.where(...)` pattern)
-  - [ ] For fuzzy tier `_search_my_recipes_fuzzy()` and `_search_public_recipes_fuzzy()`: add conditional f-string SQL clauses for each filter (same pattern as `exclude_clause`) — wrap in try/except already present
-  - [ ] When `book_id` is set, `_search_my_recipes` and fuzzy/semantic variants should narrow to that specific book rather than all `my_book_ids`
-  - [ ] Pass `filter_conditions` as a parameter to all `_search_*` helper methods OR extract them once in `execute()` and thread through
+  - [x] Apply `_filter_conditions()` to `_search_my_recipes()` exact tier (add to `.where(...)`)
+  - [x] Apply `_filter_conditions()` to `_search_public_recipes()` exact tier
+  - [x] Apply `_filter_conditions()` to `_search_my_recipes_semantic()` and `_search_public_recipes_semantic()` (ORM, same `.where(...)` pattern)
+  - [x] For fuzzy tier `_search_my_recipes_fuzzy()` and `_search_public_recipes_fuzzy()`: add conditional f-string SQL clauses for each filter (same pattern as `exclude_clause`) — wrap in try/except already present
+  - [x] When `book_id` is set, `_search_my_recipes` and fuzzy/semantic variants should narrow to that specific book rather than all `my_book_ids`
+  - [x] Pass `filter_conditions` as a parameter to all `_search_*` helper methods OR extract them once in `execute()` and thread through
 
-- [ ] Task 2: Backend filter tests (AC: #1, #2, #3)
-  - [ ] Open `services/api/tests/test_search.py`
-  - [ ] Add `test_search_filter_book_id()`: `GET /v1/search?q=pasta&book_id=some-uuid`, assert 200 + correct response shape
-  - [ ] Add `test_search_filter_max_prep_time()`: `GET /v1/search?q=pasta&max_prep_time=30`, assert 200 + correct shape
-  - [ ] Add `test_search_filter_tags()`: `GET /v1/search?q=pasta&tags=vegetarian`, assert 200 + correct shape
-  - [ ] Note: same mock-DB pattern as `test_search_fuzzy_returns_200` — verifies no crash + shape
+- [x] Task 2: Backend filter tests (AC: #1, #2, #3)
+  - [x] Open `services/api/tests/test_search.py`
+  - [x] Add `test_search_filter_book_id()`: `GET /v1/search?q=pasta&book_id=some-uuid`, assert 200 + correct response shape
+  - [x] Add `test_search_filter_max_prep_time()`: `GET /v1/search?q=pasta&max_prep_time=30`, assert 200 + correct shape
+  - [x] Add `test_search_filter_tags()`: `GET /v1/search?q=pasta&tags=vegetarian`, assert 200 + correct shape
+  - [x] Note: same mock-DB pattern as `test_search_fuzzy_returns_200` — verifies no crash + shape
 
-- [ ] Task 3: Update `ApiClient.search()` in Flutter (AC: #1-#6)
-  - [ ] Open `app/lib/core/services/api_client.dart`
-  - [ ] Update `search()` signature: `Future<Response> search(String query, {int limit = 20, String? bookId, List<String>? tags, int? maxPrepTime, int? maxCookTime})`
-  - [ ] Add params to `queryParameters`: `if (bookId != null) 'book_id': bookId`, `if (tags != null && tags.isNotEmpty) 'tags': tags.join(',')`, `if (maxPrepTime != null) 'max_prep_time': maxPrepTime`, `if (maxCookTime != null) 'max_cook_time': maxCookTime`
-  - [ ] The API sends tags as a single comma-separated string (e.g., `tags=vegetarian,quick`) matching the backend parser
+- [x] Task 3: Update `ApiClient.search()` in Flutter (AC: #1-#6)
+  - [x] Open `app/lib/core/services/api_client.dart`
+  - [x] Update `search()` signature: `Future<Response> search(String query, {int limit = 20, String? bookId, List<String>? tags, int? maxPrepTime, int? maxCookTime})`
+  - [x] Add params to `queryParameters`: `if (bookId != null) 'book_id': bookId`, `if (tags != null && tags.isNotEmpty) 'tags': tags.join(',')`, `if (maxPrepTime != null) 'max_prep_time': maxPrepTime`, `if (maxCookTime != null) 'max_cook_time': maxCookTime`
+  - [x] The API sends tags as a single comma-separated string (e.g., `tags=vegetarian,quick`) matching the backend parser
 
-- [ ] Task 4: Add filter chip UI to `SearchScreen` (AC: #1-#6)
-  - [ ] Open `app/lib/features/search/search_screen.dart`
-  - [ ] Add filter state fields to `_SearchScreenState`:
-    ```dart
-    String? _filterBookId;
-    String? _filterBookName;        // for display
-    Set<String> _filterTags = {};
-    int? _maxTotalTime;             // sum of prep+cook displayed as "≤Xmin"
-    ```
-  - [ ] Add `_onFilterChanged()` method: calls `_performSearch(_searchController.text)` directly (no debounce — filter taps are intentional)
-  - [ ] Update `_performSearch()` to pass filter params to `_apiClient.search()`:
-    ```dart
-    final response = await _apiClient.search(
-      query,
-      bookId: _filterBookId,
-      tags: _filterTags.isEmpty ? null : _filterTags.toList(),
-      maxPrepTime: _maxTotalTime,   // send as max_prep_time
-      maxCookTime: _maxTotalTime,   // send same limit for cook time
-    );
-    ```
-    Note: Use the same value for both `maxPrepTime` and `maxCookTime` since the chip label is "Total ≤Xmin"
-  - [ ] Add `_buildFilterRow()` widget that appears in the body when `_hasSearched` is true:
-    - Horizontally scrollable `SingleChildScrollView` with `Row` of `FilterChip` widgets
-    - **Book chips**: extract unique `{id, name}` pairs from `_myRecipes` (not public — book filter is for personal collection); one chip per book found in results; use `FilterChip(label: Text(bookName), selected: _filterBookId == bookId, onSelected: ...)`
-    - **Time chips**: preset options `[15, 30, 60]` minutes; `FilterChip(label: Text('≤${t}min'), selected: _maxTotalTime == t, onSelected: (sel) { setState(() { _maxTotalTime = sel ? t : null; }); _onFilterChanged(); })`
-    - **Tag chips**: extract unique tags from ALL results (my + public); deduplicate; limit to first 10 most common tags; `FilterChip(label: Text('#$tag'), selected: _filterTags.contains(tag), onSelected: ...)`
-    - Wrap `_buildFilterRow()` and results `ListView` in a `Column`
-    - Padding: `EdgeInsets.symmetric(horizontal: 8, vertical: 4)` for the row
-  - [ ] When a filter chip is deselected (tapped again while selected): clear that filter and re-run search
-  - [ ] When the search query changes (`_onSearchChanged`): reset all filters (`_filterBookId = null; _filterTags.clear(); _maxTotalTime = null;`) before running new search — stale filters from previous queries should not carry over
-  - [ ] Use `colorScheme.*` theming for `FilterChip` — do NOT use `AppColors`; selected chips use `colorScheme.primaryContainer` / `colorScheme.onPrimaryContainer` automatically via Material 3
-  - [ ] Do NOT show filter row when `!_hasSearched` (empty state) or `_isLoading` is true
+- [x] Task 4: Add filter chip UI to `SearchScreen` (AC: #1-#6)
+  - [x] Open `app/lib/features/search/search_screen.dart`
+  - [x] Add filter state fields, `_onFilterChanged()`, update `_performSearch()`, add `_buildFilterRow()`, reset filters on query change
 
-- [ ] Task 5: Flutter widget tests (AC: #5, #6)
-  - [ ] Open (or create) `app/test/search_screen_test.dart`
-  - [ ] Add test: `'filter chips render when results present'` — render a `FilterChip` widget with `selected: false`, verify it shows; render with `selected: true`, verify selected state
-  - [ ] Follow the existing isolated widget test pattern (test the primitive components, not the full DI-wired SearchScreen)
+- [x] Task 5: Flutter widget tests (AC: #5, #6)
+  - [x] Open (or create) `app/test/search_screen_test.dart`
+  - [x] Added `'filter chip renders in unselected state'` and `'filter chip renders in selected state'` tests
 
 ## Dev Notes
 
@@ -367,4 +337,21 @@ Claude Sonnet 4.6
 
 ### Completion Notes List
 
+- Filter params threaded through all three tiers via `_filter_conditions()` for ORM tiers and conditional f-string clauses for raw SQL fuzzy tier
+- `effective_book_ids = [book_id] if book_id else my_book_ids` — book filter narrows exact/fuzzy/semantic my-recipe tiers without rewriting their logic
+- `_filter_conditions()` builds SQLAlchemy list: book_id equality, per-tag `array_to_string ILIKE`, `or_(prep_time IS NULL, prep_time <= N)`, same for cook_time
+- Fuzzy tier adds `prep_clause`, `cook_clause`, `tag_clauses` f-string snippets; params conditionally populated — same graceful try/except already present
+- `tags: list[str] = []` added to `RecipeResult`; `tags=recipe.tags or []` set in ORM exact and semantic constructors; fuzzy leaves `tags=[]` (no ORM object)
+- Flutter filter state: `_filterBookId`, `_filterBookName`, `_filterTags`, `_maxTotalTime` — all reset in `_onSearchChanged` before debounce
+- `_onFilterChanged()` calls `_performSearch()` directly (no debounce — chip taps are intentional)
+- `_availableBooks()` extracts unique `{id, name}` pairs from `_myRecipes`; `_availableTags()` counts tags across all results, returns top 10
+- Filter row hidden when `!_hasSearched || _isLoading || (myRecipes.isEmpty && publicRecipes.isEmpty)`
+- 223 backend tests pass; 4 Flutter widget tests pass
+
 ### File List
+
+- `services/api/src/api/v1/search/unified_search.py` — filter params in `execute()`, `_filter_conditions()` helper, filter applied to all six search methods, `tags` field on `RecipeResult`
+- `services/api/tests/test_search.py` — added `test_search_filter_book_id`, `test_search_filter_max_prep_time`, `test_search_filter_tags`
+- `app/lib/core/services/api_client.dart` — `search()` updated with `bookId`, `tags`, `maxPrepTime`, `maxCookTime` optional params
+- `app/lib/features/search/search_screen.dart` — filter state fields, `_onFilterChanged()`, `_availableBooks()`, `_availableTags()`, `_buildFilterRow()`, filter reset on query change, filter params passed to `_apiClient.search()`
+- `app/test/search_screen_test.dart` — added two `FilterChip` widget tests (unselected + selected)

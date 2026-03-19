@@ -238,11 +238,23 @@ class ApiClient {
   }
 
   // Search
-  Future<Response> search(String query, {int limit = 20}) {
-    return _dio.get('/v1/search', queryParameters: {
+  Future<Response> search(
+    String query, {
+    int limit = 20,
+    String? bookId,
+    List<String>? tags,
+    int? maxPrepTime,
+    int? maxCookTime,
+  }) {
+    final params = <String, dynamic>{
       'q': query,
       'limit': limit,
-    });
+    };
+    if (bookId != null) params['book_id'] = bookId;
+    if (tags != null && tags.isNotEmpty) params['tags'] = tags.join(',');
+    if (maxPrepTime != null) params['max_prep_time'] = maxPrepTime;
+    if (maxCookTime != null) params['max_cook_time'] = maxCookTime;
+    return _dio.get('/v1/search', queryParameters: params);
   }
 
   // Ingredient endpoints

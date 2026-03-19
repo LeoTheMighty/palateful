@@ -17,10 +17,19 @@ from utils.models.user import User
 class UnifiedSearch(Endpoint):
     """Unified search across recipes and users."""
 
-    def execute(self, q: str, limit: int = 20):
+    def execute(
+        self,
+        q: str,
+        limit: int = 20,
+        book_id: str | None = None,
+        tags: str | None = None,
+        max_prep_time: int | None = None,
+        max_cook_time: int | None = None,
+    ):
         user: User = self.user
 
         query = q.strip()
+        filter_tags = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
         if len(query) < 2:
             raise APIException(
                 status_code=400,
@@ -32,10 +41,12 @@ class UnifiedSearch(Endpoint):
 
         # Cache book IDs — reused by exact, fuzzy, and semantic tiers
         my_book_ids = self._get_my_book_ids(user)
+        effective_book_ids = [book_id] if book_id else my_book_ids
+        filter_conditions = self._filter_conditions(book_id, filter_tags, max_prep_time, max_cook_time)
 
         # Tier 1: exact ILIKE search (name, description, ingredient, tag)
-        my_exact = self._search_my_recipes(query, limit, user, my_book_ids)
-        pub_exact = self._search_public_recipes(query, limit, user)
+        my_exact = self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
+        pub_exact = self._search_public_recipes(query, limit, user, filter_conditions)
         users = self._search_users(query, limit, user)
 
         # Tier 2: fuzzy pg_trgm (only when exact results don't fill the limit)
@@ -45,13 +56,21 @@ class UnifiedSearch(Endpoint):
         my_fuzzy: list = []
         if len(my_exact) < limit:
             my_fuzzy = self._search_my_recipes_fuzzy(
-                query, limit - len(my_exact), user, my_book_ids, exclude_ids=my_exact_ids
+                query, limit - len(my_exact), user, effective_book_ids,
+                exclude_ids=my_exact_ids,
+                filter_tags=filter_tags,
+                max_prep_time=max_prep_time,
+                max_cook_time=max_cook_time,
             )
 
         pub_fuzzy: list = []
         if len(pub_exact) < limit:
             pub_fuzzy = self._search_public_recipes_fuzzy(
-                query, limit - len(pub_exact), user, exclude_ids=pub_exact_ids
+                query, limit - len(pub_exact), user,
+                exclude_ids=pub_exact_ids,
+                filter_tags=filter_tags,
+                max_prep_time=max_prep_time,
+                max_cook_time=max_cook_time,
             )
 
         # Tier 3: semantic pgvector (only when both exact+fuzzy don't fill the limit)
@@ -69,8 +88,9 @@ class UnifiedSearch(Endpoint):
                         query_embedding,
                         limit - my_total,
                         user,
-                        my_book_ids,
+                        effective_book_ids,
                         exclude_ids=all_my_ids,
+                        filter_conditions=filter_conditions,
                     )
                 if pub_total < limit:
                     all_pub_ids = pub_exact_ids | {r.id for r in pub_fuzzy}
@@ -79,6 +99,7 @@ class UnifiedSearch(Endpoint):
                         limit - pub_total,
                         user,
                         exclude_ids=all_pub_ids,
+                        filter_conditions=filter_conditions,
                     )
 
         return success(
@@ -125,13 +146,33 @@ class UnifiedSearch(Endpoint):
             tag_match,
         )
 
+    def _filter_conditions(
+        self,
+        book_id: str | None,
+        filter_tags: list[str],
+        max_prep_time: int | None,
+        max_cook_time: int | None,
+    ) -> list:
+        """Build SQLAlchemy WHERE conditions from active filters."""
+        conditions = []
+        if book_id:
+            conditions.append(Recipe.recipe_book_id == book_id)
+        for tag in filter_tags:
+            conditions.append(func.array_to_string(Recipe.tags, ",").ilike(f"%{tag}%"))
+        if max_prep_time is not None:
+            conditions.append(or_(Recipe.prep_time.is_(None), Recipe.prep_time <= max_prep_time))
+        if max_cook_time is not None:
+            conditions.append(or_(Recipe.cook_time.is_(None), Recipe.cook_time <= max_cook_time))
+        return conditions
+
     # ── Tier 1: exact ILIKE ──────────────────────────────────────────────────
 
     def _search_my_recipes(
-        self, query: str, limit: int, user: User, book_ids: list | None = None
+        self, query: str, limit: int, user: User, book_ids: list | None = None, filter_conditions: list | None = None
     ):
         """Search recipes in books the user has access to (exact ILIKE)."""
         my_book_ids = book_ids if book_ids is not None else self._get_my_book_ids(user)
+        filter_conditions = filter_conditions or []
 
         if not my_book_ids:
             return []
@@ -144,6 +185,7 @@ class UnifiedSearch(Endpoint):
                     Recipe.recipe_book_id.in_(my_book_ids),
                     Recipe.archived_at.is_(None),
                     self._recipe_matches(query),
+                    *filter_conditions,
                 )
                 .order_by(
                     (Recipe.name.ilike(query)).desc(),
@@ -169,12 +211,14 @@ class UnifiedSearch(Endpoint):
                     ri.ingredient.canonical_name
                     for ri in recipe.ingredients[:5]
                 ],
+                tags=recipe.tags or [],
             )
             for recipe, book_name in results
         ]
 
-    def _search_public_recipes(self, query: str, limit: int, user: User):
+    def _search_public_recipes(self, query: str, limit: int, user: User, filter_conditions: list | None = None):
         """Search recipes in public books the user is NOT a member of (exact ILIKE)."""
+        filter_conditions = filter_conditions or []
         owner_subq = (
             select(
                 RecipeBookUser.recipe_book_id,
@@ -209,6 +253,7 @@ class UnifiedSearch(Endpoint):
                         .where(RecipeBookUser.user_id == user.id)
                     ),
                     self._recipe_matches(query),
+                    *filter_conditions,
                 )
                 .order_by(
                     (Recipe.name.ilike(query)).desc(),
@@ -252,6 +297,9 @@ class UnifiedSearch(Endpoint):
         user: User,
         book_ids: list,
         exclude_ids: set,
+        filter_tags: list | None = None,
+        max_prep_time: int | None = None,
+        max_cook_time: int | None = None,
     ):
         """Fuzzy pg_trgm search for recipes in user's books.
 
@@ -260,9 +308,16 @@ class UnifiedSearch(Endpoint):
         """
         if not book_ids:
             return []
+        filter_tags = filter_tags or []
         try:
             exclude_list = [str(eid) for eid in exclude_ids]
             exclude_clause = "AND r.id != ALL(:exclude_ids)" if exclude_list else ""
+            prep_clause = "AND (r.prep_time IS NULL OR r.prep_time <= :max_prep_time)" if max_prep_time is not None else ""
+            cook_clause = "AND (r.cook_time IS NULL OR r.cook_time <= :max_cook_time)" if max_cook_time is not None else ""
+            tag_clauses = "\n".join(
+                f"AND array_to_string(r.tags, ',') ILIKE :filter_tag_{i}"
+                for i in range(len(filter_tags))
+            )
             params: dict = {
                 "book_ids": [str(bid) for bid in book_ids],
                 "query": query,
@@ -270,6 +325,12 @@ class UnifiedSearch(Endpoint):
             }
             if exclude_list:
                 params["exclude_ids"] = exclude_list
+            if max_prep_time is not None:
+                params["max_prep_time"] = max_prep_time
+            if max_cook_time is not None:
+                params["max_cook_time"] = max_cook_time
+            for i, tag in enumerate(filter_tags):
+                params[f"filter_tag_{i}"] = f"%{tag}%"
 
             rows = self.db.execute(
                 text(f"""
@@ -281,6 +342,9 @@ class UnifiedSearch(Endpoint):
                     WHERE r.recipe_book_id = ANY(:book_ids)
                       AND r.archived_at IS NULL
                       {exclude_clause}
+                      {prep_clause}
+                      {cook_clause}
+                      {tag_clauses}
                       AND (
                         similarity(r.name, :query) > 0.2
                         OR r.name % :query
@@ -315,11 +379,21 @@ class UnifiedSearch(Endpoint):
         limit: int,
         user: User,
         exclude_ids: set,
+        filter_tags: list | None = None,
+        max_prep_time: int | None = None,
+        max_cook_time: int | None = None,
     ):
         """Fuzzy pg_trgm search for public recipes the user is not a member of."""
+        filter_tags = filter_tags or []
         try:
             exclude_list = [str(eid) for eid in exclude_ids]
             exclude_clause = "AND r.id != ALL(:exclude_ids)" if exclude_list else ""
+            prep_clause = "AND (r.prep_time IS NULL OR r.prep_time <= :max_prep_time)" if max_prep_time is not None else ""
+            cook_clause = "AND (r.cook_time IS NULL OR r.cook_time <= :max_cook_time)" if max_cook_time is not None else ""
+            tag_clauses = "\n".join(
+                f"AND array_to_string(r.tags, ',') ILIKE :filter_tag_{i}"
+                for i in range(len(filter_tags))
+            )
             params: dict = {
                 "user_id": str(user.id),
                 "query": query,
@@ -327,6 +401,12 @@ class UnifiedSearch(Endpoint):
             }
             if exclude_list:
                 params["exclude_ids"] = exclude_list
+            if max_prep_time is not None:
+                params["max_prep_time"] = max_prep_time
+            if max_cook_time is not None:
+                params["max_cook_time"] = max_cook_time
+            for i, tag in enumerate(filter_tags):
+                params[f"filter_tag_{i}"] = f"%{tag}%"
 
             rows = self.db.execute(
                 text(f"""
@@ -348,6 +428,9 @@ class UnifiedSearch(Endpoint):
                           WHERE user_id = :user_id
                       )
                       {exclude_clause}
+                      {prep_clause}
+                      {cook_clause}
+                      {tag_clauses}
                       AND (
                         similarity(r.name, :query) > 0.2
                         OR r.name % :query
@@ -409,10 +492,12 @@ class UnifiedSearch(Endpoint):
         user: User,
         book_ids: list,
         exclude_ids: set,
+        filter_conditions: list | None = None,
     ):
         """Semantic cosine-distance search for recipes in user's books."""
         if not book_ids:
             return []
+        filter_conditions = filter_conditions or []
         try:
             distance = Recipe.embedding.cosine_distance(query_embedding)
             stmt = (
@@ -423,6 +508,7 @@ class UnifiedSearch(Endpoint):
                     Recipe.archived_at.is_(None),
                     Recipe.embedding.is_not(None),
                     distance < 0.7,
+                    *filter_conditions,
                 )
                 .order_by(distance)
                 .limit(limit)
@@ -445,6 +531,7 @@ class UnifiedSearch(Endpoint):
                         ri.ingredient.canonical_name
                         for ri in recipe.ingredients[:5]
                     ],
+                    tags=recipe.tags or [],
                 )
                 for recipe, book_name in results
             ]
@@ -457,8 +544,10 @@ class UnifiedSearch(Endpoint):
         limit: int,
         user: User,
         exclude_ids: set,
+        filter_conditions: list | None = None,
     ):
         """Semantic cosine-distance search for public recipes the user is not a member of."""
+        filter_conditions = filter_conditions or []
         try:
             owner_subq = (
                 select(
@@ -492,6 +581,7 @@ class UnifiedSearch(Endpoint):
                     ),
                     Recipe.embedding.is_not(None),
                     distance < 0.7,
+                    *filter_conditions,
                 )
                 .order_by(distance)
                 .limit(limit)
@@ -629,6 +719,7 @@ class UnifiedSearch(Endpoint):
         recipe_book_id: str
         recipe_book_name: str
         ingredients: list[str] = []
+        tags: list[str] = []
 
     class OwnerInfo(BaseModel):
         id: str | None = None
