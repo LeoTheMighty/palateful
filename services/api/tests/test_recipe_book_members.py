@@ -9,6 +9,9 @@ from conftest import (
     MockUser,
 )
 
+from utils.models.recipe_book_user import RecipeBookUser
+from utils.models.user import User
+
 
 BOOK_ID = "10000000-0000-0000-0000-000000000001"
 TARGET_USER_ID = "a0000000-0000-0000-0000-000000000002"
@@ -349,4 +352,130 @@ class TestGetRecipeBookRoleInfo:
     def test_get_no_access_returns_403(self, client, mock_db, mock_user):
         """GET /v1/recipe-books/{id} with no membership returns 403."""
         response = client.get(f"/v1/recipe-books/{BOOK_ID}")
+        assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Missing branch coverage for add_recipe_book_member.py
+# ---------------------------------------------------------------------------
+
+class TestAddRecipeBookMemberMissingBranches:
+    """Tests for missing branches in add_recipe_book_member.py."""
+
+    def test_add_member_user_not_found(self, client, mock_db, mock_user):
+        """Test adding a nonexistent user returns 404 (line 31-36)."""
+        owner_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="owner",
+        )
+        mock_db.set_find_by(RecipeBookUser, owner_membership,
+                            user_id=str(mock_user.id), recipe_book_id=BOOK_ID)
+        # User not found -> find_by returns None -> 404
+
+        response = client.post(
+            f"/v1/recipe-books/{BOOK_ID}/members",
+            json={"user_id": TARGET_USER_ID, "role": "editor"},
+        )
+        assert response.status_code == 404
+
+    def test_add_member_already_exists(self, client, mock_db, mock_user):
+        """Test adding a user who is already a member returns 409 (line 44-49)."""
+        target_user = MockUser(id=TARGET_USER_ID, name="Jane")
+        owner_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="owner",
+        )
+        existing_membership = MockRecipeBookUser(
+            user_id=TARGET_USER_ID,
+            recipe_book_id=BOOK_ID,
+            role="viewer",
+        )
+        mock_db.set_find_by(RecipeBookUser, owner_membership,
+                            user_id=str(mock_user.id), recipe_book_id=BOOK_ID)
+        mock_db.set_find_by(User, target_user, id=TARGET_USER_ID)
+        mock_db.set_find_by(RecipeBookUser, existing_membership,
+                            user_id=TARGET_USER_ID, recipe_book_id=BOOK_ID)
+
+        response = client.post(
+            f"/v1/recipe-books/{BOOK_ID}/members",
+            json={"user_id": TARGET_USER_ID, "role": "editor"},
+        )
+        assert response.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# Missing branch coverage for remove_recipe_book_member.py
+# ---------------------------------------------------------------------------
+
+class TestRemoveRecipeBookMemberMissingBranches:
+    """Tests for missing branches in remove_recipe_book_member.py."""
+
+    def test_remove_member_not_found(self, client, mock_db, mock_user):
+        """Test removing a nonexistent member returns 404 (line 43-48)."""
+        owner_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="owner",
+        )
+        mock_db.set_find_by(RecipeBookUser, owner_membership,
+                            user_id=str(mock_user.id), recipe_book_id=BOOK_ID)
+        # Target membership not configured -> find_by returns None -> 404
+
+        response = client.delete(f"/v1/recipe-books/{BOOK_ID}/members/{TARGET_USER_ID}")
+        assert response.status_code == 404
+
+    def test_remove_member_no_access(self, client, mock_db, mock_user):
+        """Test removing without any membership returns 403."""
+        response = client.delete(f"/v1/recipe-books/{BOOK_ID}/members/{TARGET_USER_ID}")
+        assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Missing branch coverage for update_recipe_book_member_role.py
+# ---------------------------------------------------------------------------
+
+class TestUpdateRecipeBookMemberRoleMissingBranches:
+    """Tests for missing branches in update_recipe_book_member_role.py."""
+
+    def test_owner_cannot_change_own_role(self, client, mock_db, mock_user):
+        """Test that owner cannot change their own role (line 35-40)."""
+        owner_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="owner",
+        )
+        mock_db.set_find_by(RecipeBookUser, owner_membership,
+                            user_id=str(mock_user.id), recipe_book_id=BOOK_ID)
+
+        response = client.patch(
+            f"/v1/recipe-books/{BOOK_ID}/members/{mock_user.id}",
+            json={"role": "editor"},
+        )
+        assert response.status_code == 400
+
+    def test_update_role_member_not_found(self, client, mock_db, mock_user):
+        """Test updating role for a nonexistent member returns 404 (line 48-53)."""
+        owner_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="owner",
+        )
+        mock_db.set_find_by(RecipeBookUser, owner_membership,
+                            user_id=str(mock_user.id), recipe_book_id=BOOK_ID)
+        # Target membership not configured -> find_by returns None -> 404
+
+        response = client.patch(
+            f"/v1/recipe-books/{BOOK_ID}/members/{TARGET_USER_ID}",
+            json={"role": "viewer"},
+        )
+        assert response.status_code == 404
+
+    def test_update_role_no_access(self, client, mock_db, mock_user):
+        """Test updating role without any membership returns 403."""
+        response = client.patch(
+            f"/v1/recipe-books/{BOOK_ID}/members/{TARGET_USER_ID}",
+            json={"role": "viewer"},
+        )
         assert response.status_code == 403

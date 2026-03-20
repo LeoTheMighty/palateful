@@ -381,3 +381,210 @@ class TestRecipeBookWebSocketRouteAuth:
             )
 
         websocket.close.assert_called_once_with(code=4001, reason="Authentication failed")
+
+
+# ---------------------------------------------------------------------------
+# Missing branch coverage for websocket.py
+# ---------------------------------------------------------------------------
+
+class TestRecipeBookConnectionManagerMissingBranches:
+    """Tests for missing branches in RecipeBookConnectionManager."""
+
+    @pytest.fixture
+    def manager(self):
+        from api.v1.recipe_book.websocket import RecipeBookConnectionManager
+        return RecipeBookConnectionManager()
+
+    def test_broadcast_handles_disconnected_client(self, manager):
+        """Test that broadcast gracefully handles a client that errors during send (line 84-88)."""
+        book_id = "book-1"
+        user = MagicMock()
+        user.id = uuid.UUID("a0000000-0000-0000-0000-000000000001")
+
+        ws_ok = AsyncMock()
+        ws_ok.accept = AsyncMock()
+        ws_ok.send_text = AsyncMock()
+
+        ws_bad = AsyncMock()
+        ws_bad.accept = AsyncMock()
+        ws_bad.send_text = AsyncMock(side_effect=Exception("connection lost"))
+
+        user2 = MagicMock()
+        user2.id = uuid.UUID("a0000000-0000-0000-0000-000000000002")
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(manager.connect(ws_ok, user, book_id))
+        loop.run_until_complete(manager.connect(ws_bad, user2, book_id))
+
+        msg = {"type": "recipe_updated", "data": {}}
+        loop.run_until_complete(manager.broadcast_to_book(book_id, msg))
+
+        # ws_ok should have been sent to
+        ws_ok.send_text.assert_called_once()
+        # ws_bad should have been disconnected
+        assert ws_bad not in manager.connection_info
+
+    def test_connect_existing_websocket_adds_to_new_room(self, manager):
+        """Test that an already-connected websocket can join a second room (line 38-39 false branch)."""
+        user = MagicMock()
+        user.id = uuid.UUID("a0000000-0000-0000-0000-000000000001")
+
+        ws = AsyncMock()
+        ws.accept = AsyncMock()
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(manager.connect(ws, user, "book-1"))
+        loop.run_until_complete(manager.connect(ws, user, "book-2"))
+
+        assert "book-1" in manager.active_connections
+        assert "book-2" in manager.active_connections
+        assert "book-1" in manager.connection_info[ws][1]
+        assert "book-2" in manager.connection_info[ws][1]
+
+    def test_disconnect_partial_room_cleanup(self, manager):
+        """Test disconnecting one user when another stays in the room (line 59 false branch)."""
+        user1 = MagicMock()
+        user1.id = uuid.UUID("a0000000-0000-0000-0000-000000000001")
+        user2 = MagicMock()
+        user2.id = uuid.UUID("a0000000-0000-0000-0000-000000000002")
+
+        ws1 = AsyncMock()
+        ws1.accept = AsyncMock()
+        ws2 = AsyncMock()
+        ws2.accept = AsyncMock()
+
+        book_id = "book-1"
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(manager.connect(ws1, user1, book_id))
+        loop.run_until_complete(manager.connect(ws2, user2, book_id))
+
+        manager.disconnect(ws1)
+
+        # Room should still exist with ws2
+        assert book_id in manager.active_connections
+        assert len(manager.active_connections[book_id]) == 1
+
+
+class TestRecipeBookWebSocketHandlerMissingBranches:
+    """Tests for missing branches in recipe_book_websocket_handler."""
+
+    @pytest.fixture
+    def mock_user(self):
+        user = MagicMock()
+        user.id = uuid.UUID("a0000000-0000-0000-0000-000000000001")
+        user.name = "Alice"
+        return user
+
+    def test_handler_processes_ping_message(self, mock_user):
+        """Test that handler responds to ping with pong (line 150-151)."""
+        from api.v1.recipe_book.websocket import (
+            RecipeBookConnectionManager,
+            recipe_book_websocket_handler,
+        )
+        from fastapi import WebSocketDisconnect
+
+        websocket = AsyncMock()
+        websocket.accept = AsyncMock()
+        websocket.send_json = AsyncMock()
+        # First receive returns ping, second disconnects
+        websocket.receive_text = AsyncMock(
+            side_effect=[
+                json.dumps({"type": "ping"}),
+                WebSocketDisconnect(),
+            ]
+        )
+
+        db = MagicMock()
+        mock_membership = MagicMock()
+        db.query.return_value.filter.return_value.filter.return_value.first.return_value = mock_membership
+
+        book_id = str(uuid.uuid4())
+
+        fresh_manager = RecipeBookConnectionManager()
+        from api.v1.recipe_book import websocket as ws_module
+        with patch.object(ws_module, "manager", fresh_manager):
+            asyncio.get_event_loop().run_until_complete(
+                recipe_book_websocket_handler(websocket, book_id, mock_user, db)
+            )
+
+        # send_json called twice: once for "connected" and once for "pong"
+        assert websocket.send_json.call_count == 2
+        pong_call = websocket.send_json.call_args_list[1]
+        assert pong_call[0][0]["type"] == "pong"
+
+    def test_handler_ignores_unknown_message_types(self, mock_user):
+        """Test that handler ignores unknown message types without error."""
+        from api.v1.recipe_book.websocket import (
+            RecipeBookConnectionManager,
+            recipe_book_websocket_handler,
+        )
+        from fastapi import WebSocketDisconnect
+
+        websocket = AsyncMock()
+        websocket.accept = AsyncMock()
+        websocket.send_json = AsyncMock()
+        websocket.receive_text = AsyncMock(
+            side_effect=[
+                json.dumps({"type": "unknown_type"}),
+                WebSocketDisconnect(),
+            ]
+        )
+
+        db = MagicMock()
+        mock_membership = MagicMock()
+        db.query.return_value.filter.return_value.filter.return_value.first.return_value = mock_membership
+
+        book_id = str(uuid.uuid4())
+
+        fresh_manager = RecipeBookConnectionManager()
+        from api.v1.recipe_book import websocket as ws_module
+        with patch.object(ws_module, "manager", fresh_manager):
+            asyncio.get_event_loop().run_until_complete(
+                recipe_book_websocket_handler(websocket, book_id, mock_user, db)
+            )
+
+        # Only "connected" message should have been sent (no pong for unknown)
+        assert websocket.send_json.call_count == 1
+
+
+class TestBroadcastEventMissingBranches:
+    """Tests for missing branches in broadcast_event_to_recipe_book."""
+
+    def test_broadcast_with_user_id(self):
+        """Test broadcast includes user_id when provided (line 183)."""
+        from api.v1.recipe_book import websocket as ws_module
+
+        mock_manager = AsyncMock()
+        mock_manager.broadcast_to_book = AsyncMock()
+
+        with patch.object(ws_module, "manager", mock_manager):
+            book_id = str(uuid.uuid4())
+            user_id = str(uuid.uuid4())
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(
+                ws_module.broadcast_event_to_recipe_book(
+                    book_id, "recipe_added", {"name": "Pasta"}, user_id=user_id
+                )
+            )
+
+        msg = mock_manager.broadcast_to_book.call_args[0][1]
+        assert msg["user_id"] == user_id
+
+    def test_broadcast_without_user_id(self):
+        """Test broadcast sets user_id to None when not provided (line 183)."""
+        from api.v1.recipe_book import websocket as ws_module
+
+        mock_manager = AsyncMock()
+        mock_manager.broadcast_to_book = AsyncMock()
+
+        with patch.object(ws_module, "manager", mock_manager):
+            book_id = str(uuid.uuid4())
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(
+                ws_module.broadcast_event_to_recipe_book(
+                    book_id, "recipe_removed", {"recipe_id": "r-1"}
+                )
+            )
+
+        msg = mock_manager.broadcast_to_book.call_args[0][1]
+        assert msg["user_id"] is None

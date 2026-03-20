@@ -380,3 +380,262 @@ class TestPartnerActivityPreference:
         endpoint = GetNotificationPreferences(user=user, database=MagicMock())
         result = endpoint.execute()
         assert result["data"].partner_activity is False
+
+
+# ---------------------------------------------------------------------------
+# Missing branch coverage for notifications.py
+# ---------------------------------------------------------------------------
+
+class TestNotifyRecipeBookMembersMissingBranches:
+    """Tests for missing branches in notify_recipe_book_members."""
+
+    def test_push_service_not_available(self):
+        """Test that notify_recipe_book_members returns early when push service is unavailable (line 35-36)."""
+        from api.v1.recipe_book.notifications import notify_recipe_book_members
+
+        database = _make_database()
+        notification = MagicMock()
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = False
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_book_members(
+                recipe_book_id="b-001",
+                notification=notification,
+                database=database,
+            )
+
+        assert result["skipped"] == "not_configured"
+        mock_service.send_to_users.assert_not_called()
+
+    def test_no_users_after_category_filter(self):
+        """Test that all users filtered out by category preference returns no_recipients (line 59-60)."""
+        from api.v1.recipe_book.notifications import notify_recipe_book_members
+
+        actor = _make_user()
+        member = _make_user(prefs={"push_enabled": True, "partner_activity": False})
+        book_id = str(uuid.uuid4())
+
+        membership_a = _make_membership(actor.id, book_id)
+        membership_m = _make_membership(member.id, book_id)
+
+        database = MagicMock()
+        db = MagicMock()
+        database.db = db
+
+        member_query = MagicMock()
+        member_query.filter.return_value = member_query
+        member_query.all.return_value = [membership_a, membership_m]
+
+        user_query = MagicMock()
+        user_query.filter.return_value = user_query
+        user_query.all.return_value = [member]
+
+        db.query.side_effect = [member_query, user_query]
+
+        notification = MagicMock()
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_book_members(
+                recipe_book_id=book_id,
+                notification=notification,
+                database=database,
+                exclude_user_id=str(actor.id),
+                category="partner_activity",
+            )
+
+        assert result["skipped"] == "no_recipients"
+        mock_service.send_to_users.assert_not_called()
+
+
+class TestNotifyBookSharedMissingBranches:
+    """Tests for missing branches in notify_book_shared."""
+
+    def test_inviter_none_uses_fallback_name(self):
+        """Test that invited_by=None falls back to 'Someone' (line 90)."""
+        from api.v1.recipe_book.notifications import notify_book_shared
+
+        invited_user = _make_user()
+        database = _make_database()
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_book_shared(
+                recipe_book_id="b-010",
+                recipe_book_name="Family Recipes",
+                invited_user=invited_user,
+                invited_by=None,
+                database=database,
+            )
+
+        notification = mock_service.send_to_user.call_args[0][1]
+        assert "Someone" in notification.body
+
+    def test_inviter_name_none_uses_fallback(self):
+        """Test that invited_by with name=None falls back to 'Someone' (line 90)."""
+        from api.v1.recipe_book.notifications import notify_book_shared
+
+        invited_user = _make_user()
+        inviter = _make_user()
+        inviter.name = None
+        database = _make_database()
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_book_shared(
+                recipe_book_id="b-011",
+                recipe_book_name="Shared Book",
+                invited_user=invited_user,
+                invited_by=inviter,
+                database=database,
+            )
+
+        notification = mock_service.send_to_user.call_args[0][1]
+        assert "Someone" in notification.body
+
+    def test_book_name_none_uses_fallback(self):
+        """Test that recipe_book_name=None falls back to 'a recipe book' (line 91)."""
+        from api.v1.recipe_book.notifications import notify_book_shared
+
+        invited_user = _make_user()
+        inviter = _make_user()
+        database = _make_database()
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_book_shared(
+                recipe_book_id="b-012",
+                recipe_book_name=None,
+                invited_user=invited_user,
+                invited_by=inviter,
+                database=database,
+            )
+
+        notification = mock_service.send_to_user.call_args[0][1]
+        assert "a recipe book" in notification.body
+
+    def test_empty_prefs_defaults_to_enabled(self):
+        """Test that empty notification_preferences defaults partner_activity to True (line 87)."""
+        from api.v1.recipe_book.notifications import notify_book_shared
+
+        invited_user = _make_user(prefs={})  # Empty prefs
+        inviter = _make_user()
+        database = _make_database()
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_book_shared(
+                recipe_book_id="b-013",
+                recipe_book_name="Book",
+                invited_user=invited_user,
+                invited_by=inviter,
+                database=database,
+            )
+
+        # Should still send since empty prefs defaults partner_activity to True
+        mock_service.send_to_user.assert_called_once()
+
+
+class TestNotifyRecipeAddedMissingBranches:
+    """Tests for missing branches in notify_recipe_added."""
+
+    def test_actor_name_none_fallback(self):
+        """Test that actor with name=None falls back to 'Someone' (line 130)."""
+        from api.v1.recipe_book.notifications import notify_recipe_added
+
+        actor = _make_user()
+        actor.name = None
+        member = _make_user()
+        book_id = str(uuid.uuid4())
+
+        membership_a = _make_membership(actor.id, book_id)
+        membership_m = _make_membership(member.id, book_id)
+
+        database = MagicMock()
+        db = MagicMock()
+        database.db = db
+
+        member_query = MagicMock()
+        member_query.filter.return_value = member_query
+        member_query.all.return_value = [membership_a, membership_m]
+
+        user_query = MagicMock()
+        user_query.filter.return_value = user_query
+        user_query.all.return_value = [member]
+
+        db.query.side_effect = [member_query, user_query]
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_recipe_added(
+                recipe_book_id=book_id,
+                recipe_book_name="Family Recipes",
+                recipe_name="Pasta",
+                added_by_user=actor,
+                database=database,
+            )
+
+        notification = mock_service.send_to_users.call_args[0][1]
+        assert "Someone" in notification.body
+
+    def test_book_name_none_fallback(self):
+        """Test that recipe_book_name=None falls back to 'a shared recipe book' (line 131)."""
+        from api.v1.recipe_book.notifications import notify_recipe_added
+
+        actor = _make_user()
+        member = _make_user()
+        book_id = str(uuid.uuid4())
+
+        membership_a = _make_membership(actor.id, book_id)
+        membership_m = _make_membership(member.id, book_id)
+
+        database = MagicMock()
+        db = MagicMock()
+        database.db = db
+
+        member_query = MagicMock()
+        member_query.filter.return_value = member_query
+        member_query.all.return_value = [membership_a, membership_m]
+
+        user_query = MagicMock()
+        user_query.filter.return_value = user_query
+        user_query.all.return_value = [member]
+
+        db.query.side_effect = [member_query, user_query]
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_recipe_added(
+                recipe_book_id=book_id,
+                recipe_book_name=None,
+                recipe_name="Pizza",
+                added_by_user=actor,
+                database=database,
+            )
+
+        notification = mock_service.send_to_users.call_args[0][1]
+        assert "a shared recipe book" in notification.title

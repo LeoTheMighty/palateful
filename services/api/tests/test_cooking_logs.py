@@ -1,6 +1,20 @@
 """Tests for cooking log endpoints."""
 
-from conftest import MockQuery
+from datetime import UTC, datetime
+
+from conftest import MockModel, MockQuery, MockRecipe
+
+
+class _MockCookingLog(MockModel):
+    """Lightweight mock for CookingLog used only in this file."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "recipe_id": "r1",
+            "cooked_at": datetime.now(UTC),
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
 
 
 class TestCookingLogs:
@@ -38,3 +52,87 @@ class TestCookingLogs:
         """Test that limit below min (1) returns 422."""
         response = client.get("/v1/cooking-logs?limit=0")
         assert response.status_code == 422
+
+    def test_list_cooking_logs_with_results(self, client, mock_db, mock_user):
+        """Test listing cooking logs with actual results."""
+        recipe1 = MockRecipe(name="Pasta", image_url="https://img.com/pasta.jpg")
+        log1 = _MockCookingLog(recipe_id=str(recipe1.id), cooked_at=datetime(2026, 1, 15, tzinfo=UTC))
+
+        mock_db.db.query.return_value = MockQuery([(log1, recipe1)])
+
+        response = client.get("/v1/cooking-logs")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+        assert data["items"][0]["recipe_name"] == "Pasta"
+        assert data["items"][0]["recipe_image_url"] == "https://img.com/pasta.jpg"
+
+    def test_list_cooking_logs_deduplication(self, client, mock_db, mock_user):
+        """Test that duplicate recipes are deduplicated (most recent kept)."""
+        recipe1 = MockRecipe(name="Pasta")
+        log1 = _MockCookingLog(recipe_id=str(recipe1.id), cooked_at=datetime(2026, 1, 15, tzinfo=UTC))
+        log2 = _MockCookingLog(recipe_id=str(recipe1.id), cooked_at=datetime(2026, 1, 10, tzinfo=UTC))
+
+        mock_db.db.query.return_value = MockQuery([(log1, recipe1), (log2, recipe1)])
+
+        response = client.get("/v1/cooking-logs")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Duplicate recipe should be deduplicated to 1
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+
+    def test_list_cooking_logs_dedup_respects_limit(self, client, mock_db, mock_user):
+        """Test that deduplication respects the limit parameter."""
+        recipe1 = MockRecipe(name="Pasta")
+        recipe2 = MockRecipe(name="Pizza")
+        recipe3 = MockRecipe(name="Salad")
+
+        log1 = _MockCookingLog(recipe_id=str(recipe1.id), cooked_at=datetime(2026, 1, 15, tzinfo=UTC))
+        log2 = _MockCookingLog(recipe_id=str(recipe2.id), cooked_at=datetime(2026, 1, 14, tzinfo=UTC))
+        log3 = _MockCookingLog(recipe_id=str(recipe3.id), cooked_at=datetime(2026, 1, 13, tzinfo=UTC))
+
+        mock_db.db.query.return_value = MockQuery([(log1, recipe1), (log2, recipe2), (log3, recipe3)])
+
+        # Limit=2, should only return 2 items
+        response = client.get("/v1/cooking-logs?limit=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
+
+    def test_list_cooking_logs_multiple_distinct_recipes(self, client, mock_db, mock_user):
+        """Test listing logs with multiple different recipes."""
+        recipe1 = MockRecipe(name="Pasta")
+        recipe2 = MockRecipe(name="Salad")
+
+        log1 = _MockCookingLog(recipe_id=str(recipe1.id), cooked_at=datetime(2026, 1, 15, tzinfo=UTC))
+        log2 = _MockCookingLog(recipe_id=str(recipe2.id), cooked_at=datetime(2026, 1, 14, tzinfo=UTC))
+
+        mock_db.db.query.return_value = MockQuery([(log1, recipe1), (log2, recipe2)])
+
+        response = client.get("/v1/cooking-logs")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        names = [item["recipe_name"] for item in data["items"]]
+        assert "Pasta" in names
+        assert "Salad" in names
+
+    def test_list_cooking_logs_recipe_without_image(self, client, mock_db, mock_user):
+        """Test that recipes without images return null image_url."""
+        recipe = MockRecipe(name="Simple Recipe", image_url=None)
+        log = _MockCookingLog(recipe_id=str(recipe.id))
+
+        mock_db.db.query.return_value = MockQuery([(log, recipe)])
+
+        response = client.get("/v1/cooking-logs")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"][0]["recipe_image_url"] is None

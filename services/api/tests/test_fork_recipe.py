@@ -143,3 +143,67 @@ class TestForkRecipe:
             json={"destination_book_id": DEST_BOOK_ID},
         )
         assert response.status_code == 404
+
+    def test_fork_recipe_dest_book_not_found_returns_404(self, client, mock_db, mock_user):
+        """Test forking into a nonexistent destination book returns 404."""
+        recipe = MockRecipe(id=RECIPE_ID, recipe_book_id=BOOK_ID)
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=RECIPE_ID)
+        mock_db.set_find_by(
+            RecipeBookUser, src_membership,
+            user_id=str(mock_user.id), recipe_book_id=BOOK_ID
+        )
+        # No dest book configured -> find_by returns None -> 404
+
+        response = client.post(
+            f"/v1/recipes/{RECIPE_ID}/fork",
+            json={"destination_book_id": DEST_BOOK_ID},
+        )
+        assert response.status_code == 404
+
+    def test_fork_recipe_src_book_none_uses_unknown(self, client, mock_db, mock_user):
+        """Test that when source book is None, book name defaults to 'Unknown Book' (line 76)."""
+        recipe = MockRecipe(id=RECIPE_ID, recipe_book_id=BOOK_ID, name="Pasta")
+        dest_book = MockRecipeBook(id=DEST_BOOK_ID, name="My Recipes")
+        src_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=BOOK_ID,
+            role="viewer",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=DEST_BOOK_ID,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=RECIPE_ID)
+        mock_db.set_find_by(
+            RecipeBookUser, src_membership,
+            user_id=str(mock_user.id), recipe_book_id=BOOK_ID
+        )
+        mock_db.set_find_by(RecipeBook, dest_book, id=DEST_BOOK_ID)
+        mock_db.set_find_by(
+            RecipeBookUser, dest_membership,
+            user_id=str(mock_user.id), recipe_book_id=DEST_BOOK_ID
+        )
+        # Source book NOT configured -> find_by returns None -> src_book_name = "Unknown Book"
+
+        response = client.post(
+            f"/v1/recipes/{RECIPE_ID}/fork",
+            json={"destination_book_id": DEST_BOOK_ID},
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["forked_from_book_name"] == "Unknown Book"

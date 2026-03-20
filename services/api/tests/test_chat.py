@@ -523,3 +523,337 @@ class TestRecipeContext:
 
         with pytest.raises(Exception):
             SendMessageParams(message="test", recipe_context="x" * 5001)
+
+
+# ---------------------------------------------------------------------------
+# AgentLoop — run_chat_agent async generator
+# ---------------------------------------------------------------------------
+
+
+class TestRunChatAgent:
+    """Tests for the run_chat_agent async generator covering all branches."""
+
+    async def _collect_events(self, gen):
+        """Collect all events from an async generator."""
+        events = []
+        async for event in gen:
+            events.append(event)
+        return events
+
+    async def test_token_cap_exceeded(self):
+        """Yields error event and returns when monthly cap is exceeded."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+        mock_db_obj.db.execute.return_value = MagicMock(scalar=lambda: 999999)
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=999999), \
+             patch("config.settings") as mock_settings:
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            events = await self._collect_events(
+                run_chat_agent("t1", "hello", mock_user, mock_db_obj)
+            )
+
+        assert len(events) == 1
+        assert events[0]["type"] == "error"
+        assert events[0]["code"] == "token_cap_exceeded"
+
+    async def test_simple_text_response_no_tools(self):
+        """Agent responds with text only — no tool calls."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.chats = []
+        mock_db_obj.db.get.return_value = mock_thread
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_response = MagicMock()
+        mock_response.finish_reason = "stop"
+        mock_response.tool_calls = None
+        mock_response.content = ""
+        mock_response.model = "gpt-4o-mini"
+        mock_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+
+        mock_provider = MagicMock()
+        mock_provider.chat.return_value = mock_response
+
+        async def mock_stream(*args, **kwargs):
+            for token in ["Hello", " there"]:
+                yield token
+        mock_provider.stream_chat = mock_stream
+
+        mock_final_chat = MagicMock()
+        mock_final_chat.id = uuid.uuid4()
+        mock_db_obj.create.return_value = mock_final_chat
+        # Make the last create call return a mock with id
+        created_objects = []
+        def track_create(obj):
+            obj.id = uuid.uuid4()
+            created_objects.append(obj)
+        mock_db_obj.create.side_effect = track_create
+
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=0), \
+             patch("config.settings") as mock_settings, \
+             patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            events = await self._collect_events(
+                run_chat_agent("t1", "hello", mock_user, mock_db_obj)
+            )
+
+        types = [e["type"] for e in events]
+        assert "token" in types
+        assert "done" in types
+        token_events = [e for e in events if e["type"] == "token"]
+        assert token_events[0]["content"] == "Hello"
+
+    async def test_tool_call_with_search_recipes(self):
+        """Agent makes a search_recipes tool call, then streams final response."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.chats = []
+        mock_db_obj.db.get.return_value = mock_thread
+        mock_db_obj.create.side_effect = lambda obj: setattr(obj, 'id', uuid.uuid4())
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        # First response: tool call; second response: stop
+        tool_call_response = MagicMock()
+        tool_call_response.finish_reason = "tool_calls"
+        tool_call_response.content = ""
+        tool_call_response.model = "gpt-4o-mini"
+        tool_call_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+        tool_call_response.tool_calls = [
+            {"id": "tc1", "function": {"name": "search_recipes", "arguments": '{"query": "pasta"}'}}
+        ]
+
+        stop_response = MagicMock()
+        stop_response.finish_reason = "stop"
+        stop_response.tool_calls = None
+        stop_response.content = ""
+        stop_response.model = "gpt-4o-mini"
+        stop_response.usage = {"prompt_tokens": 20, "completion_tokens": 10}
+
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = [tool_call_response, stop_response]
+
+        async def mock_stream(*args, **kwargs):
+            yield "Found recipes"
+        mock_provider.stream_chat = mock_stream
+
+        mock_tool_result = MagicMock()
+        mock_tool_result.success = True
+        mock_tool_result.data = {
+            "recipes": [{"id": "r1", "name": "Pasta", "recipe_book_name": "Faves", "total_time": 30, "relevance_score": 0.9}],
+            "total_found": 1,
+            "query": "pasta",
+        }
+        mock_tool_result.to_message.return_value = "Found 1 recipe"
+
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=0), \
+             patch("config.settings") as mock_settings, \
+             patch("agent.llm.provider.get_llm_provider", return_value=mock_provider), \
+             patch("agent.tools.recipes.SearchRecipesTool") as mock_search_cls:
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_search_instance = MagicMock()
+            mock_search_instance.name = "search_recipes"
+            mock_search_instance.execute.return_value = mock_tool_result
+            mock_search_cls.return_value = mock_search_instance
+
+            events = await self._collect_events(
+                run_chat_agent("t1", "find pasta", mock_user, mock_db_obj)
+            )
+
+        types = [e["type"] for e in events]
+        assert "tool_call" in types
+        assert "tool_result" in types
+        assert "token" in types
+        assert "done" in types
+
+        # Verify recipe data in tool_result
+        tool_result_event = next(e for e in events if e["type"] == "tool_result")
+        assert "recipes" in tool_result_event
+        assert tool_result_event["recipes"][0]["name"] == "Pasta"
+
+    async def test_unknown_tool_call(self):
+        """Unknown tool name returns error content."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.chats = []
+        mock_db_obj.db.get.return_value = mock_thread
+        mock_db_obj.create.side_effect = lambda obj: setattr(obj, 'id', uuid.uuid4())
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        tool_call_response = MagicMock()
+        tool_call_response.finish_reason = "tool_calls"
+        tool_call_response.content = ""
+        tool_call_response.model = "gpt-4o-mini"
+        tool_call_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+        tool_call_response.tool_calls = [
+            {"id": "tc1", "function": {"name": "nonexistent_tool", "arguments": '{}'}}
+        ]
+
+        stop_response = MagicMock()
+        stop_response.finish_reason = "stop"
+        stop_response.tool_calls = None
+        stop_response.model = "gpt-4o-mini"
+        stop_response.usage = {"prompt_tokens": 20, "completion_tokens": 10}
+
+        mock_provider = MagicMock()
+        mock_provider.chat.side_effect = [tool_call_response, stop_response]
+
+        async def mock_stream(*args, **kwargs):
+            yield "Sorry"
+        mock_provider.stream_chat = mock_stream
+
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=0), \
+             patch("config.settings") as mock_settings, \
+             patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            events = await self._collect_events(
+                run_chat_agent("t1", "hello", mock_user, mock_db_obj)
+            )
+
+        tool_result = next(e for e in events if e["type"] == "tool_result")
+        assert "unknown tool" in tool_result["content"].lower()
+
+    async def test_recipe_context_appended_to_system_prompt(self):
+        """Recipe context is appended to system prompt when provided."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.chats = []
+        mock_db_obj.db.get.return_value = mock_thread
+        mock_db_obj.create.side_effect = lambda obj: setattr(obj, 'id', uuid.uuid4())
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_response = MagicMock()
+        mock_response.finish_reason = "stop"
+        mock_response.tool_calls = None
+        mock_response.model = "gpt-4o-mini"
+        mock_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+
+        captured_messages = []
+        mock_provider = MagicMock()
+        def capture_chat(messages, **kwargs):
+            captured_messages.extend(messages)
+            return mock_response
+        mock_provider.chat.side_effect = capture_chat
+
+        async def mock_stream(*args, **kwargs):
+            yield "Yes"
+        mock_provider.stream_chat = mock_stream
+
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=0), \
+             patch("config.settings") as mock_settings, \
+             patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            await self._collect_events(
+                run_chat_agent("t1", "help", mock_user, mock_db_obj,
+                               recipe_context="Recipe: Pasta\nStep 1: Boil water")
+            )
+
+        system_msg = captured_messages[0]
+        assert "Current Recipe Context" in system_msg.content
+        assert "Boil water" in system_msg.content
+
+    async def test_thread_history_loads_tool_messages(self):
+        """Thread with tool messages in history loads them correctly."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+
+        tool_chat = MagicMock()
+        tool_chat.role = "tool"
+        tool_chat.content = "tool result"
+        tool_chat.tool_call_id = "tc1"
+        tool_chat.tool_name = "search_recipes"
+
+        user_chat = MagicMock()
+        user_chat.role = "user"
+        user_chat.content = "hello"
+
+        mock_thread = MagicMock()
+        mock_thread.chats = [user_chat, tool_chat]
+        mock_db_obj.db.get.return_value = mock_thread
+        mock_db_obj.create.side_effect = lambda obj: setattr(obj, 'id', uuid.uuid4())
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        mock_response = MagicMock()
+        mock_response.finish_reason = "stop"
+        mock_response.tool_calls = None
+        mock_response.model = "gpt-4o-mini"
+        mock_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+
+        mock_provider = MagicMock()
+        mock_provider.chat.return_value = mock_response
+
+        async def mock_stream(*args, **kwargs):
+            yield "Hi"
+        mock_provider.stream_chat = mock_stream
+
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=0), \
+             patch("config.settings") as mock_settings, \
+             patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            events = await self._collect_events(
+                run_chat_agent("t1", "hi again", mock_user, mock_db_obj)
+            )
+
+        assert any(e["type"] == "done" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# SendMessage SSE endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestSendMessageEndpoint:
+    """Tests for send_message_stream covering all branches."""
+
+    def test_send_message_thread_not_found(self, client, mock_db, mock_user):
+        """Returns 404 when thread doesn't exist."""
+        from utils.models.thread import Thread
+        mock_db.set_find_by(Thread, None)
+
+        response = client.post(
+            f"/v1/chat/threads/{uuid.uuid4()}/messages",
+            json={"message": "hello"},
+        )
+        assert response.status_code == 404
+
+    def test_send_message_thread_wrong_user(self, client, mock_db, mock_user):
+        """Returns 404 when thread belongs to another user."""
+        from utils.models.thread import Thread
+
+        thread = MockModel(user_id=str(uuid.uuid4()))  # different user
+        mock_db.set_find_by(Thread, thread)
+
+        response = client.post(
+            f"/v1/chat/threads/{thread.id}/messages",
+            json={"message": "hello"},
+        )
+        assert response.status_code == 404

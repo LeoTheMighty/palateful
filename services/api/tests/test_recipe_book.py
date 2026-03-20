@@ -460,3 +460,129 @@ class TestListArchivedRecipeBooks:
         assert data["items"][0]["name"] == "Old Book"
         assert data["items"][0]["recipe_count"] == 3
         assert data["total"] == 1
+
+
+class TestGetRecipeBookMissingBranches:
+    """Tests for missing branches in get_recipe_book.py."""
+
+    def test_get_recipe_book_not_found(self, client, mock_db, mock_user):
+        """Test getting a recipe book that doesn't exist in DB (line 43-49)."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        # RecipeBook not set -> find_by returns None -> 404
+
+        response = client.get(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 404
+
+
+class TestUpdateRecipeBookMissingBranches:
+    """Tests for missing branches in update_recipe_book.py."""
+
+    def test_update_recipe_book_not_found(self, client, mock_db, mock_user):
+        """Test updating a recipe book that doesn't exist in DB (line 46-51)."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        # RecipeBook not set -> find_by returns None -> 404
+
+        response = client.put(
+            f"/v1/recipe-books/{book_id}",
+            json={"name": "Updated"}
+        )
+        assert response.status_code == 404
+
+    def test_update_recipe_book_no_changes(self, client, mock_db, mock_user):
+        """Test updating recipe book with empty params (no changes, line 71 false branch)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id, name="Original Name")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.db.query.return_value = MockQuery([0])
+
+        response = client.put(
+            f"/v1/recipe-books/{book_id}",
+            json={}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Original Name"
+
+    def test_update_recipe_book_description(self, client, mock_db, mock_user):
+        """Test updating recipe book description."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.db.query.return_value = MockQuery([0])
+
+        response = client.put(
+            f"/v1/recipe-books/{book_id}",
+            json={"description": "Updated description"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["description"] == "Updated description"
+
+
+class TestDeleteRecipeBookMissingBranches:
+    """Tests for missing branches in delete_recipe_book.py."""
+
+    def test_delete_recipe_book_not_found(self, client, mock_db, mock_user):
+        """Test deleting a recipe book that doesn't exist in DB (line 40-46)."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        # RecipeBook not set -> find_by returns None -> 404
+
+        response = client.delete(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 404

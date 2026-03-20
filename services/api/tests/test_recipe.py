@@ -1,5 +1,8 @@
 """Tests for recipe endpoints."""
 
+import uuid
+from unittest.mock import patch
+
 from conftest import (
     MockIngredient,
     MockQuery,
@@ -1999,3 +2002,807 @@ class TestDeleteRecipeNote:
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
         assert response.status_code == 403
+
+
+class TestCreateRecipeMissingBranches:
+    """Tests for missing branches in create_recipe.py."""
+
+    def test_create_recipe_book_not_found(self, client, mock_db, mock_user):
+        """Test creating recipe when book exists in membership but not in find_by (line 51)."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        # RecipeBook not set -> find_by returns None -> 404
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={"name": "New Recipe"}
+        )
+        assert response.status_code == 404
+
+    def test_create_recipe_with_ingredients(self, client, mock_db, mock_user):
+        """Test creating recipe with ingredients including normalization (lines 84-119)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        ingredient_id = str(uuid.uuid4())
+        ingredient = MockIngredient(id=ingredient_id, canonical_name="flour", category="baking")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.ingredient import Ingredient
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={
+                "name": "Recipe With Ingredients",
+                "ingredients": [
+                    {
+                        "ingredient_id": ingredient_id,
+                        "quantity": 2.0,
+                        "unit": "cups",
+                    }
+                ],
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert len(data["ingredients"]) == 1
+        assert data["ingredients"][0]["ingredient"]["canonical_name"] == "flour"
+
+    def test_create_recipe_ingredient_not_found(self, client, mock_db, mock_user):
+        """Test creating recipe with nonexistent ingredient (line 85-90)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        # Ingredient not configured -> find_by returns None -> 400
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/recipes",
+            json={
+                "name": "Bad Ingredient Recipe",
+                "ingredients": [
+                    {
+                        "ingredient_id": "nonexistent-ingredient",
+                        "quantity": 1.0,
+                        "unit": "cups",
+                    }
+                ],
+            }
+        )
+        assert response.status_code == 400
+
+    def test_create_recipe_normalization_failure(self, client, mock_db, mock_user):
+        """Test creating recipe when quantity normalization fails (lines 100-103)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        ingredient_id = str(uuid.uuid4())
+        ingredient = MockIngredient(id=ingredient_id, canonical_name="spice")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.ingredient import Ingredient
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+
+        # Patch normalize_quantity to raise an exception
+        with patch("api.v1.recipe.create_recipe.normalize_quantity", side_effect=Exception("unsupported unit")):
+            response = client.post(
+                f"/v1/recipe-books/{book_id}/recipes",
+                json={
+                    "name": "Fallback Normalization Recipe",
+                    "ingredients": [
+                        {
+                            "ingredient_id": ingredient_id,
+                            "quantity": 3.0,
+                            "unit": "pinches",
+                        }
+                    ],
+                }
+            )
+        assert response.status_code == 201
+        data = response.json()
+        assert len(data["ingredients"]) == 1
+
+    def test_create_recipe_embedding_none(self, client, mock_db, mock_user):
+        """Test creating recipe when embedding generation returns None (line 76->81 false branch)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None):
+            response = client.post(
+                f"/v1/recipe-books/{book_id}/recipes",
+                json={"name": "No Embedding Recipe"}
+            )
+        assert response.status_code == 201
+
+
+class TestUpdateRecipeMissingBranches:
+    """Tests for missing branches in update_recipe.py."""
+
+    def _setup_update(self, mock_db, mock_user, recipe_id="test-recipe-id",
+                      book_id="test-book-id", tags=None, name="Test Recipe"):
+        """Helper to set up common update test fixtures."""
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, tags=tags or [], name=name)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner"
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([])
+        return recipe
+
+    def test_update_recipe_description(self, client, mock_db, mock_user):
+        """Test updating description field."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"description": "Updated description"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["description"] == "Updated description"
+
+    def test_update_recipe_servings(self, client, mock_db, mock_user):
+        """Test updating servings field."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"servings": 8}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["servings"] == 8
+
+    def test_update_recipe_prep_time(self, client, mock_db, mock_user):
+        """Test updating prep_time field."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"prep_time": 45}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["prep_time"] == 45
+
+    def test_update_recipe_cook_time(self, client, mock_db, mock_user):
+        """Test updating cook_time field."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"cook_time": 60}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cook_time"] == 60
+
+    def test_update_recipe_image_url(self, client, mock_db, mock_user):
+        """Test updating image_url field."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"image_url": "https://example.com/photo.jpg"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["image_url"] == "https://example.com/photo.jpg"
+
+    def test_update_recipe_source_url(self, client, mock_db, mock_user):
+        """Test updating source_url field."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"source_url": "https://example.com/recipe"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source_url"] == "https://example.com/recipe"
+
+    def test_update_recipe_with_ingredients(self, client, mock_db, mock_user):
+        """Test updating recipe ingredients (delete-and-recreate)."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        ingredient_id = str(uuid.uuid4())
+        ingredient = MockIngredient(id=ingredient_id, canonical_name="sugar")
+        recipe = self._setup_update(mock_db, mock_user, recipe_id=recipe_id, book_id=book_id)
+
+        from utils.models.ingredient import Ingredient
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+        mock_db.set_where(RecipeIngredient, [])
+        mock_db.set_where(RecipeStep, [])
+        mock_db.set_where(RecipeNote, [])
+
+        # db.query calls in order:
+        # 1. func.max(RecipeVersion.version_number) during _create_version_snapshot
+        # 2. RecipeIngredient join Ingredient for response
+        ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
+        mock_db.db.query.side_effect = [
+            MockQuery([0]),                  # max version_number
+            MockQuery([(ri, ingredient)]),   # ingredient join for response
+        ]
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={
+                "ingredients": [
+                    {
+                        "ingredient_id": ingredient_id,
+                        "quantity": 1.5,
+                        "unit": "cups",
+                    }
+                ],
+            }
+        )
+        assert response.status_code == 200
+
+    def test_update_recipe_ingredient_not_found(self, client, mock_db, mock_user):
+        """Test updating recipe with nonexistent ingredient returns 400."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_where(RecipeIngredient, [])
+        mock_db.set_where(RecipeStep, [])
+        mock_db.set_where(RecipeNote, [])
+
+        # _create_version_snapshot calls db.query for max version_number
+        mock_db.db.query.return_value = MockQuery([0])
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={
+                "ingredients": [
+                    {
+                        "ingredient_id": "nonexistent",
+                        "quantity": 1.0,
+                        "unit": "cups",
+                    }
+                ],
+            }
+        )
+        assert response.status_code == 400
+
+    def test_update_recipe_normalization_failure(self, client, mock_db, mock_user):
+        """Test updating recipe when normalization fails uses display values."""
+        recipe_id = "test-recipe-id"
+        ingredient_id = str(uuid.uuid4())
+        ingredient = MockIngredient(id=ingredient_id, canonical_name="saffron")
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        from utils.models.ingredient import Ingredient
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+        mock_db.set_where(RecipeIngredient, [])
+        mock_db.set_where(RecipeStep, [])
+        mock_db.set_where(RecipeNote, [])
+
+        ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
+        mock_db.db.query.side_effect = [
+            MockQuery([0]),                  # max version_number
+            MockQuery([(ri, ingredient)]),   # ingredient join for response
+        ]
+
+        with patch("api.v1.recipe.update_recipe.normalize_quantity", side_effect=Exception("bad unit")):
+            response = client.put(
+                f"/v1/recipes/{recipe_id}",
+                json={
+                    "ingredients": [
+                        {
+                            "ingredient_id": ingredient_id,
+                            "quantity": 0.5,
+                            "unit": "pinch",
+                        }
+                    ],
+                }
+            )
+        assert response.status_code == 200
+
+    def test_update_recipe_embedding_regeneration(self, client, mock_db, mock_user):
+        """Test that updating name/description/tags regenerates embedding."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=[0.1, 0.2]) as mock_embed:
+            response = client.put(
+                f"/v1/recipes/{recipe_id}",
+                json={"description": "New searchable description"}
+            )
+        assert response.status_code == 200
+        mock_embed.assert_called_once()
+
+    def test_update_recipe_embedding_returns_none(self, client, mock_db, mock_user):
+        """Test that embedding=None branch is handled when updating searchable fields."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None):
+            response = client.put(
+                f"/v1/recipes/{recipe_id}",
+                json={"description": "Another desc"}
+            )
+        assert response.status_code == 200
+
+    def test_update_recipe_no_changes(self, client, mock_db, mock_user):
+        """Test updating recipe with no fields changed."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={}
+        )
+        assert response.status_code == 200
+
+    def test_update_recipe_versioning_on_name_change(self, client, mock_db, mock_user):
+        """Test that changing name triggers a version snapshot."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id, name="Old Name")
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"name": "New Name"}
+        )
+        assert response.status_code == 200
+        # Verify db.add was called (version snapshot created)
+        mock_db.db.add.assert_called()
+
+    def test_update_recipe_versioning_on_instructions_change(self, client, mock_db, mock_user):
+        """Test that changing instructions triggers a version snapshot."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"instructions": "New instructions here"}
+        )
+        assert response.status_code == 200
+        mock_db.db.add.assert_called()
+
+
+class TestGetRecipeVersionsMissingBranches:
+    """Tests for missing branches in get_recipe_versions.py."""
+
+    def test_get_recipe_versions_success(self, client, mock_db, mock_user):
+        """Test getting version history for a recipe (full success path)."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        version1 = MockRecipeVersion(
+            recipe_id=recipe_id,
+            version_number=1,
+            changed_fields=["name"],
+        )
+        version2 = MockRecipeVersion(
+            recipe_id=recipe_id,
+            version_number=2,
+            changed_fields=["ingredients"],
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_where(RecipeVersion, [version2, version1])
+
+        response = client.get(f"/v1/recipes/{recipe_id}/versions")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["recipe_id"] == recipe_id
+        assert data["total"] == 2
+        assert len(data["versions"]) == 2
+
+    def test_get_recipe_versions_recipe_not_found(self, client, mock_db, mock_user):
+        """Test getting versions for a nonexistent recipe."""
+        response = client.get("/v1/recipes/nonexistent/versions")
+        assert response.status_code == 404
+
+    def test_get_recipe_versions_access_denied(self, client, mock_db, mock_user):
+        """Test getting versions without membership."""
+        recipe_id = "test-recipe-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        # No membership -> find_by returns None -> 403
+
+        response = client.get(f"/v1/recipes/{recipe_id}/versions")
+        assert response.status_code == 403
+
+    def test_get_recipe_versions_empty(self, client, mock_db, mock_user):
+        """Test getting versions when there are no versions."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_where(RecipeVersion, [])
+
+        response = client.get(f"/v1/recipes/{recipe_id}/versions")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["versions"] == []
+
+
+class TestRestoreRecipeVersionMissingBranches:
+    """Tests for missing branches in restore_recipe_version.py."""
+
+    def test_restore_version_with_ingredients_and_steps(self, client, mock_db, mock_user):
+        """Test restoring a version with ingredients and steps in snapshot (lines 93-151)."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        version_id = "test-version-id"
+        ingredient_id = str(uuid.uuid4())
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, name="Current Name")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        ingredient = MockIngredient(id=ingredient_id, canonical_name="flour")
+        version = MockRecipeVersion(
+            id=version_id,
+            recipe_id=recipe_id,
+            version_number=1,
+            snapshot={
+                "name": "Old Name",
+                "instructions": "Old instructions",
+                "ingredients": [
+                    {
+                        "ingredient_id": ingredient_id,
+                        "quantity_display": "2",
+                        "unit_display": "cups",
+                        "notes": None,
+                        "is_optional": False,
+                        "order_index": 0,
+                    }
+                ],
+                "steps": [
+                    {
+                        "step_number": 1,
+                        "instruction": "Mix ingredients",
+                        "active_time_minutes": 5,
+                        "timers": None,
+                        "wait_time_minutes": None,
+                        "wait_type": None,
+                        "can_prep_ahead": False,
+                        "is_optional": False,
+                    }
+                ],
+            },
+            changed_fields=["name", "ingredients", "steps"],
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_version import RecipeVersion
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_db.set_where(RecipeIngredient, [])
+        mock_db.set_where(RecipeStep, [])
+        mock_db.set_where(RecipeNote, [])
+        mock_db.set_where(RecipeVersion, [])
+
+        # db.query calls in order:
+        # 1. func.max(RecipeVersion.version_number) in _create_restore_snapshot
+        # 2. RecipeIngredient join Ingredient for response (uses self.db.query)
+        ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
+        mock_db.db.query.side_effect = [
+            MockQuery([0]),                  # max version_number
+            MockQuery([(ri, ingredient)]),   # ingredient join for response
+        ]
+
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Old Name"
+
+
+class TestAddRecipeNoteMissingBranches:
+    """Tests for missing branches in add_recipe_note.py."""
+
+    def test_add_note_recipe_not_found(self, client, mock_db, mock_user):
+        """Test adding note to a nonexistent recipe (line 35-40)."""
+        response = client.post(
+            "/v1/recipes/nonexistent/notes",
+            json={"body": "should fail"},
+        )
+        assert response.status_code == 404
+
+    def test_add_note_empty_body_rejected(self, client, mock_db, mock_user):
+        """Test that empty body is rejected by validator."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+
+        response = client.post(
+            f"/v1/recipes/{recipe_id}/notes",
+            json={"body": "   "},
+        )
+        assert response.status_code == 422
+
+
+class TestDeleteRecipeNoteMissingBranches:
+    """Tests for missing branches in delete_recipe_note.py."""
+
+    def test_delete_note_wrong_recipe_id(self, client, mock_db, mock_user):
+        """Test deleting a note that belongs to a different recipe (line 47)."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        note_id = "test-note-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        note = MockRecipeNote(
+            id=note_id,
+            recipe_id="different-recipe-id",  # Different recipe
+            created_by=str(mock_user.id),
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeNote, note, id=note_id)
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
+        assert response.status_code == 404
+
+    def test_delete_note_already_archived(self, client, mock_db, mock_user):
+        """Test deleting a note that is already archived (line 47)."""
+        from datetime import datetime, UTC
+
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        note_id = "test-note-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        note = MockRecipeNote(
+            id=note_id,
+            recipe_id=recipe_id,
+            created_by=str(mock_user.id),
+            archived_at=datetime.now(UTC),  # Already archived
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeNote, note, id=note_id)
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
+        assert response.status_code == 404
+
+    def test_delete_note_as_book_owner(self, client, mock_db, mock_user):
+        """Test that book owner can delete another user's note (line 56)."""
+        other_user_id = str(uuid.uuid4())
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        note_id = "test-note-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",  # Owner
+        )
+        note = MockRecipeNote(
+            id=note_id,
+            recipe_id=recipe_id,
+            created_by=other_user_id,  # Someone else's note
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_note import RecipeNote
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeNote, note, id=note_id)
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["deleted"] is True
+
+    def test_delete_note_recipe_no_membership(self, client, mock_db, mock_user):
+        """Test deleting note without book membership (line 38-43)."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+
+        from utils.models.recipe import Recipe
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        # No membership set -> 404
+
+        response = client.delete(f"/v1/recipes/{recipe_id}/notes/some-note")
+        assert response.status_code == 404
+
+
+class TestParseQuantityDisplay:
+    """Tests for _parse_quantity_display helper in restore_recipe_version.py (lines 30-42)."""
+
+    def test_parse_integer(self):
+        """Test parsing integer string."""
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
+        from decimal import Decimal
+
+        result = _parse_quantity_display("2")
+        assert result == Decimal("2.0")
+
+    def test_parse_decimal(self):
+        """Test parsing decimal string."""
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
+        from decimal import Decimal
+
+        result = _parse_quantity_display("0.5")
+        assert result == Decimal("0.5")
+
+    def test_parse_fraction(self):
+        """Test parsing fraction string."""
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
+        from decimal import Decimal
+
+        result = _parse_quantity_display("1/2")
+        assert result == Decimal("0.5")
+
+    def test_parse_mixed_number(self):
+        """Test parsing mixed number string (line 33-37)."""
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
+        from decimal import Decimal
+
+        result = _parse_quantity_display("1 1/2")
+        assert result == Decimal("1.5")
+
+    def test_parse_mixed_number_with_quarter(self):
+        """Test parsing mixed number with quarter fraction."""
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
+        from decimal import Decimal
+
+        result = _parse_quantity_display("1 1/4")
+        assert result == Decimal("1.25")
+
+    def test_parse_invalid_falls_back(self):
+        """Test parsing unparsable string falls back to Decimal(s) (line 41-42)."""
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
+        from decimal import Decimal
+
+        result = _parse_quantity_display("3.5")
+        assert result == Decimal("3.5")
