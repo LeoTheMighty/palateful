@@ -100,6 +100,31 @@ class OllamaProvider(LLMProvider):
             raw_response=data,
         )
 
+    async def stream_chat(self, messages, temperature=0.7, max_tokens=None):
+        """Stream chat completion tokens from Ollama (non-blocking async)."""
+        ollama_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
+        payload = {
+            "model": self.model,
+            "messages": ollama_messages,
+            "stream": True,
+            "options": {"temperature": temperature},
+        }
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    token = data.get("message", {}).get("content", "")
+                    if token:
+                        yield token
+                    if data.get("done"):
+                        break
+
     def generate_embedding(self, text: str) -> list[float]:
         """Generate embeddings using Ollama's embedding endpoint."""
         with httpx.Client(timeout=60.0) as client:

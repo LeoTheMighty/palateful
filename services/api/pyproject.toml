@@ -21,6 +21,7 @@ openai = "^2.8"
 sse-starlette = "^2.0"
 python-multipart = "^0.0.20"
 utils = {path = "../../libraries/utils", develop = true}
+agent = {path = "../../libraries/agent", develop = true}
 psycopg2-binary = "^2.9.11"
 
 [tool.poetry.group.dev.dependencies]

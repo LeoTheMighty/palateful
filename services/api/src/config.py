@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
 
+    # AI Chat
+    ai_chat_monthly_token_cap: int = 500_000
+
     # AWS / Parser — default suffix matches environment so dev/prod stay separated
     aws_region: str = "us-east-1"
     parser_inputs_bucket: str = ""

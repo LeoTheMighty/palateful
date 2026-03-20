@@ -1,6 +1,7 @@
 """V1 API router aggregating all v1 routers."""
 
 from fastapi import APIRouter
+from routers.v1.chat_router import chat_router
 from routers.v1.cooking_log_router import cooking_log_router
 from routers.v1.friends_router import friends_router
 from routers.v1.health_router import health_router
@@ -19,6 +20,7 @@ from routers.v1.user_router import user_router
 
 v1_router = APIRouter(prefix="/v1")
 
+v1_router.include_router(chat_router)
 v1_router.include_router(cooking_log_router)
 v1_router.include_router(health_router)
 v1_router.include_router(user_router)

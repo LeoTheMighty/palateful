@@ -8,6 +8,8 @@ import '../../core/services/api_client.dart';
 import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
+import '../chat/chat_provider.dart';
+import '../chat/chat_service.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
 import '../recipes/add_recipe/batch_parser_service.dart';
 import 'widgets/batch_import_status_widget.dart';
@@ -225,6 +227,22 @@ class _HomeScreenState extends State<HomeScreen> {
       _sortOption = sort;
       _recipes = _applySorting(List.from(_recipes));
     });
+  }
+
+  Future<void> _openChat() async {
+    try {
+      final chatService = ChatService(_apiClient.dio);
+      final thread = await chatService.createThread();
+      if (mounted) {
+        context.push('/chat/${thread.id}');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to open chat: $e')),
+        );
+      }
+    }
   }
 
   void _showAddRecipeSheet() {
@@ -468,6 +486,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 12),
+
+          // AI Chat Button
+          CircleIconButton(
+            icon: Icons.chat_bubble_outline,
+            onPressed: _openChat,
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            tooltip: 'AI Assistant',
+          ),
+          const SizedBox(width: 8),
 
           // Batch Photo Import Button
           CircleIconButton(

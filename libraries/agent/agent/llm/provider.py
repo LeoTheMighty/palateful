@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from agent.config import settings
 
@@ -27,6 +27,7 @@ class Message:
     content: str
     name: str | None = None
     tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -73,6 +74,26 @@ class LLMProvider(ABC):
 
         Returns:
             List of floats representing the embedding vector
+        """
+        pass
+
+    @abstractmethod
+    async def stream_chat(
+        self,
+        messages: list[Message],
+        temperature: float = 0.7,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream chat completion tokens.
+
+        Args:
+            messages: List of conversation messages
+            temperature: Sampling temperature (0.0 to 1.0)
+            max_tokens: Maximum tokens to generate
+
+        Yields:
+            String tokens as they are generated
         """
         pass
 

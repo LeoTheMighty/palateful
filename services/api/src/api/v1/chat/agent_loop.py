@@ -1,0 +1,166 @@
+"""AI chat agent loop with SSE streaming and tool calling."""
+
+import json
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import func, select
+from utils.models.chat import Chat
+from utils.models.thread import Thread
+
+SYSTEM_PROMPT = """You are a helpful cooking assistant for Palateful.
+You help users manage their recipes, find ingredients, and plan meals.
+You have access to the user's recipe collection via tool calls.
+Always be conversational and helpful. When searching recipes, use the search_recipes tool."""
+
+
+def get_user_monthly_tokens(db, user_id) -> int:
+    """Sum all tokens used by the user in the current calendar month."""
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    result = db.execute(
+        select(
+            func.coalesce(func.sum(Chat.prompt_tokens + Chat.completion_tokens), 0)
+        )
+        .join(Thread, Chat.thread_id == Thread.id)
+        .where(Thread.user_id == user_id)
+        .where(Chat.created_at >= month_start)
+        .where(Chat.prompt_tokens.is_not(None))
+    )
+    return result.scalar() or 0
+
+
+async def run_chat_agent(
+    thread_id: str,
+    user_message: str,
+    user,
+    database,
+) -> AsyncGenerator[dict[str, Any]]:
+    """Async generator yielding SSE event dicts for the AI chat agent loop."""
+    from agent.llm.provider import Message, get_llm_provider
+    from agent.tools.recipes import SearchRecipesTool
+    from config import settings
+
+    # 1. Check per-user monthly token cap
+    monthly_tokens = get_user_monthly_tokens(database.db, user.id)
+    if monthly_tokens >= settings.ai_chat_monthly_token_cap:
+        yield {
+            "type": "error",
+            "code": "token_cap_exceeded",
+            "message": "Monthly AI usage limit reached.",
+        }
+        return
+
+    # 2. Persist user message
+    user_chat = Chat(thread_id=thread_id, role="user", content=user_message)
+    database.create(user_chat)
+    database.db.flush()
+
+    # 3. Load thread history → LLM messages
+    thread = database.db.get(Thread, thread_id)
+    messages = [Message(role="system", content=SYSTEM_PROMPT)]
+    for chat in thread.chats:
+        if chat.role == "tool":
+            messages.append(
+                Message(
+                    role="tool",
+                    content=chat.content or "",
+                    tool_call_id=chat.tool_call_id,
+                    name=chat.tool_name,
+                )
+            )
+        else:
+            messages.append(Message(role=chat.role, content=chat.content or ""))
+
+    # 4. Define available tools
+    tools_registry = [SearchRecipesTool()]
+    tool_defs = [t.to_langchain_tool() for t in tools_registry]
+
+    # 5. Tool resolution round (synchronous non-streaming)
+    provider = get_llm_provider()
+    response = provider.chat(messages, tools=tool_defs, temperature=0.7)
+
+    while response.finish_reason == "tool_calls" and response.tool_calls:
+        # Persist assistant message with tool_calls
+        assistant_chat = Chat(
+            thread_id=thread_id,
+            role="assistant",
+            content=response.content,
+            tool_calls=response.tool_calls,
+            model=response.model,
+            prompt_tokens=response.usage.get("prompt_tokens"),
+            completion_tokens=response.usage.get("completion_tokens"),
+        )
+        database.create(assistant_chat)
+        database.db.flush()
+
+        messages.append(Message(
+            role="assistant",
+            content=response.content or "",
+            tool_calls=response.tool_calls if response.tool_calls else None,
+        ))
+
+        for tc in response.tool_calls:
+            tool_name = tc["function"]["name"]
+            tool_args = json.loads(tc["function"]["arguments"])
+            yield {"type": "tool_call", "id": tc["id"], "name": tool_name, "args": tool_args}
+
+            tool = next((t for t in tools_registry if t.name == tool_name), None)
+            if tool:
+                result = tool.execute(db=database.db, user_id=str(user.id), **tool_args)
+                tool_content = result.to_message()
+            else:
+                tool_content = f"Error: unknown tool '{tool_name}'"
+
+            yield {
+                "type": "tool_result",
+                "id": tc["id"],
+                "name": tool_name,
+                "content": tool_content[:500],
+            }
+
+            tool_chat = Chat(
+                thread_id=thread_id,
+                role="tool",
+                content=tool_content,
+                tool_call_id=tc["id"],
+                tool_name=tool_name,
+            )
+            database.create(tool_chat)
+            database.db.flush()
+
+            messages.append(
+                Message(
+                    role="tool",
+                    content=tool_content,
+                    tool_call_id=tc["id"],
+                    name=tool_name,
+                )
+            )
+
+        response = provider.chat(messages, tools=tool_defs, temperature=0.7)
+
+    # 6. Stream final text response
+    full_content = ""
+    async for token in provider.stream_chat(messages, temperature=0.7):
+        full_content += token
+        yield {"type": "token", "content": token}
+
+    # 7. Persist final assistant message
+    final_chat = Chat(
+        thread_id=thread_id,
+        role="assistant",
+        content=full_content,
+        model=response.model,
+        prompt_tokens=response.usage.get("prompt_tokens"),
+        completion_tokens=response.usage.get("completion_tokens"),
+    )
+    database.create(final_chat)
+    database.db.commit()
+
+    yield {
+        "type": "done",
+        "message_id": str(final_chat.id),
+        "usage": response.usage,
+    }

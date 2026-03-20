@@ -1,6 +1,6 @@
 """Anthropic LLM provider implementation."""
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic, Anthropic
 
 from agent.config import settings
 from agent.llm.provider import LLMProvider, LLMResponse, Message, Tool
@@ -106,6 +106,35 @@ class AnthropicProvider(LLMProvider):
             finish_reason=response.stop_reason or "end_turn",
             raw_response=response,
         )
+
+    async def stream_chat(self, messages, temperature=0.7, max_tokens=None):
+        """Stream chat completion tokens from Anthropic (non-blocking async)."""
+        system_message = None
+        anthropic_messages = []
+        for msg in messages:
+            if msg.role == "system":
+                system_message = msg.content
+            elif msg.role == "tool":
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": msg.tool_call_id, "content": msg.content}],
+                })
+            else:
+                anthropic_messages.append({"role": msg.role, "content": msg.content})
+
+        kwargs = {
+            "model": self.model,
+            "messages": anthropic_messages,
+            "max_tokens": max_tokens or 4096,
+            "temperature": temperature,
+        }
+        if system_message:
+            kwargs["system"] = system_message
+
+        async_client = AsyncAnthropic(api_key=self.api_key)
+        async with async_client.messages.stream(**kwargs) as stream:
+            async for text in stream.text_stream:
+                yield text
 
     def generate_embedding(self, text: str) -> list[float]:
         """

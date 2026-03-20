@@ -75,6 +75,9 @@ class ApiClient {
 
   bool get hasToken => _authToken != null;
 
+  /// Expose the underlying Dio instance (e.g. for SSE streaming in ChatService).
+  Dio get dio => _dio;
+
   // Health check
   Future<Response> health() => _dio.get('/v1/health');
 
