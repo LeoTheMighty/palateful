@@ -1,6 +1,6 @@
 # Story 11.2: AI Recipe Search
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -18,44 +18,44 @@ so that I can search conversationally ("what's that chicken dish I made last mon
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Enhance `SearchRecipesTool` to include recipe book name (AC: 2, 5)
-  - [ ] Add `selectinload(Recipe.recipe_book)` to the base_query in `recipes.py`
-  - [ ] Add `"recipe_book_name": recipe.recipe_book.name` to each recipe_data dict
-  - [ ] Remove the separate `RecipeBook` import if not already present (use loaded relation)
+- [x] Task 1: Enhance `SearchRecipesTool` to include recipe book name (AC: 2, 5)
+  - [x] Add `selectinload(Recipe.recipe_book)` to the base_query in `recipes.py`
+  - [x] Add `"recipe_book_name": recipe.recipe_book.name` to each recipe_data dict
+  - [x] Remove the separate `RecipeBook` import if not already present (use loaded relation)
 
-- [ ] Task 2: Add structured recipe data to `tool_result` SSE event (AC: 2, 3)
-  - [ ] In `agent_loop.py`, after executing a `search_recipes` tool call, check if the result data contains `"recipes"` key
-  - [ ] When tool is `search_recipes`, add `"recipes"` list to the `tool_result` SSE event — each item: `{id, name, recipe_book_name, total_time, relevance_score}`
-  - [ ] Keep `content` field as the truncated string for LLM history (unchanged)
-  - [ ] SSE event shape: `{"type": "tool_result", "id": ..., "name": "search_recipes", "content": "...", "recipes": [...]}`
+- [x] Task 2: Add structured recipe data to `tool_result` SSE event (AC: 2, 3)
+  - [x] In `agent_loop.py`, after executing a `search_recipes` tool call, check if the result data contains `"recipes"` key
+  - [x] When tool is `search_recipes`, add `"recipes"` list to the `tool_result` SSE event — each item: `{id, name, recipe_book_name, total_time, relevance_score}`
+  - [x] Keep `content` field as the truncated string for LLM history (unchanged)
+  - [x] SSE event shape: `{"type": "tool_result", "id": ..., "name": "search_recipes", "content": "...", "recipes": [...]}`
 
-- [ ] Task 3: Update Flutter `ToolResultEvent` to carry structured recipes (AC: 3)
-  - [ ] Add `recipes: List<RecipeResult>?` to `ToolResultEvent` class in `chat_service.dart`
-  - [ ] Add `RecipeResult` data class: `{id, name, recipeBookName, totalTime, relevanceScore}` with `fromJson` factory
-  - [ ] Update SSE parsing in `sendMessage()` to extract `recipes` array from `tool_result` events
+- [x] Task 3: Update Flutter `ToolResultEvent` to carry structured recipes (AC: 3)
+  - [x] Add `recipes: List<RecipeResult>?` to `ToolResultEvent` class in `chat_service.dart`
+  - [x] Add `RecipeResult` data class: `{id, name, recipeBookName, totalTime, relevanceScore}` with `fromJson` factory
+  - [x] Update SSE parsing in `sendMessage()` to extract `recipes` array from `tool_result` events
 
-- [ ] Task 4: Update `ActiveChatMessage` and `ActiveChatNotifier` to carry recipe results (AC: 3)
-  - [ ] Add `recipeResults: List<RecipeResult>?` field to `ActiveChatMessage` in `chat_provider.dart`
-  - [ ] Add `recipeResults` to `ActiveChatMessage.copyWith()`
-  - [ ] In `sendMessage()` of `ActiveChatNotifier`, when a `ToolResultEvent` with recipes arrives, update the last assistant message's `recipeResults` field (set `isToolActivity: false` after tool result is received with recipes)
+- [x] Task 4: Update `ActiveChatMessage` and `ActiveChatNotifier` to carry recipe results (AC: 3)
+  - [x] Add `recipeResults: List<RecipeResult>?` field to `ActiveChatMessage` in `chat_provider.dart`
+  - [x] Add `recipeResults` to `ActiveChatMessage.copyWith()`
+  - [x] In `sendMessage()` of `ActiveChatNotifier`, when a `ToolResultEvent` with recipes arrives, update the last assistant message's `recipeResults` field (set `isToolActivity: false` after tool result is received with recipes)
 
-- [ ] Task 5: Render recipe result cards in `MessageBubble` (AC: 3)
-  - [ ] Create `app/lib/features/chat/widgets/recipe_result_card.dart` — a tappable card showing recipe name, book name, total time
-  - [ ] In `MessageBubble._buildContent()`: when `message.recipeResults != null && message.recipeResults!.isNotEmpty`, render a `Column` of `RecipeResultCard` widgets below the message text
-  - [ ] `RecipeResultCard` tap handler: `context.push('/recipes/${result.id}')`
-  - [ ] Use `go_router` for navigation (import `package:go_router/go_router.dart`)
+- [x] Task 5: Render recipe result cards in `MessageBubble` (AC: 3)
+  - [x] Create `app/lib/features/chat/widgets/recipe_result_card.dart` — a tappable card showing recipe name, book name, total time
+  - [x] In `MessageBubble._buildContent()`: when `message.recipeResults != null && message.recipeResults!.isNotEmpty`, render a `Column` of `RecipeResultCard` widgets below the message text
+  - [x] `RecipeResultCard` tap handler: `context.push('/recipes/${result.id}')`
+  - [x] Use `go_router` for navigation (import `package:go_router/go_router.dart`)
 
-- [ ] Task 6: Backend tests (AC: 1, 4)
-  - [ ] In `services/api/tests/test_chat.py`, add `TestSearchRecipesTool` class:
-    - [ ] Test that `recipe_book_name` is included in the search results
-    - [ ] Test that recipe search is scoped to user's recipe books (empty list for user with no books)
-  - [ ] Run `npx nx run api:test` — all 372+ tests pass
+- [x] Task 6: Backend tests (AC: 1, 4)
+  - [x] In `services/api/tests/test_chat.py`, add `TestSearchRecipesTool` class:
+    - [x] Test that `recipe_book_name` is included in the search results
+    - [x] Test that recipe search is scoped to user's recipe books (empty list for user with no books)
+  - [x] Run `npx nx run api:test` — 374 tests pass
 
-- [ ] Task 7: Flutter widget tests (AC: 3)
-  - [ ] In `app/test/features/chat/chat_screen_test.dart`, add test:
-    - [ ] `ActiveChatMessage` with `recipeResults` renders `RecipeResultCard` widgets
-    - [ ] Verify tapping a `RecipeResultCard` would navigate (use mock router or verify the card widget exists)
-  - [ ] Run `flutter test` — all 285+ tests pass
+- [x] Task 7: Flutter widget tests (AC: 3)
+  - [x] In `app/test/features/chat/chat_screen_test.dart`, add test:
+    - [x] `ActiveChatMessage` with `recipeResults` renders `RecipeResultCard` widgets
+    - [x] Verify tapping a `RecipeResultCard` would navigate (use mock router or verify the card widget exists)
+  - [x] Run `flutter test` — all tests pass
 
 ## Dev Notes
 
@@ -365,4 +365,17 @@ claude-sonnet-4-6
 
 ### Completion Notes List
 
+- `services/api/tests/test_chat.py` stubs out `anthropic`, `openai`, `sentence_transformers`, `langgraph`, and `langgraph.graph` via `sys.modules` before importing the agent library, since those packages are not installed in the api test venv. This pattern must be used for any future tests that import from `libraries/agent/`.
+- `ToolResultEvent` handler in `chat_provider.dart` uses `break` after the `if` block — without it Dart's `switch` would fall through.
+- `RecipeResultCard` uses `go_router` `context.push()` for navigation; the `/recipes/:id` route is already registered in `app_router.dart`.
+
 ### File List
+
+- `libraries/agent/agent/tools/recipes.py`
+- `services/api/src/api/v1/chat/agent_loop.py`
+- `services/api/tests/test_chat.py`
+- `app/lib/features/chat/chat_service.dart`
+- `app/lib/features/chat/chat_provider.dart`
+- `app/lib/features/chat/widgets/recipe_result_card.dart`
+- `app/lib/features/chat/widgets/message_bubble.dart`
+- `app/test/features/chat/chat_screen_test.dart`

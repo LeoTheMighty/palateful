@@ -14,9 +14,34 @@ class ToolCallEvent extends ChatEvent {
   ToolCallEvent(this.name);
 }
 
+class RecipeResult {
+  final String id;
+  final String name;
+  final String? recipeBookName;
+  final int? totalTime;
+  final double? relevanceScore;
+
+  RecipeResult({
+    required this.id,
+    required this.name,
+    this.recipeBookName,
+    this.totalTime,
+    this.relevanceScore,
+  });
+
+  factory RecipeResult.fromJson(Map<String, dynamic> json) => RecipeResult(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        recipeBookName: json['recipe_book_name'] as String?,
+        totalTime: json['total_time'] as int?,
+        relevanceScore: (json['relevance_score'] as num?)?.toDouble(),
+      );
+}
+
 class ToolResultEvent extends ChatEvent {
   final String name;
-  ToolResultEvent(this.name);
+  final List<RecipeResult>? recipes;
+  ToolResultEvent(this.name, {this.recipes});
 }
 
 class DoneEvent extends ChatEvent {
@@ -146,7 +171,11 @@ class ChatService {
           case 'tool_call':
             yield ToolCallEvent(data['name'] as String);
           case 'tool_result':
-            yield ToolResultEvent(data['name'] as String);
+            final recipesRaw = data['recipes'] as List<dynamic>?;
+            final recipes = recipesRaw
+                ?.map((e) => RecipeResult.fromJson(e as Map<String, dynamic>))
+                .toList();
+            yield ToolResultEvent(data['name'] as String, recipes: recipes);
           case 'done':
             yield DoneEvent(data['message_id'] as String);
           case 'error':

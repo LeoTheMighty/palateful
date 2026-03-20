@@ -1,8 +1,29 @@
 """Tests for AI chat endpoints."""
 
+import os
+import sys
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+
+# Add agent library to path so SearchRecipesTool can be imported.
+# The agent library transitively imports 'anthropic' and 'openai' which are not
+# installed in the api test venv — stub them out before importing.
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "libraries", "agent"),
+)
+_stub_mods = (
+    "anthropic",
+    "openai",
+    "sentence_transformers",
+    "langgraph",
+    "langgraph.graph",
+    "langchain_core",
+    "langchain_core.tools",
+)
+for _mod in _stub_mods:
+    sys.modules.setdefault(_mod, MagicMock())
 
 from conftest import MockModel, MockUser
 
@@ -197,3 +218,75 @@ class TestTokenCap:
         db.execute.return_value = MagicMock(scalar=lambda: 1500)
         result = get_user_monthly_tokens(db, uuid.uuid4())
         assert result == 1500
+
+
+# ---------------------------------------------------------------------------
+# SearchRecipesTool
+# ---------------------------------------------------------------------------
+
+
+class TestSearchRecipesTool:
+    """Tests for SearchRecipesTool."""
+
+    def test_search_recipes_includes_recipe_book_name(self):
+        """Test that recipe_book_name is included in search results."""
+        from unittest.mock import MagicMock, patch
+
+        from agent.tools.recipes import SearchRecipesTool
+
+        tool = SearchRecipesTool()
+
+        # Build mock recipe with recipe_book relationship
+        mock_book = MagicMock()
+        mock_book.name = "Family Favourites"
+
+        mock_recipe = MagicMock()
+        mock_recipe.id = uuid.uuid4()
+        mock_recipe.name = "Chicken Pasta"
+        mock_recipe.recipe_book = mock_book
+        mock_recipe.description = "A delicious pasta dish"
+        mock_recipe.prep_time = 10
+        mock_recipe.cook_time = 20
+        mock_recipe.servings = 4
+        mock_recipe.image_url = None
+        mock_recipe.ingredients = []
+
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        # Mock RecipeBookUser query returning one book_id
+        book_id = uuid.uuid4()
+        mock_db.execute.side_effect = [
+            MagicMock(fetchall=lambda: [(book_id,)]),  # book_ids query
+            MagicMock(fetchall=lambda: [(mock_recipe, 0.1)]),  # recipe search
+        ]
+
+        with patch("sentence_transformers.SentenceTransformer") as mock_st:
+            mock_st.return_value.encode.return_value = MagicMock(tolist=lambda: [0.1] * 384)
+
+            result = tool.execute(db=mock_db, user_id=user_id, query="pasta")
+
+        assert result.success is True
+        assert len(result.data["recipes"]) == 1
+        recipe = result.data["recipes"][0]
+        assert recipe["recipe_book_name"] == "Family Favourites"
+        assert recipe["name"] == "Chicken Pasta"
+
+    def test_search_recipes_empty_for_user_with_no_books(self):
+        """Test that search returns empty list when user has no recipe books."""
+        from agent.tools.recipes import SearchRecipesTool
+
+        tool = SearchRecipesTool()
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        mock_db.execute.return_value = MagicMock(fetchall=lambda: [])
+
+        with patch("sentence_transformers.SentenceTransformer") as mock_st:
+            mock_st.return_value.encode.return_value = MagicMock(tolist=lambda: [0.1] * 384)
+
+            result = tool.execute(db=mock_db, user_id=user_id, query="pasta")
+
+        assert result.success is True
+        assert result.data["recipes"] == []
+        assert "no recipe books" in result.data["message"].lower()

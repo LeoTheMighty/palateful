@@ -134,7 +134,7 @@ development_status:
   # Epic 11: AI Assistant
   epic-11: in-progress
   11-1-ai-chat-with-tool-calling: done
-  11-2-ai-recipe-search: ready-for-dev
+  11-2-ai-recipe-search: done
   11-3-ai-adds-notes-to-recipes: backlog
   11-4-ai-recipe-suggestions: backlog
   11-5-ai-in-cooking-mode-questions-and-answers: backlog

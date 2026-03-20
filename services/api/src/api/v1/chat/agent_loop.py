@@ -113,12 +113,25 @@ async def run_chat_agent(
             else:
                 tool_content = f"Error: unknown tool '{tool_name}'"
 
-            yield {
+            tool_result_event: dict[str, Any] = {
                 "type": "tool_result",
                 "id": tc["id"],
                 "name": tool_name,
                 "content": tool_content[:500],
             }
+            if tool and tool_name == "search_recipes" and result.success and isinstance(result.data, dict):
+                raw_recipes = result.data.get("recipes", [])
+                tool_result_event["recipes"] = [
+                    {
+                        "id": r["id"],
+                        "name": r["name"],
+                        "recipe_book_name": r.get("recipe_book_name"),
+                        "total_time": r.get("total_time"),
+                        "relevance_score": r.get("relevance_score"),
+                    }
+                    for r in raw_recipes
+                ]
+            yield tool_result_event
 
             tool_chat = Chat(
                 thread_id=thread_id,

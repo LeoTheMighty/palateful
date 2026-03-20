@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../chat_provider.dart';
+import 'recipe_result_card.dart';
 
 class MessageBubble extends StatelessWidget {
   final ActiveChatMessage message;
@@ -65,6 +66,27 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
+    final isUser = message.role == 'user';
+
+    // Show recipe cards immediately when available — check before isStreaming guard
+    // so cards appear as soon as ToolResultEvent arrives (even while streaming).
+    if (!isUser &&
+        message.recipeResults != null &&
+        message.recipeResults!.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (message.content.isNotEmpty)
+            Text(
+              message.content,
+              style: TextStyle(color: colorScheme.onSurface),
+            ),
+          ...message.recipeResults!.map((r) => RecipeResultCard(recipe: r)),
+        ],
+      );
+    }
+
     if (message.isStreaming && message.content.isEmpty) {
       // Typing indicator
       return Row(
@@ -90,7 +112,6 @@ class MessageBubble extends StatelessWidget {
       );
     }
 
-    final isUser = message.role == 'user';
     return Text(
       message.content,
       style: TextStyle(

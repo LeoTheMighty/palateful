@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/features/chat/chat_provider.dart';
 import 'package:palateful/features/chat/chat_screen.dart';
+import 'package:palateful/features/chat/chat_service.dart';
 import 'package:palateful/features/chat/widgets/message_bubble.dart';
+import 'package:palateful/features/chat/widgets/recipe_result_card.dart';
 
 // ---------------------------------------------------------------------------
 // Fake notifier — extends ActiveChatNotifier, overrides build() and actions
@@ -126,6 +128,64 @@ void main() {
 
       expect(find.text('Searching recipes…'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsWidgets);
+    });
+
+    testWidgets('message with recipeResults renders RecipeResultCard widgets',
+        (tester) async {
+      final recipes = [
+        RecipeResult(
+          id: 'recipe-1',
+          name: 'Chicken Pasta',
+          recipeBookName: 'Family Favourites',
+          totalTime: 30,
+        ),
+        RecipeResult(
+          id: 'recipe-2',
+          name: 'Caesar Salad',
+          recipeBookName: 'Quick Meals',
+          totalTime: 15,
+        ),
+      ];
+      final messages = [
+        ActiveChatMessage(
+          id: '1',
+          role: 'assistant',
+          content: 'Here are some recipes I found:',
+          recipeResults: recipes,
+        ),
+      ];
+      await tester.pumpWidget(_buildTestApp(messages: messages));
+      await tester.pump();
+
+      expect(find.text('Here are some recipes I found:'), findsOneWidget);
+      expect(find.byType(RecipeResultCard), findsNWidgets(2));
+      expect(find.text('Chicken Pasta'), findsOneWidget);
+      expect(find.text('Caesar Salad'), findsOneWidget);
+      expect(find.text('Family Favourites'), findsOneWidget);
+      expect(find.text('30 min'), findsOneWidget);
+    });
+
+    testWidgets('RecipeResultCard widget exists and shows recipe info',
+        (tester) async {
+      final recipe = RecipeResult(
+        id: 'recipe-abc',
+        name: 'Test Recipe',
+        recipeBookName: 'Test Book',
+        totalTime: 45,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RecipeResultCard(recipe: recipe),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Test Recipe'), findsOneWidget);
+      expect(find.text('Test Book'), findsOneWidget);
+      expect(find.text('45 min'), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
     });
   });
 }

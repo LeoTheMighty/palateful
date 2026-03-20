@@ -59,6 +59,7 @@ class ActiveChatMessage {
   final String content;
   final bool isStreaming;
   final bool isToolActivity;
+  final List<RecipeResult>? recipeResults;
 
   const ActiveChatMessage({
     required this.id,
@@ -66,12 +67,14 @@ class ActiveChatMessage {
     required this.content,
     this.isStreaming = false,
     this.isToolActivity = false,
+    this.recipeResults,
   });
 
   ActiveChatMessage copyWith({
     String? content,
     bool? isStreaming,
     bool? isToolActivity,
+    List<RecipeResult>? recipeResults,
   }) =>
       ActiveChatMessage(
         id: id,
@@ -79,6 +82,7 @@ class ActiveChatMessage {
         content: content ?? this.content,
         isStreaming: isStreaming ?? this.isStreaming,
         isToolActivity: isToolActivity ?? this.isToolActivity,
+        recipeResults: recipeResults ?? this.recipeResults,
       );
 }
 
@@ -166,8 +170,20 @@ class ActiveChatNotifier
             }).toList();
             state = AsyncData((tid, updated));
 
-          case ToolResultEvent():
-            // Tool result received — keep tool activity indicator until tokens stream
+          case ToolResultEvent(:final recipes):
+            if (recipes != null && recipes.isNotEmpty) {
+              final updated = msgs.map((m) {
+                if (m.id == assistantMsg.id) {
+                  return m.copyWith(
+                    content: '',  // clear "Searching recipes…" so it doesn't bleed into LLM response
+                    recipeResults: recipes,
+                    isToolActivity: false,
+                  );
+                }
+                return m;
+              }).toList();
+              state = AsyncData((tid, updated));
+            }
             break;
 
           case DoneEvent(:final messageId):
@@ -178,6 +194,7 @@ class ActiveChatNotifier
                   role: 'assistant',
                   content: m.content,
                   isStreaming: false,
+                  recipeResults: m.recipeResults,  // preserve recipe cards after streaming
                 );
               }
               return m;

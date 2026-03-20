@@ -91,7 +91,10 @@ class SearchRecipesTool(BaseTool):
                     Recipe,
                     Recipe.embedding.cosine_distance(query_embedding).label("distance"),
                 )
-                .options(selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient))
+                .options(
+                    selectinload(Recipe.ingredients).selectinload(RecipeIngredient.ingredient),
+                    selectinload(Recipe.recipe_book),
+                )
                 .where(Recipe.recipe_book_id.in_(book_ids))
                 .where(Recipe.archived_at.is_(None))
                 .where(Recipe.embedding.is_not(None))
@@ -118,6 +121,7 @@ class SearchRecipesTool(BaseTool):
                 recipe_data = {
                     "id": str(recipe.id),
                     "name": recipe.name,
+                    "recipe_book_name": recipe.recipe_book.name if recipe.recipe_book else None,
                     "description": recipe.description,
                     "prep_time": recipe.prep_time,
                     "cook_time": recipe.cook_time,
