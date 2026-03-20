@@ -140,7 +140,11 @@ class _CookModeScreenState extends State<CookModeScreen>
 
   void _startTimerTick() {
     _timerTick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      // Only rebuild when timer display values need updating
+      if (_activeTimers.isNotEmpty || _cookingStopwatch.isRunning) {
+        setState(() {});
+      }
     });
   }
 

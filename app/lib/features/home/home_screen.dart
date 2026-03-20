@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -558,10 +559,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           height: 100,
                           width: 120,
                           child: imageUrl != null
-                              ? Image.network(
-                                  imageUrl,
+                              ? CachedNetworkImage(
+                                  imageUrl: imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
+                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                  errorWidget: (context, url, error) => Container(
                                     color: colorScheme.surfaceContainerHighest,
                                     child: Icon(Icons.restaurant,
                                         color: colorScheme.onSurfaceVariant),
@@ -612,10 +614,11 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Background image or placeholder
             imageUrl != null
-                ? Image.network(
-                    imageUrl,
+                ? CachedNetworkImage(
+                    imageUrl: imageUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+                    placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    errorWidget: (context, url, error) => Container(
                       color: colorScheme.surfaceContainerHighest,
                       child: Icon(Icons.restaurant,
                           size: 64, color: colorScheme.onSurfaceVariant),
@@ -734,10 +737,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           height: 72,
                           width: 80,
                           child: imageUrl != null
-                              ? Image.network(
-                                  imageUrl,
+                              ? CachedNetworkImage(
+                                  imageUrl: imageUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
+                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                  errorWidget: (context, url, error) => Container(
                                     color: colorScheme.surfaceContainerHighest,
                                     child: Icon(Icons.restaurant,
                                         size: 28,

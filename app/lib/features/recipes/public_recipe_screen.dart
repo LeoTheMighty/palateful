@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -101,11 +102,13 @@ class _PublicRecipeScreenState extends State<PublicRecipeScreen> {
       slivers: [
         if (_recipe!['image_url'] != null)
           SliverToBoxAdapter(
-            child: Image.network(
-              _recipe!['image_url'] as String,
+            child: CachedNetworkImage(
+              imageUrl: _recipe!['image_url'] as String,
               height: 200,
               width: double.infinity,
               fit: BoxFit.cover,
+              placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
             ),
           ),
         SliverPadding(

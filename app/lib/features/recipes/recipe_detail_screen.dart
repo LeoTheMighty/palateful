@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -581,9 +582,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                       ),
                       flexibleSpace: _recipe?['image_url'] != null
                           ? FlexibleSpaceBar(
-                              background: Image.network(
-                                _recipe!['image_url'],
+                              background: CachedNetworkImage(
+                                imageUrl: _recipe!['image_url'],
                                 fit: BoxFit.cover,
+                                placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
                               ),
                             )
                           : null,

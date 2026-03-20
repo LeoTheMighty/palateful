@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
@@ -366,12 +367,11 @@ class _SearchScreenState extends State<SearchScreen> {
                 SizedBox(
                   width: 100,
                   child: recipe['image_url'] != null
-                      ? Image.network(
-                          recipe['image_url'] as String,
+                      ? CachedNetworkImage(
+                          imageUrl: recipe['image_url'] as String,
                           fit: BoxFit.cover,
-                          loadingBuilder: (context, child, progress) =>
-                              progress == null ? child : _buildRecipeIcon(size: 100),
-                          errorBuilder: (context, error, stack) => _buildRecipeIcon(size: 100),
+                          placeholder: (context, url) => _buildRecipeIcon(size: 100),
+                          errorWidget: (context, url, error) => _buildRecipeIcon(size: 100),
                         )
                       : _buildRecipeIcon(size: 100),
                 ),
