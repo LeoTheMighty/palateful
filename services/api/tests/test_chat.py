@@ -290,3 +290,143 @@ class TestSearchRecipesTool:
         assert result.success is True
         assert result.data["recipes"] == []
         assert "no recipe books" in result.data["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# AddNoteToRecipeTool
+# ---------------------------------------------------------------------------
+
+
+class TestAddNoteToRecipeTool:
+    """Tests for AddNoteToRecipeTool."""
+
+    def _make_recipe(self, book_id=None):
+        recipe = MagicMock()
+        recipe.id = uuid.uuid4()
+        recipe.name = "Chicken Pasta"
+        recipe.recipe_book_id = book_id or uuid.uuid4()
+        return recipe
+
+    def _make_membership(self):
+        return MagicMock()
+
+    def test_add_note_creates_note_with_recipe_id(self):
+        """Note is created on the recipe identified by recipe_id."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        recipe = self._make_recipe()
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        # db.get returns the recipe; execute().scalar_one_or_none returns membership
+        mock_db.get.return_value = recipe
+        mock_db.execute.return_value = MagicMock(scalar_one_or_none=lambda: self._make_membership())
+
+        # note.id is set after flush — simulate via MagicMock auto-attribute
+        result = tool.execute(db=mock_db, user_id=user_id, note_body="Try more garlic", recipe_id=str(recipe.id))
+
+        assert result.success is True
+        assert result.data["recipe_name"] == "Chicken Pasta"
+        assert result.data["note_body"] == "Try more garlic"
+        assert result.data["recipe_id"] == str(recipe.id)
+        mock_db.add.assert_called_once()
+        mock_db.flush.assert_called_once()
+
+    def test_add_note_by_recipe_name_uses_search(self):
+        """When recipe_name is provided (no recipe_id), semantic search resolves the recipe."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        book_id = uuid.uuid4()
+        recipe = self._make_recipe(book_id=book_id)
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        # First execute call returns book_ids, second returns recipe row, third returns membership
+        mock_db.execute.side_effect = [
+            MagicMock(fetchall=lambda: [(book_id,)]),           # book_ids query
+            MagicMock(fetchone=lambda: (recipe, 0.1)),          # recipe search
+            MagicMock(scalar_one_or_none=lambda: self._make_membership()),  # membership check
+        ]
+
+        with patch("sentence_transformers.SentenceTransformer") as mock_st:
+            mock_st.return_value.encode.return_value = MagicMock(tolist=lambda: [0.1] * 384)
+            result = tool.execute(db=mock_db, user_id=user_id, note_body="Less salt", recipe_name="chicken pasta")
+
+        assert result.success is True
+        assert result.data["recipe_name"] == "Chicken Pasta"
+        assert result.data["note_body"] == "Less salt"
+
+    def test_add_note_returns_error_for_inaccessible_recipe(self):
+        """Returns failure when user is not a member of the recipe's book."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        recipe = self._make_recipe()
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        mock_db.get.return_value = recipe
+        mock_db.execute.return_value = MagicMock(scalar_one_or_none=lambda: None)  # no membership
+
+        result = tool.execute(db=mock_db, user_id=user_id, note_body="Test note", recipe_id=str(recipe.id))
+
+        assert result.success is False
+        assert "access denied" in result.error.lower() or "not found" in result.error.lower()
+        mock_db.add.assert_not_called()
+
+    def test_add_note_returns_error_for_missing_recipe(self):
+        """Returns failure when recipe_id does not match any recipe."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        mock_db.get.return_value = None  # recipe not found
+
+        result = tool.execute(db=mock_db, user_id=user_id, note_body="Test note", recipe_id=str(uuid.uuid4()))
+
+        assert result.success is False
+        assert "not found" in result.error.lower()
+        mock_db.add.assert_not_called()
+
+    def test_add_note_returns_error_for_empty_body(self):
+        """Returns failure when note_body is blank."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        result = tool.execute(db=mock_db, user_id=user_id, note_body="   ", recipe_id=str(uuid.uuid4()))
+
+        assert result.success is False
+        assert "empty" in result.error.lower()
+        mock_db.add.assert_not_called()
+
+    def test_add_note_returns_error_when_no_recipe_identifier(self):
+        """Returns failure when neither recipe_id nor recipe_name is provided."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        mock_db = MagicMock()
+
+        result = tool.execute(db=mock_db, user_id=str(uuid.uuid4()), note_body="Some note")
+
+        assert result.success is False
+        assert "required" in result.error.lower()
+
+    def test_add_note_returns_error_for_whitespace_recipe_name(self):
+        """Returns failure when recipe_name is whitespace only."""
+        from agent.tools.recipes import AddNoteToRecipeTool
+
+        tool = AddNoteToRecipeTool()
+        mock_db = MagicMock()
+
+        result = tool.execute(db=mock_db, user_id=str(uuid.uuid4()), note_body="Some note", recipe_name="   ")
+
+        assert result.success is False
+        assert "required" in result.error.lower()
+        mock_db.add.assert_not_called()

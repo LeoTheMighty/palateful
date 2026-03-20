@@ -185,6 +185,131 @@ class SearchRecipesTool(BaseTool):
             return ToolResult(success=False, error=str(e))
 
 
+class AddNoteToRecipeTool(BaseTool):
+    """Tool to add a note to a recipe."""
+
+    @property
+    def name(self) -> str:
+        return "add_note_to_recipe"
+
+    @property
+    def description(self) -> str:
+        return """Add a note to a recipe in the user's collection. Use this when the user
+        wants to record a tip, variation, or observation about a recipe.
+        You can identify the recipe by its UUID or by name (natural language)."""
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "note_body": {
+                    "type": "string",
+                    "description": "Content of the note to add",
+                },
+                "recipe_id": {
+                    "type": "string",
+                    "description": "UUID of the recipe to add the note to",
+                },
+                "recipe_name": {
+                    "type": "string",
+                    "description": "Name of the recipe (used for search if recipe_id not provided)",
+                },
+            },
+            "required": ["note_body"],
+        }
+
+    def execute(
+        self,
+        db: Session,
+        user_id: str,
+        note_body: str,
+        recipe_id: str | None = None,
+        recipe_name: str | None = None,
+    ) -> ToolResult:
+        """Add a note to a recipe."""
+        from utils.models import Recipe, RecipeBookUser
+        from utils.models.recipe_note import RecipeNote
+
+        try:
+            if not note_body.strip():
+                return ToolResult(success=False, error="Note body cannot be empty")
+
+            if not recipe_id and not (recipe_name and recipe_name.strip()):
+                return ToolResult(
+                    success=False, error="Either recipe_id or recipe_name is required"
+                )
+
+            recipe = None
+
+            if recipe_id:
+                recipe = db.get(Recipe, recipe_id)
+            else:
+                # Semantic search for best match by name
+                from sentence_transformers import SentenceTransformer
+
+                model = SentenceTransformer(settings.embedding_model)
+                query_embedding = model.encode(recipe_name.strip()).tolist()
+
+                book_query = select(RecipeBookUser.recipe_book_id).where(
+                    RecipeBookUser.user_id == user_id
+                )
+                book_ids = [row[0] for row in db.execute(book_query).fetchall()]
+
+                if not book_ids:
+                    return ToolResult(success=False, error="User has no recipe books")
+
+                row = db.execute(
+                    select(
+                        Recipe,
+                        Recipe.embedding.cosine_distance(query_embedding).label("distance"),
+                    )
+                    .where(Recipe.recipe_book_id.in_(book_ids))
+                    .where(Recipe.archived_at.is_(None))
+                    .where(Recipe.embedding.is_not(None))
+                    .order_by("distance")
+                    .limit(1)
+                ).fetchone()
+
+                if row:
+                    recipe = row[0]
+
+            if not recipe:
+                return ToolResult(success=False, error="Recipe not found")
+
+            # Verify user has access (any membership role may add notes)
+            membership = db.execute(
+                select(RecipeBookUser).where(
+                    RecipeBookUser.user_id == user_id,
+                    RecipeBookUser.recipe_book_id == recipe.recipe_book_id,
+                )
+            ).scalar_one_or_none()
+
+            if not membership:
+                return ToolResult(success=False, error="Recipe not found or access denied")
+
+            note = RecipeNote(
+                recipe_id=recipe.id,
+                body=note_body.strip(),
+                created_by=user_id,
+            )
+            db.add(note)
+            db.flush()
+
+            return ToolResult(
+                success=True,
+                data={
+                    "note_id": str(note.id),
+                    "recipe_id": str(recipe.id),
+                    "recipe_name": recipe.name,
+                    "note_body": note_body.strip(),
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e))
+
+
 class SuggestRecipeTool(BaseTool):
     """Tool to generate AI recipe suggestions."""
 

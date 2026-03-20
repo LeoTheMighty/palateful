@@ -3,7 +3,7 @@
 from agent.tools.base import BaseTool, ToolResult
 from agent.tools.pantry import GetPantryTool
 from agent.tools.preferences import GetUserPreferencesTool
-from agent.tools.recipes import SearchRecipesTool, SuggestRecipeTool
+from agent.tools.recipes import AddNoteToRecipeTool, SearchRecipesTool, SuggestRecipeTool
 
 __all__ = [
     "BaseTool",
@@ -11,6 +11,7 @@ __all__ = [
     "GetPantryTool",
     "SearchRecipesTool",
     "SuggestRecipeTool",
+    "AddNoteToRecipeTool",
     "GetUserPreferencesTool",
 ]
 
@@ -19,6 +20,7 @@ TOOLS = {
     "get_pantry": GetPantryTool,
     "search_recipes": SearchRecipesTool,
     "suggest_recipe": SuggestRecipeTool,
+    "add_note_to_recipe": AddNoteToRecipeTool,
     "get_user_preferences": GetUserPreferencesTool,
 }
 

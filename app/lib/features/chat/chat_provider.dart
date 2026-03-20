@@ -158,11 +158,16 @@ class ActiveChatNotifier
             }).toList();
             state = AsyncData((tid, updated));
 
-          case ToolCallEvent():
+          case ToolCallEvent(:final name):
+            final label = switch (name) {
+              'search_recipes' => 'Searching recipes…',
+              'add_note_to_recipe' => 'Adding note…',
+              _ => 'Working…',
+            };
             final updated = msgs.map((m) {
               if (m.id == assistantMsg.id) {
                 return m.copyWith(
-                  content: 'Searching recipes…',
+                  content: label,
                   isToolActivity: true,
                 );
               }
@@ -171,20 +176,17 @@ class ActiveChatNotifier
             state = AsyncData((tid, updated));
 
           case ToolResultEvent(:final recipes):
-            if (recipes != null && recipes.isNotEmpty) {
-              final updated = msgs.map((m) {
-                if (m.id == assistantMsg.id) {
-                  return m.copyWith(
-                    content: '',  // clear "Searching recipes…" so it doesn't bleed into LLM response
-                    recipeResults: recipes,
-                    isToolActivity: false,
-                  );
-                }
-                return m;
-              }).toList();
-              state = AsyncData((tid, updated));
-            }
-            break;
+            final updated = msgs.map((m) {
+              if (m.id == assistantMsg.id) {
+                return m.copyWith(
+                  content: '',  // clear tool activity label so it doesn't bleed into LLM response
+                  isToolActivity: false,
+                  recipeResults: (recipes != null && recipes.isNotEmpty) ? recipes : null,
+                );
+              }
+              return m;
+            }).toList();
+            state = AsyncData((tid, updated));
 
           case DoneEvent(:final messageId):
             final updated = msgs.map((m) {

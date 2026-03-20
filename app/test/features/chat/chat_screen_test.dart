@@ -130,6 +130,40 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsWidgets);
     });
 
+    testWidgets('tool activity shows "Adding note…" label for add_note_to_recipe',
+        (tester) async {
+      final messages = [
+        ActiveChatMessage(
+          id: '1',
+          role: 'assistant',
+          content: 'Adding note…',
+          isToolActivity: true,
+        ),
+      ];
+      await tester.pumpWidget(_buildTestApp(messages: messages));
+      await tester.pump();
+
+      expect(find.text('Adding note…'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+    });
+
+    testWidgets('tool activity shows "Working…" label for unknown tools',
+        (tester) async {
+      final messages = [
+        ActiveChatMessage(
+          id: '1',
+          role: 'assistant',
+          content: 'Working…',
+          isToolActivity: true,
+        ),
+      ];
+      await tester.pumpWidget(_buildTestApp(messages: messages));
+      await tester.pump();
+
+      expect(find.text('Working…'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+    });
+
     testWidgets('message with recipeResults renders RecipeResultCard widgets',
         (tester) async {
       final recipes = [
