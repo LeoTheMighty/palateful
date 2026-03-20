@@ -1,5 +1,6 @@
 """Recipe tools for searching and suggesting recipes."""
 
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import select
@@ -7,6 +8,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from agent.config import settings
 from agent.tools.base import BaseTool, ToolResult
+
+
+@lru_cache(maxsize=1)
+def _get_embedding_model():
+    """Cache the SentenceTransformer model — loaded once, reused across requests."""
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(settings.embedding_model)
 
 
 class SearchRecipesTool(BaseTool):
@@ -63,9 +72,7 @@ class SearchRecipesTool(BaseTool):
 
         try:
             # Generate embedding for the query
-            from sentence_transformers import SentenceTransformer
-
-            model = SentenceTransformer(settings.embedding_model)
+            model = _get_embedding_model()
             query_embedding = model.encode(query).tolist()
 
             # Get user's recipe books
@@ -246,9 +253,7 @@ class AddNoteToRecipeTool(BaseTool):
                 recipe = db.get(Recipe, recipe_id)
             else:
                 # Semantic search for best match by name
-                from sentence_transformers import SentenceTransformer
-
-                model = SentenceTransformer(settings.embedding_model)
+                model = _get_embedding_model()
                 query_embedding = model.encode(recipe_name.strip()).tolist()
 
                 book_query = select(RecipeBookUser.recipe_book_id).where(

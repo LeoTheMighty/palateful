@@ -76,9 +76,16 @@ class PopulateFromCalendar(Endpoint):
         start_datetime = datetime.combine(start_date, datetime.min.time())
         end_datetime = datetime.combine(end_date, datetime.max.time())
 
-        # Query meal events in range
+        from sqlalchemy.orm import selectinload
+        from utils.models.recipe import Recipe
+
+        # Query meal events in range — eager load recipe + ingredients to avoid N+1
         query = (
             self.db.query(MealEvent)
+            .options(
+                selectinload(MealEvent.recipe)
+                .selectinload(Recipe.ingredients)
+            )
             .filter(MealEvent.owner_id == user.id)
             .filter(MealEvent.archived_at.is_(None))
             .filter(MealEvent.scheduled_at >= start_datetime)
