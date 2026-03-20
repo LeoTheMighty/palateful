@@ -1,0 +1,134 @@
+# Mobile App Store Build Pipeline — Palateful
+#
+# Triggers:
+#   - Manual (workflow_dispatch)
+#   - Push of version tags matching v*.*.* (e.g., v1.0.0)
+#
+# Required GitHub Secrets:
+#
+#   iOS:
+#     MATCH_PASSWORD                       — Fastlane Match encryption password
+#     MATCH_GIT_URL                        — Private git repo URL storing encrypted certs/profiles
+#     APP_STORE_CONNECT_API_KEY_KEY_ID     — App Store Connect API key ID
+#     APP_STORE_CONNECT_API_KEY_ISSUER_ID  — App Store Connect issuer ID
+#     APP_STORE_CONNECT_API_KEY_KEY        — App Store Connect private key (.p8 file content)
+#
+#   Android:
+#     ANDROID_KEYSTORE_BASE64   — Base64-encoded release keystore .jks
+#                                 Generate: base64 -i release.jks | tr -d '\n' | pbcopy
+#     ANDROID_STORE_PASSWORD    — Keystore store password
+#     ANDROID_KEY_ALIAS         — Key alias within the keystore
+#     ANDROID_KEY_PASSWORD      — Key password
+#     PLAY_STORE_JSON_KEY       — Google Play service account JSON key (file content)
+
+name: Mobile App Store Builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  ios-build:
+    name: iOS — Build & Upload to TestFlight
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0-0.3.pre'
+          channel: master
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Install Flutter dependencies
+        working-directory: app
+        run: |
+          touch .env
+          flutter pub get
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: app/ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('app/ios/Podfile.lock') }}
+          restore-keys: |
+            pods-${{ runner.os }}-
+
+      - name: Install CocoaPods dependencies
+        working-directory: app/ios
+        run: pod install
+
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: app
+
+      - name: Build and upload to TestFlight
+        working-directory: app
+        run: bundle exec fastlane ios beta
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+
+  android-build:
+    name: Android — Build & Upload to Play Store Internal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0-0.3.pre'
+          channel: master
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Install Flutter dependencies
+        working-directory: app
+        run: |
+          touch .env
+          flutter pub get
+
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: app
+
+      - name: Build and upload to Play Store
+        working-directory: app
+        run: bundle exec fastlane android internal
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}

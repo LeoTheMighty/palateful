@@ -1,0 +1,8 @@
+app_identifier("com.palateful.palateful")
+
+# Apple ID / App Store Connect credentials — set via environment or CI secrets
+# apple_id("") # Set via FASTLANE_USER env var or App Store Connect API key
+# team_id("") # Set via FASTLANE_TEAM_ID env var
+
+# Android package name (same as iOS bundle ID for this project)
+package_name("com.palateful.palateful")

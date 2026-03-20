@@ -8,6 +8,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Load key.properties for local release signing (file is git-ignored, never commit)
+// In CI, signing is injected by Fastlane via android.injected.signing.* Gradle properties
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = java.util.Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.palateful.palateful"
     compileSdk = flutter.compileSdkVersion
@@ -33,11 +41,28 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+            // When key.properties is absent (CI), Fastlane injects signing via
+            // android.injected.signing.* Gradle properties — no changes needed here.
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use release signing config when key.properties is present (local dev).
+            // In CI, Fastlane overrides signing via android.injected.signing.* properties.
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
