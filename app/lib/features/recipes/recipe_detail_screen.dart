@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +30,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   bool _isTogglingFavorite = false;
   bool _isMovingOrCopying = false;
   bool _isAddingNote = false;
+  bool _isSharing = false;
   final _noteController = TextEditingController();
 
   @override
@@ -416,6 +418,53 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
+  Future<void> _shareRecipe() async {
+    if (_isSharing) return;
+    setState(() => _isSharing = true);
+    try {
+      final response = await _apiClient.shareRecipe(widget.recipeId);
+      final data = response.data as Map<String, dynamic>;
+      final link = data['deep_link'] as String;
+      if (mounted) {
+        _showShareLinkSheet(link);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to generate share link')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
+    }
+  }
+
+  void _showShareLinkSheet(String link) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => _ShareLinkSheet(
+        link: link,
+        onRevoke: () async {
+          Navigator.of(ctx).pop();
+          try {
+            await _apiClient.revokeRecipeShare(widget.recipeId);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Link revoked')),
+              );
+            }
+          } catch (_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to revoke link')),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
   void _startCooking() {
     context.push('/recipes/${widget.recipeId}/cook');
   }
@@ -505,6 +554,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               _addIngredientsToCart();
                             } else if (value == 'plan') {
                               _planForDate();
+                            } else if (value == 'share_link') {
+                              _shareRecipe();
                             } else if (value == 'move') {
                               _moveRecipe();
                             } else if (value == 'copy') {
@@ -533,6 +584,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   Icon(Icons.calendar_today_outlined),
                                   SizedBox(width: 8),
                                   Text('Plan for...'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'share_link',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.link_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Share Link'),
                                 ],
                               ),
                             ),
@@ -992,6 +1053,66 @@ class _InfoChip extends StatelessWidget {
               color: colorScheme.secondary,
               fontWeight: FontWeight.w500,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShareLinkSheet extends StatelessWidget {
+  final String link;
+  final VoidCallback onRevoke;
+
+  const _ShareLinkSheet({required this.link, required this.onRevoke});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          24, 24, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Public Link', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: SelectableText(
+              link,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copy Link'),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: link));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Copied!')),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: onRevoke,
+                child: Text(
+                  'Revoke',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ],
           ),
         ],
       ),

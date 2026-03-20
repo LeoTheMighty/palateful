@@ -125,7 +125,7 @@ development_status:
   # Epic 10: Sharing, Export & Cross-Platform
   epic-10: in-progress
   10-1-export-recipe-collection: done
-  10-2-share-recipe-via-public-link: backlog
+  10-2-share-recipe-via-public-link: done
   10-3-native-platform-sharing: backlog
   10-4-flutter-web-with-responsive-layout: backlog
   10-5-mobile-app-store-builds: backlog

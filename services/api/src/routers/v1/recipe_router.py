@@ -12,6 +12,7 @@ from api.v1.recipe import (
     DeleteRecipeNote,
     ForkRecipe,
     GetPublicRecipe,
+    GetPublicRecipeByToken,
     GetRecipe,
     GetRecipePhotoUploadUrl,
     GetRecipeVersion,
@@ -22,6 +23,8 @@ from api.v1.recipe import (
     MoveRecipe,
     RestoreRecipe,
     RestoreRecipeVersion,
+    RevokeRecipeShare,
+    ShareRecipe,
     ToggleFavorite,
     UpdateRecipe,
 )
@@ -145,6 +148,16 @@ async def bulk_update_tags(
         user=user,
         database=database,
     )
+
+
+# Public recipe by share token (no auth required — must be before /{recipe_id})
+@recipe_router.get("/recipes/public/{token}")
+async def get_public_recipe_by_token(
+    token: str,
+    database: Database = Depends(get_database),
+):
+    """Get a recipe by its public share token (no auth required)."""
+    return GetPublicRecipeByToken.call(token=token, database=database)
 
 
 # Direct recipe access
@@ -279,6 +292,26 @@ async def get_recipe_photo_upload_url(
         user=user,
         database=database,
     )
+
+
+@recipe_router.post("/recipes/{recipe_id}/share", status_code=201)
+async def share_recipe(
+    recipe_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Generate a public share link for a recipe."""
+    return ShareRecipe.call(recipe_id=recipe_id, user=user, database=database)
+
+
+@recipe_router.delete("/recipes/{recipe_id}/share")
+async def revoke_recipe_share(
+    recipe_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Revoke the public share link for a recipe."""
+    return RevokeRecipeShare.call(recipe_id=recipe_id, user=user, database=database)
 
 
 @recipe_router.post("/recipes/{recipe_id}/favorite")

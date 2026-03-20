@@ -38,6 +38,9 @@ class Recipe(Base):
     forked_from_book_name: Mapped[str | None] = mapped_column(String, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True, default=list)
 
+    # Public sharing token (set when user generates a public link)
+    share_token: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     # Embedding for semantic search (384 dimensions from all-MiniLM-L6-v2)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
 

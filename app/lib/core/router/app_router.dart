@@ -30,6 +30,7 @@ import '../../features/shopping_cart/screens/shopping_list_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/invitations/invitations_screen.dart';
 import '../../features/invitations/invite_link_preview_screen.dart';
+import '../../features/recipes/public_recipe_screen.dart';
 import '../../features/profile/notification_preferences_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
@@ -259,6 +260,14 @@ GoRouter get appRouter {
         builder: (context, state) {
           final token = state.pathParameters['token']!;
           return InviteLinkPreviewScreen(token: token);
+        },
+      ),
+      GoRoute(
+        path: '/recipe-public/:token',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return PublicRecipeScreen(token: token);
         },
       ),
 

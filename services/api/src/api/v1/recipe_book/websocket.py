@@ -118,7 +118,6 @@ async def recipe_book_websocket_handler(
     - recipe_removed: A recipe in this book was archived/deleted
     - pong: Response to ping
     """
-    from utils.services.database import Database as DBService
 
     # Verify access to the recipe book via membership
     membership = (

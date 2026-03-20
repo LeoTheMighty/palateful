@@ -171,6 +171,15 @@ class ApiClient {
     return _dio.get('/v1/recipes/$recipeId');
   }
 
+  Future<Response> shareRecipe(String recipeId) =>
+      _dio.post('/v1/recipes/$recipeId/share');
+
+  Future<Response> revokeRecipeShare(String recipeId) =>
+      _dio.delete('/v1/recipes/$recipeId/share');
+
+  Future<Response> getPublicRecipeByToken(String token) =>
+      _dio.get('/v1/recipes/public/$token');
+
   Future<Response> updateRecipe(String recipeId, Map<String, dynamic> data) {
     return _dio.put('/v1/recipes/$recipeId', data: data);
   }

@@ -1,6 +1,6 @@
 """Delete (soft-delete) a recipe note."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -61,6 +61,6 @@ class DeleteRecipeNote(Endpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED,
             )
 
-        self.database.update(note, archived_at=datetime.now(timezone.utc))
+        self.database.update(note, archived_at=datetime.now(UTC))
 
         return success(data={"deleted": True})

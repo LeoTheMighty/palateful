@@ -11,7 +11,6 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.services.aws import AWSService
 
-
 _aws_service = None
 
 
