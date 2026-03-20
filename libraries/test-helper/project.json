@@ -29,8 +29,8 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["poetry run pytest"],
-        "cwd": "{projectRoot}"
+        "commands": ["poetry run pytest libraries/test-helper/"],
+        "cwd": "{workspaceRoot}"
       }
     }
   },

@@ -123,7 +123,7 @@
       "executor": "@nxlv/python:run-commands",
       "dependsOn": ["migrate-test"],
       "options": {
-        "command": "sh ./check_models.sh",
+        "command": "bash ./check_models.sh",
         "cwd": "services/migrator"
       }
     },
