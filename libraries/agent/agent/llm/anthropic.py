@@ -1,6 +1,6 @@
 """Anthropic LLM provider implementation."""
 
-from anthropic import AsyncAnthropic, Anthropic
+from anthropic import Anthropic, AsyncAnthropic
 
 from agent.config import settings
 from agent.llm.provider import LLMProvider, LLMResponse, Message, Tool

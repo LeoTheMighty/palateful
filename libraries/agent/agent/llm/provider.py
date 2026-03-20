@@ -1,8 +1,9 @@
 """Abstract LLM provider interface."""
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from agent.config import settings
 
@@ -83,7 +84,7 @@ class LLMProvider(ABC):
         messages: list[Message],
         temperature: float = 0.7,
         max_tokens: int | None = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[str]:
         """
         Stream chat completion tokens.
 
