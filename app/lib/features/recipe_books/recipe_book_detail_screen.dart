@@ -872,36 +872,36 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                               ),
                             )
                           else
-                            LayoutBuilder(
-                              builder: (context, constraints) {
+                            Builder(
+                              builder: (context) {
                                 final columns = ResponsiveUtils.recipeGridColumns(context);
-                                if (columns == 1) {
-                                  return Column(
-                                    children: _recipes.map((recipe) {
-                                      final recipeId = recipe['id']?.toString();
-                                      final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
-                                      return _RecipeCard(
-                                        recipe: recipe,
-                                        isSelectMode: _isSelectMode,
-                                        isSelected: isSelected,
-                                        onTap: _isSelectMode
-                                            ? () {
-                                                if (recipeId != null) _toggleRecipeSelection(recipeId);
-                                              }
-                                            : () async {
-                                                await context.push('/recipes/${recipe['id']}');
-                                                _loadRecipeBook();
-                                              },
-                                        onLongPress: _isSelectMode || _userRole == 'viewer'
-                                            ? null
-                                            : () {
-                                                if (recipeId != null) {
-                                                  _enterSelectMode(initialRecipeId: recipeId);
-                                                }
-                                              },
-                                      );
-                                    }).toList(),
+                                final cards = _recipes.map((recipe) {
+                                  final recipeId = recipe['id']?.toString();
+                                  final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
+                                  return _RecipeCard(
+                                    recipe: recipe,
+                                    isSelectMode: _isSelectMode,
+                                    isSelected: isSelected,
+                                    onTap: _isSelectMode
+                                        ? () {
+                                            if (recipeId != null) _toggleRecipeSelection(recipeId);
+                                          }
+                                        : () async {
+                                            await context.push('/recipes/${recipe['id']}');
+                                            _loadRecipeBook();
+                                          },
+                                    onLongPress: _isSelectMode || _userRole == 'viewer'
+                                        ? null
+                                        : () {
+                                            if (recipeId != null) {
+                                              _enterSelectMode(initialRecipeId: recipeId);
+                                            }
+                                          },
                                   );
+                                }).toList();
+
+                                if (columns == 1) {
+                                  return Column(children: cards);
                                 }
                                 return GridView.count(
                                   crossAxisCount: columns,
@@ -910,30 +910,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                                   childAspectRatio: 0.75,
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  children: _recipes.map((recipe) {
-                                    final recipeId = recipe['id']?.toString();
-                                    final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
-                                    return _RecipeCard(
-                                      recipe: recipe,
-                                      isSelectMode: _isSelectMode,
-                                      isSelected: isSelected,
-                                      onTap: _isSelectMode
-                                          ? () {
-                                              if (recipeId != null) _toggleRecipeSelection(recipeId);
-                                            }
-                                          : () async {
-                                              await context.push('/recipes/${recipe['id']}');
-                                              _loadRecipeBook();
-                                            },
-                                      onLongPress: _isSelectMode || _userRole == 'viewer'
-                                          ? null
-                                          : () {
-                                              if (recipeId != null) {
-                                                _enterSelectMode(initialRecipeId: recipeId);
-                                              }
-                                            },
-                                    );
-                                  }).toList(),
+                                  children: cards,
                                 );
                               },
                             ),

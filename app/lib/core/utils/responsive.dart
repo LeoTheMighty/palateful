@@ -10,9 +10,10 @@ class ResponsiveUtils {
   static bool isMobile(BuildContext context) =>
       screenWidth(context) < kMobileBreakpoint;
 
-  static bool isTablet(BuildContext context) =>
-      screenWidth(context) >= kMobileBreakpoint &&
-      screenWidth(context) < kTabletBreakpoint;
+  static bool isTablet(BuildContext context) {
+    final w = screenWidth(context);
+    return w >= kMobileBreakpoint && w < kTabletBreakpoint;
+  }
 
   static bool isDesktop(BuildContext context) =>
       screenWidth(context) >= kTabletBreakpoint;

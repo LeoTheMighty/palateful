@@ -1,6 +1,6 @@
 # Story 10.4: Flutter Web with Responsive Layout
 
-Status: review
+Status: done
 
 ## Story
 

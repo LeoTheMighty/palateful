@@ -95,7 +95,7 @@ void main() {
       expect(cols, 2);
     });
 
-    testWidgets('recipeGridColumns: 3 at 1200', (tester) async {
+    testWidgets('recipeGridColumns: 3 above kTabletBreakpoint', (tester) async {
       late int cols;
       await tester.pumpWidget(_buildWithWidth(
         1200,
@@ -105,6 +105,18 @@ void main() {
         }),
       ));
       expect(cols, 3);
+    });
+
+    testWidgets('isTablet true at 904', (tester) async {
+      late bool result;
+      await tester.pumpWidget(_buildWithWidth(
+        904,
+        Builder(builder: (ctx) {
+          result = ResponsiveUtils.isTablet(ctx);
+          return const SizedBox();
+        }),
+      ));
+      expect(result, isTrue);
     });
 
     testWidgets('maxContentWidth is infinity on mobile', (tester) async {

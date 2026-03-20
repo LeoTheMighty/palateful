@@ -127,7 +127,7 @@ development_status:
   10-1-export-recipe-collection: done
   10-2-share-recipe-via-public-link: done
   10-3-native-platform-sharing: done
-  10-4-flutter-web-with-responsive-layout: review
+  10-4-flutter-web-with-responsive-layout: done
   10-5-mobile-app-store-builds: backlog
   epic-10-retrospective: optional
 
