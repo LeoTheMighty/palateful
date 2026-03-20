@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/di/injection.dart';
@@ -22,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = getIt<AuthService>();
 
   bool _isLoading = true;
+  bool _isExporting = false;
   String? _error;
 
   // Profile data
@@ -414,6 +418,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '${months[date.month - 1]} ${date.year}';
   }
 
+  Future<void> _exportCollection() async {
+    if (_isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final response = await _apiClient.exportRecipes();
+      final jsonString = jsonEncode(response.data);
+      final bytes = Uint8List.fromList(utf8.encode(jsonString));
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .substring(0, 19);
+      await Share.shareXFiles(
+        [
+          XFile.fromData(
+            bytes,
+            name: 'palateful_recipes_$timestamp.json',
+            mimeType: 'application/json',
+          )
+        ],
+        subject: 'My Palateful Recipe Collection',
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Export failed — please try again')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   Future<void> _logout() async {
     await _authService.logout();
     _apiClient.clearAuthToken();
@@ -573,6 +609,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             label: 'Archived Recipes',
             value: 'View and restore archived recipes',
             onTap: () => context.push('/recipes/archived'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+          const SizedBox(height: 8),
+          _buildProfileTile(
+            icon: Icons.download_outlined,
+            label: 'Export Collection',
+            value: _isExporting ? 'Exporting...' : 'Download all your recipes as JSON',
+            onTap: _isExporting ? () {} : _exportCollection,
             colorScheme: colorScheme,
             textTheme: textTheme,
           ),

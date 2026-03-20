@@ -103,6 +103,8 @@ class ApiClient {
   Future<Response> checkUsername(String username) =>
       _dio.get('/v1/users/check-username/$username');
 
+  Future<Response> exportRecipes() => _dio.get('/v1/users/me/export');
+
   // Recipe Book endpoints
   Future<Response> getRecipeBooks({int limit = 20, int offset = 0}) {
     return _dio.get('/v1/recipe-books', queryParameters: {

@@ -3,6 +3,7 @@
 from api.v1.user import (
     CheckUsername,
     CompleteOnboarding,
+    ExportRecipes,
     GetMe,
     GetNotificationPreferences,
     RegisterPushToken,
@@ -121,6 +122,20 @@ async def check_username(
 ):
     """Check if a username is available."""
     return CheckUsername.call(username=username, database=database)
+
+
+# ============================================================
+# Data Export
+# ============================================================
+
+
+@user_router.get("/me/export")
+async def export_recipes(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Export the user's entire recipe collection as JSON."""
+    return ExportRecipes.call(user=user, database=database)
 
 
 # ============================================================

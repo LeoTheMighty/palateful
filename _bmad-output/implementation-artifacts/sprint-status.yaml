@@ -123,8 +123,8 @@ development_status:
   epic-9-retrospective: optional
 
   # Epic 10: Sharing, Export & Cross-Platform
-  epic-10: backlog
-  10-1-export-recipe-collection: backlog
+  epic-10: in-progress
+  10-1-export-recipe-collection: review
   10-2-share-recipe-via-public-link: backlog
   10-3-native-platform-sharing: backlog
   10-4-flutter-web-with-responsive-layout: backlog
