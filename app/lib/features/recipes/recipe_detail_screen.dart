@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -465,6 +466,61 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     );
   }
 
+  Future<void> _nativeShareRecipe() async {
+    if (_recipe == null) return;
+    final name = _recipe!['name'] as String? ?? '';
+    final description = _recipe!['description'] as String?;
+    final ingredients = (_recipe!['ingredients'] as List?) ?? [];
+    final steps = (_recipe!['steps'] as List?) ?? [];
+
+    final buffer = StringBuffer();
+    buffer.writeln(name);
+
+    if (description != null && description.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln(description);
+    }
+
+    if (ingredients.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Ingredients:');
+      for (final ing in ingredients) {
+        final ingName =
+            (ing['ingredient'] as Map?)?['canonical_name']?.toString() ?? '';
+        final qty = ing['quantity_display']?.toString() ?? '';
+        final unit = ing['unit_display']?.toString() ?? '';
+        final parts = [qty, unit, ingName].where((s) => s.isNotEmpty).join(' ');
+        if (parts.isNotEmpty) buffer.writeln('• $parts');
+      }
+    }
+
+    if (steps.isNotEmpty) {
+      buffer.writeln();
+      buffer.writeln('Steps:');
+      int stepNum = 1;
+      for (final step in steps) {
+        final instruction = (step as Map)['instruction']?.toString() ?? '';
+        if (instruction.isNotEmpty) {
+          buffer.writeln('$stepNum. $instruction');
+          stepNum++;
+        }
+      }
+    }
+
+    buffer.writeln();
+    buffer.write('Shared via Palateful');
+
+    try {
+      await Share.share(buffer.toString().trim(), subject: name);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to share recipe')),
+        );
+      }
+    }
+  }
+
   void _startCooking() {
     context.push('/recipes/${widget.recipeId}/cook');
   }
@@ -556,6 +612,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               _planForDate();
                             } else if (value == 'share_link') {
                               _shareRecipe();
+                            } else if (value == 'share_native') {
+                              _nativeShareRecipe();
                             } else if (value == 'move') {
                               _moveRecipe();
                             } else if (value == 'copy') {
@@ -594,6 +652,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   Icon(Icons.link_outlined),
                                   SizedBox(width: 8),
                                   Text('Share Link'),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'share_native',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.share_outlined),
+                                  SizedBox(width: 8),
+                                  Text('Share'),
                                 ],
                               ),
                             ),
