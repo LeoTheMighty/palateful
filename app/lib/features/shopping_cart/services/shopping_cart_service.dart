@@ -141,6 +141,24 @@ class ShoppingCartService {
     );
   }
 
+  /// Add all ingredients from a date range of meal events to a shopping list.
+  Future<({int itemsAdded, int itemsSkipped, int mealEventsIncluded})>
+      populateFromCalendarRange(
+          String listId, DateTime start, DateTime end) async {
+    String isoDate(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final response = await _apiClient.populateShoppingListFromCalendar(listId, {
+      'start_date': isoDate(start),
+      'end_date': isoDate(end),
+    });
+    final data = response.data as Map<String, dynamic>;
+    return (
+      itemsAdded: data['items_added'] as int,
+      itemsSkipped: data['items_skipped'] as int,
+      mealEventsIncluded: data['meal_events_included'] as int,
+    );
+  }
+
   /// Share a shopping list and get share code.
   Future<String> shareList(String listId) async {
     final response = await _apiClient.shareShoppingList(listId);

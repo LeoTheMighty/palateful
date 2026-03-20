@@ -145,7 +145,7 @@ class PopulateFromCalendar(Endpoint):
                     continue
 
                 # Calculate needed quantity
-                needed_quantity = recipe_ingredient.quantity
+                needed_quantity = recipe_ingredient.quantity_display
 
                 # Check pantry
                 already_have = None
@@ -161,9 +161,9 @@ class PopulateFromCalendar(Endpoint):
                 # Create shopping list item
                 item = ShoppingListItem(
                     shopping_list_id=shopping_list.id,
-                    name=ingredient.name,
+                    name=ingredient.canonical_name,
                     quantity=needed_quantity,
-                    unit=recipe_ingredient.unit,
+                    unit=recipe_ingredient.unit_display,
                     category=ingredient.category,
                     ingredient_id=ingredient.id,
                     recipe_id=recipe.id,

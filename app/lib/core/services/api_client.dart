@@ -356,6 +356,12 @@ class ApiClient {
         data: data);
   }
 
+  Future<Response> populateShoppingListFromCalendar(
+      String listId, Map<String, dynamic> data) {
+    return _dio.post('/v1/shopping-lists/$listId/populate-from-calendar',
+        data: data);
+  }
+
   /// Get auth token for WebSocket connections
   String? get authToken => _authToken;
 

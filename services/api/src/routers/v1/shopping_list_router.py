@@ -305,12 +305,16 @@ async def populate_from_calendar(
     database: Database = Depends(get_database),
 ):
     """Populate a shopping list with ingredients from upcoming meal events."""
-    return PopulateFromCalendar.call(
+    result = PopulateFromCalendar.call(
         list_id=list_id,
         params=params,
         user=user,
         database=database,
     )
+    response_data = json.loads(result.body)
+    for item in response_data.get("items", []):
+        await broadcast_event_to_list(list_id, "item_added", item, user_id=str(user.id))
+    return result
 
 
 # ============================================================
