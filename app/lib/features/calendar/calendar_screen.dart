@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/theme/app_colors.dart';
+import '../shopping_cart/models/shopping_list.dart';
+import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
 import 'services/meal_calendar_service.dart';
 import 'widgets/plan_meal_sheet.dart';
@@ -16,6 +18,7 @@ class CalendarScreen extends StatefulWidget {
 
 class _CalendarScreenState extends State<CalendarScreen> {
   final _service = getIt<MealCalendarService>();
+  final _cartService = getIt<ShoppingCartService>();
 
   /// Monday of the currently displayed week.
   late DateTime _weekStart;
@@ -104,6 +107,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  Future<void> _addIngredientsFromEvent(MealEvent event) async {
+    List<ShoppingList> lists;
+    try {
+      lists = await _cartService.getShoppingLists();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load shopping lists')),
+        );
+      }
+      return;
+    }
+
+    if (lists.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No shopping lists — tap + to create one')),
+        );
+      }
+      return;
+    }
+
+    final ShoppingList targetList;
+    if (lists.length == 1) {
+      targetList = lists.first;
+    } else {
+      if (!mounted) return;
+      final selected = await showModalBottomSheet<ShoppingList>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Choose a shopping list',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
+              ),
+              ...lists.map((list) => ListTile(
+                    title: Text(list.name),
+                    subtitle: Text('${list.items.length} item(s)'),
+                    onTap: () => Navigator.pop(ctx, list),
+                  )),
+            ],
+          ),
+        ),
+      );
+      if (selected == null) return;
+      targetList = selected;
+    }
+
+    try {
+      final result =
+          await _cartService.populateFromRecipe(targetList.id, event.recipe!.id);
+      if (mounted) {
+        final n = result.itemsAdded;
+        final label = n == 1 ? '1 ingredient' : '$n ingredients';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Added $label to ${targetList.name}')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to add ingredients')),
+        );
+      }
+    }
+  }
+
   void _showEventOptions(MealEvent event) {
     showModalBottomSheet(
       context: context,
@@ -130,6 +205,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 if (result == true) _loadEvents();
               },
             ),
+            if (event.recipe != null)
+              ListTile(
+                leading: const Icon(Icons.add_shopping_cart_outlined),
+                title: const Text('Add to shopping list'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _addIngredientsFromEvent(event);
+                },
+              ),
             ListTile(
               leading: Icon(
                 Icons.delete_outline,

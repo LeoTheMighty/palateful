@@ -1,9 +1,31 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
+import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/calendar/models/meal_event.dart';
 import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
 import 'package:palateful/features/calendar/calendar_screen.dart';
+import 'package:palateful/features/shopping_cart/models/shopping_list.dart';
+import 'package:palateful/features/shopping_cart/services/shopping_cart_service.dart';
+
+Response<dynamic> _fakeResp(dynamic data) => Response(
+      data: data,
+      requestOptions: RequestOptions(path: ''),
+      statusCode: 200,
+    );
+
+class _FakeApiClient extends ApiClient {
+  @override
+  Future<Response> getShoppingLists({int limit = 20, int offset = 0}) async =>
+      _fakeResp({'items': []});
+}
+
+class _StubShoppingCartService extends ShoppingCartService {
+  @override
+  Future<List<ShoppingList>> getShoppingLists() async => [];
+}
 
 class _FakeMealCalendarService implements MealCalendarService {
   final List<MealEvent> events;
@@ -33,22 +55,29 @@ class _FakeMealCalendarService implements MealCalendarService {
 }
 
 void _registerFake(_FakeMealCalendarService svc) {
-  final getIt = GetIt.instance;
-  if (getIt.isRegistered<MealCalendarService>()) {
-    getIt.unregister<MealCalendarService>();
-  }
-  getIt.registerSingleton<MealCalendarService>(svc);
+  final gi = GetIt.instance;
+  if (gi.isRegistered<MealCalendarService>()) gi.unregister<MealCalendarService>();
+  gi.registerSingleton<MealCalendarService>(svc);
+  if (gi.isRegistered<ShoppingCartService>()) gi.unregister<ShoppingCartService>();
+  gi.registerSingleton<ShoppingCartService>(_StubShoppingCartService());
 }
 
 void _unregister() {
-  final getIt = GetIt.instance;
-  if (getIt.isRegistered<MealCalendarService>()) {
-    getIt.unregister<MealCalendarService>();
-  }
+  final gi = GetIt.instance;
+  if (gi.isRegistered<MealCalendarService>()) gi.unregister<MealCalendarService>();
+  if (gi.isRegistered<ShoppingCartService>()) gi.unregister<ShoppingCartService>();
+  if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
 }
 
 void main() {
+  setUpAll(() async {
+    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
+  });
+
   setUp(() {
+    final gi = GetIt.instance;
+    if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+    gi.registerSingleton<ApiClient>(_FakeApiClient());
     _registerFake(_FakeMealCalendarService());
   });
 

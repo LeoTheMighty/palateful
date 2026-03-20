@@ -118,7 +118,7 @@ development_status:
   epic-9: backlog
   9-1-schedule-recipes-to-meal-calendar: done
   9-2-browse-planned-meals-and-navigate-to-recipe: done
-  9-3-add-planned-meal-ingredients-to-shopping-list: backlog
+  9-3-add-planned-meal-ingredients-to-shopping-list: review
   9-4-aggregate-shopping-list-from-date-range: backlog
   epic-9-retrospective: optional
 
