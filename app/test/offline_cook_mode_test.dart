@@ -82,6 +82,7 @@ void main() {
   // ------------------------------------------------------------------
 
   group('Offline indicator widget', () {
+    // ignore: no_leading_underscores_for_local_identifiers
     Widget _buildOfflineIndicator({required bool isOffline}) {
       return MaterialApp(
         home: Scaffold(

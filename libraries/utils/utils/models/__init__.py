@@ -27,6 +27,7 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
+from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
@@ -67,6 +68,7 @@ __all__ = [
     # Recipe
     "Recipe",
     "RecipeIngredient",
+    "RecipeNote",
     "RecipeStep",
     "RecipeVersion",
     # Ingredient

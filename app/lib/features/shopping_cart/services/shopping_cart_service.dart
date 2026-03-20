@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../core/di/injection.dart';
@@ -255,7 +256,7 @@ class ShoppingCartService {
         _lastSequence = sequence;
       }
     } catch (e) {
-      print('Error handling WebSocket message: $e');
+      debugPrint('Error handling WebSocket message: $e');
     }
   }
 
@@ -283,7 +284,7 @@ class ShoppingCartService {
   }
 
   void _handleError(Object error) {
-    print('WebSocket error: $error');
+    debugPrint('WebSocket error: $error');
     _updateWebSocketState(WebSocketState.error);
     _scheduleReconnect();
   }

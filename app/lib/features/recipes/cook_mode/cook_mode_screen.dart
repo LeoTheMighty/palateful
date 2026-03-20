@@ -933,6 +933,7 @@ class _ActiveTimer {
   final int notifId;
   Timer? timer;
 
+  // ignore: unused_element_parameter
   _ActiveTimer({
     required this.label,
     required this.duration,

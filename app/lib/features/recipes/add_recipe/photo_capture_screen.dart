@@ -18,6 +18,7 @@ class _SelectedImage {
   final Uint8List bytes;
   bool previewFailed;
 
+  // ignore: unused_element_parameter
   _SelectedImage({required this.file, required this.bytes, this.previewFailed = false});
 }
 
@@ -28,6 +29,7 @@ class _JobResult {
   String? extractedText;
   String? error;
 
+  // ignore: unused_element_parameter
   _JobResult({required this.jobId, required this.inputKey, this.status = 'submitted'});
 }
 
@@ -46,7 +48,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   final List<_SelectedImage> _selectedImages = [];
   String _status = 'idle'; // idle, uploading, submitting, polling, succeeded, failed, structuring, previewing
-  String? _batchJobId;
   final List<_JobResult> _jobResults = [];
   String? _error;
   Timer? _pollTimer;
@@ -138,7 +139,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   void _resetResults() {
-    _batchJobId = null;
     _jobResults.clear();
     _error = null;
     _status = 'idle';
@@ -243,16 +243,13 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         final submitResponse = await _apiClient.submitParserJob(s3Keys.first);
         final jobId = submitResponse.data['id'] as String;
         setState(() {
-          _batchJobId = submitResponse.data['batch_job_id'] as String?;
           _jobResults.add(_JobResult(jobId: jobId, inputKey: s3Keys.first));
           _status = 'polling';
         });
       } else {
         final submitResponse = await _apiClient.submitBatchParserJob(s3Keys);
-        final batchJobId = submitResponse.data['batch_job_id'] as String;
         final jobs = submitResponse.data['jobs'] as List;
         setState(() {
-          _batchJobId = batchJobId;
           for (final job in jobs) {
             _jobResults.add(_JobResult(
               jobId: job['id'] as String,

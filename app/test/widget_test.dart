@@ -151,19 +151,19 @@ void main() {
             },
             branches: [
               StatefulShellBranch(routes: [
-                GoRoute(path: '/', builder: (_, __) => const Text('Tab 0')),
+                GoRoute(path: '/', builder: (_, _) => const Text('Tab 0')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/b', builder: (_, __) => const Text('Tab 1')),
+                GoRoute(path: '/b', builder: (_, _) => const Text('Tab 1')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/c', builder: (_, __) => const Text('Tab 2')),
+                GoRoute(path: '/c', builder: (_, _) => const Text('Tab 2')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/d', builder: (_, __) => const Text('Tab 3')),
+                GoRoute(path: '/d', builder: (_, _) => const Text('Tab 3')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/e', builder: (_, __) => const Text('Tab 4')),
+                GoRoute(path: '/e', builder: (_, _) => const Text('Tab 4')),
               ]),
             ],
           ),
@@ -193,19 +193,19 @@ void main() {
             },
             branches: [
               StatefulShellBranch(routes: [
-                GoRoute(path: '/', builder: (_, __) => const Text('Tab 0')),
+                GoRoute(path: '/', builder: (_, _) => const Text('Tab 0')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/b', builder: (_, __) => const Text('Tab 1')),
+                GoRoute(path: '/b', builder: (_, _) => const Text('Tab 1')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/c', builder: (_, __) => const Text('Tab 2')),
+                GoRoute(path: '/c', builder: (_, _) => const Text('Tab 2')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/d', builder: (_, __) => const Text('Tab 3')),
+                GoRoute(path: '/d', builder: (_, _) => const Text('Tab 3')),
               ]),
               StatefulShellBranch(routes: [
-                GoRoute(path: '/e', builder: (_, __) => const Text('Tab 4')),
+                GoRoute(path: '/e', builder: (_, _) => const Text('Tab 4')),
               ]),
             ],
           ),
@@ -233,7 +233,7 @@ void main() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, __) => const Text('Home'),
+            builder: (_, _) => const Text('Home'),
           ),
           GoRoute(
             path: '/detail',
@@ -266,7 +266,7 @@ void main() {
         routes: [
           GoRoute(
             path: '/',
-            builder: (_, __) => const Text('Start'),
+            builder: (_, _) => const Text('Start'),
           ),
           GoRoute(
             path: '/detail',

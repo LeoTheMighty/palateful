@@ -25,7 +25,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
   // Filter state — reset when query text changes
   String? _filterBookId;
-  String? _filterBookName;
   Set<String> _filterTags = {};
   int? _maxTotalTime;
 
@@ -41,7 +40,6 @@ class _SearchScreenState extends State<SearchScreen> {
     // Reset stale filters when user types a new query
     setState(() {
       _filterBookId = null;
-      _filterBookName = null;
       _filterTags.clear();
       _maxTotalTime = null;
     });
@@ -189,7 +187,6 @@ class _SearchScreenState extends State<SearchScreen> {
                 onSelected: (selected) {
                   setState(() {
                     _filterBookId = selected ? entry.key : null;
-                    _filterBookName = selected ? entry.value : null;
                   });
                   _onFilterChanged();
                 },

@@ -185,7 +185,6 @@ void main() {
           home: StatefulBuilder(
             builder: (context, setState) {
               final colorScheme = Theme.of(context).colorScheme;
-              final textTheme = Theme.of(context).textTheme;
 
               void onContinue() {
                 final name = nameController.text.trim();

@@ -75,6 +75,7 @@ void main() {
     }
   });
 
+  // ignore: no_leading_underscores_for_local_identifiers
   Widget _buildSheet({
     String? eventId,
     DateTime? initialDate,
