@@ -164,6 +164,23 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsWidgets);
     });
 
+    testWidgets('tool activity shows "Creating recipe…" label for suggest_recipe',
+        (tester) async {
+      final messages = [
+        ActiveChatMessage(
+          id: '1',
+          role: 'assistant',
+          content: 'Creating recipe…',
+          isToolActivity: true,
+        ),
+      ];
+      await tester.pumpWidget(_buildTestApp(messages: messages));
+      await tester.pump();
+
+      expect(find.text('Creating recipe…'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+    });
+
     testWidgets('message with recipeResults renders RecipeResultCard widgets',
         (tester) async {
       final recipes = [

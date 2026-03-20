@@ -162,6 +162,7 @@ class ActiveChatNotifier
             final label = switch (name) {
               'search_recipes' => 'Searching recipes…',
               'add_note_to_recipe' => 'Adding note…',
+              'suggest_recipe' => 'Creating recipe…',
               _ => 'Working…',
             };
             final updated = msgs.map((m) {

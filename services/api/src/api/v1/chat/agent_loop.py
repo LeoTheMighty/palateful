@@ -9,11 +9,18 @@ from sqlalchemy import func, select
 from utils.models.chat import Chat
 from utils.models.thread import Thread
 
-SYSTEM_PROMPT = """You are a helpful cooking assistant for Palateful.
-You help users manage their recipes, find ingredients, and plan meals.
-You have access to the user's recipe collection via tool calls.
-Always be conversational and helpful. When searching recipes, use the search_recipes tool.
-When asked to add a note to a recipe, use the add_note_to_recipe tool."""
+SYSTEM_PROMPT = (
+    "You are a helpful cooking assistant for Palateful. "
+    "You help users manage their recipes, find ingredients, and plan meals. "
+    "You have access to the user's recipe collection via tool calls. "
+    "Always be conversational and helpful. "
+    "When searching recipes, use the search_recipes tool. "
+    "When asked to add a note to a recipe, use the add_note_to_recipe tool. "
+    "When users ask for recipe suggestions or what to cook, use the search_recipes tool "
+    "to find relevant recipes from their collection and present them with your reasoning. "
+    "Use suggest_recipe only when the user explicitly wants a brand-new recipe idea "
+    "not from their existing collection."
+)
 
 
 def get_user_monthly_tokens(db, user_id) -> int:
@@ -40,7 +47,7 @@ async def run_chat_agent(
 ) -> AsyncGenerator[dict[str, Any]]:
     """Async generator yielding SSE event dicts for the AI chat agent loop."""
     from agent.llm.provider import Message, get_llm_provider
-    from agent.tools.recipes import AddNoteToRecipeTool, SearchRecipesTool
+    from agent.tools.recipes import AddNoteToRecipeTool, SearchRecipesTool, SuggestRecipeTool
     from config import settings
 
     # 1. Check per-user monthly token cap
@@ -75,7 +82,7 @@ async def run_chat_agent(
             messages.append(Message(role=chat.role, content=chat.content or ""))
 
     # 4. Define available tools
-    tools_registry = [SearchRecipesTool(), AddNoteToRecipeTool()]
+    tools_registry = [SearchRecipesTool(), AddNoteToRecipeTool(), SuggestRecipeTool()]
     tool_defs = [t.to_langchain_tool() for t in tools_registry]
 
     # 5. Tool resolution round (synchronous non-streaming)

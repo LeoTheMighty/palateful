@@ -430,3 +430,59 @@ class TestAddNoteToRecipeTool:
         assert result.success is False
         assert "required" in result.error.lower()
         mock_db.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# SuggestRecipeTool
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestRecipeTool:
+    """Tests for SuggestRecipeTool."""
+
+    def test_suggest_recipe_tool_name(self):
+        """SuggestRecipeTool has correct tool name."""
+        from agent.tools.recipes import SuggestRecipeTool
+
+        tool = SuggestRecipeTool()
+        assert tool.name == "suggest_recipe"
+
+    def test_suggest_recipe_tool_parameters_shape(self):
+        """SuggestRecipeTool parameters include required ingredients field."""
+        from agent.tools.recipes import SuggestRecipeTool
+
+        tool = SuggestRecipeTool()
+        params = tool.parameters
+        assert "ingredients" in params["properties"]
+        assert "ingredients" in params.get("required", [])
+        assert "cuisine" in params["properties"]
+        assert "meal_type" in params["properties"]
+
+    def test_suggest_recipe_in_tools_registry(self):
+        """SuggestRecipeTool is registered in the agent library TOOLS dict."""
+        from agent.tools import TOOLS
+        assert "suggest_recipe" in TOOLS
+
+    def test_suggest_recipe_executes_with_mocked_llm_provider(self):
+        """SuggestRecipeTool calls LLM provider and returns structured suggestion."""
+        from agent.tools.recipes import SuggestRecipeTool
+
+        tool = SuggestRecipeTool()
+        mock_db = MagicMock()
+        user_id = str(uuid.uuid4())
+
+        mock_response = MagicMock()
+        mock_response.content = "Chicken stir-fry: Heat oil in a wok, add garlic..."
+        mock_response.model = "gpt-4o-mini"
+
+        mock_provider = MagicMock()
+        mock_provider.chat.return_value = mock_response
+
+        with patch("agent.llm.get_llm_provider", return_value=mock_provider):
+            result = tool.execute(db=mock_db, user_id=user_id, ingredients=["chicken", "garlic"])
+
+        assert result.success is True
+        assert result.data["suggestion"] == "Chicken stir-fry: Heat oil in a wok, add garlic..."
+        assert result.data["based_on_ingredients"] == ["chicken", "garlic"]
+        assert result.data["model_used"] == "gpt-4o-mini"
+        mock_provider.chat.assert_called_once()
