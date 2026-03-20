@@ -53,6 +53,24 @@ class _FakeShoppingCartService extends ShoppingCartService {
   }
 }
 
+/// Fake ShoppingCartService that throws on populateFromRecipe — for error path tests.
+class _FailingShoppingCartService extends ShoppingCartService {
+  final List<ShoppingList> _lists;
+  _FailingShoppingCartService({List<ShoppingList> lists = const []})
+      : _lists = lists;
+
+  @override
+  Future<List<ShoppingList>> getShoppingLists() async => _lists;
+
+  @override
+  Future<({int itemsAdded, int itemsSkipped})> populateFromRecipe(
+    String listId,
+    String recipeId,
+  ) async {
+    throw Exception('network error');
+  }
+}
+
 class _FakeMealCalendarService implements MealCalendarService {
   final List<MealEvent> events;
   _FakeMealCalendarService({this.events = const []});
@@ -115,9 +133,6 @@ void _registerAll({
 
 void _unregisterAll() {
   final gi = GetIt.instance;
-  for (final type in [ApiClient, MealCalendarService, ShoppingCartService]) {
-    if (gi.isRegistered(instance: type)) gi.unregister(instance: type);
-  }
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   if (gi.isRegistered<MealCalendarService>()) {
     gi.unregister<MealCalendarService>();
@@ -273,6 +288,111 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Added 1 ingredient to My List'), findsOneWidget);
+    });
+  });
+
+  group('Add ingredients from calendar — no lists', () {
+    testWidgets('shows snackbar when user has no shopping lists', (tester) async {
+      final cartSvc = _FakeShoppingCartService(lists: []);
+      _registerAll(
+        calSvc: _FakeMealCalendarService(events: [_eventWithRecipe()]),
+        cartSvc: cartSvc,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pump();
+
+      await tester.longPress(find.text('Pasta Night'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add to shopping list'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('No shopping lists — tap + to create one'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('Add ingredients from calendar — error handling', () {
+    testWidgets('shows error snackbar when populateFromRecipe fails',
+        (tester) async {
+      final list = _makeList(name: 'My List');
+      final gi = GetIt.instance;
+      if (gi.isRegistered<MealCalendarService>()) gi.unregister<MealCalendarService>();
+      gi.registerSingleton<MealCalendarService>(
+          _FakeMealCalendarService(events: [_eventWithRecipe()]));
+      if (gi.isRegistered<ShoppingCartService>()) gi.unregister<ShoppingCartService>();
+      gi.registerSingleton<ShoppingCartService>(
+          _FailingShoppingCartService(lists: [list]));
+
+      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pump();
+
+      await tester.longPress(find.text('Pasta Night'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add to shopping list'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Failed to add ingredients'), findsOneWidget);
+    });
+  });
+
+  group('Add ingredients from calendar — multiple lists', () {
+    testWidgets('shows list picker when user has multiple shopping lists',
+        (tester) async {
+      final list1 = _makeList(id: 'list-1', name: 'Groceries');
+      final list2 = _makeList(id: 'list-2', name: 'Pharmacy');
+      final cartSvc =
+          _FakeShoppingCartService(lists: [list1, list2], itemsAddedResult: 2);
+      _registerAll(
+        calSvc: _FakeMealCalendarService(events: [_eventWithRecipe()]),
+        cartSvc: cartSvc,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pump();
+
+      await tester.longPress(find.text('Pasta Night'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add to shopping list'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Choose a shopping list'), findsOneWidget);
+      expect(find.text('Groceries'), findsOneWidget);
+      expect(find.text('Pharmacy'), findsOneWidget);
+    });
+
+    testWidgets('selecting list from picker calls populateFromRecipe with correct list',
+        (tester) async {
+      final list1 = _makeList(id: 'list-1', name: 'Groceries');
+      final list2 = _makeList(id: 'list-2', name: 'Pharmacy');
+      final cartSvc =
+          _FakeShoppingCartService(lists: [list1, list2], itemsAddedResult: 3);
+      _registerAll(
+        calSvc: _FakeMealCalendarService(events: [_eventWithRecipe()]),
+        cartSvc: cartSvc,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pump();
+
+      await tester.longPress(find.text('Pasta Night'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Add to shopping list'));
+      await tester.pumpAndSettle();
+
+      // Select second list from the picker
+      await tester.tap(find.text('Pharmacy'));
+      await tester.pumpAndSettle();
+
+      expect(cartSvc.lastPopulateListId, 'list-2');
+      expect(cartSvc.lastPopulateRecipeId, 'r1');
+      expect(find.text('Added 3 ingredients to Pharmacy'), findsOneWidget);
     });
   });
 }

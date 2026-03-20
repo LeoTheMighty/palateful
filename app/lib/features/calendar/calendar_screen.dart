@@ -108,6 +108,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _addIngredientsFromEvent(MealEvent event) async {
+    assert(event.recipe != null, '_addIngredientsFromEvent requires a linked recipe');
     List<ShoppingList> lists;
     try {
       lists = await _cartService.getShoppingLists();

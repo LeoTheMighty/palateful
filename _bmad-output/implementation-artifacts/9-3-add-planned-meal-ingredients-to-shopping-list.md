@@ -1,6 +1,6 @@
 # Story 9.3: Add Planned Meal Ingredients to Shopping List
 
-Status: review
+Status: done
 
 ## Story
 
