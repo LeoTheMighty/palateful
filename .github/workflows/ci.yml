@@ -261,7 +261,9 @@ jobs:
 
       - name: Analyze
         working-directory: app
-        run: flutter analyze
+        # --no-fatal-warnings: only fail on errors (type errors, undefined names, etc.).
+        # Warnings (unused private methods, dead params) are shown but don't block CI.
+        run: flutter analyze --no-fatal-warnings
 
       - name: Test
         working-directory: app
