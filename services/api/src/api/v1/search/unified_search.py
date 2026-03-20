@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel
 from sqlalchemy import exists, func, or_, select, text
+from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
@@ -189,6 +190,10 @@ class UnifiedSearch(Endpoint):
             self.db.execute(
                 select(Recipe, RecipeBook.name.label("book_name"))
                 .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
+                .options(
+                    selectinload(Recipe.ingredients)
+                    .selectinload(RecipeIngredient.ingredient)
+                )
                 .where(
                     Recipe.recipe_book_id.in_(my_book_ids),
                     Recipe.archived_at.is_(None),
@@ -249,6 +254,10 @@ class UnifiedSearch(Endpoint):
                     owner_subq.c.owner_picture,
                 )
                 .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
+                .options(
+                    selectinload(Recipe.ingredients)
+                    .selectinload(RecipeIngredient.ingredient)
+                )
                 .outerjoin(
                     owner_subq,
                     owner_subq.c.recipe_book_id == RecipeBook.id,

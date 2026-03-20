@@ -97,6 +97,11 @@ async def run_chat_agent(
     response = provider.chat(messages, tools=tool_defs, temperature=0.7)
 
     while response.finish_reason == "tool_calls" and response.tool_calls:
+        # Re-check token cap before executing more tool calls
+        if get_user_monthly_tokens(database.db, user.id) >= settings.ai_chat_monthly_token_cap:
+            yield {"type": "error", "code": "token_cap_exceeded", "message": "Monthly AI usage limit reached."}
+            return
+
         # Persist assistant message with tool_calls
         assistant_chat = Chat(
             thread_id=thread_id,

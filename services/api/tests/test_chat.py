@@ -777,6 +777,47 @@ class TestRunChatAgent:
         assert "Current Recipe Context" in system_msg.content
         assert "Boil water" in system_msg.content
 
+    async def test_token_cap_exceeded_mid_tool_loop(self):
+        """Token cap re-checked before each tool round — exceeds mid-conversation."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.db = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.chats = []
+        mock_db_obj.db.get.return_value = mock_thread
+        mock_db_obj.create.side_effect = lambda obj: setattr(obj, 'id', uuid.uuid4())
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        # First chat returns tool_calls, but cap is exceeded before tool execution
+        tool_call_response = MagicMock()
+        tool_call_response.finish_reason = "tool_calls"
+        tool_call_response.content = ""
+        tool_call_response.model = "gpt-4o-mini"
+        tool_call_response.usage = {"prompt_tokens": 10, "completion_tokens": 5}
+        tool_call_response.tool_calls = [
+            {"id": "tc1", "function": {"name": "search_recipes", "arguments": '{"query": "pasta"}'}}
+        ]
+
+        mock_provider = MagicMock()
+        mock_provider.chat.return_value = tool_call_response
+
+        # First call returns 0 (under cap), second call returns over cap
+        with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", side_effect=[0, 999999]), \
+             patch("config.settings") as mock_settings, \
+             patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
+            mock_settings.ai_chat_monthly_token_cap = 100000
+            events = await self._collect_events(
+                run_chat_agent("t1", "find pasta", mock_user, mock_db_obj)
+            )
+
+        # Should get token_cap_exceeded error from the mid-loop check
+        assert any(e.get("code") == "token_cap_exceeded" for e in events)
+        # Should NOT get tool_call or done events
+        assert not any(e["type"] == "tool_call" for e in events)
+
     async def test_thread_history_loads_tool_messages(self):
         """Thread with tool messages in history loads them correctly."""
         from api.v1.chat.agent_loop import run_chat_agent

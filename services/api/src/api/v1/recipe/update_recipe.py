@@ -96,18 +96,27 @@ class UpdateRecipe(Endpoint):
         if params.tags is not None:
             updates["tags"] = params.tags
 
+        # Capture old values for embedding diff check
+        old_name, old_desc, old_tags = recipe.name, recipe.description, recipe.tags
+
         # Update recipe if there are changes
         if updates:
             self.database.update(recipe, **updates)
 
-        # Regenerate embedding when searchable fields change (non-blocking)
+        # Regenerate embedding only when searchable content actually changed
         embedding_fields = {"name", "description", "tags"}
         if updates and embedding_fields.intersection(updates.keys()):
-            from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
-            embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags)
-            if embedding is not None:
-                recipe.embedding = embedding
-                self.database.db.commit()
+            content_changed = (
+                recipe.name != old_name
+                or recipe.description != old_desc
+                or recipe.tags != old_tags
+            )
+            if content_changed:
+                from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
+                embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags)
+                if embedding is not None:
+                    recipe.embedding = embedding
+                    self.database.db.commit()
 
         # Update ingredients if provided
         if params.ingredients is not None:

@@ -2380,6 +2380,19 @@ class TestUpdateRecipeMissingBranches:
             )
         assert response.status_code == 200
 
+    def test_update_recipe_same_name_skips_embedding(self, client, mock_db, mock_user):
+        """Test that sending the same name value skips embedding regeneration."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id, name="Test Recipe")
+
+        with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding") as mock_embed:
+            response = client.put(
+                f"/v1/recipes/{recipe_id}",
+                json={"name": "Test Recipe"}  # same as existing
+            )
+        assert response.status_code == 200
+        mock_embed.assert_not_called()  # no embedding regen needed
+
     def test_update_recipe_embedding_regeneration(self, client, mock_db, mock_user):
         """Test that updating name/description/tags regenerates embedding."""
         recipe_id = "test-recipe-id"
