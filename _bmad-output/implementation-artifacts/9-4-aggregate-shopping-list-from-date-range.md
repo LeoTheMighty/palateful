@@ -1,6 +1,6 @@
 # Story 9.4: Aggregate Shopping List from Date Range
 
-Status: review
+Status: done
 
 ## Story
 

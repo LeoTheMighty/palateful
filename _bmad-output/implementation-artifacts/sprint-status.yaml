@@ -119,7 +119,7 @@ development_status:
   9-1-schedule-recipes-to-meal-calendar: done
   9-2-browse-planned-meals-and-navigate-to-recipe: done
   9-3-add-planned-meal-ingredients-to-shopping-list: done
-  9-4-aggregate-shopping-list-from-date-range: review
+  9-4-aggregate-shopping-list-from-date-range: done
   epic-9-retrospective: optional
 
   # Epic 10: Sharing, Export & Cross-Platform

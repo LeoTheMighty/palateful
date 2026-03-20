@@ -31,6 +31,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   /// Incremented on every load; prevents stale responses from overwriting newer state.
   int _loadGeneration = 0;
 
+  bool _isGeneratingList = false;
+
   @override
   void initState() {
     super.initState();
@@ -181,85 +183,98 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _generateWeeklyShoppingList() async {
-    List<ShoppingList> lists;
-    try {
-      lists = await _cartService.getShoppingLists();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load shopping lists')),
-        );
-      }
-      return;
-    }
+    if (_isGeneratingList) return;
+    setState(() => _isGeneratingList = true);
 
-    if (lists.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No shopping lists — tap + to create one')),
-        );
-      }
-      return;
-    }
-
-    final ShoppingList targetList;
-    if (lists.length == 1) {
-      targetList = lists.first;
-    } else {
-      if (!mounted) return;
-      final selected = await showModalBottomSheet<ShoppingList>(
-        context: context,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Choose a shopping list',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                ),
-              ),
-              ...lists.map((list) => ListTile(
-                    title: Text(list.name),
-                    subtitle: Text('${list.items.length} item(s)'),
-                    onTap: () => Navigator.pop(ctx, list),
-                  )),
-            ],
-          ),
-        ),
-      );
-      if (selected == null) return;
-      targetList = selected;
-    }
+    // Capture week range immediately — _weekStart can change if the user
+    // navigates weeks while this async method is awaiting.
+    final weekStart = _weekStart;
+    final weekEnd = _weekEnd;
 
     try {
-      final result = await _cartService.populateFromCalendarRange(
-          targetList.id, _weekStart, _weekEnd);
-      if (mounted) {
-        if (result.mealEventsIncluded == 0) {
+      List<ShoppingList> lists;
+      try {
+        lists = await _cartService.getShoppingLists();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to load shopping lists')),
+          );
+        }
+        return;
+      }
+
+      if (lists.isEmpty) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('No planned meals with recipes this week')),
+                content: Text('No shopping lists — tap + to create one')),
           );
-          return;
         }
-        final n = result.itemsAdded;
-        final m = result.mealEventsIncluded;
-        final itemLabel = n == 1 ? '1 ingredient' : '$n ingredients';
-        final mealLabel = m == 1 ? '1 meal' : '$m meals';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('Added $itemLabel from $mealLabel to ${targetList.name}')),
-        );
+        return;
       }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to generate shopping list')),
+
+      final ShoppingList targetList;
+      if (lists.length == 1) {
+        targetList = lists.first;
+      } else {
+        if (!mounted) return;
+        final selected = await showModalBottomSheet<ShoppingList>(
+          context: context,
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Choose a shopping list',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
+                ),
+                ...lists.map((list) => ListTile(
+                      title: Text(list.name),
+                      subtitle: Text('${list.items.length} item(s)'),
+                      onTap: () => Navigator.pop(ctx, list),
+                    )),
+              ],
+            ),
+          ),
         );
+        if (selected == null) return;
+        targetList = selected;
       }
+
+      try {
+        final result = await _cartService.populateFromCalendarRange(
+            targetList.id, weekStart, weekEnd);
+        if (mounted) {
+          if (result.mealEventsIncluded == 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text('No planned meals with recipes this week')),
+            );
+            return;
+          }
+          final n = result.itemsAdded;
+          final m = result.mealEventsIncluded;
+          final itemLabel = n == 1 ? '1 ingredient' : '$n ingredients';
+          final mealLabel = m == 1 ? '1 meal' : '$m meals';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    'Added $itemLabel from $mealLabel to ${targetList.name}')),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to generate shopping list')),
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isGeneratingList = false);
     }
   }
 

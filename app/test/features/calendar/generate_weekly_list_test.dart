@@ -321,4 +321,61 @@ void main() {
       );
     });
   });
+
+  group('Generate weekly shopping list — multiple lists', () {
+    testWidgets('shows list picker when user has multiple shopping lists',
+        (tester) async {
+      final list1 = _makeList(id: 'list-1', name: 'Groceries');
+      final list2 = _makeList(id: 'list-2', name: 'Pharmacy');
+      final cartSvc = _FakeShoppingCartService(
+        lists: [list1, list2],
+        itemsAddedResult: 2,
+        mealEventsIncludedResult: 1,
+      );
+      _registerAll(
+        calSvc: _FakeMealCalendarService(),
+        cartSvc: cartSvc,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Choose a shopping list'), findsOneWidget);
+      expect(find.text('Groceries'), findsOneWidget);
+      expect(find.text('Pharmacy'), findsOneWidget);
+    });
+
+    testWidgets('selecting list from picker uses correct listId',
+        (tester) async {
+      final list1 = _makeList(id: 'list-1', name: 'Groceries');
+      final list2 = _makeList(id: 'list-2', name: 'Pharmacy');
+      final cartSvc = _FakeShoppingCartService(
+        lists: [list1, list2],
+        itemsAddedResult: 3,
+        mealEventsIncludedResult: 2,
+      );
+      _registerAll(
+        calSvc: _FakeMealCalendarService(),
+        cartSvc: cartSvc,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
+      await tester.pumpAndSettle();
+
+      // Select the second list from the picker
+      await tester.tap(find.text('Pharmacy'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Added 3 ingredients from 2 meals to Pharmacy'),
+        findsOneWidget,
+      );
+    });
+  });
 }

@@ -12,7 +12,6 @@ from conftest import (
     MockRecipeIngredient,
     MockShoppingList,
     MockShoppingListItem,
-    MockShoppingListUser,
 )
 
 

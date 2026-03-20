@@ -26,7 +26,7 @@ class PopulateFromCalendar(Endpoint):
         2. Extracts ingredients from each meal's recipe
         3. Optionally checks pantry for existing items
         4. Creates shopping list items with proper due dates
-        5. Groups/aggregates similar ingredients
+        5. Skips duplicates (same ingredient already in list for same meal event)
 
         Args:
             list_id: The shopping list's ID
