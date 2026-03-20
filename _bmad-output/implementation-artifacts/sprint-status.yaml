@@ -132,11 +132,11 @@ development_status:
   epic-10-retrospective: optional
 
   # Epic 11: AI Assistant
-  epic-11: in-progress
+  epic-11: done
   11-1-ai-chat-with-tool-calling: done
   11-2-ai-recipe-search: done
   11-3-ai-adds-notes-to-recipes: done
   11-4-ai-recipe-suggestions: done
   11-5-ai-in-cooking-mode-questions-and-answers: done
-  11-6-hands-free-voice-input-in-cooking-mode: backlog
+  11-6-hands-free-voice-input-in-cooking-mode: done
   epic-11-retrospective: optional

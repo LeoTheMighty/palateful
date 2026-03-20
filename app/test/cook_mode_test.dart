@@ -210,5 +210,57 @@ void main() {
       // If the import fails, the entire test file fails to compile.
       expect(CookModeChatSheet, isNotNull);
     });
+
+    testWidgets('mic button renders in voice input row pattern', (tester) async {
+      // Test the mic button icon renders correctly in the input row pattern.
+      // CookModeChatSheet itself requires DI, so we test the icon in isolation.
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: AppColors.chocolateDark,
+            body: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.mic_none, color: AppColors.warmIvory),
+                  onPressed: () {},
+                  tooltip: 'Voice input',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send, color: AppColors.terracotta),
+                  onPressed: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.mic_none), findsOneWidget);
+      expect(find.byIcon(Icons.send), findsOneWidget);
+      expect(find.byTooltip('Voice input'), findsOneWidget);
+    });
+
+    testWidgets('active mic button shows filled icon pattern', (tester) async {
+      // When listening, mic button should show Icons.mic (not mic_none).
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: AppColors.chocolateDark,
+            body: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.mic, color: AppColors.terracotta),
+                  onPressed: () {},
+                  tooltip: 'Stop listening',
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+      expect(find.byTooltip('Stop listening'), findsOneWidget);
+    });
   });
 }

@@ -60,5 +60,10 @@
 	<string>Palateful needs camera access to take photos of recipes</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Palateful needs photo library access to import recipe images</string>
+	<!-- Microphone and Speech Recognition for hands-free voice input -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Palateful uses the microphone for hands-free voice input while cooking</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Palateful uses speech recognition for hands-free voice input while cooking</string>
 </dict>
 </plist>

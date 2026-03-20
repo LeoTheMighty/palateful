@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -24,16 +27,70 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
   final _chatService = ChatService(getIt<ApiClient>().dio);
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final _speechToText = SpeechToText();
 
   String? _threadId;
   final List<_SheetMessage> _messages = [];
   bool _isSending = false;
+  bool _isListening = false;
+  bool _speechAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    try {
+      _speechAvailable = await _speechToText.initialize(
+        onError: (_) {
+          if (mounted) setState(() => _isListening = false);
+        },
+        onStatus: (status) {
+          if (mounted && (status == 'done' || status == 'notListening')) {
+            setState(() => _isListening = false);
+          }
+        },
+      );
+    } catch (_) {
+      _speechAvailable = false;
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    _speechToText.cancel();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _startListening() {
+    if (_isListening) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _isListening = true);
+    _speechToText.listen(
+      onResult: _onSpeechResult,
+      listenFor: const Duration(seconds: 30),
+      pauseFor: const Duration(seconds: 3),
+    );
+  }
+
+  void _stopListening() {
+    HapticFeedback.selectionClick();
+    _speechToText.stop();
+    setState(() => _isListening = false);
+  }
+
+  void _onSpeechResult(SpeechRecognitionResult result) {
+    if (!mounted) return;
+    setState(() => _controller.text = result.recognizedWords);
+    if (result.finalResult && result.recognizedWords.isNotEmpty) {
+      setState(() => _isListening = false);
+      _sendMessage();
+    }
   }
 
   void _scrollToBottom() {
@@ -225,7 +282,9 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                         controller: _controller,
                         style: const TextStyle(color: AppColors.warmIvory),
                         decoration: InputDecoration(
-                          hintText: 'Ask a question…',
+                          hintText: _isListening
+                              ? 'Listening…'
+                              : 'Ask a question…',
                           hintStyle: TextStyle(
                             color: AppColors.withOpacity(
                                 AppColors.warmIvory, 0.4),
@@ -244,7 +303,30 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                         onSubmitted: (_) => _sendMessage(),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    if (_speechAvailable) ...[
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(
+                          _isListening ? Icons.mic : Icons.mic_none,
+                          color: _isListening
+                              ? AppColors.terracotta
+                              : AppColors.warmIvory,
+                        ),
+                        onPressed: _isSending
+                            ? null
+                            : (_isListening
+                                ? _stopListening
+                                : _startListening),
+                        style: _isListening
+                            ? IconButton.styleFrom(
+                                backgroundColor: AppColors.withOpacity(
+                                    AppColors.terracotta, 0.2),
+                              )
+                            : null,
+                        tooltip: _isListening ? 'Stop listening' : 'Voice input',
+                      ),
+                    ],
+                    const SizedBox(width: 4),
                     IconButton(
                       icon: const Icon(Icons.send, color: AppColors.terracotta),
                       onPressed: _isSending ? null : _sendMessage,

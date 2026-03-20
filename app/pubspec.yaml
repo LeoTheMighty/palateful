@@ -62,6 +62,7 @@ dependencies:
   shared_preferences: ^2.3.4
   connectivity_plus: ^6.1.4
   share_plus: ^10.1.4
+  speech_to_text: ^7.0.0
 
 dev_dependencies:
   flutter_test:
