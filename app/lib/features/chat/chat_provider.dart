@@ -147,16 +147,16 @@ class ActiveChatNotifier
 
         switch (event) {
           case TokenEvent(:final content):
-            final updated = msgs.map((m) {
-              if (m.id == assistantMsg.id) {
-                return m.copyWith(
-                  content: m.content + content,
-                  isToolActivity: false,
-                );
-              }
-              return m;
-            }).toList();
-            state = AsyncData((tid, updated));
+            // Update only the streaming message — avoid mapping entire list
+            final idx = msgs.indexWhere((m) => m.id == assistantMsg.id);
+            if (idx != -1) {
+              final updated = List<ActiveChatMessage>.of(msgs);
+              updated[idx] = msgs[idx].copyWith(
+                content: msgs[idx].content + content,
+                isToolActivity: false,
+              );
+              state = AsyncData((tid, updated));
+            }
 
           case ToolCallEvent(:final name):
             final label = switch (name) {
