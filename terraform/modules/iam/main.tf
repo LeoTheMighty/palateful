@@ -98,13 +98,13 @@ resource "aws_iam_role_policy" "batch_job_s3" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = ["s3:GetObject"]
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
         Resource = "${var.parser_inputs_bucket_arn}/*"
       },
       {
-        Effect = "Allow"
-        Action = ["s3:PutObject"]
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
         Resource = "${var.parser_outputs_bucket_arn}/*"
       },
       {

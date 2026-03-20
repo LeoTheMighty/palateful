@@ -92,7 +92,7 @@ module "batch" {
   ecr_repository_url         = module.ecr.repository_url
   subnet_ids                 = module.vpc.public_subnet_ids
   security_group_ids         = [module.vpc.batch_security_group_id]
-  max_vcpus                  = 8  # Lower for dev
+  max_vcpus                  = 8 # Lower for dev
 }
 
 # Outputs

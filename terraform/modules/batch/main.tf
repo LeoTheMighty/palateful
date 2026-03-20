@@ -58,30 +58,62 @@ variable "max_vcpus" {
   description = "Maximum vCPUs for compute environment"
 }
 
+variable "root_volume_size_gb" {
+  type        = number
+  default     = 100
+  description = "Root EBS volume size in GB for Batch instances (must be large enough for GPU container images)"
+}
+
+# Launch template with larger root volume for GPU container images
+resource "aws_launch_template" "parser_batch" {
+  name = "${var.project}-parser-batch-${var.environment}"
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size           = var.root_volume_size_gb
+      volume_type           = "gp3"
+      delete_on_termination = true
+    }
+  }
+
+  tags = {
+    Name        = "${var.project}-parser-launch-template"
+    Environment = var.environment
+    Project     = var.project
+  }
+}
+
 # Compute Environment - Spot GPU instances
 resource "aws_batch_compute_environment" "parser_spot_gpu" {
-  compute_environment_name = "${var.project}-parser-spot-gpu-${var.environment}"
-  type                     = "MANAGED"
-  state                    = "ENABLED"
-  service_role             = var.batch_service_role_arn
+  compute_environment_name_prefix = "${var.project}-parser-spot-gpu-${var.environment}-"
+  type                            = "MANAGED"
+  state                           = "ENABLED"
+  service_role                    = var.batch_service_role_arn
 
   compute_resources {
     type                = "SPOT"
     allocation_strategy = "SPOT_PRICE_CAPACITY_OPTIMIZED"
 
-    min_vcpus     = 0  # Scale to zero when idle
-    desired_vcpus = 0  # Start at zero
+    min_vcpus     = 0 # Scale to zero when idle
+    desired_vcpus = 0 # Start at zero
     max_vcpus     = var.max_vcpus
 
     instance_type = [
-      "g4dn.xlarge",   # NVIDIA T4 - good for inference, ~$0.16/hr spot
-      "g5.xlarge",     # NVIDIA A10G - faster, similar spot price
+      "g4dn.xlarge", # NVIDIA T4 - good for inference, ~$0.16/hr spot
+      "g5.xlarge",   # NVIDIA A10G - faster, similar spot price
     ]
 
-    subnets            = var.subnet_ids
-    security_group_ids = var.security_group_ids
-    instance_role      = var.batch_instance_profile_arn
+    subnets             = var.subnet_ids
+    security_group_ids  = var.security_group_ids
+    instance_role       = var.batch_instance_profile_arn
     spot_iam_fleet_role = var.spot_fleet_role_arn
+
+    launch_template {
+      launch_template_id = aws_launch_template.parser_batch.id
+      version            = "$Latest"
+    }
 
     tags = {
       Name        = "${var.project}-parser-batch"
@@ -139,11 +171,11 @@ resource "aws_batch_job_definition" "parser" {
   platform_capabilities = ["EC2"]
 
   retry_strategy {
-    attempts = 3  # Handle Spot interruptions
+    attempts = 3 # Handle Spot interruptions
   }
 
   timeout {
-    attempt_duration_seconds = 1800  # 30 minutes max
+    attempt_duration_seconds = 1800 # 30 minutes max
   }
 
   container_properties = jsonencode({
@@ -151,7 +183,7 @@ resource "aws_batch_job_definition" "parser" {
 
     resourceRequirements = [
       { type = "VCPU", value = "4" },
-      { type = "MEMORY", value = "15360" },  # 15GB (leave headroom for ECS agent/OS)
+      { type = "MEMORY", value = "15360" }, # 15GB (leave headroom for ECS agent/OS)
       { type = "GPU", value = "1" }
     ]
 
