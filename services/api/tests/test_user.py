@@ -488,6 +488,19 @@ class TestSearchUsers:
         assert data["results"][0]["friendship_status"] == "request_received"
         assert data["results"][0]["friend_request_id"] is not None
 
+    def test_search_users_empty_query_direct(self, mock_db, mock_user):
+        """Test that empty query raises APIException (tests the branch not reachable via router)."""
+        from api.v1.user.search_users import SearchUsers
+        from utils.api.endpoint import APIException
+
+        endpoint = SearchUsers(user=mock_user, database=mock_db)
+        try:
+            endpoint.execute(q="   ")
+            assert False, "Should have raised APIException"
+        except APIException as e:
+            assert e.status_code == 400
+            assert "required" in e.detail.lower()
+
     def test_search_users_limit_capped(self, client, mock_db):
         """Test that limit is capped at 50."""
         call_count = [0]

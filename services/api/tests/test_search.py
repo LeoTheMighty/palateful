@@ -481,6 +481,84 @@ class TestUnifiedSearchDirect:
 
         mock_db.db.execute.side_effect = None
 
+    def _make_recipe_result(self, rid="r1"):
+        """Helper to build a valid RecipeResult."""
+        from api.v1.search.unified_search import UnifiedSearch
+        return UnifiedSearch.RecipeResult(
+            id=rid, name="Test", recipe_book_id="b1", recipe_book_name="Book"
+        )
+
+    def _make_pub_recipe_result(self, rid="r1"):
+        """Helper to build a valid PublicRecipeResult."""
+        from api.v1.search.unified_search import UnifiedSearch
+        return UnifiedSearch.PublicRecipeResult(
+            id=rid, name="Test", recipe_book_id="b1", recipe_book_name="Book",
+            owner=UnifiedSearch.OwnerInfo(),
+        )
+
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_users")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_public_recipes")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_my_recipes")
+    def test_exact_fills_limit_skips_fuzzy_and_semantic(
+        self, mock_my, mock_pub, mock_users, mock_db, mock_user
+    ):
+        """Test that when exact results fill the limit, fuzzy and semantic tiers are skipped."""
+        # Return exactly `limit` results for both my and public
+        mock_my.return_value = [self._make_recipe_result(f"r{i}") for i in range(3)]
+        mock_pub.return_value = [self._make_pub_recipe_result(f"p{i}") for i in range(3)]
+        mock_users.return_value = []
+        mock_db.db.execute.return_value = MockExecuteResult([])
+
+        endpoint = self._make_endpoint(mock_db, mock_user)
+        result = endpoint.execute(q="pasta", limit=3)
+
+        assert result["success"] is True
+        # my_exact has 3, limit is 3 -> no fuzzy or semantic needed
+        assert len(result["data"].my_recipes) == 3
+        assert len(result["data"].public_recipes) == 3
+
+    @patch("api.v1.search.unified_search.UnifiedSearch._generate_query_embedding")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_users")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_public_recipes")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_my_recipes")
+    def test_my_exact_fills_but_pub_doesnt_runs_pub_semantic(
+        self, mock_my, mock_pub, mock_users, mock_embed, mock_db, mock_user
+    ):
+        """Test that when my_exact fills limit but pub doesn't, only pub semantic runs."""
+        # my fills the limit, pub doesn't
+        mock_my.return_value = [self._make_recipe_result(f"r{i}") for i in range(3)]
+        mock_pub.return_value = []
+        mock_users.return_value = []
+        mock_embed.return_value = [0.1] * 384
+        mock_db.db.execute.return_value = MockExecuteResult([])
+
+        endpoint = self._make_endpoint(mock_db, mock_user)
+        result = endpoint.execute(q="pasta", limit=3)
+
+        assert result["success"] is True
+        mock_embed.assert_called_once()
+
+    @patch("api.v1.search.unified_search.UnifiedSearch._generate_query_embedding")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_users")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_public_recipes")
+    @patch("api.v1.search.unified_search.UnifiedSearch._search_my_recipes")
+    def test_pub_exact_fills_but_my_doesnt_runs_my_semantic(
+        self, mock_my, mock_pub, mock_users, mock_embed, mock_db, mock_user
+    ):
+        """Test that when pub_exact fills limit but my doesn't, only my semantic runs."""
+        # pub fills the limit, my doesn't
+        mock_my.return_value = []
+        mock_pub.return_value = [self._make_pub_recipe_result(f"p{i}") for i in range(3)]
+        mock_users.return_value = []
+        mock_embed.return_value = [0.1] * 384
+        mock_db.db.execute.return_value = MockExecuteResult([])
+
+        endpoint = self._make_endpoint(mock_db, mock_user)
+        result = endpoint.execute(q="pasta", limit=3)
+
+        assert result["success"] is True
+        mock_embed.assert_called_once()
+
     def test_full_search_response_shape(self, client, mock_db, mock_user):
         """Test that the full search response has query, my_recipes, public_recipes, users."""
         mock_db.db.query.return_value = MockQuery([])
