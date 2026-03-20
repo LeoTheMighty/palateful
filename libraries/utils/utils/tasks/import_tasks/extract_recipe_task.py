@@ -7,7 +7,11 @@ from utils.api.endpoint import success
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.services.celery import celery_app
-from utils.services.recipe_extractors import ExtractionResult, extract_recipe_from_text, extract_recipe_from_url
+from utils.services.recipe_extractors import (
+    ExtractionResult,
+    extract_recipe_from_text,
+    extract_recipe_from_url,
+)
 from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
