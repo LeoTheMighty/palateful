@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/utils/responsive.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'services/recipe_book_sync_service.dart';
 
@@ -828,71 +829,117 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: _loadRecipeBook,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      // Description
-                      if (_recipeBook?['description'] != null) ...[
-                        Text(
-                          _recipeBook!['description'],
-                          style: textTheme.bodyLarge?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // Recipes header
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
                         children: [
-                          Text(
-                            'Recipes (${_recipes.length})',
-                            style: textTheme.titleMedium,
+                          // Description
+                          if (_recipeBook?['description'] != null) ...[
+                            Text(
+                              _recipeBook!['description'],
+                              style: textTheme.bodyLarge?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Recipes header
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Recipes (${_recipes.length})',
+                                style: textTheme.titleMedium,
+                              ),
+                            ],
                           ),
+                          const SizedBox(height: 8),
+
+                          // Recipes list or empty state
+                          if (_recipes.isEmpty)
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4,
+                              child: EmptyStateWidget(
+                                icon: Icons.restaurant_menu,
+                                title: 'Add your first recipe',
+                                subtitle: 'Tap + to add a recipe to this book',
+                                actionLabel: 'Add Recipe',
+                                actionIcon: Icons.add,
+                                onAction: _addRecipe,
+                              ),
+                            )
+                          else
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final columns = ResponsiveUtils.recipeGridColumns(context);
+                                if (columns == 1) {
+                                  return Column(
+                                    children: _recipes.map((recipe) {
+                                      final recipeId = recipe['id']?.toString();
+                                      final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
+                                      return _RecipeCard(
+                                        recipe: recipe,
+                                        isSelectMode: _isSelectMode,
+                                        isSelected: isSelected,
+                                        onTap: _isSelectMode
+                                            ? () {
+                                                if (recipeId != null) _toggleRecipeSelection(recipeId);
+                                              }
+                                            : () async {
+                                                await context.push('/recipes/${recipe['id']}');
+                                                _loadRecipeBook();
+                                              },
+                                        onLongPress: _isSelectMode || _userRole == 'viewer'
+                                            ? null
+                                            : () {
+                                                if (recipeId != null) {
+                                                  _enterSelectMode(initialRecipeId: recipeId);
+                                                }
+                                              },
+                                      );
+                                    }).toList(),
+                                  );
+                                }
+                                return GridView.count(
+                                  crossAxisCount: columns,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                  childAspectRatio: 0.75,
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  children: _recipes.map((recipe) {
+                                    final recipeId = recipe['id']?.toString();
+                                    final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
+                                    return _RecipeCard(
+                                      recipe: recipe,
+                                      isSelectMode: _isSelectMode,
+                                      isSelected: isSelected,
+                                      onTap: _isSelectMode
+                                          ? () {
+                                              if (recipeId != null) _toggleRecipeSelection(recipeId);
+                                            }
+                                          : () async {
+                                              await context.push('/recipes/${recipe['id']}');
+                                              _loadRecipeBook();
+                                            },
+                                      onLongPress: _isSelectMode || _userRole == 'viewer'
+                                          ? null
+                                          : () {
+                                              if (recipeId != null) {
+                                                _enterSelectMode(initialRecipeId: recipeId);
+                                              }
+                                            },
+                                    );
+                                  }).toList(),
+                                );
+                              },
+                            ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-
-                      // Recipes list or empty state
-                      if (_recipes.isEmpty)
-                        SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.4,
-                          child: EmptyStateWidget(
-                            icon: Icons.restaurant_menu,
-                            title: 'Add your first recipe',
-                            subtitle: 'Tap + to add a recipe to this book',
-                            actionLabel: 'Add Recipe',
-                            actionIcon: Icons.add,
-                            onAction: _addRecipe,
-                          ),
-                        )
-                      else
-                        ...(_recipes.map((recipe) {
-                          final recipeId = recipe['id']?.toString();
-                          final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
-                          return _RecipeCard(
-                            recipe: recipe,
-                            isSelectMode: _isSelectMode,
-                            isSelected: isSelected,
-                            onTap: _isSelectMode
-                                ? () {
-                                    if (recipeId != null) _toggleRecipeSelection(recipeId);
-                                  }
-                                : () async {
-                                    await context.push('/recipes/${recipe['id']}');
-                                    _loadRecipeBook();
-                                  },
-                            onLongPress: _isSelectMode || _userRole == 'viewer'
-                                ? null
-                                : () {
-                                    if (recipeId != null) {
-                                      _enterSelectMode(initialRecipeId: recipeId);
-                                    }
-                                  },
-                          );
-                        })),
-                    ],
+                    ),
                   ),
                 ),
     );

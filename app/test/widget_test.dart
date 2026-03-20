@@ -137,7 +137,11 @@ void main() {
   });
 
   group('ScaffoldWithBottomNav', () {
-    testWidgets('has 5 navigation destinations', (tester) async {
+    testWidgets('has 5 navigation destinations on mobile', (tester) async {
+      // Force narrow viewport so ScaffoldWithBottomNav renders mobile bottom nav
+      tester.view.physicalSize = const Size(400, 800);
+      addTearDown(tester.view.resetPhysicalSize);
+
       final router = GoRouter(
         initialLocation: '/',
         routes: [
@@ -169,7 +173,7 @@ void main() {
       await tester.pumpWidget(MaterialApp.router(routerConfig: router));
       await tester.pumpAndSettle();
 
-      // Verify 5 NavigationDestination widgets rendered by ScaffoldWithBottomNav
+      // At 400px width (< kMobileBreakpoint=600) the widget renders bottom NavigationBar
       expect(find.byType(NavigationDestination), findsNWidgets(5));
       // Verify nav labels (these come from ScaffoldWithBottomNav, not from route content)
       expect(find.text('Home'), findsWidgets); // label + possibly tab content
@@ -177,6 +181,46 @@ void main() {
       expect(find.text('Cart'), findsOneWidget);
       expect(find.text('Calendar'), findsOneWidget);
       expect(find.text('Profile'), findsOneWidget);
+    });
+
+    testWidgets('uses NavigationRail on wide screens', (tester) async {
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (context, state, navigationShell) {
+              return ScaffoldWithBottomNav(navigationShell: navigationShell);
+            },
+            branches: [
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/', builder: (_, __) => const Text('Tab 0')),
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/b', builder: (_, __) => const Text('Tab 1')),
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/c', builder: (_, __) => const Text('Tab 2')),
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/d', builder: (_, __) => const Text('Tab 3')),
+              ]),
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/e', builder: (_, __) => const Text('Tab 4')),
+              ]),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+
+      // Default test width is 800px (>= kMobileBreakpoint=600) → NavigationRail
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      // Nav labels are still present
+      expect(find.text('Home'), findsWidgets);
+      expect(find.text('Books'), findsOneWidget);
     });
   });
 

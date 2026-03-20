@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -100,7 +101,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   Future<void> _pickFromCamera() async {
     try {
       final image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
+        source: kIsWeb ? ImageSource.gallery : ImageSource.camera,
         maxWidth: 2048,
         maxHeight: 2048,
         imageQuality: 85,
@@ -165,14 +166,24 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: AppColors.chocolate),
-                title: const Text('Take Photo'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _pickFromCamera();
-                },
-              ),
+              if (!kIsWeb)
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: AppColors.chocolate),
+                  title: const Text('Take Photo'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromCamera();
+                  },
+                ),
+              if (kIsWeb)
+                ListTile(
+                  leading: const Icon(Icons.upload_file, color: AppColors.chocolate),
+                  title: const Text('Upload Photo'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromCamera();
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.photo_library, color: AppColors.chocolate),
                 title: const Text('Choose from Gallery'),
