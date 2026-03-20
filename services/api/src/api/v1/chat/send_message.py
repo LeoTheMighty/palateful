@@ -11,6 +11,7 @@ from utils.models.thread import Thread
 
 class SendMessageParams(BaseModel):
     message: str = Field(..., min_length=1, max_length=10_000)
+    recipe_context: str | None = Field(None, max_length=5_000)
 
 
 async def send_message_stream(
@@ -31,6 +32,7 @@ async def send_message_stream(
                 user_message=params.message,
                 user=user,
                 database=database,
+                recipe_context=params.recipe_context,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:

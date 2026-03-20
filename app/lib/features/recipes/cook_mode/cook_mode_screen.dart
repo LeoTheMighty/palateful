@@ -11,6 +11,7 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/cook_timer_notification_service.dart';
 import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/app_colors.dart';
+import 'widgets/cook_mode_chat_sheet.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/post_cook_feedback_sheet.dart';
 import 'widgets/step_navigator.dart';
@@ -321,6 +322,47 @@ class _CookModeScreenState extends State<CookModeScreen>
     });
   }
 
+  String _buildRecipeContext() {
+    final buf = StringBuffer();
+    buf.writeln('Recipe: ${_recipe?['name'] ?? 'Unknown'}');
+    if (_recipe?['servings'] != null) {
+      buf.writeln('Servings: ${_recipe!['servings']}');
+    }
+    buf.writeln();
+    buf.writeln('Ingredients:');
+    for (final ing in _ingredients) {
+      final qty = ing['quantity_display'] ?? '';
+      final unit = ing['unit_display'] ?? '';
+      final name = (ing['ingredient'] as Map?)?['canonical_name'] ?? ing['name'] ?? ing['original_text'] ?? '';
+      final notes = ing['notes'] as String? ?? '';
+      final line = '$qty $unit $name'.trim();
+      buf.writeln('- $line${notes.isNotEmpty ? ' ($notes)' : ''}');
+    }
+    buf.writeln();
+    buf.writeln('Steps:');
+    for (var i = 0; i < _steps.length; i++) {
+      buf.writeln('${i + 1}. ${_steps[i]}');
+    }
+    if (_steps.isNotEmpty) {
+      buf.writeln();
+      buf.writeln('Currently on step ${_currentStep + 1} of ${_steps.length}.');
+    }
+    return buf.toString();
+  }
+
+  void _showAIChatSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CookModeChatSheet(
+        recipeId: widget.recipeId,
+        recipeName: _recipe?['name'] as String? ?? 'Recipe',
+        recipeContext: _buildRecipeContext(),
+      ),
+    );
+  }
+
   void _exitCookMode() {
     _cookingStopwatch.stop();
     // Mark current step as complete
@@ -530,6 +572,17 @@ class _CookModeScreenState extends State<CookModeScreen>
               overflow: TextOverflow.ellipsis,
             ),
           ),
+
+          // AI chat button (only when online)
+          if (!_isOffline)
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline,
+                  color: AppColors.warmIvory),
+              onPressed: _showAIChatSheet,
+              constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+              padding: EdgeInsets.zero,
+              tooltip: 'Ask AI',
+            ),
 
           // Offline indicator (subtle — not alarming)
           if (_isOffline) ...[

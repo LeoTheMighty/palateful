@@ -486,3 +486,40 @@ class TestSuggestRecipeTool:
         assert result.data["based_on_ingredients"] == ["chicken", "garlic"]
         assert result.data["model_used"] == "gpt-4o-mini"
         mock_provider.chat.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Recipe context support (Story 11.5)
+# ---------------------------------------------------------------------------
+
+
+class TestRecipeContext:
+    """Tests for recipe_context in SendMessageParams."""
+
+    def test_send_message_params_accepts_recipe_context(self):
+        """SendMessageParams accepts optional recipe_context field."""
+        from api.v1.chat.send_message import SendMessageParams
+
+        params = SendMessageParams(
+            message="Can I substitute butter?",
+            recipe_context="Recipe: Pasta\nIngredients:\n- olive oil",
+        )
+        assert params.message == "Can I substitute butter?"
+        assert params.recipe_context == "Recipe: Pasta\nIngredients:\n- olive oil"
+
+    def test_send_message_params_works_without_recipe_context(self):
+        """SendMessageParams works without recipe_context (backward compatible)."""
+        from api.v1.chat.send_message import SendMessageParams
+
+        params = SendMessageParams(message="Hello AI")
+        assert params.message == "Hello AI"
+        assert params.recipe_context is None
+
+    def test_send_message_params_rejects_oversized_recipe_context(self):
+        """SendMessageParams rejects recipe_context exceeding max_length."""
+        import pytest
+
+        from api.v1.chat.send_message import SendMessageParams
+
+        with pytest.raises(Exception):
+            SendMessageParams(message="test", recipe_context="x" * 5001)

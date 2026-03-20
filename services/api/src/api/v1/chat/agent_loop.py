@@ -19,7 +19,10 @@ SYSTEM_PROMPT = (
     "When users ask for recipe suggestions or what to cook, use the search_recipes tool "
     "to find relevant recipes from their collection and present them with your reasoning. "
     "Use suggest_recipe only when the user explicitly wants a brand-new recipe idea "
-    "not from their existing collection."
+    "not from their existing collection. "
+    "When the user is cooking and asks questions about the current recipe, "
+    "use the recipe context provided to answer. Reference specific ingredients, "
+    "steps, and quantities. Keep answers concise and practical."
 )
 
 
@@ -44,6 +47,7 @@ async def run_chat_agent(
     user_message: str,
     user,
     database,
+    recipe_context: str | None = None,
 ) -> AsyncGenerator[dict[str, Any]]:
     """Async generator yielding SSE event dicts for the AI chat agent loop."""
     from agent.llm.provider import Message, get_llm_provider
@@ -67,7 +71,10 @@ async def run_chat_agent(
 
     # 3. Load thread history → LLM messages
     thread = database.db.get(Thread, thread_id)
-    messages = [Message(role="system", content=SYSTEM_PROMPT)]
+    system_content = SYSTEM_PROMPT
+    if recipe_context:
+        system_content += "\n\n--- Current Recipe Context ---\n" + recipe_context
+    messages = [Message(role="system", content=system_content)]
     for chat in thread.chats:
         if chat.role == "tool":
             messages.append(

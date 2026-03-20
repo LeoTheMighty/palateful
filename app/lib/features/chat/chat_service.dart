@@ -135,10 +135,14 @@ class ChatService {
     await _dio.delete('/v1/chat/threads/$threadId');
   }
 
-  Stream<ChatEvent> sendMessage(String threadId, String text) async* {
+  Stream<ChatEvent> sendMessage(String threadId, String text,
+      {String? recipeContext}) async* {
     final response = await _dio.post(
       '/v1/chat/threads/$threadId/messages',
-      data: {'message': text},
+      data: {
+        'message': text,
+        if (recipeContext != null) 'recipe_context': recipeContext,
+      },
       options: Options(responseType: ResponseType.stream),
     );
 
