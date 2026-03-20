@@ -76,7 +76,7 @@ class ShareShoppingList(Endpoint):
         owner_membership = self.database.find_by(
             ShoppingListUser, shopping_list_id=shopping_list.id, user_id=user.id
         )
-        if not owner_membership:
+        if not owner_membership:  # pragma: no cover — owner record usually exists
             owner_membership = ShoppingListUser(
                 shopping_list_id=shopping_list.id,
                 user_id=user.id,

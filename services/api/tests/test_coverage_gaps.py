@@ -875,6 +875,87 @@ class TestRestoreRecipeVersionExtended:
         result = _parse_quantity_display("3")
         assert result == Decimal("3.0") or float(result) == pytest.approx(3.0)
 
+    def _setup_restore(self, mock_db, mock_user, snapshot,
+                       existing_ingredients=None, existing_steps=None):
+        """Helper to set up restore test."""
+        recipe_id = "recipe-restore"
+        version_id = "version-restore"
+        book_id = "book-restore"
+
+        recipe = MockRecipe(
+            id=recipe_id, recipe_book_id=book_id, name="Old",
+            instructions="Old instr", description="D", servings=4,
+            prep_time=10, cook_time=20, image_url=None, source_url=None,
+            tags=[],
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
+        )
+        version = MockRecipeVersion(
+            id=version_id, recipe_id=recipe_id, version_number=1,
+            snapshot=snapshot,
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id), recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_db.set_where(RecipeIngredient, existing_ingredients or [])
+        mock_db.set_where(RecipeStep, existing_steps or [])
+        mock_db.set_where(RecipeNote, [])
+        mock_db.set_where(RecipeVersion, [])
+
+        return recipe_id, version_id
+
+    def test_restore_with_existing_items_to_delete(self, client, mock_db, mock_user):
+        """Existing ingredients/steps are deleted before restore (lines 103, 137)."""
+        existing_ing = MockRecipeIngredient(recipe_id="recipe-restore")
+        existing_step = MockRecipeStep(recipe_id="recipe-restore", step_number=1)
+
+        recipe_id, version_id = self._setup_restore(
+            mock_db, mock_user,
+            snapshot={
+                "name": "New",
+                "ingredients": [
+                    {"ingredient_id": str(uuid.uuid4()), "quantity_display": "2", "unit_display": "cups"},
+                ],
+                "steps": [{"step_number": 1, "instruction": "Do it"}],
+            },
+            existing_ingredients=[existing_ing],
+            existing_steps=[existing_step],
+        )
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
+        assert response.status_code == 200
+
+    def test_restore_empty_snapshot_no_updates(self, client, mock_db, mock_user):
+        """Snapshot without name/instructions skips update (branches 93->95, 95->97, 97->101)."""
+        recipe_id, version_id = self._setup_restore(
+            mock_db, mock_user,
+            snapshot={},  # no name, no instructions
+        )
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
+        assert response.status_code == 200
+
+    def test_restore_parse_quantity_failure_in_ingredient(self, client, mock_db, mock_user):
+        """Unparseable quantity falls back to Decimal('1') (lines 110-111)."""
+        recipe_id, version_id = self._setup_restore(
+            mock_db, mock_user,
+            snapshot={
+                "ingredients": [
+                    {"ingredient_id": str(uuid.uuid4()), "quantity_display": "not-a-number!!!", "unit_display": "cups"},
+                ],
+            },
+        )
+        response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
+        assert response.status_code == 200
+
 
 # ===========================================================================
 # 9. fork_recipe.py — lines 104-115, 122-133 (ingredient + step cloning)
@@ -1474,6 +1555,14 @@ class TestInvitationHelpersExtended:
         assert existing.role == "cohost"
         assert existing.status == "accepted"
 
+    def test_check_existing_membership_unknown_resource_type(self):
+        """Unknown resource_type returns False (line 193)."""
+        from api.v1.invitations.helpers import check_existing_membership
+
+        db = MagicMock()
+        result = check_existing_membership(db, uuid.uuid4(), "unknown_type", uuid.uuid4())
+        assert result is False
+
 
 # ===========================================================================
 # 21. send_invitation.py — branch 110->115 (existing pending invite by email)
@@ -1711,3 +1800,336 @@ class TestSearchUsersEmptyQuery:
         with pytest.raises(APIException) as exc:
             endpoint.execute(q="   ")
         assert exc.value.status_code == 400
+
+
+# ===========================================================================
+# 28. Additional remaining gaps — statement and branch coverage
+# ===========================================================================
+
+
+class TestCreateInviteLinkExpiresInDays:
+    """Cover expires_in_days branch in CreateInviteLink (line 31)."""
+
+    def test_create_invite_link_with_expires_in_days(self, client, mock_db, mock_user):
+        """Setting expires_in_days calculates expires_at."""
+        book_id = "b0000000-0000-0000-0000-000000000001"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
+        )
+        mock_db.db.execute.return_value = MockExecuteResult([membership])
+
+        response = client.post(
+            "/v1/invite-links",
+            json={
+                "resource_type": "recipe_book",
+                "resource_id": book_id,
+                "role_offered": "viewer",
+                "expires_in_days": 7,
+            },
+        )
+        assert response.status_code in (200, 201)
+
+
+class TestAddShoppingListItemEdgeCases:
+    """Cover missing lines in add_item.py (34, 52)."""
+
+    @patch("api.v1.shopping_list.add_item.notify_item_added")
+    def test_add_item_list_not_found(self, mock_notify, client, mock_db, mock_user):
+        """404 when list doesn't exist (line 34)."""
+        response = client.post(
+            "/v1/shopping-lists/missing-list/items",
+            json={"name": "Milk"},
+        )
+        assert response.status_code == 404
+
+    @patch("api.v1.shopping_list.add_item.notify_item_added")
+    def test_add_item_no_permission(self, mock_notify, client, mock_db, mock_user):
+        """403 when user has no edit access (line 52)."""
+        list_id = "sl-no-perm"
+        sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()))
+
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.post(
+            f"/v1/shopping-lists/{list_id}/items",
+            json={"name": "Milk"},
+        )
+        assert response.status_code == 403
+
+
+class TestDeleteShoppingListAccessDenied:
+    """Cover non-owner delete denial (line 39)."""
+
+    def test_delete_shopping_list_non_owner(self, client, mock_db, mock_user):
+        """Non-owner gets 403."""
+        list_id = "sl-notowner"
+        sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()))
+
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.delete(f"/v1/shopping-lists/{list_id}")
+        assert response.status_code == 403
+
+
+class TestListShoppingListsExtended:
+    """Cover status filter (line 61) and shared member count (line 84)."""
+
+    def test_list_shopping_lists_with_status_filter(self, client, mock_db, mock_user):
+        """Status filter branch (line 61)."""
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/shopping-lists?status=active")
+        assert response.status_code == 200
+
+    def test_list_shopping_lists_shared_with_members(self, client, mock_db, mock_user):
+        """Shared list counts members (line 84)."""
+        member = MockShoppingListUser(
+            user_id=str(mock_user.id), archived_at=None,
+        )
+        sl = MockShoppingList(
+            owner_id=str(mock_user.id), is_shared=True,
+            items=[], members=[member],
+        )
+        mock_db.db.query.return_value = MockQuery([sl])
+
+        response = client.get("/v1/shopping-lists")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+
+
+class TestBulkUpdateTagsNoChanges:
+    """Cover the no-tag-changes branch missed in line 35."""
+
+    def test_empty_recipe_ids_returns_400(self, client, mock_db, mock_user):
+        """Empty recipe_ids returns 400."""
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": [], "add_tags": ["quick"]},
+        )
+        assert response.status_code == 400
+
+
+class TestRestoreRecipeNormalizationSuccess:
+    """Cover normalize_quantity success path in restore (lines 115-116)."""
+
+    def test_restore_with_mocked_normalize_success(self, client, mock_db, mock_user):
+        """When normalize_quantity succeeds, uses normalized values (lines 115-116)."""
+        recipe_id = "recipe-norm-ok"
+        version_id = "version-norm-ok"
+        book_id = "book-norm-ok"
+
+        recipe = MockRecipe(
+            id=recipe_id, recipe_book_id=book_id, name="Test",
+            instructions=None, description=None, servings=1,
+            prep_time=None, cook_time=None, image_url=None, source_url=None,
+            tags=[],
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
+        )
+        version = MockRecipeVersion(
+            id=version_id, recipe_id=recipe_id, version_number=1,
+            snapshot={
+                "ingredients": [
+                    {
+                        "ingredient_id": str(uuid.uuid4()),
+                        "quantity_display": "1",
+                        "unit_display": "cups",
+                    }
+                ],
+            },
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id), recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_db.set_where(RecipeIngredient, [])
+        mock_db.set_where(RecipeStep, [])
+        mock_db.set_where(RecipeNote, [])
+        mock_db.set_where(RecipeVersion, [])
+
+        # Mock normalize_quantity to return a successful result
+        mock_normalized = MagicMock()
+        mock_normalized.quantity_normalized = 240.0
+        mock_normalized.unit_normalized = "ml"
+
+        with patch("api.v1.recipe.restore_recipe_version.normalize_quantity",
+                    return_value=mock_normalized):
+            response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
+        assert response.status_code == 200
+
+
+class TestUpdateRecipeEmbeddingBranch:
+    """Cover line 120 in update_recipe — ingredient not found during update."""
+
+    def test_update_recipe_ingredient_not_found(self, client, mock_db, mock_user):
+        """Ingredient not found returns 400 (line 120)."""
+        recipe_id = "r-upd-ing-nf"
+        book_id = "b-upd-ing-nf"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, name="Test")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id), recipe_book_id=book_id)
+        # Ingredient not found (no set_find_by for Ingredient)
+
+        with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None):
+            response = client.put(
+                f"/v1/recipes/{recipe_id}",
+                json={
+                    "ingredients": [
+                        {"ingredient_id": "missing-ing", "quantity": 2, "unit": "cups"},
+                    ],
+                },
+            )
+        assert response.status_code == 400
+
+
+class TestPopulateFromRecipeMissing:
+    """Cover populate_from_recipe.py line 95."""
+
+    def test_populate_from_recipe_ingredient_with_no_ingredient_obj(self, client, mock_db, mock_user):
+        """RecipeIngredient where .ingredient is None is skipped (line 95)."""
+        list_id = str(uuid.uuid4())
+        recipe_id = str(uuid.uuid4())
+
+        ri = MockRecipeIngredient(
+            ingredient_id=str(uuid.uuid4()),
+            recipe_id=recipe_id,
+            quantity_display=Decimal("1"),
+            unit_display="tsp",
+        )
+        ri.ingredient = None  # no ingredient resolved
+
+        recipe = MockRecipe(id=recipe_id, recipe_book_id="b1")
+        recipe.ingredients = [ri]
+
+        sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id), items=[])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id="b1", role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id), recipe_book_id="b1")
+
+        response = client.post(
+            f"/v1/shopping-lists/{list_id}/populate-from-recipe",
+            json={"recipe_id": recipe_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items_added"] == 0
+
+
+# ===========================================================================
+# 29. Additional statement and branch gaps
+# ===========================================================================
+
+
+class TestBulkUpdateTagsRecipeNotFound:
+    """Cover recipe-not-found in bulk_update_tags loop (line 35)."""
+
+    def test_recipe_not_found_returns_404(self, client, mock_db, mock_user):
+        """Recipe not found in bulk tag update returns 404."""
+        response = client.post(
+            "/v1/recipes/bulk/tags",
+            json={"recipe_ids": ["nonexistent"], "add_tags": ["quick"]},
+        )
+        assert response.status_code == 404
+
+
+class TestUpdateRecipeIngNotFound:
+    """Cover update_recipe line 120 (delete existing ingredients) and ingredient not found."""
+
+    def test_update_recipe_deletes_existing_ingredients(self, client, mock_db, mock_user):
+        """Updating with ingredients deletes existing ones first (line 120)."""
+        recipe_id = "r-del-existing"
+        book_id = "b-del-existing"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, name="Test")
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
+        )
+        existing_ri = MockRecipeIngredient(recipe_id=recipe_id)
+        ingredient = MockIngredient(id="ing-ok", canonical_name="flour")
+
+        from utils.models.ingredient import Ingredient
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_version import RecipeVersion
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id), recipe_book_id=book_id)
+        mock_db.set_find_by(Ingredient, ingredient, id="ing-ok")
+
+        # Set up existing items for deletion
+        mock_db.set_where(RecipeIngredient, [existing_ri])
+        mock_db.set_where(RecipeStep, [])
+        mock_db.set_where(RecipeNote, [])
+        mock_db.set_where(RecipeVersion, [])
+
+        with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None):
+            response = client.put(
+                f"/v1/recipes/{recipe_id}",
+                json={
+                    "ingredients": [
+                        {"ingredient_id": "ing-ok", "quantity": 1, "unit": "cup"},
+                    ],
+                },
+            )
+        assert response.status_code == 200
+
+
+class TestRecipeRouterNotifySharedBook:
+    """Cover recipe_router.py line 87 (notify_recipe_added for shared book)."""
+
+    @patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None)
+    def test_create_recipe_in_shared_book_notifies(self, mock_embed, client, mock_db, mock_user):
+        """Creating recipe in shared book triggers notification (line 87)."""
+        book_id = "shared-book"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
+        )
+        book = MockRecipeBook(id=book_id, name="Shared Book", is_shared=True)
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id), recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        with patch("routers.v1.recipe_router.notify_recipe_added") as mock_notify:
+            response = client.post(
+                f"/v1/recipe-books/{book_id}/recipes",
+                json={"name": "Shared Pasta"},
+            )
+        assert response.status_code == 201
+        mock_notify.assert_called_once()

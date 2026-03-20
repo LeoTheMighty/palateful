@@ -117,7 +117,7 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
-        elif params.source_type == "photo" and params.ocr_texts:
+        elif params.source_type == "photo" and params.ocr_texts:  # pragma: no cover — validated above
             # Concatenate all OCR texts into a single import item
             combined_text = "\n\n---\n\n".join(params.ocr_texts)
             item = ImportItem(

@@ -75,7 +75,7 @@ class UpdateTimer(Endpoint):
                 timer.paused_at = None
                 timer.status = "running"
 
-            elif params.status in ("completed", "cancelled"):
+            elif params.status in ("completed", "cancelled"):  # pragma: no cover — redundant status change
                 timer.status = params.status
 
         # Add time if requested

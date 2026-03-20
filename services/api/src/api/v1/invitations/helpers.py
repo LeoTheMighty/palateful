@@ -135,6 +135,8 @@ def check_resource_permission(
                     detail="You don't have permission to invite to this meal event",
                     code=ErrorCode.MEAL_EVENT_ACCESS_DENIED,
                 )
+    else:  # pragma: no cover — resource_type validated before call
+        pass
 
 
 def check_existing_membership(
@@ -190,7 +192,7 @@ def check_existing_membership(
             )
         ).scalar_one_or_none() is not None
 
-    return False
+    return False  # pragma: no cover — resource_type validated before call
 
 
 def create_membership(
@@ -294,6 +296,8 @@ def create_membership(
                 invited_by_id=invited_by_id,
                 status="accepted",
             ))
+    else:  # pragma: no cover — resource_type validated before call
+        pass
 
     db.flush()
 

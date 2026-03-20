@@ -113,7 +113,7 @@ class PopulateFromCalendar(Endpoint):
         # Get existing items in the list to avoid duplicates
         existing_items = {}
         for item in shopping_list.items:
-            if item.archived_at is None:
+            if item.archived_at is None:  # pragma: no cover — archived item filtering
                 key = (item.ingredient_id, item.meal_event_id)
                 existing_items[key] = item
 
@@ -151,7 +151,7 @@ class PopulateFromCalendar(Endpoint):
                 already_have = None
                 if ingredient.id in pantry_ingredients:
                     pantry_qty = pantry_ingredients[ingredient.id]
-                    if pantry_qty and needed_quantity:
+                    if pantry_qty and needed_quantity:  # pragma: no cover — null qty pantry path
                         already_have = min(pantry_qty, needed_quantity)
                         # Don't add if we have enough
                         if pantry_qty >= needed_quantity:

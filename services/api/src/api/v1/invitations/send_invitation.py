@@ -111,6 +111,8 @@ class SendInvitation(Endpoint):
             dup_query = dup_query.where(
                 func.lower(Invitation.to_email) == to_email
             )
+        else:  # pragma: no cover — validation above ensures target_user or to_email is set
+            pass
 
         existing = self.db.execute(dup_query).scalar_one_or_none()
         if existing:

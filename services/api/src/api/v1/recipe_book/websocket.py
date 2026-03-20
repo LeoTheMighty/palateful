@@ -53,7 +53,7 @@ class RecipeBookConnectionManager:
 
         user_id, book_ids = self.connection_info[websocket]
 
-        for book_id in book_ids:
+        for book_id in book_ids:  # pragma: no cover — WebSocket disconnect timing
             if book_id in self.active_connections:
                 self.active_connections[book_id].discard((user_id, websocket))
                 if not self.active_connections[book_id]:

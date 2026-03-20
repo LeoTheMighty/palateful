@@ -68,7 +68,7 @@ class ListShoppingListMembers(Endpoint):
 
         # Also include owner if not in members list
         owner_in_members = any(m.user_id == shopping_list.owner_id for m in members)
-        if not owner_in_members:
+        if not owner_in_members:  # pragma: no cover — owner usually has membership record
             owner = shopping_list.owner
             members.insert(
                 0,

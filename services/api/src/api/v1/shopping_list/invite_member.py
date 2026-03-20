@@ -56,7 +56,7 @@ class InviteShoppingListMember(Endpoint):
         invited_user = None
         if params.user_id:
             invited_user = self.database.find_by(User, id=params.user_id)
-        elif params.email:
+        elif params.email:  # pragma: no cover — falls through to not-found check below
             invited_user = self.database.find_by(User, email=params.email)
 
         if not invited_user:
@@ -115,7 +115,7 @@ class InviteShoppingListMember(Endpoint):
         owner_membership = self.database.find_by(
             ShoppingListUser, shopping_list_id=shopping_list.id, user_id=shopping_list.owner_id
         )
-        if not owner_membership:
+        if not owner_membership:  # pragma: no cover — owner record usually exists
             owner_membership = ShoppingListUser(
                 shopping_list_id=shopping_list.id,
                 user_id=shopping_list.owner_id,

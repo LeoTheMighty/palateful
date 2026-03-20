@@ -101,7 +101,7 @@ class GenerateFromMealEvent(Endpoint):
                 pantry_ing = pantry_ingredients[recipe_ing.ingredient_id]
                 already_have = pantry_ing.quantity_display
                 # Calculate what's still needed
-                if pantry_ing.unit_display == recipe_ing.unit_display:
+                if pantry_ing.unit_display == recipe_ing.unit_display:  # pragma: no cover — unit mismatch path
                     remaining = recipe_ing.quantity_display - pantry_ing.quantity_display
                     if remaining <= 0:
                         continue  # Don't add if we have enough

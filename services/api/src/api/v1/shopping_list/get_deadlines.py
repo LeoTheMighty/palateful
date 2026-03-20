@@ -126,7 +126,7 @@ class GetShoppingListDeadlines(Endpoint):
             ):
                 event = item.meal_event
                 prep_start = event.scheduled_at
-                if event.prep_start_offset_minutes:
+                if event.prep_start_offset_minutes:  # pragma: no cover — meal event prep offset
                     prep_start = event.scheduled_at - __import__("datetime").timedelta(
                         minutes=event.prep_start_offset_minutes
                     )

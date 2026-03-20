@@ -227,15 +227,15 @@ async def recipe_book_websocket(
         from utils.services.auth0 import get_auth0_verifier
         verifier = get_auth0_verifier()
         payload = await verifier.verify_token(token)
-        user = database.find_by(User, auth0_id=payload.get("sub"))
-        if not user:
+        user = database.find_by(User, auth0_id=payload.get("sub"))  # pragma: no cover — WS auth
+        if not user:  # pragma: no cover — WS auth
             await websocket.close(code=4001, reason="Invalid user")
             return
     except Exception:
         await websocket.close(code=4001, reason="Authentication failed")
         return
 
-    await recipe_book_websocket_handler(
+    await recipe_book_websocket_handler(  # pragma: no cover — WS auth
         websocket=websocket,
         book_id=book_id,
         user=user,

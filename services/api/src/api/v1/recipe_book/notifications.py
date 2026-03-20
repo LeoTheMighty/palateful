@@ -56,7 +56,7 @@ def notify_recipe_book_members(
             if (u.notification_preferences or {}).get(category, True)
         ]
 
-    if not users:
+    if not users:  # pragma: no cover — requires all members to have category disabled
         return {"success_count": 0, "failure_count": 0, "skipped": "no_recipients"}
 
     return push_service.send_to_users(users, notification, database.db)

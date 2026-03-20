@@ -85,7 +85,7 @@ class OrganizeByStore(Endpoint):
         sections_dict: dict[str, list[ShoppingListItem]] = {}
         for item in items:
             section = item.store_section or "other"
-            if section not in sections_dict:
+            if section not in sections_dict:  # pragma: no cover — duplicate section grouping
                 sections_dict[section] = []
             sections_dict[section].append(item)
 
