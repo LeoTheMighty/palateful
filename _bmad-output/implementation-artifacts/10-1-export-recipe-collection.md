@@ -1,6 +1,6 @@
 # Story 10.1: Export Recipe Collection
 
-Status: review
+Status: done
 
 ## Story
 

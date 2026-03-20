@@ -61,6 +61,7 @@ class ExportRecipes(Endpoint):
 
                 recipes_data.append({
                     "id": str(recipe.id),
+                    "recipe_book_id": str(recipe.recipe_book_id),
                     "name": recipe.name,
                     "description": recipe.description,
                     "instructions": recipe.instructions,

@@ -158,6 +158,32 @@ class TestExportRecipesEmptyCollection:
         assert data["books"][0]["recipes"] == []
 
 
+class TestExportRecipesSkipsArchivedBooks:
+    """Archived books are excluded from the export."""
+
+    def test_archived_book_is_skipped(self, client, mock_db, mock_user):
+        """Membership for an archived (or missing) book is skipped — book_count stays 0."""
+        book_id = str(uuid.uuid4())
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner"
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_where(RecipeBookUser, [membership])
+        # find_by returns None — simulates archived or deleted book
+        mock_db.set_find_by(RecipeBook, None, id=book_id)
+
+        response = client.get("/v1/users/me/export")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["book_count"] == 0
+        assert data["recipe_count"] == 0
+        assert data["books"] == []
+
+
 class TestExportRecipesAuth:
     """Authentication tests."""
 

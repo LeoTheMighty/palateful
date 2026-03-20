@@ -30,6 +30,21 @@ Map<String, dynamic> _fakeMeResponse() => {
       'pending_invitation_count': 0,
     };
 
+class _SlowFakeApiClient extends ApiClient {
+  final void Function() onExport;
+  _SlowFakeApiClient({required this.onExport});
+
+  @override
+  Future<Response> getMe() async => _fakeResponse(_fakeMeResponse());
+
+  @override
+  Future<Response> exportRecipes() async {
+    onExport();
+    await Future.delayed(const Duration(milliseconds: 500));
+    return _fakeResponse({'exported_at': '', 'recipe_count': 0, 'book_count': 0, 'books': []});
+  }
+}
+
 class _FakeAuthService extends AuthService {
   @override
   Future<void> logout() async {}
@@ -101,6 +116,28 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakeClient.exportCalled, isTrue);
+    });
+
+    testWidgets('double-tap does not call exportRecipes() twice',
+        (tester) async {
+      int callCount = 0;
+      final gi = GetIt.instance;
+      if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+      final slowClient = _SlowFakeApiClient(onExport: () => callCount++);
+      gi.registerSingleton<ApiClient>(slowClient);
+
+      await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      await tester.ensureVisible(find.text('Export Collection'));
+      // Tap twice in rapid succession
+      await tester.tap(find.text('Export Collection'));
+      await tester.pump();
+      await tester.tap(find.text('Export Collection'));
+      await tester.pumpAndSettle();
+
+      expect(callCount, 1);
     });
 
     testWidgets('error shows "Export failed — please try again" snackbar',
