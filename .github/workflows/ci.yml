@@ -236,8 +236,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0-0.3.pre'
-          channel: master
+          channel: stable
           cache: true
 
       - name: Cache pub dependencies
@@ -251,7 +250,13 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: |
-          touch .env
+          # Write dummy env values so assert() guards don't fire in tests
+          cat > .env << 'EOF'
+          API_BASE_URL=http://localhost:8000
+          AUTH0_DOMAIN=test.palateful.us.auth0.com
+          AUTH0_CLIENT_ID=test-client-id
+          AUTH0_AUDIENCE=https://api.palateful.app
+          EOF
           flutter pub get
 
       - name: Analyze
@@ -269,89 +274,20 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
 
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
+      # fmt and validate are purely offline — no AWS credentials needed.
+      # Terraform plan and apply live in the deploy workflow (deploy.yml)
+      # behind a manual approval gate.
       - name: Terraform fmt check
         run: terraform fmt -check -recursive
         working-directory: terraform
 
       - name: Terraform init
-        run: terraform init
+        run: terraform init -backend=false
         working-directory: terraform/environments/dev
 
       - name: Terraform validate
         run: terraform validate
         working-directory: terraform/environments/dev
 
-      - name: Terraform plan
-        run: terraform plan -no-color -input=false
-        working-directory: terraform/environments/dev
-
-      # NOTE: Terraform apply is not enabled yet. The S3 backend in
-      # terraform/environments/dev/main.tf must be uncommented and
-      # initialized before CI can safely run apply (local state is
-      # not shared between CI runs). Once S3 backend is active, add:
-      #
-      # - name: Terraform apply
-      #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      #   run: terraform apply -auto-approve -input=false
-      #   working-directory: terraform/environments/dev
-
-  deploy-images:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, test, check-models, flutter-test]
-    concurrency:
-      group: deploy-${{ github.ref }}
-      cancel-in-progress: false
-    env:
-      AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
-      IMAGE_TAG: ${{ github.sha }}
-    steps:
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Restore workspace
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .
-            !.git
-          key: workspace-${{ github.sha }}-${{ github.run_id }}
-
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          clean: false
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - uses: aws-actions/amazon-ecr-login@v2
-
-      - uses: docker/setup-qemu-action@v3
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build and push API
-        run: npx nx run api:build:ci --push --cache-from=type=gha,scope=api --cache-to=type=gha,scope=api,mode=max
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Migrator
-        run: npx nx run migrator:build:ci --push --cache-from=type=gha,scope=migrator --cache-to=type=gha,scope=migrator,mode=max
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Worker
-        run: npx nx run worker:build:ci --push --cache-from=type=gha,scope=worker --cache-to=type=gha,scope=worker,mode=max
-        env:
-          INPUT_PUSH: 'true'
+  # Image builds and deploys live in deploy.yml behind a manual approval gate.
+  # See .github/workflows/deploy.yml.

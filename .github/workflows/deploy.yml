@@ -1,0 +1,113 @@
+# Deployment workflow — requires manual approval before any infrastructure
+# or image changes reach AWS.
+#
+# Triggered automatically when CI passes on main. All jobs use the
+# "production" GitHub Environment, which must have a required reviewer
+# configured under:
+#   Settings → Environments → production → Required reviewers
+#
+# Required GitHub Secrets (set under Settings → Secrets → Actions):
+#   AWS_ACCESS_KEY_ID       - IAM user key with ECR push + Terraform permissions
+#   AWS_SECRET_ACCESS_KEY   - IAM user secret
+#   AWS_ECR_ACCOUNT_URL     - ECR registry base URL (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com)
+#   AWS_REGION              - AWS region (e.g. us-east-1)
+
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # Gate: only proceed when CI passed
+  ci-gate:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - run: echo "CI passed — proceeding to deployment approval"
+
+  terraform:
+    runs-on: ubuntu-latest
+    needs: ci-gate
+    environment: production   # <-- triggers manual approval
+    env:
+      AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform init (dev)
+        run: terraform init
+        working-directory: terraform/environments/dev
+
+      - name: Terraform plan (dev)
+        run: terraform plan -no-color -input=false -var-file=../../development.tfvars
+        working-directory: terraform/environments/dev
+
+      - name: Terraform apply (dev)
+        run: terraform apply -auto-approve -input=false -var-file=../../development.tfvars
+        working-directory: terraform/environments/dev
+
+  deploy-images:
+    runs-on: ubuntu-latest
+    needs: ci-gate
+    environment: production   # <-- triggers manual approval (same gate as terraform)
+    env:
+      AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API
+        run: npx nx run api:build:ci
+        env:
+          INPUT_PUSH: 'true'
+
+      - name: Build and push Migrator
+        run: npx nx run migrator:build:ci
+        env:
+          INPUT_PUSH: 'true'
+
+      - name: Build and push Worker
+        run: npx nx run worker:build:ci
+        env:
+          INPUT_PUSH: 'true'

@@ -64,11 +64,22 @@ Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
   }
 }
 
+/// Returns the current page origin without query params or fragments.
+/// Omits default ports (80 for http, 443 for https) so the URL matches
+/// what is registered as a callback URL in Auth0 exactly.
+String _currentOrigin() {
+  final uri = Uri.base;
+  final isDefaultPort = (uri.scheme == 'https' && uri.port == 443) ||
+      (uri.scheme == 'http' && uri.port == 80) ||
+      uri.port == 0;
+  final host = isDefaultPort ? uri.host : '${uri.host}:${uri.port}';
+  final path = uri.path.isEmpty ? '/' : uri.path;
+  return '${uri.scheme}://$host$path';
+}
+
 Future<void> loginWithRedirect(dynamic auth0Web, String audience, {String? connection}) async {
   final web = auth0Web as Auth0Web;
-  // Use current URL as redirect URL (without query params)
-  final baseUri = Uri.base;
-  final redirectUrl = '${baseUri.scheme}://${baseUri.host}:${baseUri.port}${baseUri.path}';
+  final redirectUrl = _currentOrigin();
   debugPrint('loginWithRedirect: redirectUrl=$redirectUrl, audience=$audience, connection=$connection');
 
   await web.loginWithRedirect(
@@ -84,7 +95,5 @@ Future<void> loginWithRedirect(dynamic auth0Web, String audience, {String? conne
 
 Future<void> logout(dynamic auth0Web) async {
   final web = auth0Web as Auth0Web;
-  final baseUri = Uri.base;
-  final returnToUrl = '${baseUri.scheme}://${baseUri.host}:${baseUri.port}${baseUri.path}';
-  await web.logout(returnToUrl: returnToUrl);
+  await web.logout(returnToUrl: _currentOrigin());
 }

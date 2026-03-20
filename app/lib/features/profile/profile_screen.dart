@@ -12,6 +12,7 @@ import 'package:shimmer/shimmer.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/push_notification_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -451,6 +452,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
+    // Unregister FCM token before clearing credentials so the API call
+    // still has a valid auth token.
+    await getIt<PushNotificationService>().unregisterToken();
     await _authService.logout();
     _apiClient.clearAuthToken();
     if (!mounted) return;
