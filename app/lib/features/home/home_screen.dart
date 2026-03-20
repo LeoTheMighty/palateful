@@ -98,17 +98,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<dynamic>> _loadAllRecipesFromBooks(List<dynamic> books) async {
-    List<dynamic> allRecipes = [];
-    for (final book in books) {
-      final bookDetail = await _apiClient.getRecipeBook(book['id']);
-      final recipes = bookDetail.data['recipes'] ?? [];
-      for (final recipe in recipes) {
-        recipe['recipe_book_id'] = book['id'];
-        recipe['recipe_book_name'] = book['name'];
-      }
-      allRecipes.addAll(recipes);
-    }
-    return allRecipes;
+    // Fetch all books in parallel instead of sequentially
+    final results = await Future.wait(
+      books.map((book) async {
+        try {
+          final bookDetail = await _apiClient.getRecipeBook(book['id']);
+          final recipes = List<dynamic>.from(bookDetail.data['recipes'] ?? []);
+          for (final recipe in recipes) {
+            recipe['recipe_book_id'] = book['id'];
+            recipe['recipe_book_name'] = book['name'];
+          }
+          return recipes;
+        } catch (_) {
+          return <dynamic>[]; // One book failure doesn't block others
+        }
+      }),
+    );
+    return results.expand((r) => r).toList();
   }
 
   Future<void> _loadHomeContext() async {
@@ -219,7 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _mealFilter = filter;
     });
-    _loadRecipes();
+    // Filter applied client-side in _getFilteredRecipes() — no refetch needed
   }
 
   void _onSortChanged(SortOption sort) {
@@ -544,9 +550,8 @@ class _HomeScreenState extends State<HomeScreen> {
               final name = recipe['name'] ?? 'Untitled';
 
               return GestureDetector(
-                onTap: () async {
-                  await context.push('/recipes/${recipe['id']}');
-                  _loadRecipes();
+                onTap: () {
+                  context.push('/recipes/${recipe['id']}');
                 },
                 child: SizedBox(
                   width: 120,
@@ -839,9 +844,8 @@ class _HomeScreenState extends State<HomeScreen> {
           final recipe = _recipes[index];
           return RecipeCard(
             recipe: recipe,
-            onTap: () async {
-              await context.push('/recipes/${recipe['id']}');
-              _loadRecipes();
+            onTap: () {
+              context.push('/recipes/${recipe['id']}');
             },
             onLongPress: () => _showRecipeActions(recipe),
             onFavoriteToggle: () => _toggleFavorite(recipe),
