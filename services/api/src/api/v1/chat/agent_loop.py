@@ -54,6 +54,17 @@ async def run_chat_agent(
     from agent.tools.recipes import AddNoteToRecipeTool, SearchRecipesTool, SuggestRecipeTool
     from config import settings
 
+    # E2E test mode: return a canned response without calling OpenAI
+    if settings.e2e_test_mode:
+        user_chat = Chat(thread_id=thread_id, role="user", content=user_message)
+        database.create(user_chat)
+        reply = "I'm the E2E test assistant. I can see your recipes and help you cook!"
+        assistant_chat = Chat(thread_id=thread_id, role="assistant", content=reply)
+        database.create(assistant_chat)
+        yield {"type": "text", "content": reply}
+        yield {"type": "done"}
+        return
+
     # 1. Check per-user monthly token cap
     monthly_tokens = get_user_monthly_tokens(database.db, user.id)
     if monthly_tokens >= settings.ai_chat_monthly_token_cap:

@@ -540,6 +540,27 @@ class TestRunChatAgent:
             events.append(event)
         return events
 
+    async def test_e2e_test_mode_returns_canned_response(self):
+        """E2E test mode returns canned response without calling LLM."""
+        from api.v1.chat.agent_loop import run_chat_agent
+
+        mock_db_obj = MagicMock()
+        mock_db_obj.create.side_effect = lambda obj: setattr(obj, 'id', uuid.uuid4())
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+
+        with patch("config.settings") as mock_settings:
+            mock_settings.e2e_test_mode = True
+            events = await self._collect_events(
+                run_chat_agent("t1", "hello", mock_user, mock_db_obj)
+            )
+
+        assert len(events) == 2
+        assert events[0]["type"] == "text"
+        assert "E2E test assistant" in events[0]["content"]
+        assert events[1]["type"] == "done"
+
     async def test_token_cap_exceeded(self):
         """Yields error event and returns when monthly cap is exceeded."""
         from api.v1.chat.agent_loop import run_chat_agent
@@ -554,6 +575,7 @@ class TestRunChatAgent:
         with patch("api.v1.chat.agent_loop.get_user_monthly_tokens", return_value=999999), \
              patch("config.settings") as mock_settings:
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             events = await self._collect_events(
                 run_chat_agent("t1", "hello", mock_user, mock_db_obj)
             )
@@ -604,6 +626,7 @@ class TestRunChatAgent:
              patch("config.settings") as mock_settings, \
              patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             events = await self._collect_events(
                 run_chat_agent("t1", "hello", mock_user, mock_db_obj)
             )
@@ -666,6 +689,7 @@ class TestRunChatAgent:
              patch("agent.llm.provider.get_llm_provider", return_value=mock_provider), \
              patch("agent.tools.recipes.SearchRecipesTool") as mock_search_cls:
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             mock_search_instance = MagicMock()
             mock_search_instance.name = "search_recipes"
             mock_search_instance.execute.return_value = mock_tool_result
@@ -726,6 +750,7 @@ class TestRunChatAgent:
              patch("config.settings") as mock_settings, \
              patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             events = await self._collect_events(
                 run_chat_agent("t1", "hello", mock_user, mock_db_obj)
             )
@@ -768,6 +793,7 @@ class TestRunChatAgent:
              patch("config.settings") as mock_settings, \
              patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             await self._collect_events(
                 run_chat_agent("t1", "help", mock_user, mock_db_obj,
                                recipe_context="Recipe: Pasta\nStep 1: Boil water")
@@ -809,6 +835,7 @@ class TestRunChatAgent:
              patch("config.settings") as mock_settings, \
              patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             events = await self._collect_events(
                 run_chat_agent("t1", "find pasta", mock_user, mock_db_obj)
             )
@@ -860,6 +887,7 @@ class TestRunChatAgent:
              patch("config.settings") as mock_settings, \
              patch("agent.llm.provider.get_llm_provider", return_value=mock_provider):
             mock_settings.ai_chat_monthly_token_cap = 100000
+            mock_settings.e2e_test_mode = False
             events = await self._collect_events(
                 run_chat_agent("t1", "hi again", mock_user, mock_db_obj)
             )

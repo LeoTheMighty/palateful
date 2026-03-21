@@ -132,3 +132,71 @@ class TestGetCurrentUser:
         defaults = call_kwargs.kwargs.get("defaults") or call_kwargs[1].get("defaults")
         assert defaults["email"] is None
         assert defaults["email_verified"] is False
+
+    @pytest.mark.asyncio
+    async def test_e2e_test_mode_bypass(self):
+        """E2E test mode with correct token returns test user."""
+        from dependencies import get_current_user
+
+        mock_database = MagicMock()
+        mock_user = MagicMock()
+        mock_user.has_completed_onboarding = True
+        mock_database.find_or_create_by.return_value = mock_user
+
+        mock_settings = MagicMock()
+        mock_settings.e2e_test_mode = True
+        mock_settings.environment = "test"
+
+        with patch("dependencies.settings", mock_settings):
+            user = await get_current_user(
+                authorization="Bearer e2e-test-token",
+                database=mock_database,
+            )
+
+        assert user is mock_user
+
+    @pytest.mark.asyncio
+    async def test_e2e_test_mode_blocked_in_production(self):
+        """E2E test mode is blocked when environment is production."""
+        from dependencies import get_current_user
+
+        mock_database = MagicMock()
+
+        mock_settings = MagicMock()
+        mock_settings.e2e_test_mode = True
+        mock_settings.environment = "production"
+
+        with patch("dependencies.settings", mock_settings), \
+             patch("utils.services.auth0.get_auth0_verifier") as mock_verifier:
+            mock_verifier.return_value = AsyncMock()
+            mock_verifier.return_value.verify_token.return_value = {"sub": "auth0|x"}
+            mock_database.find_or_create_by.return_value = MagicMock()
+            # Should NOT use E2E bypass, should go through normal auth
+            user = await get_current_user(
+                authorization="Bearer e2e-test-token",
+                database=mock_database,
+            )
+            # Verify Auth0 verifier was called (not bypassed)
+            mock_verifier.return_value.verify_token.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_e2e_onboarding_update(self):
+        """E2E test mode updates onboarding if not completed."""
+        from dependencies import get_current_user
+
+        mock_database = MagicMock()
+        mock_user = MagicMock()
+        mock_user.has_completed_onboarding = False
+        mock_database.find_or_create_by.return_value = mock_user
+
+        mock_settings = MagicMock()
+        mock_settings.e2e_test_mode = True
+        mock_settings.environment = "development"
+
+        with patch("dependencies.settings", mock_settings):
+            await get_current_user(
+                authorization="Bearer e2e-test-token",
+                database=mock_database,
+            )
+
+        mock_database.update.assert_called_once_with(mock_user, has_completed_onboarding=True)

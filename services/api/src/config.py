@@ -27,8 +27,11 @@ class Settings(BaseSettings):
         "http://localhost:8080",
     ]
 
-    # Regex pattern for additional allowed origins (e.g. ngrok tunnels in dev)
-    cors_origin_regex: str = r"https://.*\.ngrok(?:-free)?\.(?:app|io)"
+    # Regex pattern for additional allowed origins (e.g. localhost Flutter app, ngrok tunnels in dev)
+    cors_origin_regex: str = r"(https?://localhost(:\d+)?|https?://127\.0\.0\.1(:\d+)?|https://.*\.ngrok(?:-free)?\.(?:app|io))"
+
+    # E2E testing bypass — when true, a fixed test token skips Auth0 validation
+    e2e_test_mode: bool = False
 
     # Environment
     environment: str = "development"

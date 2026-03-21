@@ -14,7 +14,7 @@ from utils.services.aws import AWSService
 _aws_service = None
 
 
-def _get_aws_service():
+def _get_aws_service():  # pragma: no cover — AWS singleton init, mocked in tests
     global _aws_service
     if _aws_service is None:
         _aws_service = AWSService(
