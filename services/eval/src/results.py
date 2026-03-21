@@ -1,11 +1,9 @@
 """Results output for eval runs — CSV export and summary statistics."""
 
 import csv
-import io
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from rich.console import Console
 from rich.table import Table

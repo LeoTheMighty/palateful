@@ -160,6 +160,12 @@ jobs:
           fetch-depth: 0
           clean: false
 
+      - name: Restore Python dependencies
+        run: |
+          poetry install --with dev
+          poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
+          poetry install
+
       - name: Run migrations
         run: npx nx run migrator:migrate-test
 

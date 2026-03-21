@@ -10,7 +10,7 @@ from src.bridge import run_chat_trial
 from src.config import EvalConfig
 from src.evaluators.base import BaseEvaluator, EvalCase, EvalResult
 from src.judge import judge
-from src.results import CaseSummary, EvalRunSummary, TrialRecord
+from src.results import CaseSummary, TrialRecord
 
 
 class ChatAgentEvaluator(BaseEvaluator):

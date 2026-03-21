@@ -6,7 +6,6 @@ Provides per-trial runners for two evaluation modes:
 """
 
 import asyncio
-import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -114,7 +113,6 @@ def run_chat_trial(
     Returns:
         TrialResult with the agent's response and tool calls.
     """
-    config = get_config()
     result = TrialResult()
     start = time.perf_counter()
 

@@ -5,13 +5,12 @@ Loads QA pairs from datasets/recipe_parse/qa_pairs.json.
 """
 
 import json
-from pathlib import Path
 
 from src.bridge import run_parser_trial
 from src.config import EvalConfig
 from src.evaluators.base import BaseEvaluator, EvalCase, EvalResult
 from src.judge import judge
-from src.results import CaseSummary, EvalRunSummary, TrialRecord
+from src.results import CaseSummary, TrialRecord
 
 
 class RecipeParseEvaluator(BaseEvaluator):
