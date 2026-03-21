@@ -1,7 +1,7 @@
 """Tests for recipe endpoints."""
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from conftest import (
     MockIngredient,
@@ -761,8 +761,13 @@ class TestUpdateRecipeStepsAndTags:
 class TestGetRecipePhotoUploadUrl:
     """Tests for POST /v1/recipes/{recipe_id}/photo-upload-url."""
 
-    def test_get_photo_upload_url_success(self, client, mock_db, mock_user):
+    @patch("api.v1.recipe.get_photo_upload_url._get_aws_service")
+    def test_get_photo_upload_url_success(self, mock_aws, client, mock_db, mock_user):
         """Test getting a presigned URL for recipe photo upload."""
+        mock_service = MagicMock()
+        mock_service.generate_presigned_upload_url.return_value = "https://s3.example.com/presigned"
+        mock_aws.return_value = mock_service
+
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
@@ -792,8 +797,12 @@ class TestGetRecipePhotoUploadUrl:
         assert "image_url" in data
         assert data["content_type"] == "image/jpeg"
 
-    def test_get_photo_upload_url_s3_key_pattern(self, client, mock_db, mock_user):
+    @patch("api.v1.recipe.get_photo_upload_url._get_aws_service")
+    def test_get_photo_upload_url_s3_key_pattern(self, mock_aws, client, mock_db, mock_user):
         """Test that S3 key follows the expected pattern."""
+        mock_service = MagicMock()
+        mock_service.generate_presigned_upload_url.return_value = "https://s3.example.com/presigned"
+        mock_aws.return_value = mock_service
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)

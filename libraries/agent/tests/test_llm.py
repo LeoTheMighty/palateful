@@ -82,6 +82,7 @@ class TestTool:
 class TestGetLLMProvider:
     """Tests for get_llm_provider factory."""
 
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key-for-ci"})
     def test_get_openai_provider(self):
         """Test getting OpenAI provider."""
         with patch("agent.llm.provider.settings") as mock_settings:
