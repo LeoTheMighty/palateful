@@ -1,9 +1,11 @@
 """Evaluators for different AI/OCR features."""
 
 from src.evaluators.base import BaseEvaluator, EvalCase, EvalResult
+from src.evaluators.chat_agent_evaluator import ChatAgentEvaluator
 from src.evaluators.ingredient_matching_evaluator import IngredientMatchingEvaluator
 from src.evaluators.ocr_evaluator import OCREvaluator
 from src.evaluators.recipe_extraction_evaluator import RecipeExtractionEvaluator
+from src.evaluators.recipe_parse_evaluator import RecipeParseEvaluator
 
 __all__ = [
     "BaseEvaluator",
@@ -12,4 +14,6 @@ __all__ = [
     "OCREvaluator",
     "RecipeExtractionEvaluator",
     "IngredientMatchingEvaluator",
+    "RecipeParseEvaluator",
+    "ChatAgentEvaluator",
 ]

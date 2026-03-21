@@ -1,0 +1,26 @@
+[
+  {
+    "id": "chat_ingredients_question",
+    "query": "What ingredients do I need for Chicken Pasta?",
+    "recipe_context": "Recipe: Chicken Pasta\nIngredients:\n- 2 chicken breasts\n- 200g penne pasta\n- 3 cloves garlic\n- 2 tbsp olive oil\n- 1 cup marinara sauce\n- Salt and pepper to taste\n- Fresh basil\n- Parmesan cheese\n\nSteps:\n1. Cook pasta according to package\n2. Dice and season chicken\n3. Cook chicken in olive oil\n4. Add garlic and sauce\n5. Combine with pasta\n6. Top with basil and parmesan",
+    "expected_answer": "Chicken breasts, penne pasta, garlic, olive oil, marinara sauce, salt, pepper, basil, and parmesan cheese",
+    "query_type": "chat_answer",
+    "tags": ["ingredients", "context-based"]
+  },
+  {
+    "id": "chat_add_note",
+    "query": "Add a note to Chicken Pasta — try adding mushrooms next time",
+    "recipe_context": "Recipe: Chicken Pasta\nIngredients:\n- 2 chicken breasts\n- 200g penne pasta\n- 3 cloves garlic\n- 2 tbsp olive oil\n- 1 cup marinara sauce\n- Salt and pepper to taste\n- Fresh basil\n- Parmesan cheese",
+    "expected_answer": "The AI should use the add_note_to_recipe tool",
+    "query_type": "chat_tool_use",
+    "tags": ["tool-use", "add-note"]
+  },
+  {
+    "id": "chat_substitution",
+    "query": "Can I substitute butter for olive oil in this recipe?",
+    "recipe_context": "Recipe: Chicken Pasta\nIngredients:\n- 2 tbsp olive oil\n- 2 chicken breasts\n- 200g penne pasta\n- 3 cloves garlic\n- 1 cup marinara sauce\n- Salt and pepper to taste\n- Fresh basil\n- Parmesan cheese\n\nSteps:\n1. Cook pasta according to package\n2. Dice and season chicken\n3. Cook chicken in olive oil\n4. Add garlic and sauce\n5. Combine with pasta\n6. Top with basil and parmesan",
+    "expected_answer": "Yes, butter can be substituted for olive oil. The flavor will be slightly different but it works well for cooking the chicken.",
+    "query_type": "chat_answer",
+    "tags": ["substitution", "context-based"]
+  }
+]

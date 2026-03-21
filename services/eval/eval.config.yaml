@@ -21,9 +21,22 @@ metrics:
     - false_positive_rate  # Incorrect matches
     - confidence_calibration
 
+  recipe_parse:
+    - field_accuracy       # Per-field match rate (deterministic)
+    - judge_correctness    # LLM-as-judge pass rate
+    - duration_ms          # Latency
+
+  chat_agent:
+    - judge_correctness    # LLM-as-judge pass rate
+    - tool_calls_count     # Whether correct tools were invoked
+    - duration_ms          # Response time
+    - tokens_used          # Token consumption
+
 # Pass/fail thresholds
 thresholds:
   ocr_character_accuracy: 0.95  # 95% character accuracy to pass
   ocr_word_accuracy: 0.90       # 90% word accuracy
   recipe_field_accuracy: 0.90   # 90% field accuracy to pass
   ingredient_match_rate: 0.85   # 85% match rate to pass
+  recipe_parse_pass_rate: 0.80  # 80% LLM-as-judge pass rate
+  chat_agent_pass_rate: 0.80    # 80% LLM-as-judge pass rate

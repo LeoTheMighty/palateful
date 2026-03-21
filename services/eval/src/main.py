@@ -13,6 +13,8 @@ from src.runner import EvalRunner
 
 console = Console()
 
+ALL_SUITES = ["ocr", "recipe_extraction", "ingredient_matching", "recipe_parse", "chat_agent"]
+
 
 @click.group()
 @click.option("--env-file", "-e", default=None, help="Path to .env file")
@@ -34,7 +36,7 @@ def cli(ctx: click.Context, env_file: str | None, config: str | None, verbose: b
 
 
 @cli.command()
-@click.option("--suite", "-s", multiple=True, help="Evaluation suites to run (ocr, recipe_extraction, ingredient_matching)")
+@click.option("--suite", "-s", multiple=True, help=f"Evaluation suites to run ({', '.join(ALL_SUITES)})")
 @click.option("--tags", "-t", multiple=True, help="Only run cases with these tags")
 @click.option("--skip-tags", multiple=True, help="Skip cases with these tags")
 @click.option("--compare", help="Compare results with a previous run (JSON file path)")
@@ -58,13 +60,12 @@ def run(
         config.skip_tags = list(skip_tags)
 
     # Determine which suites to run
-    available_suites = ["ocr", "recipe_extraction", "ingredient_matching"]
-    suites_to_run = list(suite) if suite else available_suites
+    suites_to_run = list(suite) if suite else ALL_SUITES
 
-    invalid_suites = set(suites_to_run) - set(available_suites)
+    invalid_suites = set(suites_to_run) - set(ALL_SUITES)
     if invalid_suites:
         console.print(f"[red]Error: Unknown suites: {invalid_suites}[/red]")
-        console.print(f"Available suites: {available_suites}")
+        console.print(f"Available suites: {ALL_SUITES}")
         sys.exit(1)
 
     # Run evaluations
@@ -98,6 +99,146 @@ def run(
     # Exit with error code if any suite failed thresholds
     if any(not r.passed_threshold for r in results.suite_results.values()):
         sys.exit(1)
+
+
+@cli.command("eval-llm")
+@click.option("--cases", multiple=True, help="Which eval case suites to run (recipe_parse, chat_agent)")
+@click.option("--model", default=None, help="Override LLM model for the system under test")
+@click.option("--repeats", default=1, type=int, help="Number of trials per question")
+@click.option("--fail-under", default=0.0, type=float, help="Minimum pass rate (0.0-1.0) for CI")
+@click.option("--detail", is_flag=True, help="Show per-question results")
+@click.option("--concurrency", default=4, type=int, help="Max concurrent trials")
+@click.option("--output", "-o", default=None, help="Output CSV file path")
+@click.pass_context
+def eval_llm(
+    ctx: click.Context,
+    cases: tuple[str, ...],
+    model: str | None,
+    repeats: int,
+    fail_under: float,
+    detail: bool,
+    concurrency: int,
+    output: str | None,
+) -> None:
+    """Run LLM-as-judge evaluation for recipe parsing and chat agent.
+
+    Loads QA pairs from datasets/, runs production code with mocked deps,
+    judges results with LLM, prints summary with pass rate.
+
+    Examples:
+
+        npx nx run eval:eval-llm -- --cases recipe_parse --repeats 3
+
+        npx nx run eval:eval-llm -- --cases chat_agent --detail --fail-under 0.8
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
+    from src.results import CaseSummary, EvalRunSummary, TrialRecord, print_summary, write_csv
+
+    config: EvalConfig = ctx.obj["config"]
+    config.repeats = repeats
+    config.concurrency = concurrency
+    config.fail_under = fail_under
+
+    # Determine which case suites to run
+    available = ["recipe_parse", "chat_agent"]
+    suites_to_run = list(cases) if cases else available
+
+    invalid = set(suites_to_run) - set(available)
+    if invalid:
+        console.print(f"[red]Error: Unknown case suites: {invalid}[/red]")
+        console.print(f"Available: {available}")
+        sys.exit(1)
+
+    console.print("\n[bold blue]Palateful LLM Eval Suite[/bold blue]")
+    console.print(f"Suites: {', '.join(suites_to_run)} | Repeats: {repeats} | Concurrency: {concurrency}")
+    if model:
+        console.print(f"Model override: {model}")
+    console.print()
+
+    all_summaries: list[EvalRunSummary] = []
+
+    for suite_name in suites_to_run:
+        runner = EvalRunner(config)
+        evaluator = runner._get_evaluator(suite_name)
+        eval_cases = evaluator.load_cases()
+
+        if not eval_cases:
+            console.print(f"[yellow]No cases found for suite: {suite_name}[/yellow]")
+            continue
+
+        run_summary = EvalRunSummary(suite_name=suite_name)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"Running {suite_name}...", total=len(eval_cases) * repeats)
+
+            def run_single_trial(case, trial_num):
+                """Run a single trial for a case."""
+                result = evaluator.evaluate(case)
+                progress.advance(task)
+                return case.id, trial_num, result
+
+            # Run trials with concurrency
+            case_summaries: dict[str, CaseSummary] = {}
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = []
+                for case in eval_cases:
+                    query_type = case.metadata.get("query_type", "unknown")
+                    case_summaries[case.id] = CaseSummary(
+                        case_id=case.id,
+                        query_type=query_type,
+                    )
+                    for trial_num in range(1, repeats + 1):
+                        futures.append(executor.submit(run_single_trial, case, trial_num))
+
+                for future in as_completed(futures):
+                    try:
+                        case_id, trial_num, result = future.result()
+                        cs = case_summaries[case_id]
+                        cs.trials.append(TrialRecord(
+                            case_id=case_id,
+                            trial_number=trial_num,
+                            query_type=cs.query_type,
+                            passed=result.passed,
+                            reasoning=result.metrics.get("judge_reasoning", ""),
+                            duration_ms=result.duration_ms,
+                            tokens_used=result.metrics.get("tokens_used", 0),
+                            error=result.error,
+                        ))
+                    except Exception as e:
+                        console.print(f"[red]Trial error: {e}[/red]")
+
+        run_summary.cases = list(case_summaries.values())
+        run_summary.compute()
+        all_summaries.append(run_summary)
+
+        print_summary(run_summary, detail=detail)
+
+        # Write CSV if requested
+        if output:
+            csv_path = Path(output)
+        else:
+            csv_path = config.output_dir / f"{suite_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        write_csv(run_summary, csv_path)
+        console.print(f"[green]CSV results saved to: {csv_path}[/green]")
+
+    # Check fail-under threshold
+    if fail_under > 0:
+        for summary in all_summaries:
+            if summary.overall_pass_rate < fail_under:
+                console.print(
+                    f"\n[red]FAIL: {summary.suite_name} pass rate {summary.overall_pass_rate:.1%} "
+                    f"< threshold {fail_under:.1%}[/red]"
+                )
+                sys.exit(1)
+
+    console.print("\n[green]All evals completed.[/green]")
 
 
 @cli.command()

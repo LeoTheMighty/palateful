@@ -17,6 +17,8 @@ class ThresholdConfig:
     ocr_word_accuracy: float = 0.90
     recipe_field_accuracy: float = 0.90
     ingredient_match_rate: float = 0.85
+    recipe_parse_pass_rate: float = 0.80
+    chat_agent_pass_rate: float = 0.80
 
 
 @dataclass
@@ -52,11 +54,19 @@ class EvalConfig:
     openai_api_key: str = ""
     database_url: str = ""
 
+    # LLM-as-judge settings
+    judge_model: str = "gpt-4o-mini"
+
     # Eval modes
     ocr_mode: str = "local"  # local | batch | mock
     mock_ai: bool = False
     cache_responses: bool = True
     parallel_workers: int = 4
+
+    # Repeat / concurrency settings for LLM evals
+    repeats: int = 1
+    concurrency: int = 4
+    fail_under: float = 0.0
 
     # Paths
     output_dir: Path = field(default_factory=lambda: Path("./results"))
@@ -127,16 +137,22 @@ def load_config(
         ocr_word_accuracy=thresholds_yaml.get("ocr_word_accuracy", 0.90),
         recipe_field_accuracy=thresholds_yaml.get("recipe_field_accuracy", 0.90),
         ingredient_match_rate=thresholds_yaml.get("ingredient_match_rate", 0.85),
+        recipe_parse_pass_rate=thresholds_yaml.get("recipe_parse_pass_rate", 0.80),
+        chat_agent_pass_rate=thresholds_yaml.get("chat_agent_pass_rate", 0.80),
     )
 
     # Create config from environment
     config = EvalConfig(
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         database_url=os.getenv("DATABASE_URL", ""),
+        judge_model=os.getenv("EVAL_JUDGE_MODEL", "gpt-4o-mini"),
         ocr_mode=os.getenv("EVAL_OCR_MODE", "local"),
         mock_ai=os.getenv("EVAL_MOCK_AI", "false").lower() == "true",
         cache_responses=os.getenv("EVAL_CACHE_RESPONSES", "true").lower() == "true",
         parallel_workers=int(os.getenv("EVAL_PARALLEL_WORKERS", "4")),
+        repeats=int(os.getenv("EVAL_REPEATS", "1")),
+        concurrency=int(os.getenv("EVAL_CONCURRENCY", "4")),
+        fail_under=float(os.getenv("EVAL_FAIL_UNDER", "0.0")),
         output_dir=Path(os.getenv("EVAL_OUTPUT_DIR", "./results")),
         dataset_dir=Path(os.getenv("EVAL_DATASET_DIR", "./datasets")),
         metrics=metrics,

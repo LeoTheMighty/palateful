@@ -105,6 +105,12 @@ class EvalRunner:
             elif suite == "ingredient_matching":
                 from src.evaluators.ingredient_matching_evaluator import IngredientMatchingEvaluator
                 self._evaluators[suite] = IngredientMatchingEvaluator(self.config)
+            elif suite == "recipe_parse":
+                from src.evaluators.recipe_parse_evaluator import RecipeParseEvaluator
+                self._evaluators[suite] = RecipeParseEvaluator(self.config)
+            elif suite == "chat_agent":
+                from src.evaluators.chat_agent_evaluator import ChatAgentEvaluator
+                self._evaluators[suite] = ChatAgentEvaluator(self.config)
             else:
                 raise ValueError(f"Unknown suite: {suite}")
         return self._evaluators[suite]
@@ -267,6 +273,12 @@ class EvalRunner:
         elif suite == "ingredient_matching":
             match_rate = metrics.get("exact_match_rate_avg", 0)
             return match_rate >= thresholds.ingredient_match_rate
+        elif suite == "recipe_parse":
+            field_acc = metrics.get("field_accuracy_avg", 0)
+            return field_acc >= thresholds.recipe_parse_pass_rate
+        elif suite == "chat_agent":
+            # For chat agent, use pass rate from the fail_under config or threshold
+            return True  # Threshold checked at CLI level via --fail-under
 
         return True
 

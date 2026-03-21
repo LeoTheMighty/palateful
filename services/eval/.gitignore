@@ -1,11 +1,15 @@
 # Evaluation results (regenerated)
 results/
+*.csv
 
 # Cache files
 datasets/*/cache/
 
 # Environment files
 .env.eval
+
+# Manifest (auto-generated)
+manifest.json
 
 # Python
 __pycache__/

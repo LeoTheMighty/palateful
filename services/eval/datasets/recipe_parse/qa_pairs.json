@@ -1,0 +1,33 @@
+[
+  {
+    "id": "chicken_pasta_url",
+    "input_type": "url",
+    "input_url": "https://example.com/chicken-pasta",
+    "input_html": "<html><head><title>Chicken Pasta Recipe</title><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Recipe\",\"name\":\"Chicken Pasta\",\"prepTime\":\"PT15M\",\"cookTime\":\"PT25M\",\"recipeYield\":\"4 servings\",\"recipeIngredient\":[\"2 chicken breasts\",\"200g penne pasta\",\"3 cloves garlic\",\"2 tbsp olive oil\",\"1 cup marinara sauce\",\"Salt to taste\",\"Fresh basil\",\"Parmesan cheese\"],\"recipeInstructions\":[{\"@type\":\"HowToStep\",\"text\":\"Cook pasta according to package directions.\"},{\"@type\":\"HowToStep\",\"text\":\"Dice and season chicken with salt and pepper.\"},{\"@type\":\"HowToStep\",\"text\":\"Cook chicken in olive oil until golden.\"},{\"@type\":\"HowToStep\",\"text\":\"Add minced garlic and cook 1 minute.\"},{\"@type\":\"HowToStep\",\"text\":\"Pour in marinara sauce and simmer 5 minutes.\"},{\"@type\":\"HowToStep\",\"text\":\"Combine with pasta and top with basil and parmesan.\"}]}</script></head><body><h1>Chicken Pasta</h1></body></html>",
+    "expected": {
+      "name": "Chicken Pasta",
+      "prep_time": 15,
+      "cook_time": 25,
+      "servings": 4,
+      "ingredient_count": 8,
+      "step_count": 6
+    },
+    "query_type": "recipe_parse",
+    "tags": ["json-ld", "url"]
+  },
+  {
+    "id": "banana_bread_html",
+    "input_type": "html",
+    "input_html": "<html><head><title>Classic Banana Bread</title><script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Recipe\",\"name\":\"Classic Banana Bread\",\"prepTime\":\"PT10M\",\"cookTime\":\"PT60M\",\"recipeYield\":\"1 loaf\",\"recipeIngredient\":[\"3 ripe bananas\",\"1/3 cup melted butter\",\"3/4 cup sugar\",\"1 egg\",\"1 tsp vanilla\",\"1 tsp baking soda\",\"Pinch of salt\",\"1.5 cups flour\"],\"recipeInstructions\":[{\"@type\":\"HowToStep\",\"text\":\"Preheat oven to 350F.\"},{\"@type\":\"HowToStep\",\"text\":\"Mash bananas and mix with melted butter.\"},{\"@type\":\"HowToStep\",\"text\":\"Mix in sugar, egg, and vanilla.\"},{\"@type\":\"HowToStep\",\"text\":\"Add baking soda, salt, and flour.\"},{\"@type\":\"HowToStep\",\"text\":\"Pour into greased loaf pan and bake 60 minutes.\"}]}</script></head><body><h1>Classic Banana Bread</h1></body></html>",
+    "expected": {
+      "name": "Classic Banana Bread",
+      "prep_time": 10,
+      "cook_time": 60,
+      "servings": 1,
+      "ingredient_count": 8,
+      "step_count": 5
+    },
+    "query_type": "recipe_parse",
+    "tags": ["json-ld", "html"]
+  }
+]

@@ -25,6 +25,13 @@
         "cwd": "{projectRoot}"
       }
     },
+    "eval-llm": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main eval-llm --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
     "run-ocr": {
       "executor": "nx:run-commands",
       "options": {
@@ -43,6 +50,20 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "poetry run python -m src.main run --suite ingredient_matching --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run-recipe-parse": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main eval-llm --cases recipe_parse --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run-chat-agent": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main eval-llm --cases chat_agent --env-file .env.eval",
         "cwd": "{projectRoot}"
       }
     },
