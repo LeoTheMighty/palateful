@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
@@ -526,11 +525,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               clipBehavior: Clip.antiAlias,
               child: event.recipe?.imageUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: event.recipe!.imageUrl!,
+                  ? Image.network(
+                      event.recipe!.imageUrl!,
                       fit: BoxFit.cover,
-                      placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                      errorWidget: (context, url, error) => _mealTypeIcon(event.mealType),
+                      errorBuilder: (_, __, ___) => _mealTypeIcon(event.mealType),
                     )
                   : _mealTypeIcon(event.mealType),
             ),

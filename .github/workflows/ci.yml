@@ -160,16 +160,20 @@ jobs:
           fetch-depth: 0
           clean: false
 
-      - name: Restore Python dependencies
+      - name: Install Python dependencies
         run: |
           poetry install --with dev
           poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
           poetry install
 
       - name: Run migrations
+        env:
+          POETRY_VIRTUALENVS_CREATE: 'false'
         run: npx nx run migrator:migrate-test
 
       - name: Run tests
+        env:
+          POETRY_VIRTUALENVS_CREATE: 'false'
         run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3
 
       - name: Upload test reports
