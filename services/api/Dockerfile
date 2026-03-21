@@ -56,6 +56,7 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 
 # Copy library dependencies for path-based dependencies
 COPY ./libraries/utils /libraries/utils
+COPY ./libraries/agent /libraries/agent
 WORKDIR $DOCKER_SERVICE_ROOT
 COPY $LOCAL_SERVICE_ROOT/poetry.lock $LOCAL_SERVICE_ROOT/pyproject.toml ./
 
@@ -75,6 +76,7 @@ WORKDIR $DOCKER_SERVICE_ROOT
 COPY --from=builder-base $POETRY_HOME $POETRY_HOME
 COPY --from=builder-base $DOCKER_SERVICE_ROOT $DOCKER_SERVICE_ROOT
 COPY --from=builder-base /libraries/utils /libraries/utils
+COPY --from=builder-base /libraries/agent /libraries/agent
 
 # quicker install as runtime deps are already installed
 # Use --only main to exclude test dependencies that have path references
@@ -102,6 +104,7 @@ WORKDIR $DOCKER_SERVICE_ROOT
 COPY --from=builder-base $VENV_PATH $VENV_PATH
 # Copy library dependencies needed for editable installs
 COPY --from=builder-base /libraries/utils /libraries/utils
+COPY --from=builder-base /libraries/agent /libraries/agent
 
 # Copy application code
 COPY $LOCAL_SERVICE_ROOT/src $DOCKER_SERVICE_ROOT/src/
