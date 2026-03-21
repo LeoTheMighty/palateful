@@ -42,7 +42,7 @@ class GetMe(Endpoint):
 
     class Response(BaseModel):
         id: str
-        email: str
+        email: str | None = None
         name: str | None = None
         username: str | None = None
         picture: str | None = None
