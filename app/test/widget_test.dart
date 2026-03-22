@@ -35,7 +35,7 @@ void main() {
     testWidgets('light theme renders without errors', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.light,
+          theme: AppTheme.light(),
           home: const Scaffold(body: Text('Light')),
         ),
       );
@@ -46,7 +46,7 @@ void main() {
     testWidgets('dark theme renders without errors', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.dark(),
           home: const Scaffold(body: Text('Dark')),
         ),
       );
@@ -58,7 +58,7 @@ void main() {
       late Brightness brightness;
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.light,
+          theme: AppTheme.light(),
           home: Builder(builder: (context) {
             brightness = Theme.of(context).brightness;
             return const SizedBox();
@@ -72,7 +72,7 @@ void main() {
       late Brightness brightness;
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.dark(),
           home: Builder(builder: (context) {
             brightness = Theme.of(context).brightness;
             return const SizedBox();
@@ -87,7 +87,7 @@ void main() {
       late bool darkM3;
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.light,
+          theme: AppTheme.light(),
           home: Builder(builder: (context) {
             lightM3 = Theme.of(context).useMaterial3;
             return const SizedBox();
@@ -96,7 +96,7 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.dark(),
           home: Builder(builder: (context) {
             darkM3 = Theme.of(context).useMaterial3;
             return const SizedBox();
@@ -111,7 +111,7 @@ void main() {
       late Color bgColor;
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.dark(),
           home: Builder(builder: (context) {
             bgColor = Theme.of(context).scaffoldBackgroundColor;
             return const SizedBox();
@@ -125,7 +125,7 @@ void main() {
       late Color bgColor;
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.light,
+          theme: AppTheme.light(),
           home: Builder(builder: (context) {
             bgColor = Theme.of(context).scaffoldBackgroundColor;
             return const SizedBox();
@@ -311,7 +311,7 @@ void main() {
     testWidgets('renders in light mode', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.light,
+          theme: AppTheme.light(),
           home: const Scaffold(
             body: SizedBox(
               height: 200,
@@ -327,7 +327,7 @@ void main() {
     testWidgets('renders in dark mode', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.dark(),
           home: const Scaffold(
             body: SizedBox(
               height: 200,
