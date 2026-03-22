@@ -340,7 +340,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   context: context,
                   isScrollControlled: true,
                   builder: (_) => PlanMealSheet(
-                    recipeId: event.recipe?.id ?? '',
+                    recipeId: event.recipe?.id,
                     recipeName: event.title,
                     eventId: event.id,
                     initialDate: event.scheduledAt,
@@ -380,6 +380,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  void _openQuickAdd({DateTime? date}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => PlanMealSheet(
+        initialDate: date ?? DateTime.now(),
+      ),
+    ).then((result) {
+      if (result == true) _loadEvents();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -387,6 +399,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       backgroundColor: colorScheme.surface,
       appBar: _buildAppBar(),
       body: _buildBody(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _openQuickAdd(),
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
@@ -533,18 +549,38 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         : colorScheme.onSurfaceVariant,
                   ),
                 ),
+                const Spacer(),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: IconButton(
+                    icon: Icon(Icons.add, size: 16, color: colorScheme.primary),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Add meal',
+                    onPressed: () => _openQuickAdd(date: day),
+                  ),
+                ),
               ],
             ),
           ),
 
           if (events.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                'No meals planned',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: appColors.textDisabled,
+            GestureDetector(
+              onTap: () => _openQuickAdd(date: day),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.add_circle_outline, size: 14, color: appColors.textDisabled),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Tap to plan a meal',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: appColors.textDisabled,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )

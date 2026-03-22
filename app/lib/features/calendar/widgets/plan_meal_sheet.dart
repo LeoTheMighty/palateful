@@ -1,16 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/theme/theme.dart';
 import '../models/meal_event.dart';
 import '../services/meal_calendar_service.dart';
 
-/// Bottom sheet for planning a recipe on the meal calendar.
+/// Infers meal type from current hour.
+MealType inferMealType() {
+  final hour = DateTime.now().hour;
+  if (hour < 10) return MealType.breakfast;
+  if (hour < 14) return MealType.lunch;
+  if (hour < 20) return MealType.dinner;
+  return MealType.snack;
+}
+
+/// Bottom sheet for planning a meal on the calendar.
 ///
-/// Used from recipe detail ("Plan for...") and from the calendar screen
-/// when rescheduling an existing event.
+/// Supports two modes:
+/// - **Recipe mode**: launched from recipe detail with recipeId/recipeName.
+/// - **Quick add mode**: launched from calendar FAB / day "+" with no recipe.
+///
+/// Also supports edit mode (reschedule) when `eventId` is provided.
 class PlanMealSheet extends StatefulWidget {
-  final String recipeId;
-  final String recipeName;
+  final String? recipeId;
+  final String? recipeName;
 
   /// When provided, the sheet is in edit mode — updates this event.
   final String? eventId;
@@ -19,8 +32,8 @@ class PlanMealSheet extends StatefulWidget {
 
   const PlanMealSheet({
     super.key,
-    required this.recipeId,
-    required this.recipeName,
+    this.recipeId,
+    this.recipeName,
     this.eventId,
     this.initialDate,
     this.initialMealType,
@@ -32,18 +45,49 @@ class PlanMealSheet extends StatefulWidget {
 
 class _PlanMealSheetState extends State<PlanMealSheet> {
   final _service = getIt<MealCalendarService>();
+  final _nameController = TextEditingController();
 
   late DateTime _selectedDate;
   late MealType _selectedMealType;
   bool _isSaving = false;
+  List<String> _recentMeals = [];
 
   bool get _isEditMode => widget.eventId != null;
+  bool get _hasRecipe => widget.recipeId != null;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = widget.initialDate ?? DateTime.now();
-    _selectedMealType = widget.initialMealType ?? MealType.dinner;
+    _selectedMealType = widget.initialMealType ?? inferMealType();
+    if (widget.recipeName != null) {
+      _nameController.text = widget.recipeName!;
+    }
+    _loadRecentMeals();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadRecentMeals() async {
+    final prefs = await SharedPreferences.getInstance();
+    final meals = prefs.getStringList('recent_free_text_meals') ?? [];
+    if (mounted) {
+      setState(() => _recentMeals = meals);
+    }
+  }
+
+  Future<void> _saveRecentMeal(String name) async {
+    if (name.isEmpty || _hasRecipe) return;
+    final prefs = await SharedPreferences.getInstance();
+    final meals = prefs.getStringList('recent_free_text_meals') ?? [];
+    meals.remove(name); // Remove duplicates
+    meals.insert(0, name); // Add to front
+    if (meals.length > 10) meals.removeLast();
+    await prefs.setStringList('recent_free_text_meals', meals);
   }
 
   Future<void> _pickDate() async {
@@ -68,9 +112,16 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
 
   Future<void> _save() async {
     if (_isSaving) return;
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a meal name')),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
-    // Combine date with a reasonable meal-type default time
     final mealTime = _mealDefaultTime(_selectedMealType);
     final scheduledAt = DateTime(
       _selectedDate.year,
@@ -89,12 +140,13 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
         );
       } else {
         await _service.createMealEvent(
-          title: widget.recipeName,
+          title: name,
           scheduledAt: scheduledAt,
           mealType: _selectedMealType,
           recipeId: widget.recipeId,
           isShared: true,
         );
+        await _saveRecentMeal(name);
       }
 
       if (mounted) {
@@ -102,9 +154,7 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isEditMode
-                  ? 'Meal rescheduled'
-                  : '${widget.recipeName} added to calendar',
+              _isEditMode ? 'Meal rescheduled' : '$name added to calendar',
             ),
           ),
         );
@@ -153,7 +203,11 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                _isEditMode ? 'Reschedule Meal' : 'Plan for...',
+                _isEditMode
+                    ? 'Reschedule Meal'
+                    : _hasRecipe
+                        ? 'Plan for...'
+                        : 'Add a Meal',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -170,16 +224,58 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
 
           const SizedBox(height: 4),
 
-          // Recipe name
-          Text(
-            widget.recipeName,
-            style: TextStyle(
-              fontSize: 14,
-              color: colorScheme.onSurfaceVariant,
+          // Meal name field
+          if (!_isEditMode) ...[
+            TextField(
+              controller: _nameController,
+              decoration: InputDecoration(
+                hintText: _hasRecipe ? widget.recipeName : 'Meal name (e.g., Eating out, Leftovers)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              textCapitalization: TextCapitalization.sentences,
+              readOnly: _hasRecipe,
             ),
-          ),
-
-          const SizedBox(height: 24),
+            // Quick-select chips for recent free-text meals
+            if (!_hasRecipe && _recentMeals.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 32,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _recentMeals.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  itemBuilder: (context, i) => ActionChip(
+                    label: Text(
+                      _recentMeals[i],
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      _nameController.text = _recentMeals[i];
+                      _nameController.selection = TextSelection.fromPosition(
+                        TextPosition(offset: _recentMeals[i].length),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+          ] else ...[
+            // Edit mode: show recipe name as subtitle
+            Text(
+              _nameController.text,
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
 
           // Date picker row
           Text(
