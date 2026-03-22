@@ -557,9 +557,10 @@ class TestRunChatAgent:
             )
 
         assert len(events) == 2
-        assert events[0]["type"] == "text"
+        assert events[0]["type"] == "token"
         assert "E2E test assistant" in events[0]["content"]
         assert events[1]["type"] == "done"
+        assert "message_id" in events[1]
 
     async def test_token_cap_exceeded(self):
         """Yields error event and returns when monthly cap is exceeded."""
