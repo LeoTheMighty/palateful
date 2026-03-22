@@ -179,10 +179,12 @@ GoRouter get appRouter {
         parentNavigatorKey: _rootNavigatorKey,
         pageBuilder: (context, state) {
           final id = state.pathParameters['id']!;
+          final extra = state.extra as Map<String, dynamic>?;
+          final scaleFactor = (extra?['scaleFactor'] as num?)?.toDouble() ?? 1.0;
           return buildReduceMotionPage(
             context: context,
             state: state,
-            child: CookModeScreen(recipeId: id),
+            child: CookModeScreen(recipeId: id, scaleFactor: scaleFactor),
           );
         },
       ),

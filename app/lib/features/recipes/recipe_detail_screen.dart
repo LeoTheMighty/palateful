@@ -8,6 +8,7 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/theme/theme.dart';
+import '../../core/utils/quantity_formatter.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/default_change_sheet.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
@@ -36,6 +37,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   bool _isMovingOrCopying = false;
   bool _isAddingNote = false;
   final _noteController = TextEditingController();
+  int _currentServings = 0;
+  int _originalServings = 0;
 
   @override
   void initState() {
@@ -63,6 +66,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           _ingredients = response.data['ingredients'] ?? [];
           _notes = (response.data['notes'] as List?) ?? [];
           _isFavorite = response.data['is_favorite'] == true;
+          _originalServings = (response.data['servings'] as int?) ?? 0;
+          _currentServings = _originalServings;
           _isLoading = false;
         });
       }
@@ -163,16 +168,26 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     if (!mounted) return;
 
     try {
-      final result = await service.populateFromRecipe(selectedList.id, recipeId);
+      final scaleFactor = _originalServings > 0
+          ? _currentServings / _originalServings
+          : 1.0;
+      final result = await service.populateFromRecipe(
+        selectedList.id,
+        recipeId,
+        scaleFactor: scaleFactor,
+      );
       if (!mounted) return;
       final count = result.itemsAdded;
       final listName = selectedList.name.isEmpty ? 'Shopping List' : selectedList.name;
       final hasOtherLists = lists.length > 1;
+      final servingsNote = scaleFactor != 1.0
+          ? ' for $_currentServings servings'
+          : '';
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Added $count ingredient${count == 1 ? '' : 's'} to $listName'),
+              'Added $count ingredient${count == 1 ? '' : 's'} to $listName$servingsNote'),
           action: hasOtherLists
               ? SnackBarAction(
                   label: 'Change',
@@ -474,7 +489,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   }
 
   void _startCooking() {
-    context.push('/recipes/${widget.recipeId}/cook');
+    final scaleFactor = _originalServings > 0
+        ? _currentServings / _originalServings
+        : 1.0;
+    context.push(
+      '/recipes/${widget.recipeId}/cook',
+      extra: {'scaleFactor': scaleFactor},
+    );
   }
 
   @override
@@ -706,13 +727,19 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   icon: Icons.local_fire_department_outlined,
                                   label: 'Cook: ${_recipe!['cook_time']} min',
                                 ),
-                              if (_recipe?['servings'] != null)
-                                _InfoChip(
-                                  icon: Icons.people_outline,
-                                  label: 'Serves ${_recipe!['servings']}',
-                                ),
                             ],
                           ),
+                          if (_originalServings > 0) ...[
+                            const SizedBox(height: 12),
+                            _ServingScaler(
+                              currentServings: _currentServings,
+                              originalServings: _originalServings,
+                              onChanged: (value) =>
+                                  setState(() => _currentServings = value),
+                              onReset: () =>
+                                  setState(() => _currentServings = _originalServings),
+                            ),
+                          ],
                           // Version history badge
                           if ((_recipe?['version_count'] as int? ?? 0) > 0) ...[
                             const SizedBox(height: 12),
@@ -735,10 +762,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             style: textTheme.titleLarge,
                           ),
                           const SizedBox(height: 8),
-                          ...(_ingredients.asMap().entries.map((entry) {
+                          ...() {
+                            final scaleFactor = _originalServings > 0
+                                ? _currentServings / _originalServings
+                                : 1.0;
+                            return _ingredients.asMap().entries.map((entry) {
                             final index = entry.key;
                             final ing = entry.value;
                             final ingredientInfo = ing['ingredient'];
+                            final qty = scaleQuantityDisplay(
+                                ing['quantity_display'] as String?, scaleFactor);
                             return CheckboxListTile(
                               value: _checkedIngredients.contains(index),
                               onChanged: (checked) {
@@ -751,7 +784,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                 });
                               },
                               title: Text(
-                                '${ing['quantity_display']} ${ing['unit_display']} ${ingredientInfo?['canonical_name'] ?? 'Unknown'}',
+                                '$qty ${ing['unit_display']} ${ingredientInfo?['canonical_name'] ?? 'Unknown'}',
                                 style: _checkedIngredients.contains(index)
                                     ? TextStyle(
                                         decoration: TextDecoration.lineThrough,
@@ -765,7 +798,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               controlAffinity: ListTileControlAffinity.leading,
                               contentPadding: EdgeInsets.zero,
                             );
-                          })),
+                          });
+                          }(),
                           const SizedBox(height: 24),
 
                           // Steps section (structured) or legacy instructions fallback
@@ -1025,6 +1059,115 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     } catch (_) {
       return isoDate;
     }
+  }
+}
+
+class _ServingScaler extends StatelessWidget {
+  final int currentServings;
+  final int originalServings;
+  final ValueChanged<int> onChanged;
+  final VoidCallback onReset;
+
+  const _ServingScaler({
+    required this.currentServings,
+    required this.originalServings,
+    required this.onChanged,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isScaled = currentServings != originalServings;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isScaled
+            ? colorScheme.primaryContainer.withValues(alpha: 0.5)
+            : colorScheme.secondaryContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.people_outline, size: 16, color: colorScheme.secondary),
+          const SizedBox(width: 6),
+          Text(
+            'Serves',
+            style: TextStyle(
+              color: colorScheme.secondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 8),
+          _RoundButton(
+            icon: Icons.remove,
+            onTap: currentServings > 1
+                ? () => onChanged(currentServings - 1)
+                : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              '$currentServings',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+            ),
+          ),
+          _RoundButton(
+            icon: Icons.add,
+            onTap: currentServings < 99
+                ? () => onChanged(currentServings + 1)
+                : null,
+          ),
+          if (isScaled) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: onReset,
+              child: Icon(Icons.refresh,
+                  size: 18, color: colorScheme.secondary),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  const _RoundButton({required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: enabled
+              ? colorScheme.secondary.withValues(alpha: 0.15)
+              : colorScheme.onSurface.withValues(alpha: 0.05),
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: enabled
+              ? colorScheme.secondary
+              : colorScheme.onSurface.withValues(alpha: 0.3),
+        ),
+      ),
+    );
   }
 }
 

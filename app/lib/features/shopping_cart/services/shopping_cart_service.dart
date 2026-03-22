@@ -144,10 +144,13 @@ class ShoppingCartService {
   /// Add all ingredients from a recipe to a shopping list.
   Future<({int itemsAdded, int itemsSkipped})> populateFromRecipe(
     String listId,
-    String recipeId,
-  ) async {
-    final response = await _apiClient.populateShoppingListFromRecipe(
-        listId, {'recipe_id': recipeId});
+    String recipeId, {
+    double scaleFactor = 1.0,
+  }) async {
+    final response = await _apiClient.populateShoppingListFromRecipe(listId, {
+      'recipe_id': recipeId,
+      if (scaleFactor != 1.0) 'scale_factor': scaleFactor,
+    });
     final data = response.data as Map<String, dynamic>;
     return (
       itemsAdded: data['items_added'] as int,

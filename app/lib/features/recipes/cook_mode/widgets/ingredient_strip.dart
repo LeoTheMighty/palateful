@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/theme/theme.dart';
+import '../../../../core/utils/quantity_formatter.dart';
 
 class IngredientStrip extends StatefulWidget {
   final List<dynamic> ingredients;
   final Set<int> checkedIndices;
   final ValueChanged<int> onToggle;
+  final double scaleFactor;
 
   const IngredientStrip({
     super.key,
     required this.ingredients,
     required this.checkedIndices,
     required this.onToggle,
+    this.scaleFactor = 1.0,
   });
 
   @override
@@ -114,6 +117,7 @@ class _IngredientStripState extends State<IngredientStrip> {
               isChecked: widget.checkedIndices.contains(index),
               onTap: () => widget.onToggle(index),
               isCompact: true,
+              scaleFactor: widget.scaleFactor,
             ),
           );
         },
@@ -133,6 +137,7 @@ class _IngredientStripState extends State<IngredientStrip> {
             isChecked: widget.checkedIndices.contains(entry.key),
             onTap: () => widget.onToggle(entry.key),
             isCompact: false,
+            scaleFactor: widget.scaleFactor,
           );
         }).toList(),
       ),
@@ -145,12 +150,14 @@ class _IngredientChip extends StatelessWidget {
   final bool isChecked;
   final VoidCallback onTap;
   final bool isCompact;
+  final double scaleFactor;
 
   const _IngredientChip({
     required this.ingredient,
     required this.isChecked,
     required this.onTap,
     required this.isCompact,
+    this.scaleFactor = 1.0,
   });
 
   @override
@@ -158,7 +165,8 @@ class _IngredientChip extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final appColors = context.appColors;
     final name = ingredient['ingredient']?['canonical_name'] ?? 'Unknown';
-    final quantity = ingredient['quantity_display'] ?? '';
+    final quantity = scaleQuantityDisplay(
+        ingredient['quantity_display'] as String?, scaleFactor);
     final unit = ingredient['unit_display'] ?? '';
 
     if (isCompact) {

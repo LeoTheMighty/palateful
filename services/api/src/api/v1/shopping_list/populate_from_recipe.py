@@ -98,10 +98,15 @@ class PopulateFromRecipe(Endpoint):
                 items_skipped += 1
                 continue
 
+            raw_qty = recipe_ingredient.quantity_display
+            if raw_qty is not None and params.scale_factor != 1.0:
+                scaled = Decimal(str(raw_qty)) * Decimal(str(params.scale_factor))
+                raw_qty = scaled.quantize(Decimal("0.01")).normalize()
+
             item = ShoppingListItem(
                 shopping_list_id=shopping_list.id,
                 name=ingredient.canonical_name,
-                quantity=recipe_ingredient.quantity_display,
+                quantity=raw_qty,
                 unit=recipe_ingredient.unit_display,
                 category=ingredient.category,
                 ingredient_id=ingredient.id,
@@ -138,6 +143,7 @@ class PopulateFromRecipe(Endpoint):
 
     class Params(BaseModel):
         recipe_id: str
+        scale_factor: float = 1.0
 
     class ItemResponse(BaseModel):
         id: str

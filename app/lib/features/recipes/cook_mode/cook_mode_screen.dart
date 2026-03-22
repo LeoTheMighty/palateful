@@ -18,8 +18,9 @@ import 'widgets/step_navigator.dart';
 
 class CookModeScreen extends StatefulWidget {
   final String recipeId;
+  final double scaleFactor;
 
-  const CookModeScreen({super.key, required this.recipeId});
+  const CookModeScreen({super.key, required this.recipeId, this.scaleFactor = 1.0});
 
   @override
   State<CookModeScreen> createState() => _CookModeScreenState();
@@ -508,6 +509,7 @@ class _CookModeScreenState extends State<CookModeScreen>
                     ingredients: _ingredients,
                     checkedIndices: _checkedIngredients,
                     onToggle: _toggleIngredient,
+                    scaleFactor: widget.scaleFactor,
                   ),
 
                   // Divider
