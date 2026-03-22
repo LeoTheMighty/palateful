@@ -119,6 +119,17 @@ class AddRecipeSheet extends StatelessWidget {
                 },
               ),
               _SheetOption(
+                icon: Icons.mic,
+                title: 'Voice Memo',
+                subtitle: 'Dictated or recorded recipe',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/recipes/add/audio', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
+                },
+              ),
+              _SheetOption(
                 icon: Icons.table_chart,
                 title: 'From Spreadsheet',
                 subtitle: 'Import CSV or Excel file',

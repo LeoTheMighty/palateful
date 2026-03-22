@@ -92,6 +92,14 @@ class StartImport(Endpoint):
                     code=ErrorCode.INVALID_REQUEST,
                 )
             source_filename = "text_paste"
+        elif params.source_type == "audio":
+            if not params.file_base64 or not params.file_name:
+                raise APIException(
+                    status_code=400,
+                    detail="file_base64 and file_name are required for audio import",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            source_filename = params.file_name
         elif params.source_type == "pdf":
             if not params.file_base64 or not params.file_name:
                 raise APIException(
@@ -171,6 +179,41 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
+        elif params.source_type == "audio" and params.file_base64:  # pragma: no branch
+            import base64
+            import tempfile
+
+            from utils.services.recipe_extractors.audio_extractor import (
+                transcribe_audio,
+            )
+            from utils.services.recipe_extractors.text_extractor import (
+                extract_recipe_from_text as _extract_text,
+            )
+
+            file_bytes = base64.b64decode(params.file_base64)
+
+            # Write to temp file for transcription
+            with tempfile.NamedTemporaryFile(suffix=f".{(params.file_name or 'audio.m4a').split('.')[-1]}", delete=False) as f:
+                f.write(file_bytes)
+                audio_path = f.name
+
+            try:
+                transcript, cost_cents = transcribe_audio(audio_path)
+            finally:
+                import os
+                os.unlink(audio_path)
+
+            item = ImportItem(
+                import_job_id=job.id,
+                source_type="text",
+                raw_data={"text": transcript, "is_audio_import": True, "transcription_cost_cents": cost_cents},
+                status="pending",
+                ai_cost_cents=cost_cents,
+            )
+            self.database.create(item)
+            job.total_items = 1
+            job.total_ai_cost_cents = cost_cents
+            self.database.db.commit()
         elif params.source_type == "pdf" and params.file_base64:  # pragma: no branch
             import base64
 
@@ -231,6 +274,7 @@ class StartImport(Endpoint):
             "url_list": f"{job.total_items} URLs",
             "photo": "photo",
             "text": "pasted text",
+            "audio": "voice memo",
             "pdf": f"PDF ({job.total_items} recipe{'s' if job.total_items != 1 else ''})",
             "spreadsheet": f"spreadsheet ({job.total_items} rows)",
         }.get(job.source_type, job.source_type)

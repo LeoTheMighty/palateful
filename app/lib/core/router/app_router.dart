@@ -22,6 +22,7 @@ import '../../features/recipes/add_recipe/file_import_screen.dart';
 import '../../features/recipes/add_recipe/import_item_review_screen.dart';
 import '../../features/recipes/add_recipe/import_review_list_screen.dart';
 import '../../features/recipes/add_recipe/share_import_screen.dart';
+import '../../features/recipes/add_recipe/audio_import_screen.dart';
 import '../../features/recipes/add_recipe/pdf_import_screen.dart';
 import '../../features/recipes/add_recipe/spreadsheet_import_screen.dart';
 import '../../features/recipes/add_recipe/text_paste_import_screen.dart';
@@ -238,6 +239,15 @@ GoRouter get appRouter {
           final extra = state.extra as Map<String, dynamic>?;
           final recipeBookId = extra?['recipeBookId'] as String?;
           return TextPasteImportScreen(recipeBookId: recipeBookId);
+        },
+      ),
+      GoRoute(
+        path: '/recipes/add/audio',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final recipeBookId = extra?['recipeBookId'] as String?;
+          return AudioImportScreen(recipeBookId: recipeBookId);
         },
       ),
       GoRoute(

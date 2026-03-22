@@ -193,6 +193,14 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp> {
         _navigateAfterFrame('/recipes/add/photo');
         return;
       }
+      if (ext == 'pdf') {
+        _navigateAfterFrame('/recipes/add/pdf');
+        return;
+      }
+      if ({'m4a', 'mp3', 'wav', 'aac', 'ogg'}.contains(ext)) {
+        _navigateAfterFrame('/recipes/add/audio');
+        return;
+      }
     }
   }
 
