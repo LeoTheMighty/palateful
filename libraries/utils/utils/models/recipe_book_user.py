@@ -1,9 +1,10 @@
 """RecipeBookUser model - join table for recipe book membership."""
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, ForeignKey, String
+from sqlalchemy import UUID, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.joins_base import JoinsBase
@@ -27,6 +28,11 @@ class RecipeBookUser(JoinsBase):
     )
     recipe_book_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("recipe_books.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    # Recency tracking — when user last viewed this book
+    last_opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Who invited this user (null for owners / original members)

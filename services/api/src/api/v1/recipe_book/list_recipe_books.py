@@ -45,6 +45,7 @@ class ListRecipeBooks(Endpoint):
                 func.count(Recipe.id).label("recipe_count"),
                 RecipeBookUser.role.label("user_role"),
                 func.coalesce(member_count_subq.c.member_count, 1).label("member_count"),
+                RecipeBookUser.last_opened_at.label("last_opened_at"),
             )
             .join(
                 RecipeBookUser,
@@ -57,8 +58,8 @@ class ListRecipeBooks(Endpoint):
             )
             .outerjoin(member_count_subq, RecipeBook.id == member_count_subq.c.recipe_book_id)
             .filter(RecipeBook.archived_at.is_(None))
-            .group_by(RecipeBook.id, RecipeBookUser.role, member_count_subq.c.member_count)
-            .order_by(RecipeBook.updated_at.desc())
+            .group_by(RecipeBook.id, RecipeBookUser.role, RecipeBookUser.last_opened_at, member_count_subq.c.member_count)
+            .order_by(RecipeBookUser.last_opened_at.desc().nullslast())
         )
 
         # Get total count
@@ -77,10 +78,11 @@ class ListRecipeBooks(Endpoint):
                 user_role=user_role,
                 recipe_count=recipe_count,
                 member_count=member_count,
+                last_opened_at=last_opened_at,
                 created_at=recipe_book.created_at,
                 updated_at=recipe_book.updated_at,
             )
-            for recipe_book, recipe_count, user_role, member_count in results
+            for recipe_book, recipe_count, user_role, member_count, last_opened_at in results
         ]
 
         return success(
@@ -101,6 +103,7 @@ class ListRecipeBooks(Endpoint):
         user_role: str = "owner"
         recipe_count: int = 0
         member_count: int = 1
+        last_opened_at: datetime | None = None
         created_at: datetime
         updated_at: datetime
 

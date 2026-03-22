@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/auth_service.dart';
 import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
@@ -31,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _imagePicker = ImagePicker();
 
   List<dynamic> _recipes = [];
+  List<dynamic> _books = [];
   List<dynamic> _favorites = [];
   Set<String> _favoriteIds = {};
   final Set<String> _togglingFavoriteIds = {};
@@ -59,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // Load recipes and favorites in parallel
       final booksResponse = await _apiClient.getRecipeBooks();
-      final books = booksResponse.data['items'] ?? [];
+      final books = List<dynamic>.from(booksResponse.data['items'] ?? []);
 
       final recipesFuture = _loadAllRecipesFromBooks(books);
       final favFuture = _apiClient.getFavorites();
@@ -81,6 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         setState(() {
+          _books = books;
           _recipes = allRecipes;
           _favorites = favItems;
           _favoriteIds = favIds;
@@ -411,6 +414,9 @@ class _HomeScreenState extends State<HomeScreen> {
             // Search Header
             _buildSearchHeader(),
 
+            // My Books horizontal scroll
+            if (_books.isNotEmpty) _buildBooksSection(),
+
             // Contextual sections — capped to ensure recipe grid always gets space
             if (_todayMealEvent != null || _recentlyCooked.isNotEmpty)
               ConstrainedBox(
@@ -513,6 +519,209 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildBooksSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final defaultBookId = getIt<AuthService>().defaultRecipeBookId;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'My Books',
+                style: textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              GestureDetector(
+                onTap: () => context.push('/recipe-books'),
+                child: Text(
+                  'See All',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Horizontal scroll
+        SizedBox(
+          height: 130,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _books.length + 1, // +1 for "New Book" card
+            itemBuilder: (context, index) {
+              if (index == _books.length) {
+                // "+ New Book" card
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: GestureDetector(
+                    onTap: _createRecipeBook,
+                    child: Container(
+                      width: 120,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add, size: 32, color: colorScheme.primary),
+                          const SizedBox(height: 8),
+                          Text(
+                            'New Book',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final book = _books[index];
+              final bookId = book['id']?.toString();
+              final isDefault = bookId != null && bookId == defaultBookId;
+              final recipeCount = book['recipe_count'] ?? 0;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: GestureDetector(
+                  onTap: () async {
+                    await context.push('/recipe-books/$bookId');
+                    if (mounted) _loadRecipes();
+                  },
+                  child: Container(
+                    width: 140,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Thumbnail mosaic area
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                color: colorScheme.surfaceContainerHighest,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.book,
+                                    size: 28,
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Book name + default star
+                          Row(
+                            children: [
+                              if (isDefault)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 4),
+                                  child: Icon(
+                                    Icons.star,
+                                    size: 14,
+                                    color: colorScheme.tertiary,
+                                  ),
+                                ),
+                              Expanded(
+                                child: Text(
+                                  book['name'] ?? '',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '$recipeCount recipe${recipeCount == 1 ? '' : 's'}',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _createRecipeBook() async {
+    final nameController = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Recipe Book'),
+        content: TextField(
+          controller: nameController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Book name',
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, nameController.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+
+    if (name == null || name.isEmpty) return;
+
+    try {
+      await _apiClient.createRecipeBook({'name': name});
+      if (mounted) _loadRecipes();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to create book')),
+        );
+      }
+    }
   }
 
   Widget _buildFavoritesSection() {

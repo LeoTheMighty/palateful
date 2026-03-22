@@ -37,7 +37,8 @@ class CreateRecipeBook(Endpoint):
         membership = RecipeBookUser(
             user_id=user.id,
             recipe_book_id=recipe_book.id,
-            role="owner"
+            role="owner",
+            last_opened_at=datetime.now(datetime.UTC),
         )
         self.database.create(membership)
         self.database.db.refresh(membership)

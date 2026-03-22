@@ -39,6 +39,11 @@ class GetRecipeBook(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_ACCESS_DENIED
             )
 
+        # Side effect: update last_opened_at for recency sorting
+        membership.last_opened_at = datetime.now(datetime.UTC)
+        self.database.db.add(membership)
+        self.database.db.flush()
+
         # Get recipe book
         recipe_book = self.database.find_by(RecipeBook, id=recipe_book_id)
         if not recipe_book:
