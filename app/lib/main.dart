@@ -201,6 +201,11 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp> {
         _navigateAfterFrame('/recipes/add/audio');
         return;
       }
+      if ({'mp4', 'mov', 'avi', 'mkv', 'webm'}.contains(ext)) {
+        // Video files shared directly — route to URL import which handles video extraction
+        _navigateAfterFrame('/recipes/add/url');
+        return;
+      }
     }
   }
 
