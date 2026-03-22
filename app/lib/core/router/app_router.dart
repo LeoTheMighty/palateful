@@ -6,6 +6,7 @@ import '../../features/auth/login_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
 import '../../features/onboarding/onboarding_start_screen.dart';
+import '../../features/activity/activity_screen.dart';
 import '../../features/recipe_books/archived_recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_members_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
@@ -43,7 +44,7 @@ final _rootNavigatorKey = GlobalKey<NavigatorState>();
 /// Public accessor for the root navigator key (used by PushNotificationService).
 GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;
 final _homeNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'home');
-final _booksNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'books');
+final _activityNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'activity');
 final _cartNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'cart');
 final _calendarNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'calendar');
 final _profileNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'profile');
@@ -280,13 +281,45 @@ GoRouter get appRouter {
         },
       ),
 
+      // Recipe books routes (outside shell — navigated via push)
+      GoRoute(
+        path: '/recipe-books',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const RecipeBooksScreen(),
+      ),
+      GoRoute(
+        path: '/recipe-books/archived',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const ArchivedRecipeBooksScreen(),
+      ),
+      GoRoute(
+        path: '/recipe-books/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return RecipeBookDetailScreen(recipeBookId: id);
+        },
+      ),
+      GoRoute(
+        path: '/recipe-books/:id/members',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          final role = state.uri.queryParameters['role'] ?? 'viewer';
+          return RecipeBookMembersScreen(
+            recipeBookId: id,
+            userRole: role,
+          );
+        },
+      ),
+
       // Shell route with bottom navigation
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return ScaffoldWithBottomNav(navigationShell: navigationShell);
         },
         branches: [
-          // Home tab
+          // Home tab (index 0)
           StatefulShellBranch(
             navigatorKey: _homeNavigatorKey,
             routes: [
@@ -300,46 +333,7 @@ GoRouter get appRouter {
               ),
             ],
           ),
-          // Books tab
-          StatefulShellBranch(
-            navigatorKey: _booksNavigatorKey,
-            routes: [
-              GoRoute(
-                path: '/recipe-books',
-                builder: (context, state) => const RecipeBooksScreen(),
-                routes: [
-                  // Archived books (must be before :id to avoid path collision)
-                  GoRoute(
-                    path: 'archived',
-                    builder: (context, state) =>
-                        const ArchivedRecipeBooksScreen(),
-                  ),
-                  GoRoute(
-                    path: ':id',
-                    builder: (context, state) {
-                      final id = state.pathParameters['id']!;
-                      return RecipeBookDetailScreen(recipeBookId: id);
-                    },
-                    routes: [
-                      GoRoute(
-                        path: 'members',
-                        builder: (context, state) {
-                          final id = state.pathParameters['id']!;
-                          final role =
-                              state.uri.queryParameters['role'] ?? 'viewer';
-                          return RecipeBookMembersScreen(
-                            recipeBookId: id,
-                            userRole: role,
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-          // Cart tab
+          // Cart tab (index 1)
           StatefulShellBranch(
             navigatorKey: _cartNavigatorKey,
             routes: [
@@ -356,7 +350,17 @@ GoRouter get appRouter {
               ),
             ],
           ),
-          // Calendar tab
+          // Activity tab (index 2)
+          StatefulShellBranch(
+            navigatorKey: _activityNavigatorKey,
+            routes: [
+              GoRoute(
+                path: '/activity',
+                builder: (context, state) => const ActivityScreen(),
+              ),
+            ],
+          ),
+          // Calendar tab (index 3)
           StatefulShellBranch(
             navigatorKey: _calendarNavigatorKey,
             routes: [
@@ -366,7 +370,7 @@ GoRouter get appRouter {
               ),
             ],
           ),
-          // Profile tab
+          // Profile tab (index 4)
           StatefulShellBranch(
             navigatorKey: _profileNavigatorKey,
             routes: [

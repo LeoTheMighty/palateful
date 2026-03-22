@@ -187,6 +187,10 @@ class PushNotificationService {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (usePush) {
         appRouter.push(route);
+      } else if (route.startsWith('/recipe-books')) {
+        // Recipe book routes are outside the nav shell — go home first, then push
+        appRouter.go('/');
+        appRouter.push(route);
       } else {
         appRouter.go(route);
       }

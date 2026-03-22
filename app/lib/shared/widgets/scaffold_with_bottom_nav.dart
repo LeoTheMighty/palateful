@@ -40,14 +40,22 @@ class ScaffoldWithBottomNav extends StatelessWidget {
                   label: Text('Home'),
                 ),
                 NavigationRailDestination(
-                  icon: Icon(Icons.book_outlined),
-                  selectedIcon: Icon(Icons.book),
-                  label: Text('Books'),
-                ),
-                NavigationRailDestination(
                   icon: Icon(Icons.shopping_cart_outlined),
                   selectedIcon: Icon(Icons.shopping_cart),
                   label: Text('Cart'),
+                ),
+                NavigationRailDestination(
+                  icon: Badge(
+                    label: Text('0'),
+                    isLabelVisible: false,
+                    child: Icon(Icons.notifications_outlined),
+                  ),
+                  selectedIcon: Badge(
+                    label: Text('0'),
+                    isLabelVisible: false,
+                    child: Icon(Icons.notifications),
+                  ),
+                  label: Text('Activity'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.calendar_today_outlined),
@@ -82,14 +90,22 @@ class ScaffoldWithBottomNav extends StatelessWidget {
             label: 'Home',
           ),
           NavigationDestination(
-            icon: Icon(Icons.book_outlined),
-            selectedIcon: Icon(Icons.book),
-            label: 'Books',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.shopping_cart_outlined),
             selectedIcon: Icon(Icons.shopping_cart),
             label: 'Cart',
+          ),
+          NavigationDestination(
+            icon: Badge(
+              label: Text('0'),
+              isLabelVisible: false,
+              child: Icon(Icons.notifications_outlined),
+            ),
+            selectedIcon: Badge(
+              label: Text('0'),
+              isLabelVisible: false,
+              child: Icon(Icons.notifications),
+            ),
+            label: 'Activity',
           ),
           NavigationDestination(
             icon: Icon(Icons.calendar_today_outlined),

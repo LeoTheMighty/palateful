@@ -57,7 +57,8 @@ class _InviteLinkPreviewScreenState extends State<InviteLinkPreviewScreen> {
       final data = response.data as Map<String, dynamic>?;
       final resourceId = data?['resource_id'] as String?;
       if (resourceId != null) {
-        context.go('/recipe-books/$resourceId');
+        context.go('/');
+        context.push('/recipe-books/$resourceId');
       } else {
         context.go('/');
       }
@@ -204,7 +205,10 @@ class _InviteLinkPreviewScreenState extends State<InviteLinkPreviewScreen> {
             const SizedBox(height: 16),
             if (resourceId != null)
               OutlinedButton(
-                onPressed: () => context.go('/recipe-books/$resourceId'),
+                onPressed: () {
+                  context.go('/');
+                  context.push('/recipe-books/$resourceId');
+                },
                 child: const Text('View Book'),
               ),
           ],
