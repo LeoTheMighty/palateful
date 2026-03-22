@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/di/injection.dart';
 import '../../shared/widgets/empty_state.dart';
@@ -60,7 +59,7 @@ class _CartScreenState extends State<CartScreen> {
         builder: (context) => AlertDialog(
           title: Text(
             'New Shopping List',
-            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleLarge,
           ),
           content: TextField(
             controller: nameController,
@@ -116,7 +115,7 @@ class _CartScreenState extends State<CartScreen> {
         builder: (context) => AlertDialog(
           title: Text(
             'Join a Shopping List',
-            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleLarge,
           ),
           content: TextField(
             controller: codeController,
@@ -173,7 +172,7 @@ class _CartScreenState extends State<CartScreen> {
       appBar: AppBar(
         title: Text(
           'Cart',
-          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         actions: [
           PopupMenuButton<String>(

@@ -6,7 +6,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 
@@ -94,9 +93,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: AlertDialog(
               title: Text(
                 'Edit Display Name',
-                style: GoogleFonts.playfairDisplay(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(context).textTheme.titleLarge,
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -280,9 +277,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               child: AlertDialog(
               title: Text(
                 _username != null ? 'Change Username' : 'Set Username',
-                style: GoogleFonts.playfairDisplay(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: Theme.of(context).textTheme.titleLarge,
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -472,9 +467,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       appBar: AppBar(
         title: Text(
           'Profile',
-          style: GoogleFonts.playfairDisplay(
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
       ),
       body: _isLoading
@@ -634,6 +627,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           _buildSectionHeader('Appearance', textTheme),
           const SizedBox(height: 12),
           _buildThemeModeSelector(colorScheme, textTheme),
+          const SizedBox(height: 16),
+          _buildFontStyleSelector(colorScheme, textTheme),
 
           const SizedBox(height: 32),
 
@@ -744,6 +739,77 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Widget _buildFontStyleSelector(ColorScheme colorScheme, TextTheme textTheme) {
+    final currentFont = ref.watch(fontStyleProvider);
+    const options = [
+      (FontStyle.classic, 'Classic', 'Serif'),
+      (FontStyle.modern, 'Modern', 'Sans'),
+    ];
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: options.map((entry) {
+            final (style, label, subtitle) = entry;
+            final isSelected = currentFont == style;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => ref.read(fontStyleProvider.notifier).setFontStyle(style),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? colorScheme.primary.withValues(alpha: 0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        style == FontStyle.classic
+                            ? Icons.font_download_outlined
+                            : Icons.text_fields,
+                        size: 22,
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: textTheme.labelSmall?.copyWith(
+                          fontSize: 10,
+                          color: isSelected
+                              ? colorScheme.primary.withValues(alpha: 0.7)
+                              : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAvatar(ColorScheme colorScheme) {
     if (_picture != null && _picture!.isNotEmpty) {
       return CachedNetworkImage(
@@ -789,10 +855,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       alignment: Alignment.centerLeft,
       child: Text(
         title,
-        style: GoogleFonts.playfairDisplay(
-          textStyle: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        style: textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

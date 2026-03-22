@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -125,7 +124,7 @@ class _NotificationPreferencesScreenState
       appBar: AppBar(
         title: Text(
           'Notifications',
-          style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
       ),
       body: _isLoading
@@ -282,7 +281,7 @@ class _NotificationPreferencesScreenState
         return SimpleDialog(
           title: Text(
             'Select Timezone',
-            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleLarge,
           ),
           children: timezones.map((tz) {
             final display = tz.replaceAll('_', ' ').replaceAll('/', ' / ');
@@ -317,10 +316,8 @@ class _NotificationPreferencesScreenState
       alignment: Alignment.centerLeft,
       child: Text(
         title,
-        style: GoogleFonts.playfairDisplay(
-          textStyle: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        style: textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

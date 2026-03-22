@@ -114,12 +114,14 @@ void main() async {
     }
   }
 
-  final savedThemeMode = await loadSavedThemeMode();
+  final appearance = await loadSavedAppearance();
   runApp(
     ProviderScope(
       overrides: [
         themeModeProvider
-            .overrideWith(() => ThemeModeNotifier(savedThemeMode)),
+            .overrideWith(() => ThemeModeNotifier(appearance.themeMode)),
+        fontStyleProvider
+            .overrideWith(() => FontStyleNotifier(appearance.fontStyle)),
       ],
       child: const PalatefulApp(),
     ),
@@ -201,10 +203,11 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
+    final fontStyle = ref.watch(fontStyleProvider);
     return MaterialApp.router(
       title: 'Palateful',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(fontStyle),
+      darkTheme: AppTheme.dark(fontStyle),
       themeMode: themeMode,
       routerConfig: appRouter,
       debugShowCheckedModeBanner: false,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
@@ -97,11 +96,9 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
             children: [
               Text(
                 'How would you like to start?',
-                style: GoogleFonts.playfairDisplay(
-                  textStyle: textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
+                style: textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
                 ),
                 textAlign: TextAlign.center,
               ),

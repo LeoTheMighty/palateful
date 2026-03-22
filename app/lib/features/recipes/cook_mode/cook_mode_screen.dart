@@ -435,7 +435,7 @@ class _CookModeScreenState extends State<CookModeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final darkTheme = AppTheme.dark;
+    final darkTheme = AppTheme.dark();
     return Theme(
       data: darkTheme,
       child: Builder(

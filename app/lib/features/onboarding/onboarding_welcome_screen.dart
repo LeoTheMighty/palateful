@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
@@ -112,11 +111,9 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
               const SizedBox(height: 24),
               Text(
                 'Welcome to Palateful!',
-                style: GoogleFonts.playfairDisplay(
-                  textStyle: textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
+                style: textTheme.headlineLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface,
                 ),
                 textAlign: TextAlign.center,
               ),

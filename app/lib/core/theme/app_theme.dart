@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 import 'palateful_colors_extension.dart';
+import '../../providers/theme_mode_provider.dart' show FontStyle;
 
 /// Application Theme Configuration
 ///
@@ -11,8 +12,121 @@ import 'palateful_colors_extension.dart';
 class AppTheme {
   AppTheme._();
 
+  // ---------------------------------------------------------------------------
+  // Text Theme Builders
+  // ---------------------------------------------------------------------------
+
+  /// Classic: Libre Baskerville (headings) + Inter (body)
+  static TextTheme _classicTextTheme(Color primary, Color secondary, Color tertiary) {
+    return TextTheme(
+      displayLarge: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 36, fontWeight: FontWeight.w700, letterSpacing: -0.25,
+      ),
+      displayMedium: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 28, fontWeight: FontWeight.w700,
+      ),
+      displaySmall: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 24, fontWeight: FontWeight.w400,
+      ),
+      headlineLarge: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 32, fontWeight: FontWeight.w700, letterSpacing: -0.5,
+      ),
+      headlineMedium: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 28, fontWeight: FontWeight.w400, letterSpacing: -0.3,
+      ),
+      headlineSmall: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 24, fontWeight: FontWeight.w400, letterSpacing: -0.2,
+      ),
+      titleLarge: GoogleFonts.libreBaskerville(
+        color: primary, fontSize: 22, fontWeight: FontWeight.w400, letterSpacing: -0.1,
+      ),
+      titleMedium: GoogleFonts.inter(
+        color: primary, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.15,
+      ),
+      titleSmall: GoogleFonts.inter(
+        color: primary, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.1,
+      ),
+      bodyLarge: GoogleFonts.inter(
+        color: primary, fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 0.15, height: 1.5,
+      ),
+      bodyMedium: GoogleFonts.inter(
+        color: primary, fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 0.25, height: 1.5,
+      ),
+      bodySmall: GoogleFonts.inter(
+        color: secondary, fontSize: 12, fontWeight: FontWeight.w400, letterSpacing: 0.4, height: 1.4,
+      ),
+      labelLarge: GoogleFonts.inter(
+        color: primary, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.1,
+      ),
+      labelMedium: GoogleFonts.inter(
+        color: secondary, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.5,
+      ),
+      labelSmall: GoogleFonts.inter(
+        color: tertiary, fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  /// Modern: Sora (all text, weight differentiation)
+  static TextTheme _modernTextTheme(Color primary, Color secondary, Color tertiary) {
+    return TextTheme(
+      displayLarge: GoogleFonts.sora(
+        color: primary, fontSize: 36, fontWeight: FontWeight.w700, letterSpacing: -0.25,
+      ),
+      displayMedium: GoogleFonts.sora(
+        color: primary, fontSize: 28, fontWeight: FontWeight.w700,
+      ),
+      displaySmall: GoogleFonts.sora(
+        color: primary, fontSize: 24, fontWeight: FontWeight.w600,
+      ),
+      headlineLarge: GoogleFonts.sora(
+        color: primary, fontSize: 32, fontWeight: FontWeight.w700, letterSpacing: -0.5,
+      ),
+      headlineMedium: GoogleFonts.sora(
+        color: primary, fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -0.3,
+      ),
+      headlineSmall: GoogleFonts.sora(
+        color: primary, fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.2,
+      ),
+      titleLarge: GoogleFonts.sora(
+        color: primary, fontSize: 22, fontWeight: FontWeight.w600, letterSpacing: -0.1,
+      ),
+      titleMedium: GoogleFonts.sora(
+        color: primary, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0.15,
+      ),
+      titleSmall: GoogleFonts.sora(
+        color: primary, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.1,
+      ),
+      bodyLarge: GoogleFonts.sora(
+        color: primary, fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 0.15, height: 1.5,
+      ),
+      bodyMedium: GoogleFonts.sora(
+        color: primary, fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 0.25, height: 1.5,
+      ),
+      bodySmall: GoogleFonts.sora(
+        color: secondary, fontSize: 12, fontWeight: FontWeight.w400, letterSpacing: 0.4, height: 1.4,
+      ),
+      labelLarge: GoogleFonts.sora(
+        color: primary, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.1,
+      ),
+      labelMedium: GoogleFonts.sora(
+        color: secondary, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.5,
+      ),
+      labelSmall: GoogleFonts.sora(
+        color: tertiary, fontSize: 11, fontWeight: FontWeight.w500, letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  static TextTheme _textThemeFor(FontStyle fontStyle, Color primary, Color secondary, Color tertiary) {
+    return switch (fontStyle) {
+      FontStyle.classic => _classicTextTheme(primary, secondary, tertiary),
+      FontStyle.modern => _modernTextTheme(primary, secondary, tertiary),
+    };
+  }
+
   /// Light theme (primary theme)
-  static ThemeData get light {
+  static ThemeData light([FontStyle fontStyle = FontStyle.classic]) {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -533,105 +647,13 @@ class AppTheme {
         PalatefulColors.light,
       ],
 
-      // Text Theme - Playfair Display for display/headline/title, system sans-serif for body/label
-      textTheme: TextTheme(
-        displayLarge: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 36,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.25,
-        ),
-        displayMedium: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 28,
-          fontWeight: FontWeight.w700,
-        ),
-        displaySmall: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 24,
-          fontWeight: FontWeight.w600,
-        ),
-        headlineLarge: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
-        ),
-        headlineMedium: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 28,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
-        ),
-        headlineSmall: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 24,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.2,
-        ),
-        titleLarge: GoogleFonts.playfairDisplay(
-          color: AppColors.textPrimary,
-          fontSize: 22,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.1,
-        ),
-        titleMedium: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.15,
-        ),
-        titleSmall: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
-        ),
-        bodyLarge: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 16,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.15,
-          height: 1.5,
-        ),
-        bodyMedium: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.25,
-          height: 1.5,
-        ),
-        bodySmall: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.4,
-          height: 1.4,
-        ),
-        labelLarge: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
-        ),
-        labelMedium: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.5,
-        ),
-        labelSmall: const TextStyle(
-          color: AppColors.textTertiary,
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.5,
-        ),
-      ),
+      // Text Theme — driven by font style preference
+      textTheme: _textThemeFor(fontStyle, AppColors.textPrimary, AppColors.textSecondary, AppColors.textTertiary),
     );
   }
 
   /// Dark theme (warm dark mode)
-  static ThemeData get dark {
+  static ThemeData dark([FontStyle fontStyle = FontStyle.classic]) {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -1133,100 +1155,8 @@ class AppTheme {
         PalatefulColors.dark,
       ],
 
-      // Text Theme - Playfair Display for display/headline/title, system sans-serif for body/label
-      textTheme: TextTheme(
-        displayLarge: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 36,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.25,
-        ),
-        displayMedium: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 28,
-          fontWeight: FontWeight.w700,
-        ),
-        displaySmall: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 24,
-          fontWeight: FontWeight.w600,
-        ),
-        headlineLarge: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
-        ),
-        headlineMedium: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 28,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
-        ),
-        headlineSmall: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 24,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.2,
-        ),
-        titleLarge: GoogleFonts.playfairDisplay(
-          color: AppColors.warmIvory,
-          fontSize: 22,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.1,
-        ),
-        titleMedium: const TextStyle(
-          color: AppColors.warmIvory,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.15,
-        ),
-        titleSmall: const TextStyle(
-          color: AppColors.warmIvory,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
-        ),
-        bodyLarge: const TextStyle(
-          color: AppColors.warmIvory,
-          fontSize: 16,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.15,
-          height: 1.5,
-        ),
-        bodyMedium: const TextStyle(
-          color: AppColors.warmIvory,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.25,
-          height: 1.5,
-        ),
-        bodySmall: const TextStyle(
-          color: AppColors.hazelnutLighter,
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          letterSpacing: 0.4,
-          height: 1.4,
-        ),
-        labelLarge: const TextStyle(
-          color: AppColors.warmIvory,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.1,
-        ),
-        labelMedium: const TextStyle(
-          color: AppColors.hazelnutLighter,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.5,
-        ),
-        labelSmall: const TextStyle(
-          color: AppColors.hazelnutLighter,
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          letterSpacing: 0.5,
-        ),
-      ),
+      // Text Theme — driven by font style preference
+      textTheme: _textThemeFor(fontStyle, AppColors.warmIvory, AppColors.hazelnutLighter, AppColors.hazelnutLighter),
     );
   }
 }
