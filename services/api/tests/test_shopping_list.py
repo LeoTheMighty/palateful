@@ -72,6 +72,30 @@ class TestCreateShoppingList:
         # CreateShoppingList.Params has name: str | None = None, so empty body is valid
         assert response.status_code == 201
 
+    def test_create_shopping_list_auto_sets_default(self, client, mock_db, mock_user):
+        """Test that creating a list auto-sets it as default when user has none."""
+        mock_user.default_shopping_list_id = None
+        response = client.post(
+            "/v1/shopping-lists",
+            json={"name": "My First List"}
+        )
+        assert response.status_code == 201
+        # User's default should now be set to the newly created list
+        assert mock_user.default_shopping_list_id is not None
+
+    def test_create_shopping_list_preserves_existing_default(self, client, mock_db, mock_user):
+        """Test that creating a list does NOT override an existing default."""
+        import uuid
+        existing_default = str(uuid.uuid4())
+        mock_user.default_shopping_list_id = existing_default
+        response = client.post(
+            "/v1/shopping-lists",
+            json={"name": "Second List"}
+        )
+        assert response.status_code == 201
+        # Default should still be the original
+        assert str(mock_user.default_shopping_list_id) == existing_default
+
 
 class TestGetShoppingList:
     """Tests for GET /v1/shopping-lists/{list_id}."""

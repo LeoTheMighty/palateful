@@ -34,6 +34,12 @@ class CreateShoppingList(Endpoint):
         self.database.create(shopping_list)
         self.database.db.refresh(shopping_list)
 
+        # Auto-set as default if user has no default shopping list
+        if user.default_shopping_list_id is None:
+            user.default_shopping_list_id = shopping_list.id
+            self.database.db.commit()
+            self.database.db.refresh(user)
+
         # Add items if provided
         item_responses = []
         for item_input in params.items:

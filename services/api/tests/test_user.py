@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from conftest import MockExecuteResult, MockFriendRequest, MockUser
+from conftest import MockExecuteResult, MockFriendRequest, MockShoppingList, MockUser
 
 
 class TestGetMe:
@@ -803,3 +803,123 @@ class TestCompleteOnboarding:
         assert mock_user.name == "Existing Name"
         # db.add should NOT have been called (no new recipe book)
         mock_db.db.add.assert_not_called()
+
+
+class TestGetMeShoppingListDefaults:
+    """Tests for default shopping list fields in GET /v1/users/me."""
+
+    def test_get_me_includes_shopping_list_defaults(self, client, mock_user, mock_db):
+        """Test that default_shopping_list_id and previous_shopping_list_id are in response."""
+        mock_db.db.execute.return_value = MockExecuteResult([0])
+        response = client.get("/v1/users/me")
+        assert response.status_code == 200
+        data = response.json()
+        assert "default_shopping_list_id" in data
+        assert "previous_shopping_list_id" in data
+        assert data["default_shopping_list_id"] is None
+        assert data["previous_shopping_list_id"] is None
+
+    def test_get_me_with_shopping_list_defaults_set(self, client, mock_user, mock_db):
+        """Test that set default/previous shopping list IDs are returned."""
+        list_id = str(uuid.uuid4())
+        prev_id = str(uuid.uuid4())
+        mock_user.default_shopping_list_id = list_id
+        mock_user.previous_shopping_list_id = prev_id
+        mock_db.db.execute.return_value = MockExecuteResult([0])
+        response = client.get("/v1/users/me")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["default_shopping_list_id"] == list_id
+        assert data["previous_shopping_list_id"] == prev_id
+
+
+class TestSetDefaultShoppingList:
+    """Tests for PUT /v1/users/me/default-shopping-list."""
+
+    def test_set_default_shopping_list_success(self, client, mock_user, mock_db):
+        """Test setting a default shopping list."""
+        list_id = str(uuid.uuid4())
+        sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
+        from utils.models.shopping_list import ShoppingList
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.put(
+            "/v1/users/me/default-shopping-list",
+            json={"shopping_list_id": list_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["default_shopping_list_id"] == list_id
+
+    def test_set_default_shifts_previous(self, client, mock_user, mock_db):
+        """Test that setting a new default moves old default to previous."""
+        old_id = str(uuid.uuid4())
+        new_id = str(uuid.uuid4())
+        mock_user.default_shopping_list_id = old_id
+
+        sl = MockShoppingList(id=new_id, owner_id=str(mock_user.id))
+        from utils.models.shopping_list import ShoppingList
+        mock_db.set_find_by(ShoppingList, sl, id=new_id)
+
+        response = client.put(
+            "/v1/users/me/default-shopping-list",
+            json={"shopping_list_id": new_id},
+        )
+        assert response.status_code == 200
+        assert mock_user.previous_shopping_list_id == old_id
+        assert mock_user.default_shopping_list_id == sl.id
+
+    def test_clear_default_shopping_list(self, client, mock_user, mock_db):
+        """Test clearing the default shopping list."""
+        mock_user.default_shopping_list_id = str(uuid.uuid4())
+        mock_user.previous_shopping_list_id = str(uuid.uuid4())
+
+        response = client.put(
+            "/v1/users/me/default-shopping-list",
+            json={"shopping_list_id": None},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["default_shopping_list_id"] is None
+        assert data["previous_shopping_list_id"] is None
+        assert mock_user.default_shopping_list_id is None
+        assert mock_user.previous_shopping_list_id is None
+
+    def test_set_default_shopping_list_not_found(self, client, mock_user, mock_db):
+        """Test setting a non-existent list as default returns 404."""
+        response = client.put(
+            "/v1/users/me/default-shopping-list",
+            json={"shopping_list_id": str(uuid.uuid4())},
+        )
+        assert response.status_code == 404
+
+    def test_set_default_shopping_list_no_access(self, client, mock_user, mock_db):
+        """Test setting a list the user doesn't have access to returns 403."""
+        list_id = str(uuid.uuid4())
+        sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()))
+        from utils.models.shopping_list import ShoppingList
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.put(
+            "/v1/users/me/default-shopping-list",
+            json={"shopping_list_id": list_id},
+        )
+        assert response.status_code == 403
+
+    def test_set_default_same_as_current(self, client, mock_user, mock_db):
+        """Test setting the same list as default doesn't change previous."""
+        list_id = str(uuid.uuid4())
+        mock_user.default_shopping_list_id = list_id
+        mock_user.previous_shopping_list_id = None
+
+        sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
+        from utils.models.shopping_list import ShoppingList
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.put(
+            "/v1/users/me/default-shopping-list",
+            json={"shopping_list_id": list_id},
+        )
+        assert response.status_code == 200
+        # Previous should still be None since we set the same list
+        assert mock_user.previous_shopping_list_id is None

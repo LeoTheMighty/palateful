@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from utils.models.parser_job import ParserJob
     from utils.models.recipe_book import RecipeBook
     from utils.models.recipe_book_user import RecipeBookUser
+    from utils.models.shopping_list import ShoppingList
     from utils.models.shopping_list_user import ShoppingListUser
     from utils.models.suggestion import Suggestion
     from utils.models.thread import Thread
@@ -55,6 +56,22 @@ class User(Base):
         index=True,
     )
 
+    # Default shopping list for quick "Add to Cart" actions
+    default_shopping_list_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shopping_lists.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Previous default shopping list (for auto-recovery when current is completed)
+    previous_shopping_list_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shopping_lists.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Notification settings
     notification_preferences: Mapped[dict | None] = mapped_column(
         JSONB,
@@ -72,6 +89,12 @@ class User(Base):
     # Relationships
     default_recipe_book: Mapped["RecipeBook | None"] = relationship(
         foreign_keys=[default_recipe_book_id],
+    )
+    default_shopping_list: Mapped["ShoppingList | None"] = relationship(
+        foreign_keys=[default_shopping_list_id],
+    )
+    previous_shopping_list: Mapped["ShoppingList | None"] = relationship(
+        foreign_keys=[previous_shopping_list_id],
     )
     pantry_memberships: Mapped[list["PantryUser"]] = relationship(
         "PantryUser",

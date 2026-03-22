@@ -8,6 +8,7 @@ from api.v1.user import (
     GetNotificationPreferences,
     RegisterPushToken,
     SearchUsers,
+    SetDefaultShoppingList,
     SetUsername,
     UnregisterPushToken,
     UpdateMe,
@@ -41,6 +42,16 @@ async def update_me(
 ):
     """Update the current user's profile."""
     return UpdateMe.call(params, user=user, database=database)
+
+
+@user_router.put("/me/default-shopping-list")
+async def set_default_shopping_list(
+    params: SetDefaultShoppingList.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Set the user's default shopping list."""
+    return SetDefaultShoppingList.call(params=params, user=user, database=database)
 
 
 @user_router.post("/me/complete-onboarding")

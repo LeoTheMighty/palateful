@@ -59,6 +59,8 @@ class MockUser(MockModel):
             "email_verified": True,
             "has_completed_onboarding": True,
             "default_recipe_book_id": None,
+            "default_shopping_list_id": None,
+            "previous_shopping_list_id": None,
             "notification_preferences": {
                 "push_enabled": True,
                 "email_digest": "daily",

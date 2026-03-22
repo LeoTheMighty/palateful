@@ -6,6 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/auth_service.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
 
@@ -62,9 +63,21 @@ class ShoppingCartService {
   }
 
   /// Create a new shopping list.
+  /// If the user has no default, the backend auto-sets it; refresh local state.
   Future<ShoppingList> createShoppingList(String name) async {
     final response = await _apiClient.createShoppingList({'name': name});
-    return ShoppingList.fromJson(response.data as Map<String, dynamic>);
+    final list = ShoppingList.fromJson(response.data as Map<String, dynamic>);
+
+    // If user had no default, the backend just auto-set this list as default.
+    // Refresh local auth state to stay in sync.
+    final authService = getIt<AuthService>();
+    if (authService.defaultShoppingListId == null) {
+      authService.updateDefaultShoppingList(
+        defaultShoppingListId: list.id,
+      );
+    }
+
+    return list;
   }
 
   /// Add an item to a shopping list.
@@ -164,6 +177,25 @@ class ShoppingCartService {
   Future<String> shareList(String listId) async {
     final response = await _apiClient.shareShoppingList(listId);
     return response.data['share_code'] as String;
+  }
+
+  /// Set the default shopping list.
+  Future<void> setDefaultShoppingList(String? shoppingListId) async {
+    final response = await _apiClient.setDefaultShoppingList(shoppingListId);
+    final data = response.data as Map<String, dynamic>;
+    final authService = getIt<AuthService>();
+    authService.updateDefaultShoppingList(
+      defaultShoppingListId: data['default_shopping_list_id'] as String?,
+      previousShoppingListId: data['previous_shopping_list_id'] as String?,
+    );
+  }
+
+  /// Restore the previous default shopping list.
+  Future<void> restorePreviousDefault() async {
+    final authService = getIt<AuthService>();
+    final previousId = authService.previousShoppingListId;
+    if (previousId == null) return;
+    await setDefaultShoppingList(previousId);
   }
 
   /// Join a shopping list using share code.

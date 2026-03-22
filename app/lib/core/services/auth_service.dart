@@ -15,6 +15,8 @@ class AuthService extends ChangeNotifier {
   String? _manualToken;
   bool _hasCompletedOnboarding = false;
   String? _defaultRecipeBookId;
+  String? _defaultShoppingListId;
+  String? _previousShoppingListId;
 
   // Web-specific auth instance
   dynamic _auth0Web;
@@ -64,14 +66,30 @@ class AuthService extends ChangeNotifier {
   UserProfile? get userProfile => _userProfile;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
   String? get defaultRecipeBookId => _defaultRecipeBookId;
+  String? get defaultShoppingListId => _defaultShoppingListId;
+  String? get previousShoppingListId => _previousShoppingListId;
 
   /// Update onboarding state from API response
   void updateOnboardingState({
     required bool hasCompletedOnboarding,
     String? defaultRecipeBookId,
+    String? defaultShoppingListId,
+    String? previousShoppingListId,
   }) {
     _hasCompletedOnboarding = hasCompletedOnboarding;
     _defaultRecipeBookId = defaultRecipeBookId;
+    _defaultShoppingListId = defaultShoppingListId;
+    _previousShoppingListId = previousShoppingListId;
+    notifyListeners();
+  }
+
+  /// Set the default shopping list (calls API, updates local state)
+  void updateDefaultShoppingList({
+    String? defaultShoppingListId,
+    String? previousShoppingListId,
+  }) {
+    _defaultShoppingListId = defaultShoppingListId;
+    _previousShoppingListId = previousShoppingListId;
     notifyListeners();
   }
 
@@ -172,6 +190,8 @@ class AuthService extends ChangeNotifier {
       _manualToken = null;
       _hasCompletedOnboarding = false;
       _defaultRecipeBookId = null;
+      _defaultShoppingListId = null;
+      _previousShoppingListId = null;
 
       _isLoading = false;
       notifyListeners();
@@ -188,6 +208,8 @@ class AuthService extends ChangeNotifier {
       _manualToken = null;
       _hasCompletedOnboarding = false;
       _defaultRecipeBookId = null;
+      _defaultShoppingListId = null;
+      _previousShoppingListId = null;
       _isLoading = false;
       notifyListeners();
     }

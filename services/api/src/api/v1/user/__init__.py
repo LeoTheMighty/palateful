@@ -11,6 +11,7 @@ from api.v1.user.push_tokens import (
     UpdateNotificationPreferences,
 )
 from api.v1.user.search_users import SearchUsers
+from api.v1.user.set_default_shopping_list import SetDefaultShoppingList
 from api.v1.user.set_username import SetUsername
 from api.v1.user.update_me import UpdateMe
 
@@ -22,6 +23,7 @@ __all__ = [
     "UnregisterPushToken",
     "UpdateNotificationPreferences",
     "GetNotificationPreferences",
+    "SetDefaultShoppingList",
     "SetUsername",
     "CheckUsername",
     "SearchUsers",

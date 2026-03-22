@@ -7,6 +7,7 @@ class ShoppingList {
   final String status;
   final String ownerId;
   final bool isShared;
+  final bool isDefault;
   final String? shareCode;
   final String? widgetColor;
   final String sortBy;
@@ -21,6 +22,7 @@ class ShoppingList {
     this.status = 'active',
     required this.ownerId,
     this.isShared = false,
+    this.isDefault = false,
     this.shareCode,
     this.widgetColor,
     this.sortBy = 'category',
@@ -37,6 +39,7 @@ class ShoppingList {
       status: json['status'] as String? ?? 'active',
       ownerId: json['owner_id'] as String,
       isShared: json['is_shared'] as bool? ?? false,
+      isDefault: json['is_default'] as bool? ?? false,
       shareCode: json['share_code'] as String?,
       widgetColor: json['widget_color'] as String?,
       sortBy: json['sort_by'] as String? ?? 'category',
@@ -60,6 +63,7 @@ class ShoppingList {
     String? status,
     String? ownerId,
     bool? isShared,
+    bool? isDefault,
     String? shareCode,
     String? widgetColor,
     String? sortBy,
@@ -74,6 +78,7 @@ class ShoppingList {
       status: status ?? this.status,
       ownerId: ownerId ?? this.ownerId,
       isShared: isShared ?? this.isShared,
+      isDefault: isDefault ?? this.isDefault,
       shareCode: shareCode ?? this.shareCode,
       widgetColor: widgetColor ?? this.widgetColor,
       sortBy: sortBy ?? this.sortBy,

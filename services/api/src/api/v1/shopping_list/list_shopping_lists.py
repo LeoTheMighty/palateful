@@ -91,6 +91,11 @@ class ListShoppingLists(Endpoint):
             )
             role = membership.role if membership else ("owner" if is_owner else None)
 
+            is_default = (
+                user.default_shopping_list_id is not None
+                and str(sl.id) == str(user.default_shopping_list_id)
+            )
+
             items.append(
                 ListShoppingLists.ShoppingListItem(
                     id=str(sl.id),
@@ -102,6 +107,7 @@ class ListShoppingLists(Endpoint):
                     item_count=item_count,
                     checked_count=checked_count,
                     is_shared=sl.is_shared,
+                    is_default=is_default,
                     member_count=member_count,
                     role=role,
                     owner_id=str(sl.owner_id),
@@ -125,6 +131,7 @@ class ListShoppingLists(Endpoint):
         item_count: int = 0
         checked_count: int = 0
         is_shared: bool = False
+        is_default: bool = False
         member_count: int = 0
         role: str | None = None  # owner, editor, viewer
         owner_id: str

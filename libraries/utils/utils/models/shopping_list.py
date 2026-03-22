@@ -83,7 +83,7 @@ class ShoppingList(Base):
     # Relationships
     meal_event: Mapped["MealEvent | None"] = relationship(back_populates="shopping_list")
     pantry: Mapped["Pantry | None"] = relationship()
-    owner: Mapped["User"] = relationship()
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
     items: Mapped[list["ShoppingListItem"]] = relationship(
         back_populates="shopping_list", cascade="all, delete-orphan"
     )
