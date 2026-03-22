@@ -1,11 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/features/profile/profile_screen.dart';
+import 'package:palateful/providers/theme_mode_provider.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,7 +98,13 @@ void main() {
   group('Export Collection tile', () {
     testWidgets('"Export Collection" tile is visible in Recipes section',
         (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+      await tester.pumpWidget(ProviderScope(
+          overrides: [
+            themeModeProvider
+                .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+          ],
+          child: const MaterialApp(home: ProfileScreen()),
+        ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -107,7 +115,13 @@ void main() {
         (tester) async {
       final fakeClient = GetIt.instance<ApiClient>() as _FakeApiClient;
 
-      await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+      await tester.pumpWidget(ProviderScope(
+          overrides: [
+            themeModeProvider
+                .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+          ],
+          child: const MaterialApp(home: ProfileScreen()),
+        ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -126,7 +140,13 @@ void main() {
       final slowClient = _SlowFakeApiClient(onExport: () => callCount++);
       gi.registerSingleton<ApiClient>(slowClient);
 
-      await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+      await tester.pumpWidget(ProviderScope(
+          overrides: [
+            themeModeProvider
+                .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+          ],
+          child: const MaterialApp(home: ProfileScreen()),
+        ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -145,7 +165,13 @@ void main() {
       final fakeClient = GetIt.instance<ApiClient>() as _FakeApiClient;
       fakeClient.shouldThrow = true;
 
-      await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
+      await tester.pumpWidget(ProviderScope(
+          overrides: [
+            themeModeProvider
+                .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+          ],
+          child: const MaterialApp(home: ProfileScreen()),
+        ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
