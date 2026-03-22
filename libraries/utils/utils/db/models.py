@@ -39,6 +39,7 @@ from utils.models import (
     Thread,
     Unit,
     User,
+    UserActivity,
     UserFavorite,
 )
 
@@ -81,5 +82,6 @@ __all__ = [
     "Suggestion",
     "Thread",
     "Unit",
+    "UserActivity",
     "UserFavorite",
 ]

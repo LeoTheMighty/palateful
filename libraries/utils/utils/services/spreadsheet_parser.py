@@ -5,8 +5,6 @@ from __future__ import annotations
 import csv
 import io
 import logging
-from typing import TYPE_CHECKING
-
 logger = logging.getLogger(__name__)
 
 MAX_ROWS = 200

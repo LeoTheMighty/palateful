@@ -45,6 +45,7 @@ from utils.db.models import (  # noqa: F401
     Thread,
     Unit,
     User,
+    UserActivity,
     UserFavorite,
 )
 

@@ -37,6 +37,7 @@ from utils.models.suggestion import Suggestion
 from utils.models.thread import Thread
 from utils.models.unit import Unit
 from utils.models.user import User
+from utils.models.user_activity import UserActivity
 from utils.models.user_favorite import UserFavorite
 
 __all__ = [
@@ -94,5 +95,6 @@ __all__ = [
     # Parser System
     "ParserJob",
     # Favorites
+    "UserActivity",
     "UserFavorite",
 ]
