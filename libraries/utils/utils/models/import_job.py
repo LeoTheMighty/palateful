@@ -21,7 +21,7 @@ class ImportJob(Base):
     __tablename__ = "import_jobs"
 
     # Status: pending | processing | awaiting_review | completed | failed | cancelled
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
 
     # Source info
     source_type: Mapped[str] = mapped_column(String(20))  # spreadsheet | pdf | url | url_list
@@ -40,10 +40,10 @@ class ImportJob(Base):
 
     # Foreign keys
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("users.id", ondelete="CASCADE")
+        UUID, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     recipe_book_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("recipe_books.id", ondelete="CASCADE")
+        UUID, ForeignKey("recipe_books.id", ondelete="CASCADE"), index=True
     )
 
     # Timestamps

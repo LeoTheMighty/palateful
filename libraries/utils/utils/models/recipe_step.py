@@ -50,6 +50,7 @@ class RecipeStep(Base):
         UUID(as_uuid=True),
         ForeignKey("recipes.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     # Relationships

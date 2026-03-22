@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ARRAY, UUID, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import ARRAY, UUID, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -46,7 +46,7 @@ class Recipe(Base):
 
     # Foreign keys
     recipe_book_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("recipe_books.id", ondelete="CASCADE")
+        UUID, ForeignKey("recipe_books.id", ondelete="CASCADE"), index=True
     )
 
     # Relationships
@@ -72,4 +72,7 @@ class Recipe(Base):
             postgresql_with={"m": 16, "ef_construction": 64},
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index("idx_recipes_name_trgm", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
+        Index("idx_recipes_description_trgm", "description", postgresql_using="gin", postgresql_ops={"description": "gin_trgm_ops"}),
+        Index("ix_recipes_share_token", "share_token", unique=True, postgresql_where=text("share_token IS NOT NULL")),
     )

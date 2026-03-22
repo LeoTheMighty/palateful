@@ -52,6 +52,7 @@ class User(Base):
         UUID(as_uuid=True),
         ForeignKey("recipe_books.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Notification settings

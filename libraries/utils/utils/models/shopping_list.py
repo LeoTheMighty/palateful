@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +24,10 @@ class ShoppingList(Base):
     """A shopping list that can be shared between users."""
 
     __tablename__ = "shopping_lists"
+
+    __table_args__ = (
+        Index("ix_shopping_lists_share_code", "share_code", unique=True),
+    )
 
     # Name for standalone lists or auto-generated from meal event
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -46,6 +50,7 @@ class ShoppingList(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     # === Sharing & Real-time ===
@@ -54,7 +59,7 @@ class ShoppingList(Base):
     is_shared: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Short code for easy sharing (e.g., "ABC123")
-    share_code: Mapped[str | None] = mapped_column(String(10), unique=True, nullable=True)
+    share_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     # Default deadline for items without explicit due dates
     default_deadline: Mapped[datetime | None] = mapped_column(
@@ -126,18 +131,20 @@ class ShoppingListItem(Base):
         UUID(as_uuid=True),
         ForeignKey("shopping_lists.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     ingredient_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("ingredients.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # === Deadline & Meal Event Integration ===
 
     # When this specific ingredient is needed by
     due_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=True, index=True
     )
 
     # Which meal event this item is for (can differ from list's meal_event_id for aggregated lists)
@@ -145,6 +152,7 @@ class ShoppingListItem(Base):
         UUID(as_uuid=True),
         ForeignKey("meal_events.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
 
     # Why this ingredient is needed at this time

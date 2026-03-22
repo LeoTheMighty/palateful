@@ -20,7 +20,7 @@ class ImportItem(Base):
     __tablename__ = "import_items"
 
     # Status: pending | extracting | matching | awaiting_review | approved | completed | failed | skipped
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
 
     # Source reference
     source_type: Mapped[str] = mapped_column(String(20))  # row | url | pdf_page
@@ -42,7 +42,7 @@ class ImportItem(Base):
 
     # Foreign keys
     import_job_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("import_jobs.id", ondelete="CASCADE")
+        UUID, ForeignKey("import_jobs.id", ondelete="CASCADE"), index=True
     )
     created_recipe_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True

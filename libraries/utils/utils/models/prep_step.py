@@ -62,6 +62,7 @@ class PrepStep(Base):
         UUID(as_uuid=True),
         ForeignKey("meal_events.id", ondelete="CASCADE"),
         nullable=True,
+        index=True,
     )
     recipe_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

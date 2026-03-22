@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -53,9 +53,3 @@ class MealEventParticipant(JoinsBase):
     # Relationships
     meal_event: Mapped["MealEvent"] = relationship(back_populates="participants")
     user: Mapped["User"] = relationship(foreign_keys=[user_id])
-
-    __table_args__ = (
-        UniqueConstraint(
-            "meal_event_id", "user_id", name="uq_meal_event_participants"
-        ),
-    )

@@ -33,15 +33,15 @@ class Notification(Base):
 
     # Delivery
     channel: Mapped[str] = mapped_column(
-        String(20), nullable=False
+        String(20), nullable=False, index=True
     )  # "push" | "email" | "in_app"
     status: Mapped[str] = mapped_column(
-        String(20), default="pending", nullable=False
+        String(20), default="pending", nullable=False, index=True
     )  # "pending" | "sent" | "failed" | "read"
 
     # Foreign keys
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     suggestion_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("suggestions.id", ondelete="CASCADE"), nullable=True

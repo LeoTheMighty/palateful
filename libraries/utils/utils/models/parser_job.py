@@ -19,10 +19,10 @@ class ParserJob(Base):
     __tablename__ = "parser_jobs"
 
     # AWS Batch job ID
-    batch_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    batch_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     # Status: pending | submitted | running | succeeded | failed
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
 
     # S3 keys for input/output
     input_s3_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -41,7 +41,7 @@ class ParserJob(Base):
 
     # Foreign key
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("users.id", ondelete="CASCADE")
+        UUID, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
 
     # Relationship

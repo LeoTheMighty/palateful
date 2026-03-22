@@ -26,7 +26,7 @@ class ActiveTimer(Base):
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # State: running | paused | completed | cancelled
-    status: Mapped[str] = mapped_column(String(20), default="running")
+    status: Mapped[str] = mapped_column(String(20), default="running", index=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -46,6 +46,7 @@ class ActiveTimer(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     meal_event_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

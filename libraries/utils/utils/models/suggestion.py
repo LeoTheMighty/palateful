@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import UUID, Boolean, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,6 +25,10 @@ class Suggestion(Base):
 
     __tablename__ = "suggestions"
 
+    __table_args__ = (
+        Index("ix_suggestions_user_unread", "user_id", postgresql_where=text("is_read = false AND is_dismissed = false")),
+    )
+
     # Content
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
@@ -34,7 +38,7 @@ class Suggestion(Base):
 
     # Foreign keys
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     recipe_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True
@@ -42,7 +46,7 @@ class Suggestion(Base):
 
     # Trigger info
     trigger_type: Mapped[str] = mapped_column(
-        String(50), nullable=False
+        String(50), nullable=False, index=True
     )  # "daily" | "pantry_update" | "expiring"
     trigger_context: Mapped[dict] = mapped_column(JSONB, default={}, nullable=False)
 

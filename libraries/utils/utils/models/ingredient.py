@@ -4,7 +4,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import UUID, Boolean, ForeignKey, String
+from sqlalchemy import UUID, Boolean, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,11 +22,16 @@ class Ingredient(Base):
 
     __tablename__ = "ingredients"
 
+    __table_args__ = (
+        Index("idx_ingredients_canonical_name_trgm", "canonical_name", postgresql_using="gin", postgresql_ops={"canonical_name": "gin_trgm_ops"}),
+        Index("idx_ingredients_embedding", "embedding", postgresql_using="hnsw", postgresql_ops={"embedding": "vector_cosine_ops"}),
+    )
+
     # id, created_at, updated_at, archived_at inherited from Base
     canonical_name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    aliases: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    aliases: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list, nullable=True)
     category: Mapped[str | None] = mapped_column(String, nullable=True)
-    flavor_profile: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    flavor_profile: Mapped[list[str] | None] = mapped_column(ARRAY(String), default=list, nullable=True)
     default_unit: Mapped[str | None] = mapped_column(String, nullable=True)
     is_canonical: Mapped[bool] = mapped_column(Boolean, default=True)
     pending_review: Mapped[bool] = mapped_column(Boolean, default=False)

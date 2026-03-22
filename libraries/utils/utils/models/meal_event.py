@@ -30,14 +30,14 @@ class MealEvent(Base):
 
     # Timing
     scheduled_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False, index=True
     )
     meal_type: Mapped[str] = mapped_column(
         String(20), nullable=False
     )  # breakfast | lunch | dinner | snack
 
     # Status: planned | shopping | prepping | cooking | completed | skipped
-    status: Mapped[str] = mapped_column(String(20), default="planned")
+    status: Mapped[str] = mapped_column(String(20), default="planned", index=True)
 
     # Notification preferences
     notify_prep_start: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -74,6 +74,7 @@ class MealEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     pantry_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

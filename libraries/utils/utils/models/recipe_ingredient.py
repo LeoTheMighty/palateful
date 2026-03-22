@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import UUID, Boolean, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.joins_base import JoinsBase
@@ -39,7 +39,3 @@ class RecipeIngredient(JoinsBase):
     # Relationships
     recipe: Mapped["Recipe"] = relationship(back_populates="ingredients")
     ingredient: Mapped["Ingredient"] = relationship(back_populates="recipe_ingredients")
-
-    __table_args__ = (
-        UniqueConstraint("recipe_id", "ingredient_id", name="uq_recipe_ingredients"),
-    )

@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, ForeignKey, String, UniqueConstraint
+from sqlalchemy import UUID, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.joins_base import JoinsBase
@@ -37,7 +37,3 @@ class RecipeBookUser(JoinsBase):
     # Relationships
     user: Mapped["User"] = relationship(foreign_keys=[user_id], back_populates="recipe_book_memberships")
     recipe_book: Mapped["RecipeBook"] = relationship(back_populates="members")
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "recipe_book_id", name="uq_recipe_book_users"),
-    )
