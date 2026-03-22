@@ -45,13 +45,25 @@ class DeleteRecipeBook(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND
             )
 
+        # Auto-recovery: if deleting the default book, restore previous
+        restored_default_id = None
+        if str(recipe_book.id) == str(user.default_recipe_book_id or ""):
+            user.default_recipe_book_id = user.previous_recipe_book_id
+            user.previous_recipe_book_id = None
+            restored_default_id = str(user.default_recipe_book_id) if user.default_recipe_book_id else None
+            self.database.db.flush()
+
         # Delete recipe book (cascades to recipes and memberships)
         self.database.delete(recipe_book)
 
         return success(
-            data=DeleteRecipeBook.Response(success=True),
+            data=DeleteRecipeBook.Response(
+                success=True,
+                restored_default_recipe_book_id=restored_default_id,
+            ),
             status=200
         )
 
     class Response(BaseModel):
         success: bool
+        restored_default_recipe_book_id: str | None = None

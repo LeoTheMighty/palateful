@@ -42,8 +42,19 @@ class DeleteShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
+        # Auto-recovery: if deleting the default list, restore previous
+        restored_default_id = None
+        if str(shopping_list.id) == str(user.default_shopping_list_id or ""):
+            user.default_shopping_list_id = user.previous_shopping_list_id
+            user.previous_shopping_list_id = None
+            restored_default_id = str(user.default_shopping_list_id) if user.default_shopping_list_id else None
+
         # Soft delete
         shopping_list.archived_at = datetime.now(UTC)
         self.database.db.commit()
 
-        return success(data={"deleted": True, "id": str(list_id)})
+        return success(data={
+            "deleted": True,
+            "id": str(list_id),
+            "restored_default_shopping_list_id": restored_default_id,
+        })

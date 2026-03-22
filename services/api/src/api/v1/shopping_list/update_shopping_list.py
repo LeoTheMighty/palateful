@@ -77,6 +77,10 @@ class UpdateShoppingList(Endpoint):
         if params.name is not None:
             shopping_list.name = params.name
         if params.status is not None:
+            # Auto-recovery: if completing the default list, restore previous
+            if params.status == "completed" and str(shopping_list.id) == str(user.default_shopping_list_id or ""):
+                user.default_shopping_list_id = user.previous_shopping_list_id
+                user.previous_shopping_list_id = None
             shopping_list.status = params.status
 
         # Update new sharing/deadline fields
@@ -120,6 +124,9 @@ class UpdateShoppingList(Endpoint):
                 [m for m in shopping_list.members if m.archived_at is None]
             )
 
+        # Include restored default info so frontend can show toast
+        restored_default_id = str(user.default_shopping_list_id) if user.default_shopping_list_id else None
+
         return success(
             data=UpdateShoppingList.Response(
                 id=str(shopping_list.id),
@@ -142,6 +149,7 @@ class UpdateShoppingList(Endpoint):
                 widget_color=shopping_list.widget_color,
                 sort_by=shopping_list.sort_by,
                 member_count=member_count,
+                restored_default_shopping_list_id=restored_default_id,
                 items=items,
                 created_at=shopping_list.created_at,
                 updated_at=shopping_list.updated_at,
@@ -185,6 +193,7 @@ class UpdateShoppingList(Endpoint):
         widget_color: str | None = None
         sort_by: str = "deadline"
         member_count: int = 0
+        restored_default_shopping_list_id: str | None = None
         items: list["UpdateShoppingList.ItemResponse"] = []
         created_at: datetime
         updated_at: datetime

@@ -45,10 +45,21 @@ class ArchiveRecipeBook(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
+        # Auto-recovery: if archiving the default book, restore previous
+        restored_default_id = None
+        if str(recipe_book.id) == str(user.default_recipe_book_id or ""):
+            user.default_recipe_book_id = user.previous_recipe_book_id
+            user.previous_recipe_book_id = None
+            restored_default_id = str(user.default_recipe_book_id) if user.default_recipe_book_id else None
+
         recipe_book.archived_at = datetime.now(UTC)
         self.database.db.commit()
 
-        return success(data=ArchiveRecipeBook.Response(success=True))
+        return success(data=ArchiveRecipeBook.Response(
+            success=True,
+            restored_default_recipe_book_id=restored_default_id,
+        ))
 
     class Response(BaseModel):
         success: bool
+        restored_default_recipe_book_id: str | None = None
