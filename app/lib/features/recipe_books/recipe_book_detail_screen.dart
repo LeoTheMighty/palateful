@@ -8,6 +8,7 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
+import '../../services/share_service.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'services/recipe_book_sync_service.dart';
 
@@ -500,6 +501,23 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     }
   }
 
+  Future<void> _shareBook() async {
+    try {
+      final shareService = ShareService();
+      await shareService.shareRecipeBook(
+        recipeBookId: widget.recipeBookId,
+        recipeBookName: _recipeBook?['name'] ?? 'Recipe Book',
+        context: context,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to share — please try again')),
+        );
+      }
+    }
+  }
+
   Future<void> _addRecipe() async {
     await context.push('/recipes/add/wizard', extra: {
       'recipeBookId': widget.recipeBookId,
@@ -571,6 +589,12 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                 onPressed: () => context.pop(),
               ),
               actions: [
+                if (_userRole == 'owner' || _userRole == 'editor')
+                  IconButton(
+                    icon: const Icon(Icons.ios_share),
+                    tooltip: 'Share',
+                    onPressed: _shareBook,
+                  ),
                 if (_isShared && _userRole == 'owner')
                   IconButton(
                     icon: const Icon(Icons.group),

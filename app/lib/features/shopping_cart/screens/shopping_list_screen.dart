@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import 'package:palateful/core/config/environment.dart' show kE2EMode;
 import '../../../core/theme/theme.dart';
+import '../../../services/share_service.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
 import '../services/shopping_cart_service.dart';
@@ -190,50 +191,16 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   Future<void> _shareList() async {
     if (_list == null) return;
     try {
-      final shareCode = await _service.shareList(_list!.id);
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Share Shopping List'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Share this code with others:'),
-                const SizedBox(height: 16),
-                SelectableText(
-                  shareCode,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 4,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: shareCode));
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Code copied to clipboard')),
-                  );
-                },
-                child: const Text('Copy'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Done'),
-              ),
-            ],
-          ),
-        );
-      }
+      final shareService = ShareService();
+      await shareService.shareShoppingList(
+        listId: _list!.id,
+        listName: _list!.name,
+        context: context,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to generate share code')),
+          const SnackBar(content: Text('Failed to share — please try again')),
         );
       }
     }

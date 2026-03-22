@@ -11,6 +11,7 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../services/share_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/push_notification_service.dart';
 import '../../providers/theme_mode_provider.dart';
@@ -436,6 +437,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           )
         ],
         subject: 'My Palateful Recipe Collection',
+        sharePositionOrigin: ShareService.originFrom(context),
       );
     } catch (_) {
       if (mounted) {

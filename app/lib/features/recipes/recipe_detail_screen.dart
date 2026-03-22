@@ -3,11 +3,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
+import '../../services/share_service.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
@@ -33,7 +33,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   bool _isTogglingFavorite = false;
   bool _isMovingOrCopying = false;
   bool _isAddingNote = false;
-  bool _isSharing = false;
   final _noteController = TextEditingController();
 
   @override
@@ -421,103 +420,18 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
   }
 
-  Future<void> _shareRecipe() async {
-    if (_isSharing) return;
-    setState(() => _isSharing = true);
+  Future<void> _shareViaService() async {
     try {
-      final response = await _apiClient.shareRecipe(widget.recipeId);
-      final data = response.data as Map<String, dynamic>;
-      final link = data['deep_link'] as String;
-      if (mounted) {
-        _showShareLinkSheet(link);
-      }
-    } catch (_) {
+      final shareService = ShareService();
+      await shareService.shareRecipe(
+        recipeId: widget.recipeId,
+        recipeName: _recipe?['name'] ?? 'Recipe',
+        context: context,
+      );
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to generate share link')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSharing = false);
-    }
-  }
-
-  void _showShareLinkSheet(String link) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => _ShareLinkSheet(
-        link: link,
-        onRevoke: () async {
-          Navigator.of(ctx).pop();
-          try {
-            await _apiClient.revokeRecipeShare(widget.recipeId);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Link revoked')),
-              );
-            }
-          } catch (_) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Failed to revoke link')),
-              );
-            }
-          }
-        },
-      ),
-    );
-  }
-
-  Future<void> _nativeShareRecipe() async {
-    if (_recipe == null) return;
-    final name = _recipe!['name'] as String? ?? '';
-    final description = _recipe!['description'] as String?;
-    final ingredients = (_recipe!['ingredients'] as List?) ?? [];
-    final steps = (_recipe!['steps'] as List?) ?? [];
-
-    final buffer = StringBuffer();
-    buffer.writeln(name);
-
-    if (description != null && description.isNotEmpty) {
-      buffer.writeln();
-      buffer.writeln(description);
-    }
-
-    if (ingredients.isNotEmpty) {
-      buffer.writeln();
-      buffer.writeln('Ingredients:');
-      for (final ing in ingredients) {
-        final ingName =
-            (ing['ingredient'] as Map?)?['canonical_name']?.toString() ?? '';
-        final qty = ing['quantity_display']?.toString() ?? '';
-        final unit = ing['unit_display']?.toString() ?? '';
-        final parts = [qty, unit, ingName].where((s) => s.isNotEmpty).join(' ');
-        if (parts.isNotEmpty) buffer.writeln('• $parts');
-      }
-    }
-
-    if (steps.isNotEmpty) {
-      buffer.writeln();
-      buffer.writeln('Steps:');
-      int stepNum = 1;
-      for (final step in steps) {
-        final instruction = (step as Map)['instruction']?.toString() ?? '';
-        if (instruction.isNotEmpty) {
-          buffer.writeln('$stepNum. $instruction');
-          stepNum++;
-        }
-      }
-    }
-
-    buffer.writeln();
-    buffer.write('Shared via Palateful');
-
-    try {
-      await Share.share(buffer.toString().trim(), subject: name);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to share recipe')),
+          const SnackBar(content: Text('Failed to share — please try again')),
         );
       }
     }
@@ -608,16 +522,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               _loadRecipe();
                             },
                           ),
+                        IconButton(
+                          icon: const Icon(Icons.ios_share),
+                          onPressed: _shareViaService,
+                        ),
                         PopupMenuButton<String>(
                           onSelected: (value) {
                             if (value == 'add_to_cart') {
                               _addIngredientsToCart();
                             } else if (value == 'plan') {
                               _planForDate();
-                            } else if (value == 'share_link') {
-                              _shareRecipe();
-                            } else if (value == 'share_native') {
-                              _nativeShareRecipe();
                             } else if (value == 'move') {
                               _moveRecipe();
                             } else if (value == 'copy') {
@@ -646,26 +560,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   Icon(Icons.calendar_today_outlined),
                                   SizedBox(width: 8),
                                   Text('Plan for...'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'share_link',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.link_outlined),
-                                  SizedBox(width: 8),
-                                  Text('Share Link'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'share_native',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.share_outlined),
-                                  SizedBox(width: 8),
-                                  Text('Share'),
                                 ],
                               ),
                             ),
@@ -1132,62 +1026,3 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-class _ShareLinkSheet extends StatelessWidget {
-  final String link;
-  final VoidCallback onRevoke;
-
-  const _ShareLinkSheet({required this.link, required this.onRevoke});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          24, 24, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Public Link', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: SelectableText(
-              link,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copy Link'),
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: link));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied!')),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              TextButton(
-                onPressed: onRevoke,
-                child: Text(
-                  'Revoke',
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}

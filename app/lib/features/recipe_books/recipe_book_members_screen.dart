@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../services/share_service.dart';
 
 class RecipeBookMembersScreen extends StatefulWidget {
   final String recipeBookId;
@@ -374,7 +375,10 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
                                       Expanded(
                                         child: ElevatedButton.icon(
                                           onPressed: () {
-                                            Share.share(generatedLink!);
+                                            Share.share(
+                                              generatedLink!,
+                                              sharePositionOrigin: ShareService.originFrom(context),
+                                            );
                                           },
                                           icon: const Icon(Icons.share),
                                           label: const Text('Share'),
