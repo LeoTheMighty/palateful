@@ -7,7 +7,7 @@ import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/features/profile/profile_screen.dart';
-import 'package:palateful/providers/theme_mode_provider.dart';
+import 'package:palateful/providers/theme_mode_provider.dart' show FontStyleNotifier, FontStyle, ThemeModeNotifier, fontStyleProvider, themeModeProvider;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -102,6 +102,8 @@ void main() {
           overrides: [
             themeModeProvider
                 .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+            fontStyleProvider
+                .overrideWith(() => FontStyleNotifier(FontStyle.classic)),
           ],
           child: const MaterialApp(home: ProfileScreen()),
         ));
@@ -119,6 +121,8 @@ void main() {
           overrides: [
             themeModeProvider
                 .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+            fontStyleProvider
+                .overrideWith(() => FontStyleNotifier(FontStyle.classic)),
           ],
           child: const MaterialApp(home: ProfileScreen()),
         ));
@@ -144,6 +148,8 @@ void main() {
           overrides: [
             themeModeProvider
                 .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+            fontStyleProvider
+                .overrideWith(() => FontStyleNotifier(FontStyle.classic)),
           ],
           child: const MaterialApp(home: ProfileScreen()),
         ));
@@ -169,6 +175,8 @@ void main() {
           overrides: [
             themeModeProvider
                 .overrideWith(() => ThemeModeNotifier(ThemeMode.system)),
+            fontStyleProvider
+                .overrideWith(() => FontStyleNotifier(FontStyle.classic)),
           ],
           child: const MaterialApp(home: ProfileScreen()),
         ));
