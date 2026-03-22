@@ -92,6 +92,14 @@ class StartImport(Endpoint):
                     code=ErrorCode.INVALID_REQUEST,
                 )
             source_filename = "text_paste"
+        elif params.source_type == "pdf":
+            if not params.file_base64 or not params.file_name:
+                raise APIException(
+                    status_code=400,
+                    detail="file_base64 and file_name are required for PDF import",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            source_filename = params.file_name
         elif params.source_type == "spreadsheet":
             if not params.file_base64 or not params.file_name:
                 raise APIException(
@@ -163,6 +171,42 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
+        elif params.source_type == "pdf" and params.file_base64:  # pragma: no branch
+            import base64
+
+            from utils.services.recipe_extractors.pdf_extractor import (
+                classify_pdf,
+                detect_recipe_boundaries,
+                extract_text_from_pdf,
+            )
+
+            file_bytes = base64.b64decode(params.file_base64)
+            pdf_type, page_count = classify_pdf(file_bytes)
+
+            if pdf_type.value == "text":
+                text = extract_text_from_pdf(file_bytes)
+                recipes = detect_recipe_boundaries(text)
+                for i, recipe_chunk in enumerate(recipes):
+                    item = ImportItem(
+                        import_job_id=job.id,
+                        source_type="text",
+                        source_reference=f"recipe_{i + 1}",
+                        raw_data={"text": recipe_chunk["text"], "pdf_recipe_title": recipe_chunk.get("title")},
+                        status="pending",
+                    )
+                    self.database.create(item)
+                job.total_items = len(recipes)
+            else:
+                # Scanned PDF — treat each page as a separate item
+                item = ImportItem(
+                    import_job_id=job.id,
+                    source_type="text",
+                    raw_data={"text": extract_text_from_pdf(file_bytes), "is_scanned_pdf": True},
+                    status="pending",
+                )
+                self.database.create(item)
+                job.total_items = 1
+            self.database.db.commit()
         elif params.source_type == "spreadsheet" and params.file_base64:  # pragma: no branch
             import base64
 
@@ -187,6 +231,7 @@ class StartImport(Endpoint):
             "url_list": f"{job.total_items} URLs",
             "photo": "photo",
             "text": "pasted text",
+            "pdf": f"PDF ({job.total_items} recipe{'s' if job.total_items != 1 else ''})",
             "spreadsheet": f"spreadsheet ({job.total_items} rows)",
         }.get(job.source_type, job.source_type)
         # Enrich label for social media video URLs

@@ -108,6 +108,17 @@ class AddRecipeSheet extends StatelessWidget {
                 ),
               ),
               _SheetOption(
+                icon: Icons.picture_as_pdf,
+                title: 'From PDF',
+                subtitle: 'Cookbook pages or recipe PDFs',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/recipes/add/pdf', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
+                },
+              ),
+              _SheetOption(
                 icon: Icons.table_chart,
                 title: 'From Spreadsheet',
                 subtitle: 'Import CSV or Excel file',
