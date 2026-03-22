@@ -147,6 +147,27 @@ class TestDeleteShoppingList:
         assert response.status_code == 404
 
 
+    def test_delete_default_shopping_list_restores_previous(self, client, mock_db, mock_user):
+        """Test deleting the default list restores previous (lines 48-50)."""
+        list_id = str(uuid.uuid4())
+        prev_list_id = str(uuid.uuid4())
+        mock_user.default_shopping_list_id = list_id
+        mock_user.previous_shopping_list_id = prev_list_id
+
+        sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
+
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.delete(f"/v1/shopping-lists/{list_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["restored_default_shopping_list_id"] == prev_list_id
+        assert mock_user.default_shopping_list_id == prev_list_id
+        assert mock_user.previous_shopping_list_id is None
+
+
 class TestAddShoppingListItem:
     """Tests for POST /v1/shopping-lists/{list_id}/items."""
 
@@ -171,6 +192,35 @@ class TestAddShoppingListItem:
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Milk"
+
+    @patch("api.v1.shopping_list.add_item.notify_item_added")
+    @patch("api.v1.shopping_list.add_item.create_activity")
+    def test_add_item_to_shared_list_creates_activity(self, mock_create_activity, mock_notify, client, mock_db, mock_user):
+        """Test adding item to a shared list creates activity for other members (lines 87-97)."""
+        list_id = "shared-list-add"
+        member = MockShoppingListUser(
+            shopping_list_id=list_id,
+            user_id=str(uuid.uuid4()),
+            role="editor",
+            archived_at=None,
+        )
+        sl = MockShoppingList(
+            id=list_id, owner_id=str(mock_user.id),
+            is_shared=True,
+        )
+
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        # db.query for members returns our mock member
+        mock_db.db.query.return_value = MockQuery([member])
+
+        response = client.post(
+            f"/v1/shopping-lists/{list_id}/items",
+            json={"name": "Shared Item"},
+        )
+        assert response.status_code == 201
+        mock_create_activity.assert_called_once()
 
 
 # =============================================================================
@@ -1477,6 +1527,32 @@ class TestUpdateShoppingList:
         data = response.json()
         assert data["meal_event_id"] == "event-123"
         assert data["pantry_id"] == "pantry-456"
+
+
+    def test_update_completing_default_list_restores_previous(self, client, mock_db, mock_user):
+        """Test completing the default list restores previous (lines 82-83)."""
+        list_id = str(uuid.uuid4())
+        prev_list_id = str(uuid.uuid4())
+        mock_user.default_shopping_list_id = list_id
+        mock_user.previous_shopping_list_id = prev_list_id
+
+        sl = MockShoppingList(
+            id=list_id, owner_id=str(mock_user.id),
+            items=[], members=[], is_shared=False,
+            calendar_lookahead_days=7, widget_color=None,
+        )
+
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.put(
+            f"/v1/shopping-lists/{list_id}",
+            json={"status": "completed"},
+        )
+        assert response.status_code == 200
+        assert mock_user.default_shopping_list_id == prev_list_id
+        assert mock_user.previous_shopping_list_id is None
 
 
 # =============================================================================

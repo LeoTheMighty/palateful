@@ -15,9 +15,10 @@ class TestListRecipeBooks:
 
     def test_list_recipe_books_success(self, client, mock_db, mock_user):
         """Test listing recipe books."""
+        from datetime import UTC, datetime
         book = MockRecipeBook()
-        # Query now returns (RecipeBook, recipe_count, user_role, member_count) tuples
-        mock_db.db.query.return_value = MockQuery([(book, 3, "owner", 1)])
+        # Query returns (RecipeBook, recipe_count, user_role, member_count, last_opened_at) tuples
+        mock_db.db.query.return_value = MockQuery([(book, 3, "owner", 1, datetime.now(UTC))])
 
         response = client.get("/v1/recipe-books")
         assert response.status_code == 200
@@ -275,6 +276,37 @@ class TestDeleteRecipeBook:
         response = client.delete("/v1/recipe-books/no-access-id")
         assert response.status_code == 403
 
+    def test_delete_default_recipe_book_restores_previous(self, client, mock_db, mock_user):
+        """Test deleting the default book restores previous (lines 51-54)."""
+        import uuid
+
+        book_id = str(uuid.uuid4())
+        prev_book_id = str(uuid.uuid4())
+        mock_user.default_recipe_book_id = book_id
+        mock_user.previous_recipe_book_id = prev_book_id
+
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.delete(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["restored_default_recipe_book_id"] == prev_book_id
+        assert mock_user.default_recipe_book_id == prev_book_id
+        assert mock_user.previous_recipe_book_id is None
+
 
 class TestArchiveRecipeBook:
     """Tests for POST /v1/recipe-books/{id}/archive."""
@@ -359,6 +391,38 @@ class TestArchiveRecipeBook:
 
         response = client.post(f"/v1/recipe-books/{book_id}/archive")
         assert response.status_code == 400
+
+
+    def test_archive_default_recipe_book_restores_previous(self, client, mock_db, mock_user):
+        """Test archiving the default book restores previous (lines 51-53)."""
+        import uuid
+
+        book_id = str(uuid.uuid4())
+        prev_book_id = str(uuid.uuid4())
+        mock_user.default_recipe_book_id = book_id
+        mock_user.previous_recipe_book_id = prev_book_id
+
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/archive")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["restored_default_recipe_book_id"] == prev_book_id
+        assert mock_user.default_recipe_book_id == prev_book_id
+        assert mock_user.previous_recipe_book_id is None
 
 
 class TestRestoreRecipeBook:

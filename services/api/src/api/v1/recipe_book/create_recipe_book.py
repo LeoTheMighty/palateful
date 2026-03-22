@@ -1,6 +1,6 @@
 """Create recipe book endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
@@ -38,7 +38,7 @@ class CreateRecipeBook(Endpoint):
             user_id=user.id,
             recipe_book_id=recipe_book.id,
             role="owner",
-            last_opened_at=datetime.now(datetime.UTC),
+            last_opened_at=datetime.now(UTC),
         )
         self.database.create(membership)
         self.database.db.refresh(membership)

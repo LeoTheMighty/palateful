@@ -302,9 +302,10 @@ class TestListRecipeBooksRoleInfo:
 
     def test_list_with_shared_book(self, client, mock_db, mock_user):
         """GET /v1/recipe-books with a shared book returns is_shared=True and user_role."""
+        from datetime import UTC, datetime
         book = MockRecipeBook(name="Shared Book", is_shared=True)
-        # 4-tuple: (RecipeBook, recipe_count, user_role, member_count)
-        mock_db.db.query.return_value = MockQuery([(book, 2, "editor", 3)])
+        # 5-tuple: (RecipeBook, recipe_count, user_role, member_count, last_opened_at)
+        mock_db.db.query.return_value = MockQuery([(book, 2, "editor", 3, datetime.now(UTC))])
 
         response = client.get("/v1/recipe-books")
         assert response.status_code == 200

@@ -988,6 +988,22 @@ class TestSetDefaultRecipeBook:
         )
         assert response.status_code == 404
 
+    def test_set_default_recipe_book_not_member(self, client, mock_user, mock_db):
+        """Test setting a book the user is not a member of returns 403 (line 51)."""
+        from conftest import MockQuery, MockRecipeBook
+        book_id = str(uuid.uuid4())
+        book = MockRecipeBook(id=book_id)
+        from utils.models.recipe_book import RecipeBook
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        # User is NOT a member — query returns empty
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            "/v1/users/me/default-recipe-book",
+            json={"recipe_book_id": book_id},
+        )
+        assert response.status_code == 403
+
     def test_get_me_includes_previous_recipe_book_id(self, client, mock_user, mock_db):
         """Test that GET /me returns previous_recipe_book_id."""
         prev_id = str(uuid.uuid4())

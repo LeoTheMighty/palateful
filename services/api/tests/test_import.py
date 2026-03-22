@@ -180,6 +180,177 @@ class TestStartImport:
         assert response.status_code == 400
 
 
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_start_import_text_success(self, mock_task, client, mock_db, mock_user):
+        """Test starting a text paste import job (lines 80-93, 147-156)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "text",
+                "raw_text": "Grandma's Cookies\n2 cups flour\n1 cup sugar",
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["source_type"] == "text"
+        assert data["total_items"] == 1
+
+    def test_start_import_text_missing_text(self, client, mock_db, mock_user):
+        """Test text import without raw_text (line 81)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "text"},
+        )
+        assert response.status_code == 400
+
+    def test_start_import_text_empty_text(self, client, mock_db, mock_user):
+        """Test text import with empty raw_text (line 81 — whitespace only)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "text", "raw_text": "   "},
+        )
+        assert response.status_code == 400
+
+    def test_start_import_text_too_long(self, client, mock_db, mock_user):
+        """Test text import with text exceeding max length (line 87)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "text", "raw_text": "x" * 16001},
+        )
+        assert response.status_code == 400
+
+
+    def test_start_import_spreadsheet_missing_fields(self, client, mock_db, mock_user):
+        """Test spreadsheet import without file_base64/file_name (line 95-100)."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "spreadsheet"},
+        )
+        assert response.status_code == 400
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("utils.services.spreadsheet_parser.parse_spreadsheet")
+    def test_start_import_spreadsheet_success(self, mock_parse, mock_task, client, mock_db, mock_user):
+        """Test starting a spreadsheet import job (lines 94-101, 165-181)."""
+        import base64
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+        mock_parse.return_value = ["Recipe 1: flour, sugar", "Recipe 2: eggs, butter"]
+
+        csv_data = base64.b64encode(b"name,ingredients\nCookies,flour sugar\nCake,eggs butter").decode()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "spreadsheet",
+                "file_base64": csv_data,
+                "file_name": "recipes.csv",
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["source_type"] == "spreadsheet"
+        assert data["total_items"] == 2
+
+
 class TestGetImportJob:
     """Tests for GET /v1/import-jobs/{job_id}."""
 

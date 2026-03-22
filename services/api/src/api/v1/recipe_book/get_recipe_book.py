@@ -1,6 +1,6 @@
 """Get recipe book endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
@@ -40,7 +40,7 @@ class GetRecipeBook(Endpoint):
             )
 
         # Side effect: update last_opened_at for recency sorting
-        membership.last_opened_at = datetime.now(datetime.UTC)
+        membership.last_opened_at = datetime.now(UTC)
         self.database.db.add(membership)
         self.database.db.flush()
 
