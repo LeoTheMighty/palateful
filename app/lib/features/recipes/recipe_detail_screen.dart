@@ -6,8 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/theme/theme.dart';
 import '../../services/share_service.dart';
+import '../../shared/widgets/default_change_sheet.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
@@ -100,6 +102,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     if (recipeId == null) return;
 
     final service = getIt<ShoppingCartService>();
+    final authService = getIt<AuthService>();
     List<ShoppingList> lists;
     try {
       lists = await service.getShoppingLists();
@@ -121,9 +124,22 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     }
 
     ShoppingList? selectedList;
-    if (lists.length == 1) {
+    final defaultId = authService.defaultShoppingListId;
+
+    if (defaultId != null) {
+      // Use default list instantly
+      final match = lists.where((l) => l.id == defaultId);
+      if (match.isNotEmpty) {
+        selectedList = match.first;
+      } else {
+        // Default list no longer accessible — clear stale default
+        service.setDefaultShoppingList(null);
+      }
+    }
+    if (selectedList == null && lists.length == 1) {
       selectedList = lists.first;
-    } else {
+    } else if (selectedList == null) {
+      // No default, multiple lists — show picker, then set chosen as default
       if (!mounted) return;
       selectedList = await showModalBottomSheet<ShoppingList>(
         context: context,
@@ -137,6 +153,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           ),
         ),
       );
+      if (selectedList != null) {
+        // Set chosen list as default for future actions
+        service.setDefaultShoppingList(selectedList.id);
+      }
     }
 
     if (selectedList == null) return;
@@ -146,10 +166,26 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       final result = await service.populateFromRecipe(selectedList.id, recipeId);
       if (!mounted) return;
       final count = result.itemsAdded;
+      final listName = selectedList.name.isEmpty ? 'Shopping List' : selectedList.name;
+      final hasOtherLists = lists.length > 1;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Added $count ingredient${count == 1 ? '' : 's'} to ${selectedList.name.isEmpty ? 'Shopping List' : selectedList.name}'),
+              'Added $count ingredient${count == 1 ? '' : 's'} to $listName'),
+          action: hasOtherLists
+              ? SnackBarAction(
+                  label: 'Change',
+                  onPressed: () {
+                    if (!mounted) return;
+                    showDefaultChangeSheet(
+                      context: context,
+                      lists: lists,
+                      currentListId: selectedList!.id,
+                    );
+                  },
+                )
+              : null,
         ),
       );
     } catch (_) {

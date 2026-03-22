@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/theme/theme.dart';
+import '../../shared/widgets/default_change_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
@@ -111,6 +113,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Future<void> _addIngredientsFromEvent(MealEvent event) async {
     assert(event.recipe != null, '_addIngredientsFromEvent requires a linked recipe');
+    final authService = getIt<AuthService>();
     List<ShoppingList> lists;
     try {
       lists = await _cartService.getShoppingLists();
@@ -132,10 +135,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
       return;
     }
 
-    final ShoppingList targetList;
-    if (lists.length == 1) {
+    ShoppingList? targetList;
+    final defaultId = authService.defaultShoppingListId;
+
+    if (defaultId != null) {
+      final match = lists.where((l) => l.id == defaultId);
+      if (match.isNotEmpty) {
+        targetList = match.first;
+      } else {
+        _cartService.setDefaultShoppingList(null);
+      }
+    }
+    if (targetList == null && lists.length == 1) {
       targetList = lists.first;
-    } else {
+    } else if (targetList == null) {
       if (!mounted) return;
       final selected = await showModalBottomSheet<ShoppingList>(
         context: context,
@@ -161,6 +174,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
       if (selected == null) return;
       targetList = selected;
+      _cartService.setDefaultShoppingList(targetList.id);
     }
 
     try {
@@ -169,8 +183,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (mounted) {
         final n = result.itemsAdded;
         final label = n == 1 ? '1 ingredient' : '$n ingredients';
+        final listName = targetList.name.isEmpty ? 'Shopping List' : targetList.name;
+        final hasOtherLists = lists.length > 1;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Added $label to ${targetList.name}')),
+          SnackBar(
+            content: Text('Added $label to $listName'),
+            action: hasOtherLists
+                ? SnackBarAction(
+                    label: 'Change',
+                    onPressed: () {
+                      if (!mounted) return;
+                      showDefaultChangeSheet(
+                        context: context,
+                        lists: lists,
+                        currentListId: targetList!.id,
+                      );
+                    },
+                  )
+                : null,
+          ),
         );
       }
     } catch (_) {
@@ -214,11 +245,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
         return;
       }
 
+      // Bulk action: always show picker with default pre-selected
       final ShoppingList targetList;
       if (lists.length == 1) {
         targetList = lists.first;
       } else {
         if (!mounted) return;
+        final defaultId = getIt<AuthService>().defaultShoppingListId;
+        // Sort default list to top
+        final sortedLists = List<ShoppingList>.from(lists);
+        if (defaultId != null) {
+          sortedLists.sort((a, b) {
+            if (a.id == defaultId) return -1;
+            if (b.id == defaultId) return 1;
+            return 0;
+          });
+        }
         final selected = await showModalBottomSheet<ShoppingList>(
           context: context,
           builder: (ctx) => SafeArea(
@@ -232,9 +274,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                   ),
                 ),
-                ...lists.map((list) => ListTile(
+                ...sortedLists.map((list) => ListTile(
                       title: Text(list.name),
                       subtitle: Text('${list.items.length} item(s)'),
+                      trailing: list.id == defaultId
+                          ? const Icon(Icons.star, size: 16, color: Colors.amber)
+                          : null,
                       onTap: () => Navigator.pop(ctx, list),
                     )),
               ],
@@ -260,10 +305,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
           final m = result.mealEventsIncluded;
           final itemLabel = n == 1 ? '1 ingredient' : '$n ingredients';
           final mealLabel = m == 1 ? '1 meal' : '$m meals';
+          final weeklyListName = targetList.name.isEmpty ? 'Shopping List' : targetList.name;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
-                    'Added $itemLabel from $mealLabel to ${targetList.name}')),
+                    'Added $itemLabel from $mealLabel to $weeklyListName')),
           );
         }
       } catch (_) {

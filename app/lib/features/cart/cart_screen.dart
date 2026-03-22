@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
+import '../../core/services/auth_service.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
@@ -90,8 +91,15 @@ class _CartScreenState extends State<CartScreen> {
       if (name.isEmpty) return;
 
       try {
+        final authService = getIt<AuthService>();
+        final hadDefault = authService.defaultShoppingListId != null;
         final list = await _service.createShoppingList(name);
         if (mounted) {
+          if (!hadDefault) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('This is now your default list')),
+            );
+          }
           context.push('/shopping-lists/${list.id}');
           _loadLists();
         }
@@ -249,6 +257,18 @@ class _CartScreenState extends State<CartScreen> {
           return _ShoppingListCard(
             list: list,
             onTap: () => context.push('/shopping-lists/${list.id}'),
+            onSetDefault: () async {
+              await _service.setDefaultShoppingList(list.id);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        '${list.name.isEmpty ? 'Shopping List' : list.name} is now your default list'),
+                  ),
+                );
+                _loadLists();
+              }
+            },
           );
         },
       ),
@@ -259,8 +279,13 @@ class _CartScreenState extends State<CartScreen> {
 class _ShoppingListCard extends StatelessWidget {
   final ShoppingList list;
   final VoidCallback onTap;
+  final VoidCallback onSetDefault;
 
-  const _ShoppingListCard({required this.list, required this.onTap});
+  const _ShoppingListCard({
+    required this.list,
+    required this.onTap,
+    required this.onSetDefault,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -277,6 +302,32 @@ class _ShoppingListCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: onTap,
+        onLongPress: () {
+          showModalBottomSheet(
+            context: context,
+            builder: (ctx) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      list.isDefault ? Icons.star : Icons.star_outline,
+                      color: list.isDefault ? Colors.amber : null,
+                    ),
+                    title: Text(list.isDefault
+                        ? 'This is your default list'
+                        : 'Set as default'),
+                    enabled: !list.isDefault,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onSetDefault();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -299,11 +350,26 @@ class _ShoppingListCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      list.name.isEmpty ? 'Shopping List' : list.name,
-                      style: textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            list.name.isEmpty ? 'Shopping List' : list.name,
+                            style: textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (list.isDefault) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.star,
+                            size: 14,
+                            color: Colors.amber.shade700,
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
