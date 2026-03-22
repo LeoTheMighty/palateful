@@ -177,7 +177,7 @@ void main() {
       expect(find.byType(NavigationDestination), findsNWidgets(5));
       // Verify nav labels (these come from ScaffoldWithBottomNav, not from route content)
       expect(find.text('Home'), findsWidgets); // label + possibly tab content
-      expect(find.text('Books'), findsOneWidget);
+      expect(find.text('Activity'), findsOneWidget);
       expect(find.text('Cart'), findsOneWidget);
       expect(find.text('Calendar'), findsOneWidget);
       expect(find.text('Profile'), findsOneWidget);
@@ -220,7 +220,7 @@ void main() {
       expect(find.byType(NavigationBar), findsNothing);
       // Nav labels are still present
       expect(find.text('Home'), findsWidgets);
-      expect(find.text('Books'), findsOneWidget);
+      expect(find.text('Activity'), findsOneWidget);
     });
   });
 

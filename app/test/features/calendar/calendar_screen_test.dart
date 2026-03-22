@@ -116,7 +116,7 @@ void main() {
       await tester.pump();
 
       // With empty service, all 7 days show the placeholder
-      expect(find.text('No meals planned'), findsNWidgets(7));
+      expect(find.text('Tap to plan a meal'), findsNWidgets(7));
     });
 
     testWidgets('displays event tile with recipe title', (tester) async {
@@ -160,9 +160,10 @@ void main() {
       );
       await tester.pump();
 
-      // Today's day number text should be white (rendered inside chocolate circle)
+      // Today's day number text should use onPrimary (rendered inside primary circle)
       final dayText = tester.widget<Text>(find.text('${today.day}'));
-      expect(dayText.style?.color, Colors.white);
+      final colorScheme = Theme.of(tester.element(find.byType(CalendarScreen))).colorScheme;
+      expect(dayText.style?.color, colorScheme.onPrimary);
     });
 
     testWidgets('meal type chip is shown on event tile', (tester) async {

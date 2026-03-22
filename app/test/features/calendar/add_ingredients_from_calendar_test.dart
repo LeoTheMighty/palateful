@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
+import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/features/calendar/calendar_screen.dart';
 import 'package:palateful/features/calendar/models/meal_event.dart';
 import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
@@ -51,6 +52,9 @@ class _FakeShoppingCartService extends ShoppingCartService {
     lastPopulateRecipeId = recipeId;
     return (itemsAdded: itemsAddedResult, itemsSkipped: 0);
   }
+
+  @override
+  Future<void> setDefaultShoppingList(String? shoppingListId) async {}
 }
 
 /// Fake ShoppingCartService that throws on populateFromRecipe — for error path tests.
@@ -69,6 +73,14 @@ class _FailingShoppingCartService extends ShoppingCartService {
   ) async {
     throw Exception('network error');
   }
+
+  @override
+  Future<void> setDefaultShoppingList(String? shoppingListId) async {}
+}
+
+class _FakeAuthService extends AuthService {
+  @override
+  String? get defaultShoppingListId => null;
 }
 
 class _FakeMealCalendarService implements MealCalendarService {
@@ -134,6 +146,7 @@ void _registerAll({
 void _unregisterAll() {
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+  if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
   if (gi.isRegistered<MealCalendarService>()) {
     gi.unregister<MealCalendarService>();
   }
@@ -180,6 +193,8 @@ void main() {
     final gi = GetIt.instance;
     if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
     gi.registerSingleton<ApiClient>(_FakeApiClient());
+    if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
+    gi.registerSingleton<AuthService>(_FakeAuthService());
   });
 
   tearDown(_unregisterAll);

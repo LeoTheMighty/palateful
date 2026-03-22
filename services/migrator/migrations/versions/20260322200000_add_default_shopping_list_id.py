@@ -1,6 +1,6 @@
 """Add default_shopping_list_id and previous_shopping_list_id to users
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: x1y2z3a4b5c6
 Revises: 224dc8e7975c
 Create Date: 2026-03-22
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'a1b2c3d4e5f6'
+revision: str = 'x1y2z3a4b5c6'
 down_revision: str | None = '224dc8e7975c'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

@@ -1,6 +1,6 @@
 """Add previous_recipe_book_id to users
 
-Revision ID: b2c3d4e5f6a7
+Revision ID: y2z3a4b5c6d7
 Revises: a1b2c3d4e5f6
 Create Date: 2026-03-22
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'b2c3d4e5f6a7'
-down_revision: str | None = 'a1b2c3d4e5f6'
+revision: str = 'y2z3a4b5c6d7'
+down_revision: str | None = 'x1y2z3a4b5c6'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

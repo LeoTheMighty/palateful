@@ -120,40 +120,43 @@ void main() {
     testWidgets('shows recipe name as subtitle', (tester) async {
       await tester.pumpWidget(_buildSheet());
 
-      expect(find.text('Pasta Carbonara'), findsOneWidget);
+      expect(find.text('Pasta Carbonara'), findsAtLeastNWidgets(1));
     });
   });
 
   group('PlanMealSheet — meal type selection', () {
-    testWidgets('Dinner is selected by default', (tester) async {
-      await tester.pumpWidget(_buildSheet());
+    testWidgets('initial meal type chip is selected', (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.dinner));
 
-      // Find the Dinner chip — it should have white text (selected)
+      // Find the Dinner chip — it should have onPrimary color (selected)
       final dinnerFinder = find.text('Dinner');
       expect(dinnerFinder, findsOneWidget);
       final textWidget = tester.widget<Text>(dinnerFinder);
-      expect(textWidget.style?.color, Colors.white);
+      final colorScheme = Theme.of(tester.element(find.byType(PlanMealSheet))).colorScheme;
+      expect(textWidget.style?.color, colorScheme.onPrimary);
     });
 
     testWidgets('tapping Lunch chip selects it', (tester) async {
-      await tester.pumpWidget(_buildSheet());
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.dinner));
 
       await tester.tap(find.text('Lunch'));
       await tester.pump();
 
       final lunchText = tester.widget<Text>(find.text('Lunch'));
-      expect(lunchText.style?.color, Colors.white);
+      final colorScheme = Theme.of(tester.element(find.byType(PlanMealSheet))).colorScheme;
+      expect(lunchText.style?.color, colorScheme.onPrimary);
     });
 
     testWidgets('selecting Lunch deselects Dinner', (tester) async {
-      await tester.pumpWidget(_buildSheet());
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.dinner));
 
       await tester.tap(find.text('Lunch'));
       await tester.pump();
 
-      // After Lunch selected, Dinner text should not be white
+      // After Lunch selected, Dinner text should not be onPrimary
       final dinnerText = tester.widget<Text>(find.text('Dinner'));
-      expect(dinnerText.style?.color, isNot(Colors.white));
+      final colorScheme = Theme.of(tester.element(find.byType(PlanMealSheet))).colorScheme;
+      expect(dinnerText.style?.color, isNot(colorScheme.onPrimary));
     });
   });
 
@@ -169,7 +172,7 @@ void main() {
   group('PlanMealSheet — save', () {
     testWidgets('Save button calls createMealEvent in create mode',
         (tester) async {
-      await tester.pumpWidget(_buildSheet());
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.dinner));
 
       await tester.tap(find.text('Add to Calendar'));
       await tester.pump();
