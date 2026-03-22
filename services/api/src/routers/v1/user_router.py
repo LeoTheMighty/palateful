@@ -8,6 +8,7 @@ from api.v1.user import (
     GetNotificationPreferences,
     RegisterPushToken,
     SearchUsers,
+    SetDefaultRecipeBook,
     SetDefaultShoppingList,
     SetUsername,
     UnregisterPushToken,
@@ -42,6 +43,16 @@ async def update_me(
 ):
     """Update the current user's profile."""
     return UpdateMe.call(params, user=user, database=database)
+
+
+@user_router.put("/me/default-recipe-book")
+async def set_default_recipe_book(
+    params: SetDefaultRecipeBook.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Set the user's default recipe book."""
+    return SetDefaultRecipeBook.call(params=params, user=user, database=database)
 
 
 @user_router.put("/me/default-shopping-list")

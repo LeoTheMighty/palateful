@@ -15,6 +15,7 @@ class UserResponse(BaseModel):
     picture: str | None = None
     has_completed_onboarding: bool
     default_recipe_book_id: str | None = None
+    previous_recipe_book_id: str | None = None
     default_shopping_list_id: str | None = None
     previous_shopping_list_id: str | None = None
     created_at: datetime

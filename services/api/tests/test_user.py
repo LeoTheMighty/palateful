@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from conftest import MockExecuteResult, MockFriendRequest, MockShoppingList, MockUser
+from conftest import MockExecuteResult, MockFriendRequest, MockRecipeBookUser, MockShoppingList, MockUser
 
 
 class TestGetMe:
@@ -923,3 +923,77 @@ class TestSetDefaultShoppingList:
         assert response.status_code == 200
         # Previous should still be None since we set the same list
         assert mock_user.previous_shopping_list_id is None
+
+
+class TestSetDefaultRecipeBook:
+    """Tests for PUT /v1/users/me/default-recipe-book."""
+
+    def test_set_default_recipe_book_success(self, client, mock_user, mock_db):
+        """Test setting a default recipe book."""
+        from conftest import MockQuery, MockRecipeBook
+        book_id = str(uuid.uuid4())
+        book = MockRecipeBook(id=book_id)
+        from utils.models.recipe_book import RecipeBook
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        # User must be a member — mock query returns a membership
+        membership = MockRecipeBookUser(user_id=str(mock_user.id), recipe_book_id=book_id)
+        mock_db.db.query.return_value = MockQuery([membership])
+
+        response = client.put(
+            "/v1/users/me/default-recipe-book",
+            json={"recipe_book_id": book_id},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["default_recipe_book_id"] == book_id
+
+    def test_set_default_shifts_previous(self, client, mock_user, mock_db):
+        """Test that setting a new default moves old to previous."""
+        from conftest import MockQuery, MockRecipeBook
+        old_id = str(uuid.uuid4())
+        new_id = str(uuid.uuid4())
+        mock_user.default_recipe_book_id = old_id
+
+        book = MockRecipeBook(id=new_id)
+        from utils.models.recipe_book import RecipeBook
+        mock_db.set_find_by(RecipeBook, book, id=new_id)
+        membership = MockRecipeBookUser(user_id=str(mock_user.id), recipe_book_id=new_id)
+        mock_db.db.query.return_value = MockQuery([membership])
+
+        response = client.put(
+            "/v1/users/me/default-recipe-book",
+            json={"recipe_book_id": new_id},
+        )
+        assert response.status_code == 200
+        assert mock_user.previous_recipe_book_id == old_id
+
+    def test_clear_default_recipe_book(self, client, mock_user, mock_db):
+        """Test clearing the default recipe book."""
+        mock_user.default_recipe_book_id = str(uuid.uuid4())
+        mock_user.previous_recipe_book_id = str(uuid.uuid4())
+
+        response = client.put(
+            "/v1/users/me/default-recipe-book",
+            json={"recipe_book_id": None},
+        )
+        assert response.status_code == 200
+        assert mock_user.default_recipe_book_id is None
+        assert mock_user.previous_recipe_book_id is None
+
+    def test_set_default_recipe_book_not_found(self, client, mock_user, mock_db):
+        """Test setting a non-existent book returns 404."""
+        response = client.put(
+            "/v1/users/me/default-recipe-book",
+            json={"recipe_book_id": str(uuid.uuid4())},
+        )
+        assert response.status_code == 404
+
+    def test_get_me_includes_previous_recipe_book_id(self, client, mock_user, mock_db):
+        """Test that GET /me returns previous_recipe_book_id."""
+        prev_id = str(uuid.uuid4())
+        mock_user.previous_recipe_book_id = prev_id
+        mock_db.db.execute.return_value = MockExecuteResult([0])
+        response = client.get("/v1/users/me")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["previous_recipe_book_id"] == prev_id

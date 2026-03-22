@@ -34,6 +34,7 @@ class GetMe(Endpoint):
                 picture=user.picture,
                 has_completed_onboarding=user.has_completed_onboarding,
                 default_recipe_book_id=str(user.default_recipe_book_id) if user.default_recipe_book_id else None,
+                previous_recipe_book_id=str(user.previous_recipe_book_id) if user.previous_recipe_book_id else None,
                 default_shopping_list_id=str(user.default_shopping_list_id) if user.default_shopping_list_id else None,
                 previous_shopping_list_id=str(user.previous_shopping_list_id) if user.previous_shopping_list_id else None,
                 created_at=user.created_at,
@@ -50,6 +51,7 @@ class GetMe(Endpoint):
         picture: str | None = None
         has_completed_onboarding: bool
         default_recipe_book_id: str | None = None
+        previous_recipe_book_id: str | None = None
         default_shopping_list_id: str | None = None
         previous_shopping_list_id: str | None = None
         created_at: datetime

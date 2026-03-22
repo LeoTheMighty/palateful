@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/auth_service.dart';
 import '../../shared/widgets/empty_state.dart';
 
 class RecipeBooksScreen extends StatefulWidget {
@@ -103,12 +104,28 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
 
       if (result == true && nameController.text.isNotEmpty) {
         try {
-          await _apiClient.createRecipeBook({
+          final response = await _apiClient.createRecipeBook({
             'name': nameController.text,
             'description': descriptionController.text.isEmpty
                 ? null
                 : descriptionController.text,
           });
+          // If this is the user's first book, auto-set as default
+          final authService = getIt<AuthService>();
+          if (authService.defaultRecipeBookId == null && response.data != null) {
+            final newBookId = response.data['id']?.toString();
+            if (newBookId != null) {
+              await _apiClient.setDefaultRecipeBook(newBookId);
+              authService.updateDefaultRecipeBook(
+                defaultRecipeBookId: newBookId,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('This is now your default recipe book')),
+                );
+              }
+            }
+          }
           _loadRecipeBooks();
         } catch (e) {
           if (mounted) {
@@ -225,6 +242,8 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                             final updatedAt = _formatUpdatedAt(book['updated_at']?.toString());
                             final isShared = book['is_shared'] as bool? ?? false;
                             final userRole = book['user_role'] as String? ?? 'owner';
+                            final bookId = book['id']?.toString() ?? '';
+                            final isDefault = getIt<AuthService>().defaultRecipeBookId == bookId;
 
                             Color roleChipColor(String role) {
                               switch (role) {
@@ -256,6 +275,48 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                                   await context.push('/recipe-books/${book['id']}');
                                   _loadRecipeBooks();
                                 },
+                                onLongPress: () {
+                                  showModalBottomSheet(
+                                    context: context,
+                                    builder: (ctx) => SafeArea(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          ListTile(
+                                            leading: Icon(
+                                              isDefault ? Icons.star : Icons.star_outline,
+                                              color: isDefault ? Colors.amber : null,
+                                            ),
+                                            title: Text(isDefault
+                                                ? 'This is your default book'
+                                                : 'Set as default'),
+                                            enabled: !isDefault,
+                                            onTap: () async {
+                                              Navigator.pop(ctx);
+                                              try {
+                                                final resp = await _apiClient.setDefaultRecipeBook(bookId);
+                                                final authService = getIt<AuthService>();
+                                                authService.updateDefaultRecipeBook(
+                                                  defaultRecipeBookId: resp.data['default_recipe_book_id']?.toString(),
+                                                  previousRecipeBookId: resp.data['previous_recipe_book_id']?.toString(),
+                                                );
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(
+                                                      content: Text(
+                                                          '${book['name'] ?? 'Recipe Book'} is now your default book'),
+                                                    ),
+                                                  );
+                                                  setState(() {}); // Refresh badge
+                                                }
+                                              } catch (_) {}
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
                                 child: Padding(
                                   padding: const EdgeInsets.all(16),
                                   child: Row(
@@ -281,11 +342,26 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(
-                                              book['name'] ?? 'Untitled',
-                                              style: textTheme.titleMedium?.copyWith(
-                                                fontWeight: FontWeight.w600,
-                                              ),
+                                            Row(
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    book['name'] ?? 'Untitled',
+                                                    style: textTheme.titleMedium?.copyWith(
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (isDefault) ...[
+                                                  const SizedBox(width: 6),
+                                                  Icon(
+                                                    Icons.star,
+                                                    size: 14,
+                                                    color: Colors.amber.shade700,
+                                                  ),
+                                                ],
+                                              ],
                                             ),
                                             const SizedBox(height: 4),
                                             if (description != null && description.isNotEmpty) ...[

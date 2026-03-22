@@ -56,6 +56,14 @@ class User(Base):
         index=True,
     )
 
+    # Previous default recipe book (for auto-recovery when current is archived)
+    previous_recipe_book_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("recipe_books.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Default shopping list for quick "Add to Cart" actions
     default_shopping_list_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -89,6 +97,9 @@ class User(Base):
     # Relationships
     default_recipe_book: Mapped["RecipeBook | None"] = relationship(
         foreign_keys=[default_recipe_book_id],
+    )
+    previous_recipe_book: Mapped["RecipeBook | None"] = relationship(
+        foreign_keys=[previous_recipe_book_id],
     )
     default_shopping_list: Mapped["ShoppingList | None"] = relationship(
         foreign_keys=[default_shopping_list_id],

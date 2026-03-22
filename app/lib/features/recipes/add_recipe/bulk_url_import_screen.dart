@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/auth_service.dart';
 
 class BulkUrlImportScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -109,7 +110,12 @@ class _BulkUrlImportScreenState extends State<BulkUrlImportScreen> {
           _recipeBooks = response.data['items'] ?? [];
           _isLoadingBooks = false;
           if (_selectedBookId == null && _recipeBooks.isNotEmpty) {
-            _selectedBookId = _recipeBooks.first['id']?.toString();
+            final defaultId = getIt<AuthService>().defaultRecipeBookId;
+            if (defaultId != null && _recipeBooks.any((b) => b['id']?.toString() == defaultId)) {
+              _selectedBookId = defaultId;
+            } else {
+              _selectedBookId = _recipeBooks.first['id']?.toString();
+            }
           }
         });
       }

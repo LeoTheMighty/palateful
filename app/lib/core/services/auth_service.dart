@@ -15,6 +15,7 @@ class AuthService extends ChangeNotifier {
   String? _manualToken;
   bool _hasCompletedOnboarding = false;
   String? _defaultRecipeBookId;
+  String? _previousRecipeBookId;
   String? _defaultShoppingListId;
   String? _previousShoppingListId;
 
@@ -66,6 +67,7 @@ class AuthService extends ChangeNotifier {
   UserProfile? get userProfile => _userProfile;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
   String? get defaultRecipeBookId => _defaultRecipeBookId;
+  String? get previousRecipeBookId => _previousRecipeBookId;
   String? get defaultShoppingListId => _defaultShoppingListId;
   String? get previousShoppingListId => _previousShoppingListId;
 
@@ -73,13 +75,25 @@ class AuthService extends ChangeNotifier {
   void updateOnboardingState({
     required bool hasCompletedOnboarding,
     String? defaultRecipeBookId,
+    String? previousRecipeBookId,
     String? defaultShoppingListId,
     String? previousShoppingListId,
   }) {
     _hasCompletedOnboarding = hasCompletedOnboarding;
     _defaultRecipeBookId = defaultRecipeBookId;
+    _previousRecipeBookId = previousRecipeBookId;
     _defaultShoppingListId = defaultShoppingListId;
     _previousShoppingListId = previousShoppingListId;
+    notifyListeners();
+  }
+
+  /// Update the default recipe book from API response
+  void updateDefaultRecipeBook({
+    String? defaultRecipeBookId,
+    String? previousRecipeBookId,
+  }) {
+    _defaultRecipeBookId = defaultRecipeBookId;
+    _previousRecipeBookId = previousRecipeBookId;
     notifyListeners();
   }
 
@@ -190,6 +204,7 @@ class AuthService extends ChangeNotifier {
       _manualToken = null;
       _hasCompletedOnboarding = false;
       _defaultRecipeBookId = null;
+      _previousRecipeBookId = null;
       _defaultShoppingListId = null;
       _previousShoppingListId = null;
 
@@ -208,6 +223,7 @@ class AuthService extends ChangeNotifier {
       _manualToken = null;
       _hasCompletedOnboarding = false;
       _defaultRecipeBookId = null;
+      _previousRecipeBookId = null;
       _defaultShoppingListId = null;
       _previousShoppingListId = null;
       _isLoading = false;

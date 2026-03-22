@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/auth_service.dart';
 
 class RecipeWizardScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -68,7 +69,12 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
         _recipeBooks = response.data['items'] ?? [];
         // Only auto-select first book if no pre-selected book
         if (_selectedRecipeBookId == null && _recipeBooks.isNotEmpty) {
-          _selectedRecipeBookId = _recipeBooks.first['id'];
+          final defaultId = getIt<AuthService>().defaultRecipeBookId;
+          if (defaultId != null && _recipeBooks.any((b) => b['id']?.toString() == defaultId)) {
+            _selectedRecipeBookId = defaultId;
+          } else {
+            _selectedRecipeBookId = _recipeBooks.first['id'];
+          }
         }
       });
     } catch (e) {

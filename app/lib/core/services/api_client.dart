@@ -106,6 +106,11 @@ class ApiClient {
   Future<Response> checkUsername(String username) =>
       _dio.get('/v1/users/check-username/$username');
 
+  Future<Response> setDefaultRecipeBook(String? recipeBookId) =>
+      _dio.put('/v1/users/me/default-recipe-book', data: {
+        'recipe_book_id': recipeBookId,
+      });
+
   Future<Response> setDefaultShoppingList(String? shoppingListId) =>
       _dio.put('/v1/users/me/default-shopping-list', data: {
         'shopping_list_id': shoppingListId,

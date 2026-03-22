@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/theme/theme.dart';
 
 class _SelectedImage {
@@ -88,7 +89,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           _recipeBooks = response.data['items'] ?? [];
           _isLoadingBooks = false;
           if (_selectedBookId == null && _recipeBooks.isNotEmpty) {
-            _selectedBookId = _recipeBooks.first['id']?.toString();
+            final defaultId = getIt<AuthService>().defaultRecipeBookId;
+            if (defaultId != null && _recipeBooks.any((b) => b['id']?.toString() == defaultId)) {
+              _selectedBookId = defaultId;
+            } else {
+              _selectedBookId = _recipeBooks.first['id']?.toString();
+            }
           }
         });
       }

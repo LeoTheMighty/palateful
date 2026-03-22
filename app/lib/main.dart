@@ -54,6 +54,7 @@ void main() async {
         authService.updateOnboardingState(
           hasCompletedOnboarding: response.data['has_completed_onboarding'] ?? false,
           defaultRecipeBookId: response.data['default_recipe_book_id'],
+          previousRecipeBookId: response.data['previous_recipe_book_id'],
           defaultShoppingListId: response.data['default_shopping_list_id'],
           previousShoppingListId: response.data['previous_shopping_list_id'],
         );
