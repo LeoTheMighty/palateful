@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
-import 'package:palateful/main.dart' show kE2EMode;
+import 'package:palateful/core/config/environment.dart' show kE2EMode;
 import '../../../core/theme/app_colors.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';

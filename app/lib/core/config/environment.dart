@@ -1,5 +1,9 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+/// Set via --dart-define=E2E_MODE=true at build time to enable the E2E test bypass.
+/// When true, Auth0 is skipped and a fixed test token is used instead.
+const bool kE2EMode = bool.fromEnvironment('E2E_MODE');
+
 /// Environment configuration for the app.
 /// Reads from .env file (loaded via flutter_dotenv).
 class Environment {

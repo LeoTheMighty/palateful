@@ -13,6 +13,7 @@ import 'core/services/auth_service.dart';
 import 'core/services/api_client.dart';
 import 'core/services/cook_timer_notification_service.dart';
 import 'core/services/push_notification_service.dart';
+import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 
 void main() async {
@@ -21,70 +22,95 @@ void main() async {
   // Load environment variables from .env file
   await dotenv.load(fileName: '.env');
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase (skip in E2E mode — no push notifications needed,
+  // and waiting on Firebase delays test startup significantly)
+  if (!kE2EMode) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   setupDependencies();
 
-  // Initialize auth service (handles web redirect callback and credential restoration)
   final authService = getIt<AuthService>();
-  await authService.initialize();
 
   // Initialize local timer notifications unconditionally (no auth required — purely local OS APIs)
-  final timerService = getIt<CookTimerNotificationService>();
-  await timerService.initialize();
+  if (!kE2EMode) {
+    final timerService = getIt<CookTimerNotificationService>();
+    await timerService.initialize();
+  }
 
-  // If already authenticated (from restored credentials or redirect), set up the session
-  if (authService.isAuthenticated && authService.accessToken != null) {
-    // Refresh token if expired/expiring before making API calls
-    if (authService.needsRefresh) {
-      debugPrint('Access token needs refresh, attempting...');
-      final refreshed = await authService.refreshToken();
-      debugPrint('Token refresh result: $refreshed');
-    }
-
+  if (kE2EMode) {
+    // E2E mode: bypass Auth0, inject a fixed test token that the API accepts
+    // when E2E_TEST_MODE=true is set server-side.
+    const testToken = 'e2e-test-token';
+    authService.setAccessToken(testToken);
     final apiClient = getIt<ApiClient>();
-    apiClient.setAuthService(authService);
-    apiClient.setAuthToken(authService.accessToken!);
-
-    // Fetch user data to get onboarding state
+    apiClient.setAuthToken(testToken);
     try {
       final response = await apiClient.getMe();
       if (response.statusCode == 200) {
-        final userData = response.data;
         authService.updateOnboardingState(
-          hasCompletedOnboarding: userData['has_completed_onboarding'] ?? false,
-          defaultRecipeBookId: userData['default_recipe_book_id'],
+          hasCompletedOnboarding: response.data['has_completed_onboarding'] ?? false,
+          defaultRecipeBookId: response.data['default_recipe_book_id'],
         );
       }
     } catch (e) {
-      debugPrint('Failed to fetch user data on startup: $e');
-      // If getMe fails with auth error, try refreshing token and retrying
-      if (authService.needsRefresh || e.toString().contains('401')) {
+      debugPrint('E2E: getMe failed: $e');
+    }
+  } else {
+    // Normal flow: restore credentials from Auth0 / handle web redirect
+    await authService.initialize();
+
+    if (authService.isAuthenticated && authService.accessToken != null) {
+      // Refresh token if expired/expiring before making API calls
+      if (authService.needsRefresh) {
+        debugPrint('Access token needs refresh, attempting...');
         final refreshed = await authService.refreshToken();
-        if (refreshed) {
-          apiClient.setAuthToken(authService.accessToken!);
-          try {
-            final retryResponse = await apiClient.getMe();
-            if (retryResponse.statusCode == 200) {
-              final userData = retryResponse.data;
-              authService.updateOnboardingState(
-                hasCompletedOnboarding: userData['has_completed_onboarding'] ?? false,
-                defaultRecipeBookId: userData['default_recipe_book_id'],
-              );
+        debugPrint('Token refresh result: $refreshed');
+      }
+
+      final apiClient = getIt<ApiClient>();
+      apiClient.setAuthService(authService);
+      apiClient.setAuthToken(authService.accessToken!);
+
+      // Fetch user data to get onboarding state
+      try {
+        final response = await apiClient.getMe();
+        if (response.statusCode == 200) {
+          final userData = response.data;
+          authService.updateOnboardingState(
+            hasCompletedOnboarding: userData['has_completed_onboarding'] ?? false,
+            defaultRecipeBookId: userData['default_recipe_book_id'],
+          );
+        }
+      } catch (e) {
+        debugPrint('Failed to fetch user data on startup: $e');
+        // If getMe fails with auth error, try refreshing token and retrying
+        if (authService.needsRefresh || e.toString().contains('401')) {
+          final refreshed = await authService.refreshToken();
+          if (refreshed) {
+            apiClient.setAuthToken(authService.accessToken!);
+            try {
+              final retryResponse = await apiClient.getMe();
+              if (retryResponse.statusCode == 200) {
+                final userData = retryResponse.data;
+                authService.updateOnboardingState(
+                  hasCompletedOnboarding: userData['has_completed_onboarding'] ?? false,
+                  defaultRecipeBookId: userData['default_recipe_book_id'],
+                );
+              }
+            } catch (retryError) {
+              debugPrint('Retry after refresh also failed: $retryError');
             }
-          } catch (retryError) {
-            debugPrint('Retry after refresh also failed: $retryError');
           }
         }
       }
-    }
 
-    // Initialize push notifications after auth
-    final pushService = getIt<PushNotificationService>();
-    await pushService.initialize();
+      // Initialize push notifications after auth
+      final pushService = getIt<PushNotificationService>();
+      await pushService.initialize();
+    }
   }
 
   runApp(const ProviderScope(child: PalatefulApp()));
@@ -104,8 +130,11 @@ class _PalatefulAppState extends State<PalatefulApp> {
   void initState() {
     super.initState();
     // Pass navigator key to push notification service for in-app banners
-    final pushService = getIt<PushNotificationService>();
-    pushService.setNavigatorKey(rootNavigatorKey);
+    // (requires Firebase — skip in E2E mode where Firebase is not initialized)
+    if (!kE2EMode) {
+      final pushService = getIt<PushNotificationService>();
+      pushService.setNavigatorKey(rootNavigatorKey);
+    }
 
     if (!kIsWeb) {
       _initShareListener();
