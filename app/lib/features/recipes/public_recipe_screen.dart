@@ -108,7 +108,7 @@ class _PublicRecipeScreenState extends State<PublicRecipeScreen> {
               width: double.infinity,
               fit: BoxFit.cover,
               placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
+              errorWidget: (context, url, error) => Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         SliverPadding(

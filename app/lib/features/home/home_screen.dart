@@ -16,6 +16,7 @@ import '../recipes/add_recipe/batch_parser_service.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/meal_filter_bar.dart';
 import 'widgets/sort_chips.dart';
+import '../../core/theme/app_colors.dart';
 import 'widgets/recipe_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -526,7 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Row(
             children: [
-              Icon(Icons.favorite, size: 18, color: Colors.red.shade400),
+              Icon(Icons.favorite, size: 18, color: AppColors.favorite),
               const SizedBox(width: 8),
               Text(
                 'Favorites',
@@ -643,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withValues(alpha: 0.7),
+                    AppColors.textPrimary.withValues(alpha: 0.7),
                   ],
                   stops: const [0.4, 1.0],
                 ),
@@ -664,7 +665,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: GoogleFonts.playfairDisplay(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: const Color(0xFFFFFFFF),
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -675,13 +676,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.25),
+                        color: const Color(0xFFFFFFFF).withValues(alpha: 0.25),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         '$totalMinutes min',
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: Color(0xFFFFFFFF),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),

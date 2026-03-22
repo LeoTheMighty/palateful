@@ -264,7 +264,7 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: isSelected
-                              ? Colors.white
+                              ? AppColors.warmWhite
                               : AppColors.textSecondary,
                         ),
                       ),
@@ -284,7 +284,7 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
               onPressed: _isSaving ? null : _save,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.chocolate,
-                foregroundColor: Colors.white,
+                foregroundColor: AppColors.warmWhite,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -296,7 +296,7 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
                       width: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: AppColors.warmWhite,
                       ),
                     )
                   : Text(

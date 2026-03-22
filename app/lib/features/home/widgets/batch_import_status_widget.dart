@@ -215,7 +215,7 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
                 child: const Text(
                   'NEW',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppColors.warmWhite,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                   ),

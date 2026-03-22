@@ -49,6 +49,9 @@ class AppColors {
   /// Light hazelnut for subtle accents
   static const Color hazelnutLight = Color(0xFFA89076);
 
+  /// Lighter hazelnut for improved contrast on dark backgrounds
+  static const Color hazelnutLighter = Color(0xFFC8B89A);
+
   /// Dark hazelnut for text on light backgrounds
   static const Color hazelnutDark = Color(0xFF6B5642);
 
@@ -59,6 +62,9 @@ class AppColors {
   /// Warm terracotta for highlights
   static const Color terracotta = Color(0xFFBE8A60);
 
+  /// Darker terracotta for text on light backgrounds
+  static const Color terracottaDark = Color(0xFF9A6C42);
+
   /// Soft sage green for success states
   static const Color sage = Color(0xFF8FA882);
 
@@ -67,6 +73,9 @@ class AppColors {
 
   /// Dusty rose for errors (softer than pure red)
   static const Color dustyRose = Color(0xFFB86B6B);
+
+  /// Favorite/heart red
+  static const Color favorite = Color(0xFFE53935);
 
   // ============================================
   // NEUTRAL PALETTE
@@ -78,8 +87,8 @@ class AppColors {
   /// Secondary text - medium brown
   static const Color textSecondary = Color(0xFF6B5D54);
 
-  /// Tertiary/hint text - light brown
-  static const Color textTertiary = Color(0xFF9C8E84);
+  /// Tertiary/hint text - darker brown for AA contrast on cream
+  static const Color textTertiary = Color(0xFF7A6E64);
 
   /// Disabled text
   static const Color textDisabled = Color(0xFFBEB5AC);
@@ -100,12 +109,12 @@ class AppColors {
   /// Success - warm sage green
   static const Color success = sage;
   static const Color successLight = Color(0xFFEDF4EB);
-  static const Color successDark = Color(0xFF6B8A60);
+  static const Color successDark = Color(0xFF4F6E42);
 
   /// Warning - warm amber
   static const Color warning = Color(0xFFD4A853);
   static const Color warningLight = Color(0xFFFDF6E7);
-  static const Color warningDark = Color(0xFFB08D3E);
+  static const Color warningDark = Color(0xFF8A6F2E);
 
   /// Error - dusty rose
   static const Color error = dustyRose;
@@ -115,7 +124,7 @@ class AppColors {
   /// Info - muted blue-grey
   static const Color info = Color(0xFF7A8B9A);
   static const Color infoLight = Color(0xFFEEF2F5);
-  static const Color infoDark = Color(0xFF5A6B7A);
+  static const Color infoDark = Color(0xFF4A5B6A);
 
   // ============================================
   // COMPONENT-SPECIFIC COLORS

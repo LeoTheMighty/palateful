@@ -277,7 +277,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
                           style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                            color: AppColors.warmWhite,
                           ),
                           textAlign: TextAlign.center,
                         ),

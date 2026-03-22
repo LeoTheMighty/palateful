@@ -72,13 +72,13 @@ class RecipeCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: const Color(0x4D000000),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           isFavorite ? Icons.favorite : Icons.favorite_border,
                           size: 18,
-                          color: isFavorite ? Colors.red : Colors.white,
+                          color: isFavorite ? AppColors.favorite : AppColors.warmWhite,
                         ),
                       ),
                     ),

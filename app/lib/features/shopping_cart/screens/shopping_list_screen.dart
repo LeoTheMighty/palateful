@@ -467,7 +467,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: 16),
                 color: AppColors.error,
-                child: const Icon(Icons.delete, color: Colors.white),
+                child: const Icon(Icons.delete, color: AppColors.warmWhite),
               ),
               onDismissed: (_) => _deleteItem(item),
               child: ShoppingListItemTile(
@@ -498,7 +498,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 16),
                   color: AppColors.error,
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: const Icon(Icons.delete, color: AppColors.warmWhite),
                 ),
                 onDismissed: (_) => _deleteItem(item),
                 child: ShoppingListItemTile(
@@ -595,7 +595,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             child: IconButton(
               onPressed: _addItem,
               icon: const Icon(Icons.add),
-              color: Colors.white,
+              color: AppColors.warmWhite,
             ),
           ),
         ],

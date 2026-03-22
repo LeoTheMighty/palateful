@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/theme/app_colors.dart';
 
 
 /// Diff change type for an ingredient or step.
@@ -96,11 +97,11 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     switch (type) {
       case _DiffType.added:
-        return Colors.green.withValues(alpha: 0.15);
+        return AppColors.successLight;
       case _DiffType.removed:
         return colorScheme.errorContainer.withValues(alpha: 0.5);
       case _DiffType.changed:
-        return Colors.amber.withValues(alpha: 0.2);
+        return AppColors.warningLight;
       case _DiffType.unchanged:
         return Colors.transparent;
     }
@@ -110,11 +111,11 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     switch (type) {
       case _DiffType.added:
-        return Colors.green.shade800;
+        return AppColors.successDark;
       case _DiffType.removed:
         return colorScheme.onErrorContainer;
       case _DiffType.changed:
-        return Colors.amber.shade900;
+        return AppColors.warningDark;
       case _DiffType.unchanged:
         return colorScheme.onSurface;
     }

@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/theme/app_colors.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
@@ -586,7 +587,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                 imageUrl: _recipe!['image_url'],
                                 fit: BoxFit.cover,
                                 placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
+                                errorWidget: (context, url, error) => Icon(Icons.broken_image, color: Theme.of(context).colorScheme.onSurfaceVariant),
                               ),
                             )
                           : null,
@@ -595,7 +596,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                         IconButton(
                           icon: Icon(
                             _isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: _isFavorite ? Colors.red : null,
+                            color: _isFavorite ? AppColors.favorite : null,
                           ),
                           onPressed: _toggleFavorite,
                         ),

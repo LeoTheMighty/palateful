@@ -97,7 +97,7 @@ class BatchJobResultSheet extends StatelessWidget {
                     onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.chocolate,
-                      foregroundColor: Colors.white,
+                      foregroundColor: AppColors.warmWhite,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

@@ -20,11 +20,11 @@ class AppTheme {
       // Color scheme
       colorScheme: const ColorScheme.light(
         primary: AppColors.chocolate,
-        onPrimary: AppColors.cream,
+        onPrimary: Color(0xFFFFFFFF),
         primaryContainer: AppColors.chocolateLight,
         onPrimaryContainer: AppColors.cream,
         secondary: AppColors.hazelnut,
-        onSecondary: AppColors.cream,
+        onSecondary: Color(0xFFFFFFFF),
         secondaryContainer: AppColors.hazelnutLight,
         onSecondaryContainer: AppColors.textPrimary,
         tertiary: AppColors.terracotta,
@@ -33,7 +33,7 @@ class AppTheme {
         onSurface: AppColors.textPrimary,
         surfaceContainerHighest: AppColors.beige,
         error: AppColors.error,
-        onError: AppColors.cream,
+        onError: Color(0xFFFFFFFF),
         outline: AppColors.border,
         outlineVariant: AppColors.divider,
         shadow: AppColors.shadow,
@@ -639,11 +639,11 @@ class AppTheme {
       // Color scheme
       colorScheme: const ColorScheme.dark(
         primary: AppColors.terracotta,
-        onPrimary: AppColors.chocolate,
+        onPrimary: AppColors.warmIvory,
         primaryContainer: AppColors.chocolateLight,
         onPrimaryContainer: AppColors.warmIvory,
         secondary: AppColors.hazelnutLight,
-        onSecondary: AppColors.chocolate,
+        onSecondary: AppColors.warmIvory,
         secondaryContainer: AppColors.hazelnut,
         onSecondaryContainer: AppColors.warmIvory,
         tertiary: AppColors.terracotta,
@@ -991,7 +991,7 @@ class AppTheme {
           letterSpacing: -0.3,
         ),
         contentTextStyle: const TextStyle(
-          color: AppColors.hazelnutLight,
+          color: AppColors.warmIvory,
           fontSize: 16,
           fontWeight: FontWeight.w400,
           height: 1.5,
@@ -1202,7 +1202,7 @@ class AppTheme {
           height: 1.5,
         ),
         bodySmall: const TextStyle(
-          color: AppColors.hazelnutLight,
+          color: AppColors.hazelnutLighter,
           fontSize: 12,
           fontWeight: FontWeight.w400,
           letterSpacing: 0.4,
@@ -1215,13 +1215,13 @@ class AppTheme {
           letterSpacing: 0.1,
         ),
         labelMedium: const TextStyle(
-          color: AppColors.hazelnutLight,
+          color: AppColors.hazelnutLighter,
           fontSize: 12,
           fontWeight: FontWeight.w500,
           letterSpacing: 0.5,
         ),
         labelSmall: const TextStyle(
-          color: AppColors.hazelnutLight,
+          color: AppColors.hazelnutLighter,
           fontSize: 11,
           fontWeight: FontWeight.w500,
           letterSpacing: 0.5,

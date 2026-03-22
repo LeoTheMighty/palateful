@@ -80,7 +80,7 @@ class _MemberAvatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: _getAvatarColor(),
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(color: AppColors.warmWhite, width: 2),
         borderRadius: BorderRadius.circular(size / 2),
         boxShadow: [
           BoxShadow(
@@ -98,7 +98,7 @@ class _MemberAvatar extends StatelessWidget {
               style: TextStyle(
                 fontSize: size * 0.4,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: AppColors.warmWhite,
               ),
             ),
           ),
@@ -111,14 +111,14 @@ class _MemberAvatar extends StatelessWidget {
               height: size * 0.35,
               decoration: BoxDecoration(
                 color: user.isShopping ? AppColors.sage : AppColors.info,
-                border: Border.all(color: Colors.white, width: 2),
+                border: Border.all(color: AppColors.warmWhite, width: 2),
                 borderRadius: BorderRadius.circular(size * 0.175),
               ),
               child: user.isShopping
                   ? Icon(
                       Icons.shopping_cart,
                       size: size * 0.2,
-                      color: Colors.white,
+                      color: AppColors.warmWhite,
                     )
                   : null,
             ),
@@ -172,7 +172,7 @@ class _ExtraCountBadge extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: AppColors.beige,
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(color: AppColors.warmWhite, width: 2),
         borderRadius: BorderRadius.circular(size / 2),
       ),
       child: Center(

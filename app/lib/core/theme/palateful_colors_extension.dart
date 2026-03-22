@@ -91,7 +91,7 @@ class PalatefulColors extends ThemeExtension<PalatefulColors> {
   static const dark = PalatefulColors(
     textPrimary: AppColors.warmIvory,
     textSecondary: AppColors.hazelnutLight,
-    textTertiary: AppColors.hazelnut,
+    textTertiary: AppColors.hazelnutLighter,
     textDisabled: AppColors.hazelnutDark,
     cardBackground: AppColors.chocolateLight,
     inputBackground: AppColors.chocolateLight,

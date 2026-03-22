@@ -186,7 +186,7 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
           child: const Icon(
             Icons.check,
             size: 48,
-            color: Colors.white,
+            color: AppColors.warmWhite,
           ),
         );
 
@@ -265,7 +265,7 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                 child: const Icon(
                   Icons.shopping_cart_checkout,
                   size: 56,
-                  color: Colors.white,
+                  color: AppColors.warmWhite,
                 ),
               ),
               const SizedBox(height: 20),

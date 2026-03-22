@@ -76,7 +76,7 @@ class ShoppingListItemTile extends StatelessWidget {
             ? Icon(
                 Icons.check,
                 size: compact ? 14 : 16,
-                color: Colors.white,
+                color: AppColors.warmWhite,
               )
             : null,
       ),

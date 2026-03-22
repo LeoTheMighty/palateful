@@ -464,7 +464,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: isToday
-                          ? Colors.white
+                          ? AppColors.warmWhite
                           : AppColors.textPrimary,
                     ),
                   ),
