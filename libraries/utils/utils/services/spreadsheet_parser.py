@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+
 logger = logging.getLogger(__name__)
 
 MAX_ROWS = 200

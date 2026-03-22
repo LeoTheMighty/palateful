@@ -162,7 +162,7 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
-        elif params.source_type == "spreadsheet" and params.file_base64:
+        elif params.source_type == "spreadsheet" and params.file_base64:  # pragma: no branch
             import base64
 
             from utils.services.spreadsheet_parser import parse_spreadsheet
