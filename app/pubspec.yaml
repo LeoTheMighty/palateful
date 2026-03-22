@@ -63,9 +63,12 @@ dependencies:
   connectivity_plus: ^6.1.4
   share_plus: ^10.1.4
   speech_to_text: ^7.0.0
+  file_picker: ^10.3.10
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

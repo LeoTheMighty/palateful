@@ -113,9 +113,9 @@ class AddRecipeSheet extends StatelessWidget {
                 subtitle: 'Import CSV or Excel file',
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
+                  context.push('/recipes/add/spreadsheet', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
                 },
               ),
               _SheetOption(

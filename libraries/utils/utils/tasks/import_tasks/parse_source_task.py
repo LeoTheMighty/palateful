@@ -49,8 +49,8 @@ class ParseSourceTask(BaseTask):
                 items_created = self._parse_url_list(job)
             elif job.source_type == "url":
                 items_created = self._parse_single_url(job)
-            elif job.source_type == "photo":
-                # Photo items are already created by StartImport with OCR text in raw_data.
+            elif job.source_type in ("photo", "text", "spreadsheet"):
+                # Items are already created by StartImport with text in raw_data.
                 # total_items is already set by StartImport, so just read the count.
                 items_created = job.total_items
             else:

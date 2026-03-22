@@ -91,6 +91,14 @@ class StartImport(Endpoint):
                     code=ErrorCode.INVALID_REQUEST,
                 )
             source_filename = "text_paste"
+        elif params.source_type == "spreadsheet":
+            if not params.file_base64 or not params.file_name:
+                raise APIException(
+                    status_code=400,
+                    detail="file_base64 and file_name are required for spreadsheet import",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            source_filename = params.file_name
         else:
             raise APIException(
                 status_code=400,
@@ -154,6 +162,23 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
+        elif params.source_type == "spreadsheet" and params.file_base64:
+            import base64
+
+            from utils.services.spreadsheet_parser import parse_spreadsheet
+
+            file_bytes = base64.b64decode(params.file_base64)
+            rows = parse_spreadsheet(file_bytes, params.file_name or "file.csv")
+            for row_text in rows:
+                item = ImportItem(
+                    import_job_id=job.id,
+                    source_type="text",
+                    raw_data={"text": row_text},
+                    status="pending",
+                )
+                self.database.create(item)
+            job.total_items = len(rows)
+            self.database.db.commit()
 
         # Create activity feed entry
         source_label = {
@@ -161,6 +186,7 @@ class StartImport(Endpoint):
             "url_list": f"{job.total_items} URLs",
             "photo": "photo",
             "text": "pasted text",
+            "spreadsheet": f"spreadsheet ({job.total_items} rows)",
         }.get(job.source_type, job.source_type)
         activity = UserActivity(
             user_id=user.id,
@@ -196,6 +222,8 @@ class StartImport(Endpoint):
         url: str | None = None
         ocr_texts: list[str] | None = Field(default=None, max_length=10)
         raw_text: str | None = None
+        file_base64: str | None = None
+        file_name: str | None = None
 
     class Response(BaseModel):
         id: str
