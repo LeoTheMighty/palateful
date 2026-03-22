@@ -145,7 +145,28 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
       final status = response.data['status']?.toString();
       setState(() => _importStatus = status);
 
-      if (status == 'awaiting_review' || status == 'completed') {
+      if (status == 'completed') {
+        // Auto-approved — all items done without review
+        _pollTimer?.cancel();
+        final recipeId = response.data['succeeded_items'] != null && (response.data['succeeded_items'] as int) > 0
+            ? response.data['recipe_id']?.toString()
+            : null;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Recipe saved!'),
+              action: recipeId != null
+                  ? SnackBarAction(
+                      label: 'View',
+                      onPressed: () => context.push('/recipes/$recipeId'),
+                    )
+                  : null,
+            ),
+          );
+          context.pop();
+        }
+        return;
+      } else if (status == 'awaiting_review') {
         _pollTimer?.cancel();
         await _loadImportItems();
       } else if (status == 'failed') {

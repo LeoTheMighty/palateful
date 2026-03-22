@@ -173,28 +173,36 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp> {
     for (final file in files) {
       final path = file.path.trim();
       if (path.startsWith('http://') || path.startsWith('https://')) {
-        // Navigate after first frame (router may not be ready on cold start)
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final authService = getIt<AuthService>();
-          if (authService.isAuthenticated) {
-            appRouter.go('/recipes/add/share?url=${Uri.encodeComponent(path)}');
-          }
-        });
+        _navigateAfterFrame('/recipes/add/share?url=${Uri.encodeComponent(path)}');
         return;
       }
       // Try to extract URL from text
       final urlMatch = RegExp(r'https?://\S+').firstMatch(path);
       if (urlMatch != null) {
         final url = urlMatch.group(0)!;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final authService = getIt<AuthService>();
-          if (authService.isAuthenticated) {
-            appRouter.go('/recipes/add/share?url=${Uri.encodeComponent(url)}');
-          }
-        });
+        _navigateAfterFrame('/recipes/add/share?url=${Uri.encodeComponent(url)}');
+        return;
+      }
+      // Handle shared files by extension
+      final ext = path.split('.').last.toLowerCase();
+      if ({'csv', 'xlsx', 'xls'}.contains(ext)) {
+        _navigateAfterFrame('/recipes/add/spreadsheet');
+        return;
+      }
+      if ({'jpg', 'jpeg', 'png', 'heic', 'webp'}.contains(ext)) {
+        _navigateAfterFrame('/recipes/add/photo');
         return;
       }
     }
+  }
+
+  void _navigateAfterFrame(String route) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authService = getIt<AuthService>();
+      if (authService.isAuthenticated) {
+        appRouter.go(route);
+      }
+    });
   }
 
   @override

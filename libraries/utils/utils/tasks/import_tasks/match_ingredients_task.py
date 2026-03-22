@@ -88,8 +88,27 @@ class MatchIngredientsTask(BaseTask):
             # Update job counts
             self._update_job_counts(item.import_job_id)
 
-            # If approved, dispatch create recipe task
+            # If approved, create activity and dispatch create recipe task
             if item.status == "approved":
+                recipe_name = item.parsed_recipe.get("name", "Recipe")
+                try:
+                    from utils.models.import_job import ImportJob
+                    from utils.services.activity_service import create_activity
+
+                    job = self.database.find_by(ImportJob, id=item.import_job_id)
+                    if job:
+                        create_activity(
+                            self.database.db,
+                            user_id=job.user_id,
+                            activity_type="import_complete",
+                            title=f"{recipe_name} saved automatically",
+                            subtitle=item.source_url or "from import",
+                            metadata={"import_job_id": str(item.import_job_id), "recipe_name": recipe_name},
+                            action_url=f"/recipes/import/review-list/{item.import_job_id}",
+                        )
+                        self.database.db.commit()
+                except Exception:
+                    logger.warning("Failed to create auto-approve activity", exc_info=True)
                 self._dispatch_create_task(item)
 
             return success({

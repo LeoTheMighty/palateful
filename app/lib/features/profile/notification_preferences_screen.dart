@@ -20,6 +20,7 @@ class _NotificationPreferencesScreenState
 
   bool _pushEnabled = true;
   bool _partnerActivity = true;
+  bool _autoApproveImports = true;
   String _quietHoursStart = '22:00';
   String _quietHoursEnd = '08:00';
   String _timezone = 'America/Denver';
@@ -44,6 +45,7 @@ class _NotificationPreferencesScreenState
       setState(() {
         _pushEnabled = data['push_enabled'] as bool? ?? true;
         _partnerActivity = data['partner_activity'] as bool? ?? true;
+        _autoApproveImports = data['auto_approve_imports'] as bool? ?? true;
         _quietHoursStart = data['quiet_hours_start'] as String? ?? '22:00';
         _quietHoursEnd = data['quiet_hours_end'] as String? ?? '08:00';
         _timezone = data['timezone'] as String? ?? 'America/Denver';
@@ -61,6 +63,7 @@ class _NotificationPreferencesScreenState
   Future<void> _updatePreference({
     bool? pushEnabled,
     bool? partnerActivity,
+    bool? autoApproveImports,
     String? quietHoursStart,
     String? quietHoursEnd,
     String? timezone,
@@ -69,6 +72,7 @@ class _NotificationPreferencesScreenState
       await _apiClient.updateNotificationPreferences(
         pushEnabled: pushEnabled,
         partnerActivity: partnerActivity,
+        autoApproveImports: autoApproveImports,
         quietHoursStart: quietHoursStart,
         quietHoursEnd: quietHoursEnd,
         timezone: timezone,
@@ -190,6 +194,24 @@ class _NotificationPreferencesScreenState
           onChanged: (value) {
             setState(() => _partnerActivity = value);
             _updatePreference(partnerActivity: value);
+          },
+          colorScheme: colorScheme,
+          textTheme: textTheme,
+        ),
+
+        const SizedBox(height: 32),
+
+        // Import settings
+        _buildSectionHeader('Imports', textTheme),
+        const SizedBox(height: 12),
+        _buildToggleTile(
+          icon: Icons.auto_awesome,
+          label: 'Auto-save high-confidence imports',
+          subtitle: 'Skip review when AI is confident about the recipe',
+          value: _autoApproveImports,
+          onChanged: (value) {
+            setState(() => _autoApproveImports = value);
+            _updatePreference(autoApproveImports: value);
           },
           colorScheme: colorScheme,
           textTheme: textTheme,
