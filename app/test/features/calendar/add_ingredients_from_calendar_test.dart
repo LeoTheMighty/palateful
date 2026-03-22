@@ -197,6 +197,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -215,6 +216,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Free Lunch'));
       await tester.longPress(find.text('Free Lunch'));
       await tester.pumpAndSettle();
 
@@ -236,6 +238,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -259,6 +262,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -281,6 +285,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -302,6 +307,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -330,6 +336,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -355,6 +362,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 
@@ -380,6 +388,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
       await tester.pump();
 
+      await tester.ensureVisible(find.text('Pasta Night'));
       await tester.longPress(find.text('Pasta Night'));
       await tester.pumpAndSettle();
 

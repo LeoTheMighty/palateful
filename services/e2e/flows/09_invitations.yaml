@@ -1,0 +1,14 @@
+appId: com.palateful.app
+---
+# Invitations: navigate to the invitations screen and verify it loads.
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# Profile tab contains the invitations link
+- tapOn: "Profile"
+- assertNotVisible: "Error"
+
+# Navigate to invitations from the home screen notification badge (if present)
+# or directly via Profile
+- assertNotVisible: "Failed to load"

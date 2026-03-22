@@ -1,0 +1,22 @@
+appId: com.palateful.app
+---
+# Meal calendar: open the calendar and create a meal event.
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# Navigate to Calendar tab
+- tapOn: "Calendar"
+
+# Calendar should load with the current week
+- assertNotVisible: "Failed"
+
+# Tap on today's column to add a meal event
+- tapOn: "No meals planned"
+
+# If a bottom sheet or dialog appears to add a meal
+# (the exact flow depends on how AddMealSheet is triggered)
+- assertVisible: "dinner"
+
+# Go back to confirm calendar is working
+- pressKey: back

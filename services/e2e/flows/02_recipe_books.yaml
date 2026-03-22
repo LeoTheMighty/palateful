@@ -1,0 +1,21 @@
+appId: com.palateful.app
+---
+# Recipe Books: create a new book and verify it appears in the list.
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# Navigate to Books tab
+- tapOn: "Books"
+- assertVisible: "Recipe Books"
+
+# Create a new recipe book
+- tapOn:
+    id: "FloatingActionButton"
+- assertVisible: "New Recipe Book"
+- tapOn: "My Recipe Book"
+- inputText: "E2E Test Book"
+- tapOn: "Create"
+
+# Verify the new book appears
+- assertVisible: "E2E Test Book"

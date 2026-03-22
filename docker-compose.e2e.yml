@@ -1,0 +1,15 @@
+# docker-compose.e2e.yml — E2E test stack
+#
+# Enables E2E_TEST_MODE on the API so the fixed token "e2e-test-token" is
+# accepted for E2E requests. Real Auth0 credentials from the base compose
+# file are preserved so normal user traffic still works.
+#
+# Start with: docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d
+
+services:
+  api:
+    environment:
+      E2E_TEST_MODE: "true"
+    depends_on:
+      migrator-test:
+        condition: service_completed_successfully

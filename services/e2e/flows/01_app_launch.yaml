@@ -1,0 +1,12 @@
+appId: com.palateful.app
+---
+# Verify the app loads in E2E mode — auth bypass should land on the home screen
+# directly without showing the login page.
+
+- launchBrowser:
+    url: ${APP_URL}
+- assertVisible: "Home"
+- assertVisible: "Books"
+- assertVisible: "Cart"
+- assertVisible: "Calendar"
+- assertVisible: "Profile"

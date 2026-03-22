@@ -61,8 +61,8 @@ async def run_chat_agent(
         reply = "I'm the E2E test assistant. I can see your recipes and help you cook!"
         assistant_chat = Chat(thread_id=thread_id, role="assistant", content=reply)
         database.create(assistant_chat)
-        yield {"type": "text", "content": reply}
-        yield {"type": "done"}
+        yield {"type": "token", "content": reply}
+        yield {"type": "done", "message_id": str(assistant_chat.id)}
         return
 
     # 1. Check per-user monthly token cap

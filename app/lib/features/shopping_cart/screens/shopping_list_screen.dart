@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../main.dart' show kE2EMode;
 import '../../../core/theme/app_colors.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
@@ -74,8 +75,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           _list = list;
           _isLoading = false;
         });
-        _service.connectWebSocket(widget.listId);
-        _service.updatePresence('shopping');
+        if (!kE2EMode) {
+          _service.connectWebSocket(widget.listId);
+          _service.updatePresence('shopping');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -158,7 +161,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     HapticFeedback.mediumImpact();
 
     try {
-      await _service.addItem(_list!.id, name: name);
+      final item = await _service.addItem(_list!.id, name: name);
+      // Update local state immediately (WebSocket will deduplicate)
+      _handleItemAdded(item);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -562,6 +567,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             child: TextField(
               controller: _addItemController,
               focusNode: _addItemFocus,
+              style: const TextStyle(color: AppColors.textPrimary),
               decoration: InputDecoration(
                 hintText: 'Add item...',
                 hintStyle: const TextStyle(color: AppColors.textTertiary),

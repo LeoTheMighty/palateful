@@ -1,0 +1,14 @@
+appId: com.palateful.app
+---
+# Search: verify the search screen loads and accepts input.
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# The home screen has a search field
+- tapOn: "Search recipes..."
+- inputText: "pasta"
+
+# Results or empty state should appear — no crash
+- assertNotVisible: "error"
+- assertNotVisible: "Error"

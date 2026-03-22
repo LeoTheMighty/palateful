@@ -1,0 +1,23 @@
+appId: com.palateful.app
+---
+# AI Chat: open the assistant and send a message.
+# AI responses are mocked server-side when E2E_TEST_MODE=true.
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# AI Assistant is accessible from the home screen tooltip
+- tapOn: "AI Assistant"
+
+# Chat screen should load
+- assertVisible: "AI Assistant"
+- assertVisible: "Ask about your recipes…"
+
+# Type a message
+- tapOn: "Ask about your recipes…"
+- inputText: "What recipes do I have?"
+- tapOn:
+    id: "send_button"
+
+# Response or loading state should appear without crashing
+- assertNotVisible: "Error"

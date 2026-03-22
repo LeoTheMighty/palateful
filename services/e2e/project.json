@@ -1,0 +1,43 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "e2e",
+  "projectType": "application",
+  "tags": ["e2e"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "bash services/e2e/scripts/run_all.sh",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test-single": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "flutter drive --driver=test_driver/integration_test.dart --target={args.test} -d chrome --dart-define=E2E_MODE=true",
+        "cwd": "{workspaceRoot}/app"
+      }
+    },
+    "test-headless": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "flutter test --platform chrome --dart-define=E2E_MODE=true {args.test}",
+        "cwd": "{workspaceRoot}/app"
+      }
+    },
+    "stack-up": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "stack-down": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "docker compose -f docker-compose.yml -f docker-compose.e2e.yml down",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

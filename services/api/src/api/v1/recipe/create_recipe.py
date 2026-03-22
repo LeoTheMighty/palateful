@@ -59,7 +59,7 @@ class CreateRecipe(Endpoint):
             name=params.name,
             description=params.description,
             instructions=params.instructions,
-            servings=params.servings,
+            servings=params.servings or 1,
             prep_time=params.prep_time,
             cook_time=params.cook_time,
             image_url=params.image_url,
@@ -118,9 +118,9 @@ class CreateRecipe(Endpoint):
 
             ingredient_responses.append(
                 CreateRecipe.IngredientResponse(
-                    id=recipe_ingredient.id,
+                    id=str(recipe_ingredient.id),
                     ingredient=CreateRecipe.IngredientSummary(
-                        id=ingredient.id,
+                        id=str(ingredient.id),
                         canonical_name=ingredient.canonical_name,
                         category=ingredient.category
                     ),
@@ -164,7 +164,7 @@ class CreateRecipe(Endpoint):
 
         return success(
             data=CreateRecipe.Response(
-                id=recipe.id,
+                id=str(recipe.id),
                 name=recipe.name,
                 description=recipe.description,
                 instructions=recipe.instructions,
@@ -203,7 +203,7 @@ class CreateRecipe(Endpoint):
         name: str
         description: str | None = None
         instructions: str | None = None
-        servings: int = 1
+        servings: int | None = 1
         prep_time: int | None = None
         cook_time: int | None = None
         image_url: str | None = None

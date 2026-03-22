@@ -1,0 +1,41 @@
+appId: com.palateful.app
+---
+# Create a recipe inside a recipe book.
+# Assumes "E2E Test Book" exists (created in flow 02).
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# Navigate to Books
+- tapOn: "Books"
+- assertVisible: "Recipe Books"
+- tapOn: "E2E Test Book"
+
+# Open the add recipe FAB
+- tapOn:
+    id: "FloatingActionButton"
+
+# If an import options sheet appears, choose to create manually
+- tapOn: "Add Recipe"
+
+# Fill in recipe name (auto-save kicks in)
+- tapOn: "Recipe Name"
+- inputText: "E2E Pasta Test"
+
+# Fill in times and servings
+- tapOn: "Prep time"
+- inputText: "10"
+- tapOn: "Cook time"
+- inputText: "20"
+- tapOn: "Servings"
+- inputText: "2"
+
+# Add a step
+- tapOn: "Add Step"
+- tapOn: "Step 1..."
+- inputText: "Boil water and cook pasta until al dente."
+
+# Go back and verify recipe appears in the book
+- tapOn:
+    id: "back_button"
+- assertVisible: "E2E Pasta Test"

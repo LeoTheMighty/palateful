@@ -665,6 +665,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
       floatingActionButton: _isSelectMode || _userRole == 'viewer'
           ? null
           : FloatingActionButton(
+              heroTag: null, // avoid hero conflict during push to wizard
               onPressed: _addRecipe,
               child: const Icon(Icons.add),
             ),

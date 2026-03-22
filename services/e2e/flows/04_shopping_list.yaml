@@ -1,0 +1,46 @@
+appId: com.palateful.app
+---
+# Shopping list: create a list, add items, check them off, clear completed.
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# Navigate to Cart tab
+- tapOn: "Cart"
+
+# Create a new shopping list
+- tapOn:
+    id: "FloatingActionButton"
+- assertVisible: "New Shopping List"
+- tapOn: "List name (e.g. Weekly Groceries)"
+- inputText: "E2E Groceries"
+- tapOn: "Create"
+
+# Now on the shopping list screen
+- assertVisible: "E2E Groceries"
+- assertVisible: "Add item..."
+
+# Add first item
+- tapOn: "Add item..."
+- inputText: "Milk"
+- tapOn:
+    id: "send_button"
+
+- assertVisible: "Milk"
+
+# Add second item
+- tapOn: "Add item..."
+- inputText: "Eggs"
+- tapOn:
+    id: "send_button"
+
+- assertVisible: "Eggs"
+
+# Check off Milk
+- tapOn: "Milk"
+- assertVisible: "COMPLETED"
+
+# Clear completed items
+- tapOn:
+    id: "overflow_menu"
+- tapOn: "Clear Completed"

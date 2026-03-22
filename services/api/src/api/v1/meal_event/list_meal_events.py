@@ -78,8 +78,10 @@ class ListMealEvents(Endpoint):
         total = query.count()
 
         # Apply ordering and pagination
+        # PostgreSQL DISTINCT ON requires the ORDER BY to start with the
+        # DISTINCT ON column, so include MealEvent.id first.
         meal_events = (
-            query.order_by(MealEvent.scheduled_at).offset(offset).limit(limit).all()
+            query.order_by(MealEvent.id, MealEvent.scheduled_at).offset(offset).limit(limit).all()
         )
 
         items = []

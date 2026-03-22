@@ -44,7 +44,7 @@ class CreateRecipeBook(Endpoint):
 
         return success(
             data=CreateRecipeBook.Response(
-                id=recipe_book.id,
+                id=str(recipe_book.id),
                 name=recipe_book.name,
                 description=recipe_book.description,
                 is_shared=recipe_book.is_shared,

@@ -1,0 +1,20 @@
+---
+# Maestro E2E config for Palateful Flutter web app
+# Run flows with: maestro test e2e/flows/
+#
+# Prerequisites:
+#   1. Start the E2E stack:
+#      docker compose -f docker-compose.yml -f docker-compose.e2e.yml up --build -d
+#   2. Build and serve Flutter web (in app/ directory):
+#      flutter run -d web-server --web-port=8888 --dart-define=E2E_MODE=true
+#      OR build and serve:
+#      flutter build web --dart-define=E2E_MODE=true && python3 -m http.server 8888 -d build/web
+#   3. Run tests:
+#      maestro test e2e/flows/
+#
+# Install Maestro: brew install maestro
+
+appId: com.palateful.app
+---
+env:
+  APP_URL: "http://localhost:8888"

@@ -1,0 +1,21 @@
+appId: com.palateful.app
+---
+# Cook mode: navigate to a recipe and start cooking mode.
+# Assumes "E2E Pasta Test" recipe exists (created in flow 03).
+
+- launchBrowser:
+    url: ${APP_URL}
+
+# Navigate to Books
+- tapOn: "Books"
+- tapOn: "E2E Test Book"
+- tapOn: "E2E Pasta Test"
+
+# On recipe detail screen, start cook mode
+- tapOn: "Start Cooking"
+
+# Cook mode should be visible with steps
+- assertNotVisible: "Error"
+
+# Go back
+- pressKey: back
