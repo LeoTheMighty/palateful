@@ -171,6 +171,21 @@ class CreateRecipeTask(BaseTask):
         if total_final >= job.total_items:
             job.status = "completed"
             job.completed_at = datetime.now(UTC)
+            # Create completion activity
+            from utils.services.activity_service import create_activity
+            review_count = job.pending_review_items or 0
+            subtitle = f"{job.succeeded_items} succeeded"
+            if review_count > 0:
+                subtitle += f", {review_count} need review"
+            create_activity(
+                self.database.db,
+                user_id=job.user_id,
+                activity_type="import_complete",
+                title="Import complete!",
+                subtitle=subtitle,
+                metadata={"import_job_id": str(job.id)},
+                action_url=f"/recipes/import/review-list/{job.id}",
+            )
         elif job.pending_review_items > 0:
             job.status = "awaiting_review"
 

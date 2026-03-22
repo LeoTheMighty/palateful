@@ -10,6 +10,7 @@ from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
+from utils.services.activity_service import create_activity
 
 
 class AddShoppingListItem(Endpoint):
@@ -80,6 +81,27 @@ class AddShoppingListItem(Endpoint):
 
         # Send notification to members of shared list
         notify_item_added(shopping_list, item, user, self.database)
+
+        # Create activity for other list members
+        if shopping_list.is_shared:
+            members = (
+                self.db.query(ShoppingListUser)
+                .filter(
+                    ShoppingListUser.shopping_list_id == shopping_list.id,
+                    ShoppingListUser.user_id != user.id,
+                    ShoppingListUser.archived_at.is_(None),
+                )
+                .all()
+            )
+            for m in members:
+                create_activity(
+                    self.db,
+                    user_id=m.user_id,
+                    activity_type="partner_action",
+                    title=f"{user.name} added an item to {shopping_list.name}",
+                    subtitle=item.name,
+                    action_url=f"/shopping-lists/{shopping_list.id}",
+                )
 
         return success(
             data=AddShoppingListItem.Response(

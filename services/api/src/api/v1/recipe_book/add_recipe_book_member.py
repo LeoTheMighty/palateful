@@ -3,8 +3,10 @@
 from pydantic import BaseModel, model_validator
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
+from utils.services.activity_service import create_activity
 
 
 class AddRecipeBookMember(Endpoint):
@@ -56,6 +58,17 @@ class AddRecipeBookMember(Endpoint):
             invited_by_id=user.id,
         )
         self.database.create(membership)
+
+        # Create activity for the book owner
+        book = self.database.find_by(RecipeBook, id=recipe_book_id)
+        book_name = book.name if book else "a recipe book"
+        create_activity(
+            self.db,
+            user_id=user.id,
+            activity_type="partner_action",
+            title=f"{target_user.name} joined {book_name}",
+            action_url=f"/recipe-books/{recipe_book_id}/members?role={caller_membership.role}",
+        )
 
         return success(
             data=AddRecipeBookMember.Response(

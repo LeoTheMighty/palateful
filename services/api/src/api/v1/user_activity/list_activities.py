@@ -1,11 +1,13 @@
 """List user activities endpoint."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
+
+_ACTIVITY_RETENTION_DAYS = 30
 
 
 class ListActivities(Endpoint):
@@ -13,12 +15,14 @@ class ListActivities(Endpoint):
 
     def execute(self, limit: int = 50, offset: int = 0):
         user: User = self.user
+        cutoff = datetime.now(datetime.UTC) - timedelta(days=_ACTIVITY_RETENTION_DAYS)
 
         query = (
             self.db.query(UserActivity)
             .filter(
                 UserActivity.user_id == user.id,
                 UserActivity.archived_at.is_(None),
+                UserActivity.created_at >= cutoff,
             )
             .order_by(UserActivity.created_at.desc())
         )
