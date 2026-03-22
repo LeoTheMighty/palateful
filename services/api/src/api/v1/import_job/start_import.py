@@ -77,6 +77,20 @@ class StartImport(Endpoint):
                     code=ErrorCode.INVALID_REQUEST,
                 )
             source_filename = "photo_import"
+        elif params.source_type == "text":
+            if not params.raw_text or len(params.raw_text.strip()) == 0:
+                raise APIException(
+                    status_code=400,
+                    detail="raw_text is required for text source type",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            if len(params.raw_text) > 16000:
+                raise APIException(
+                    status_code=400,
+                    detail="Text too long — maximum 16,000 characters",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            source_filename = "text_paste"
         else:
             raise APIException(
                 status_code=400,
@@ -130,12 +144,23 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
+        elif params.source_type == "text" and params.raw_text:
+            item = ImportItem(
+                import_job_id=job.id,
+                source_type="text",
+                raw_data={"text": params.raw_text.strip()},
+                status="pending",
+            )
+            self.database.create(item)
+            job.total_items = 1
+            self.database.db.commit()
 
         # Create activity feed entry
         source_label = {
             "url": "URL",
             "url_list": f"{job.total_items} URLs",
             "photo": "photo",
+            "text": "pasted text",
         }.get(job.source_type, job.source_type)
         activity = UserActivity(
             user_id=user.id,
@@ -170,6 +195,7 @@ class StartImport(Endpoint):
         urls: list[str] | None = Field(default=None, max_length=50)
         url: str | None = None
         ocr_texts: list[str] | None = Field(default=None, max_length=10)
+        raw_text: str | None = None
 
     class Response(BaseModel):
         id: str

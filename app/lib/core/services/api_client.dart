@@ -477,12 +477,13 @@ class ApiClient {
   }
 
   // Import endpoints
-  Future<Response> startImport(String bookId, {required String sourceType, String? url, List<String>? urls, List<String>? ocrTexts}) {
+  Future<Response> startImport(String bookId, {required String sourceType, String? url, List<String>? urls, List<String>? ocrTexts, String? rawText}) {
     return _dio.post('/v1/recipe-books/$bookId/import', data: {
       'source_type': sourceType,
       if (url != null) 'url': url,
       if (urls != null) 'urls': urls,
       if (ocrTexts != null) 'ocr_texts': ocrTexts,
+      if (rawText != null) 'raw_text': rawText,
     });
   }
 

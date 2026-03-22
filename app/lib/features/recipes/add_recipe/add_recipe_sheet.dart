@@ -88,9 +88,9 @@ class AddRecipeSheet extends StatelessWidget {
                 subtitle: 'Paste recipe from anywhere',
                 onTap: () {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Coming soon')),
-                  );
+                  context.push('/recipes/add/text', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
                 },
               ),
 

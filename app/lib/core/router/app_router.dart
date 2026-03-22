@@ -22,6 +22,7 @@ import '../../features/recipes/add_recipe/file_import_screen.dart';
 import '../../features/recipes/add_recipe/import_item_review_screen.dart';
 import '../../features/recipes/add_recipe/import_review_list_screen.dart';
 import '../../features/recipes/add_recipe/share_import_screen.dart';
+import '../../features/recipes/add_recipe/text_paste_import_screen.dart';
 import '../../features/recipes/add_recipe/url_import_screen.dart';
 import '../../features/recipes/recipe_version_diff_screen.dart';
 import '../../features/recipes/recipe_version_history_screen.dart';
@@ -226,6 +227,15 @@ GoRouter get appRouter {
         },
       ),
 
+      GoRoute(
+        path: '/recipes/add/text',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final recipeBookId = extra?['recipeBookId'] as String?;
+          return TextPasteImportScreen(recipeBookId: recipeBookId);
+        },
+      ),
       GoRoute(
         path: '/recipes/add/share',
         parentNavigatorKey: _rootNavigatorKey,
