@@ -10,6 +10,7 @@ from utils.models.import_job import ImportJob
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
+from utils.models.user_activity import UserActivity
 from utils.tasks.import_tasks.parse_source_task import parse_source_task
 
 
@@ -129,6 +130,22 @@ class StartImport(Endpoint):
             self.database.create(item)
             job.total_items = 1
             self.database.db.commit()
+
+        # Create activity feed entry
+        source_label = {
+            "url": "URL",
+            "url_list": f"{job.total_items} URLs",
+            "photo": "photo",
+        }.get(job.source_type, job.source_type)
+        activity = UserActivity(
+            user_id=user.id,
+            type="import_started",
+            title=f"Importing from {source_label}",
+            subtitle=f"Into {recipe_book.name}",
+            metadata_json={"import_job_id": str(job.id), "recipe_book_id": str(book_id)},
+            action_url=f"/recipes/import/review-list/{job.id}",
+        )
+        self.database.create(activity)
 
         # Dispatch background processing
         parse_source_task.delay(

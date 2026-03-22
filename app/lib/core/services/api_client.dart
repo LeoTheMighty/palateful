@@ -118,6 +118,23 @@ class ApiClient {
 
   Future<Response> exportRecipes() => _dio.get('/v1/users/me/export');
 
+  // Activity endpoints
+  Future<Response> getActivities({int limit = 50, int offset = 0}) {
+    return _dio.get('/v1/activities', queryParameters: {
+      'limit': limit,
+      'offset': offset,
+    });
+  }
+
+  Future<Response> getUnreadActivityCount() =>
+      _dio.get('/v1/activities/unread-count');
+
+  Future<Response> markActivityRead(String id) =>
+      _dio.put('/v1/activities/$id/read');
+
+  Future<Response> markAllActivitiesRead() =>
+      _dio.put('/v1/activities/read-all');
+
   // Recipe Book endpoints
   Future<Response> getRecipeBooks({int limit = 20, int offset = 0}) {
     return _dio.get('/v1/recipe-books', queryParameters: {
