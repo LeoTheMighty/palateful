@@ -12,6 +12,8 @@ from utils.services.recipe_extractors import (
     extract_recipe_from_text,
     extract_recipe_from_url,
 )
+from utils.services.recipe_extractors.video_extractor import extract_recipe_from_video
+from utils.services.url_classifier import is_social_media_url
 from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,10 @@ class ExtractRecipeTask(BaseTask):
                 # Extract from OCR text using AI
                 ocr_text = (item.raw_data or {}).get("text", "")
                 result = extract_recipe_from_text(ocr_text)
+                self._update_item_from_result(item, result)
+            elif item.source_url and is_social_media_url(item.source_url):
+                # Extract from social media video metadata
+                result = extract_recipe_from_video(item.source_url)
                 self._update_item_from_result(item, result)
             elif item.source_url:
                 # Extract from URL

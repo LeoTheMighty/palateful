@@ -37,6 +37,8 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
   Map<String, dynamic>? _parsedRecipe;
   bool _isApproving = false;
   String? _error;
+  String? _errorCode;
+  int _pollCount = 0;
 
   @override
   void initState() {
@@ -103,8 +105,10 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
     setState(() {
       _isImporting = true;
       _error = null;
+      _errorCode = null;
       _importItem = null;
       _parsedRecipe = null;
+      _pollCount = 0;
     });
 
     try {
@@ -143,7 +147,10 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
       if (!mounted) return;
 
       final status = response.data['status']?.toString();
-      setState(() => _importStatus = status);
+      setState(() {
+        _importStatus = status;
+        _pollCount++;
+      });
 
       if (status == 'completed') {
         // Auto-approved — all items done without review
@@ -171,10 +178,8 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
         await _loadImportItems();
       } else if (status == 'failed') {
         _pollTimer?.cancel();
-        setState(() {
-          _isImporting = false;
-          _error = 'Recipe extraction failed. The URL may not contain a recipe.';
-        });
+        // Load items to get specific error code
+        await _loadFailedItemError();
       }
     } catch (e) {
       // Keep polling on transient errors
@@ -248,6 +253,47 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
       await _apiClient.skipImportItem(itemId);
     } catch (_) {}
     if (mounted) context.pop();
+  }
+
+  Future<void> _loadFailedItemError() async {
+    if (_importJobId == null) return;
+    try {
+      final response = await _apiClient.listImportItems(_importJobId!);
+      final items = response.data['items'] as List? ?? [];
+      if (items.isNotEmpty) {
+        final item = items.first;
+        final errorCode = item['error_code'] as String?;
+        final errorMsg = item['error_message'] as String?;
+        if (mounted) {
+          setState(() {
+            _isImporting = false;
+            _errorCode = errorCode;
+            _error = errorMsg ?? 'Recipe extraction failed. The URL may not contain a recipe.';
+          });
+        }
+        return;
+      }
+    } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _isImporting = false;
+        _error = 'Recipe extraction failed. The URL may not contain a recipe.';
+      });
+    }
+  }
+
+  static final _videoUrlPattern = RegExp(
+    r'(tiktok\.com|instagram\.com/(p|reel|reels)/|instagr\.am|youtube\.com|youtu\.be|pinterest\.com/pin|pin\.it|facebook\.com/.+/videos|fb\.watch)',
+    caseSensitive: false,
+  );
+
+  bool get _isVideoUrl => _videoUrlPattern.hasMatch(_urlController.text);
+
+  String get _videoProgressMessage {
+    if (_pollCount < 2) return 'Fetching video info...';
+    if (_pollCount < 5) return 'Reading captions...';
+    if (_pollCount < 8) return 'Extracting recipe...';
+    return 'Almost done...';
   }
 
   @override
@@ -332,9 +378,11 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
             const Center(child: CircularProgressIndicator()),
             const SizedBox(height: 16),
             Text(
-              _importStatus == 'processing'
-                  ? 'Extracting recipe from URL...'
-                  : 'Starting import...',
+              _isVideoUrl
+                  ? _videoProgressMessage
+                  : (_importStatus == 'processing'
+                      ? 'Extracting recipe from URL...'
+                      : 'Starting import...'),
               style: textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -346,7 +394,7 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
             ),
           ],
 
-          // Error message
+          // Error message with video-specific fallback
           if (_error != null) ...[
             const SizedBox(height: 16),
             Container(
@@ -355,9 +403,22 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
                 color: colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                _error!,
-                style: TextStyle(color: colorScheme.onErrorContainer),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _error!,
+                    style: TextStyle(color: colorScheme.onErrorContainer),
+                  ),
+                  if (_errorCode == 'NO_RECIPE_CONTENT') ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => context.pushReplacement('/recipes/add/text'),
+                      icon: const Icon(Icons.edit_note, size: 18),
+                      label: const Text('Paste recipe text instead'),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],

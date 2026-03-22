@@ -11,6 +11,7 @@ from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
+from utils.services.url_classifier import SocialPlatform, detect_platform
 from utils.tasks.import_tasks.parse_source_task import parse_source_task
 
 
@@ -188,6 +189,11 @@ class StartImport(Endpoint):
             "text": "pasted text",
             "spreadsheet": f"spreadsheet ({job.total_items} rows)",
         }.get(job.source_type, job.source_type)
+        # Enrich label for social media video URLs
+        if job.source_type == "url" and params.url:
+            platform = detect_platform(params.url)
+            if platform != SocialPlatform.WEB:
+                source_label = f"{platform.value.title()} video"
         activity = UserActivity(
             user_id=user.id,
             type="import_started",

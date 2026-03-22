@@ -10,6 +10,7 @@ python = "^3.13"
 celery = {extras = ["sqs"], version = "^5.5"}
 pycurl = "^7.45"
 psycopg2-binary = "^2.9.11"
+yt-dlp = "^2025.3"
 utils = {path = "../../libraries/utils", develop = true}
 agent = {path = "../../libraries/agent", develop = true}
 
