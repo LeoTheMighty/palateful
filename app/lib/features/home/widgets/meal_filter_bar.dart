@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../core/theme/app_colors.dart';
 
 enum MealFilter { all, breakfast, lunch, dinner, dessert, snack }
 
@@ -79,11 +78,12 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isSelected ? AppColors.cream : AppColors.textPrimary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = isSelected ? colorScheme.onPrimary : colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Material(
-        color: isSelected ? AppColors.chocolate : AppColors.beige,
+        color: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           onTap: () {

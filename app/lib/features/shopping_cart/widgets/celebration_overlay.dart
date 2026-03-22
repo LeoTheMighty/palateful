@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 
 /// Celebration overlay for completing shopping list milestones.
 class CelebrationOverlay extends StatefulWidget {
@@ -50,6 +50,7 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
 
   final List<_ConfettiParticle> _confetti = [];
   final _random = Random();
+  bool _confettiGenerated = false;
 
   @override
   void initState() {
@@ -83,11 +84,6 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
       ),
     );
 
-    // Generate confetti particles
-    if (widget.type == CelebrationType.listComplete) {
-      _generateConfetti();
-    }
-
     _controller.forward();
     _confettiController.forward();
 
@@ -100,12 +96,14 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
     });
   }
 
-  void _generateConfetti() {
+  void _generateConfetti(List<Color> colors) {
+    if (_confettiGenerated) return;
+    _confettiGenerated = true;
     for (int i = 0; i < 50; i++) {
       _confetti.add(_ConfettiParticle(
         x: _random.nextDouble(),
         y: _random.nextDouble() * 0.3,
-        color: _confettiColors[_random.nextInt(_confettiColors.length)],
+        color: colors[_random.nextInt(colors.length)],
         size: 8 + _random.nextDouble() * 8,
         velocity: 2 + _random.nextDouble() * 3,
         angle: _random.nextDouble() * 2 * pi,
@@ -113,14 +111,6 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
       ));
     }
   }
-
-  static const _confettiColors = [
-    AppColors.terracotta,
-    AppColors.sage,
-    AppColors.coral,
-    AppColors.hazelnut,
-    AppColors.chocolate,
-  ];
 
   @override
   void dispose() {
@@ -131,6 +121,19 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Generate confetti with theme colors on first build
+    if (widget.type == CelebrationType.listComplete) {
+      _generateConfetti([
+        colorScheme.tertiary,
+        colorScheme.primary,
+        colorScheme.error,
+        colorScheme.secondary,
+        colorScheme.primary,
+      ]);
+    }
+
     return Material(
       color: Colors.transparent,
       child: Stack(
@@ -159,7 +162,7 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                   child: child,
                 ),
               ),
-              child: _buildContent(),
+              child: _buildContent(context),
             ),
           ),
         ],
@@ -167,26 +170,29 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     switch (widget.type) {
       case CelebrationType.itemChecked:
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: AppColors.sage,
+            color: appColors.success,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: AppColors.shadow,
+                color: colorScheme.shadow,
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
             ],
           ),
-          child: const Icon(
+          child: Icon(
             Icons.check,
             size: 48,
-            color: AppColors.warmWhite,
+            color: colorScheme.surface,
           ),
         );
 
@@ -194,11 +200,11 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
           decoration: BoxDecoration(
-            color: AppColors.warmWhite,
+            color: colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: AppColors.shadow,
+                color: colorScheme.shadow,
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -210,22 +216,22 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: AppColors.sage.withValues(alpha: 0.2),
+                  color: appColors.success.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(50),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.check_circle,
                   size: 48,
-                  color: AppColors.sage,
+                  color: appColors.success,
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'Section Complete!',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: colorScheme.onSurface,
                 ),
               ),
             ],
@@ -236,11 +242,11 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
           decoration: BoxDecoration(
-            color: AppColors.warmWhite,
+            color: colorScheme.surface,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: AppColors.shadow,
+                color: colorScheme.shadow,
                 blurRadius: 30,
                 offset: const Offset(0, 12),
               ),
@@ -254,35 +260,35 @@ class _CelebrationOverlayState extends State<CelebrationOverlay>
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.sage,
-                      AppColors.sage.withValues(alpha: 0.8),
+                      appColors.success,
+                      appColors.success.withValues(alpha: 0.8),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(60),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.shopping_cart_checkout,
                   size: 56,
-                  color: AppColors.warmWhite,
+                  color: colorScheme.surface,
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Shopping Complete!',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'All items checked off',
                 style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textSecondary,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

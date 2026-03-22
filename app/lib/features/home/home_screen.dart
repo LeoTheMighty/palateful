@@ -16,7 +16,7 @@ import '../recipes/add_recipe/batch_parser_service.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/meal_filter_bar.dart';
 import 'widgets/sort_chips.dart';
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -644,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    AppColors.textPrimary.withValues(alpha: 0.7),
+                    colorScheme.onSurface.withValues(alpha: 0.7),
                   ],
                   stops: const [0.4, 1.0],
                 ),

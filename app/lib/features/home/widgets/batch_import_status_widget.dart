@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/di/injection.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../../recipes/add_recipe/batch_parser_service.dart';
 import 'batch_job_result_sheet.dart';
 
@@ -58,6 +58,9 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
   }
 
   Widget _buildCollapsedBar() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     final processing =
         _jobs.where((j) => j.status != BatchJobStatus.succeeded && j.status != BatchJobStatus.failed).length;
     final succeeded = _jobs.where((j) => j.status == BatchJobStatus.succeeded).length;
@@ -79,39 +82,39 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.beige,
+          color: colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
             if (processing > 0)
-              const Padding(
-                padding: EdgeInsets.only(right: 10),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
                 child: SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     valueColor:
-                        AlwaysStoppedAnimation<Color>(AppColors.hazelnut),
+                        AlwaysStoppedAnimation<Color>(colorScheme.secondary),
                   ),
                 ),
               ),
             if (processing == 0 && succeeded > 0)
-              const Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: Icon(Icons.check_circle, size: 18, color: AppColors.success),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Icon(Icons.check_circle, size: 18, color: appColors.success),
               ),
             if (processing == 0 && succeeded == 0 && failed > 0)
-              const Padding(
-                padding: EdgeInsets.only(right: 10),
-                child: Icon(Icons.error, size: 18, color: AppColors.error),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Icon(Icons.error, size: 18, color: colorScheme.error),
               ),
             Expanded(
               child: Text(
                 summary,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -119,7 +122,7 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
             ),
             Icon(
               _expanded ? Icons.expand_less : Icons.expand_more,
-              color: AppColors.textTertiary,
+              color: appColors.textTertiary,
               size: 20,
             ),
           ],
@@ -129,10 +132,11 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
   }
 
   Widget _buildJobList() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 4),
       decoration: BoxDecoration(
-        color: AppColors.beige,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -143,6 +147,9 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
   }
 
   Widget _buildJobRow(BatchParserJob job) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     final isLoading = job.status == BatchJobStatus.uploading ||
         job.status == BatchJobStatus.submitting ||
         job.status == BatchJobStatus.polling;
@@ -158,19 +165,19 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
           children: [
             // Status icon
             if (isLoading)
-              const SizedBox(
+              SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor:
-                      AlwaysStoppedAnimation<Color>(AppColors.hazelnut),
+                      AlwaysStoppedAnimation<Color>(colorScheme.secondary),
                 ),
               )
             else if (job.status == BatchJobStatus.succeeded)
-              const Icon(Icons.check_circle, size: 20, color: AppColors.success)
+              Icon(Icons.check_circle, size: 20, color: appColors.success)
             else
-              const Icon(Icons.error, size: 20, color: AppColors.error),
+              Icon(Icons.error, size: 20, color: colorScheme.error),
 
             const SizedBox(width: 10),
 
@@ -182,10 +189,10 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
                 children: [
                   Text(
                     job.filename,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
+                      color: colorScheme.onSurface,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -193,9 +200,9 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
                   if (isLoading)
                     Text(
                       _statusText(job.status),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.textTertiary,
+                        color: appColors.textTertiary,
                       ),
                     ),
                 ],
@@ -209,13 +216,13 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.success,
+                  color: appColors.success,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
+                child: Text(
                   'NEW',
                   style: TextStyle(
-                    color: AppColors.warmWhite,
+                    color: colorScheme.surface,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                   ),
@@ -231,11 +238,11 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
                   minimumSize: Size.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                child: const Text(
+                child: Text(
                   'Retry',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.chocolate,
+                    color: colorScheme.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -244,9 +251,9 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
             // Dismiss button
             GestureDetector(
               onTap: () => _service.dismissJob(job.localId),
-              child: const Padding(
-                padding: EdgeInsets.only(left: 4),
-                child: Icon(Icons.close, size: 16, color: AppColors.textTertiary),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.close, size: 16, color: appColors.textTertiary),
               ),
             ),
           ],

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
@@ -336,22 +336,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.cream,
+      backgroundColor: colorScheme.surface,
       appBar: _buildAppBar(),
       body: _buildBody(),
     );
   }
 
   PreferredSizeWidget _buildAppBar() {
+    final colorScheme = Theme.of(context).colorScheme;
     return AppBar(
-      backgroundColor: AppColors.cream,
+      backgroundColor: colorScheme.surface,
       elevation: 0,
       title: _buildWeekNavigator(),
       actions: [
         IconButton(
           icon: const Icon(Icons.add_shopping_cart_outlined),
-          color: AppColors.textPrimary,
+          color: colorScheme.onSurface,
           tooltip: 'Add week to shopping list',
           onPressed: _generateWeeklyShoppingList,
         ),
@@ -360,6 +362,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildWeekNavigator() {
+    final colorScheme = Theme.of(context).colorScheme;
     final startMonth = _monthAbbr(_weekStart.month);
     final endMonth = _monthAbbr(_weekEnd.month);
     final label = _weekStart.month == _weekEnd.month
@@ -372,26 +375,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
         IconButton(
           icon: const Icon(Icons.chevron_left),
           onPressed: _previousWeek,
-          color: AppColors.textPrimary,
+          color: colorScheme.onSurface,
         ),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+            color: colorScheme.onSurface,
           ),
         ),
         IconButton(
           icon: const Icon(Icons.chevron_right),
           onPressed: _nextWeek,
-          color: AppColors.textPrimary,
+          color: colorScheme.onSurface,
         ),
       ],
     );
   }
 
   Widget _buildBody() {
+    final colorScheme = Theme.of(context).colorScheme;
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -401,7 +405,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(_error!,
-                style: const TextStyle(color: AppColors.textSecondary)),
+                style: TextStyle(color: colorScheme.onSurfaceVariant)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadEvents,
@@ -414,7 +418,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadEvents,
-      color: AppColors.chocolate,
+      color: colorScheme.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -426,6 +430,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildDayColumn(DateTime day) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     final today = _dayKey(DateTime.now());
     final isToday = _dayKey(day) == today;
     final events = _eventsByDay[_dayKey(day)] ?? [];
@@ -436,11 +443,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isToday ? AppColors.warmIvory : AppColors.warmWhite,
+        color: isToday ? colorScheme.surfaceContainerHighest : colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: isToday
-            ? Border.all(color: AppColors.chocolate.withValues(alpha: 0.4))
-            : Border.all(color: AppColors.divider),
+            ? Border.all(color: colorScheme.primary.withValues(alpha: 0.4))
+            : Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -454,7 +461,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: isToday ? AppColors.chocolate : Colors.transparent,
+                    color: isToday ? colorScheme.primary : Colors.transparent,
                     shape: BoxShape.circle,
                   ),
                   alignment: Alignment.center,
@@ -464,8 +471,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: isToday
-                          ? AppColors.warmWhite
-                          : AppColors.textPrimary,
+                          ? colorScheme.onPrimary
+                          : colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -476,8 +483,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                     color: isToday
-                        ? AppColors.chocolate
-                        : AppColors.textSecondary,
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -489,9 +496,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Text(
                 'No meals planned',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: AppColors.textDisabled,
+                  color: appColors.textDisabled,
                 ),
               ),
             )
@@ -503,6 +510,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _buildEventTile(MealEvent event) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     return InkWell(
       onTap: () {
         if (event.recipe != null) {
@@ -521,16 +531,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
               height: 44,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                color: AppColors.beige,
+                color: colorScheme.surfaceContainerHighest,
               ),
               clipBehavior: Clip.antiAlias,
               child: event.recipe?.imageUrl != null
                   ? Image.network(
                       event.recipe!.imageUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _mealTypeIcon(event.mealType),
+                      errorBuilder: (_, __, ___) => _mealTypeIcon(event.mealType, colorScheme),
                     )
-                  : _mealTypeIcon(event.mealType),
+                  : _mealTypeIcon(event.mealType, colorScheme),
             ),
             const SizedBox(width: 12),
 
@@ -541,10 +551,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 children: [
                   Text(
                     event.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
+                      color: colorScheme.onSurface,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -554,14 +564,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: AppColors.beigeAccent,
+                      color: colorScheme.outlineVariant,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       event.mealType.displayName,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.hazelnut,
+                        color: colorScheme.secondary,
                       ),
                     ),
                   ),
@@ -569,9 +579,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     const SizedBox(height: 2),
                     Text(
                       '${event.recipe!.totalMinutes} min',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.textDisabled,
+                        color: appColors.textDisabled,
                       ),
                     ),
                   ],
@@ -581,10 +591,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
             // Chevron if navigable
             if (event.recipe != null)
-              const Icon(
+              Icon(
                 Icons.chevron_right,
                 size: 16,
-                color: AppColors.textTertiary,
+                color: appColors.textTertiary,
               ),
           ],
         ),
@@ -592,7 +602,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _mealTypeIcon(MealType type) {
+  Widget _mealTypeIcon(MealType type, ColorScheme colorScheme) {
     IconData icon;
     switch (type) {
       case MealType.breakfast:
@@ -604,7 +614,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       case MealType.snack:
         icon = Icons.cookie_outlined;
     }
-    return Icon(icon, color: AppColors.hazelnut, size: 22);
+    return Icon(icon, color: colorScheme.secondary, size: 22);
   }
 
   String _monthAbbr(int month) {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/di/injection.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../models/meal_event.dart';
 import '../services/meal_calendar_service.dart';
 
@@ -52,14 +52,6 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
       initialDate: _selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 30)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(context).colorScheme.copyWith(
-                primary: AppColors.chocolate,
-              ),
-        ),
-        child: child!,
-      ),
     );
     if (picked != null) {
       setState(() {
@@ -142,6 +134,9 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     return Padding(
       padding: EdgeInsets.only(
         left: 24,
@@ -159,16 +154,16 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
             children: [
               Text(
                 _isEditMode ? 'Reschedule Meal' : 'Plan for...',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: colorScheme.onSurface,
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () => Navigator.pop(context),
-                color: AppColors.textSecondary,
+                color: colorScheme.onSurfaceVariant,
               ),
             ],
           ),
@@ -178,21 +173,21 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
           // Recipe name
           Text(
             widget.recipeName,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: AppColors.textSecondary,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
 
           const SizedBox(height: 24),
 
           // Date picker row
-          const Text(
+          Text(
             'Date',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -201,28 +196,28 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: AppColors.beige,
+                color: colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.calendar_today_outlined,
                     size: 18,
-                    color: AppColors.chocolate,
+                    color: colorScheme.primary,
                   ),
                   const SizedBox(width: 12),
                   Text(
                     _formatDate(_selectedDate),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
-                      color: AppColors.textPrimary,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const Spacer(),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right,
-                    color: AppColors.textTertiary,
+                    color: appColors.textTertiary,
                   ),
                 ],
               ),
@@ -232,12 +227,12 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
           const SizedBox(height: 20),
 
           // Meal type selector
-          const Text(
+          Text(
             'Meal Type',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: AppColors.textSecondary,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -253,8 +248,8 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.chocolate
-                            : AppColors.beige,
+                            ? colorScheme.primary
+                            : colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       alignment: Alignment.center,
@@ -264,8 +259,8 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: isSelected
-                              ? AppColors.warmWhite
-                              : AppColors.textSecondary,
+                              ? colorScheme.onPrimary
+                              : colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -283,20 +278,20 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
             child: ElevatedButton(
               onPressed: _isSaving ? null : _save,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.chocolate,
-                foregroundColor: AppColors.warmWhite,
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
               child: _isSaving
-                  ? const SizedBox(
+                  ? SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppColors.warmWhite,
+                        color: colorScheme.onPrimary,
                       ),
                     )
                   : Text(

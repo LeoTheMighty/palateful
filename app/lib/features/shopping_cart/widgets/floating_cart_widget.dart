@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/di/injection.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
 import '../services/shopping_cart_service.dart';
@@ -206,6 +206,8 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   }
 
   Widget _buildFloatingWidget() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     return Positioned(
       right: 16,
       bottom: 16 + MediaQuery.of(context).viewPadding.bottom,
@@ -219,11 +221,11 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
                   _isExpanded ? MediaQuery.of(context).size.height * 0.6 : 56,
             ),
             decoration: BoxDecoration(
-              color: AppColors.cardBackground,
+              color: appColors.cardBackground,
               borderRadius: BorderRadius.circular(_isExpanded ? 16 : 28),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.shadow,
+                  color: colorScheme.shadow,
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -237,6 +239,8 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   }
 
   Widget _buildCollapsedFab() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     final uncheckedCount = _list?.uncheckedCount ?? 0;
     final hasUrgent = _list?.hasUrgentItems ?? false;
 
@@ -254,7 +258,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
                 children: [
                   Icon(
                     Icons.shopping_cart,
-                    color: hasUrgent ? AppColors.warning : AppColors.chocolate,
+                    color: hasUrgent ? appColors.warning : colorScheme.primary,
                   ),
                   if (uncheckedCount > 0)
                     Positioned(
@@ -264,8 +268,8 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           color: hasUrgent
-                              ? AppColors.warning
-                              : AppColors.chocolate,
+                              ? appColors.warning
+                              : colorScheme.primary,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         constraints: const BoxConstraints(
@@ -274,10 +278,10 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
                         ),
                         child: Text(
                           uncheckedCount > 99 ? '99+' : uncheckedCount.toString(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.warmWhite,
+                            color: colorScheme.surface,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -294,15 +298,15 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
                 ),
               ],
               if (_connectionState == WebSocketState.connecting)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
                   child: SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor:
-                          AlwaysStoppedAnimation<Color>(AppColors.hazelnut),
+                          AlwaysStoppedAnimation<Color>(colorScheme.secondary),
                     ),
                   ),
                 ),
@@ -314,6 +318,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   }
 
   Widget _buildExpandedContent() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -329,7 +334,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
             padding: const EdgeInsets.all(16),
             child: Text(
               _error!,
-              style: const TextStyle(color: AppColors.error),
+              style: TextStyle(color: colorScheme.error),
             ),
           )
         else
@@ -341,6 +346,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   }
 
   Widget _buildHeader() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -351,18 +357,18 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
               children: [
                 Text(
                   _list?.name ?? 'Shopping List',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 if (_list != null)
                   Text(
                     '${_list!.uncheckedCount} items remaining',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12,
-                      color: AppColors.textSecondary,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
               ],
@@ -379,7 +385,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
             onPressed: _toggleExpanded,
             icon: const Icon(Icons.close),
             iconSize: 20,
-            color: AppColors.textSecondary,
+            color: colorScheme.onSurfaceVariant,
             visualDensity: VisualDensity.compact,
           ),
         ],
@@ -388,13 +394,14 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   }
 
   Widget _buildItemList() {
+    final appColors = context.appColors;
     if (_list == null || _list!.items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(24),
+      return Padding(
+        padding: const EdgeInsets.all(24),
         child: Center(
           child: Text(
             'No items yet',
-            style: TextStyle(color: AppColors.textTertiary),
+            style: TextStyle(color: appColors.textTertiary),
           ),
         ),
       );
@@ -436,6 +443,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   }
 
   Widget _buildFooter() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
@@ -448,7 +456,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add Item'),
               style: TextButton.styleFrom(
-                foregroundColor: AppColors.chocolate,
+                foregroundColor: colorScheme.primary,
               ),
             ),
           ),
@@ -459,7 +467,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
               },
               icon: const Icon(Icons.share),
               iconSize: 20,
-              color: AppColors.textSecondary,
+              color: colorScheme.onSurfaceVariant,
             ),
         ],
       ),

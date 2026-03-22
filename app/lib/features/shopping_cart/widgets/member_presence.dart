@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../models/shopping_list.dart';
 
 /// Widget showing online members of a shared shopping list.
@@ -75,16 +75,18 @@ class _MemberAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: _getAvatarColor(),
-        border: Border.all(color: AppColors.warmWhite, width: 2),
+        color: _getAvatarColor(colorScheme, appColors),
+        border: Border.all(color: colorScheme.surface, width: 2),
         borderRadius: BorderRadius.circular(size / 2),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow,
+            color: colorScheme.shadow,
             blurRadius: 4,
             offset: const Offset(0, 1),
           ),
@@ -98,7 +100,7 @@ class _MemberAvatar extends StatelessWidget {
               style: TextStyle(
                 fontSize: size * 0.4,
                 fontWeight: FontWeight.w600,
-                color: AppColors.warmWhite,
+                color: colorScheme.surface,
               ),
             ),
           ),
@@ -110,15 +112,15 @@ class _MemberAvatar extends StatelessWidget {
               width: size * 0.35,
               height: size * 0.35,
               decoration: BoxDecoration(
-                color: user.isShopping ? AppColors.sage : AppColors.info,
-                border: Border.all(color: AppColors.warmWhite, width: 2),
+                color: user.isShopping ? appColors.success : appColors.info,
+                border: Border.all(color: colorScheme.surface, width: 2),
                 borderRadius: BorderRadius.circular(size * 0.175),
               ),
               child: user.isShopping
                   ? Icon(
                       Icons.shopping_cart,
                       size: size * 0.2,
-                      color: AppColors.warmWhite,
+                      color: colorScheme.surface,
                     )
                   : null,
             ),
@@ -128,18 +130,18 @@ class _MemberAvatar extends StatelessWidget {
     );
   }
 
-  Color _getAvatarColor() {
+  Color _getAvatarColor(ColorScheme colorScheme, PalatefulColors appColors) {
     if (user.name == null || user.name!.isEmpty) {
-      return AppColors.hazelnut;
+      return colorScheme.secondary;
     }
     // Generate consistent color from name
     final hash = user.name.hashCode;
     final colors = [
-      AppColors.chocolate,
-      AppColors.hazelnut,
-      AppColors.terracotta,
-      AppColors.sage,
-      AppColors.info,
+      colorScheme.primary,
+      colorScheme.secondary,
+      colorScheme.tertiary,
+      appColors.success,
+      appColors.info,
     ];
     return colors[hash.abs() % colors.length];
   }
@@ -167,12 +169,13 @@ class _ExtraCountBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppColors.beige,
-        border: Border.all(color: AppColors.warmWhite, width: 2),
+        color: colorScheme.surfaceContainerHighest,
+        border: Border.all(color: colorScheme.surface, width: 2),
         borderRadius: BorderRadius.circular(size / 2),
       ),
       child: Center(
@@ -181,7 +184,7 @@ class _ExtraCountBadge extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.35,
             fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
+            color: colorScheme.onSurfaceVariant,
           ),
         ),
       ),
@@ -204,13 +207,14 @@ class PresenceIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = context.appColors;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: isOnline
-            ? (isShopping ? AppColors.sage : AppColors.info)
-            : AppColors.textDisabled,
+            ? (isShopping ? appColors.success : appColors.info)
+            : appColors.textDisabled,
         borderRadius: BorderRadius.circular(size / 2),
       ),
     );

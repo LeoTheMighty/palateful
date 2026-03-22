@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../models/shopping_list_item.dart';
 
 /// Badge showing urgency level for shopping list items.
@@ -19,13 +19,18 @@ class UrgencyBadge extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final appColors = context.appColors;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = _backgroundColor(appColors);
+    final fgColor = _foregroundColor(appColors, colorScheme);
+
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 6 : 8,
         vertical: compact ? 2 : 4,
       ),
       decoration: BoxDecoration(
-        color: _backgroundColor,
+        color: bgColor,
         borderRadius: BorderRadius.circular(compact ? 4 : 6),
       ),
       child: Row(
@@ -35,7 +40,7 @@ class UrgencyBadge extends StatelessWidget {
             Icon(
               _icon,
               size: 12,
-              color: _foregroundColor,
+              color: fgColor,
             ),
             const SizedBox(width: 4),
           ],
@@ -44,7 +49,7 @@ class UrgencyBadge extends StatelessWidget {
             style: TextStyle(
               fontSize: compact ? 10 : 11,
               fontWeight: FontWeight.w600,
-              color: _foregroundColor,
+              color: fgColor,
             ),
           ),
         ],
@@ -52,33 +57,33 @@ class UrgencyBadge extends StatelessWidget {
     );
   }
 
-  Color get _backgroundColor {
+  Color _backgroundColor(PalatefulColors appColors) {
     switch (urgency) {
       case UrgencyLevel.overdue:
-        return AppColors.errorLight;
+        return appColors.errorLight;
       case UrgencyLevel.urgent:
-        return AppColors.warningLight;
+        return appColors.warningLight;
       case UrgencyLevel.today:
-        return AppColors.infoLight;
+        return appColors.infoLight;
       case UrgencyLevel.soon:
-        return AppColors.successLight;
+        return appColors.successLight;
       default:
         return Colors.transparent;
     }
   }
 
-  Color get _foregroundColor {
+  Color _foregroundColor(PalatefulColors appColors, ColorScheme colorScheme) {
     switch (urgency) {
       case UrgencyLevel.overdue:
-        return AppColors.errorDark;
+        return colorScheme.error;
       case UrgencyLevel.urgent:
-        return AppColors.warningDark;
+        return appColors.warning;
       case UrgencyLevel.today:
-        return AppColors.infoDark;
+        return appColors.info;
       case UrgencyLevel.soon:
-        return AppColors.successDark;
+        return appColors.success;
       default:
-        return AppColors.textSecondary;
+        return colorScheme.onSurfaceVariant;
     }
   }
 
@@ -141,13 +146,15 @@ class _CountdownTimerState extends State<CountdownTimer> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     final isOverdue = _remaining.isNegative;
-    final color = isOverdue ? AppColors.error : AppColors.hazelnut;
+    final color = isOverdue ? colorScheme.error : colorScheme.secondary;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isOverdue ? AppColors.errorLight : AppColors.beige,
+        color: isOverdue ? appColors.errorLight : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -173,7 +180,7 @@ class _CountdownTimerState extends State<CountdownTimer> {
               widget.label!,
               style: TextStyle(
                 fontSize: 11,
-                color: AppColors.textSecondary,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ],

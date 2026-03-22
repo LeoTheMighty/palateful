@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 
 enum SortOption { best, newest, popular, quickest, random }
 
@@ -18,6 +18,7 @@ class SortChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appColors = context.appColors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Row(
@@ -55,9 +56,9 @@ class SortChips extends StatelessWidget {
           const Spacer(),
           Text(
             '$recipeCount recipes',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textTertiary,
+              color: appColors.textTertiary,
             ),
           ),
         ],
@@ -81,13 +82,15 @@ class _SortIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: Tooltip(
         message: tooltip,
         child: Material(
           color: isSelected
-              ? AppColors.withOpacity(AppColors.chocolate, 0.12)
+              ? colorScheme.primary.withValues(alpha: 0.12)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           child: InkWell(
@@ -101,7 +104,7 @@ class _SortIcon extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 20,
-                color: isSelected ? AppColors.chocolate : AppColors.textTertiary,
+                color: isSelected ? colorScheme.primary : appColors.textTertiary,
               ),
             ),
           ),

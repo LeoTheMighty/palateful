@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme.dart';
 
 class IngredientStrip extends StatefulWidget {
   final List<dynamic> ingredients;
@@ -23,6 +23,9 @@ class _IngredientStripState extends State<IngredientStrip> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -34,21 +37,21 @@ class _IngredientStripState extends State<IngredientStrip> {
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
             child: Row(
               children: [
-                const Text(
+                Text(
                   'INGREDIENTS',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 1,
-                    color: AppColors.textTertiary,
+                    color: appColors.textTertiary,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '${widget.checkedIndices.length}/${widget.ingredients.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11,
-                    color: AppColors.textTertiary,
+                    color: appColors.textTertiary,
                   ),
                 ),
                 const Spacer(),
@@ -64,15 +67,15 @@ class _IngredientStripState extends State<IngredientStrip> {
                       children: [
                         Text(
                           _isExpanded ? 'Collapse' : 'Expand',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.hazelnut,
+                            color: colorScheme.secondary,
                           ),
                         ),
                         Icon(
                           _isExpanded ? Icons.expand_less : Icons.expand_more,
                           size: 18,
-                          color: AppColors.hazelnut,
+                          color: colorScheme.secondary,
                         ),
                       ],
                     ),
@@ -152,6 +155,8 @@ class _IngredientChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     final name = ingredient['ingredient']?['canonical_name'] ?? 'Unknown';
     final quantity = ingredient['quantity_display'] ?? '';
     final unit = ingredient['unit_display'] ?? '';
@@ -167,10 +172,14 @@ class _IngredientChip extends StatelessWidget {
           width: 64,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: isChecked ? AppColors.sage : AppColors.beige,
+            color: isChecked
+                ? appColors.success
+                : colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isChecked ? AppColors.sage : AppColors.beigeAccent,
+              color: isChecked
+                  ? appColors.success
+                  : colorScheme.outlineVariant,
             ),
           ),
           child: Column(
@@ -182,7 +191,9 @@ class _IngredientChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: isChecked ? AppColors.cream : AppColors.textPrimary,
+                  color: isChecked
+                      ? colorScheme.surface
+                      : colorScheme.onSurface,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -193,7 +204,9 @@ class _IngredientChip extends StatelessWidget {
                 name,
                 style: TextStyle(
                   fontSize: 10,
-                  color: isChecked ? AppColors.cream : AppColors.textSecondary,
+                  color: isChecked
+                      ? colorScheme.surface
+                      : colorScheme.onSurfaceVariant,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -201,7 +214,7 @@ class _IngredientChip extends StatelessWidget {
               ),
               if (isChecked) ...[
                 const SizedBox(height: 4),
-                const Icon(Icons.check, size: 14, color: AppColors.cream),
+                Icon(Icons.check, size: 14, color: colorScheme.surface),
               ],
             ],
           ),
@@ -218,22 +231,26 @@ class _IngredientChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isChecked ? AppColors.sage : AppColors.beige,
+          color: isChecked
+              ? appColors.success
+              : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (isChecked)
-              const Padding(
-                padding: EdgeInsets.only(right: 6),
-                child: Icon(Icons.check, size: 16, color: AppColors.cream),
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Icon(Icons.check, size: 16, color: colorScheme.surface),
               ),
             Text(
               '$quantity $unit $name'.trim(),
               style: TextStyle(
                 fontSize: 13,
-                color: isChecked ? AppColors.cream : AppColors.textPrimary,
+                color: isChecked
+                    ? colorScheme.surface
+                    : colorScheme.onSurface,
                 decoration: isChecked ? TextDecoration.lineThrough : null,
               ),
             ),

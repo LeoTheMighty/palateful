@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../models/shopping_list_item.dart';
 import 'urgency_badge.dart';
 
@@ -41,7 +41,7 @@ class ShoppingListItemTile extends StatelessWidget {
             children: [
               _buildCheckbox(context),
               SizedBox(width: compact ? 8 : 12),
-              Expanded(child: _buildContent()),
+              Expanded(child: _buildContent(context)),
               if (showUrgency && item.urgencyLevel != UrgencyLevel.none)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
@@ -58,6 +58,8 @@ class ShoppingListItemTile extends StatelessWidget {
   }
 
   Widget _buildCheckbox(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     return GestureDetector(
       onTap: () => _toggleChecked(context),
       child: AnimatedContainer(
@@ -65,9 +67,9 @@ class ShoppingListItemTile extends StatelessWidget {
         width: compact ? 20 : 24,
         height: compact ? 20 : 24,
         decoration: BoxDecoration(
-          color: item.isChecked ? AppColors.sage : Colors.transparent,
+          color: item.isChecked ? appColors.success : Colors.transparent,
           border: Border.all(
-            color: item.isChecked ? AppColors.sage : AppColors.border,
+            color: item.isChecked ? appColors.success : colorScheme.outline,
             width: 2,
           ),
           borderRadius: BorderRadius.circular(6),
@@ -76,7 +78,7 @@ class ShoppingListItemTile extends StatelessWidget {
             ? Icon(
                 Icons.check,
                 size: compact ? 14 : 16,
-                color: AppColors.warmWhite,
+                color: colorScheme.surface,
               )
             : null,
       ),
@@ -88,7 +90,9 @@ class ShoppingListItemTile extends StatelessWidget {
     onChecked?.call(!item.isChecked);
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -102,8 +106,8 @@ class ShoppingListItemTile extends StatelessWidget {
                   fontSize: compact ? 14 : 15,
                   fontWeight: FontWeight.w500,
                   color: item.isChecked
-                      ? AppColors.textDisabled
-                      : AppColors.textPrimary,
+                      ? appColors.textDisabled
+                      : colorScheme.onSurface,
                   decoration:
                       item.isChecked ? TextDecoration.lineThrough : null,
                 ),
@@ -118,8 +122,8 @@ class ShoppingListItemTile extends StatelessWidget {
                 style: TextStyle(
                   fontSize: compact ? 12 : 13,
                   color: item.isChecked
-                      ? AppColors.textDisabled
-                      : AppColors.textSecondary,
+                      ? appColors.textDisabled
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -127,7 +131,7 @@ class ShoppingListItemTile extends StatelessWidget {
         ),
         if (!compact && _hasSubtext) ...[
           const SizedBox(height: 2),
-          _buildSubtext(),
+          _buildSubtext(appColors),
         ],
       ],
     );
@@ -138,7 +142,7 @@ class ShoppingListItemTile extends StatelessWidget {
       item.notes != null ||
       item.addedByUserName != null;
 
-  Widget _buildSubtext() {
+  Widget _buildSubtext(PalatefulColors appColors) {
     final parts = <String>[];
 
     if (item.category != null) {
@@ -156,8 +160,8 @@ class ShoppingListItemTile extends StatelessWidget {
       style: TextStyle(
         fontSize: 12,
         color: item.isChecked
-            ? AppColors.textDisabled
-            : AppColors.textTertiary,
+            ? appColors.textDisabled
+            : appColors.textTertiary,
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -180,16 +184,17 @@ class ShoppingListSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 8),
       child: Row(
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
+              color: colorScheme.onSurfaceVariant,
               letterSpacing: 0.5,
             ),
           ),
@@ -197,15 +202,15 @@ class ShoppingListSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: AppColors.beige,
+              color: colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               itemCount.toString(),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ),

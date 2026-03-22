@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
 import 'package:palateful/core/config/environment.dart' show kE2EMode;
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
 import '../services/shopping_cart_service.dart';
@@ -254,16 +254,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.cream,
+      backgroundColor: colorScheme.surface,
       appBar: _buildAppBar(),
       body: _buildBody(),
     );
   }
 
   PreferredSizeWidget _buildAppBar() {
+    final colorScheme = Theme.of(context).colorScheme;
     return AppBar(
-      backgroundColor: AppColors.cream,
+      backgroundColor: colorScheme.surface,
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
@@ -274,18 +276,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         children: [
           Text(
             _list?.name ?? 'Shopping List',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              color: colorScheme.onSurface,
             ),
           ),
           if (_list != null)
             Text(
               '${_list!.uncheckedCount} items remaining',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AppColors.textSecondary,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
         ],
@@ -367,7 +369,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(_error!, style: const TextStyle(color: AppColors.error)),
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadList,
@@ -387,6 +389,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Widget _buildItemList() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     if (_list == null || _list!.items.isEmpty) {
       return Center(
         child: Column(
@@ -395,22 +400,22 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             Icon(
               Icons.shopping_cart_outlined,
               size: 64,
-              color: AppColors.textDisabled,
+              color: appColors.textDisabled,
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Your shopping list is empty',
               style: TextStyle(
                 fontSize: 16,
-                color: AppColors.textSecondary,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Add items below to get started',
               style: TextStyle(
                 fontSize: 14,
-                color: AppColors.textTertiary,
+                color: appColors.textTertiary,
               ),
             ),
           ],
@@ -431,7 +436,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
     return RefreshIndicator(
       onRefresh: _loadList,
-      color: AppColors.chocolate,
+      color: colorScheme.primary,
       child: ListView(
         padding: const EdgeInsets.only(bottom: 100),
         children: [
@@ -441,17 +446,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               margin: const EdgeInsets.all(12),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.warningLight,
+                color: appColors.warningLight,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.schedule, color: AppColors.warningDark),
+                  Icon(Icons.schedule, color: appColors.warning),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       'Some items need to be purchased soon!',
-                      style: const TextStyle(color: AppColors.warningDark),
+                      style: TextStyle(color: appColors.warning),
                     ),
                   ),
                 ],
@@ -466,8 +471,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               background: Container(
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: 16),
-                color: AppColors.error,
-                child: const Icon(Icons.delete, color: AppColors.warmWhite),
+                color: colorScheme.error,
+                child: Icon(Icons.delete, color: colorScheme.surface),
               ),
               onDismissed: (_) => _deleteItem(item),
               child: ShoppingListItemTile(
@@ -497,8 +502,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 background: Container(
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 16),
-                  color: AppColors.error,
-                  child: const Icon(Icons.delete, color: AppColors.warmWhite),
+                  color: colorScheme.error,
+                  child: Icon(Icons.delete, color: colorScheme.surface),
                 ),
                 onDismissed: (_) => _deleteItem(item),
                 child: ShoppingListItemTile(
@@ -514,6 +519,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   void _showItemOptions(ShoppingListItem item) {
+    final colorScheme = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -529,9 +535,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete, color: AppColors.error),
-              title: const Text('Delete Item',
-                  style: TextStyle(color: AppColors.error)),
+              leading: Icon(Icons.delete, color: colorScheme.error),
+              title: Text('Delete Item',
+                  style: TextStyle(color: colorScheme.error)),
               onTap: () {
                 Navigator.pop(context);
                 _deleteItem(item);
@@ -544,6 +550,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   }
 
   Widget _buildAddItemBar() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     return Container(
       padding: EdgeInsets.only(
         left: 16,
@@ -552,10 +560,10 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         bottom: 12 + MediaQuery.of(context).viewPadding.bottom,
       ),
       decoration: BoxDecoration(
-        color: AppColors.warmWhite,
+        color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow,
+            color: colorScheme.shadow,
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -567,12 +575,12 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
             child: TextField(
               controller: _addItemController,
               focusNode: _addItemFocus,
-              style: const TextStyle(color: AppColors.textPrimary),
+              style: TextStyle(color: colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText: 'Add item...',
-                hintStyle: const TextStyle(color: AppColors.textTertiary),
+                hintStyle: TextStyle(color: appColors.textTertiary),
                 filled: true,
-                fillColor: AppColors.beige,
+                fillColor: colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -589,13 +597,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           const SizedBox(width: 12),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.chocolate,
+              color: colorScheme.primary,
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
               onPressed: _addItem,
               icon: const Icon(Icons.add),
-              color: AppColors.warmWhite,
+              color: colorScheme.surface,
             ),
           ),
         ],

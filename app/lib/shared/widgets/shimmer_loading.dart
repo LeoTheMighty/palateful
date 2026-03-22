@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
-import '../../core/theme/app_colors.dart';
-
 /// A generic shimmer block placeholder with configurable dimensions.
 class ShimmerBlock extends StatelessWidget {
   final double width;
@@ -18,15 +16,17 @@ class ShimmerBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest;
+    final highlightColor = colorScheme.surface;
     return Shimmer.fromColors(
-      baseColor: isDark ? AppColors.chocolateLight : AppColors.beige,
-      highlightColor: isDark ? AppColors.hazelnutDark : AppColors.creamLight,
+      baseColor: baseColor,
+      highlightColor: highlightColor,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: isDark ? AppColors.chocolateLight : AppColors.beige,
+          color: baseColor,
           borderRadius: BorderRadius.circular(borderRadius),
         ),
       ),
@@ -40,13 +40,15 @@ class ShimmerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest;
+    final highlightColor = colorScheme.surface;
     return Shimmer.fromColors(
-      baseColor: isDark ? AppColors.chocolateLight : AppColors.beige,
-      highlightColor: isDark ? AppColors.hazelnutDark : AppColors.creamLight,
+      baseColor: baseColor,
+      highlightColor: highlightColor,
       child: Container(
         decoration: BoxDecoration(
-          color: isDark ? AppColors.chocolateLight : AppColors.beige,
+          color: baseColor,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -57,7 +59,7 @@ class ShimmerCard extends StatelessWidget {
               flex: 3,
               child: Container(
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.chocolateLight : AppColors.beige,
+                  color: baseColor,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(16),
                   ),
@@ -76,7 +78,7 @@ class ShimmerCard extends StatelessWidget {
                       width: double.infinity,
                       height: 14,
                       decoration: BoxDecoration(
-                        color: isDark ? AppColors.chocolateLight : AppColors.beige,
+                        color: baseColor,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -85,7 +87,7 @@ class ShimmerCard extends StatelessWidget {
                       width: 80,
                       height: 10,
                       decoration: BoxDecoration(
-                        color: isDark ? AppColors.chocolateLight : AppColors.beige,
+                        color: baseColor,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
@@ -115,10 +117,12 @@ class ShimmerList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = colorScheme.surfaceContainerHighest;
+    final highlightColor = colorScheme.surface;
     return Shimmer.fromColors(
-      baseColor: isDark ? AppColors.chocolateLight : AppColors.beige,
-      highlightColor: isDark ? AppColors.hazelnutDark : AppColors.creamLight,
+      baseColor: baseColor,
+      highlightColor: highlightColor,
       child: Column(
         children: List.generate(itemCount, (index) {
           return Padding(
@@ -132,7 +136,7 @@ class ShimmerList extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.chocolateLight : AppColors.beige,
+                    color: baseColor,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -146,7 +150,7 @@ class ShimmerList extends StatelessWidget {
                         width: double.infinity,
                         height: 14,
                         decoration: BoxDecoration(
-                          color: isDark ? AppColors.chocolateLight : AppColors.beige,
+                          color: baseColor,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -155,7 +159,7 @@ class ShimmerList extends StatelessWidget {
                         width: 120,
                         height: 10,
                         decoration: BoxDecoration(
-                          color: isDark ? AppColors.chocolateLight : AppColors.beige,
+                          color: baseColor,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),

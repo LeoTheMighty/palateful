@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/services/api_client.dart';
 import '../../../../core/services/recipe_cache_service.dart';
-import '../../../../core/theme/app_colors.dart';
 
 /// Bottom sheet shown after the user taps "Done cooking".
 ///
@@ -73,6 +72,8 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -88,24 +89,24 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.withOpacity(AppColors.warmIvory, 0.3),
+              color: colorScheme.onSurface.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 20),
 
-          const Text(
+          Text(
             'How did it go?',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: AppColors.warmIvory,
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             widget.recipeName,
-            style: const TextStyle(fontSize: 14, color: AppColors.cream),
+            style: TextStyle(fontSize: 14, color: colorScheme.surface),
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 20),
@@ -120,7 +121,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
                 key: Key('star_$star'),
                 icon: Icon(
                   _selectedRating >= star ? Icons.star : Icons.star_border,
-                  color: AppColors.terracotta,
+                  color: colorScheme.tertiary,
                   size: 36,
                 ),
                 onPressed: () => setState(() => _selectedRating = star),
@@ -134,23 +135,23 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
             key: const Key('notes_field'),
             controller: _notesController,
             maxLines: 3,
-            style: const TextStyle(color: AppColors.warmIvory),
+            style: TextStyle(color: colorScheme.onSurface),
             decoration: InputDecoration(
               hintText: 'Add a note... (optional)',
               hintStyle: TextStyle(
-                color: AppColors.withOpacity(AppColors.warmIvory, 0.5),
+                color: colorScheme.onSurface.withValues(alpha: 0.5),
               ),
               enabledBorder: OutlineInputBorder(
                 borderSide:
-                    const BorderSide(color: AppColors.chocolateLight),
+                    BorderSide(color: colorScheme.primaryContainer),
                 borderRadius: BorderRadius.circular(8),
               ),
               focusedBorder: OutlineInputBorder(
-                borderSide: const BorderSide(color: AppColors.terracotta),
+                borderSide: BorderSide(color: colorScheme.tertiary),
                 borderRadius: BorderRadius.circular(8),
               ),
               filled: true,
-              fillColor: AppColors.withOpacity(AppColors.warmIvory, 0.05),
+              fillColor: colorScheme.onSurface.withValues(alpha: 0.05),
             ),
           ),
           const SizedBox(height: 20),
@@ -160,16 +161,16 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
             key: const Key('save_button'),
             onPressed: _isSaving ? null : _saveFeedback,
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.terracotta,
-              foregroundColor: AppColors.warmIvory,
+              backgroundColor: colorScheme.tertiary,
+              foregroundColor: colorScheme.onSurface,
               minimumSize: const Size.fromHeight(48),
             ),
             child: _isSaving
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
-                      color: AppColors.warmIvory,
+                      color: colorScheme.onSurface,
                       strokeWidth: 2,
                     ),
                   )
@@ -183,7 +184,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
             onPressed: _isSaving ? null : widget.onComplete,
             style: TextButton.styleFrom(
               foregroundColor:
-                  AppColors.withOpacity(AppColors.warmIvory, 0.6),
+                  colorScheme.onSurface.withValues(alpha: 0.6),
               minimumSize: const Size.fromHeight(48),
             ),
             child: const Text('Skip'),

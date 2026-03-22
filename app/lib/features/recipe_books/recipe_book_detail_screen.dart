@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../shared/widgets/empty_state.dart';
 import 'services/recipe_book_sync_service.dart';
@@ -560,7 +560,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _wsConnected ? AppColors.sage : AppColors.textDisabled,
+                            color: _wsConnected ? context.appColors.success : context.appColors.textDisabled,
                           ),
                         ),
                       ],

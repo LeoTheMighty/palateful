@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme.dart';
 
 class StepNavigator extends StatelessWidget {
   final int currentStep;
@@ -27,15 +27,17 @@ class StepNavigator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLastStep = currentStep == totalSteps - 1;
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
 
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.warmWhite,
+          color: colorScheme.surface,
           boxShadow: [
             BoxShadow(
-              color: AppColors.shadow,
+              color: colorScheme.shadow,
               blurRadius: 8,
               offset: const Offset(0, -2),
             ),
@@ -95,25 +97,25 @@ class StepNavigator extends StatelessWidget {
                         margin: const EdgeInsets.symmetric(horizontal: 4),
                         decoration: BoxDecoration(
                           color: isCurrent
-                              ? AppColors.chocolate
+                              ? colorScheme.primary
                               : isCompleted
-                                  ? AppColors.sage
-                                  : AppColors.beige,
+                                  ? appColors.success
+                                  : colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
                           border: isCurrent
                               ? null
                               : Border.all(
                                   color: isCompleted
-                                      ? AppColors.sage
-                                      : AppColors.beigeAccent,
+                                      ? appColors.success
+                                      : colorScheme.outlineVariant,
                                 ),
                         ),
                         child: Center(
                           child: isCompleted && !isCurrent
-                              ? const Icon(
+                              ? Icon(
                                   Icons.check,
                                   size: 14,
-                                  color: AppColors.cream,
+                                  color: colorScheme.surface,
                                 )
                               : Text(
                                   '${index + 1}',
@@ -121,8 +123,8 @@ class StepNavigator extends StatelessWidget {
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: isCurrent
-                                        ? AppColors.cream
-                                        : AppColors.textSecondary,
+                                        ? colorScheme.surface
+                                        : colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                         ),
@@ -135,11 +137,11 @@ class StepNavigator extends StatelessWidget {
 
             // Hint text
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Long press to mark all previous steps complete',
               style: TextStyle(
                 fontSize: 11,
-                color: AppColors.textTertiary,
+                color: appColors.textTertiary,
               ),
             ),
           ],
@@ -167,13 +169,15 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null;
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
 
     return Material(
       color: isPrimary && isEnabled
-          ? AppColors.chocolate
+          ? colorScheme.primary
           : isEnabled
-              ? AppColors.beige
-              : AppColors.divider,
+              ? colorScheme.surfaceContainerHighest
+              : colorScheme.outlineVariant,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: isEnabled
@@ -193,8 +197,8 @@ class _NavButton extends StatelessWidget {
                       icon,
                       size: 20,
                       color: isEnabled
-                          ? AppColors.textPrimary
-                          : AppColors.textDisabled,
+                          ? colorScheme.onSurface
+                          : appColors.textDisabled,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -203,8 +207,8 @@ class _NavButton extends StatelessWidget {
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: isEnabled
-                            ? AppColors.textPrimary
-                            : AppColors.textDisabled,
+                            ? colorScheme.onSurface
+                            : appColors.textDisabled,
                       ),
                     ),
                   ]
@@ -215,10 +219,10 @@ class _NavButton extends StatelessWidget {
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: isPrimary && isEnabled
-                            ? AppColors.cream
+                            ? colorScheme.surface
                             : isEnabled
-                                ? AppColors.textPrimary
-                                : AppColors.textDisabled,
+                                ? colorScheme.onSurface
+                                : appColors.textDisabled,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -226,10 +230,10 @@ class _NavButton extends StatelessWidget {
                       icon,
                       size: 20,
                       color: isPrimary && isEnabled
-                          ? AppColors.cream
+                          ? colorScheme.surface
                           : isEnabled
-                              ? AppColors.textPrimary
-                              : AppColors.textDisabled,
+                              ? colorScheme.onSurface
+                              : appColors.textDisabled,
                     ),
                   ],
           ),

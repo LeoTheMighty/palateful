@@ -11,7 +11,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 
 class _SelectedImage {
   final XFile file;
@@ -155,6 +155,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   void _showImageSourceDialog() {
+    final primaryColor = Theme.of(context).colorScheme.primary;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -168,7 +169,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             children: [
               if (!kIsWeb)
                 ListTile(
-                  leading: const Icon(Icons.camera_alt, color: AppColors.chocolate),
+                  leading: Icon(Icons.camera_alt, color: primaryColor),
                   title: const Text('Take Photo'),
                   onTap: () {
                     Navigator.pop(context);
@@ -177,7 +178,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                 ),
               if (kIsWeb)
                 ListTile(
-                  leading: const Icon(Icons.upload_file, color: AppColors.chocolate),
+                  leading: Icon(Icons.upload_file, color: primaryColor),
                   title: const Text('Upload Photo'),
                   onTap: () {
                     Navigator.pop(context);
@@ -185,7 +186,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                   },
                 ),
               ListTile(
-                leading: const Icon(Icons.photo_library, color: AppColors.chocolate),
+                leading: Icon(Icons.photo_library, color: primaryColor),
                 title: const Text('Choose from Gallery'),
                 subtitle: const Text('Select multiple images'),
                 onTap: () {
@@ -467,10 +468,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.cream,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: AppColors.cream,
+        backgroundColor: colorScheme.surface,
         title: const Text('Add from Photo'),
         leading: IconButton(
           icon: const Icon(Icons.close),
@@ -508,7 +510,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     if (_recipeBooks.isEmpty) {
       return Text(
         'No recipe books available. Create one first.',
-        style: TextStyle(color: AppColors.error),
+        style: TextStyle(color: Theme.of(context).colorScheme.error),
       );
     }
 
@@ -533,31 +535,32 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   Widget _buildImageSection() {
     if (_selectedImages.isEmpty) {
+      final colorScheme = Theme.of(context).colorScheme;
       return GestureDetector(
         onTap: _showImageSourceDialog,
         child: Container(
           height: 300,
           decoration: BoxDecoration(
-            color: AppColors.beige,
+            color: colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: AppColors.hazelnut.withOpacity(0.3),
+              color: colorScheme.secondary.withValues(alpha: 0.3),
               width: 2,
             ),
           ),
-          child: const Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.add_photo_alternate_outlined, size: 64, color: AppColors.hazelnut),
-              SizedBox(height: 12),
+              Icon(Icons.add_photo_alternate_outlined, size: 64, color: colorScheme.secondary),
+              const SizedBox(height: 12),
               Text(
                 'Tap to select images',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 16),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 'Take a photo or choose multiple from gallery',
-                style: TextStyle(color: AppColors.textTertiary, fontSize: 14),
+                style: TextStyle(color: context.appColors.textTertiary, fontSize: 14),
               ),
             ],
           ),
@@ -573,10 +576,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           children: [
             Text(
               '${_selectedImages.length} image${_selectedImages.length == 1 ? '' : 's'} selected',
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 16,
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             TextButton.icon(
@@ -601,6 +604,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   Widget _buildImageThumbnail(int index) {
     final img = _selectedImages[index];
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Stack(
@@ -610,7 +614,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             height: 160,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.hazelnut.withOpacity(0.3)),
+              border: Border.all(color: colorScheme.secondary.withValues(alpha: 0.3)),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(11),
@@ -668,15 +672,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   Widget _buildThumbnailFallback(_SelectedImage img) {
     final extension = img.file.name.split('.').last.toUpperCase();
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      color: AppColors.beige,
+      color: colorScheme.surfaceContainerHighest,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.image, size: 32, color: AppColors.hazelnut),
+            Icon(Icons.image, size: 32, color: colorScheme.secondary),
             const SizedBox(height: 4),
-            Text(extension, style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+            Text(extension, style: TextStyle(fontSize: 12, color: context.appColors.textTertiary)),
           ],
         ),
       ),
@@ -696,8 +701,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           : null,
       style: ElevatedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        backgroundColor: AppColors.chocolate,
-        foregroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -742,6 +747,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   Widget _buildStatusIndicator() {
+    final appColors = context.appColors;
+    final colorScheme = Theme.of(context).colorScheme;
     IconData icon;
     Color color;
     String text;
@@ -749,47 +756,47 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     switch (_status) {
       case 'uploading':
         icon = Icons.cloud_upload;
-        color = AppColors.info;
+        color = appColors.info;
         text = 'Uploading ${_selectedImages.length} image${_selectedImages.length == 1 ? '' : 's'}...';
         break;
       case 'submitting':
         icon = Icons.send;
-        color = AppColors.info;
+        color = appColors.info;
         text = 'Submitting OCR job...';
         break;
       case 'polling':
         icon = Icons.hourglass_empty;
-        color = AppColors.warning;
+        color = appColors.warning;
         final done = _jobResults.where((j) => j.status == 'succeeded' || j.status == 'failed').length;
         text = 'Reading text ($done/${_jobResults.length} complete)... This may take a minute.';
         break;
       case 'structuring':
         icon = Icons.auto_awesome;
-        color = AppColors.info;
+        color = appColors.info;
         text = 'AI is structuring your recipe...';
         break;
       case 'succeeded':
         icon = Icons.check_circle;
-        color = AppColors.success;
+        color = appColors.success;
         text = 'Recipe extracted successfully!';
         break;
       case 'failed':
         icon = Icons.error;
-        color = AppColors.error;
+        color = colorScheme.error;
         text = _error ?? 'Processing failed';
         break;
       default:
         icon = Icons.info_outline;
-        color = AppColors.textTertiary;
+        color = appColors.textTertiary;
         text = 'Select images and tap "Extract Recipe"';
     }
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -807,21 +814,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   }
 
   Widget _buildErrorSection() {
+    final appColors = context.appColors;
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.errorLight,
+        color: appColors.errorLight,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.error.withOpacity(0.3)),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: AppColors.error),
+          Icon(Icons.error_outline, color: colorScheme.error),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               _error!,
-              style: const TextStyle(color: AppColors.errorDark),
+              style: TextStyle(color: colorScheme.onErrorContainer),
             ),
           ),
         ],

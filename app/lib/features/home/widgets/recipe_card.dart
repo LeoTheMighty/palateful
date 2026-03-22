@@ -1,7 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 
 class RecipeCard extends StatelessWidget {
   final dynamic recipe;
@@ -19,6 +19,9 @@ class RecipeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     final imageUrl = recipe['image_url'];
     final name = recipe['name'] ?? 'Untitled';
     final prepTime = recipe['prep_time'];
@@ -56,9 +59,9 @@ class RecipeCard extends StatelessWidget {
                           imageUrl: imageUrl,
                           fit: BoxFit.cover,
                           placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                          errorWidget: (context, url, error) => _buildPlaceholder(),
+                          errorWidget: (context, url, error) => _buildPlaceholder(colorScheme),
                         )
-                      : _buildPlaceholder(),
+                      : _buildPlaceholder(colorScheme),
                 ),
                 if (onFavoriteToggle != null)
                   Positioned(
@@ -78,7 +81,7 @@ class RecipeCard extends StatelessWidget {
                         child: Icon(
                           isFavorite ? Icons.favorite : Icons.favorite_border,
                           size: 18,
-                          color: isFavorite ? AppColors.favorite : AppColors.warmWhite,
+                          color: isFavorite ? AppColors.favorite : colorScheme.surface,
                         ),
                       ),
                     ),
@@ -102,10 +105,10 @@ class RecipeCard extends StatelessWidget {
                     // Name
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: colorScheme.onSurface,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -130,9 +133,9 @@ class RecipeCard extends StatelessWidget {
                     if (ingredients.isNotEmpty)
                       Text(
                         _formatIngredientPreview(ingredients),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppColors.textTertiary,
+                          color: appColors.textTertiary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -144,28 +147,28 @@ class RecipeCard extends StatelessWidget {
                     Row(
                       children: [
                         if (totalTime > 0) ...[
-                          const Icon(Icons.schedule,
-                              size: 14, color: AppColors.textTertiary),
+                          Icon(Icons.schedule,
+                              size: 14, color: appColors.textTertiary),
                           const SizedBox(width: 4),
                           Text(
                             '${totalTime}m',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textTertiary,
+                              color: appColors.textTertiary,
                             ),
                           ),
                         ],
                         const Spacer(),
                         if (timesCooked > 0) ...[
-                          const Icon(Icons.restaurant,
-                              size: 14, color: AppColors.hazelnut),
+                          Icon(Icons.restaurant,
+                              size: 14, color: colorScheme.secondary),
                           const SizedBox(width: 4),
                           Text(
                             'x$timesCooked',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
-                              color: AppColors.hazelnut,
+                              color: colorScheme.secondary,
                             ),
                           ),
                         ],
@@ -181,14 +184,14 @@ class RecipeCard extends StatelessWidget {
     );
   }
 
-  Widget _buildPlaceholder() {
+  Widget _buildPlaceholder(ColorScheme colorScheme) {
     return Container(
-      color: AppColors.beige,
-      child: const Center(
+      color: colorScheme.surfaceContainerHighest,
+      child: Center(
         child: Icon(
           Icons.restaurant,
           size: 40,
-          color: AppColors.hazelnut,
+          color: colorScheme.secondary,
         ),
       ),
     );
@@ -214,19 +217,22 @@ class _MealBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     final (icon, color) = switch (mealType.toLowerCase()) {
-      'breakfast' => ('🌅', AppColors.terracotta),
-      'lunch' => ('☀️', AppColors.hazelnut),
-      'dinner' => ('🌙', AppColors.chocolate),
-      'dessert' => ('🍰', AppColors.coral),
-      'snack' => ('🍿', AppColors.sage),
-      _ => ('🍽️', AppColors.textTertiary),
+      'breakfast' => ('🌅', colorScheme.tertiary),
+      'lunch' => ('☀️', colorScheme.secondary),
+      'dinner' => ('🌙', colorScheme.primary),
+      'dessert' => ('🍰', colorScheme.error),
+      'snack' => ('🍿', appColors.success),
+      _ => ('🍽️', appColors.textTertiary),
     };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: AppColors.withOpacity(color, 0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
@@ -244,17 +250,18 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: AppColors.beige,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         tag,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 10,
-          color: AppColors.textSecondary,
+          color: colorScheme.onSurfaceVariant,
         ),
       ),
     );

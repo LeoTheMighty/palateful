@@ -4,7 +4,6 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/api_client.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../chat/chat_service.dart';
 
 class CookModeChatSheet extends StatefulWidget {
@@ -157,10 +156,10 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
             _scrollToBottom();
           case ToolCallEvent(:final name):
             final label = switch (name) {
-              'search_recipes' => 'Searching recipes…',
-              'add_note_to_recipe' => 'Adding note…',
-              'suggest_recipe' => 'Creating recipe…',
-              _ => 'Working…',
+              'search_recipes' => 'Searching recipes...',
+              'add_note_to_recipe' => 'Adding note...',
+              'suggest_recipe' => 'Creating recipe...',
+              _ => 'Working...',
             };
             setState(() {
               _messages.last.content = label;
@@ -193,12 +192,14 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return FractionallySizedBox(
       heightFactor: 0.7,
       child: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.chocolateDark,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerLow,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
@@ -209,7 +210,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.withOpacity(AppColors.warmIvory, 0.3),
+                  color: colorScheme.onSurface.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -220,16 +221,16 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: Text(
                 'Ask about ${widget.recipeName}',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.warmIvory,
+                  color: colorScheme.onSurface,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
 
-            const Divider(height: 1, color: AppColors.chocolateLight),
+            Divider(height: 1, color: colorScheme.primaryContainer),
 
             // Messages
             Expanded(
@@ -243,8 +244,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                           '"What temperature should the oven be?"\n'
                           '"What was step 3 again?"',
                           style: TextStyle(
-                            color: AppColors.withOpacity(
-                                AppColors.warmIvory, 0.5),
+                            color: colorScheme.onSurface.withValues(alpha: 0.5),
                             fontSize: 14,
                           ),
                           textAlign: TextAlign.center,
@@ -257,7 +257,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
                         final msg = _messages[index];
-                        return _buildMessage(msg);
+                        return _buildMessage(msg, colorScheme);
                       },
                     ),
             ),
@@ -266,10 +266,10 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
               decoration: BoxDecoration(
-                color: AppColors.chocolate,
+                color: colorScheme.primary,
                 border: Border(
                   top: BorderSide(
-                    color: AppColors.withOpacity(AppColors.warmIvory, 0.1),
+                    color: colorScheme.onSurface.withValues(alpha: 0.1),
                   ),
                 ),
               ),
@@ -280,17 +280,16 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                     Expanded(
                       child: TextField(
                         controller: _controller,
-                        style: const TextStyle(color: AppColors.warmIvory),
+                        style: TextStyle(color: colorScheme.onSurface),
                         decoration: InputDecoration(
                           hintText: _isListening
-                              ? 'Listening…'
-                              : 'Ask a question…',
+                              ? 'Listening...'
+                              : 'Ask a question...',
                           hintStyle: TextStyle(
-                            color: AppColors.withOpacity(
-                                AppColors.warmIvory, 0.4),
+                            color: colorScheme.onSurface.withValues(alpha: 0.4),
                           ),
                           filled: true,
-                          fillColor: AppColors.chocolateDark,
+                          fillColor: colorScheme.surfaceContainerLow,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
                             borderSide: BorderSide.none,
@@ -309,8 +308,8 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                         icon: Icon(
                           _isListening ? Icons.mic : Icons.mic_none,
                           color: _isListening
-                              ? AppColors.terracotta
-                              : AppColors.warmIvory,
+                              ? colorScheme.tertiary
+                              : colorScheme.onSurface,
                         ),
                         onPressed: _isSending
                             ? null
@@ -319,8 +318,8 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                                 : _startListening),
                         style: _isListening
                             ? IconButton.styleFrom(
-                                backgroundColor: AppColors.withOpacity(
-                                    AppColors.terracotta, 0.2),
+                                backgroundColor: colorScheme.tertiary
+                                    .withValues(alpha: 0.2),
                               )
                             : null,
                         tooltip: _isListening ? 'Stop listening' : 'Voice input',
@@ -328,7 +327,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                     ],
                     const SizedBox(width: 4),
                     IconButton(
-                      icon: const Icon(Icons.send, color: AppColors.terracotta),
+                      icon: Icon(Icons.send, color: colorScheme.tertiary),
                       onPressed: _isSending ? null : _sendMessage,
                     ),
                   ],
@@ -341,7 +340,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
     );
   }
 
-  Widget _buildMessage(_SheetMessage msg) {
+  Widget _buildMessage(_SheetMessage msg, ColorScheme colorScheme) {
     final isUser = msg.role == 'user';
 
     if (msg.isToolActivity) {
@@ -349,19 +348,19 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
         padding: const EdgeInsets.only(bottom: 12),
         child: Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.terracotta,
+                color: colorScheme.tertiary,
               ),
             ),
             const SizedBox(width: 8),
             Text(
               msg.content,
               style: TextStyle(
-                color: AppColors.withOpacity(AppColors.warmIvory, 0.6),
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
                 fontSize: 13,
                 fontStyle: FontStyle.italic,
               ),
@@ -376,19 +375,19 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
         padding: const EdgeInsets.only(bottom: 12),
         child: Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.terracotta,
+                color: colorScheme.tertiary,
               ),
             ),
             const SizedBox(width: 8),
             Text(
-              'Thinking…',
+              'Thinking...',
               style: TextStyle(
-                color: AppColors.withOpacity(AppColors.warmIvory, 0.6),
+                color: colorScheme.onSurface.withValues(alpha: 0.6),
                 fontSize: 13,
                 fontStyle: FontStyle.italic,
               ),
@@ -407,13 +406,13 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
-          color: isUser ? AppColors.terracotta : AppColors.chocolate,
+          color: isUser ? colorScheme.tertiary : colorScheme.primary,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
           msg.content,
-          style: const TextStyle(
-            color: AppColors.warmIvory,
+          style: TextStyle(
+            color: colorScheme.onSurface,
             fontSize: 15,
             height: 1.4,
           ),

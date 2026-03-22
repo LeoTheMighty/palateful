@@ -7,7 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';

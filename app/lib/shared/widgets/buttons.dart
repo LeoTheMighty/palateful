@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme.dart';
 
 /// Primary action button with rich chocolate background.
 /// Use for main CTAs like "Save", "Continue", "Submit".
@@ -22,15 +22,16 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final button = ElevatedButton(
       onPressed: isLoading ? null : onPressed,
       child: isLoading
-          ? const SizedBox(
+          ? SizedBox(
               height: 20,
               width: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.cream,
+                color: colorScheme.surface,
               ),
             )
           : icon != null
@@ -71,15 +72,16 @@ class SecondaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final button = OutlinedButton(
       onPressed: isLoading ? null : onPressed,
       child: isLoading
-          ? const SizedBox(
+          ? SizedBox(
               height: 20,
               width: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: AppColors.hazelnut,
+                color: colorScheme.secondary,
               ),
             )
           : icon != null
@@ -158,12 +160,13 @@ class SoftButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = color ?? AppColors.chocolate;
+    final colorScheme = Theme.of(context).colorScheme;
+    final baseColor = color ?? colorScheme.primary;
 
     final button = TextButton(
       onPressed: onPressed,
       style: TextButton.styleFrom(
-        backgroundColor: AppColors.withOpacity(baseColor, 0.08),
+        backgroundColor: baseColor.withValues(alpha: 0.08),
         foregroundColor: baseColor,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         shape: RoundedRectangleBorder(
@@ -210,7 +213,9 @@ class CircleIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = color ?? AppColors.textPrimary;
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+    final iconColor = color ?? colorScheme.onSurface;
     final bgColor = backgroundColor ?? Colors.transparent;
 
     final button = Material(
@@ -222,8 +227,8 @@ class CircleIconButton extends StatelessWidget {
           onPressed?.call();
         },
         customBorder: const CircleBorder(),
-        splashColor: AppColors.withOpacity(iconColor, 0.15),
-        highlightColor: AppColors.withOpacity(iconColor, 0.08),
+        splashColor: iconColor.withValues(alpha: 0.15),
+        highlightColor: iconColor.withValues(alpha: 0.08),
         mouseCursor: onPressed != null
             ? SystemMouseCursors.click
             : SystemMouseCursors.basic,
@@ -232,7 +237,7 @@ class CircleIconButton extends StatelessWidget {
           height: size,
           child: Icon(
             icon,
-            color: onPressed != null ? iconColor : AppColors.textDisabled,
+            color: onPressed != null ? iconColor : appColors.textDisabled,
             size: size * 0.5,
           ),
         ),
@@ -263,8 +268,9 @@ class PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: isSelected ? AppColors.chocolate : AppColors.beige,
+      color: isSelected ? colorScheme.primary : colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: () {
@@ -276,8 +282,8 @@ class PillButton extends StatelessWidget {
             ? SystemMouseCursors.click
             : SystemMouseCursors.basic,
         splashColor: isSelected
-            ? AppColors.withOpacity(AppColors.cream, 0.2)
-            : AppColors.withOpacity(AppColors.chocolate, 0.1),
+            ? colorScheme.surface.withValues(alpha: 0.2)
+            : colorScheme.primary.withValues(alpha: 0.1),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
@@ -287,14 +293,14 @@ class PillButton extends StatelessWidget {
                 Icon(
                   icon,
                   size: 16,
-                  color: isSelected ? AppColors.cream : AppColors.textPrimary,
+                  color: isSelected ? colorScheme.surface : colorScheme.onSurface,
                 ),
                 const SizedBox(width: 6),
               ],
               Text(
                 label,
                 style: TextStyle(
-                  color: isSelected ? AppColors.cream : AppColors.textPrimary,
+                  color: isSelected ? colorScheme.surface : colorScheme.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -327,14 +333,15 @@ class DangerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final Widget button;
 
     if (outlined) {
       button = OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.error,
-          side: const BorderSide(color: AppColors.error, width: 1.5),
+          foregroundColor: colorScheme.error,
+          side: BorderSide(color: colorScheme.error, width: 1.5),
         ),
         child: _buildChild(),
       );
@@ -342,8 +349,8 @@ class DangerButton extends StatelessWidget {
       button = ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.error,
-          foregroundColor: AppColors.cream,
+          backgroundColor: colorScheme.error,
+          foregroundColor: colorScheme.surface,
         ),
         child: _buildChild(),
       );
@@ -386,11 +393,13 @@ class SuccessButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
     final button = ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.success,
-        foregroundColor: AppColors.cream,
+        backgroundColor: appColors.success,
+        foregroundColor: colorScheme.surface,
       ),
       child: icon != null
           ? Row(

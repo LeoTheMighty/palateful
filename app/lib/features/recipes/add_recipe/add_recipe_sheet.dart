@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/theme/app_colors.dart';
+
 
 class AddRecipeSheet extends StatelessWidget {
   const AddRecipeSheet({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.warmWhite,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         child: Padding(
@@ -24,19 +25,19 @@ class AddRecipeSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.beigeAccent,
+                  color: colorScheme.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(height: 24),
 
               // Title
-              const Text(
+              Text(
                 'Add Recipe',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 24),
@@ -93,6 +94,7 @@ class _AddOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () {
         HapticFeedback.mediumImpact();
@@ -104,22 +106,22 @@ class _AddOption extends StatelessWidget {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: AppColors.beige,
+              color: colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Icon(
               icon,
               size: 32,
-              color: AppColors.chocolate,
+              color: colorScheme.primary,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary,
+              color: colorScheme.onSurface,
             ),
           ),
         ],

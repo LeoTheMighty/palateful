@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/theme.dart';
 import '../../recipes/add_recipe/batch_parser_service.dart';
 
 class BatchJobResultSheet extends StatelessWidget {
@@ -10,14 +10,17 @@ class BatchJobResultSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final appColors = context.appColors;
+
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
       minChildSize: 0.4,
       maxChildSize: 0.95,
       builder: (context, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: AppColors.cream,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
@@ -28,7 +31,7 @@ class BatchJobResultSheet extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.beigeAccent,
+                  color: colorScheme.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -39,16 +42,16 @@ class BatchJobResultSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle,
-                      size: 22, color: AppColors.success),
+                  Icon(Icons.check_circle,
+                      size: 22, color: appColors.success),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       job.filename,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: colorScheme.onSurface,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -58,7 +61,7 @@ class BatchJobResultSheet extends StatelessWidget {
               ),
             ),
 
-            const Divider(color: AppColors.divider, height: 1),
+            Divider(color: colorScheme.outlineVariant, height: 1),
 
             // Extracted text
             Expanded(
@@ -69,17 +72,17 @@ class BatchJobResultSheet extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.warmWhite,
+                    color: colorScheme.surface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.beigeAccent),
+                    border: Border.all(color: colorScheme.outlineVariant),
                   ),
                   child: SelectableText(
                     job.extractedText ?? 'No text extracted.',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 14,
                       height: 1.6,
-                      color: AppColors.textPrimary,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -96,8 +99,8 @@ class BatchJobResultSheet extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.chocolate,
-                      foregroundColor: AppColors.warmWhite,
+                      backgroundColor: colorScheme.primary,
+                      foregroundColor: colorScheme.onPrimary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
