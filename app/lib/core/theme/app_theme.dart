@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'palateful_colors_extension.dart';
 
 /// Application Theme Configuration
 ///
@@ -526,6 +527,11 @@ class AppTheme {
           fontWeight: FontWeight.w500,
         ),
       ),
+
+      // Extensions
+      extensions: const <ThemeExtension>[
+        PalatefulColors.light,
+      ],
 
       // Text Theme - Playfair Display for display/headline/title, system sans-serif for body/label
       textTheme: TextTheme(
@@ -1121,6 +1127,11 @@ class AppTheme {
           fontWeight: FontWeight.w500,
         ),
       ),
+
+      // Extensions
+      extensions: const <ThemeExtension>[
+        PalatefulColors.dark,
+      ],
 
       // Text Theme - Playfair Display for display/headline/title, system sans-serif for body/label
       textTheme: TextTheme(

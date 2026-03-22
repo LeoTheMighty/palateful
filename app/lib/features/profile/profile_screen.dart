@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
@@ -13,15 +14,16 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/push_notification_service.dart';
+import '../../providers/theme_mode_provider.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _apiClient = getIt<ApiClient>();
   final _authService = getIt<AuthService>();
 
@@ -628,6 +630,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           const SizedBox(height: 32),
 
+          // Appearance section
+          _buildSectionHeader('Appearance', textTheme),
+          const SizedBox(height: 12),
+          _buildThemeModeSelector(colorScheme, textTheme),
+
+          const SizedBox(height: 32),
+
           // Settings section
           _buildSectionHeader('Settings', textTheme),
           const SizedBox(height: 12),
@@ -670,6 +679,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildThemeModeSelector(ColorScheme colorScheme, TextTheme textTheme) {
+    final currentMode = ref.watch(themeModeProvider);
+    const modes = [
+      (ThemeMode.system, Icons.brightness_auto, 'System'),
+      (ThemeMode.light, Icons.light_mode, 'Light'),
+      (ThemeMode.dark, Icons.dark_mode, 'Dark'),
+    ];
+
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: modes.map((entry) {
+            final (mode, icon, label) = entry;
+            final isSelected = currentMode == mode;
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => ref.read(themeModeProvider.notifier).setThemeMode(mode),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? colorScheme.primary.withValues(alpha: 0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        icon,
+                        size: 22,
+                        color: isSelected
+                            ? colorScheme.primary
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

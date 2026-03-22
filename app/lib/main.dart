@@ -15,6 +15,7 @@ import 'core/services/cook_timer_notification_service.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
+import 'providers/theme_mode_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -113,17 +114,26 @@ void main() async {
     }
   }
 
-  runApp(const ProviderScope(child: PalatefulApp()));
+  final savedThemeMode = await loadSavedThemeMode();
+  runApp(
+    ProviderScope(
+      overrides: [
+        themeModeProvider
+            .overrideWith(() => ThemeModeNotifier(savedThemeMode)),
+      ],
+      child: const PalatefulApp(),
+    ),
+  );
 }
 
-class PalatefulApp extends StatefulWidget {
+class PalatefulApp extends ConsumerStatefulWidget {
   const PalatefulApp({super.key});
 
   @override
-  State<PalatefulApp> createState() => _PalatefulAppState();
+  ConsumerState<PalatefulApp> createState() => _PalatefulAppState();
 }
 
-class _PalatefulAppState extends State<PalatefulApp> {
+class _PalatefulAppState extends ConsumerState<PalatefulApp> {
   StreamSubscription? _shareSubscription;
 
   @override
@@ -190,11 +200,12 @@ class _PalatefulAppState extends State<PalatefulApp> {
 
   @override
   Widget build(BuildContext context) {
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'Palateful',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       routerConfig: appRouter,
       debugShowCheckedModeBanner: false,
     );
