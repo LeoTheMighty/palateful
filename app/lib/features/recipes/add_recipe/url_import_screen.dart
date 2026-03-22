@@ -291,8 +291,10 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
 
   String get _videoProgressMessage {
     if (_pollCount < 2) return 'Fetching video info...';
-    if (_pollCount < 5) return 'Reading captions...';
-    if (_pollCount < 8) return 'Extracting recipe...';
+    if (_pollCount < 4) return 'Reading captions...';
+    if (_pollCount < 7) return 'Extracting recipe...';
+    if (_pollCount < 12) return 'Downloading audio...';
+    if (_pollCount < 18) return 'Transcribing audio...';
     return 'Almost done...';
   }
 

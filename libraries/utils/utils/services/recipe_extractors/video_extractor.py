@@ -119,11 +119,13 @@ def has_recipe_content(metadata: dict) -> bool:
     return len(matches) >= _RECIPE_INDICATOR_THRESHOLD
 
 
-def extract_recipe_from_video(url: str) -> ExtractionResult:
+def extract_recipe_from_video(url: str, use_audio_fallback: bool = True) -> ExtractionResult:
     """Extract recipe from a social media video URL.
 
     Uses yt-dlp to fetch metadata (title, description, subtitles) without
     downloading the video, then feeds the text to the AI extractor.
+    If no recipe content found in metadata and use_audio_fallback is True,
+    falls back to audio transcription.
 
     Returns ExtractionResult with extractor_used="video_metadata" on success,
     or a failure result if no recipe content is found.
@@ -140,9 +142,17 @@ def extract_recipe_from_video(url: str) -> ExtractionResult:
         )
 
     if not has_recipe_content(metadata):
+        if use_audio_fallback:
+            from utils.services.recipe_extractors.audio_extractor import (
+                extract_recipe_from_audio,
+            )
+
+            return extract_recipe_from_audio(
+                url, duration_seconds=metadata.get("duration")
+            )
         return ExtractionResult(
             success=False,
-            error_message="No written recipe found in this video — try audio transcription or paste the recipe text",
+            error_message="No written recipe found in this video",
             error_code="NO_RECIPE_CONTENT",
             extractor_used="video_metadata",
         )
