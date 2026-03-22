@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/router/app_router.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/buttons.dart';
+import '../recipes/add_recipe/add_recipe_sheet.dart';
 
 /// Start method selection for recipe book population.
 class OnboardingStartScreen extends StatefulWidget {
@@ -59,6 +61,19 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
           _isLoading = false;
         });
         context.go('/');
+        if (method == 'import') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final ctx = rootNavigatorKey.currentContext;
+            if (ctx != null) {
+              showModalBottomSheet(
+                context: ctx,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const AddRecipeSheet(),
+              );
+            }
+          });
+        }
       } else {
         setState(() {
           _error = 'Failed to complete setup. Please try again.';

@@ -9,7 +9,6 @@ import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
-import '../../shared/widgets/empty_state.dart';
 import 'services/recipe_book_sync_service.dart';
 
 class RecipeBookDetailScreen extends StatefulWidget {
@@ -525,6 +524,85 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     if (mounted) _loadRecipeBook();
   }
 
+  Widget _buildBookEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final bookId = widget.recipeBookId;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Icon(
+                Icons.restaurant_menu,
+                size: 56,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Add your first recipe',
+              style: textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Get started by importing or creating a recipe',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            _EmptyStateCta(
+              icon: Icons.link,
+              label: 'Import from URL',
+              onTap: () async {
+                await context.push('/recipes/add/url', extra: {
+                  'recipeBookId': bookId,
+                });
+                if (mounted) _loadRecipeBook();
+              },
+            ),
+            const SizedBox(height: 8),
+            _EmptyStateCta(
+              icon: Icons.camera_alt,
+              label: 'Take a Photo',
+              onTap: () async {
+                await context.push('/recipes/add/photo', extra: {
+                  'recipeBookId': bookId,
+                });
+                if (mounted) _loadRecipeBook();
+              },
+            ),
+            const SizedBox(height: 8),
+            _EmptyStateCta(
+              icon: Icons.edit,
+              label: 'Create Manually',
+              onTap: () async {
+                await context.push('/recipes/add/wizard', extra: {
+                  'recipeBookId': bookId,
+                });
+                if (mounted) _loadRecipeBook();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -787,14 +865,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           if (_recipes.isEmpty)
                             SizedBox(
                               height: MediaQuery.of(context).size.height * 0.4,
-                              child: EmptyStateWidget(
-                                icon: Icons.restaurant_menu,
-                                title: 'Add your first recipe',
-                                subtitle: 'Tap + to add a recipe to this book',
-                                actionLabel: 'Add Recipe',
-                                actionIcon: Icons.add,
-                                onAction: _addRecipe,
-                              ),
+                              child: _buildBookEmptyState(),
                             )
                           else
                             Builder(
@@ -1078,6 +1149,40 @@ class _MetadataChip extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyStateCta extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _EmptyStateCta({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: colorScheme.primary,
+          side: BorderSide(color: colorScheme.outlineVariant),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
     );
   }
 }

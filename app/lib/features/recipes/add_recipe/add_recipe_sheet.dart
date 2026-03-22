@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-
 class AddRecipeSheet extends StatelessWidget {
-  const AddRecipeSheet({super.key});
+  final String? recipeBookId;
+
+  const AddRecipeSheet({super.key, this.recipeBookId});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -16,63 +19,116 @@ class AddRecipeSheet extends StatelessWidget {
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Drag handle
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
 
               // Title
-              Text(
-                'Add Recipe',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
+              Center(
+                child: Text(
+                  'Add Recipe',
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
 
-              // Options
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _AddOption(
-                    icon: Icons.camera_alt_rounded,
-                    label: 'Photo',
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.push('/recipes/add/photo');
-                    },
+              // Quick Import section
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  'Quick Import',
+                  style: textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
                   ),
-                  _AddOption(
-                    icon: Icons.folder_rounded,
-                    label: 'Files',
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.push('/recipes/add/files');
-                    },
-                  ),
-                  _AddOption(
-                    icon: Icons.edit_rounded,
-                    label: 'Manual',
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.push('/recipes/add/wizard');
-                    },
-                  ),
-                ],
+                ),
               ),
+              _SheetOption(
+                icon: Icons.link,
+                title: 'From URL',
+                subtitle: 'Paste a recipe link',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/recipes/add/url', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
+                },
+              ),
+              _SheetOption(
+                icon: Icons.camera_alt,
+                title: 'From Photo',
+                subtitle: 'Snap or upload a photo',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/recipes/add/photo', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
+                },
+              ),
+              _SheetOption(
+                icon: Icons.content_paste,
+                title: 'Paste Text',
+                subtitle: 'Paste recipe from anywhere',
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Coming soon')),
+                  );
+                },
+              ),
+
               const SizedBox(height: 16),
+
+              // More Options section
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Text(
+                  'More Options',
+                  style: textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              _SheetOption(
+                icon: Icons.table_chart,
+                title: 'From Spreadsheet',
+                subtitle: 'Import CSV or Excel file',
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Coming soon')),
+                  );
+                },
+              ),
+              _SheetOption(
+                icon: Icons.edit,
+                title: 'Create Manually',
+                subtitle: 'Build from scratch',
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/recipes/add/wizard', extra: {
+                    if (recipeBookId != null) 'recipeBookId': recipeBookId,
+                  });
+                },
+              ),
             ],
           ),
         ),
@@ -81,50 +137,67 @@ class AddRecipeSheet extends StatelessWidget {
   }
 }
 
-class _AddOption extends StatelessWidget {
+class _SheetOption extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
-  const _AddOption({
+  const _SheetOption({
     required this.icon,
-    required this.label,
+    required this.title,
+    required this.subtitle,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
+    final textTheme = Theme.of(context).textTheme;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
       onTap: () {
         HapticFeedback.mediumImpact();
         onTap();
       },
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 22, color: colorScheme.primary),
             ),
-            child: Icon(
-              icon,
-              size: 32,
-              color: colorScheme.primary,
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurface,
-            ),
-          ),
-        ],
+            Icon(Icons.chevron_right, color: colorScheme.outline, size: 20),
+          ],
+        ),
       ),
     );
   }
