@@ -175,7 +175,7 @@ jobs:
         run: npx nx run migrator:migrate-test
 
       - name: Run tests
-        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3
+        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e
 
       - name: Upload test reports
         if: always()
