@@ -350,6 +350,225 @@ class TestStartImport:
         assert data["source_type"] == "spreadsheet"
         assert data["total_items"] == 2
 
+    def test_start_import_audio_missing_fields(self, client, mock_db, mock_user):
+        """Test audio import without file_base64/file_name."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "audio"},
+        )
+        assert response.status_code == 400
+
+    def test_start_import_pdf_missing_fields(self, client, mock_db, mock_user):
+        """Test PDF import without file_base64/file_name."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "pdf"},
+        )
+        assert response.status_code == 400
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import.transcribe_audio", create=True)
+    @patch("utils.services.recipe_extractors.audio_extractor.transcribe_audio")
+    def test_start_import_audio_success(self, mock_transcribe, _mock_transcribe2, mock_task, client, mock_db, mock_user):
+        """Test starting an audio import job — transcribe_audio path."""
+        import base64
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+        mock_transcribe.return_value = ("Two cups of flour, one cup of sugar.", 5)
+
+        audio_data = base64.b64encode(b"fake audio content").decode()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "audio",
+                "file_base64": audio_data,
+                "file_name": "recording.m4a",
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["source_type"] == "audio"
+        assert data["total_items"] == 1
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("utils.services.recipe_extractors.pdf_extractor.classify_pdf")
+    @patch("utils.services.recipe_extractors.pdf_extractor.extract_text_from_pdf")
+    @patch("utils.services.recipe_extractors.pdf_extractor.detect_recipe_boundaries")
+    def test_start_import_pdf_text_success(self, mock_boundaries, mock_extract, mock_classify, mock_task, client, mock_db, mock_user):
+        """Test starting a text-based PDF import job."""
+        import base64
+        from enum import Enum
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+
+        class MockPdfType(Enum):
+            text = "text"
+        mock_classify.return_value = (MockPdfType.text, 3)
+        mock_extract.return_value = "Recipe 1\nFlour\nSugar\n\nRecipe 2\nEggs\nButter"
+        mock_boundaries.return_value = [
+            {"text": "Recipe 1\nFlour\nSugar", "title": "Recipe 1"},
+            {"text": "Recipe 2\nEggs\nButter", "title": "Recipe 2"},
+        ]
+
+        pdf_data = base64.b64encode(b"fake pdf content").decode()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "file_base64": pdf_data,
+                "file_name": "recipes.pdf",
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["source_type"] == "pdf"
+        assert data["total_items"] == 2
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("utils.services.recipe_extractors.pdf_extractor.classify_pdf")
+    @patch("utils.services.recipe_extractors.pdf_extractor.extract_text_from_pdf")
+    def test_start_import_pdf_scanned_success(self, mock_extract, mock_classify, mock_task, client, mock_db, mock_user):
+        """Test starting a scanned PDF import job."""
+        import base64
+        from enum import Enum
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+
+        class MockPdfType(Enum):
+            scanned = "scanned"
+        mock_classify.return_value = (MockPdfType.scanned, 5)
+        mock_extract.return_value = "OCR extracted text from scanned PDF"
+
+        pdf_data = base64.b64encode(b"fake scanned pdf content").decode()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "file_base64": pdf_data,
+                "file_name": "scanned_recipes.pdf",
+            }
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["source_type"] == "pdf"
+        assert data["total_items"] == 1
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import.detect_platform")
+    def test_start_import_url_social_platform_label(self, mock_detect, mock_task, client, mock_db, mock_user):
+        """Test URL import with social media platform enriches the activity label."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+        from utils.services.url_classifier import SocialPlatform
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        mock_task.delay.return_value = None
+        mock_detect.return_value = SocialPlatform.TIKTOK
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://www.tiktok.com/@user/video/123456",
+            }
+        )
+        assert response.status_code == 201
+
 
 class TestGetImportJob:
     """Tests for GET /v1/import-jobs/{job_id}."""

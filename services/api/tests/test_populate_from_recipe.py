@@ -103,6 +103,39 @@ class TestPopulateFromRecipeSuccess:
         assert data["items_added"] == 3
         assert data["items_skipped"] == 0
 
+    def test_populate_from_recipe_with_scale_factor(self, client, mock_db, mock_user):
+        """Quantities are scaled when scale_factor != 1.0."""
+        list_id = str(uuid.uuid4())
+        recipe_id = str(uuid.uuid4())
+        ingredient_id = str(uuid.uuid4())
+
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=str(uuid.uuid4()))
+        ri = make_recipe_ingredient(ingredient_id, recipe_id)
+        recipe.ingredients = [ri]
+
+        sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id), items=[])
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.shopping_list import ShoppingList
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+
+        response = client.post(
+            f"/v1/shopping-lists/{list_id}/populate-from-recipe",
+            json={"recipe_id": recipe_id, "scale_factor": 2.0},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items_added"] == 1
+        assert data["items_skipped"] == 0
+        # Original quantity is 2.000, scaled by 2.0 = 4.00
+        item = data["items"][0]
+        assert Decimal(str(item["quantity"])) == Decimal("4")
+
 
 class TestPopulateFromRecipeDeduplication:
     """Deduplication — already-added items from the same recipe are skipped."""

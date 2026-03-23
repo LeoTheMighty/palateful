@@ -46,8 +46,9 @@ class _FakeShoppingCartService extends ShoppingCartService {
   @override
   Future<({int itemsAdded, int itemsSkipped})> populateFromRecipe(
     String listId,
-    String recipeId,
-  ) async {
+    String recipeId, {
+    double scaleFactor = 1.0,
+  }) async {
     lastPopulateListId = listId;
     lastPopulateRecipeId = recipeId;
     return (itemsAdded: itemsAddedResult, itemsSkipped: 0);
@@ -69,8 +70,9 @@ class _FailingShoppingCartService extends ShoppingCartService {
   @override
   Future<({int itemsAdded, int itemsSkipped})> populateFromRecipe(
     String listId,
-    String recipeId,
-  ) async {
+    String recipeId, {
+    double scaleFactor = 1.0,
+  }) async {
     throw Exception('network error');
   }
 

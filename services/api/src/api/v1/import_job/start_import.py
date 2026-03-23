@@ -186,9 +186,6 @@ class StartImport(Endpoint):
             from utils.services.recipe_extractors.audio_extractor import (
                 transcribe_audio,
             )
-            from utils.services.recipe_extractors.text_extractor import (
-                extract_recipe_from_text as _extract_text,
-            )
 
             file_bytes = base64.b64decode(params.file_base64)
 
