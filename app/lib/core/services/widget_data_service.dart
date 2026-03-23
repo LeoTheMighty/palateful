@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 
@@ -21,36 +23,79 @@ class WidgetDataService {
     }
   }
 
-  /// Update the next meal name displayed in the widget.
+  /// Update the next meal widget data.
   Future<void> updateNextMeal({
     required String mealName,
     String? recipeId,
+    String? mealTime,
+    String? mealType,
   }) async {
     if (!_initialized) return;
     try {
-      await HomeWidget.saveWidgetData('next_meal_name', mealName);
-      if (recipeId != null) {
-        await HomeWidget.saveWidgetData('next_meal_recipe_id', recipeId);
-      }
+      final data = jsonEncode({
+        'name': mealName,
+        'recipe_id': recipeId,
+        'time': mealTime,
+        'type': mealType,
+      });
+      await HomeWidget.saveWidgetData('next_meal_json', data);
       await HomeWidget.updateWidget(
         iOSName: 'NextMealWidget',
         androidName: 'NextMealWidget',
       );
     } catch (e) {
-      debugPrint('Failed to update widget data: $e');
+      debugPrint('Failed to update next meal widget: $e');
     }
   }
 
-  /// Clear widget data (e.g., on logout).
-  Future<void> clear() async {
+  /// Update today's meals for the medium widget.
+  Future<void> updateTodayMeals(List<Map<String, dynamic>> meals) async {
     if (!_initialized) return;
     try {
-      await HomeWidget.saveWidgetData('next_meal_name', null);
-      await HomeWidget.saveWidgetData('next_meal_recipe_id', null);
+      await HomeWidget.saveWidgetData('today_meals_json', jsonEncode(meals));
       await HomeWidget.updateWidget(
         iOSName: 'NextMealWidget',
         androidName: 'NextMealWidget',
       );
+    } catch (e) {
+      debugPrint('Failed to update today meals widget: $e');
+    }
+  }
+
+  /// Update the shopping list widget data.
+  Future<void> updateShoppingList({
+    required String listId,
+    required String listName,
+    required int uncheckedCount,
+    required List<Map<String, String>> topItems,
+  }) async {
+    if (!_initialized) return;
+    try {
+      final data = jsonEncode({
+        'list_id': listId,
+        'name': listName,
+        'unchecked_count': uncheckedCount,
+        'items': topItems,
+      });
+      await HomeWidget.saveWidgetData('shopping_list_json', data);
+      await HomeWidget.updateWidget(
+        iOSName: 'ShoppingListWidget',
+        androidName: 'ShoppingListWidget',
+      );
+    } catch (e) {
+      debugPrint('Failed to update shopping list widget: $e');
+    }
+  }
+
+  /// Clear all widget data (e.g., on logout).
+  Future<void> clear() async {
+    if (!_initialized) return;
+    try {
+      await HomeWidget.saveWidgetData('next_meal_json', null);
+      await HomeWidget.saveWidgetData('today_meals_json', null);
+      await HomeWidget.saveWidgetData('shopping_list_json', null);
+      await HomeWidget.updateWidget(iOSName: 'NextMealWidget', androidName: 'NextMealWidget');
+      await HomeWidget.updateWidget(iOSName: 'ShoppingListWidget', androidName: 'ShoppingListWidget');
     } catch (e) {
       debugPrint('Failed to clear widget data: $e');
     }
