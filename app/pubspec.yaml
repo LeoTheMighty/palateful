@@ -64,6 +64,8 @@ dependencies:
   share_plus: ^10.1.4
   speech_to_text: ^7.0.0
   file_picker: ^10.3.10
+  home_widget: ^0.7.0
+  live_activities: ^2.0.0
 
 dev_dependencies:
   flutter_test:
