@@ -296,21 +296,7 @@ struct ShoppingListMediumView: View {
                 Spacer()
             } else {
                 ForEach(entry.items.prefix(5), id: \.self) { item in
-                    HStack {
-                        Circle()
-                            .fill(Color.palatefulTerracotta.opacity(0.3))
-                            .frame(width: 6, height: 6)
-                        Text(item["name"] ?? "")
-                            .font(.caption)
-                            .foregroundColor(.palatefulChocolate)
-                            .lineLimit(1)
-                        Spacer()
-                        if let qty = item["qty"], !qty.isEmpty {
-                            Text(qty)
-                                .font(.caption2)
-                                .foregroundColor(.palatefulHazelnut)
-                        }
-                    }
+                    ShoppingItemRow(item: item, listId: entry.listId)
                 }
             }
         }
@@ -429,6 +415,44 @@ struct PalatefulWidgets: WidgetBundle {
         }
         if #available(iOS 16.1, *) {
             CookingTimerLiveActivity()
+        }
+    }
+}
+
+// MARK: - Interactive Shopping Item Row
+
+struct ShoppingItemRow: View {
+    let item: [String: String]
+    let listId: String?
+
+    var body: some View {
+        HStack {
+            if #available(iOS 17.0, *), let itemId = item["id"], let listId = listId {
+                Button(intent: ToggleShoppingItemIntent(itemId: itemId, listId: listId, checked: true)) {
+                    itemContent
+                }
+                .buttonStyle(.plain)
+            } else {
+                itemContent
+            }
+        }
+    }
+
+    private var itemContent: some View {
+        HStack {
+            Circle()
+                .fill(Color.palatefulTerracotta.opacity(0.3))
+                .frame(width: 6, height: 6)
+            Text(item["name"] ?? "")
+                .font(.caption)
+                .foregroundColor(.palatefulChocolate)
+                .lineLimit(1)
+            Spacer()
+            if let qty = item["qty"], !qty.isEmpty {
+                Text(qty)
+                    .font(.caption2)
+                    .foregroundColor(.palatefulHazelnut)
+            }
         }
     }
 }
