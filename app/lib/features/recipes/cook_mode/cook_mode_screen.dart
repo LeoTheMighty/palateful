@@ -273,6 +273,8 @@ class _CookModeScreenState extends State<CookModeScreen>
       label: label,
       expiresAt: expiresAt,
       recipeId: widget.recipeId,
+      stepIndex: _currentStep,
+      originalDurationSeconds: duration.inSeconds,
     );
 
     activeTimer.timer = Timer.periodic(const Duration(seconds: 1), (timer) {
