@@ -34,13 +34,16 @@ class LiveActivityService {
 
     try {
       final endTime = DateTime.now().add(duration);
-      final activityId = await _liveActivities.createActivity({
-        'timerLabel': timerLabel,
-        'recipeName': recipeName,
-        'originalDuration': duration.inSeconds.toDouble(),
-        'endTime': endTime.millisecondsSinceEpoch.toDouble(),
-        'isComplete': false,
-      });
+      final activityId = await _liveActivities.createActivity(
+        'timer_$notifId',
+        {
+          'timerLabel': timerLabel,
+          'recipeName': recipeName,
+          'originalDuration': duration.inSeconds.toDouble(),
+          'endTime': endTime.millisecondsSinceEpoch.toDouble(),
+          'isComplete': false,
+        },
+      );
 
       if (activityId != null) {
         _timerActivityIds[notifId] = activityId;
