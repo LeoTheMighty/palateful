@@ -24,7 +24,7 @@ class AWSService:
         self.batch_job_queue = batch_job_queue
         self.batch_job_definition = batch_job_definition
 
-        config = Config(region_name=region)
+        config = Config(region_name=region, signature_version="s3v4")
         self._s3 = boto3.client("s3", config=config)
         self._batch = boto3.client("batch", config=config)
 
