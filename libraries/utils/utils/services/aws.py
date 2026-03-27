@@ -50,7 +50,6 @@ class AWSService:
             Params={
                 "Bucket": self.parser_inputs_bucket,
                 "Key": s3_key,
-                "ContentType": content_type,
             },
             ExpiresIn=expires_in,
         )
