@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     e2e_test_mode: bool = False
 
     # Environment
-    environment: str = "development"
+    environment: str = "dev"
 
     # AI Chat
     ai_chat_monthly_token_cap: int = 500_000
