@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -229,15 +229,25 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         final s3Key = uploadUrlResponse.data['s3_key'] as String;
         final contentType = uploadUrlResponse.data['content_type'] as String;
 
-        // Upload image to S3
-        final uploadResponse = await http.put(
-          Uri.parse(uploadUrl),
-          headers: {'Content-Type': contentType},
-          body: img.bytes,
-        );
+        // Upload image to S3 with timeout
+        debugPrint('Uploading image ${i + 1} (${img.bytes.length} bytes) to S3...');
+        debugPrint('Upload URL host: ${Uri.parse(uploadUrl).host}');
+        final http.Response uploadResponse;
+        try {
+          uploadResponse = await http.put(
+            Uri.parse(uploadUrl),
+            headers: {'Content-Type': contentType},
+            body: img.bytes,
+          ).timeout(const Duration(seconds: 60));
+        } catch (uploadError) {
+          debugPrint('S3 upload failed: $uploadError');
+          throw Exception('Image upload failed: $uploadError');
+        }
 
+        debugPrint('S3 upload response: ${uploadResponse.statusCode}');
         if (uploadResponse.statusCode != 200) {
-          throw Exception('Failed to upload image ${i + 1}: ${uploadResponse.statusCode}');
+          debugPrint('S3 error body: ${uploadResponse.body.substring(0, (uploadResponse.body.length).clamp(0, 500))}');
+          throw Exception('Image upload returned ${uploadResponse.statusCode}');
         }
 
         s3Keys.add(s3Key);
