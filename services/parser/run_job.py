@@ -39,11 +39,12 @@ def load_model(model_name: str):
     dtype = torch.float16 if device == "cuda" else torch.float32
     print(f"Loading model {model_name} on {device} with {dtype}...")
 
-    processor = AutoProcessor.from_pretrained(model_name)
+    processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForVision2Seq.from_pretrained(
         model_name,
         torch_dtype=dtype,
         device_map=device if device != "cpu" else None,
+        trust_remote_code=True,
     )
 
     if device == "cpu":

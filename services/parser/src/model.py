@@ -45,12 +45,13 @@ def load_model():
 
     print(f"Loading model {settings.model_name} on {device} with {settings.torch_dtype}...")
 
-    _processor = AutoProcessor.from_pretrained(settings.model_name)
+    _processor = AutoProcessor.from_pretrained(settings.model_name, trust_remote_code=True)
 
     _model = AutoModelForVision2Seq.from_pretrained(
         settings.model_name,
         torch_dtype=dtype,
         device_map=device if device != "cpu" else None,
+        trust_remote_code=True,
     )
 
     if device == "cpu":
