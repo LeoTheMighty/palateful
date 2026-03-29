@@ -12,6 +12,7 @@ import '../../core/utils/quantity_formatter.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/default_change_sheet.dart';
 import '../../shared/widgets/vibe_chip.dart';
+import '../../shared/widgets/vibe_picker_sheet.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
@@ -77,6 +78,42 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         setState(() {
           _error = 'Failed to load recipe: $e';
           _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showVibePicker() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => VibePickerSheet(
+        primaryVibe: _recipe?['primary_vibe'] as String?,
+        secondaryVibe: _recipe?['secondary_vibe'] as String?,
+        onSave: _saveVibes,
+      ),
+    );
+  }
+
+  Future<void> _saveVibes(String? primary, String? secondary) async {
+    // Optimistic update
+    final oldPrimary = _recipe?['primary_vibe'];
+    final oldSecondary = _recipe?['secondary_vibe'];
+    setState(() {
+      _recipe?['primary_vibe'] = primary;
+      _recipe?['secondary_vibe'] = secondary;
+    });
+
+    try {
+      await _apiClient.updateRecipe(widget.recipeId, {
+        'primary_vibe': primary ?? '',
+        'secondary_vibe': secondary ?? '',
+      });
+    } catch (e) {
+      // Revert on failure
+      if (mounted) {
+        setState(() {
+          _recipe?['primary_vibe'] = oldPrimary;
+          _recipe?['secondary_vibe'] = oldSecondary;
         });
       }
     }
@@ -713,13 +750,43 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             const SizedBox(height: 16),
                           ],
 
-                          // Vibes
-                          if (_recipe?['primary_vibe'] != null) ...[
-                            VibeChips(
-                              primaryVibe: _recipe!['primary_vibe'] as String?,
-                              secondaryVibe: _recipe!['secondary_vibe'] as String?,
-                              large: true,
-                            ),
+                          // Vibes (tappable for override)
+                          if (_recipe?['primary_vibe'] != null ||
+                              (_recipe?['can_edit'] == true)) ...[
+                            if (_recipe?['primary_vibe'] != null)
+                              VibeChips(
+                                primaryVibe:
+                                    _recipe!['primary_vibe'] as String?,
+                                secondaryVibe:
+                                    _recipe!['secondary_vibe'] as String?,
+                                large: true,
+                                onTap: _recipe?['can_edit'] == true
+                                    ? _showVibePicker
+                                    : null,
+                              )
+                            else if (_recipe?['can_edit'] == true)
+                              GestureDetector(
+                                onTap: _showVibePicker,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '+ Add vibe',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             const SizedBox(height: 12),
                           ],
 

@@ -9,6 +9,7 @@ import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
+import '../../shared/widgets/vibe_filter_bar.dart';
 import 'services/recipe_book_sync_service.dart';
 
 class RecipeBookDetailScreen extends StatefulWidget {
@@ -38,6 +39,9 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   StreamSubscription? _stateSub;
   bool _wsConnected = false;
   bool _subscribed = false;
+
+  // Vibe filter
+  String? _vibeFilter;
 
   // Multi-select state
   bool _isSelectMode = false;
@@ -861,6 +865,13 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           ),
                           const SizedBox(height: 8),
 
+                          // Vibe filter
+                          VibeFilterBar(
+                            selected: _vibeFilter,
+                            onChanged: (v) => setState(() => _vibeFilter = v),
+                          ),
+                          const SizedBox(height: 8),
+
                           // Recipes list or empty state
                           if (_recipes.isEmpty)
                             SizedBox(
@@ -870,8 +881,13 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           else
                             Builder(
                               builder: (context) {
+                                final filteredRecipes = _vibeFilter == null
+                                    ? _recipes
+                                    : _recipes.where((r) =>
+                                        r['primary_vibe'] == _vibeFilter ||
+                                        r['secondary_vibe'] == _vibeFilter).toList();
                                 final columns = ResponsiveUtils.recipeGridColumns(context);
-                                final cards = _recipes.map((recipe) {
+                                final cards = filteredRecipes.map((recipe) {
                                   final recipeId = recipe['id']?.toString();
                                   final isSelected = recipeId != null && _selectedRecipeIds.contains(recipeId);
                                   return _RecipeCard(

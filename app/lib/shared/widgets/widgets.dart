@@ -7,4 +7,6 @@
 export 'buttons.dart';
 export 'empty_state.dart';
 export 'vibe_chip.dart';
+export 'vibe_filter_bar.dart';
+export 'vibe_picker_sheet.dart';
 

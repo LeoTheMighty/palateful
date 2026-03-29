@@ -17,6 +17,7 @@ import 'widgets/batch_import_status_widget.dart';
 import 'widgets/meal_filter_bar.dart';
 import 'widgets/sort_chips.dart';
 import '../../core/theme/theme.dart';
+import '../../shared/widgets/vibe_filter_bar.dart';
 import 'widgets/recipe_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _error;
 
   MealFilter _mealFilter = MealFilter.all;
+  String? _vibeFilter;
   SortOption _sortOption = SortOption.best;
 
   dynamic _todayMealEvent; // null = no planned meal today
@@ -185,13 +187,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<dynamic> _applyFilters(List<dynamic> recipes) {
-    if (_mealFilter == MealFilter.all) return recipes;
+    var filtered = recipes;
 
-    final mealName = _mealFilter.name;
-    return recipes.where((r) {
-      final meal = r['meal_type']?.toString().toLowerCase();
-      return meal == mealName;
-    }).toList();
+    if (_mealFilter != MealFilter.all) {
+      final mealName = _mealFilter.name;
+      filtered = filtered.where((r) {
+        final meal = r['meal_type']?.toString().toLowerCase();
+        return meal == mealName;
+      }).toList();
+    }
+
+    if (_vibeFilter != null) {
+      filtered = filtered.where((r) {
+        return r['primary_vibe'] == _vibeFilter ||
+            r['secondary_vibe'] == _vibeFilter;
+      }).toList();
+    }
+
+    return filtered;
   }
 
   List<dynamic> _applySorting(List<dynamic> recipes) {
@@ -228,7 +241,19 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _mealFilter = filter;
     });
-    // Filter applied client-side in _getFilteredRecipes() — no refetch needed
+    _reapplyFilters();
+  }
+
+  void _onVibeFilterChanged(String? vibeId) {
+    setState(() {
+      _vibeFilter = vibeId;
+    });
+    _reapplyFilters();
+  }
+
+  void _reapplyFilters() {
+    // Reload recipes to re-apply filters
+    _loadRecipes();
   }
 
   void _onSortChanged(SortOption sort) {
@@ -440,6 +465,14 @@ class _HomeScreenState extends State<HomeScreen> {
               selected: _mealFilter,
               onChanged: _onMealFilterChanged,
             ),
+
+            // Vibe Filter Bar
+            VibeFilterBar(
+              selected: _vibeFilter,
+              onChanged: _onVibeFilterChanged,
+            ),
+
+            const SizedBox(height: 4),
 
             // Sort Chips
             SortChips(
