@@ -113,7 +113,7 @@ class UpdateRecipe(Endpoint):
             )
             if content_changed:
                 from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
-                embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags)
+                embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags, recipe.primary_vibe)
                 if embedding is not None:
                     recipe.embedding = embedding
                     self.database.db.commit()

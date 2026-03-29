@@ -68,6 +68,8 @@ class CreateRecipeTask(BaseTask):
                 cook_time=recipe_data.get("cook_time_minutes"),
                 image_url=recipe_data.get("image_url"),
                 source_url=recipe_data.get("source_url") or item.source_url,
+                primary_vibe=recipe_data.get("primary_vibe"),
+                secondary_vibe=recipe_data.get("secondary_vibe"),
                 recipe_book_id=job.recipe_book_id,
             )
             self.database.create(recipe)

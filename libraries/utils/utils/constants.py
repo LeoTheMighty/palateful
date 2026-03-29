@@ -20,6 +20,27 @@ AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "")
 AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "")
 AUTH0_CLIENT_ID = os.environ.get("AUTH0_CLIENT_ID", "")
 
+# Valid recipe vibe categories
+VALID_VIBES = [
+    "light_fresh",
+    "hearty",
+    "comfort",
+    "energizing",
+    "carb_load",
+    "indulgent",
+    "warming",
+]
+
+VIBE_OPTIONS = [
+    {"id": "light_fresh", "name": "Light & Fresh", "color": "#A8D8A8"},
+    {"id": "hearty", "name": "Hearty & Filling", "color": "#D4A853"},
+    {"id": "comfort", "name": "Comfort", "color": "#CB8B73"},
+    {"id": "energizing", "name": "Energizing", "color": "#8FA882"},
+    {"id": "carb_load", "name": "Carb-Load", "color": "#C8A96E"},
+    {"id": "indulgent", "name": "Indulgent", "color": "#8B6B8B"},
+    {"id": "warming", "name": "Warming", "color": "#A0522D"},
+]
+
 # Generic task constants (used by utils.tasks.task.BaseTask)
 EXPONENTIAL_BACKOFF_FACTOR = float(os.environ.get("EXPONENTIAL_BACKOFF_FACTOR", "2.0"))
 MIN_BATCH_SIZE = int(os.environ.get("MIN_BATCH_SIZE", "2"))  # Minimum chunk size

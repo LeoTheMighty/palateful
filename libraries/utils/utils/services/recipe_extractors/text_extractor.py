@@ -8,6 +8,7 @@ from utils.services.recipe_extractors.base import (
     ExtractedIngredient,
     ExtractedRecipe,
     ExtractionResult,
+    validate_vibe,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,9 @@ Return a JSON object with the following structure:
     "cuisine": "Italian",
     "category": "Main Course"
 }
+
+Also assign 1-2 vibes from: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
+Include in your JSON response: "primary_vibe": "...", "secondary_vibe": "..." or null
 
 Rules:
 - Only include fields you can find in the content
@@ -184,5 +188,7 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         cuisine=data.get("cuisine"),
         category=data.get("category"),
         keywords=data.get("keywords", []),
+        primary_vibe=validate_vibe(data.get("primary_vibe")),
+        secondary_vibe=validate_vibe(data.get("secondary_vibe")),
         raw_data=data,
     )

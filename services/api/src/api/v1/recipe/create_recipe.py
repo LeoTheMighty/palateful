@@ -70,12 +70,23 @@ class CreateRecipe(Endpoint):
         self.database.create(recipe)
         self.database.db.refresh(recipe)
 
-        # Generate embedding for semantic search (non-blocking)
-        from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
-        embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags)
+        # Assign vibes and generate embedding for semantic search (non-blocking)
+        from api.v1.search.generate_recipe_embedding import (
+            assign_vibes_for_recipe,
+            generate_recipe_embedding,
+        )
+        primary_vibe, secondary_vibe = assign_vibes_for_recipe(
+            recipe.name, recipe.description
+        )
+        recipe.primary_vibe = primary_vibe
+        recipe.secondary_vibe = secondary_vibe
+
+        embedding = generate_recipe_embedding(
+            recipe.name, recipe.description, recipe.tags, primary_vibe
+        )
         if embedding is not None:
             recipe.embedding = embedding
-            self.database.db.commit()
+        self.database.db.commit()
 
         # Create recipe ingredients
         ingredient_responses = []
@@ -174,6 +185,8 @@ class CreateRecipe(Endpoint):
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
                 tags=recipe.tags or [],
+                primary_vibe=recipe.primary_vibe,
+                secondary_vibe=recipe.secondary_vibe,
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 created_at=recipe.created_at,
@@ -248,6 +261,8 @@ class CreateRecipe(Endpoint):
         image_url: str | None = None
         source_url: str | None = None
         tags: list[str] = []
+        primary_vibe: str | None = None
+        secondary_vibe: str | None = None
         ingredients: list["CreateRecipe.IngredientResponse"] = []
         steps: list["CreateRecipe.StepResponse"] = []
         created_at: datetime

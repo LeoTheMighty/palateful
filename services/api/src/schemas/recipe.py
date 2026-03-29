@@ -64,6 +64,8 @@ class RecipeUpdate(BaseModel):
     cook_time: int | None = None
     image_url: str | None = None
     source_url: str | None = None
+    primary_vibe: str | None = None
+    secondary_vibe: str | None = None
     ingredients: list[RecipeIngredientInput] | None = None
 
 
@@ -78,6 +80,8 @@ class RecipeResponse(BaseModel):
     cook_time: int | None = None
     image_url: str | None = None
     source_url: str | None = None
+    primary_vibe: str | None = None
+    secondary_vibe: str | None = None
     ingredients: list[RecipeIngredientResponse] = []
     created_at: datetime
     updated_at: datetime
@@ -95,6 +99,8 @@ class RecipeListItem(BaseModel):
     cook_time: int | None = None
     servings: int | None = None
     image_url: str | None = None
+    primary_vibe: str | None = None
+    secondary_vibe: str | None = None
     created_at: datetime
 
     class Config:

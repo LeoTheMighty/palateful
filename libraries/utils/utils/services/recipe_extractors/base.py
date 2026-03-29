@@ -35,6 +35,8 @@ class ExtractedRecipe:
     cuisine: str | None = None
     category: str | None = None
     keywords: list[str] = field(default_factory=list)
+    primary_vibe: str | None = None
+    secondary_vibe: str | None = None
     raw_data: dict = field(default_factory=dict)  # Original structured data
 
 
@@ -48,6 +50,15 @@ class ExtractionResult:
     error_code: str | None = None
     extractor_used: str | None = None
     ai_cost_cents: int = 0
+
+
+def validate_vibe(vibe: str | None) -> str | None:
+    """Validate a vibe value against the allowed list."""
+    from utils.constants import VALID_VIBES
+
+    if vibe and vibe in VALID_VIBES:
+        return vibe
+    return None
 
 
 class BaseExtractor(ABC):

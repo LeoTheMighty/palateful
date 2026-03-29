@@ -142,6 +142,8 @@ class ExtractRecipeTask(BaseTask):
                 "cuisine": recipe.cuisine,
                 "category": recipe.category,
                 "keywords": recipe.keywords,
+                "primary_vibe": recipe.primary_vibe,
+                "secondary_vibe": recipe.secondary_vibe,
                 "extractor_used": result.extractor_used,
             }
             # Move to matching stage
