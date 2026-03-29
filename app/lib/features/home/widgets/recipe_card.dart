@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/theme.dart';
+import '../../../shared/widgets/vibe_chip.dart';
 
 class RecipeCard extends StatelessWidget {
   final dynamic recipe;
@@ -32,6 +33,8 @@ class RecipeCard extends StatelessWidget {
     final ingredients = recipe['ingredients'] as List<dynamic>? ?? [];
     final mealType = recipe['meal_type'];
     final isFavorite = recipe['is_favorite'] == true;
+    final primaryVibe = recipe['primary_vibe'] as String?;
+    final secondaryVibe = recipe['secondary_vibe'] as String?;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -115,6 +118,15 @@ class RecipeCard extends StatelessWidget {
                     ),
 
                     const SizedBox(height: 6),
+
+                    // Vibes
+                    if (primaryVibe != null) ...[
+                      VibeChips(
+                        primaryVibe: primaryVibe,
+                        secondaryVibe: secondaryVibe,
+                      ),
+                      const SizedBox(height: 6),
+                    ],
 
                     // Tags
                     if (tags.isNotEmpty) ...[

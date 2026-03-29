@@ -11,6 +11,7 @@ import '../../core/theme/theme.dart';
 import '../../core/utils/quantity_formatter.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/default_change_sheet.dart';
+import '../../shared/widgets/vibe_chip.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
@@ -710,6 +711,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   color: colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 16),
+                          ],
+
+                          // Vibes
+                          if (_recipe?['primary_vibe'] != null) ...[
+                            VibeChips(
+                              primaryVibe: _recipe!['primary_vibe'] as String?,
+                              secondaryVibe: _recipe!['secondary_vibe'] as String?,
+                              large: true,
+                            ),
+                            const SizedBox(height: 12),
                           ],
 
                           // Time and servings

@@ -6,4 +6,5 @@
 
 export 'buttons.dart';
 export 'empty_state.dart';
+export 'vibe_chip.dart';
 

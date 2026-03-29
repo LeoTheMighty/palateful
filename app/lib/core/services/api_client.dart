@@ -210,6 +210,10 @@ class ApiClient {
   Future<Response> getPublicRecipeByToken(String token) =>
       _dio.get('/v1/recipes/public/$token');
 
+  Future<Response> getVibeOptions() {
+    return _dio.get('/v1/recipes/vibes/options');
+  }
+
   Future<Response> updateRecipe(String recipeId, Map<String, dynamic> data) {
     return _dio.put('/v1/recipes/$recipeId', data: data);
   }
