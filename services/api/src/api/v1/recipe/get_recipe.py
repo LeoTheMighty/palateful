@@ -147,6 +147,8 @@ class GetRecipe(Endpoint):
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
                 tags=recipe.tags or [],
+                primary_vibe=recipe.primary_vibe,
+                secondary_vibe=recipe.secondary_vibe,
                 can_edit=membership.role in ("owner", "editor"),
                 is_favorite=favorite is not None,
                 ingredients=ingredient_responses,
@@ -206,6 +208,8 @@ class GetRecipe(Endpoint):
         image_url: str | None = None
         source_url: str | None = None
         tags: list[str] = []
+        primary_vibe: str | None = None
+        secondary_vibe: str | None = None
         can_edit: bool = False
         is_favorite: bool = False
         ingredients: list["GetRecipe.IngredientResponse"] = []

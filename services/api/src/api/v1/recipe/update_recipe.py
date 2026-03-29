@@ -95,6 +95,12 @@ class UpdateRecipe(Endpoint):
             updates["source_url"] = params.source_url
         if params.tags is not None:
             updates["tags"] = params.tags
+        if params.primary_vibe is not None or params.secondary_vibe is not None:
+            from utils.constants import VALID_VIBES
+            if params.primary_vibe is not None:
+                updates["primary_vibe"] = params.primary_vibe if params.primary_vibe in VALID_VIBES else None
+            if params.secondary_vibe is not None:
+                updates["secondary_vibe"] = params.secondary_vibe if params.secondary_vibe in VALID_VIBES else None
 
         # Capture old values for embedding diff check
         old_name, old_desc, old_tags = recipe.name, recipe.description, recipe.tags
@@ -254,6 +260,8 @@ class UpdateRecipe(Endpoint):
                 image_url=recipe.image_url,
                 source_url=recipe.source_url,
                 tags=recipe.tags or [],
+                primary_vibe=recipe.primary_vibe,
+                secondary_vibe=recipe.secondary_vibe,
                 ingredients=ingredient_responses,
                 steps=step_responses,
                 created_at=recipe.created_at,
@@ -371,6 +379,8 @@ class UpdateRecipe(Endpoint):
         image_url: str | None = None
         source_url: str | None = None
         tags: list[str] | None = None
+        primary_vibe: str | None = None
+        secondary_vibe: str | None = None
         ingredients: list["UpdateRecipe.IngredientInput"] | None = None
         steps: list["UpdateRecipe.StepInput"] | None = None
 
@@ -410,6 +420,8 @@ class UpdateRecipe(Endpoint):
         image_url: str | None = None
         source_url: str | None = None
         tags: list[str] = []
+        primary_vibe: str | None = None
+        secondary_vibe: str | None = None
         ingredients: list["UpdateRecipe.IngredientResponse"] = []
         steps: list["UpdateRecipe.StepResponse"] = []
         created_at: datetime

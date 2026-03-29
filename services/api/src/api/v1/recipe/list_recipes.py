@@ -19,7 +19,8 @@ class ListRecipes(Endpoint):
         book_id: str,
         limit: int = 20,
         offset: int = 0,
-        search: str | None = None
+        search: str | None = None,
+        vibe: str | None = None,
     ):
         """
         List recipes in a recipe book.
@@ -29,6 +30,7 @@ class ListRecipes(Endpoint):
             limit: Maximum number of results
             offset: Pagination offset
             search: Optional search query for recipe name
+            vibe: Optional vibe filter (primary or secondary)
 
         Returns:
             Paginated list of recipes
@@ -57,6 +59,13 @@ class ListRecipes(Endpoint):
         # Apply search filter
         if search:
             query = query.filter(Recipe.name.ilike(f"%{search}%"))
+
+        # Apply vibe filter
+        if vibe:
+            from sqlalchemy import or_
+            query = query.filter(
+                or_(Recipe.primary_vibe == vibe, Recipe.secondary_vibe == vibe)
+            )
 
         # Get total count
         total = query.count()
@@ -94,6 +103,8 @@ class ListRecipes(Endpoint):
                 servings=recipe.servings,
                 image_url=recipe.image_url,
                 tags=recipe.tags or [],
+                primary_vibe=recipe.primary_vibe,
+                secondary_vibe=recipe.secondary_vibe,
                 is_favorite=recipe.id in favorited_ids,
                 created_at=recipe.created_at
             )
@@ -118,6 +129,8 @@ class ListRecipes(Endpoint):
         servings: int | None = None
         image_url: str | None = None
         tags: list[str] = []
+        primary_vibe: str | None = None
+        secondary_vibe: str | None = None
         is_favorite: bool = False
         created_at: datetime
 

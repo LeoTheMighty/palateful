@@ -46,6 +46,8 @@ class ListFavorites(Endpoint):
                 servings=recipe.servings,
                 image_url=recipe.image_url,
                 tags=recipe.tags or [],
+                primary_vibe=recipe.primary_vibe,
+                secondary_vibe=recipe.secondary_vibe,
                 is_favorite=True,
                 created_at=recipe.created_at,
             )
@@ -68,6 +70,8 @@ class ListFavorites(Endpoint):
         servings: int | None = None
         image_url: str | None = None
         tags: list[str] = []
+        primary_vibe: str | None = None
+        secondary_vibe: str | None = None
         is_favorite: bool = True
         created_at: datetime
 

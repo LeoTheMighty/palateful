@@ -17,6 +17,7 @@ from api.v1.recipe import (
     GetRecipePhotoUploadUrl,
     GetRecipeVersion,
     GetRecipeVersions,
+    GetVibeOptions,
     ListArchivedRecipes,
     ListFavorites,
     ListRecipes,
@@ -48,6 +49,7 @@ async def list_recipes(
     limit: int = 20,
     offset: int = 0,
     search: str | None = None,
+    vibe: str | None = None,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -57,6 +59,7 @@ async def list_recipes(
         limit=limit,
         offset=offset,
         search=search,
+        vibe=vibe,
         user=user,
         database=database
     )
@@ -92,6 +95,15 @@ async def create_recipe(
             database=database,
         )
     return result
+
+
+# Vibe options (must be before /recipes/{recipe_id} to avoid path collision)
+@recipe_router.get("/recipes/vibes/options")
+async def get_vibe_options(
+    database: Database = Depends(get_database),
+):
+    """Get the list of valid vibes with display names and colors."""
+    return GetVibeOptions.call(database=database)
 
 
 # Archived recipes (must be before /recipes/{recipe_id} to avoid path collision)
