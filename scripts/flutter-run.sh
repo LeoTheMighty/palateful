@@ -23,6 +23,12 @@ echo ""
 # Change to app directory and run flutter
 cd "$(dirname "$0")/../app"
 
+# Update .env file with ngrok URL so flutter_dotenv picks it up
+if [ -f .env ]; then
+    sed -i '' "s|^API_BASE_URL=.*|API_BASE_URL=$NGROK_URL|" .env
+    echo -e "${GREEN}Updated .env with API_BASE_URL=$NGROK_URL${NC}"
+fi
+
 # Parse arguments
 PLATFORM=""
 BUILD_MODE="--debug"

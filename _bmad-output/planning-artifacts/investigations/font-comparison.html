@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palateful — Font Pairing Comparison</title>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Serif+Display:ital@0;1&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Bitter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600;700&family=Nunito+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=Sora:wght@400;500;600;700&family=Josefin+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    /* Palateful Light Colors */
+    --cream: #FAF7F2;
+    --cream-light: #FFFDF9;
+    --beige: #F5EFE6;
+    --beige-accent: #E8DFD0;
+    --warm-white: #FEFCF9;
+    --chocolate: #4A3728;
+    --chocolate-light: #5D4A3A;
+    --hazelnut: #8B7355;
+    --hazelnut-light: #A89076;
+    --terracotta: #BE8A60;
+    --text-primary: #2D2420;
+    --text-secondary: #6B5D54;
+    --text-tertiary: #9C8E84;
+    --border: #D9D0C5;
+    --divider: #E5DED5;
+    --card-bg: #FFFDF9;
+    --card-border: #E8DFD0;
+    --tag-bg: #F5EFE6;
+  }
+
+  [data-theme="dark"] {
+    --cream: #4A3728;
+    --cream-light: #5D4A3A;
+    --beige: #5D4A3A;
+    --beige-accent: #6B5642;
+    --warm-white: #4A3728;
+    --chocolate: #F5ECD7;
+    --chocolate-light: #A89076;
+    --hazelnut: #A89076;
+    --hazelnut-light: #BE8A60;
+    --terracotta: #BE8A60;
+    --text-primary: #F5ECD7;
+    --text-secondary: #A89076;
+    --text-tertiary: #8B7355;
+    --border: #6B5642;
+    --divider: #5D4A3A;
+    --card-bg: #5D4A3A;
+    --card-border: #6B5642;
+    --tag-bg: #5D4A3A;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: var(--cream);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    line-height: 1.6;
+  }
+
+  /* ========== HEADER ========== */
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--warm-white);
+    border-bottom: 1px solid var(--divider);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    backdrop-filter: blur(8px);
+    transition: background-color 0.3s ease;
+  }
+
+  .site-header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--chocolate);
+    letter-spacing: -0.3px;
+  }
+
+  .site-header h1 span {
+    color: var(--terracotta);
+  }
+
+  .header-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .dark-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-track {
+    width: 44px;
+    height: 24px;
+    background: var(--beige-accent);
+    border-radius: 12px;
+    position: relative;
+    transition: background 0.3s;
+    cursor: pointer;
+  }
+
+  [data-theme="dark"] .toggle-track {
+    background: var(--terracotta);
+  }
+
+  .toggle-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--warm-white);
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.3s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+
+  [data-theme="dark"] .toggle-thumb {
+    transform: translateX(20px);
+  }
+
+  .jump-nav {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+  }
+
+  .jump-nav a {
+    color: var(--hazelnut);
+    text-decoration: none;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: var(--tag-bg);
+    border: 1px solid var(--divider);
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .jump-nav a:hover {
+    background: var(--hazelnut);
+    color: var(--cream);
+    border-color: var(--hazelnut);
+  }
+
+  .jump-nav a.current-tag {
+    background: var(--terracotta);
+    color: #fff;
+    border-color: var(--terracotta);
+  }
+
+  /* ========== INTRO ========== */
+  .intro {
+    max-width: 800px;
+    margin: 48px auto 32px;
+    padding: 0 32px;
+    text-align: center;
+  }
+
+  .intro p {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    max-width: 620px;
+    margin: 0 auto;
+  }
+
+  .intro p strong {
+    color: var(--text-primary);
+  }
+
+  /* ========== PAIRING CARD ========== */
+  .pairing-section {
+    max-width: 900px;
+    margin: 0 auto 48px;
+    padding: 0 32px;
+  }
+
+  .pairing-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 20px;
+    overflow: hidden;
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+  }
+
+  .pairing-header {
+    padding: 24px 32px 20px;
+    border-bottom: 1px solid var(--divider);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .pairing-header .pairing-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--chocolate);
+    color: var(--cream);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .pairing-title-block {
+    flex: 1;
+  }
+
+  .pairing-name {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .pairing-meta {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+
+  .pairing-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .pairing-tag {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: var(--tag-bg);
+    color: var(--hazelnut);
+    border: 1px solid var(--divider);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .pairing-tag.recommended {
+    background: var(--terracotta);
+    color: #fff;
+    border-color: var(--terracotta);
+  }
+
+  /* Recipe Preview Area */
+  .recipe-preview {
+    padding: 32px;
+  }
+
+  .recipe-title-line {
+    margin-bottom: 16px;
+  }
+
+  .recipe-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    line-height: 1.25;
+  }
+
+  .recipe-subtitle {
+    font-size: 15px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  .recipe-meta-strip {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    flex-wrap: wrap;
+  }
+
+  .recipe-meta-strip span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .recipe-section-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    letter-spacing: -0.2px;
+  }
+
+  .ingredient-list {
+    list-style: none;
+    margin-bottom: 28px;
+  }
+
+  .ingredient-list li {
+    font-size: 15px;
+    color: var(--text-primary);
+    padding: 6px 0;
+    border-bottom: 1px solid var(--divider);
+    line-height: 1.5;
+  }
+
+  .ingredient-list li:last-child {
+    border-bottom: none;
+  }
+
+  .ingredient-qty {
+    font-weight: 600;
+    color: var(--hazelnut);
+  }
+
+  .step-list {
+    list-style: none;
+    counter-reset: step-counter;
+    margin-bottom: 0;
+  }
+
+  .step-list li {
+    counter-increment: step-counter;
+    font-size: 15px;
+    color: var(--text-primary);
+    line-height: 1.7;
+    padding: 12px 0 12px 48px;
+    position: relative;
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .step-list li:last-child {
+    border-bottom: none;
+  }
+
+  .step-list li::before {
+    content: counter(step-counter);
+    position: absolute;
+    left: 0;
+    top: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--tag-bg);
+    color: var(--hazelnut);
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  /* Notes block */
+  .recipe-note {
+    background: var(--tag-bg);
+    border-left: 3px solid var(--terracotta);
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin-top: 20px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  /* ========== SUMMARY TABLE ========== */
+  .summary-section {
+    max-width: 900px;
+    margin: 64px auto 80px;
+    padding: 0 32px;
+  }
+
+  .summary-section h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+  }
+
+  .summary-table th {
+    text-align: left;
+    padding: 12px 16px;
+    background: var(--tag-bg);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border);
+  }
+
+  .summary-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--divider);
+    color: var(--text-primary);
+    vertical-align: top;
+  }
+
+  .summary-table tr:hover td {
+    background: var(--tag-bg);
+  }
+
+  .rating-stars {
+    color: var(--terracotta);
+    letter-spacing: 2px;
+  }
+
+  /* ========== RESPONSIVE ========== */
+  @media (max-width: 768px) {
+    .site-header {
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px 16px;
+    }
+    .jump-nav {
+      justify-content: center;
+    }
+    .pairing-section, .summary-section, .intro {
+      padding: 0 16px;
+    }
+    .recipe-preview {
+      padding: 20px;
+    }
+    .pairing-header {
+      padding: 16px 20px;
+      flex-direction: column;
+    }
+    .recipe-title {
+      font-size: 24px;
+    }
+    .summary-table {
+      font-size: 12px;
+    }
+    .summary-table th, .summary-table td {
+      padding: 8px 10px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <h1>Palateful <span>Font Lab</span></h1>
+  <div class="header-controls">
+    <nav class="jump-nav">
+      <a href="#pairing-0" class="current-tag">Current</a>
+      <a href="#pairing-1">1</a>
+      <a href="#pairing-2">2</a>
+      <a href="#pairing-3">3</a>
+      <a href="#pairing-4">4</a>
+      <a href="#pairing-5">5</a>
+      <a href="#pairing-6">6</a>
+      <a href="#pairing-7">7</a>
+      <a href="#pairing-8">8</a>
+      <a href="#pairing-9">9</a>
+      <a href="#summary">Summary</a>
+    </nav>
+    <label class="dark-mode-toggle" id="darkToggle">
+      <span class="toggle-label">Dark</span>
+      <div class="toggle-track">
+        <div class="toggle-thumb"></div>
+      </div>
+    </label>
+  </div>
+</header>
+
+<div class="intro">
+  <p>
+    Each card below shows the same recipe content rendered with a different heading + body font pairing.
+    <strong>Toggle dark mode</strong> to evaluate contrast. The first card shows the current app fonts for baseline comparison.
+  </p>
+</div>
+
+<!-- ============================== -->
+<!-- PAIRING CARDS INJECTED BY JS   -->
+<!-- ============================== -->
+<div id="pairings-container"></div>
+
+<!-- ========== SUMMARY TABLE ========== -->
+<div class="summary-section" id="summary">
+  <h2>Quick Comparison</h2>
+  <table class="summary-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Heading</th>
+        <th>Body</th>
+        <th>Vibe</th>
+        <th>Readability</th>
+        <th>Recipe Fit</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody id="summary-body"></tbody>
+  </table>
+</div>
+
+<script>
+// ============================================================
+// FONT PAIRING DATA
+// ============================================================
+const pairings = [
+  {
+    id: 0,
+    heading: "'Playfair Display', serif",
+    body: "system-ui, -apple-system, sans-serif",
+    headingName: "Playfair Display",
+    bodyName: "System Sans-Serif",
+    category: "Current App Fonts",
+    vibe: "Classic editorial",
+    readability: "\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605",
+    tags: ["current"],
+    notes: "High-contrast serif. Elegant but can feel heavy at smaller sizes. System body is safe but generic. The serif/sans pairing creates a strong contrast that works, but Playfair's thick-thin strokes can look rigid on mobile.",
+    description: "Serif heading (Playfair Display) + system sans-serif body. This is what Palateful uses today."
+  },
+  {
+    id: 1,
+    heading: "'DM Serif Display', serif",
+    body: "'DM Sans', sans-serif",
+    headingName: "DM Serif Display",
+    bodyName: "DM Sans",
+    category: "Matched Family",
+    vibe: "Warm, approachable editorial",
+    readability: "\u2605\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605\u2605\u2605",
+    tags: ["recommended", "food-app-favorite"],
+    notes: "Both from the same design system (Colophon Foundry), so metrics are perfectly harmonized. DM Serif Display has softer, more organic curves than Playfair. DM Sans is supremely readable. Used by many premium food apps and editorial cooking sites.",
+    description: "Matched serif/sans from the DM type family. Organic warmth, excellent harmony."
+  },
+  {
+    id: 2,
+    heading: "'Lora', serif",
+    body: "'Source Sans 3', sans-serif",
+    headingName: "Lora",
+    bodyName: "Source Sans 3",
+    category: "Modern Calligraphic",
+    vibe: "Refined, warm, literary",
+    readability: "\u2605\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605\u2605",
+    tags: ["recommended"],
+    notes: "Lora has subtle calligraphic curves inspired by handwriting, giving recipes an artisanal quality. Source Sans 3 is one of the most readable sans-serifs ever designed. This pairing is popular in food blogs and cookbook layouts.",
+    description: "Calligraphic serif heading + highly readable humanist body. Popular in food editorial."
+  },
+  {
+    id: 3,
+    heading: "'Fraunces', serif",
+    body: "'Plus Jakarta Sans', sans-serif",
+    headingName: "Fraunces",
+    bodyName: "Plus Jakarta Sans",
+    category: "Soft Serif + Geometric Sans",
+    vibe: "Playful, modern, premium",
+    readability: "\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605\u2605\u2605",
+    tags: ["recommended", "trending"],
+    notes: "Fraunces is a variable 'old-style' serif with a wonky, organic character that feels handcrafted and food-friendly. Plus Jakarta Sans is geometric but soft-edged, making it comfortable for long ingredient lists. This combination feels contemporary and premium.",
+    description: "Wonky artisanal serif + soft geometric sans. Modern premium feel, very food-appropriate."
+  },
+  {
+    id: 4,
+    heading: "'Bitter', serif",
+    body: "'Nunito Sans', sans-serif",
+    headingName: "Bitter",
+    bodyName: "Nunito Sans",
+    category: "Slab Serif + Rounded Sans",
+    vibe: "Friendly, sturdy, utilitarian",
+    readability: "\u2605\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605\u2605",
+    tags: [],
+    notes: "Bitter was designed specifically for comfortable screen reading. Its slab-serif style gives headings a solid, trustworthy look. Nunito Sans has soft, rounded terminals that feel welcoming. Great for a kitchen environment where quick scanning matters.",
+    description: "Screen-optimized slab serif + friendly rounded sans. Highly legible, kitchen-practical."
+  },
+  {
+    id: 5,
+    heading: "'Libre Baskerville', serif",
+    body: "'Inter', sans-serif",
+    headingName: "Libre Baskerville",
+    bodyName: "Inter",
+    category: "Traditional Serif + UI Sans",
+    vibe: "Timeless, trustworthy",
+    readability: "\u2605\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605",
+    tags: [],
+    notes: "Libre Baskerville is a web-optimized Baskerville with excellent rendering. Inter is arguably the best UI typeface available, with every feature for readability (tabular numbers, case-sensitive forms). Reliable but can feel a bit corporate for a food app.",
+    description: "Classic Baskerville + the definitive UI sans. Rock-solid readability, slightly formal."
+  },
+  {
+    id: 6,
+    heading: "'Crimson Pro', serif",
+    body: "'Outfit', sans-serif",
+    headingName: "Crimson Pro",
+    bodyName: "Outfit",
+    category: "Elegant Serif + Modern Geometric",
+    vibe: "Refined, clean, modern",
+    readability: "\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605\u2605",
+    tags: [],
+    notes: "Crimson Pro is a lighter, more delicate serif than Playfair \u2014 it feels effortless and elegant. Outfit is a geometric sans with excellent readability and a contemporary feel. Good contrast without heaviness. Works well with Palateful's warm color palette.",
+    description: "Lighter elegant serif + clean geometric sans. Effortless sophistication."
+  },
+  {
+    id: 7,
+    heading: "'Source Serif 4', serif",
+    body: "'Source Sans 3', sans-serif",
+    headingName: "Source Serif 4",
+    bodyName: "Source Sans 3",
+    category: "Adobe Superfamily",
+    vibe: "Professional, balanced, editorial",
+    readability: "\u2605\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605",
+    tags: [],
+    notes: "Both from Adobe's Source superfamily \u2014 perfectly metric-compatible. Source Serif 4 is a variable font with optical sizing. Extremely professional and readable, but may feel more 'publication' than 'kitchen.' Great for dense recipe content.",
+    description: "Adobe's matched superfamily. Metric-compatible, professional, ideal for dense content."
+  },
+  {
+    id: 8,
+    heading: "'Bricolage Grotesque', sans-serif",
+    body: "'DM Sans', sans-serif",
+    headingName: "Bricolage Grotesque",
+    bodyName: "DM Sans",
+    category: "All Sans-Serif",
+    vibe: "Bold, contemporary, distinctive",
+    readability: "\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605\u2605",
+    tags: ["trending"],
+    notes: "A fully sans-serif approach. Bricolage Grotesque is a variable font with optical sizing that gives headings an expressive, quirky character. DM Sans grounds the body text. This feels modern and app-native. Departs from the editorial/cookbook tradition.",
+    description: "Expressive variable grotesque + clean body sans. Bold, modern, app-first approach."
+  },
+  {
+    id: 9,
+    heading: "'Sora', sans-serif",
+    body: "'Sora', sans-serif",
+    headingName: "Sora",
+    bodyName: "Sora",
+    category: "Single Family",
+    vibe: "Clean, modern, minimal",
+    readability: "\u2605\u2605\u2605\u2605",
+    recipeFit: "\u2605\u2605\u2605",
+    tags: [],
+    notes: "Single-family approach using weight contrast alone. Sora has a geometric, slightly technical character with excellent readability at all sizes. Clean and modern, but loses the personality that a serif heading brings. Used by Mela (recipe app) as inspiration.",
+    description: "Geometric sans used at multiple weights. Minimal, clean, tech-forward aesthetic."
+  }
+];
+
+// ============================================================
+// RECIPE CONTENT TEMPLATE
+// ============================================================
+function recipeHTML(p) {
+  return `
+    <div class="recipe-preview">
+      <div class="recipe-title-line">
+        <div class="recipe-title" style="font-family: ${p.heading};">${"Honey-Glazed Salmon with Roasted Vegetables"}</div>
+        <div class="recipe-subtitle" style="font-family: ${p.body};">A weeknight favorite with crispy skin salmon, sweet root vegetables, and a tangy honey-soy glaze that comes together in under 40 minutes.</div>
+      </div>
+
+      <div class="recipe-meta-strip" style="font-family: ${p.body};">
+        <span>\u23f1 35 min</span>
+        <span>\ud83c\udf7d 4 servings</span>
+        <span>\u2b50 4.8 (12 cooks)</span>
+        <span>\ud83d\udcca Medium</span>
+      </div>
+
+      <div class="recipe-section-title" style="font-family: ${p.heading};">Ingredients</div>
+      <ul class="ingredient-list" style="font-family: ${p.body};">
+        <li><span class="ingredient-qty">4</span> salmon fillets (6 oz each), skin-on</li>
+        <li><span class="ingredient-qty">3 tbsp</span> honey</li>
+        <li><span class="ingredient-qty">2 tbsp</span> soy sauce (or tamari for gluten-free)</li>
+        <li><span class="ingredient-qty">1 tbsp</span> rice vinegar</li>
+        <li><span class="ingredient-qty">2 cloves</span> garlic, minced</li>
+        <li><span class="ingredient-qty">1 lb</span> baby carrots, halved lengthwise</li>
+        <li><span class="ingredient-qty">2 cups</span> broccoli florets</li>
+        <li><span class="ingredient-qty">1 tbsp</span> olive oil</li>
+        <li><span class="ingredient-qty">\u00bc tsp</span> red pepper flakes</li>
+        <li>Salt and freshly ground black pepper</li>
+      </ul>
+
+      <div class="recipe-section-title" style="font-family: ${p.heading};">Steps</div>
+      <ol class="step-list" style="font-family: ${p.body};">
+        <li>Preheat oven to 425\u00b0F (220\u00b0C). Line a large baking sheet with parchment paper. Whisk together honey, soy sauce, rice vinegar, and minced garlic in a small bowl.</li>
+        <li>Toss carrots and broccoli with olive oil, salt, and pepper. Spread in a single layer on the prepared baking sheet. Roast for 10 minutes.</li>
+        <li>Pat salmon fillets dry and season with salt and pepper. Push vegetables to the edges and place salmon skin-side down in the center. Brush generously with the honey-soy glaze.</li>
+        <li>Return to oven and roast 12\u201315 minutes until salmon is cooked through and flakes easily. Sprinkle with red pepper flakes and serve immediately with remaining glaze on the side.</li>
+      </ol>
+
+      <div class="recipe-note" style="font-family: ${p.body};">
+        <strong style="font-family: ${p.heading};">Cook's Note:</strong> For extra-crispy skin, sear the salmon in a hot skillet for 2 minutes before transferring to the oven. The glaze also works beautifully with chicken thighs \u2014 just increase roasting time to 25 minutes.
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// RENDER ALL PAIRINGS
+// ============================================================
+const container = document.getElementById('pairings-container');
+const summaryBody = document.getElementById('summary-body');
+
+pairings.forEach((p, idx) => {
+  // Card
+  const section = document.createElement('div');
+  section.className = 'pairing-section';
+  section.id = `pairing-${p.id}`;
+
+  const tagsHTML = p.tags.map(t =>
+    `<span class="pairing-tag${t === 'recommended' ? ' recommended' : ''}${t === 'current' ? ' current-tag' : ''}">${t}</span>`
+  ).join('');
+
+  section.innerHTML = `
+    <div class="pairing-card">
+      <div class="pairing-header">
+        <span class="pairing-number">${p.id === 0 ? '\u2713' : p.id}</span>
+        <div class="pairing-title-block">
+          <div class="pairing-name">${p.headingName} + ${p.bodyName}</div>
+          <div class="pairing-meta">${p.description}</div>
+          <div class="pairing-tags">
+            <span class="pairing-tag">${p.category}</span>
+            ${tagsHTML}
+          </div>
+        </div>
+      </div>
+      ${recipeHTML(p)}
+    </div>
+  `;
+  container.appendChild(section);
+
+  // Summary row
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><a href="#pairing-${p.id}" style="color: var(--hazelnut); font-weight: 600; text-decoration: none;">${p.id === 0 ? 'Cur' : p.id}</a></td>
+    <td style="font-family: ${p.heading}; font-weight: 600;">${p.headingName}</td>
+    <td style="font-family: ${p.body};">${p.bodyName}</td>
+    <td>${p.vibe}</td>
+    <td class="rating-stars">${p.readability}</td>
+    <td class="rating-stars">${p.recipeFit}</td>
+    <td style="font-size: 12px; color: var(--text-secondary); max-width: 180px;">${p.notes.substring(0, 80)}...</td>
+  `;
+  summaryBody.appendChild(tr);
+});
+
+// ============================================================
+// DARK MODE TOGGLE
+// ============================================================
+const toggle = document.getElementById('darkToggle');
+toggle.addEventListener('click', () => {
+  const html = document.documentElement;
+  if (html.getAttribute('data-theme') === 'dark') {
+    html.removeAttribute('data-theme');
+  } else {
+    html.setAttribute('data-theme', 'dark');
+  }
+});
+
+// Smooth scroll for jump nav
+document.querySelectorAll('.jump-nav a').forEach(a => {
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+
+</body>
+</html>

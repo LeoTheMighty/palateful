@@ -22,6 +22,7 @@ pydantic = "^2.0"
 pydantic-settings = "^2.0"
 sentence-transformers = "^3.3"
 sqlalchemy = "^2.0"
+utils = {path = "../../libraries/utils", develop = true}
 
 [package.source]
 type = "directory"
@@ -1173,6 +1174,18 @@ files = [
 
 [package.extras]
 mypy = ["mypy"]
+
+[[package]]
+name = "et-xmlfile"
+version = "2.0.0"
+description = "An implementation of lxml.xmlfile for the standard library"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "et_xmlfile-2.0.0-py3-none-any.whl", hash = "sha256:7a91720bc756843502c3b7504c77b8fe44217c85c537d85037f0f536151b2caa"},
+    {file = "et_xmlfile-2.0.0.tar.gz", hash = "sha256:dab3f4764309081ce75662649be815c4c9081e88f0837825f90fd28317d4da54"},
+]
 
 [[package]]
 name = "fastapi"
@@ -3787,6 +3800,21 @@ viz = ["graphviz (>=0.17)"]
 voice = ["numpy (>=2.2.0,<3) ; python_version >= \"3.10\"", "websockets (>=15.0,<16)"]
 
 [[package]]
+name = "openpyxl"
+version = "3.1.5"
+description = "A Python library to read/write Excel 2010 xlsx/xlsm files"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"},
+    {file = "openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050"},
+]
+
+[package.dependencies]
+et-xmlfile = "*"
+
+[[package]]
 name = "opentelemetry-api"
 version = "1.39.1"
 description = "OpenTelemetry Python API"
@@ -4770,6 +4798,25 @@ crypto = ["cryptography (>=3.4.0)"]
 dev = ["coverage[toml] (==5.0.4)", "cryptography (>=3.4.0)", "pre-commit", "pytest (>=6.0.0,<7.0.0)", "sphinx", "sphinx-rtd-theme", "zope.interface"]
 docs = ["sphinx", "sphinx-rtd-theme", "zope.interface"]
 tests = ["coverage[toml] (==5.0.4)", "pytest (>=6.0.0,<7.0.0)"]
+
+[[package]]
+name = "pymupdf"
+version = "1.27.2.2"
+description = "A high performance Python library for data extraction, analysis, conversion & manipulation of PDF (and other) documents."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "pymupdf-1.27.2.2-cp310-abi3-macosx_10_9_x86_64.whl", hash = "sha256:800f43e60a6f01f644343c2213b8613db02eaf4f4ba235b417b3351fa99e01c0"},
+    {file = "pymupdf-1.27.2.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:8e2e4299ef1ac0c9dff9be096cbd22783699673abecfa7c3f73173ae06421d73"},
+    {file = "pymupdf-1.27.2.2-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:c5e3d54922db1c7da844f1208ac1db05704770988752311f81dd36694ae0a07b"},
+    {file = "pymupdf-1.27.2.2-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:892698c9768457eb0991c102c96a856c0a7062539371df5e6bee0816f3ef498e"},
+    {file = "pymupdf-1.27.2.2-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:8b4bbfa6ef347fade678771a93f6364971c51a2cdc44cd2400dc4eeed1ddb4e6"},
+    {file = "pymupdf-1.27.2.2-cp310-abi3-win32.whl", hash = "sha256:0b8e924433b7e0bd46be820899300259235997d5a747638471fb2762baa8ee30"},
+    {file = "pymupdf-1.27.2.2-cp310-abi3-win_amd64.whl", hash = "sha256:09bb53f9486ccb5297030cbc2dbdae845ba1c3c5126e96eb2d16c4f118de0b5b"},
+    {file = "pymupdf-1.27.2.2-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:6cebfbbdfd219ebdebf4d8e3914624b2e3d3a844c43f4f76935822dd9b13cc12"},
+    {file = "pymupdf-1.27.2.2.tar.gz", hash = "sha256:ea8fdc3ab6671ca98f629d5ec3032d662c8cf1796b146996b7ad306ac7ed3335"},
+]
 
 [[package]]
 name = "pyparsing"
@@ -6395,6 +6442,7 @@ h11 = ">=0.16.0"
 llama-index-core = "^0.12.50"
 openai = "^2.8.1"
 openai-agents = "^0.6.1"
+openpyxl = "^3.1"
 pgvector = "^0.4"
 pillow = ">=11.3.0"
 pinecone = {version = "^7.3.0", extras = ["grpc"]}
@@ -6996,6 +7044,28 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [[package]]
+name = "yt-dlp"
+version = "2025.12.8"
+description = "A feature-rich command-line audio/video downloader"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "yt_dlp-2025.12.8-py3-none-any.whl", hash = "sha256:36e2584342e409cfbfa0b5e61448a1c5189e345cf4564294456ee509e7d3e065"},
+    {file = "yt_dlp-2025.12.8.tar.gz", hash = "sha256:b773c81bb6b71cb2c111cfb859f453c7a71cf2ef44eff234ff155877184c3e4f"},
+]
+
+[package.extras]
+build = ["build", "hatchling (>=1.27.0)", "pip", "setuptools (>=71.0.2)", "wheel"]
+curl-cffi = ["curl-cffi (>=0.5.10,<0.6.dev0 || >=0.10.dev0,<0.14) ; implementation_name == \"cpython\""]
+default = ["brotli ; implementation_name == \"cpython\"", "brotlicffi ; implementation_name != \"cpython\"", "certifi", "mutagen", "pycryptodomex", "requests (>=2.32.2,<3)", "urllib3 (>=2.0.2,<3)", "websockets (>=13.0)", "yt-dlp-ejs (==0.3.2)"]
+dev = ["autopep8 (>=2.0,<3.0)", "pre-commit", "pytest (>=8.1,<9.0)", "pytest-rerunfailures (>=14.0,<15.0)", "ruff (>=0.14.0,<0.15.0)"]
+pyinstaller = ["pyinstaller (>=6.17.0)"]
+secretstorage = ["cffi", "secretstorage"]
+static-analysis = ["autopep8 (>=2.0,<3.0)", "ruff (>=0.14.0,<0.15.0)"]
+test = ["pytest (>=8.1,<9.0)", "pytest-rerunfailures (>=14.0,<15.0)"]
+
+[[package]]
 name = "zipp"
 version = "3.23.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -7130,4 +7200,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.13"
-content-hash = "5c9a05fff8e8c72c9d12af968c5e0a7669871bd7f1e7e16f1445f953fb49e507"
+content-hash = "582e4688b997469502d8d90d0bededc8a74cbc966b9831f3176f9171e3771eb6"

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palateful — Light vs Dark Side-by-Side</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAF7F2;
+    --cream-light: #FFFDF9;
+    --beige: #F5EFE6;
+    --beige-accent: #E8DFD0;
+    --warm-white: #FEFCF9;
+    --chocolate: #4A3728;
+    --chocolate-light: #5D4A3A;
+    --chocolate-dark: #3A2A1E;
+    --hazelnut: #8B7355;
+    --hazelnut-light: #A89076;
+    --terracotta: #BE8A60;
+    --sage: #8FA882;
+    --coral: #CB8B73;
+    --dusty-rose: #B86B6B;
+    --text-primary: #2D2420;
+    --text-secondary: #6B5D54;
+    --text-tertiary: #9C8E84;
+    --divider: #E5DED5;
+    --border: #D9D0C5;
+    --ivory: #F5ECD7;
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Dark mode tokens */
+    --dk-bg: #4A3728;
+    --dk-surface: #5D4A3A;
+    --dk-surface-dim: #3A2A1E;
+    --dk-text: #F5ECD7;
+    --dk-text-secondary: #A89076;
+    --dk-text-tertiary: #8B7355;
+    --dk-divider: rgba(245, 236, 215, 0.1);
+    --dk-border: rgba(245, 236, 215, 0.15);
+    --dk-card: #5D4A3A;
+    --dk-card-border: rgba(245, 236, 215, 0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--font-sans); background: #2D2420; color: var(--text-primary); }
+
+  .showcase-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    background: var(--chocolate-dark); padding: 16px 24px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .showcase-nav h1 { font-family: var(--font-serif); color: var(--cream); font-size: 20px; font-weight: 700; margin-right: auto; }
+  .version-tag { background: var(--terracotta); color: white; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; }
+  .nav-btn {
+    background: transparent; border: 1.5px solid var(--hazelnut); color: var(--cream);
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;
+  }
+  .nav-btn:hover, .nav-btn.active { background: var(--chocolate); border-color: var(--terracotta); }
+
+  .direction-section { display: none; padding: 80px 16px 48px; min-height: 100vh; }
+  .direction-section.active { display: block; }
+
+  .direction-header { max-width: 1000px; margin: 0 auto 40px; text-align: center; }
+  .direction-header h2 { font-family: var(--font-serif); color: var(--cream); font-size: 28px; margin-bottom: 8px; }
+  .direction-header p { color: var(--hazelnut-light); font-size: 15px; line-height: 1.5; }
+
+  .side-by-side {
+    display: flex; justify-content: center; gap: 32px; flex-wrap: wrap; margin-bottom: 40px;
+  }
+
+  .phone-wrapper { text-align: center; }
+  .phone-wrapper h3 {
+    color: var(--hazelnut-light); font-size: 13px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;
+  }
+
+  .phone-frame {
+    width: 360px; height: 780px; border-radius: 36px; overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4); position: relative;
+  }
+
+  .status-bar {
+    height: 40px; padding: 10px 20px 0;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 600;
+  }
+
+  .comparison-note {
+    max-width: 800px; margin: 0 auto 32px;
+    background: rgba(250,247,242,0.05); border: 1px solid rgba(250,247,242,0.1);
+    border-radius: 12px; padding: 20px; color: var(--hazelnut-light); font-size: 14px; line-height: 1.6;
+  }
+  .comparison-note strong { color: var(--cream); display: block; margin-bottom: 8px; font-family: var(--font-serif); font-size: 16px; }
+
+  /* ===== LIGHT MODE COMPONENTS ===== */
+  .light-mode { background: var(--cream); }
+  .light-mode .status-bar { color: var(--text-primary); }
+
+  .light-mode .bottom-nav {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+    background: var(--warm-white); border-top: 1px solid var(--divider);
+    display: flex; justify-content: space-around; align-items: flex-start; padding-top: 8px;
+  }
+  .light-mode .nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; color: var(--text-tertiary); }
+  .light-mode .nav-item.active { color: var(--chocolate); }
+  .light-mode .nav-icon { font-size: 16px; }
+
+  .light-mode .content-area { height: calc(780px - 40px); overflow-y: auto; padding-bottom: 80px; }
+
+  /* Light search */
+  .l-search { margin: 8px 16px 10px; background: var(--warm-white); border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 14px; }
+
+  /* Light hero card */
+  .l-hero { margin: 0 16px 16px; border-radius: 14px; overflow: hidden; border: 1px solid var(--beige-accent); background: var(--cream-light); }
+  .l-hero-img { height: 140px; position: relative; }
+  .l-hero-img .badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); color: white; padding: 3px 10px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+  .l-hero-img .cook-btn { position: absolute; bottom: 10px; right: 10px; background: var(--chocolate); color: var(--cream); padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .l-hero-body { padding: 12px 14px; }
+  .l-hero-body h4 { font-family: var(--font-serif); font-size: 18px; font-weight: 700; color: var(--text-primary); margin-bottom: 3px; }
+  .l-hero-body .meta { font-size: 12px; color: var(--text-secondary); }
+
+  /* Light section header */
+  .l-section { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; margin-bottom: 10px; }
+  .l-section h3 { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--text-primary); }
+  .l-section span { font-size: 12px; color: var(--hazelnut); }
+
+  /* Light card grid */
+  .l-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; margin-bottom: 20px; }
+  .l-card { border-radius: 10px; overflow: hidden; border: 1px solid var(--beige-accent); background: var(--cream-light); }
+  .l-card-img { height: 95px; position: relative; }
+  .l-card-img .fav { position: absolute; top: 6px; right: 6px; font-size: 12px; background: rgba(0,0,0,0.3); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; }
+  .l-card-body { padding: 8px 10px; }
+  .l-card-body h5 { font-family: var(--font-serif); font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px; line-height: 1.3; }
+  .l-card-body .meta { font-size: 10px; color: var(--text-tertiary); display: flex; gap: 6px; }
+
+  .l-stat { text-align: center; padding: 6px 16px 12px; font-size: 12px; color: var(--text-tertiary); }
+  .l-stat strong { color: var(--hazelnut); }
+
+  /* Light recipe detail */
+  .l-recipe-hero { height: 220px; position: relative; }
+  .l-recipe-hero .back { position: absolute; top: 10px; left: 10px; width: 32px; height: 32px; background: rgba(0,0,0,0.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; }
+  .l-recipe-hero .actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+  .l-recipe-hero .act-btn { width: 32px; height: 32px; background: rgba(0,0,0,0.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; }
+
+  .l-recipe-body { padding: 16px; }
+  .l-recipe-body h2 { font-family: var(--font-serif); font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1.2; margin-bottom: 4px; }
+  .l-lineage { font-size: 11px; color: var(--text-tertiary); font-style: italic; margin-bottom: 10px; }
+  .l-meta-row { display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+  .l-version { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--beige); border-radius: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+  .l-version strong { color: var(--hazelnut); }
+  .l-tags { display: flex; gap: 6px; margin-bottom: 16px; }
+  .l-tag { background: var(--beige); color: var(--text-secondary); padding: 5px 10px; border-radius: 16px; font-size: 11px; font-weight: 500; }
+  .l-sect-title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; }
+  .l-ingredient { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--divider); font-size: 14px; }
+  .l-ingredient .name { color: var(--text-primary); }
+  .l-ingredient .amt { color: var(--hazelnut); font-weight: 500; }
+  .l-cook-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 18px 0 12px; padding: 14px; background: var(--chocolate); color: var(--cream); border-radius: 10px; font-size: 15px; font-weight: 600; }
+  .l-actions-row { display: flex; gap: 6px; margin-bottom: 16px; }
+  .l-actions-row > div { flex: 1; padding: 10px; background: var(--beige); border-radius: 8px; text-align: center; font-size: 12px; color: var(--text-secondary); }
+
+  /* Light cooking mode */
+  .l-cooking { height: calc(780px - 40px); display: flex; flex-direction: column; }
+  .l-cook-header { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider); }
+  .l-cook-header .close { font-size: 18px; color: var(--text-primary); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+  .l-cook-header .rname { font-family: var(--font-serif); font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .l-cook-header .tbtn { background: var(--terracotta); color: var(--cream); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .l-strip { padding: 12px 16px; background: var(--beige); display: flex; gap: 16px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--divider); }
+  .l-strip-item { flex-shrink: 0; text-align: center; }
+  .l-strip-item .amt { font-size: 15px; font-weight: 600; color: var(--chocolate); }
+  .l-strip-item .iname { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+  .l-step-area { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 28px 24px; text-align: center; }
+  .l-step-label { font-size: 13px; font-weight: 600; color: var(--hazelnut); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px; }
+  .l-step-text { font-size: 22px; font-weight: 400; color: var(--text-primary); line-height: 1.5; }
+  .l-dots { display: flex; justify-content: center; gap: 6px; margin-top: 20px; }
+  .l-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--beige-accent); }
+  .l-dot.done { background: var(--sage); }
+  .l-dot.active { background: var(--chocolate); width: 20px; border-radius: 4px; }
+  .l-timer-bar { padding: 12px 16px; background: rgba(143,168,130,0.1); display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--divider); }
+  .l-timer-bar .tl { font-size: 13px; color: var(--sage); }
+  .l-timer-bar .tt { font-size: 24px; font-weight: 700; color: var(--sage); font-variant-numeric: tabular-nums; }
+  .l-swipe { text-align: center; font-size: 11px; color: var(--text-tertiary); padding: 6px; }
+  .l-cook-bottom { padding: 12px 16px 28px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--divider); }
+  .l-cnav { padding: 14px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .l-cnav.prev { border: 1.5px solid var(--border); color: var(--text-primary); background: transparent; }
+  .l-cnav.next { background: var(--chocolate); color: var(--cream); }
+  .l-voice { width: 52px; height: 52px; border-radius: 50%; background: var(--chocolate); color: var(--cream); display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 3px 12px rgba(0,0,0,0.15); }
+
+  /* ===== DARK MODE COMPONENTS ===== */
+  .dark-mode { background: var(--dk-bg); }
+  .dark-mode .status-bar { color: var(--ivory); }
+
+  .dark-mode .bottom-nav {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+    background: var(--dk-surface-dim); border-top: 1px solid var(--dk-divider);
+    display: flex; justify-content: space-around; align-items: flex-start; padding-top: 8px;
+  }
+  .dark-mode .nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; color: var(--dk-text-tertiary); }
+  .dark-mode .nav-item.active { color: var(--terracotta); }
+  .dark-mode .nav-icon { font-size: 16px; }
+
+  .dark-mode .content-area { height: calc(780px - 40px); overflow-y: auto; padding-bottom: 80px; }
+
+  /* Dark search */
+  .d-search { margin: 8px 16px 10px; background: var(--dk-surface); border: 1px solid var(--dk-border); border-radius: 12px; padding: 11px 14px; display: flex; align-items: center; gap: 8px; color: var(--dk-text-tertiary); font-size: 14px; }
+
+  /* Dark hero */
+  .d-hero { margin: 0 16px 16px; border-radius: 14px; overflow: hidden; border: 1px solid var(--dk-card-border); background: var(--dk-card); }
+  .d-hero-img { height: 140px; position: relative; }
+  .d-hero-img .badge { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.5); color: white; padding: 3px 10px; border-radius: 6px; font-size: 10px; font-weight: 600; }
+  .d-hero-img .cook-btn { position: absolute; bottom: 10px; right: 10px; background: var(--terracotta); color: var(--ivory); padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .d-hero-body { padding: 12px 14px; }
+  .d-hero-body h4 { font-family: var(--font-serif); font-size: 18px; font-weight: 700; color: var(--ivory); margin-bottom: 3px; }
+  .d-hero-body .meta { font-size: 12px; color: var(--dk-text-secondary); }
+
+  /* Dark section */
+  .d-section { display: flex; justify-content: space-between; align-items: center; padding: 0 16px; margin-bottom: 10px; }
+  .d-section h3 { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ivory); }
+  .d-section span { font-size: 12px; color: var(--terracotta); }
+
+  /* Dark grid */
+  .d-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; margin-bottom: 20px; }
+  .d-card { border-radius: 10px; overflow: hidden; border: 1px solid var(--dk-card-border); background: var(--dk-card); }
+  .d-card-img { height: 95px; position: relative; }
+  .d-card-img .fav { position: absolute; top: 6px; right: 6px; font-size: 12px; background: rgba(0,0,0,0.4); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--ivory); }
+  .d-card-body { padding: 8px 10px; }
+  .d-card-body h5 { font-family: var(--font-serif); font-size: 13px; font-weight: 600; color: var(--ivory); margin-bottom: 3px; line-height: 1.3; }
+  .d-card-body .meta { font-size: 10px; color: var(--dk-text-tertiary); display: flex; gap: 6px; }
+
+  .d-stat { text-align: center; padding: 6px 16px 12px; font-size: 12px; color: var(--dk-text-tertiary); }
+  .d-stat strong { color: var(--terracotta); }
+
+  /* Dark recipe detail */
+  .d-recipe-body { padding: 16px; }
+  .d-recipe-body h2 { font-family: var(--font-serif); font-size: 22px; font-weight: 700; color: var(--ivory); line-height: 1.2; margin-bottom: 4px; }
+  .d-lineage { font-size: 11px; color: var(--dk-text-tertiary); font-style: italic; margin-bottom: 10px; }
+  .d-meta-row { display: flex; gap: 12px; font-size: 12px; color: var(--dk-text-secondary); margin-bottom: 10px; }
+  .d-version { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--dk-surface); border-radius: 8px; font-size: 12px; color: var(--dk-text-secondary); margin-bottom: 10px; }
+  .d-version strong { color: var(--terracotta); }
+  .d-tags { display: flex; gap: 6px; margin-bottom: 16px; }
+  .d-tag { background: var(--dk-surface); color: var(--dk-text-secondary); padding: 5px 10px; border-radius: 16px; font-size: 11px; font-weight: 500; }
+  .d-sect-title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--ivory); margin-bottom: 10px; }
+  .d-ingredient { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--dk-divider); font-size: 14px; }
+  .d-ingredient .name { color: var(--ivory); }
+  .d-ingredient .amt { color: var(--terracotta); font-weight: 500; }
+  .d-cook-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 18px 0 12px; padding: 14px; background: var(--terracotta); color: var(--ivory); border-radius: 10px; font-size: 15px; font-weight: 600; }
+  .d-actions-row { display: flex; gap: 6px; margin-bottom: 16px; }
+  .d-actions-row > div { flex: 1; padding: 10px; background: var(--dk-surface); border-radius: 8px; text-align: center; font-size: 12px; color: var(--dk-text-secondary); }
+
+  /* Dark cooking mode */
+  .d-cooking { height: calc(780px - 40px); display: flex; flex-direction: column; }
+  .d-cook-header { padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--dk-divider); }
+  .d-cook-header .close { font-size: 18px; color: var(--ivory); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+  .d-cook-header .rname { font-family: var(--font-serif); font-size: 14px; font-weight: 600; color: var(--ivory); }
+  .d-cook-header .tbtn { background: var(--terracotta); color: var(--ivory); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .d-strip { padding: 12px 16px; background: var(--dk-surface); display: flex; gap: 16px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--dk-divider); }
+  .d-strip-item { flex-shrink: 0; text-align: center; }
+  .d-strip-item .amt { font-size: 15px; font-weight: 600; color: var(--terracotta); }
+  .d-strip-item .iname { font-size: 11px; color: var(--dk-text-secondary); margin-top: 1px; }
+  .d-step-area { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 28px 24px; text-align: center; }
+  .d-step-label { font-size: 13px; font-weight: 600; color: var(--dk-text-secondary); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 16px; }
+  .d-step-text { font-size: 22px; font-weight: 400; color: var(--ivory); line-height: 1.5; }
+  .d-dots { display: flex; justify-content: center; gap: 6px; margin-top: 20px; }
+  .d-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dk-surface); }
+  .d-dot.done { background: var(--sage); }
+  .d-dot.active { background: var(--terracotta); width: 20px; border-radius: 4px; }
+  .d-timer-bar { padding: 12px 16px; background: rgba(143,168,130,0.12); display: flex; justify-content: space-between; align-items: center; }
+  .d-timer-bar .tl { font-size: 13px; color: var(--sage); }
+  .d-timer-bar .tt { font-size: 24px; font-weight: 700; color: var(--sage); font-variant-numeric: tabular-nums; }
+  .d-swipe { text-align: center; font-size: 11px; color: var(--dk-text-tertiary); padding: 6px; }
+  .d-cook-bottom { padding: 12px 16px 28px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--dk-divider); }
+  .d-cnav { padding: 14px 24px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  .d-cnav.prev { border: 1.5px solid var(--dk-text-tertiary); color: var(--ivory); background: transparent; }
+  .d-cnav.next { background: var(--terracotta); color: var(--ivory); }
+  .d-voice { width: 52px; height: 52px; border-radius: 50%; background: var(--ivory); color: var(--chocolate); display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 3px 12px rgba(0,0,0,0.3); }
+
+  /* Gradient placeholder images */
+  .img-a { background: linear-gradient(135deg, var(--terracotta), var(--hazelnut), var(--sage)) !important; }
+  .img-b { background: linear-gradient(135deg, var(--sage), var(--hazelnut)) !important; }
+  .img-c { background: linear-gradient(135deg, var(--coral), var(--terracotta)) !important; }
+  .img-d { background: linear-gradient(135deg, var(--hazelnut), var(--chocolate-light)) !important; }
+  .img-e { background: linear-gradient(135deg, var(--hazelnut-light), var(--sage)) !important; }
+  .img-f { background: linear-gradient(135deg, var(--terracotta), var(--dusty-rose)) !important; }
+</style>
+</head>
+<body>
+
+<nav class="showcase-nav">
+  <h1>Palateful</h1>
+  <span class="version-tag">LIGHT vs DARK</span>
+  <button class="nav-btn active" onclick="showDir('home')">Home</button>
+  <button class="nav-btn" onclick="showDir('recipe')">Recipe Detail</button>
+  <button class="nav-btn" onclick="showDir('cooking')">Cooking Mode</button>
+  <button class="nav-btn" onclick="showDir('nohero')">Home (No Plan)</button>
+</nav>
+
+<!-- ===== HOME ===== -->
+<section id="dir-home" class="direction-section active">
+  <div class="direction-header">
+    <h2>Home Screen</h2>
+    <p>Light: cream background, chocolate text. Dark: chocolate background, warm ivory text. Same layout, inverted palette.</p>
+  </div>
+  <div class="side-by-side">
+    <!-- LIGHT -->
+    <div class="phone-wrapper">
+      <h3>Light Mode</h3>
+      <div class="phone-frame light-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="content-area">
+          <div class="l-search">🔍 Search 247 recipes...</div>
+          <div class="l-hero">
+            <div class="l-hero-img img-a"><span class="badge">🍽 Tonight</span><span class="cook-btn">▶ Cook</span></div>
+            <div class="l-hero-body"><h4>Chili Oil Noodles</h4><div class="meta">35 min · 4 servings · Weeknight Dinners</div></div>
+          </div>
+          <div class="l-section"><h3>Recent</h3><span>See all ›</span></div>
+          <div class="l-grid">
+            <div class="l-card"><div class="l-card-img img-b"><span class="fav">★</span></div><div class="l-card-body"><h5>Pizza Dough</h5><div class="meta"><span>v8</span><span>2d ago</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-c"></div><div class="l-card-body"><h5>Thai Basil Chicken</h5><div class="meta"><span>25m</span><span>4d ago</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-d"><span class="fav">★</span></div><div class="l-card-body"><h5>Carbonara</h5><div class="meta"><span>20m</span><span>Classic</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-f"></div><div class="l-card-body"><h5>Banana Bread</h5><div class="meta"><span>1h</span><span>1w ago</span></div></div></div>
+          </div>
+          <div class="l-section"><h3>Favorites</h3><span>See all ›</span></div>
+          <div class="l-grid">
+            <div class="l-card"><div class="l-card-img img-e"><span class="fav">★</span></div><div class="l-card-body"><h5>GF Lemon Scones</h5><div class="meta"><span>45m</span><span>v5</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-d"><span class="fav">★</span></div><div class="l-card-body"><h5>Tamale Recipe</h5><div class="meta"><span>2h</span><span>Family</span></div></div></div>
+          </div>
+          <p class="l-stat"><strong>247 recipes</strong> in 8 books</p>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+    <!-- DARK -->
+    <div class="phone-wrapper">
+      <h3>Dark Mode</h3>
+      <div class="phone-frame dark-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="content-area">
+          <div class="d-search">🔍 Search 247 recipes...</div>
+          <div class="d-hero">
+            <div class="d-hero-img img-a"><span class="badge">🍽 Tonight</span><span class="cook-btn">▶ Cook</span></div>
+            <div class="d-hero-body"><h4>Chili Oil Noodles</h4><div class="meta">35 min · 4 servings · Weeknight Dinners</div></div>
+          </div>
+          <div class="d-section"><h3>Recent</h3><span>See all ›</span></div>
+          <div class="d-grid">
+            <div class="d-card"><div class="d-card-img img-b"><span class="fav">★</span></div><div class="d-card-body"><h5>Pizza Dough</h5><div class="meta"><span>v8</span><span>2d ago</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-c"></div><div class="d-card-body"><h5>Thai Basil Chicken</h5><div class="meta"><span>25m</span><span>4d ago</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-d"><span class="fav">★</span></div><div class="d-card-body"><h5>Carbonara</h5><div class="meta"><span>20m</span><span>Classic</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-f"></div><div class="d-card-body"><h5>Banana Bread</h5><div class="meta"><span>1h</span><span>1w ago</span></div></div></div>
+          </div>
+          <div class="d-section"><h3>Favorites</h3><span>See all ›</span></div>
+          <div class="d-grid">
+            <div class="d-card"><div class="d-card-img img-e"><span class="fav">★</span></div><div class="d-card-body"><h5>GF Lemon Scones</h5><div class="meta"><span>45m</span><span>v5</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-d"><span class="fav">★</span></div><div class="d-card-body"><h5>Tamale Recipe</h5><div class="meta"><span>2h</span><span>Family</span></div></div></div>
+          </div>
+          <p class="d-stat"><strong>247 recipes</strong> in 8 books</p>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== RECIPE DETAIL ===== -->
+<section id="dir-recipe" class="direction-section">
+  <div class="direction-header">
+    <h2>Recipe Detail</h2>
+    <p>Same structure, palette inverted. Note: terracotta replaces chocolate as the primary accent in dark mode.</p>
+  </div>
+  <div class="side-by-side">
+    <!-- LIGHT -->
+    <div class="phone-wrapper">
+      <h3>Light Mode</h3>
+      <div class="phone-frame light-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="content-area" style="padding-bottom:0">
+          <div class="l-recipe-hero img-a"><div class="back">‹</div><div class="actions"><div class="act-btn">★</div><div class="act-btn">⋯</div></div></div>
+          <div class="l-recipe-body">
+            <h2>GF Lemon Scones</h2>
+            <div class="l-lineage">Forked from: Classic English Scones · Baking Projects</div>
+            <div class="l-meta-row"><span>⏱ 45 min</span><span>🍽 8 scones</span><span>📖 My Recipes</span></div>
+            <div class="l-version"><strong>v5</strong> · 3 days ago · <span style="color:var(--hazelnut);text-decoration:underline;cursor:pointer">History</span></div>
+            <div class="l-tags"><span class="l-tag">Baking</span><span class="l-tag">Gluten-Free</span><span class="l-tag">Breakfast</span></div>
+            <h3 class="l-sect-title">Ingredients</h3>
+            <div class="l-ingredient"><span class="name">GF flour blend</span><span class="amt">2 cups</span></div>
+            <div class="l-ingredient"><span class="name">Unsalted butter, cold</span><span class="amt">½ cup</span></div>
+            <div class="l-ingredient"><span class="name">Sugar</span><span class="amt">¼ cup</span></div>
+            <div class="l-ingredient"><span class="name">Lemon zest</span><span class="amt">2 tbsp</span></div>
+            <div class="l-ingredient"><span class="name">Buttermilk</span><span class="amt">¾ cup</span></div>
+            <div class="l-cook-btn">▶ Start Cooking</div>
+            <div class="l-actions-row"><div>🛒 Cart</div><div>📅 Plan</div><div>↗ Share</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- DARK -->
+    <div class="phone-wrapper">
+      <h3>Dark Mode</h3>
+      <div class="phone-frame dark-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="content-area" style="padding-bottom:0">
+          <div class="l-recipe-hero img-a"><div class="back">‹</div><div class="actions"><div class="act-btn">★</div><div class="act-btn">⋯</div></div></div>
+          <div class="d-recipe-body">
+            <h2>GF Lemon Scones</h2>
+            <div class="d-lineage">Forked from: Classic English Scones · Baking Projects</div>
+            <div class="d-meta-row"><span>⏱ 45 min</span><span>🍽 8 scones</span><span>📖 My Recipes</span></div>
+            <div class="d-version"><strong>v5</strong> · 3 days ago · <span style="color:var(--terracotta);text-decoration:underline;cursor:pointer">History</span></div>
+            <div class="d-tags"><span class="d-tag">Baking</span><span class="d-tag">Gluten-Free</span><span class="d-tag">Breakfast</span></div>
+            <h3 class="d-sect-title">Ingredients</h3>
+            <div class="d-ingredient"><span class="name">GF flour blend</span><span class="amt">2 cups</span></div>
+            <div class="d-ingredient"><span class="name">Unsalted butter, cold</span><span class="amt">½ cup</span></div>
+            <div class="d-ingredient"><span class="name">Sugar</span><span class="amt">¼ cup</span></div>
+            <div class="d-ingredient"><span class="name">Lemon zest</span><span class="amt">2 tbsp</span></div>
+            <div class="d-ingredient"><span class="name">Buttermilk</span><span class="amt">¾ cup</span></div>
+            <div class="d-cook-btn">▶ Start Cooking</div>
+            <div class="d-actions-row"><div>🛒 Cart</div><div>📅 Plan</div><div>↗ Share</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== COOKING MODE ===== -->
+<section id="dir-cooking" class="direction-section">
+  <div class="direction-header">
+    <h2>Cooking Mode</h2>
+    <p>Light uses chocolate accents on cream. Dark uses terracotta accents on chocolate with warm ivory text.</p>
+  </div>
+  <div class="side-by-side">
+    <!-- LIGHT COOKING -->
+    <div class="phone-wrapper">
+      <h3>Light Cooking Mode</h3>
+      <div class="phone-frame light-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="l-cooking">
+          <div class="l-cook-header"><span class="close">✕</span><span class="rname">GF Lemon Scones</span><span class="tbtn">⏱ Timer</span></div>
+          <div class="l-strip">
+            <div class="l-strip-item"><div class="amt">2 cups</div><div class="iname">GF flour</div></div>
+            <div class="l-strip-item"><div class="amt">½ cup</div><div class="iname">Butter</div></div>
+            <div class="l-strip-item"><div class="amt">¼ cup</div><div class="iname">Sugar</div></div>
+            <div class="l-strip-item"><div class="amt">2 tbsp</div><div class="iname">Lemon zest</div></div>
+            <div class="l-strip-item"><div class="amt">¾ cup</div><div class="iname">Buttermilk</div></div>
+          </div>
+          <div class="l-step-area">
+            <div class="l-step-label">Step 3 of 7</div>
+            <div class="l-step-text">Cut cold butter into flour mixture until pea-sized crumbs form. Add 2 tablespoons of milk to the dough.</div>
+            <div class="l-dots"><div class="l-dot done"></div><div class="l-dot done"></div><div class="l-dot active"></div><div class="l-dot"></div><div class="l-dot"></div><div class="l-dot"></div><div class="l-dot"></div></div>
+          </div>
+          <div class="l-timer-bar"><span class="tl">Oven preheat</span><span class="tt">3:42</span></div>
+          <div class="l-swipe">← swipe to navigate steps →</div>
+          <div class="l-cook-bottom">
+            <div class="l-cnav prev">← Prev</div>
+            <div class="l-voice">🎤</div>
+            <div class="l-cnav next">Next →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- DARK COOKING -->
+    <div class="phone-wrapper">
+      <h3>Dark Cooking Mode</h3>
+      <div class="phone-frame dark-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="d-cooking">
+          <div class="d-cook-header"><span class="close">✕</span><span class="rname">GF Lemon Scones</span><span class="tbtn">⏱ Timer</span></div>
+          <div class="d-strip">
+            <div class="d-strip-item"><div class="amt">2 cups</div><div class="iname">GF flour</div></div>
+            <div class="d-strip-item"><div class="amt">½ cup</div><div class="iname">Butter</div></div>
+            <div class="d-strip-item"><div class="amt">¼ cup</div><div class="iname">Sugar</div></div>
+            <div class="d-strip-item"><div class="amt">2 tbsp</div><div class="iname">Lemon zest</div></div>
+            <div class="d-strip-item"><div class="amt">¾ cup</div><div class="iname">Buttermilk</div></div>
+          </div>
+          <div class="d-step-area">
+            <div class="d-step-label">Step 3 of 7</div>
+            <div class="d-step-text">Cut cold butter into flour mixture until pea-sized crumbs form. Add 2 tablespoons of milk to the dough.</div>
+            <div class="d-dots"><div class="d-dot done"></div><div class="d-dot done"></div><div class="d-dot active"></div><div class="d-dot"></div><div class="d-dot"></div><div class="d-dot"></div><div class="d-dot"></div></div>
+          </div>
+          <div class="d-timer-bar"><span class="tl">Oven preheat</span><span class="tt">3:42</span></div>
+          <div class="d-swipe" style="color:var(--dk-text-tertiary)">← swipe to navigate steps →</div>
+          <div class="d-cook-bottom">
+            <div class="d-cnav prev">← Prev</div>
+            <div class="d-voice">🎤</div>
+            <div class="d-cnav next">Next →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="comparison-note">
+    <strong>Dark Mode Palette Mapping</strong>
+    The dark mode is a warm inversion — chocolate and cream swap roles, terracotta replaces chocolate as the primary accent (because chocolate IS the background now). Warm ivory (#F5ECD7) for text instead of pure white keeps everything cohesive. Sage green remains unchanged for timers — it reads well on both backgrounds.
+  </div>
+</section>
+
+<!-- ===== HOME NO HERO ===== -->
+<section id="dir-nohero" class="direction-section">
+  <div class="direction-header">
+    <h2>Home — No Meal Planned</h2>
+    <p>When nothing is planned, the hero card disappears. Greeting + title + tab pills + full grid.</p>
+  </div>
+  <div class="side-by-side">
+    <!-- LIGHT -->
+    <div class="phone-wrapper">
+      <h3>Light Mode</h3>
+      <div class="phone-frame light-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="content-area">
+          <div style="padding:14px 16px 2px;font-size:13px;color:var(--text-secondary)">Good evening, Leo</div>
+          <div style="padding:0 16px 8px;font-family:var(--font-serif);font-size:24px;font-weight:700;color:var(--text-primary)">Your Cookbook</div>
+          <div class="l-search">🔍 Search 247 recipes...</div>
+          <div style="display:flex;gap:8px;padding:0 16px;margin-bottom:14px">
+            <div style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--chocolate);color:var(--cream)">For You</div>
+            <div style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--beige);color:var(--text-secondary)">Recent</div>
+            <div style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--beige);color:var(--text-secondary)">Favorites</div>
+          </div>
+          <div class="l-grid">
+            <div class="l-card"><div class="l-card-img img-b"><span class="fav">★</span></div><div class="l-card-body"><h5>Pizza Dough</h5><div class="meta"><span>v8</span><span>2d ago</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-a"></div><div class="l-card-body"><h5>Chili Oil Noodles</h5><div class="meta"><span>35m</span><span>3d ago</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-c"><span class="fav">★</span></div><div class="l-card-body"><h5>Carbonara</h5><div class="meta"><span>20m</span><span>Classic</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-d"></div><div class="l-card-body"><h5>Thai Basil Chicken</h5><div class="meta"><span>25m</span><span>4d ago</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-e"><span class="fav">★</span></div><div class="l-card-body"><h5>GF Lemon Scones</h5><div class="meta"><span>45m</span><span>v5</span></div></div></div>
+            <div class="l-card"><div class="l-card-img img-f"></div><div class="l-card-body"><h5>Banana Bread</h5><div class="meta"><span>1h</span><span>Baking</span></div></div></div>
+          </div>
+          <p class="l-stat"><strong>247 recipes</strong> in 8 books</p>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+    <!-- DARK -->
+    <div class="phone-wrapper">
+      <h3>Dark Mode</h3>
+      <div class="phone-frame dark-mode">
+        <div class="status-bar"><span>9:41</span><span>●●●</span></div>
+        <div class="content-area">
+          <div style="padding:14px 16px 2px;font-size:13px;color:var(--dk-text-secondary)">Good evening, Leo</div>
+          <div style="padding:0 16px 8px;font-family:var(--font-serif);font-size:24px;font-weight:700;color:var(--ivory)">Your Cookbook</div>
+          <div class="d-search">🔍 Search 247 recipes...</div>
+          <div style="display:flex;gap:8px;padding:0 16px;margin-bottom:14px">
+            <div style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:600;background:var(--terracotta);color:var(--ivory)">For You</div>
+            <div style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--dk-surface);color:var(--dk-text-secondary)">Recent</div>
+            <div style="padding:7px 14px;border-radius:20px;font-size:12px;font-weight:500;background:var(--dk-surface);color:var(--dk-text-secondary)">Favorites</div>
+          </div>
+          <div class="d-grid">
+            <div class="d-card"><div class="d-card-img img-b"><span class="fav">★</span></div><div class="d-card-body"><h5>Pizza Dough</h5><div class="meta"><span>v8</span><span>2d ago</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-a"></div><div class="d-card-body"><h5>Chili Oil Noodles</h5><div class="meta"><span>35m</span><span>3d ago</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-c"><span class="fav">★</span></div><div class="d-card-body"><h5>Carbonara</h5><div class="meta"><span>20m</span><span>Classic</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-d"></div><div class="d-card-body"><h5>Thai Basil Chicken</h5><div class="meta"><span>25m</span><span>4d ago</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-e"><span class="fav">★</span></div><div class="d-card-body"><h5>GF Lemon Scones</h5><div class="meta"><span>45m</span><span>v5</span></div></div></div>
+            <div class="d-card"><div class="d-card-img img-f"></div><div class="d-card-body"><h5>Banana Bread</h5><div class="meta"><span>1h</span><span>Baking</span></div></div></div>
+          </div>
+          <p class="d-stat"><strong>247 recipes</strong> in 8 books</p>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  function showDir(dir) {
+    document.querySelectorAll('.direction-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('dir-' + dir).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>

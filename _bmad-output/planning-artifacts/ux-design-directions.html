@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Palateful — Design Direction Showcase</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #FAF7F2;
+    --cream-light: #FFFDF9;
+    --beige: #F5EFE6;
+    --beige-accent: #E8DFD0;
+    --warm-white: #FEFCF9;
+    --chocolate: #4A3728;
+    --chocolate-light: #5D4A3A;
+    --chocolate-dark: #3A2A1E;
+    --hazelnut: #8B7355;
+    --hazelnut-light: #A89076;
+    --terracotta: #BE8A60;
+    --sage: #8FA882;
+    --coral: #CB8B73;
+    --dusty-rose: #B86B6B;
+    --text-primary: #2D2420;
+    --text-secondary: #6B5D54;
+    --text-tertiary: #9C8E84;
+    --text-disabled: #BEB5AC;
+    --divider: #E5DED5;
+    --border: #D9D0C5;
+    --shadow: rgba(74, 55, 40, 0.1);
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    background: #2D2420;
+    color: var(--text-primary);
+  }
+
+  /* Showcase Navigation */
+  .showcase-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: var(--chocolate-dark);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .showcase-nav h1 {
+    font-family: var(--font-serif);
+    color: var(--cream);
+    font-size: 20px;
+    font-weight: 700;
+    margin-right: auto;
+  }
+
+  .nav-btn {
+    background: transparent;
+    border: 1.5px solid var(--hazelnut);
+    color: var(--cream);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+
+  .nav-btn:hover, .nav-btn.active {
+    background: var(--chocolate);
+    border-color: var(--terracotta);
+    color: var(--cream);
+  }
+
+  /* Direction Sections */
+  .direction-section {
+    display: none;
+    padding: 80px 24px 48px;
+    min-height: 100vh;
+  }
+
+  .direction-section.active { display: block; }
+
+  .direction-header {
+    max-width: 800px;
+    margin: 0 auto 48px;
+    text-align: center;
+  }
+
+  .direction-header h2 {
+    font-family: var(--font-serif);
+    color: var(--cream);
+    font-size: 32px;
+    margin-bottom: 12px;
+  }
+
+  .direction-header p {
+    color: var(--hazelnut-light);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  /* Phone Frame */
+  .phone-row {
+    display: flex;
+    justify-content: center;
+    gap: 48px;
+    flex-wrap: wrap;
+    margin-bottom: 48px;
+  }
+
+  .phone-wrapper {
+    text-align: center;
+  }
+
+  .phone-wrapper h3 {
+    color: var(--hazelnut-light);
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+
+  .phone-frame {
+    width: 375px;
+    height: 812px;
+    background: var(--cream);
+    border-radius: 40px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    position: relative;
+  }
+
+  .phone-frame.cooking-mode {
+    background: var(--chocolate-dark);
+  }
+
+  /* Status Bar */
+  .status-bar {
+    height: 44px;
+    padding: 12px 24px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .status-bar.light { color: var(--text-primary); }
+  .status-bar.dark { color: var(--cream); }
+
+  /* Bottom Nav */
+  .bottom-nav {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 84px;
+    background: var(--warm-white);
+    border-top: 1px solid var(--divider);
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-start;
+    padding-top: 8px;
+  }
+
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+
+  .nav-item.active { color: var(--chocolate); }
+
+  .nav-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+
+  /* ===== DIRECTION A: EDITORIAL COOKBOOK ===== */
+
+  .dir-a .home-content {
+    padding: 0 0 84px;
+    overflow-y: auto;
+    height: calc(812px - 44px);
+  }
+
+  .dir-a .greeting {
+    padding: 24px 20px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .dir-a .home-title {
+    padding: 4px 20px 20px;
+    font-family: var(--font-serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+  }
+
+  .dir-a .search-bar {
+    margin: 0 20px 24px;
+    background: var(--warm-white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-tertiary);
+    font-size: 16px;
+  }
+
+  .dir-a .section-label {
+    padding: 0 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+
+  .dir-a .hero-card {
+    margin: 0 20px 24px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--beige-accent);
+    background: var(--cream-light);
+  }
+
+  .dir-a .hero-card-img {
+    height: 180px;
+    background: linear-gradient(135deg, var(--terracotta) 0%, var(--hazelnut) 100%);
+    display: flex;
+    align-items: flex-end;
+    padding: 16px;
+  }
+
+  .dir-a .hero-card-img .badge {
+    background: rgba(0,0,0,0.5);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .dir-a .hero-card-body {
+    padding: 16px;
+  }
+
+  .dir-a .hero-card-body h4 {
+    font-family: var(--font-serif);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+
+  .dir-a .hero-card-body p {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .dir-a .recipe-row {
+    padding: 0 20px;
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    margin-bottom: 24px;
+    scrollbar-width: none;
+  }
+
+  .dir-a .mini-card {
+    min-width: 140px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--beige-accent);
+    background: var(--cream-light);
+    flex-shrink: 0;
+  }
+
+  .dir-a .mini-card-img {
+    height: 100px;
+    background: linear-gradient(135deg, var(--sage) 0%, var(--hazelnut) 100%);
+  }
+
+  .dir-a .mini-card-body {
+    padding: 10px;
+  }
+
+  .dir-a .mini-card-body h5 {
+    font-family: var(--font-serif);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+  }
+
+  .dir-a .mini-card-body span {
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  .dir-a .collection-stat {
+    text-align: center;
+    padding: 16px 20px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+  }
+
+  .dir-a .collection-stat strong {
+    color: var(--hazelnut);
+  }
+
+  /* ===== DIRECTION B: CARD GRID ===== */
+
+  .dir-b .home-content {
+    padding: 0 0 84px;
+    overflow-y: auto;
+    height: calc(812px - 44px);
+  }
+
+  .dir-b .home-header {
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dir-b .home-header h2 {
+    font-family: var(--font-serif);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .dir-b .home-header .avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--hazelnut);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cream);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .dir-b .tab-bar {
+    display: flex;
+    padding: 0 20px;
+    gap: 0;
+    border-bottom: 1px solid var(--divider);
+    margin-bottom: 16px;
+  }
+
+  .dir-b .tab {
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+
+  .dir-b .tab.active {
+    color: var(--chocolate);
+    border-bottom-color: var(--chocolate);
+    font-weight: 600;
+  }
+
+  .dir-b .card-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 0 16px;
+    margin-bottom: 24px;
+  }
+
+  .dir-b .grid-card {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--beige-accent);
+    background: var(--cream-light);
+  }
+
+  .dir-b .grid-card-img {
+    height: 120px;
+    position: relative;
+  }
+
+  .dir-b .grid-card-img.img1 { background: linear-gradient(135deg, var(--terracotta) 0%, var(--coral) 100%); }
+  .dir-b .grid-card-img.img2 { background: linear-gradient(135deg, var(--sage) 0%, var(--hazelnut) 100%); }
+  .dir-b .grid-card-img.img3 { background: linear-gradient(135deg, var(--hazelnut) 0%, var(--chocolate-light) 100%); }
+  .dir-b .grid-card-img.img4 { background: linear-gradient(135deg, var(--coral) 0%, var(--terracotta) 100%); }
+  .dir-b .grid-card-img.img5 { background: linear-gradient(135deg, var(--hazelnut-light) 0%, var(--sage) 100%); }
+  .dir-b .grid-card-img.img6 { background: linear-gradient(135deg, var(--chocolate) 0%, var(--hazelnut) 100%); }
+
+  .dir-b .grid-card-img .fav {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 16px;
+  }
+
+  .dir-b .grid-card-body {
+    padding: 10px 12px;
+  }
+
+  .dir-b .grid-card-body h5 {
+    font-family: var(--font-serif);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .dir-b .grid-card-body .meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    display: flex;
+    gap: 8px;
+  }
+
+  .dir-b .fab {
+    position: absolute;
+    bottom: 100px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    background: var(--chocolate);
+    color: var(--cream);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    box-shadow: 0 4px 12px var(--shadow);
+  }
+
+  /* ===== DIRECTION C: LIST-CENTRIC ===== */
+
+  .dir-c .home-content {
+    padding: 0 0 84px;
+    overflow-y: auto;
+    height: calc(812px - 44px);
+  }
+
+  .dir-c .home-hero {
+    padding: 24px 20px;
+    background: linear-gradient(180deg, var(--beige) 0%, var(--cream) 100%);
+  }
+
+  .dir-c .home-hero h2 {
+    font-family: var(--font-serif);
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    margin-bottom: 4px;
+  }
+
+  .dir-c .home-hero .subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .dir-c .search-pill {
+    background: var(--warm-white);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    color: var(--text-tertiary);
+  }
+
+  .dir-c .section-title {
+    padding: 24px 20px 12px;
+    font-family: var(--font-serif);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .dir-c .list-item {
+    display: flex;
+    padding: 12px 20px;
+    gap: 14px;
+    align-items: center;
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .dir-c .list-thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .dir-c .list-thumb.t1 { background: linear-gradient(135deg, var(--terracotta) 0%, var(--coral) 100%); }
+  .dir-c .list-thumb.t2 { background: linear-gradient(135deg, var(--sage) 0%, var(--hazelnut) 100%); }
+  .dir-c .list-thumb.t3 { background: linear-gradient(135deg, var(--hazelnut) 0%, var(--chocolate-light) 100%); }
+  .dir-c .list-thumb.t4 { background: linear-gradient(135deg, var(--coral) 0%, var(--dusty-rose) 100%); }
+
+  .dir-c .list-info { flex: 1; }
+
+  .dir-c .list-info h5 {
+    font-family: var(--font-serif);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+  }
+
+  .dir-c .list-info .meta {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .dir-c .list-info .book-tag {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--hazelnut);
+    background: var(--beige);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .dir-c .list-action {
+    color: var(--text-tertiary);
+    font-size: 18px;
+  }
+
+  /* ===== RECIPE DETAIL (shared across directions) ===== */
+
+  .recipe-detail-content {
+    height: calc(812px - 44px);
+    overflow-y: auto;
+  }
+
+  .recipe-hero-img {
+    height: 260px;
+    background: linear-gradient(135deg, var(--terracotta) 0%, var(--hazelnut) 50%, var(--sage) 100%);
+    position: relative;
+  }
+
+  .recipe-hero-img .back-btn {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 36px;
+    height: 36px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+  }
+
+  .recipe-hero-img .action-row {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .recipe-hero-img .action-btn {
+    width: 36px;
+    height: 36px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 16px;
+  }
+
+  .recipe-body {
+    padding: 20px;
+  }
+
+  .recipe-body h2 {
+    font-family: var(--font-serif);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+
+  .recipe-meta-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .recipe-meta-row span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .recipe-tags {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .recipe-tag {
+    background: var(--beige);
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .recipe-section-title {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    padding-top: 8px;
+  }
+
+  .ingredient-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--divider);
+    font-size: 15px;
+  }
+
+  .ingredient-item .name { color: var(--text-primary); }
+  .ingredient-item .amount { color: var(--hazelnut); font-weight: 500; }
+
+  .cook-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 24px 0 16px;
+    padding: 16px;
+    background: var(--chocolate);
+    color: var(--cream);
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .version-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--beige);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .version-badge strong { color: var(--hazelnut); }
+
+  .lineage-badge {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+
+  /* ===== COOKING MODE ===== */
+
+  .cooking-content {
+    height: calc(812px - 44px);
+    display: flex;
+    flex-direction: column;
+    color: var(--cream);
+  }
+
+  .cooking-header {
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(250,247,242,0.1);
+  }
+
+  .cooking-header .close { font-size: 20px; color: var(--cream); }
+  .cooking-header .recipe-name {
+    font-family: var(--font-serif);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--cream);
+  }
+  .cooking-header .timer-btn {
+    background: var(--terracotta);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .cooking-ingredients-strip {
+    padding: 12px 20px;
+    background: rgba(250,247,242,0.08);
+    border-bottom: 1px solid rgba(250,247,242,0.1);
+    overflow-x: auto;
+    white-space: nowrap;
+    display: flex;
+    gap: 16px;
+    scrollbar-width: none;
+  }
+
+  .strip-item {
+    flex-shrink: 0;
+    text-align: center;
+  }
+
+  .strip-item .amount {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--terracotta);
+  }
+
+  .strip-item .name {
+    font-size: 12px;
+    color: var(--hazelnut-light);
+    margin-top: 2px;
+  }
+
+  .cooking-step-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 32px 28px;
+    text-align: center;
+  }
+
+  .step-number {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--hazelnut-light);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+
+  .step-text {
+    font-size: 24px;
+    font-weight: 400;
+    color: var(--cream);
+    line-height: 1.5;
+  }
+
+  .step-dots {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 24px;
+  }
+
+  .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(250,247,242,0.2);
+  }
+
+  .step-dot.active { background: var(--terracotta); }
+  .step-dot.done { background: var(--sage); }
+
+  .cooking-bottom {
+    padding: 16px 20px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(250,247,242,0.1);
+  }
+
+  .cooking-nav-btn {
+    padding: 14px 28px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .cooking-nav-btn.prev {
+    background: transparent;
+    border: 1.5px solid var(--hazelnut);
+    color: var(--cream);
+  }
+
+  .cooking-nav-btn.next {
+    background: var(--terracotta);
+    color: white;
+  }
+
+  .cooking-voice-btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--cream);
+    color: var(--chocolate);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+  }
+
+  .cooking-timer-bar {
+    padding: 12px 20px;
+    background: rgba(143, 168, 130, 0.2);
+    border-top: 1px solid rgba(143, 168, 130, 0.3);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .cooking-timer-bar .label {
+    font-size: 13px;
+    color: var(--sage);
+  }
+
+  .cooking-timer-bar .time {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--sage);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ===== COOKING MODE B: INVERTED ===== */
+
+  .phone-frame.cooking-inverted {
+    background: var(--cream);
+  }
+
+  .cooking-inverted .cooking-header {
+    border-bottom-color: var(--divider);
+  }
+
+  .cooking-inverted .cooking-header .close { color: var(--text-primary); }
+  .cooking-inverted .cooking-header .recipe-name { color: var(--text-primary); }
+
+  .cooking-inverted .cooking-ingredients-strip {
+    background: var(--beige);
+    border-bottom-color: var(--divider);
+  }
+
+  .cooking-inverted .strip-item .amount { color: var(--chocolate); }
+  .cooking-inverted .strip-item .name { color: var(--text-secondary); }
+
+  .cooking-inverted .step-number { color: var(--hazelnut); }
+  .cooking-inverted .step-text {
+    color: var(--text-primary);
+    font-size: 26px;
+  }
+
+  .cooking-inverted .step-dot { background: var(--beige-accent); }
+  .cooking-inverted .step-dot.active { background: var(--chocolate); }
+  .cooking-inverted .step-dot.done { background: var(--sage); }
+
+  .cooking-inverted .cooking-bottom {
+    border-top-color: var(--divider);
+  }
+
+  .cooking-inverted .cooking-nav-btn.prev {
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .cooking-inverted .cooking-nav-btn.next {
+    background: var(--chocolate);
+    color: var(--cream);
+  }
+
+  .cooking-inverted .cooking-voice-btn {
+    background: var(--chocolate);
+    color: var(--cream);
+  }
+
+  .cooking-inverted .cooking-timer-bar {
+    background: rgba(143, 168, 130, 0.1);
+    border-top-color: var(--divider);
+  }
+
+  /* Comparison sidebar */
+  .comparison-note {
+    max-width: 800px;
+    margin: 0 auto 32px;
+    background: rgba(250,247,242,0.05);
+    border: 1px solid rgba(250,247,242,0.1);
+    border-radius: 12px;
+    padding: 20px;
+    color: var(--hazelnut-light);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .comparison-note strong {
+    color: var(--cream);
+    display: block;
+    margin-bottom: 8px;
+    font-family: var(--font-serif);
+    font-size: 16px;
+  }
+</style>
+</head>
+<body>
+
+<nav class="showcase-nav">
+  <h1>Palateful Design Directions</h1>
+  <button class="nav-btn active" onclick="showDirection('home')">Home Screen</button>
+  <button class="nav-btn" onclick="showDirection('recipe')">Recipe Detail</button>
+  <button class="nav-btn" onclick="showDirection('cooking')">Cooking Mode</button>
+</nav>
+
+<!-- ===== HOME SCREEN DIRECTIONS ===== -->
+<section id="dir-home" class="direction-section active">
+  <div class="direction-header">
+    <h2>Home Screen — Three Directions</h2>
+    <p>The home screen is the first thing users see. It must surface the right recipe before you search. All three directions use the same cream/chocolate palette and Playfair Display headings.</p>
+  </div>
+
+  <div class="phone-row">
+    <!-- Direction A: Editorial -->
+    <div class="phone-wrapper">
+      <h3>A — Editorial Cookbook</h3>
+      <div class="phone-frame dir-a">
+        <div class="status-bar light">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+        <div class="home-content">
+          <p class="greeting">Good evening, Leo</p>
+          <h2 class="home-title">Your Cookbook</h2>
+          <div class="search-bar">🔍 Search 247 recipes...</div>
+
+          <p class="section-label">Tonight's Plan</p>
+          <div class="hero-card">
+            <div class="hero-card-img">
+              <span class="badge">Planned for tonight</span>
+            </div>
+            <div class="hero-card-body">
+              <h4>Chili Oil Noodles</h4>
+              <p>35 min · 4 servings · Weeknight Dinners</p>
+            </div>
+          </div>
+
+          <p class="section-label">Recently Cooked</p>
+          <div class="recipe-row">
+            <div class="mini-card">
+              <div class="mini-card-img" style="background: linear-gradient(135deg, var(--sage), var(--hazelnut))"></div>
+              <div class="mini-card-body">
+                <h5>Pizza Dough</h5>
+                <span>v8 · 2 days ago</span>
+              </div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-img" style="background: linear-gradient(135deg, var(--coral), var(--terracotta))"></div>
+              <div class="mini-card-body">
+                <h5>Thai Basil Chicken</h5>
+                <span>4 days ago</span>
+              </div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-img" style="background: linear-gradient(135deg, var(--hazelnut), var(--chocolate-light))"></div>
+              <div class="mini-card-body">
+                <h5>Banana Bread</h5>
+                <span>1 week ago</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="section-label">Favorites</p>
+          <div class="recipe-row">
+            <div class="mini-card">
+              <div class="mini-card-img" style="background: linear-gradient(135deg, var(--terracotta), var(--coral))"></div>
+              <div class="mini-card-body">
+                <h5>Carbonara</h5>
+                <span>★ · 20 min</span>
+              </div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-img" style="background: linear-gradient(135deg, var(--chocolate), var(--hazelnut))"></div>
+              <div class="mini-card-body">
+                <h5>GF Scones</h5>
+                <span>★ · v5</span>
+              </div>
+            </div>
+          </div>
+
+          <p class="collection-stat"><strong>247 recipes</strong> in 8 books</p>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction B: Card Grid -->
+    <div class="phone-wrapper">
+      <h3>B — Card Grid</h3>
+      <div class="phone-frame dir-b">
+        <div class="status-bar light">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+        <div class="home-content">
+          <div class="home-header">
+            <h2>Palateful</h2>
+            <div class="avatar">L</div>
+          </div>
+
+          <div class="tab-bar">
+            <div class="tab active">For You</div>
+            <div class="tab">Recent</div>
+            <div class="tab">Favorites</div>
+          </div>
+
+          <div class="card-grid">
+            <div class="grid-card">
+              <div class="grid-card-img img1"><span class="fav">★</span></div>
+              <div class="grid-card-body">
+                <h5>Chili Oil Noodles</h5>
+                <div class="meta"><span>35m</span><span>Tonight</span></div>
+              </div>
+            </div>
+            <div class="grid-card">
+              <div class="grid-card-img img2"><span class="fav">☆</span></div>
+              <div class="grid-card-body">
+                <h5>Pizza Dough v8</h5>
+                <div class="meta"><span>24h</span><span>2d ago</span></div>
+              </div>
+            </div>
+            <div class="grid-card">
+              <div class="grid-card-img img3"></div>
+              <div class="grid-card-body">
+                <h5>Thai Basil Chicken</h5>
+                <div class="meta"><span>25m</span><span>4d ago</span></div>
+              </div>
+            </div>
+            <div class="grid-card">
+              <div class="grid-card-img img4"><span class="fav">★</span></div>
+              <div class="grid-card-body">
+                <h5>Carbonara</h5>
+                <div class="meta"><span>20m</span><span>Classic</span></div>
+              </div>
+            </div>
+            <div class="grid-card">
+              <div class="grid-card-img img5"></div>
+              <div class="grid-card-body">
+                <h5>GF Lemon Scones</h5>
+                <div class="meta"><span>45m</span><span>v5</span></div>
+              </div>
+            </div>
+            <div class="grid-card">
+              <div class="grid-card-img img6"></div>
+              <div class="grid-card-body">
+                <h5>Banana Bread</h5>
+                <div class="meta"><span>1h</span><span>Baking</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="fab">+</div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction C: List-Centric -->
+    <div class="phone-wrapper">
+      <h3>C — List-Centric</h3>
+      <div class="phone-frame dir-c">
+        <div class="status-bar light">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+        <div class="home-content">
+          <div class="home-hero">
+            <h2>Good evening, Leo</h2>
+            <p class="subtitle">247 recipes · 8 books</p>
+            <div class="search-pill">🔍 Search your cookbook...</div>
+          </div>
+
+          <h3 class="section-title">Tonight</h3>
+          <div class="list-item">
+            <div class="list-thumb t1"></div>
+            <div class="list-info">
+              <h5>Chili Oil Noodles</h5>
+              <div class="meta">35 min · 4 servings</div>
+              <span class="book-tag">Weeknight Dinners</span>
+            </div>
+            <span class="list-action">▶</span>
+          </div>
+
+          <h3 class="section-title">Recent</h3>
+          <div class="list-item">
+            <div class="list-thumb t2"></div>
+            <div class="list-info">
+              <h5>Sourdough Pizza Dough</h5>
+              <div class="meta">v8 · Cooked 2 days ago</div>
+              <span class="book-tag">Our Favorites</span>
+            </div>
+            <span class="list-action">›</span>
+          </div>
+          <div class="list-item">
+            <div class="list-thumb t3"></div>
+            <div class="list-info">
+              <h5>Thai Basil Chicken</h5>
+              <div class="meta">Cooked 4 days ago</div>
+              <span class="book-tag">Weeknight Dinners</span>
+            </div>
+            <span class="list-action">›</span>
+          </div>
+          <div class="list-item">
+            <div class="list-thumb t4"></div>
+            <div class="list-info">
+              <h5>Banana Bread</h5>
+              <div class="meta">Cooked 1 week ago</div>
+              <span class="book-tag">Baking Projects</span>
+            </div>
+            <span class="list-action">›</span>
+          </div>
+
+          <h3 class="section-title">Favorites</h3>
+          <div class="list-item">
+            <div class="list-thumb t1"></div>
+            <div class="list-info">
+              <h5>Carbonara</h5>
+              <div class="meta">★ · 20 min · 2 servings</div>
+            </div>
+            <span class="list-action">›</span>
+          </div>
+        </div>
+        <div class="bottom-nav">
+          <div class="nav-item active"><div class="nav-icon">🏠</div>Home</div>
+          <div class="nav-item"><div class="nav-icon">📚</div>Books</div>
+          <div class="nav-item"><div class="nav-icon">🛒</div>Cart</div>
+          <div class="nav-item"><div class="nav-icon">📅</div>Plan</div>
+          <div class="nav-item"><div class="nav-icon">👤</div>Profile</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="comparison-note">
+    <strong>Comparing the Three Directions</strong>
+    <b>A — Editorial Cookbook:</b> Hero card for tonight's meal, horizontal scroll for sections. Feels like NYT Cooking — editorial, spacious, content-first. Best for the "zero-scroll home" vision.<br><br>
+    <b>B — Card Grid:</b> Pinterest-style 2-column grid with tab navigation. More recipes visible at once. FAB for adding. Best if browsing/discovery is more important than contextual prediction.<br><br>
+    <b>C — List-Centric:</b> Apple Notes-inspired list with thumbnails. Information-dense but still warm. Book tags give context. Best for quick scanning when you know what you're looking for.
+  </div>
+</section>
+
+<!-- ===== RECIPE DETAIL ===== -->
+<section id="dir-recipe" class="direction-section">
+  <div class="direction-header">
+    <h2>Recipe Detail</h2>
+    <p>The heart of the collection. Shows a recipe with version badge, lineage, ingredients, and the "Start Cooking" call to action.</p>
+  </div>
+
+  <div class="phone-row">
+    <div class="phone-wrapper">
+      <h3>Recipe Detail View</h3>
+      <div class="phone-frame">
+        <div class="status-bar light">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+        <div class="recipe-detail-content">
+          <div class="recipe-hero-img">
+            <div class="back-btn">‹</div>
+            <div class="action-row">
+              <div class="action-btn">★</div>
+              <div class="action-btn">⋯</div>
+            </div>
+          </div>
+          <div class="recipe-body">
+            <h2>GF Lemon Scones</h2>
+            <div class="lineage-badge">Forked from: Classic English Scones · Baking Projects</div>
+            <div class="recipe-meta-row">
+              <span>⏱ 45 min</span>
+              <span>🍽 8 scones</span>
+              <span>📖 My Recipes</span>
+            </div>
+            <div class="version-badge">
+              <strong>v5</strong> · Last edited 3 days ago · <span style="color:var(--hazelnut);cursor:pointer;text-decoration:underline">View history</span>
+            </div>
+            <div class="recipe-tags">
+              <span class="recipe-tag">Baking</span>
+              <span class="recipe-tag">Gluten-Free</span>
+              <span class="recipe-tag">Breakfast</span>
+            </div>
+
+            <h3 class="recipe-section-title">Ingredients</h3>
+            <div class="ingredient-item"><span class="name">GF flour blend</span><span class="amount">2 cups</span></div>
+            <div class="ingredient-item"><span class="name">Unsalted butter, cold</span><span class="amount">½ cup</span></div>
+            <div class="ingredient-item"><span class="name">Sugar</span><span class="amount">¼ cup</span></div>
+            <div class="ingredient-item"><span class="name">Lemon zest</span><span class="amount">2 tbsp</span></div>
+            <div class="ingredient-item"><span class="name">Buttermilk</span><span class="amount">¾ cup</span></div>
+            <div class="ingredient-item"><span class="name">Baking powder</span><span class="amount">1 tbsp</span></div>
+            <div class="ingredient-item"><span class="name">Salt</span><span class="amount">½ tsp</span></div>
+
+            <div class="cook-button">▶ Start Cooking</div>
+
+            <div style="display:flex;gap:8px;margin-bottom:20px">
+              <div style="flex:1;padding:12px;background:var(--beige);border-radius:10px;text-align:center;font-size:13px;color:var(--text-secondary)">🛒 Add to Cart</div>
+              <div style="flex:1;padding:12px;background:var(--beige);border-radius:10px;text-align:center;font-size:13px;color:var(--text-secondary)">📅 Plan Meal</div>
+              <div style="flex:1;padding:12px;background:var(--beige);border-radius:10px;text-align:center;font-size:13px;color:var(--text-secondary)">↗ Share</div>
+            </div>
+
+            <h3 class="recipe-section-title">Steps</h3>
+            <div style="margin-bottom:16px">
+              <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px">
+                <div style="width:28px;height:28px;border-radius:50%;background:var(--chocolate);color:var(--cream);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">1</div>
+                <p style="font-size:15px;color:var(--text-primary);line-height:1.5">Preheat oven to 400°F. Line baking sheet with parchment paper.</p>
+              </div>
+              <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px">
+                <div style="width:28px;height:28px;border-radius:50%;background:var(--chocolate);color:var(--cream);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">2</div>
+                <p style="font-size:15px;color:var(--text-primary);line-height:1.5">Whisk GF flour, sugar, baking powder, lemon zest, and salt in a large bowl.</p>
+              </div>
+              <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px">
+                <div style="width:28px;height:28px;border-radius:50%;background:var(--chocolate);color:var(--cream);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">3</div>
+                <p style="font-size:15px;color:var(--text-primary);line-height:1.5">Cut cold butter into flour mixture until pea-sized crumbs form. Add 2 tbsp milk to dough.</p>
+              </div>
+            </div>
+
+            <div style="padding:14px;background:var(--beige);border-radius:10px;margin-bottom:20px">
+              <div style="font-size:12px;font-weight:600;color:var(--hazelnut);margin-bottom:6px">📝 Notes (v5)</div>
+              <p style="font-size:13px;color:var(--text-secondary);line-height:1.4">Higher hydration doesn't work with this flour brand. Stick with ¾ cup buttermilk. Added extra milk in step 3 for v5.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="comparison-note">
+    <strong>Recipe Detail Design Notes</strong>
+    Key elements: Edge-to-edge hero photo, Playfair Display title, lineage badge (italic, subtle), version badge with history link, prominent "Start Cooking" CTA, secondary action row (cart, plan, share), numbered steps with chocolate circles, notes section tied to version. The version history is one tap away but never intrusive.
+  </div>
+</section>
+
+<!-- ===== COOKING MODE ===== -->
+<section id="dir-cooking" class="direction-section">
+  <div class="direction-header">
+    <h2>Cooking Mode — Two Directions</h2>
+    <p>The phone is flat on the counter, viewed from above. Hands are messy. Two options: dark (high contrast, less glare) or light (consistent with app, warmer feel).</p>
+  </div>
+
+  <div class="phone-row">
+    <!-- Dark Cooking Mode -->
+    <div class="phone-wrapper">
+      <h3>A — Dark (High Contrast)</h3>
+      <div class="phone-frame cooking-mode">
+        <div class="status-bar dark">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+        <div class="cooking-content">
+          <div class="cooking-header">
+            <span class="close">✕</span>
+            <span class="recipe-name">GF Lemon Scones</span>
+            <span class="timer-btn">⏱ Timer</span>
+          </div>
+
+          <div class="cooking-ingredients-strip">
+            <div class="strip-item"><div class="amount">2 cups</div><div class="name">GF flour</div></div>
+            <div class="strip-item"><div class="amount">½ cup</div><div class="name">Butter</div></div>
+            <div class="strip-item"><div class="amount">¼ cup</div><div class="name">Sugar</div></div>
+            <div class="strip-item"><div class="amount">2 tbsp</div><div class="name">Lemon zest</div></div>
+            <div class="strip-item"><div class="amount">¾ cup</div><div class="name">Buttermilk</div></div>
+            <div class="strip-item"><div class="amount">1 tbsp</div><div class="name">Baking pwd</div></div>
+          </div>
+
+          <div class="cooking-step-area">
+            <div class="step-number">Step 3 of 7</div>
+            <div class="step-text">Cut cold butter into flour mixture until pea-sized crumbs form. Add 2 tablespoons of milk to the dough.</div>
+            <div class="step-dots">
+              <div class="step-dot done"></div>
+              <div class="step-dot done"></div>
+              <div class="step-dot active"></div>
+              <div class="step-dot"></div>
+              <div class="step-dot"></div>
+              <div class="step-dot"></div>
+              <div class="step-dot"></div>
+            </div>
+          </div>
+
+          <div class="cooking-timer-bar">
+            <span class="label">Oven preheat</span>
+            <span class="time">3:42</span>
+          </div>
+
+          <div class="cooking-bottom">
+            <div class="cooking-nav-btn prev">← Prev</div>
+            <div class="cooking-voice-btn">🎤</div>
+            <div class="cooking-nav-btn next">Next →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Light Cooking Mode -->
+    <div class="phone-wrapper">
+      <h3>B — Light (Warm Consistent)</h3>
+      <div class="phone-frame cooking-inverted">
+        <div class="status-bar light">
+          <span>9:41</span>
+          <span>●●●</span>
+        </div>
+        <div class="cooking-content">
+          <div class="cooking-header">
+            <span class="close">✕</span>
+            <span class="recipe-name">GF Lemon Scones</span>
+            <span class="timer-btn">⏱ Timer</span>
+          </div>
+
+          <div class="cooking-ingredients-strip">
+            <div class="strip-item"><div class="amount">2 cups</div><div class="name">GF flour</div></div>
+            <div class="strip-item"><div class="amount">½ cup</div><div class="name">Butter</div></div>
+            <div class="strip-item"><div class="amount">¼ cup</div><div class="name">Sugar</div></div>
+            <div class="strip-item"><div class="amount">2 tbsp</div><div class="name">Lemon zest</div></div>
+            <div class="strip-item"><div class="amount">¾ cup</div><div class="name">Buttermilk</div></div>
+            <div class="strip-item"><div class="amount">1 tbsp</div><div class="name">Baking pwd</div></div>
+          </div>
+
+          <div class="cooking-step-area">
+            <div class="step-number">Step 3 of 7</div>
+            <div class="step-text">Cut cold butter into flour mixture until pea-sized crumbs form. Add 2 tablespoons of milk to the dough.</div>
+            <div class="step-dots">
+              <div class="step-dot done"></div>
+              <div class="step-dot done"></div>
+              <div class="step-dot active"></div>
+              <div class="step-dot"></div>
+              <div class="step-dot"></div>
+              <div class="step-dot"></div>
+              <div class="step-dot"></div>
+            </div>
+          </div>
+
+          <div class="cooking-timer-bar">
+            <span class="label">Oven preheat</span>
+            <span class="time">3:42</span>
+          </div>
+
+          <div class="cooking-bottom">
+            <div class="cooking-nav-btn prev">← Prev</div>
+            <div class="cooking-voice-btn">🎤</div>
+            <div class="cooking-nav-btn next">Next →</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="comparison-note">
+    <strong>Cooking Mode Comparison</strong>
+    <b>A — Dark:</b> Chocolate background with cream text. Higher contrast for kitchen lighting. Reduces screen glare on wet/shiny countertops. Step text at 24px, timer at prominent size. Feels like a distinct "kitchen tool" mode — unmistakable shift from curation.<br><br>
+    <b>B — Light:</b> Stays in the warm cream palette. Consistent with the rest of the app. Still large type and oversized targets, but no jarring mode shift. Feels more like the same cookbook, just zoomed in.<br><br>
+    <b>Shared elements:</b> Ingredient strip (scrollable), step dots for progress, voice button (center), large prev/next buttons, active timer bar, recipe name in header. All touch targets are 48dp+.
+  </div>
+</section>
+
+<script>
+  function showDirection(dir) {
+    document.querySelectorAll('.direction-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('dir-' + dir).classList.add('active');
+    event.target.classList.add('active');
+  }
+</script>
+
+</body>
+</html>

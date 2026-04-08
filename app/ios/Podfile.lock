@@ -8,6 +8,45 @@ PODS:
     - FlutterMacOS
     - JWTDecode (= 3.2.0)
     - SimpleKeychain (= 1.2.0)
+  - connectivity_plus (0.0.1):
+    - Flutter
+  - CwlCatchException (2.2.1):
+    - CwlCatchExceptionSupport (~> 2.2.1)
+  - CwlCatchExceptionSupport (2.2.1)
+  - DKImagePickerController/Core (4.3.9):
+    - DKImagePickerController/ImageDataManager
+    - DKImagePickerController/Resource
+  - DKImagePickerController/ImageDataManager (4.3.9)
+  - DKImagePickerController/PhotoGallery (4.3.9):
+    - DKImagePickerController/Core
+    - DKPhotoGallery
+  - DKImagePickerController/Resource (4.3.9)
+  - DKPhotoGallery (0.0.19):
+    - DKPhotoGallery/Core (= 0.0.19)
+    - DKPhotoGallery/Model (= 0.0.19)
+    - DKPhotoGallery/Preview (= 0.0.19)
+    - DKPhotoGallery/Resource (= 0.0.19)
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Core (0.0.19):
+    - DKPhotoGallery/Model
+    - DKPhotoGallery/Preview
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Model (0.0.19):
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Preview (0.0.19):
+    - DKPhotoGallery/Model
+    - DKPhotoGallery/Resource
+    - SDWebImage
+    - SwiftyGif
+  - DKPhotoGallery/Resource (0.0.19):
+    - SDWebImage
+    - SwiftyGif
+  - file_picker (0.0.1):
+    - DKImagePickerController/PhotoGallery
+    - Flutter
   - Firebase/CoreOnly (11.15.0):
     - FirebaseCore (~> 11.15.0)
   - Firebase/Messaging (11.15.0):
@@ -41,6 +80,12 @@ PODS:
     - GoogleUtilities/UserDefaults (~> 8.1)
     - nanopb (~> 3.30910.0)
   - Flutter (1.0.0)
+  - flutter_app_group_directory (0.0.1):
+    - Flutter
+  - flutter_local_notifications (0.0.1):
+    - Flutter
+  - flutter_timezone (0.0.1):
+    - Flutter
   - GoogleDataTransport (10.1.0):
     - nanopb (~> 3.30910.0)
     - PromisesObjC (~> 2.4)
@@ -68,9 +113,15 @@ PODS:
   - GoogleUtilities/UserDefaults (8.1.0):
     - GoogleUtilities/Logger
     - GoogleUtilities/Privacy
+  - home_widget (0.0.1):
+    - Flutter
   - image_picker_ios (0.0.1):
     - Flutter
+  - integration_test (0.0.1):
+    - Flutter
   - JWTDecode (3.2.0)
+  - live_activities (0.0.1):
+    - Flutter
   - nanopb (3.30910.0):
     - nanopb/decode (= 3.30910.0)
     - nanopb/encode (= 3.30910.0)
@@ -78,23 +129,64 @@ PODS:
   - nanopb/encode (3.30910.0)
   - package_info_plus (0.4.5):
     - Flutter
+  - permission_handler_apple (9.3.0):
+    - Flutter
   - PromisesObjC (2.4.0)
+  - receive_sharing_intent (1.8.1):
+    - Flutter
+  - SDWebImage (5.21.7):
+    - SDWebImage/Core (= 5.21.7)
+  - SDWebImage/Core (5.21.7)
+  - share_plus (0.0.1):
+    - Flutter
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - SimpleKeychain (1.2.0)
+  - speech_to_text (7.2.0):
+    - CwlCatchException
+    - Flutter
+    - FlutterMacOS
+  - sqflite_darwin (0.0.4):
+    - Flutter
+    - FlutterMacOS
+  - SwiftyGif (5.4.5)
+  - url_launcher_ios (0.0.1):
+    - Flutter
   - wakelock_plus (0.0.1):
     - Flutter
 
 DEPENDENCIES:
   - auth0_flutter (from `.symlinks/plugins/auth0_flutter/darwin`)
+  - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
   - Flutter (from `Flutter`)
+  - flutter_app_group_directory (from `.symlinks/plugins/flutter_app_group_directory/ios`)
+  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
+  - flutter_timezone (from `.symlinks/plugins/flutter_timezone/ios`)
+  - home_widget (from `.symlinks/plugins/home_widget/ios`)
   - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
+  - integration_test (from `.symlinks/plugins/integration_test/ios`)
+  - live_activities (from `.symlinks/plugins/live_activities/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - receive_sharing_intent (from `.symlinks/plugins/receive_sharing_intent/ios`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - speech_to_text (from `.symlinks/plugins/speech_to_text/darwin`)
+  - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
 
 SPEC REPOS:
   trunk:
     - Auth0
+    - CwlCatchException
+    - CwlCatchExceptionSupport
+    - DKImagePickerController
+    - DKPhotoGallery
     - Firebase
     - FirebaseCore
     - FirebaseCoreInternal
@@ -105,27 +197,65 @@ SPEC REPOS:
     - JWTDecode
     - nanopb
     - PromisesObjC
+    - SDWebImage
     - SimpleKeychain
+    - SwiftyGif
 
 EXTERNAL SOURCES:
   auth0_flutter:
     :path: ".symlinks/plugins/auth0_flutter/darwin"
+  connectivity_plus:
+    :path: ".symlinks/plugins/connectivity_plus/ios"
+  file_picker:
+    :path: ".symlinks/plugins/file_picker/ios"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
   firebase_messaging:
     :path: ".symlinks/plugins/firebase_messaging/ios"
   Flutter:
     :path: Flutter
+  flutter_app_group_directory:
+    :path: ".symlinks/plugins/flutter_app_group_directory/ios"
+  flutter_local_notifications:
+    :path: ".symlinks/plugins/flutter_local_notifications/ios"
+  flutter_timezone:
+    :path: ".symlinks/plugins/flutter_timezone/ios"
+  home_widget:
+    :path: ".symlinks/plugins/home_widget/ios"
   image_picker_ios:
     :path: ".symlinks/plugins/image_picker_ios/ios"
+  integration_test:
+    :path: ".symlinks/plugins/integration_test/ios"
+  live_activities:
+    :path: ".symlinks/plugins/live_activities/ios"
   package_info_plus:
     :path: ".symlinks/plugins/package_info_plus/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+  receive_sharing_intent:
+    :path: ".symlinks/plugins/receive_sharing_intent/ios"
+  share_plus:
+    :path: ".symlinks/plugins/share_plus/ios"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+  speech_to_text:
+    :path: ".symlinks/plugins/speech_to_text/darwin"
+  sqflite_darwin:
+    :path: ".symlinks/plugins/sqflite_darwin/darwin"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
   wakelock_plus:
     :path: ".symlinks/plugins/wakelock_plus/ios"
 
 SPEC CHECKSUMS:
   Auth0: 2876d0c36857422eda9cb580a6cc896c7d14cb36
   auth0_flutter: 0f4846524696ef8441bcb96ceab7bfdbe31b8a05
+  connectivity_plus: 2a701ffec2c0ae28a48cf7540e279787e77c447d
+  CwlCatchException: 7acc161b299a6de7f0a46a6ed741eae2c8b4d75a
+  CwlCatchExceptionSupport: 54ccab8d8c78907b57f99717fb19d4cc3bce02dc
+  DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
+  DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
+  file_picker: b159e0c068aef54932bb15dc9fd1571818edaf49
   Firebase: d99ac19b909cd2c548339c2241ecd0d1599ab02e
   firebase_core: 99a37263b3c27536063a7b601d9e2a49400a433c
   firebase_messaging: bf6697c61f31c7cc0f654131212ff04c0115c2c7
@@ -134,14 +264,29 @@ SPEC CHECKSUMS:
   FirebaseInstallations: 317270fec08a5d418fdbc8429282238cab3ac843
   FirebaseMessaging: 3b26e2cee503815e01c3701236b020aa9b576f09
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_app_group_directory: d2c3337f424828558953172f9378d00df9b7756d
+  flutter_local_notifications: df98d66e515e1ca797af436137b4459b160ad8c9
+  flutter_timezone: ffb07bdad3c6276af8dada0f11978d8a1f8a20bb
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
+  home_widget: 0434835a4c9a75704264feff6be17ea40e0f0d57
   image_picker_ios: c560581cceedb403a6ff17f2f816d7fea1421fc1
+  integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
   JWTDecode: 7dae24cb9bf9b608eae61e5081029ec169bb5527
+  live_activities: 5a5313d5bf801bbbbe80d51eab80aed6d6df376b
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   package_info_plus: c0502532a26c7662a62a356cebe2692ec5fe4ec4
+  permission_handler_apple: 9878588469a2b0d0fc1e048d9f43605f92e6cec2
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
+  receive_sharing_intent: 79c848f5b045674ad60b9fea3bafea59962ad2c1
+  SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
+  share_plus: 8b6f8b3447e494cca5317c8c3073de39b3600d1f
+  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
   SimpleKeychain: 768cf43ae778b1c21816e94dddf01bb8ee96a075
+  speech_to_text: 87bf9298952e8d9073be1b6aade6d5758db5170c
+  sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
+  SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
+  url_launcher_ios: bb13df5870e8c4234ca12609d04010a21be43dfa
   wakelock_plus: 76957ab028e12bfa4e66813c99e46637f367fc7e
 
 PODFILE CHECKSUM: 25e463c0a9248aa6e52453f061522915e2925575
