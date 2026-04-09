@@ -1,0 +1,46 @@
+#!/bin/bash
+# Show production service status at a glance.
+#
+# Usage: bin/prod-status
+
+set -euo pipefail
+
+CLUSTER="palateful-prod"
+
+echo "=== Palateful Production Status ==="
+echo ""
+
+# ECS Services
+echo "ECS Services:"
+aws ecs describe-services --cluster "$CLUSTER" \
+  --services palateful-api-prod palateful-worker-prod \
+  --query 'services[].{Service:serviceName,Desired:desiredCount,Running:runningCount,Status:status}' \
+  --output table 2>/dev/null
+
+# Health check
+echo ""
+echo "API Health:"
+if curl -sf "https://api.palateful.app/v1/health" 2>/dev/null; then
+  echo ""
+else
+  echo "  UNHEALTHY or unreachable"
+fi
+
+# RDS
+echo ""
+echo "RDS:"
+aws rds describe-db-instances \
+  --db-instance-identifier palateful-db-prod \
+  --query 'DBInstances[0].{Status:DBInstanceStatus,Class:DBInstanceClass,Engine:Engine,Endpoint:Endpoint.Address}' \
+  --output table 2>/dev/null
+
+# Recent errors
+echo ""
+echo "Batch Parser (recent jobs):"
+for s in RUNNING RUNNABLE FAILED SUCCEEDED; do
+  COUNT=$(aws batch list-jobs --job-queue palateful-parser-queue-prod --job-status "$s" \
+    --query 'length(jobSummaryList)' --output text 2>/dev/null)
+  if [ "$COUNT" != "0" ]; then
+    echo "  $s: $COUNT"
+  fi
+done

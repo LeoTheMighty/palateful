@@ -1,0 +1,47 @@
+#!/bin/bash
+# View recent production logs for a service.
+#
+# Usage:
+#   bin/prod-logs api          # Last 50 API log entries
+#   bin/prod-logs worker       # Last 50 worker log entries
+#   bin/prod-logs api 100      # Last 100 API log entries
+#   bin/prod-logs parser       # Last 50 parser batch log entries
+
+set -euo pipefail
+
+SERVICE="${1:-api}"
+LIMIT="${2:-50}"
+
+case "$SERVICE" in
+  api|worker)
+    LOG_GROUP="/ecs/palateful-${SERVICE}-prod"
+    ;;
+  parser)
+    LOG_GROUP="/aws/batch/palateful-parser-prod"
+    ;;
+  *)
+    echo "Unknown service: $SERVICE"
+    echo "Usage: bin/prod-logs [api|worker|parser] [limit]"
+    exit 1
+    ;;
+esac
+
+STREAM=$(aws logs describe-log-streams \
+  --log-group-name "$LOG_GROUP" \
+  --order-by LastEventTime --descending --limit 1 \
+  --query 'logStreams[0].logStreamName' --output text 2>/dev/null)
+
+if [ "$STREAM" = "None" ] || [ -z "$STREAM" ]; then
+  echo "No log streams found in $LOG_GROUP"
+  exit 1
+fi
+
+echo "=== $LOG_GROUP / $STREAM ==="
+echo ""
+
+aws logs get-log-events \
+  --log-group-name "$LOG_GROUP" \
+  --log-stream-name "$STREAM" \
+  --limit "$LIMIT" \
+  --query 'events[].message' \
+  --output json | jq -r '.[]'

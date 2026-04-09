@@ -1,0 +1,27 @@
+#!/bin/bash
+# Build and deploy the Flutter web app to Cloudflare Pages.
+#
+# Usage:
+#   bin/prod-web-deploy              # Build prod and deploy
+#   bin/prod-web-deploy --dev        # Build dev and deploy
+
+set -euo pipefail
+
+ENV="prod"
+if [ "${1:-}" = "--dev" ]; then
+  ENV="dev"
+fi
+
+echo "=== Deploying Flutter Web ($ENV) ==="
+
+cd app
+
+echo "Building Flutter web..."
+flutter build web --release --dart-define=ENV=$ENV
+
+echo "Deploying to Cloudflare Pages..."
+npx wrangler pages deploy build/web --project-name palateful --commit-dirty=true
+
+echo ""
+echo "=== Deploy complete ==="
+echo "  https://palateful.app"

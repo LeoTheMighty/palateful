@@ -1,0 +1,103 @@
+#!/bin/bash
+# Deploy all services to production.
+# Builds and pushes Docker images, runs migrations, and forces new ECS deployments.
+#
+# Usage:
+#   bin/prod-deploy          # Deploy everything
+#   bin/prod-deploy --skip-build  # Skip image builds, just redeploy ECS
+
+set -euo pipefail
+
+AWS_ACCOUNT="592349850338"
+ECR_URL="$AWS_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com"
+CLUSTER="palateful-prod"
+
+SKIP_BUILD=false
+if [ "${1:-}" = "--skip-build" ]; then
+  SKIP_BUILD=true
+fi
+
+echo "=== Palateful Production Deploy ==="
+
+# Login to ECR
+echo "Logging in to ECR..."
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin "$ECR_URL" > /dev/null 2>&1
+
+if [ "$SKIP_BUILD" = false ]; then
+  echo ""
+  echo "Building and pushing images..."
+
+  echo "  API..."
+  docker buildx build -t "$ECR_URL/palateful/api:latest" \
+    --target production -f services/api/Dockerfile --push . > /dev/null 2>&1
+
+  echo "  Worker..."
+  docker buildx build -t "$ECR_URL/palateful/worker:latest" \
+    --target production -f services/worker/Dockerfile --push . > /dev/null 2>&1
+
+  echo "  Migrator..."
+  docker buildx build -t "$ECR_URL/palateful/migrator:latest" \
+    --target migrator -f services/migrator/Dockerfile --push . > /dev/null 2>&1
+
+  echo "  All images pushed."
+fi
+
+# Run migrations
+echo ""
+echo "Running migrations..."
+SUBNETS=$(cd terraform/environments/prod && terraform output -json public_subnet_ids | jq -r 'join(",")')
+SG=$(cd terraform/environments/prod && terraform output -raw ecs_security_group_id)
+
+TASK_ARN=$(aws ecs run-task \
+  --cluster "$CLUSTER" \
+  --task-definition palateful-migrator-prod \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+  --query 'tasks[0].taskArn' --output text)
+
+echo "  Migrator task: $TASK_ARN"
+echo "  Waiting for completion..."
+aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+
+EXIT_CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+  --query 'tasks[0].containers[0].exitCode' --output text)
+
+if [ "$EXIT_CODE" != "0" ]; then
+  echo "  ERROR: Migrator failed with exit code $EXIT_CODE"
+  exit 1
+fi
+echo "  Migrations complete."
+
+# Force new deployments
+echo ""
+echo "Deploying ECS services..."
+aws ecs update-service --cluster "$CLUSTER" --service palateful-api-prod \
+  --force-new-deployment > /dev/null 2>&1
+echo "  API deployment triggered."
+
+aws ecs update-service --cluster "$CLUSTER" --service palateful-worker-prod \
+  --force-new-deployment > /dev/null 2>&1
+echo "  Worker deployment triggered."
+
+# Wait for API to stabilize
+echo ""
+echo "Waiting for API to become healthy..."
+sleep 30
+ALB=$(cd terraform/environments/prod && terraform output -raw alb_dns_name)
+for i in $(seq 1 12); do
+  if curl -sf "https://api.palateful.app/v1/health" > /dev/null 2>&1; then
+    echo "  API is healthy!"
+    break
+  fi
+  if [ "$i" = "12" ]; then
+    echo "  WARNING: API not healthy after 2 minutes. Check ECS console."
+    exit 1
+  fi
+  sleep 10
+done
+
+echo ""
+echo "=== Deploy complete ==="
+echo "  API: https://api.palateful.app"
+echo "  Health: https://api.palateful.app/v1/health"
