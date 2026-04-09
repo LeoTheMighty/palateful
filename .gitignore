@@ -5,6 +5,11 @@ dist
 tmp
 out-tsc
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+
 # dependencies
 node_modules
 
