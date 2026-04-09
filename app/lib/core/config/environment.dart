@@ -4,6 +4,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 /// When true, Auth0 is skipped and a fixed test token is used instead.
 const bool kE2EMode = bool.fromEnvironment('E2E_MODE');
 
+/// Set via --dart-define=ENV=prod to load .env.prod instead of .env.
+const String kEnv = String.fromEnvironment('ENV', defaultValue: 'dev');
+
+/// Returns the .env filename for the current build environment.
+String get envFileName => kEnv == 'prod' ? '.env.prod' : '.env';
+
 /// Environment configuration for the app.
 /// Reads from .env file (loaded via flutter_dotenv).
 class Environment {

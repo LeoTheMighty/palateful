@@ -111,3 +111,118 @@ jobs:
         run: npx nx run worker:build:ci
         env:
           INPUT_PUSH: 'true'
+
+  # ─── Production Infrastructure ───
+
+  terraform-prod:
+    runs-on: ubuntu-latest
+    needs: ci-gate
+    environment: production
+    env:
+      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform init (prod)
+        run: terraform init -backend-config=../../backend-prod.hcl
+        working-directory: terraform/environments/prod
+
+      - name: Terraform plan (prod)
+        run: |
+          terraform plan -no-color -input=false \
+            -var "api_image_tag=$IMAGE_TAG" \
+            -var "worker_image_tag=$IMAGE_TAG" \
+            -var "migrator_image_tag=$IMAGE_TAG"
+        working-directory: terraform/environments/prod
+
+      - name: Terraform apply (prod)
+        run: |
+          terraform apply -auto-approve -input=false \
+            -var "api_image_tag=$IMAGE_TAG" \
+            -var "worker_image_tag=$IMAGE_TAG" \
+            -var "migrator_image_tag=$IMAGE_TAG"
+        working-directory: terraform/environments/prod
+
+  # ─── Run Migrations ───
+
+  run-migrator:
+    runs-on: ubuntu-latest
+    needs: [terraform-prod, deploy-images]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Get Terraform outputs
+        id: tf
+        working-directory: terraform/environments/prod
+        run: |
+          terraform init -backend-config=../../backend-prod.hcl
+          echo "subnets=$(terraform output -json public_subnet_ids | jq -r 'join(",")')" >> "$GITHUB_OUTPUT"
+          echo "sg=$(terraform output -raw ecs_security_group_id)" >> "$GITHUB_OUTPUT"
+          echo "cluster=$(terraform output -raw ecs_cluster_name)" >> "$GITHUB_OUTPUT"
+
+      - name: Run migrator task
+        id: migrator
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.tf.outputs.cluster }} \
+            --task-definition palateful-migrator-prod \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ steps.tf.outputs.subnets }}],securityGroups=[${{ steps.tf.outputs.sg }}],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+          echo "Migrator task started: $TASK_ARN"
+
+      - name: Wait for migrator to complete
+        run: |
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.tf.outputs.cluster }} \
+            --tasks ${{ steps.migrator.outputs.task_arn }}
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.tf.outputs.cluster }} \
+            --tasks ${{ steps.migrator.outputs.task_arn }} \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migrator failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+          echo "Migrator completed successfully"
+
+  # ─── Deploy ECS Services ───
+
+  deploy-services:
+    runs-on: ubuntu-latest
+    needs: run-migrator
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Force new deployment
+        run: |
+          aws ecs update-service --cluster palateful-prod --service palateful-api-prod --force-new-deployment
+          aws ecs update-service --cluster palateful-prod --service palateful-worker-prod --force-new-deployment
+          echo "Deployment triggered for API and Worker services"
