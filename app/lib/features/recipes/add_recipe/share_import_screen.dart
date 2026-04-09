@@ -27,7 +27,7 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
   String? _importStatus;
   Timer? _pollTimer;
   int _pollCount = 0;
-  static const _maxPolls = 60;
+  static const _maxPolls = 120; // 10 minutes at 5s intervals (GPU cold start can take 5+ min)
 
   // Result state
   Map<String, dynamic>? _importItem;

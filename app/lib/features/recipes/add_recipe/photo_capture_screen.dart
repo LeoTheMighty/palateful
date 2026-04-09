@@ -54,7 +54,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   Timer? _pollTimer;
   Timer? _importPollTimer;
   int _ocrPollCount = 0;
-  static const _maxOcrPolls = 60; // 5 minutes at 5s intervals
+  static const _maxOcrPolls = 120; // 10 minutes at 5s intervals (GPU cold start can take 5+ min)
 
   // Book selection
   String? _selectedBookId;

@@ -37,6 +37,9 @@ COPY services/parser/pyproject.toml services/parser/poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root --only main
 
+# Upgrade transformers to latest — required for native hunyuan_vl model type support
+RUN pip install --upgrade transformers
+
 # Copy application code
 COPY services/parser/src ./src
 COPY services/parser/run_job.py ./run_job.py

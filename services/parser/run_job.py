@@ -19,7 +19,11 @@ from datetime import datetime, timezone
 import boto3
 import torch
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor
+from transformers import AutoProcessor
+try:
+    from transformers import AutoModelForImageTextToText as AutoModelForVision2Seq
+except ImportError:
+    from transformers import AutoModelForVision2Seq
 
 
 def get_device() -> str:
@@ -39,16 +43,9 @@ def load_model(model_name: str):
     dtype = torch.float16 if device == "cuda" else torch.float32
     print(f"Loading model {model_name} on {device} with {dtype}...")
 
-    # Load config first with trust_remote_code to handle custom model types
-    # (hunyuan_vl requires custom code that AutoModelForVision2Seq doesn't
-    # properly forward to AutoConfig internally)
-    from transformers import AutoConfig
-    config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-
     processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForVision2Seq.from_pretrained(
         model_name,
-        config=config,
         torch_dtype=dtype,
         device_map=device if device != "cpu" else None,
         trust_remote_code=True,
