@@ -5,6 +5,7 @@ from utils.models.activity import Activity
 from utils.models.base import Base
 from utils.models.chat import Chat
 from utils.models.cooking_log import CookingLog
+from utils.models.error_log import ErrorLog
 from utils.models.friend_request import FriendRequest
 from utils.models.friendship import Friendship
 from utils.models.import_item import ImportItem
@@ -80,6 +81,7 @@ __all__ = [
     "Unit",
     # Logs
     "CookingLog",
+    "ErrorLog",
     # Calendar/Meal Planning
     "MealEvent",
     "MealEventParticipant",

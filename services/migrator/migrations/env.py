@@ -13,6 +13,7 @@ from utils.db.models import (  # noqa: F401
     Activity,
     Chat,
     CookingLog,
+    ErrorLog,
     FriendRequest,
     Friendship,
     ImportItem,

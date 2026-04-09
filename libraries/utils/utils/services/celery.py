@@ -41,6 +41,11 @@ celery_app.conf.beat_schedule = {
         'schedule': 900.0,  # Every 15 minutes
         'options': {'queue': 'celery'},
     },
+    'cleanup-error-logs': {
+        'task': 'cleanup_error_logs',
+        'schedule': 86400.0,  # Every 24 hours
+        'options': {'queue': 'celery'},
+    },
 }
 celery_app.conf.timezone = 'UTC'
 

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from config import settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from middleware.error_tracking import ErrorTrackingMiddleware
 from routers.v1_router import v1_router
 
 
@@ -27,6 +28,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Error tracking middleware (must be added before CORS so it wraps all requests)
+app.add_middleware(ErrorTrackingMiddleware)
 
 # Configure CORS
 app.add_middleware(

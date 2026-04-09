@@ -2,6 +2,7 @@
 
 import json
 import logging
+import traceback
 import typing
 
 from fastapi.encoders import jsonable_encoder
@@ -157,11 +158,63 @@ class Endpoint:
         except Exception as e:
             logger.error("Endpoint %s failed with error: %s",
                          self.__class__.__name__, str(e), exc_info=True)
+            self._log_error_to_db(e)
             return failure(
                 data={},
                 error_message=str(e),
                 error=e
             )
+
+    def _log_error_to_db(self, error: Exception) -> None:
+        """Persist an unhandled endpoint error to the error_logs table.
+
+        Uses a separate database session to avoid polluting the request transaction.
+        Silently catches any failure so error tracking never breaks the response.
+        """
+        try:
+            from utils.models.error_log import ErrorLog
+            from utils.services.database import Database
+
+            stack_trace = traceback.format_exc()
+
+            # Derive request metadata when available
+            method = None
+            path = None
+            request_id = None
+            user_id = None
+
+            if self.request:
+                method = getattr(self.request, "method", None)
+                if method:
+                    method = method[:10]
+                url = getattr(self.request, "url", None)
+                if url:
+                    path = str(url.path)[:2000]
+                state = getattr(self.request, "state", None)
+                if state:
+                    request_id = getattr(state, "request_id", None)
+
+            if self.user:
+                user_id = getattr(self.user, "id", None)
+
+            database = Database()
+            try:
+                error_log = ErrorLog(
+                    error_type=type(error).__name__,
+                    error_message=str(error)[:4000],
+                    stack_trace=stack_trace,
+                    method=method,
+                    path=path,
+                    status_code=500,
+                    user_id=user_id,
+                    service="api",
+                    request_id=request_id,
+                )
+                database.create(error_log)
+            finally:
+                database.close()
+        except Exception:
+            logger.exception("Failed to log error to error_logs table")
 
     def execute(self, *args, **kwargs):
         """Executes the business logic of the endpoint."""
