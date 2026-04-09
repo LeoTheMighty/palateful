@@ -36,6 +36,11 @@ import '../../features/calendar/calendar_screen.dart';
 import '../../features/invitations/invitations_screen.dart';
 import '../../features/invitations/invite_link_preview_screen.dart';
 import '../../features/recipes/public_recipe_screen.dart';
+import '../../features/admin/admin_dashboard_screen.dart';
+import '../../features/admin/admin_logs_screen.dart';
+import '../../features/admin/admin_errors_screen.dart';
+import '../../features/admin/admin_error_detail_screen.dart';
+import '../../features/admin/admin_users_screen.dart';
 import '../../features/chat/chat_screen.dart';
 import '../../features/profile/notification_preferences_screen.dart';
 import '../../features/profile/profile_screen.dart';
@@ -92,6 +97,13 @@ GoRouter get appRouter {
       // Authenticated and onboarded, but on login or onboarding page - go home
       if (isAuthenticated && hasCompletedOnboarding && (isOnLoginPage || isOnOnboardingPage)) {
         debugPrint('Redirecting to / (already onboarded)');
+        return '/';
+      }
+
+      // Admin routes - require admin role
+      final isAdminRoute = currentLocation.startsWith('/admin');
+      if (isAdminRoute && !authService.isAdmin) {
+        debugPrint('Redirecting to / (not admin)');
         return '/';
       }
 
@@ -321,6 +333,36 @@ GoRouter get appRouter {
           final threadId = state.pathParameters['threadId']!;
           return ChatScreen(threadId: threadId);
         },
+      ),
+
+      // Admin routes (outside shell — web-only admin dashboard)
+      GoRoute(
+        path: '/admin',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/admin/logs',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminLogsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/errors',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminErrorsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/errors/:id',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return AdminErrorDetailScreen(errorId: id);
+        },
+      ),
+      GoRoute(
+        path: '/admin/users',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminUsersScreen(),
       ),
 
       // Recipe books routes (outside shell — navigated via push)

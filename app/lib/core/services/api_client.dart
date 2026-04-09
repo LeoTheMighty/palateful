@@ -606,4 +606,52 @@ class ApiClient {
 
   Future<Response> deactivateInviteLink(String inviteLinkId) =>
       _dio.delete('/v1/invite-links/$inviteLinkId');
+
+  // Admin endpoints
+  Future<Response> getAdminLogs({
+    String service = 'api',
+    String? level,
+    String? search,
+    int limit = 100,
+  }) {
+    return _dio.get('/v1/admin/logs', queryParameters: {
+      'service': service,
+      'limit': limit,
+      if (level != null) 'level': level,
+      if (search != null) 'search': search,
+    });
+  }
+
+  Future<Response> getAdminErrors({
+    String? service,
+    int limit = 50,
+    int offset = 0,
+  }) {
+    return _dio.get('/v1/admin/errors', queryParameters: {
+      'limit': limit,
+      'offset': offset,
+      if (service != null) 'service': service,
+    });
+  }
+
+  Future<Response> getAdminErrorDetail(String errorId) {
+    return _dio.get('/v1/admin/errors/$errorId');
+  }
+
+  Future<Response> getAdminUsers({int limit = 50, int offset = 0}) {
+    return _dio.get('/v1/admin/users', queryParameters: {
+      'limit': limit,
+      'offset': offset,
+    });
+  }
+
+  Future<Response> updateUserAdmin(String userId, bool isAdmin) {
+    return _dio.put('/v1/admin/users/$userId/admin', data: {
+      'is_admin': isAdmin,
+    });
+  }
+
+  Future<Response> getAdminStats() {
+    return _dio.get('/v1/admin/stats');
+  }
 }

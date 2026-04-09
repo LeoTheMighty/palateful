@@ -20,8 +20,8 @@ import 'providers/theme_mode_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables from .env file
-  await dotenv.load(fileName: '.env');
+  // Load environment variables from .env file (or .env.prod with --dart-define=ENV=prod)
+  await dotenv.load(fileName: envFileName);
 
   // Initialize Firebase (skip in E2E mode — no push notifications needed,
   // and waiting on Firebase delays test startup significantly)
@@ -58,6 +58,7 @@ void main() async {
           defaultShoppingListId: response.data['default_shopping_list_id'],
           previousShoppingListId: response.data['previous_shopping_list_id'],
         );
+        authService.updateAdminState(response.data['is_admin'] ?? false);
       }
     } catch (e) {
       debugPrint('E2E: getMe failed: $e');
@@ -87,6 +88,7 @@ void main() async {
             hasCompletedOnboarding: userData['has_completed_onboarding'] ?? false,
             defaultRecipeBookId: userData['default_recipe_book_id'],
           );
+          authService.updateAdminState(userData['is_admin'] ?? false);
         }
       } catch (e) {
         debugPrint('Failed to fetch user data on startup: $e');
@@ -103,6 +105,7 @@ void main() async {
                   hasCompletedOnboarding: userData['has_completed_onboarding'] ?? false,
                   defaultRecipeBookId: userData['default_recipe_book_id'],
                 );
+                authService.updateAdminState(userData['is_admin'] ?? false);
               }
             } catch (retryError) {
               debugPrint('Retry after refresh also failed: $retryError');

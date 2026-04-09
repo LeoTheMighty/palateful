@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -637,6 +638,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           // Settings section
           _buildSectionHeader('Settings', textTheme),
           const SizedBox(height: 12),
+          if (kIsWeb && _authService.isAdmin) ...[
+            _buildProfileTile(
+              icon: Icons.admin_panel_settings_outlined,
+              label: 'Admin Dashboard',
+              value: 'Manage users, view logs and errors',
+              onTap: () => context.push('/admin'),
+              colorScheme: colorScheme,
+              textTheme: textTheme,
+            ),
+            const SizedBox(height: 8),
+          ],
           _buildProfileTile(
             icon: Icons.mail_outline,
             label: 'Invitations',

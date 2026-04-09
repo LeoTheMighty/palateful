@@ -14,6 +14,7 @@ class AuthService extends ChangeNotifier {
   bool _isLoading = false;
   String? _manualToken;
   bool _hasCompletedOnboarding = false;
+  bool _isAdmin = false;
   String? _defaultRecipeBookId;
   String? _previousRecipeBookId;
   String? _defaultShoppingListId;
@@ -66,10 +67,17 @@ class AuthService extends ChangeNotifier {
   String? get accessToken => _credentials?.accessToken ?? _manualToken;
   UserProfile? get userProfile => _userProfile;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
+  bool get isAdmin => _isAdmin;
   String? get defaultRecipeBookId => _defaultRecipeBookId;
   String? get previousRecipeBookId => _previousRecipeBookId;
   String? get defaultShoppingListId => _defaultShoppingListId;
   String? get previousShoppingListId => _previousShoppingListId;
+
+  /// Update the admin state from API response
+  void updateAdminState(bool isAdmin) {
+    _isAdmin = isAdmin;
+    notifyListeners();
+  }
 
   /// Update onboarding state from API response
   void updateOnboardingState({
@@ -203,6 +211,7 @@ class AuthService extends ChangeNotifier {
       _userProfile = null;
       _manualToken = null;
       _hasCompletedOnboarding = false;
+      _isAdmin = false;
       _defaultRecipeBookId = null;
       _previousRecipeBookId = null;
       _defaultShoppingListId = null;
@@ -222,6 +231,7 @@ class AuthService extends ChangeNotifier {
       _userProfile = null;
       _manualToken = null;
       _hasCompletedOnboarding = false;
+      _isAdmin = false;
       _defaultRecipeBookId = null;
       _previousRecipeBookId = null;
       _defaultShoppingListId = null;
