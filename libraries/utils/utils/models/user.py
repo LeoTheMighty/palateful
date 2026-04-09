@@ -39,6 +39,7 @@ class User(Base):
     picture: Mapped[str | None] = mapped_column(String, nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     has_completed_onboarding: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Username for social features (@username)
     username: Mapped[str | None] = mapped_column(

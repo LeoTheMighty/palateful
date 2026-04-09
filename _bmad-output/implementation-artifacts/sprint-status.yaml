@@ -1,8 +1,8 @@
-# generated: 2026-03-12
+# generated: 2026-04-09
 # project: palateful
 # project_key: NOKEY
 # tracking_system: file-system
-# story_location: {project-root}/_bmad-output/implementation-artifacts
+# story_location: _bmad-output/implementation-artifacts
 #
 # STATUS DEFINITIONS:
 # ==================
@@ -33,7 +33,7 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-03-12
+generated: 2026-04-09
 project: palateful
 project_key: NOKEY
 tracking_system: file-system
@@ -41,17 +41,17 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Foundation & Authentication
-  epic-1: in-progress
+  epic-1: done
   1-1-app-shell-with-design-system-and-navigation: done
   1-2-sign-in-with-google-and-apple: done
   1-3-user-profile-management: done
-  1-4-onboarding-flow: review
-  1-5-empty-states-with-contextual-prompts: review
-  1-6-ci-cd-pipeline-setup: review
+  1-4-onboarding-flow: done
+  1-5-empty-states-with-contextual-prompts: done
+  1-6-ci-cd-pipeline-setup: done
   epic-1-retrospective: optional
 
   # Epic 2: Recipe Management & Organization
-  epic-2: in-progress
+  epic-2: done
   2-1-recipe-crud-with-structured-fields: done
   2-2-personal-recipe-books: done
   2-3-recipe-photos: done
@@ -73,7 +73,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Recipe Versioning & Notes
-  epic-4: in-progress
+  epic-4: done
   4-1-auto-versioning-on-recipe-edit: done
   4-2-version-history-and-diffs: done
   4-3-restore-previous-version: done
@@ -81,7 +81,7 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Search & Discovery
-  epic-5: in-progress
+  epic-5: done
   5-1-recipe-search-by-name-ingredient-tag-and-free-text: done
   5-2-fuzzy-and-semantic-search: done
   5-3-search-filters: done
@@ -90,7 +90,7 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Cooking Mode
-  epic-6: in-progress
+  epic-6: done
   6-1-cooking-mode-core-experience: done
   6-2-gesture-navigation-for-messy-hands: done
   6-3-concurrent-timers-with-background-notifications: done
@@ -108,7 +108,7 @@ development_status:
   epic-7-retrospective: optional
 
   # Epic 8: Shopping Lists
-  epic-8: in-progress
+  epic-8: done
   8-1-shared-real-time-shopping-list: done
   8-2-add-recipe-ingredients-to-shopping-list: done
   8-3-check-off-items-with-real-time-sync: done
@@ -123,7 +123,7 @@ development_status:
   epic-9-retrospective: optional
 
   # Epic 10: Sharing, Export & Cross-Platform
-  epic-10: in-progress
+  epic-10: done
   10-1-export-recipe-collection: done
   10-2-share-recipe-via-public-link: done
   10-3-native-platform-sharing: done
@@ -140,3 +140,20 @@ development_status:
   11-5-ai-in-cooking-mode-questions-and-answers: done
   11-6-hands-free-voice-input-in-cooking-mode: done
   epic-11-retrospective: optional
+
+  # Epic 12: Admin Infrastructure & Observability
+  epic-12: backlog
+  12-1-admin-role-system-and-auth0-prod-config: backlog
+  12-2-error-tracking-and-structured-logging: backlog
+  12-3-admin-api-endpoints: backlog
+  12-4-admin-web-dashboard: backlog
+  12-5-production-console: backlog
+  epic-12-retrospective: optional
+
+  # Epic Vibes: Recipe Vibes (V1 — Vibes Lite)
+  epic-vibes: done
+  vibes-1-backend-vibe-columns-and-ai-assignment: done
+  vibes-2-api-vibe-fields-and-filter: done
+  vibes-3-flutter-vibechip-and-integration: done
+  vibes-4-flutter-vibe-filter-and-user-override: done
+  epic-vibes-retrospective: optional

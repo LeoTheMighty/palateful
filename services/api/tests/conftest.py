@@ -58,6 +58,7 @@ class MockUser(MockModel):
             "picture": None,
             "email_verified": True,
             "has_completed_onboarding": True,
+            "is_admin": False,
             "default_recipe_book_id": None,
             "previous_recipe_book_id": None,
             "default_shopping_list_id": None,
@@ -124,6 +125,8 @@ class MockRecipe(MockModel):
             "forked_from_book_id": None,
             "forked_from_recipe_name": None,
             "forked_from_book_name": None,
+            "primary_vibe": None,
+            "secondary_vibe": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
