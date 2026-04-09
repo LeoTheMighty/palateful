@@ -142,12 +142,12 @@ development_status:
   epic-11-retrospective: optional
 
   # Epic 12: Admin Infrastructure & Observability
-  epic-12: backlog
-  12-1-admin-role-system-and-auth0-prod-config: backlog
-  12-2-error-tracking-and-structured-logging: backlog
-  12-3-admin-api-endpoints: backlog
-  12-4-admin-web-dashboard: backlog
-  12-5-production-console: backlog
+  epic-12: done
+  12-1-admin-role-system-and-auth0-prod-config: done
+  12-2-error-tracking-and-structured-logging: done
+  12-3-admin-api-endpoints: done
+  12-4-admin-web-dashboard: done
+  12-5-production-console: done
   epic-12-retrospective: optional
 
   # Epic Vibes: Recipe Vibes (V1 — Vibes Lite)
