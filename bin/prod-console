@@ -1,0 +1,34 @@
+#!/bin/bash
+# Open an interactive Python console connected to the production database.
+# Requires: AWS CLI v2 with Session Manager plugin installed.
+#   brew install session-manager-plugin
+
+set -euo pipefail
+
+CLUSTER="palateful-prod"
+SERVICE="palateful-api-prod"
+CONTAINER="api"
+
+echo "Finding running API task..."
+TASK_ARN=$(aws ecs list-tasks \
+  --cluster "$CLUSTER" \
+  --service-name "$SERVICE" \
+  --desired-status RUNNING \
+  --query 'taskArns[0]' \
+  --output text)
+
+if [ "$TASK_ARN" = "None" ] || [ -z "$TASK_ARN" ]; then
+  echo "ERROR: No running API tasks found in cluster $CLUSTER"
+  exit 1
+fi
+
+echo "Connecting to task: $TASK_ARN"
+echo "Starting interactive Python console with all models loaded..."
+echo ""
+
+aws ecs execute-command \
+  --cluster "$CLUSTER" \
+  --task "$TASK_ARN" \
+  --container "$CONTAINER" \
+  --interactive \
+  --command "python manage.py"
