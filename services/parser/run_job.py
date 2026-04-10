@@ -21,9 +21,12 @@ import torch
 from PIL import Image
 from transformers import AutoProcessor
 try:
-    from transformers import AutoModelForImageTextToText as AutoModelForVision2Seq
+    from transformers.models.hunyuan_vl import HunYuanVLForConditionalGeneration as ModelClass
 except ImportError:
-    from transformers import AutoModelForVision2Seq
+    try:
+        from transformers import AutoModelForImageTextToText as ModelClass
+    except ImportError:
+        from transformers import AutoModelForVision2Seq as ModelClass
 
 
 def get_device() -> str:
@@ -40,14 +43,15 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
 def load_model(model_name: str):
     """Load model and processor once."""
     device = get_device()
-    dtype = torch.float16 if device == "cuda" else torch.float32
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
     print(f"Loading model {model_name} on {device} with {dtype}...")
 
-    processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-    model = AutoModelForVision2Seq.from_pretrained(
+    processor = AutoProcessor.from_pretrained(model_name, use_fast=False, trust_remote_code=True)
+    model = ModelClass.from_pretrained(
         model_name,
-        torch_dtype=dtype,
-        device_map=device if device != "cpu" else None,
+        dtype=dtype,
+        device_map="auto" if device != "cpu" else None,
+        attn_implementation="eager",
         trust_remote_code=True,
     )
 
@@ -59,19 +63,33 @@ def load_model(model_name: str):
 
 
 def run_ocr(model, processor, device, image: Image.Image) -> str:
-    """Run OCR on a single image."""
-    inputs = processor(images=image, return_tensors="pt")
+    """Run OCR on a single image using HunyuanOCR chat template."""
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": "Detect and recognize all text in the image. Output the text content."},
+            ],
+        }
+    ]
+
+    prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    inputs = processor(text=[prompt], images=[image], padding=True, return_tensors="pt")
     if device != "cpu":
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
     with torch.no_grad():
         generated_ids = model.generate(
             **inputs,
-            max_new_tokens=2048,
+            max_new_tokens=4096,
             do_sample=False,
         )
 
-    return processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    # Strip input tokens from output
+    input_len = inputs["input_ids"].shape[1]
+    output_ids = generated_ids[:, input_len:]
+    return processor.batch_decode(output_ids, skip_special_tokens=True)[0]
 
 
 def process_single(s3, model, processor, device, model_name, input_uri, output_uri):

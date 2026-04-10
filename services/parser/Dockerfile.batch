@@ -37,8 +37,19 @@ COPY services/parser/pyproject.toml services/parser/poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root --only main
 
-# Upgrade transformers to latest — required for native hunyuan_vl model type support
-RUN pip install --upgrade transformers
+# Install git (needed to pip install from GitHub) then install specific
+# transformers commit with hunyuan_vl support.
+# Per https://github.com/Tencent-Hunyuan/HunyuanOCR — this commit has not been
+# merged into a release yet, so we pin to the exact commit Tencent recommends.
+# Install specific transformers commit with hunyuan_vl support + torchvision.
+# Download as tarball to avoid needing git installed in the container.
+# Install pinned transformers with hunyuan_vl support.
+# --no-deps prevents reinstalling torch/nvidia which conflict with CUDA base image.
+RUN pip install --no-deps https://github.com/huggingface/transformers/archive/82a06db03535c49aa987719ed0746a76093b1ec4.tar.gz
+
+# Create torchvision shim with transforms that HunYuanVLImageProcessor needs.
+# Full torchvision can't be installed due to C extension conflicts.
+COPY services/parser/torchvision_shim /usr/local/lib/python3.12/dist-packages/torchvision
 
 # Copy application code
 COPY services/parser/src ./src
@@ -49,12 +60,10 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/app/models
 
-# Pre-download ALL model files (weights + custom modeling code) into the image.
-# snapshot_download grabs everything including *.py files needed for trust_remote_code.
-# Eliminates ~3-5 min HuggingFace download on every job.
-RUN python -c "\
-from huggingface_hub import snapshot_download; \
-snapshot_download('tencent/HunyuanOCR')"
+# NOTE: Model weights are downloaded at runtime (~3-5 min on first run).
+# Pre-baking was removed due to huggingface_hub compatibility issues with
+# the pinned transformers commit. Can be re-added once transformers merges
+# hunyuan_vl support into a stable release.
 
 # Run the batch job script
 CMD ["python", "run_job.py"]
