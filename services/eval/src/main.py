@@ -383,5 +383,77 @@ def add_case(
     console.print(f"[green]Added case '{case_id}' to {manifest_path}[/green]")
 
 
+@cli.command("run-fixtures")
+@click.option("--strategy", "-s", default="text_extractor", help="Extraction strategy to use")
+@click.option(
+    "--fixtures-dir", "-d", default=None,
+    help="Path to fixtures directory (defaults to ./fixtures)",
+)
+@click.option("--compare", "-c", default=None, help="Comma-separated strategies to compare")
+@click.option("--output", "-o", default=None, help="Output JSON file for results")
+@click.pass_context
+def run_fixtures(
+    ctx: click.Context,
+    strategy: str,
+    fixtures_dir: str | None,
+    compare: str | None,
+    output: str | None,
+) -> None:
+    """Run fixture-based extraction eval.
+
+    Discovers input/expected pairs in the fixtures directory and scores
+    extraction results against ground truth.
+
+    Examples:
+
+        npx nx run eval:run-fixtures
+
+        npx nx run eval:run-fixtures -- --strategy text_extractor
+
+        npx nx run eval:run-fixtures -- --compare text_extractor,ocr_then_text
+    """
+    import json as json_mod
+
+    from src.fixture_runner import run_comparison, run_eval
+    from src.strategies import STRATEGIES
+
+    # Determine fixtures directory
+    if fixtures_dir:
+        fdir = Path(fixtures_dir)
+    else:
+        fdir = Path("./fixtures")
+
+    if not fdir.is_dir():
+        console.print(f"[red]Error: Fixtures directory not found: {fdir}[/red]")
+        sys.exit(1)
+
+    if compare:
+        # Compare mode: run multiple strategies
+        strategy_list = [s.strip() for s in compare.split(",")]
+        invalid = [s for s in strategy_list if s not in STRATEGIES]
+        if invalid:
+            console.print(f"[red]Unknown strategies: {invalid}[/red]")
+            console.print(f"Available: {list(STRATEGIES.keys())}")
+            sys.exit(1)
+
+        results = run_comparison(str(fdir), strategy_list)
+    else:
+        # Single strategy mode
+        if strategy not in STRATEGIES:
+            console.print(f"[red]Unknown strategy: {strategy}[/red]")
+            console.print(f"Available: {list(STRATEGIES.keys())}")
+            sys.exit(1)
+
+        results = run_eval(str(fdir), strategy=strategy)
+
+    # Save results if output specified
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w") as f:
+            json_mod.dump(results, f, indent=2, default=str)
+        console.print(f"\n[green]Results saved to: {output_path}[/green]")
+
+
 if __name__ == "__main__":
     cli()

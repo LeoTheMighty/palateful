@@ -27,7 +27,7 @@ class MatchIngredientsTask(BaseTask):
     2. Exact canonical_name/alias match (free)
     3. pg_trgm fuzzy match > 0.85 (free, high confidence)
     4. pg_trgm fuzzy match > 0.5 (free, needs review)
-    5. Auto-create with pending_review if no match
+    5. Auto-create ingredient with pending_review=True if no match
     """
 
     name = "match_ingredients_task"
@@ -80,7 +80,7 @@ class MatchIngredientsTask(BaseTask):
             if needs_review:
                 item.status = "awaiting_review"
             else:
-                # Auto-approve if all matches are high confidence
+                # Auto-approve if all matches are high confidence or auto-created
                 item.status = "approved"
 
             self.database.db.commit()
@@ -182,7 +182,7 @@ class MatchIngredientsTask(BaseTask):
         Returns a dict with:
         - ingredient_id: UUID or None
         - confidence: float 0-1
-        - match_type: str (exact, fuzzy, cached, created)
+        - match_type: str (exact, fuzzy, cached, auto_created)
         - needs_review: bool
         """
         normalized = ingredient_text.lower().strip()
@@ -204,13 +204,23 @@ class MatchIngredientsTask(BaseTask):
             self._cache_match(ingredient_text, fuzzy["ingredient_id"], "fuzzy", fuzzy["confidence"])
             return fuzzy
 
-        # Tier 4: No match found - flag for review
-        # In production, we might auto-create the ingredient with pending_review=True
+        # Tier 4: No match found - auto-create ingredient with pending_review=True
+        ingredient_name = self._extract_ingredient_name(normalized)
+        new_ingredient = Ingredient(
+            canonical_name=ingredient_name,
+            is_canonical=False,
+            pending_review=True,
+            submitted_by_id=self.user_id,
+        )
+        self.database.create(new_ingredient)
+
+        self._cache_match(ingredient_text, str(new_ingredient.id), "auto_created", 0.5)
+
         return {
-            "ingredient_id": None,
-            "confidence": 0,
-            "match_type": "none",
-            "needs_review": True,
+            "ingredient_id": str(new_ingredient.id),
+            "confidence": 0.5,
+            "match_type": "auto_created",
+            "needs_review": False,
         }
 
     def _check_cached_match(self, normalized_text: str) -> dict | None:

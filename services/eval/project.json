@@ -81,6 +81,13 @@
         "cwd": "{projectRoot}"
       }
     },
+    "run-fixtures": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main run-fixtures --env-file .env.eval",
+        "cwd": "{projectRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

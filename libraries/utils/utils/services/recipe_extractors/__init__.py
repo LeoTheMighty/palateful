@@ -14,6 +14,7 @@ from utils.services.recipe_extractors.base import (
 )
 from utils.services.recipe_extractors.json_ld import JsonLdExtractor
 from utils.services.recipe_extractors.text_extractor import extract_recipe_from_text
+from utils.services.recipe_extractors.vision_extractor import extract_recipe_from_image
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ __all__ = [
     "extract_recipe_from_url",
     "extract_recipe_from_html",
     "extract_recipe_from_text",
+    "extract_recipe_from_image",
 ]
 
 

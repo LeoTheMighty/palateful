@@ -7,6 +7,7 @@ from decimal import Decimal
 from utils.api.endpoint import success
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
+from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.services.celery import celery_app
@@ -106,10 +107,17 @@ class CreateRecipeTask(BaseTask):
         """Create a RecipeIngredient record."""
         ingredient_id = ing_data.get("matched_ingredient_id")
         if not ingredient_id:
-            # Skip ingredients without a match
-            # In production, we might create a placeholder ingredient
-            logger.warning("Skipping ingredient without match: %s", ing_data.get("text"))
-            return
+            # Safety net: auto-create ingredient inline if somehow still unmatched
+            logger.warning("Auto-creating ingredient inline for: %s", ing_data.get("text"))
+            ingredient_name = ing_data.get("text", "Unknown ingredient").strip()
+            new_ingredient = Ingredient(
+                canonical_name=ingredient_name,
+                is_canonical=False,
+                pending_review=True,
+                submitted_by_id=self.user_id,
+            )
+            self.database.create(new_ingredient)
+            ingredient_id = str(new_ingredient.id)
 
         # Parse quantity
         quantity = ing_data.get("quantity")
