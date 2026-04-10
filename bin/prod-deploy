@@ -1,16 +1,17 @@
 #!/bin/bash
 # Deploy all services to production.
-# Builds and pushes Docker images, runs migrations, and forces new ECS deployments.
+# Uses commit SHA tags + image digests to guarantee fresh containers.
 #
 # Usage:
-#   bin/prod-deploy          # Deploy everything
-#   bin/prod-deploy --skip-build  # Skip image builds, just redeploy ECS
+#   bin/prod-deploy              # Build, push, migrate, deploy
+#   bin/prod-deploy --skip-build # Just migrate + redeploy (uses current ECR images)
 
 set -euo pipefail
 
 AWS_ACCOUNT="592349850338"
 ECR_URL="$AWS_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com"
 CLUSTER="palateful-prod"
+TAG=$(git rev-parse --short HEAD)
 
 SKIP_BUILD=false
 if [ "${1:-}" = "--skip-build" ]; then
@@ -18,6 +19,8 @@ if [ "${1:-}" = "--skip-build" ]; then
 fi
 
 echo "=== Palateful Production Deploy ==="
+echo "  Commit: $TAG"
+echo ""
 
 # Login to ECR
 echo "Logging in to ECR..."
@@ -25,23 +28,54 @@ aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin "$ECR_URL" > /dev/null 2>&1
 
 if [ "$SKIP_BUILD" = false ]; then
-  echo ""
-  echo "Building and pushing images..."
+  echo "Building and pushing images (tag: $TAG)..."
 
   echo "  API..."
-  docker buildx build -t "$ECR_URL/palateful/api:latest" \
+  docker buildx build \
+    -t "$ECR_URL/palateful/api:$TAG" \
+    -t "$ECR_URL/palateful/api:latest" \
     --target production -f services/api/Dockerfile --push . > /dev/null 2>&1
 
   echo "  Worker..."
-  docker buildx build -t "$ECR_URL/palateful/worker:latest" \
+  docker buildx build \
+    -t "$ECR_URL/palateful/worker:$TAG" \
+    -t "$ECR_URL/palateful/worker:latest" \
     --target production -f services/worker/Dockerfile --push . > /dev/null 2>&1
 
   echo "  Migrator..."
-  docker buildx build -t "$ECR_URL/palateful/migrator:latest" \
+  docker buildx build \
+    -t "$ECR_URL/palateful/migrator:$TAG" \
+    -t "$ECR_URL/palateful/migrator:latest" \
     --target migrator -f services/migrator/Dockerfile --push . > /dev/null 2>&1
 
   echo "  All images pushed."
 fi
+
+# Resolve image digests — guarantees ECS pulls the exact image we just built
+echo ""
+echo "Resolving image digests..."
+API_DIGEST=$(aws ecr describe-images --repository-name palateful/api --image-ids imageTag=$TAG --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || \
+  aws ecr describe-images --repository-name palateful/api --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
+WORKER_DIGEST=$(aws ecr describe-images --repository-name palateful/worker --image-ids imageTag=$TAG --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || \
+  aws ecr describe-images --repository-name palateful/worker --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
+MIGRATOR_DIGEST=$(aws ecr describe-images --repository-name palateful/migrator --image-ids imageTag=$TAG --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || \
+  aws ecr describe-images --repository-name palateful/migrator --image-ids imageTag=latest --query 'imageDetails[0].imageDigest' --output text)
+
+echo "  API:      $API_DIGEST"
+echo "  Worker:   $WORKER_DIGEST"
+echo "  Migrator: $MIGRATOR_DIGEST"
+
+# Update task definitions with exact digests via terraform
+echo ""
+echo "Updating task definitions..."
+cd terraform/environments/prod
+terraform apply -auto-approve -input=false \
+  -var "api_image_tag=$TAG" \
+  -var "worker_image_tag=$TAG" \
+  -var "migrator_image_tag=$TAG" \
+  > /dev/null 2>&1
+cd ../../..
+echo "  Task definitions updated."
 
 # Run migrations
 echo ""
@@ -69,35 +103,43 @@ if [ "$EXIT_CODE" != "0" ]; then
 fi
 echo "  Migrations complete."
 
-# Force new deployments
+# Stop old tasks and force new deployments
 echo ""
 echo "Deploying ECS services..."
+for TASK in $(aws ecs list-tasks --cluster "$CLUSTER" --query 'taskArns[]' --output text 2>/dev/null); do
+  aws ecs stop-task --cluster "$CLUSTER" --task "$TASK" --reason "Deploy $TAG" > /dev/null 2>&1
+done
+echo "  Old tasks stopped."
+
 aws ecs update-service --cluster "$CLUSTER" --service palateful-api-prod \
   --force-new-deployment > /dev/null 2>&1
-echo "  API deployment triggered."
-
 aws ecs update-service --cluster "$CLUSTER" --service palateful-worker-prod \
   --force-new-deployment > /dev/null 2>&1
-echo "  Worker deployment triggered."
+echo "  New deployments triggered."
 
 # Wait for API to stabilize
 echo ""
 echo "Waiting for API to become healthy..."
 sleep 30
-ALB=$(cd terraform/environments/prod && terraform output -raw alb_dns_name)
-for i in $(seq 1 12); do
+for i in $(seq 1 18); do
   if curl -sf "https://api.palateful.app/v1/health" > /dev/null 2>&1; then
     echo "  API is healthy!"
     break
   fi
-  if [ "$i" = "12" ]; then
-    echo "  WARNING: API not healthy after 2 minutes. Check ECS console."
+  if [ "$i" = "18" ]; then
+    echo "  WARNING: API not healthy after 3 minutes. Check ECS console."
     exit 1
   fi
   sleep 10
 done
 
+# Verify worker is running
+WORKER_COUNT=$(aws ecs describe-services --cluster "$CLUSTER" --services palateful-worker-prod \
+  --query 'services[0].runningCount' --output text)
+echo "  Worker running: $WORKER_COUNT"
+
 echo ""
-echo "=== Deploy complete ==="
-echo "  API: https://api.palateful.app"
+echo "=== Deploy complete ($TAG) ==="
+echo "  API:    https://api.palateful.app"
 echo "  Health: https://api.palateful.app/v1/health"
+echo "  Tag:    $TAG"
