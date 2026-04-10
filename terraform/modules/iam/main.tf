@@ -366,6 +366,12 @@ resource "aws_iam_role_policy" "ecs_api_task_sqs" {
           "sqs:GetQueueAttributes"
         ]
         Resource = var.sqs_queue_arns
+      },
+      {
+        Sid      = "SQSListAndDiscover"
+        Effect   = "Allow"
+        Action   = ["sqs:ListQueues", "sqs:CreateQueue"]
+        Resource = "*"
       }
     ]
   })
