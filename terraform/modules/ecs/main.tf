@@ -206,6 +206,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "PARSER_OUTPUTS_BUCKET", value = var.parser_outputs_bucket },
         { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },
         { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
+        { name = "CELERY_BROKER_URL", value = "sqs://" },
+        { name = "CELERY_QUEUE_PREFIX", value = var.celery_queue_prefix },
       ]
 
       secrets = [
