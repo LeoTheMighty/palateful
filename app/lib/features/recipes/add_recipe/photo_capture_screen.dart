@@ -257,7 +257,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       setState(() => _status = 'submitting');
 
       if (s3Keys.length == 1) {
-        final submitResponse = await _apiClient.submitParserJob(s3Keys.first);
+        final submitResponse = await _apiClient.submitParserJob(
+          s3Keys.first,
+          recipeBookId: _selectedBookId,
+        );
         final jobId = submitResponse.data['id'] as String;
         setState(() {
           _jobResults.add(_JobResult(jobId: jobId, inputKey: s3Keys.first));

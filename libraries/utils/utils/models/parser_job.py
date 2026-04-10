@@ -10,6 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.models.base import Base
 
 if TYPE_CHECKING:
+    from utils.models.import_job import ImportJob
+    from utils.models.recipe_book import RecipeBook
     from utils.models.user import User
 
 
@@ -39,10 +41,18 @@ class ParserJob(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    # Foreign key
+    # Foreign keys
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
+    recipe_book_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("recipe_books.id", ondelete="SET NULL"), nullable=True
+    )
+    import_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID, ForeignKey("import_jobs.id", ondelete="SET NULL"), nullable=True
+    )
 
-    # Relationship
+    # Relationships
     user: Mapped["User"] = relationship(back_populates="parser_jobs")
+    recipe_book: Mapped["RecipeBook | None"] = relationship()
+    import_job: Mapped["ImportJob | None"] = relationship()

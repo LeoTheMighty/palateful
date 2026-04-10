@@ -18,7 +18,7 @@ class SubmitParserJob(Endpoint):
         Submit a parser job to AWS Batch.
 
         Args:
-            params: Request parameters with S3 key of uploaded image.
+            params: Request parameters with S3 key of uploaded image and optional recipe_book_id.
 
         Returns:
             Created parser job with job ID and status.
@@ -34,6 +34,7 @@ class SubmitParserJob(Endpoint):
             status="pending",
             input_s3_key=params.s3_key,
             output_s3_key=output_s3_key,
+            recipe_book_id=params.recipe_book_id,
         )
         self.database.create(parser_job)
         self.database.db.commit()
@@ -60,6 +61,16 @@ class SubmitParserJob(Endpoint):
         parser_job.status = "submitted"
         self.database.db.commit()
 
+        # If recipe_book_id was provided, dispatch the watcher task
+        # so the backend can automatically continue the pipeline when OCR completes
+        if params.recipe_book_id:
+            from utils.tasks.import_tasks.watch_parser_job_task import watch_parser_job_task
+            watch_parser_job_task.apply_async(
+                args=[str(parser_job.id)],
+                kwargs={"user_id": str(self.user.id)},
+                countdown=30,
+            )
+
         return success(
             data=SubmitParserJob.Response(
                 id=str(parser_job.id),
@@ -73,6 +84,7 @@ class SubmitParserJob(Endpoint):
 
     class Params(BaseModel):
         s3_key: str
+        recipe_book_id: str | None = None
 
     class Response(BaseModel):
         id: str

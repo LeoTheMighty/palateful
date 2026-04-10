@@ -15,6 +15,12 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "10"))
 DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "20"))
 
+# AWS Parser / Batch settings (used by worker tasks)
+PARSER_INPUTS_BUCKET = os.environ.get("PARSER_INPUTS_BUCKET", "")
+PARSER_OUTPUTS_BUCKET = os.environ.get("PARSER_OUTPUTS_BUCKET", "")
+BATCH_JOB_QUEUE = os.environ.get("BATCH_JOB_QUEUE", "")
+BATCH_JOB_DEFINITION = os.environ.get("BATCH_JOB_DEFINITION", "")
+
 # Auth0 configuration
 AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "")
 AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "")

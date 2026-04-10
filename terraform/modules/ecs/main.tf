@@ -303,6 +303,10 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "LOGGING_LEVEL", value = "INFO" },
         { name = "CELERY_BROKER_URL", value = "sqs://" },
         { name = "CELERY_QUEUE_PREFIX", value = var.celery_queue_prefix },
+        { name = "PARSER_INPUTS_BUCKET", value = var.parser_inputs_bucket },
+        { name = "PARSER_OUTPUTS_BUCKET", value = var.parser_outputs_bucket },
+        { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },
+        { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
       ]
 
       secrets = [

@@ -466,9 +466,10 @@ class ApiClient {
     });
   }
 
-  Future<Response> submitParserJob(String s3Key) {
+  Future<Response> submitParserJob(String s3Key, {String? recipeBookId}) {
     return _dio.post('/v1/parser/jobs', data: {
       's3_key': s3Key,
+      if (recipeBookId != null) 'recipe_book_id': recipeBookId,
     });
   }
 
