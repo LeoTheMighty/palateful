@@ -100,7 +100,7 @@ module "iam" {
   ecr_repository_arn        = module.ecr.repository_arn
   create_ecs_roles          = true
   sqs_queue_arns            = [module.sqs.celery_queue_arn, module.sqs.celery_dlq_arn]
-  secrets_arns              = module.secrets.all_secret_arns
+  secrets_arns              = concat(module.secrets.all_secret_arns, ["arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"])
 }
 
 # ─── Database ───
@@ -191,6 +191,7 @@ module "ecs" {
   parser_outputs_bucket   = module.s3.parser_outputs_bucket_name
   batch_job_queue         = module.batch.job_queue_name
   batch_job_definition    = module.batch.job_definition_name
+  firebase_secret_arn     = "arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"
 }
 
 # ─── Outputs ───

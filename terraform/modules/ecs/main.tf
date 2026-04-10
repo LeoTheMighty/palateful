@@ -113,6 +113,12 @@ variable "cors_origins" {
   description = "CORS origins JSON array"
 }
 
+variable "firebase_secret_arn" {
+  type        = string
+  default     = ""
+  description = "Secrets Manager ARN for Firebase credentials JSON"
+}
+
 # ─── Cluster ───
 
 resource "aws_ecs_cluster" "main" {
@@ -208,6 +214,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AUTH0_CLIENT_ID", valueFrom = "${var.auth0_secret_arn}:client_id::" },
         { name = "AUTH0_AUDIENCE", valueFrom = "${var.auth0_secret_arn}:audience::" },
         { name = "OPENAI_API_KEY", valueFrom = "${var.openai_secret_arn}:api_key::" },
+        { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
         { name = "OPENAI_MODEL", valueFrom = "${var.openai_secret_arn}:model::" },
       ]
 
@@ -313,6 +320,7 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
         { name = "OPENAI_API_KEY", valueFrom = "${var.openai_secret_arn}:api_key::" },
         { name = "OPENAI_MODEL", valueFrom = "${var.openai_secret_arn}:model::" },
+        { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
       ]
 
       logConfiguration = {
