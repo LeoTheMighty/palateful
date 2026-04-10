@@ -129,7 +129,7 @@ class CreateRecipeTask(BaseTask):
         else:
             quantity = Decimal("1")
 
-        unit = ing_data.get("unit", "")
+        unit = ing_data.get("unit") or ""
 
         # Normalize quantity if possible
         try:
@@ -138,7 +138,7 @@ class CreateRecipeTask(BaseTask):
             unit_normalized = normalized.unit_normalized
         except Exception:
             quantity_normalized = quantity
-            unit_normalized = unit
+            unit_normalized = unit or ""
 
         recipe_ingredient = RecipeIngredient(
             recipe_id=recipe.id,
