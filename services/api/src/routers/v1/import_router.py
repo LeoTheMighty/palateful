@@ -6,6 +6,7 @@ from api.v1.import_job import (
     GetImportItem,
     GetImportJob,
     ListImportItems,
+    ListImportJobs,
     SkipImportItem,
     StartImport,
     UpdateImportItem,
@@ -29,6 +30,24 @@ async def start_import(
     return StartImport.call(
         book_id=book_id,
         params=params,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.get("/import-jobs")
+async def list_import_jobs(
+    status: str | None = Query(None, description="Filter by status"),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """List all import jobs for the current user."""
+    return ListImportJobs.call(
+        status=status,
+        limit=limit,
+        offset=offset,
         user=user,
         database=database,
     )

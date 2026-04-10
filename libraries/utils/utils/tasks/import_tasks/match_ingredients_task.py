@@ -88,6 +88,31 @@ class MatchIngredientsTask(BaseTask):
             # Update job counts
             self._update_job_counts(item.import_job_id)
 
+            # If awaiting review, create activity to notify user
+            if item.status == "awaiting_review":
+                recipe_name = item.parsed_recipe.get("name", "Recipe")
+                try:
+                    from utils.services.activity_service import create_activity
+
+                    job = self.database.find_by(ImportJob, id=item.import_job_id)
+                    if job:
+                        create_activity(
+                            self.database.db,
+                            user_id=job.user_id,
+                            activity_type="import_needs_review",
+                            title=f"{recipe_name} needs review",
+                            subtitle="Some ingredients need confirmation",
+                            metadata={
+                                "import_job_id": str(item.import_job_id),
+                                "import_item_id": str(item.id),
+                                "recipe_name": recipe_name,
+                            },
+                            action_url=f"/recipes/import/review/{item.id}",
+                        )
+                        self.database.db.commit()
+                except Exception:
+                    logger.warning("Failed to create needs-review activity", exc_info=True)
+
             # If approved, create activity and dispatch create recipe task
             if item.status == "approved":
                 recipe_name = item.parsed_recipe.get("name", "Recipe")
@@ -124,6 +149,31 @@ class MatchIngredientsTask(BaseTask):
             item.error_message = str(e)
             item.error_code = "MATCHING_ERROR"
             self.database.db.commit()
+
+            # Create failure activity
+            recipe_name = (item.parsed_recipe or {}).get("name", "Recipe")
+            try:
+                from utils.services.activity_service import create_activity
+
+                job = self.database.find_by(ImportJob, id=item.import_job_id)
+                if job:
+                    create_activity(
+                        self.database.db,
+                        user_id=job.user_id,
+                        activity_type="import_failed",
+                        title=f"{recipe_name} failed to import",
+                        subtitle=str(e),
+                        metadata={
+                            "import_job_id": str(item.import_job_id),
+                            "import_item_id": str(item.id),
+                            "error": str(e),
+                        },
+                        action_url=f"/recipes/import/review-list/{item.import_job_id}",
+                    )
+                    self.database.db.commit()
+            except Exception:
+                logger.warning("Failed to create matching-failure activity", exc_info=True)
+
             return success({"error": str(e), "item_id": item_id})
 
     def _match_ingredient(self, ingredient_text: str) -> dict:
