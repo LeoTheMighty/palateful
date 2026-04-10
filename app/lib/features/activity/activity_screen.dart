@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 
-/// Activity feed screen — shows import status, partner actions, reminders.
+/// Activity feed screen — shows notifications like invites, partner actions, reminders.
+/// Import status lives in the dedicated Import Activity screen.
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
 
@@ -17,18 +18,26 @@ class _ActivityScreenState extends State<ActivityScreen> {
   final _apiClient = getIt<ApiClient>();
 
   List<dynamic> _activities = [];
-  List<dynamic> _activeJobs = [];
   bool _isLoading = true;
   String? _error;
   Timer? _pollTimer;
 
+  /// Activity types that belong in Import Activity, not here.
+  static const _importActivityTypes = {
+    'import_started',
+    'import_complete',
+    'import_needs_review',
+    'import_extracting',
+    'import_item_complete',
+    'import_failed',
+  };
+
   @override
   void initState() {
     super.initState();
-    _loadAll();
-    // Poll for new activities every 30s
+    _loadActivities();
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _loadAll(silent: true);
+      _loadActivities(silent: true);
     });
   }
 
@@ -38,7 +47,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAll({bool silent = false}) async {
+  Future<void> _loadActivities({bool silent = false}) async {
     if (!silent) {
       setState(() {
         _isLoading = true;
@@ -47,11 +56,17 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
 
     try {
-      final activitiesResponse = await _apiClient.getActivities();
+      final response = await _apiClient.getActivities();
       if (!mounted) return;
 
+      final all = List<dynamic>.from(response.data['items'] ?? []);
+      // Filter out import-related activities — those live in Import Activity
+      final filtered = all
+          .where((a) => !_importActivityTypes.contains(a['type']?.toString()))
+          .toList();
+
       setState(() {
-        _activities = List<dynamic>.from(activitiesResponse.data['items'] ?? []);
+        _activities = filtered;
         _isLoading = false;
       });
     } catch (e) {
@@ -61,28 +76,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
           _error = 'Failed to load activities';
           _isLoading = false;
         });
-      }
-      return;
-    }
-
-    // Load active jobs separately — don't break the feed if this fails
-    try {
-      final jobResults = await Future.wait([
-        _apiClient.listImportJobs(status: 'processing', limit: 10),
-        _apiClient.listImportJobs(status: 'awaiting_review', limit: 10),
-      ]);
-      if (!mounted) return;
-
-      final processingJobs = List<dynamic>.from(jobResults[0].data['jobs'] ?? []);
-      final reviewJobs = List<dynamic>.from(jobResults[1].data['jobs'] ?? []);
-
-      setState(() {
-        _activeJobs = [...processingJobs, ...reviewJobs];
-      });
-    } catch (_) {
-      // Active jobs section is non-critical — silently degrade
-      if (mounted) {
-        setState(() => _activeJobs = []);
       }
     }
   }
@@ -103,7 +96,6 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final id = activity['id']?.toString();
     final actionUrl = activity['action_url'] as String?;
 
-    // Mark as read
     if (id != null && activity['read'] != true) {
       try {
         await _apiClient.markActivityRead(id);
@@ -113,13 +105,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
       } catch (_) {}
     }
 
-    // Navigate if action_url present
     if (actionUrl != null && actionUrl.isNotEmpty && mounted) {
       context.push(actionUrl);
     }
   }
 
-  /// Group activities by day: Today, Yesterday, or date string.
   Map<String, List<dynamic>> _groupByDay() {
     final groups = <String, List<dynamic>>{};
     final now = DateTime.now();
@@ -148,61 +138,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
   IconData _iconForType(String? type) {
     switch (type) {
-      case 'import_started':
-        return Icons.cloud_upload;
-      case 'import_complete':
-        return Icons.cloud_done;
-      case 'import_needs_review':
-        return Icons.rate_review;
       case 'partner_action':
         return Icons.people;
       case 'meal_reminder':
         return Icons.restaurant;
+      case 'invitation':
+        return Icons.mail;
       default:
         return Icons.notifications;
-    }
-  }
-
-  String _labelForJobStatus(String? status) {
-    switch (status) {
-      case 'processing':
-        return 'Processing';
-      case 'awaiting_review':
-        return 'Needs Review';
-      default:
-        return status ?? '';
-    }
-  }
-
-  Color _colorForJobStatus(String? status, ColorScheme colorScheme) {
-    switch (status) {
-      case 'processing':
-        return colorScheme.tertiary;
-      case 'awaiting_review':
-        return colorScheme.tertiary;
-      default:
-        return colorScheme.onSurfaceVariant;
-    }
-  }
-
-  IconData _iconForSourceType(String? sourceType) {
-    switch (sourceType) {
-      case 'url':
-        return Icons.link;
-      case 'url_list':
-        return Icons.list;
-      case 'photo':
-        return Icons.camera_alt;
-      case 'text':
-        return Icons.description;
-      case 'spreadsheet':
-        return Icons.table_chart;
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'audio':
-        return Icons.mic;
-      default:
-        return Icons.import_export;
     }
   }
 
@@ -232,10 +175,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : (_activities.isEmpty && _activeJobs.isEmpty)
+              : _activities.isEmpty
                   ? _buildEmptyState(colorScheme)
                   : RefreshIndicator(
-                      onRefresh: _loadAll,
+                      onRefresh: _loadActivities,
                       child: _buildBody(colorScheme),
                     ),
     );
@@ -277,87 +220,25 @@ class _ActivityScreenState extends State<ActivityScreen> {
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
-      children: [
-        // Active imports section
-        if (_activeJobs.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Text(
-              'Active Imports',
-              style: textTheme.labelLarge?.copyWith(
-                color: colorScheme.tertiary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          ..._activeJobs.map((job) => _buildActiveJobTile(job, colorScheme, textTheme)),
-          const Divider(height: 24),
-        ],
-
-        // Day-grouped activities
-        ...groups.entries.map((entry) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(
-                  entry.key,
-                  style: textTheme.labelLarge?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
+      children: groups.entries.map((entry) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                entry.key,
+                style: textTheme.labelLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              ...entry.value.map((a) => _buildActivityTile(a, colorScheme, textTheme)),
-            ],
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildActiveJobTile(
-    dynamic job,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    final status = job['status'] as String?;
-    final sourceType = job['source_type'] as String?;
-    final jobId = job['id']?.toString() ?? '';
-    final statusColor = _colorForJobStatus(status, colorScheme);
-    final total = job['total_items'] as int? ?? 0;
-    final succeeded = job['succeeded_items'] as int? ?? 0;
-    final pendingReview = job['pending_review_items'] as int? ?? 0;
-
-    String subtitle;
-    if (status == 'awaiting_review') {
-      subtitle = '$pendingReview item${pendingReview == 1 ? '' : 's'} to review';
-    } else {
-      subtitle = '$succeeded / $total processed';
-    }
-
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: statusColor.withValues(alpha: 0.12),
-        child: Icon(
-          _iconForSourceType(sourceType),
-          size: 20,
-          color: statusColor,
-        ),
-      ),
-      title: Text(
-        _labelForJobStatus(status),
-        style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: textTheme.bodySmall?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-        ),
-      ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => context.push('/recipes/import/review-list/$jobId'),
+            ),
+            ...entry.value.map(
+                (a) => _buildActivityTile(a, colorScheme, textTheme)),
+          ],
+        );
+      }).toList(),
     );
   }
 
