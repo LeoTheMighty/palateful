@@ -7,6 +7,7 @@ import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
 import '../../features/onboarding/onboarding_start_screen.dart';
 import '../../features/activity/activity_screen.dart';
+import '../../features/activity/import_history_screen.dart';
 import '../../features/recipe_books/archived_recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_members_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
@@ -441,6 +442,12 @@ GoRouter get appRouter {
               GoRoute(
                 path: '/activity',
                 builder: (context, state) => const ActivityScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'import-history',
+                    builder: (context, state) => const ImportHistoryScreen(),
+                  ),
+                ],
               ),
             ],
           ),

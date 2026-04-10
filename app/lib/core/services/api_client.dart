@@ -528,6 +528,14 @@ class ApiClient {
     return _dio.delete('/v1/import-jobs/$jobId');
   }
 
+  Future<Response> listImportJobs({String? status, int limit = 20, int offset = 0}) {
+    return _dio.get('/v1/import-jobs', queryParameters: {
+      'limit': limit,
+      'offset': offset,
+      if (status != null) 'status': status,
+    });
+  }
+
   // Recipe notes
   Future<Response> addRecipeNote(String recipeId, String body) {
     return _dio.post('/v1/recipes/$recipeId/notes', data: {'body': body});

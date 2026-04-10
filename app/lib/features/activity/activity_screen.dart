@@ -17,6 +17,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   final _apiClient = getIt<ApiClient>();
 
   List<dynamic> _activities = [];
+  List<dynamic> _activeJobs = [];
   bool _isLoading = true;
   String? _error;
   Timer? _pollTimer;
@@ -24,10 +25,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
   @override
   void initState() {
     super.initState();
-    _loadActivities();
+    _loadAll();
     // Poll for new activities every 30s
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _loadActivities(silent: true);
+      _loadAll(silent: true);
     });
   }
 
@@ -37,7 +38,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     super.dispose();
   }
 
-  Future<void> _loadActivities({bool silent = false}) async {
+  Future<void> _loadAll({bool silent = false}) async {
     if (!silent) {
       setState(() {
         _isLoading = true;
@@ -46,10 +47,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
 
     try {
-      final response = await _apiClient.getActivities();
+      final activitiesResponse = await _apiClient.getActivities();
       if (!mounted) return;
+
       setState(() {
-        _activities = List<dynamic>.from(response.data['items'] ?? []);
+        _activities = List<dynamic>.from(activitiesResponse.data['items'] ?? []);
         _isLoading = false;
       });
     } catch (e) {
@@ -59,6 +61,28 @@ class _ActivityScreenState extends State<ActivityScreen> {
           _error = 'Failed to load activities';
           _isLoading = false;
         });
+      }
+      return;
+    }
+
+    // Load active jobs separately — don't break the feed if this fails
+    try {
+      final jobResults = await Future.wait([
+        _apiClient.listImportJobs(status: 'processing', limit: 10),
+        _apiClient.listImportJobs(status: 'awaiting_review', limit: 10),
+      ]);
+      if (!mounted) return;
+
+      final processingJobs = List<dynamic>.from(jobResults[0].data['jobs'] ?? []);
+      final reviewJobs = List<dynamic>.from(jobResults[1].data['jobs'] ?? []);
+
+      setState(() {
+        _activeJobs = [...processingJobs, ...reviewJobs];
+      });
+    } catch (_) {
+      // Active jobs section is non-critical — silently degrade
+      if (mounted) {
+        setState(() => _activeJobs = []);
       }
     }
   }
@@ -139,6 +163,49 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
   }
 
+  String _labelForJobStatus(String? status) {
+    switch (status) {
+      case 'processing':
+        return 'Processing';
+      case 'awaiting_review':
+        return 'Needs Review';
+      default:
+        return status ?? '';
+    }
+  }
+
+  Color _colorForJobStatus(String? status, ColorScheme colorScheme) {
+    switch (status) {
+      case 'processing':
+        return colorScheme.tertiary;
+      case 'awaiting_review':
+        return colorScheme.tertiary;
+      default:
+        return colorScheme.onSurfaceVariant;
+    }
+  }
+
+  IconData _iconForSourceType(String? sourceType) {
+    switch (sourceType) {
+      case 'url':
+        return Icons.link;
+      case 'url_list':
+        return Icons.list;
+      case 'photo':
+        return Icons.camera_alt;
+      case 'text':
+        return Icons.description;
+      case 'spreadsheet':
+        return Icons.table_chart;
+      case 'pdf':
+        return Icons.picture_as_pdf;
+      case 'audio':
+        return Icons.mic;
+      default:
+        return Icons.import_export;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -148,6 +215,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
       appBar: AppBar(
         title: const Text('Activity'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Import History',
+            onPressed: () => context.push('/activity/import-history'),
+          ),
           if (hasUnread)
             IconButton(
               icon: const Icon(Icons.done_all),
@@ -160,11 +232,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : _activities.isEmpty
+              : (_activities.isEmpty && _activeJobs.isEmpty)
                   ? _buildEmptyState(colorScheme)
                   : RefreshIndicator(
-                      onRefresh: _loadActivities,
-                      child: _buildActivityList(),
+                      onRefresh: _loadAll,
+                      child: _buildBody(colorScheme),
                     ),
     );
   }
@@ -199,35 +271,93 @@ class _ActivityScreenState extends State<ActivityScreen> {
     );
   }
 
-  Widget _buildActivityList() {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildBody(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
     final groups = _groupByDay();
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.only(bottom: 16),
-      itemCount: groups.length,
-      itemBuilder: (context, groupIndex) {
-        final label = groups.keys.elementAt(groupIndex);
-        final items = groups[label]!;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                label,
-                style: textTheme.labelLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
+      children: [
+        // Active imports section
+        if (_activeJobs.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text(
+              'Active Imports',
+              style: textTheme.labelLarge?.copyWith(
+                color: colorScheme.tertiary,
+                fontWeight: FontWeight.w600,
               ),
             ),
-            ...items.map((a) => _buildActivityTile(a, colorScheme, textTheme)),
-          ],
-        );
-      },
+          ),
+          ..._activeJobs.map((job) => _buildActiveJobTile(job, colorScheme, textTheme)),
+          const Divider(height: 24),
+        ],
+
+        // Day-grouped activities
+        ...groups.entries.map((entry) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  entry.key,
+                  style: textTheme.labelLarge?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              ...entry.value.map((a) => _buildActivityTile(a, colorScheme, textTheme)),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildActiveJobTile(
+    dynamic job,
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    final status = job['status'] as String?;
+    final sourceType = job['source_type'] as String?;
+    final jobId = job['id']?.toString() ?? '';
+    final statusColor = _colorForJobStatus(status, colorScheme);
+    final total = job['total_items'] as int? ?? 0;
+    final succeeded = job['succeeded_items'] as int? ?? 0;
+    final pendingReview = job['pending_review_items'] as int? ?? 0;
+
+    String subtitle;
+    if (status == 'awaiting_review') {
+      subtitle = '$pendingReview item${pendingReview == 1 ? '' : 's'} to review';
+    } else {
+      subtitle = '$succeeded / $total processed';
+    }
+
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: statusColor.withValues(alpha: 0.12),
+        child: Icon(
+          _iconForSourceType(sourceType),
+          size: 20,
+          color: statusColor,
+        ),
+      ),
+      title: Text(
+        _labelForJobStatus(status),
+        style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: textTheme.bodySmall?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => context.push('/recipes/import/review-list/$jobId'),
     );
   }
 

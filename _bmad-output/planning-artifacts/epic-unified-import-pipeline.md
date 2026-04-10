@@ -35,14 +35,16 @@ Backend: parser → OCR → read S3 → extract recipe → match ingredients →
 | 13.6 | GPT-4o-mini Vision Track | 1 day | 13.4 |
 | 13.7 | Prompt Optimization | 1.5 days | 13.5, 13.6 |
 | 13.8 | End-to-End Integration & Eval Gates | 1.5 days | 13.7 |
+| 13.9 | Import History Frontend | 1 day | 13.2 |
 
-**Total: ~11 days**
+**Total: ~12 days**
 
 **Parallel tracks:**
 ```
 Track A (pipeline):  13.1 → 13.2 → 13.3
 Track B (evals):     13.4 → 13.5 → 13.7 → 13.8
                      13.4 → 13.6 ↗
+Track C (frontend):  13.2 → 13.9
 ```
 
 ---
