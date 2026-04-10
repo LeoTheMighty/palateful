@@ -117,7 +117,6 @@ class MatchIngredientsTask(BaseTask):
             if item.status == "approved":
                 recipe_name = item.parsed_recipe.get("name", "Recipe")
                 try:
-                    from utils.models.import_job import ImportJob
                     from utils.services.activity_service import create_activity
 
                     job = self.database.find_by(ImportJob, id=item.import_job_id)
