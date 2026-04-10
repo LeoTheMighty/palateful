@@ -69,7 +69,7 @@ def run_ocr(model, processor, device, image: Image.Image) -> str:
             "role": "user",
             "content": [
                 {"type": "image", "image": image},
-                {"type": "text", "text": "Detect and recognize all text in the image. Output the text content."},
+                {"type": "text", "text": "Read all the text in this image and output it as plain text only. Do not include any bounding boxes, coordinates, or position data. Just output the readable text content, preserving the logical reading order and paragraph structure."},
             ],
         }
     ]
