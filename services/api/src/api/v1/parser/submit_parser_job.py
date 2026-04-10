@@ -61,15 +61,13 @@ class SubmitParserJob(Endpoint):
         parser_job.status = "submitted"
         self.database.db.commit()
 
-        # If recipe_book_id was provided, dispatch the watcher task
-        # so the backend can automatically continue the pipeline when OCR completes
-        if params.recipe_book_id:
-            from utils.tasks.import_tasks.watch_parser_job_task import watch_parser_job_task
-            watch_parser_job_task.apply_async(
-                args=[str(parser_job.id)],
-                kwargs={"user_id": str(self.user.id)},
-                countdown=30,
-            )
+        # Dispatch watcher task to automatically continue the pipeline when OCR completes
+        from utils.tasks.import_tasks.watch_parser_job_task import watch_parser_job_task
+        watch_parser_job_task.apply_async(
+            args=[str(parser_job.id)],
+            kwargs={"user_id": str(self.user.id)},
+            countdown=30,
+        )
 
         return success(
             data=SubmitParserJob.Response(
