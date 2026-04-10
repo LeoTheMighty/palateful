@@ -100,7 +100,7 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
                             if (skippedItems.isNotEmpty)
                               _CountChip(
                                 count: skippedItems.length,
-                                label: 'Skipped',
+                                label: 'Dismissed',
                                 color: colorScheme.outline,
                               ),
                           ],
@@ -193,11 +193,11 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
                                 )),
                               ],
 
-                              // Skipped section
+                              // Dismissed section
                               if (skippedItems.isNotEmpty) ...[
                                 const SizedBox(height: 16),
                                 Text(
-                                  'Skipped',
+                                  'Dismissed',
                                   style: textTheme.titleSmall?.copyWith(
                                     color: colorScheme.outline,
                                   ),

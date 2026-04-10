@@ -216,8 +216,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
         title: const Text('Activity'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.history),
-            tooltip: 'Import History',
+            icon: const Icon(Icons.import_export),
+            tooltip: 'Import Activity',
             onPressed: () => context.push('/activity/import-history'),
           ),
           if (hasUnread)

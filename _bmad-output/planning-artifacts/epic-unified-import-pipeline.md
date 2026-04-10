@@ -36,15 +36,17 @@ Backend: parser → OCR → read S3 → extract recipe → match ingredients →
 | 13.7 | Prompt Optimization | 1.5 days | 13.5, 13.6 |
 | 13.8 | End-to-End Integration & Eval Gates | 1.5 days | 13.7 |
 | 13.9 | Import History Frontend | 1 day | 13.2 |
+| 13.10 | Import Activity Attention View | 1.5 days | 13.9 |
+| 13.11 | Unified Import Status | 1 day | 13.10 |
 
-**Total: ~12 days**
+**Total: ~14.5 days**
 
 **Parallel tracks:**
 ```
 Track A (pipeline):  13.1 → 13.2 → 13.3
 Track B (evals):     13.4 → 13.5 → 13.7 → 13.8
                      13.4 → 13.6 ↗
-Track C (frontend):  13.2 → 13.9
+Track C (frontend):  13.2 → 13.9 → 13.10 → 13.11
 ```
 
 ---
@@ -229,3 +231,56 @@ so that the pipeline is reliable and regressions are caught before deploy.
    - Photo import: ≥85% overall F1
    - Text import: ≥90% overall F1
    - Spreadsheet import: ≥95% overall F1
+
+---
+
+## Story 13.10: Import Activity Attention View
+
+As a user,
+I want the import screen to show me only what needs my attention by default,
+so that I can quickly review or dismiss items and reach a clear "All Set" state.
+
+### Acceptance Criteria
+
+1. Screen renamed from "Import History" to "Import Activity"
+2. Filter chips removed — default view shows only actionable items (awaiting_review, failed, processing)
+3. Items within jobs are expanded inline under lightweight job headers (source icon + relative time)
+4. Sections grouped: Processing → Needs Review → Failed
+5. Clear status icons: amber dot (review), blue spinner (processing), red error (failed), green check (completed)
+6. "Skip" renamed to "Dismiss" throughout
+7. On approve/dismiss, item animates away (slide-out), count updates optimistically
+8. "Dismiss All Failed" bulk action per job section
+9. When zero actionable items remain, show "All Set!" resting state (green check + text)
+10. "Show import history" toggle at bottom loads completed/skipped jobs in muted style
+11. Contextual timestamps: completed_at for finished, started_at for processing, created_at fallback
+
+### Technical Approach
+
+- Rewrite `import_history_screen.dart` with attention-first layout
+- Use `AnimatedList` for removal animations
+- Fetch jobs by status (3 parallel API calls), then fetch items for each
+- Optimistic UI: remove items from local state immediately, don't wait for reload
+- No backend changes needed — all endpoints exist
+
+---
+
+## Story 13.11: Unified Import Status
+
+As a user,
+I want one place for all import status instead of separate widgets on home and activity screens,
+so that I always know where to look for import progress.
+
+### Acceptance Criteria
+
+1. Home screen's `BatchImportStatusWidget` becomes a compact notification badge (single line)
+2. Badge text: "X recipes to review" or "Processing X photos..."
+3. Tapping badge navigates to Import Activity screen
+4. Expanded job list removed from home widget — detail lives in Import Activity
+5. Import Activity shows real-time photo import progress via `BatchParserService` stream
+6. Badge disappears when no active/actionable imports exist
+
+### Technical Approach
+
+- Simplify `batch_import_status_widget.dart` to notification badge only
+- Add `BatchParserService` stream subscription to Import Activity screen
+- Show local active jobs in Processing section alongside server-side jobs

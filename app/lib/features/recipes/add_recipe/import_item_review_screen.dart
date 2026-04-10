@@ -192,11 +192,17 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     }
   }
 
-  Future<void> _skip() async {
+  Future<void> _dismiss() async {
     try {
       await _apiClient.skipImportItem(widget.itemId);
-    } catch (_) {}
-    if (mounted) context.pop(false);
+      if (mounted) context.pop(false);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not dismiss item.')),
+        );
+      }
+    }
   }
 
   void _addIngredient() {
@@ -328,8 +334,8 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
           ),
           const SizedBox(height: 24),
           FilledButton(
-            onPressed: _skip,
-            child: const Text('Skip This Item'),
+            onPressed: _dismiss,
+            child: const Text('Dismiss'),
           ),
         ],
       ),
@@ -497,8 +503,8 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
             child: Row(
               children: [
                 OutlinedButton(
-                  onPressed: _isApproving ? null : _skip,
-                  child: const Text('Skip'),
+                  onPressed: _isApproving ? null : _dismiss,
+                  child: const Text('Dismiss'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
