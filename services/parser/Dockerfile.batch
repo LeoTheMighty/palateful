@@ -41,10 +41,11 @@ RUN poetry config virtualenvs.create false \
 # transformers commit with hunyuan_vl support.
 # Per https://github.com/Tencent-Hunyuan/HunyuanOCR — this commit has not been
 # merged into a release yet, so we pin to the exact commit Tencent recommends.
-# Install specific transformers commit with hunyuan_vl support + torchvision.
-# Download as tarball to avoid needing git installed in the container.
-# Install pinned transformers with hunyuan_vl support.
-# --no-deps prevents reinstalling torch/nvidia which conflict with CUDA base image.
+# Pre-download model weights BEFORE overriding transformers (huggingface_hub is intact here)
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('tencent/HunyuanOCR')"
+
+# Now install pinned transformers with hunyuan_vl support.
+# --no-deps prevents reinstalling torch/nvidia/huggingface_hub which conflict.
 RUN pip install --no-deps https://github.com/huggingface/transformers/archive/82a06db03535c49aa987719ed0746a76093b1ec4.tar.gz
 
 # Create torchvision shim with transforms that HunYuanVLImageProcessor needs.
@@ -60,10 +61,7 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/app/models
 
-# NOTE: Model weights are downloaded at runtime (~3-5 min on first run).
-# Pre-baking was removed due to huggingface_hub compatibility issues with
-# the pinned transformers commit. Can be re-added once transformers merges
-# hunyuan_vl support into a stable release.
+# Model weights are pre-baked above — no runtime download needed.
 
 # Run the batch job script
 CMD ["python", "run_job.py"]
