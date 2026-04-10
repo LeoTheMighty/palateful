@@ -1,0 +1,70 @@
+{
+  "name": "Classic Chocolate Chip Cookies",
+  "description": "The best chewy chocolate chip cookies you'll ever make — crispy on the edges, soft and gooey in the middle. A family favorite!",
+  "prep_time_minutes": 15,
+  "cook_time_minutes": 12,
+  "servings": 36,
+  "ingredients": [
+    {
+      "text": "2 1/4 cups all-purpose flour",
+      "quantity": 2.25,
+      "unit": "cups",
+      "name": "all-purpose flour"
+    },
+    {
+      "text": "1 teaspoon baking soda",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "baking soda"
+    },
+    {
+      "text": "1 teaspoon salt",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "salt"
+    },
+    {
+      "text": "1 cup unsalted butter, softened",
+      "quantity": 1,
+      "unit": "cup",
+      "name": "unsalted butter"
+    },
+    {
+      "text": "3/4 cup granulated sugar",
+      "quantity": 0.75,
+      "unit": "cup",
+      "name": "granulated sugar"
+    },
+    {
+      "text": "3/4 cup packed brown sugar",
+      "quantity": 0.75,
+      "unit": "cup",
+      "name": "packed brown sugar"
+    },
+    {
+      "text": "2 large eggs",
+      "quantity": 2,
+      "unit": null,
+      "name": "large eggs"
+    },
+    {
+      "text": "2 teaspoons vanilla extract",
+      "quantity": 2,
+      "unit": "teaspoons",
+      "name": "vanilla extract"
+    },
+    {
+      "text": "2 cups semi-sweet chocolate chips",
+      "quantity": 2,
+      "unit": "cups",
+      "name": "semi-sweet chocolate chips"
+    },
+    {
+      "text": "1 cup chopped walnuts",
+      "quantity": 1,
+      "unit": "cup",
+      "name": "chopped walnuts"
+    }
+  ],
+  "instructions": "1. Preheat oven to 375 degrees F. 2. In a small bowl, whisk together the flour, baking soda, and salt. Set aside. 3. In a large bowl, beat the softened butter, granulated sugar, and brown sugar with an electric mixer until light and fluffy, about 3 minutes. 4. Add the eggs one at a time, beating well after each addition. Mix in the vanilla extract. 5. Gradually add the flour mixture to the butter mixture, mixing on low speed until just combined. Do not overmix. 6. Fold in the chocolate chips and chopped walnuts with a spatula. 7. Drop rounded tablespoons of dough onto ungreased baking sheets, spacing about 2 inches apart. 8. Bake for 10-12 minutes or until the edges are golden brown but the centers still look slightly underdone."
+}

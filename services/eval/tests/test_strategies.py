@@ -58,13 +58,16 @@ class TestListStrategies:
             assert "name" in entry
 
 
-class TestVisionExtractorStub:
-    def test_raises_not_implemented(self):
-        with pytest.raises(NotImplementedError):
-            run_vision_extraction("some_image.jpg")
+class TestVisionExtraction:
+    def test_raises_file_not_found_for_missing_image(self):
+        with pytest.raises(FileNotFoundError, match="Image file not found"):
+            run_vision_extraction("nonexistent_image.jpg")
 
 
-class TestOcrThenTextStub:
-    def test_raises_not_implemented(self):
-        with pytest.raises(NotImplementedError):
-            run_ocr_then_text("some_image.jpg")
+class TestOcrThenText:
+    def test_raises_file_not_found_for_missing_sidecar(self, tmp_path):
+        # Create an image file but no sidecar
+        img_path = tmp_path / "test_recipe.jpg"
+        img_path.write_bytes(b"fake image data")
+        with pytest.raises(FileNotFoundError, match="OCR sidecar not found"):
+            run_ocr_then_text(str(img_path))

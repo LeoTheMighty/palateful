@@ -88,6 +88,13 @@
         "cwd": "{projectRoot}"
       }
     },
+    "eval-gate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.gate",
+        "cwd": "{projectRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

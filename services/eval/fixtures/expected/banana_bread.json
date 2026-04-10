@@ -1,0 +1,58 @@
+{
+  "name": "Best Ever Banana Bread",
+  "description": "Moist, tender banana bread with a perfectly golden crust. Use overripe bananas for maximum sweetness and flavor.",
+  "prep_time_minutes": 10,
+  "cook_time_minutes": 60,
+  "servings": 8,
+  "ingredients": [
+    {
+      "text": "3 large ripe bananas, mashed",
+      "quantity": 3,
+      "unit": null,
+      "name": "large ripe bananas"
+    },
+    {
+      "text": "1/3 cup melted butter",
+      "quantity": 0.333,
+      "unit": "cup",
+      "name": "melted butter"
+    },
+    {
+      "text": "3/4 cup granulated sugar",
+      "quantity": 0.75,
+      "unit": "cup",
+      "name": "granulated sugar"
+    },
+    {
+      "text": "1 large egg, beaten",
+      "quantity": 1,
+      "unit": null,
+      "name": "large egg"
+    },
+    {
+      "text": "1 teaspoon vanilla extract",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "vanilla extract"
+    },
+    {
+      "text": "1 1/2 cups all-purpose flour",
+      "quantity": 1.5,
+      "unit": "cups",
+      "name": "all-purpose flour"
+    },
+    {
+      "text": "1 teaspoon baking soda",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "baking soda"
+    },
+    {
+      "text": "1/4 teaspoon salt",
+      "quantity": 0.25,
+      "unit": "teaspoon",
+      "name": "salt"
+    }
+  ],
+  "instructions": "1. Preheat the oven to 350 degrees F. Grease a 9x5-inch loaf pan. 2. In a large bowl, mash the bananas with a fork until smooth. 3. Stir in the melted butter, sugar, beaten egg, and vanilla extract until well combined. 4. Add the flour, baking soda, and salt. Stir gently until just incorporated — do not overmix. 5. Pour the batter into the prepared loaf pan and smooth the top. 6. Bake for 55-60 minutes, or until a toothpick inserted in the center comes out clean. Let cool in the pan for 10 minutes before transferring to a wire rack."
+}

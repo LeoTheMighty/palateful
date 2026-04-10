@@ -151,15 +151,15 @@ development_status:
   epic-12-retrospective: optional
 
   # Epic 13: Unified Recipe Import Pipeline & Eval Suite
-  epic-13: backlog
-  13-1-server-side-pipeline-orchestration: backlog
-  13-2-import-activity-and-notification-overhaul: backlog
-  13-3-fix-pipeline-gaps: backlog
-  13-4-standard-recipe-json-schema-and-validation: backlog
-  13-5-eval-framework-and-fixtures: backlog
-  13-6-gpt-4o-mini-vision-track: backlog
-  13-7-prompt-optimization: backlog
-  13-8-end-to-end-integration-and-eval-gates: backlog
+  epic-13: done
+  13-1-server-side-pipeline-orchestration: done
+  13-2-import-activity-and-notification-overhaul: done
+  13-3-fix-pipeline-gaps: done
+  13-4-standard-recipe-json-schema-and-validation: done
+  13-5-eval-framework-and-fixtures: done
+  13-6-gpt-4o-mini-vision-track: done
+  13-7-prompt-optimization: done
+  13-8-end-to-end-integration-and-eval-gates: done
   epic-13-retrospective: optional
 
   # Epic Vibes: Recipe Vibes (V1 — Vibes Lite)

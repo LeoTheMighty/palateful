@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
+
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +35,7 @@ STRATEGIES: dict[str, dict[str, Any]] = {
     },
     "ocr_then_text": {
         "name": "HunyuanOCR + GPT-4o-mini",
-        "description": "OCR image then extract text",
+        "description": "OCR image then extract text via sidecar .ocr.txt",
         "function": "run_ocr_then_text",
         "input_types": ["image"],
     },
@@ -68,24 +71,82 @@ def run_text_extraction(text: str, openai_client: Any = None) -> dict[str, Any]:
 def run_vision_extraction(image_path: str, **kwargs: Any) -> dict[str, Any]:
     """Extract recipe from an image via GPT-4o-mini vision.
 
-    Not yet implemented -- placeholder for a future vision-based pipeline.
+    Loads the image from *image_path*, passes it to the production vision
+    extractor, and returns the extracted recipe as a dict.
+
+    Args:
+        image_path: Filesystem path to the image file.
+
+    Returns:
+        Recipe dict matching the standard extraction schema.
     """
-    raise NotImplementedError(
-        "Vision extraction strategy is not yet implemented. "
-        "Use 'ocr_then_text' for image-based extraction."
+    from utils.services.recipe_extractors.vision_extractor import (
+        extract_recipe_from_image,
     )
+
+    path = Path(image_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    image = Image.open(path)
+    openai_client = kwargs.get("openai_client")
+
+    result = extract_recipe_from_image(image, openai_client=openai_client)
+
+    if not result.success or result.recipe is None:
+        raise RuntimeError(
+            f"Vision extraction failed: {result.error_message} ({result.error_code})"
+        )
+
+    return _recipe_to_dict(result.recipe)
 
 
 def run_ocr_then_text(image_path: str, **kwargs: Any) -> dict[str, Any]:
-    """Run HunyuanOCR on an image, then feed the text through text_extractor.
+    """Simulate the OCR-then-text pipeline for eval comparison.
 
-    Not yet implemented -- requires the parser service to be running locally
-    or a direct model import.
+    Instead of running the HunyuanOCR model (which requires the parser
+    service), this reads a pre-extracted OCR sidecar file and feeds it
+    through the production text extractor.  This lets us compare:
+
+        "OCR raw text -> GPT-4o-mini text" vs "GPT-4o-mini vision direct"
+
+    Sidecar convention:
+        For ``fixtures/images/potato_quiche.jpg`` the sidecar is
+        ``fixtures/images/potato_quiche.ocr.txt``.
+
+    Args:
+        image_path: Filesystem path to the image file.
+
+    Returns:
+        Recipe dict matching the standard extraction schema.
+
+    Raises:
+        FileNotFoundError: If the ``.ocr.txt`` sidecar does not exist.
     """
-    raise NotImplementedError(
-        "OCR-then-text strategy is not yet implemented. "
-        "Requires the parser service for OCR inference."
-    )
+    from utils.services.recipe_extractors.text_extractor import extract_recipe_from_text
+
+    path = Path(image_path)
+    sidecar = path.with_suffix(".ocr.txt")
+
+    if not sidecar.is_file():
+        raise FileNotFoundError(
+            f"OCR sidecar not found: {sidecar}. "
+            f"Create a '{path.stem}.ocr.txt' file next to the image with "
+            f"the raw OCR output to use this strategy."
+        )
+
+    ocr_text = sidecar.read_text(encoding="utf-8")
+    openai_client = kwargs.get("openai_client")
+
+    result = extract_recipe_from_text(ocr_text, openai_client=openai_client)
+
+    if not result.success or result.recipe is None:
+        raise RuntimeError(
+            f"OCR-then-text extraction failed: {result.error_message} "
+            f"({result.error_code})"
+        )
+
+    return _recipe_to_dict(result.recipe)
 
 
 # ---------------------------------------------------------------------------

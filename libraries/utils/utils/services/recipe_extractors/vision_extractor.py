@@ -22,33 +22,63 @@ GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015
 
 VISION_SYSTEM_PROMPT = """Extract the recipe from this image and return it as JSON.
 
-Return a JSON object with the following structure:
+The image may be a cookbook page, printed recipe card, handwritten recipe, screenshot, or phone photo.
+Handle these common challenges:
+- Handwritten text: do your best to decipher; skip truly illegible parts
+- Partial or cropped images: extract whatever is visible
+- Blurry or low-quality photos: infer from context when characters are unclear
+- Multiple recipes on a page: extract only the primary/largest recipe
+- Decorative fonts or watermarks: ignore non-recipe content
+
+Return a JSON object with EXACTLY this structure:
 {
-    "name": "Recipe name",
-    "description": "Brief description",
+    "name": "Recipe Name",
+    "description": "Brief 1-2 sentence description of the dish",
     "ingredients": [
-        {"text": "2 cups all-purpose flour", "quantity": 2, "unit": "cups", "name": "all-purpose flour"}
+        {
+            "text": "2 cups all-purpose flour",
+            "quantity": 2,
+            "unit": "cups",
+            "name": "all-purpose flour",
+            "notes": "sifted",
+            "is_optional": false
+        }
     ],
-    "instructions": "Step-by-step instructions as a single string",
+    "instructions": "All steps as a single string, numbered. E.g.: 1. Preheat oven to 350F. 2. Mix dry ingredients...",
     "servings": 4,
     "prep_time_minutes": 15,
     "cook_time_minutes": 30,
-    "author": "Author name",
-    "cuisine": "Italian",
-    "category": "Main Course"
+    "total_time_minutes": 45,
+    "author": "Author name if visible",
+    "cuisine": "e.g. Italian, Mexican, American, etc.",
+    "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
+    "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
+    "secondary_vibe": "a different vibe from the same list, or null"
 }
 
-Also assign 1-2 vibes from: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
-Include in your JSON response: "primary_vibe": "...", "secondary_vibe": "..." or null
+Ingredient examples:
+  "3 large eggs"        -> {"text": "3 large eggs", "quantity": 3, "unit": null, "name": "large eggs", "notes": null, "is_optional": false}
+  "1/2 cup diced onion" -> {"text": "1/2 cup diced onion", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced", "is_optional": false}
+  "salt to taste"       -> {"text": "salt to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}
 
-Rules:
-- Only include fields you can find in the image
-- For ingredients, always include the full "text" field with the original text
-- Parse quantity as a number (e.g., "1/2" should be 0.5)
-- Parse unit and ingredient name separately when possible
-- Correct obvious OCR-like errors from the image
+Ingredient rules:
+- "text": the full ingredient line as it appears in the recipe
+- "quantity": a number (convert fractions: "1/2" -> 0.5, "1 1/2" -> 1.5) or null
+- "unit": standard unit (cup, tablespoon, teaspoon, pound, ounce, etc.) or null for count items
+- "name": ingredient name without quantity, unit, or preparation notes
+- "notes": preparation details (chopped, sauteed, room temperature) or null
+- "is_optional": true only if explicitly marked optional in the recipe
+
+Vibe assignment:
+- primary_vibe: the single best vibe for the dish
+- secondary_vibe: a second vibe only if clearly applicable, otherwise null
+- Valid vibes: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming
+
+General rules:
+- Only include fields you can find or reasonably infer from the image
+- Set missing fields to null rather than guessing
 - If you cannot find recipe content, return {"error": "No recipe found"}
-- Return ONLY valid JSON. No markdown, no explanation."""
+- Return ONLY valid JSON. No markdown fences, no explanation text."""
 
 
 def extract_recipe_from_image(
@@ -85,7 +115,13 @@ def extract_recipe_from_image(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a recipe extraction assistant. Extract recipe data from images and return valid JSON.",
+                    "content": (
+                        "You are a precise recipe extraction assistant. "
+                        "Extract structured recipe data from images of recipes and return valid JSON. "
+                        "Handle printed text, handwritten notes, and low-quality photos. "
+                        "Parse ingredient quantities as numbers, separate units from names, "
+                        "and assign recipe vibes."
+                    ),
                 },
                 {
                     "role": "user",

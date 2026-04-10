@@ -17,35 +17,60 @@ GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015
 
 TEXT_EXTRACTION_PROMPT = """Extract the recipe from the following OCR text and return it as JSON.
 
-The text was obtained via OCR from a photograph of a physical recipe (cookbook page, recipe card, etc.).
-It may contain OCR errors, irregular formatting, or noise. Do your best to interpret and correct obvious OCR mistakes.
+The text was obtained via OCR from a photograph of a physical recipe (cookbook page, recipe card, handwritten note, etc.).
+It may contain OCR artifacts such as:
+- Character substitutions (digits for letters: "f1our" -> "flour", "sa1t" -> "salt", "0nion" -> "onion")
+- Coordinate noise or bounding-box numbers from OCR engines (ignore any stray numbers not part of the recipe)
+- Irregular line breaks, merged words, or split words across lines
+- Garbled text, repeated characters, or missing spaces
+- Headers, footers, page numbers, or watermarks mixed in
 
-Return a JSON object with the following structure:
+Do your best to interpret and correct these OCR errors to produce a clean, accurate recipe.
+
+Return a JSON object with EXACTLY this structure:
 {
-    "name": "Recipe name",
-    "description": "Brief description (if available)",
+    "name": "Recipe Name",
+    "description": "Brief 1-2 sentence description of the dish",
     "ingredients": [
-        {"text": "2 cups all-purpose flour", "quantity": 2, "unit": "cups", "name": "all-purpose flour"}
+        {
+            "text": "2 cups all-purpose flour",
+            "quantity": 2,
+            "unit": "cups",
+            "name": "all-purpose flour",
+            "notes": "sifted",
+            "is_optional": false
+        }
     ],
-    "instructions": "Step-by-step instructions as a single string",
+    "instructions": "All steps as a single string, numbered. E.g.: 1. Preheat oven to 350F. 2. Mix dry ingredients...",
     "servings": 4,
     "prep_time_minutes": 15,
     "cook_time_minutes": 30,
-    "author": "Author name",
-    "cuisine": "Italian",
-    "category": "Main Course"
+    "total_time_minutes": 45,
+    "author": "Author name if found",
+    "cuisine": "e.g. Italian, Mexican, American, etc.",
+    "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
+    "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
+    "secondary_vibe": "a different vibe from the same list, or null"
 }
 
-Also assign 1-2 vibes from: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
-Include in your JSON response: "primary_vibe": "...", "secondary_vibe": "..." or null
+Ingredient rules:
+- "text": the corrected full ingredient line as a human would read it (e.g. "1/2 cup diced onion, sauteed")
+- "quantity": a number (convert fractions: "1/2" -> 0.5, "1 1/2" -> 1.5, "a pinch" -> null)
+- "unit": standard unit string (e.g. "cup", "tablespoon", "teaspoon", "pound", "ounce", "clove", "piece") or null for count items (e.g. "3 large eggs" -> unit: null)
+- "name": the ingredient name without quantity, unit, or preparation notes (e.g. "all-purpose flour", "large eggs", "Gruyere cheese")
+- "notes": preparation details like "chopped", "sauteed", "room temperature", or null
+- "is_optional": true only if the recipe explicitly says the ingredient is optional
 
-Rules:
-- Only include fields you can find in the content
-- For ingredients, always include the full "text" field with the corrected original text
-- Parse quantity as a number (e.g., "1/2" should be 0.5)
-- Parse unit and ingredient name separately when possible
-- Correct obvious OCR errors (e.g., "f1our" → "flour", "1/2 tsp sa1t" → "1/2 tsp salt")
-- If you cannot find recipe content, return {"error": "No recipe found"}
+Vibe assignment:
+- Choose a primary_vibe that best captures the dish's character
+- Choose a secondary_vibe only if a second vibe clearly applies; otherwise set to null
+- Valid vibes: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming
+
+General rules:
+- Only include fields you can actually find or reasonably infer from the text
+- Set missing fields to null rather than guessing
+- If you cannot find recipe content at all, return {"error": "No recipe found"}
+- Return ONLY valid JSON. No markdown fences, no explanation text.
 
 OCR Text:
 """
@@ -88,7 +113,13 @@ def extract_recipe_from_text(
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a recipe extraction assistant. Extract recipe data from OCR text and return valid JSON. Correct obvious OCR errors.",
+                    "content": (
+                        "You are a precise recipe extraction assistant. "
+                        "Extract structured recipe data from OCR text and return valid JSON. "
+                        "Correct OCR artifacts (character substitutions, coordinate noise, garbled text). "
+                        "Parse ingredient quantities as numbers, separate units from names, "
+                        "and assign recipe vibes."
+                    ),
                 },
                 {
                     "role": "user",

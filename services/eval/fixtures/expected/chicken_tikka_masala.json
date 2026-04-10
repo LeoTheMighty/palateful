@@ -1,0 +1,124 @@
+{
+  "name": "Chicken Tikka Masala",
+  "description": "Rich, creamy, and packed with aromatic spices — this restaurant-style chicken tikka masala is even better than takeout.",
+  "prep_time_minutes": 20,
+  "cook_time_minutes": 40,
+  "servings": 4,
+  "ingredients": [
+    {
+      "text": "1 1/2 pounds boneless skinless chicken thighs, cut into bite-sized pieces",
+      "quantity": 1.5,
+      "unit": "pounds",
+      "name": "boneless skinless chicken thighs"
+    },
+    {
+      "text": "1 cup plain yogurt",
+      "quantity": 1,
+      "unit": "cup",
+      "name": "plain yogurt"
+    },
+    {
+      "text": "2 tablespoons lemon juice",
+      "quantity": 2,
+      "unit": "tablespoons",
+      "name": "lemon juice"
+    },
+    {
+      "text": "2 teaspoons ground cumin",
+      "quantity": 2,
+      "unit": "teaspoons",
+      "name": "ground cumin"
+    },
+    {
+      "text": "2 teaspoons paprika",
+      "quantity": 2,
+      "unit": "teaspoons",
+      "name": "paprika"
+    },
+    {
+      "text": "1 teaspoon ground turmeric",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "ground turmeric"
+    },
+    {
+      "text": "1 teaspoon garam masala",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "garam masala"
+    },
+    {
+      "text": "1/2 teaspoon cayenne pepper",
+      "quantity": 0.5,
+      "unit": "teaspoon",
+      "name": "cayenne pepper"
+    },
+    {
+      "text": "1 teaspoon salt",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "salt"
+    },
+    {
+      "text": "2 tablespoons vegetable oil",
+      "quantity": 2,
+      "unit": "tablespoons",
+      "name": "vegetable oil"
+    },
+    {
+      "text": "1 large onion, finely diced",
+      "quantity": 1,
+      "unit": null,
+      "name": "large onion"
+    },
+    {
+      "text": "4 cloves garlic, minced",
+      "quantity": 4,
+      "unit": "cloves",
+      "name": "garlic"
+    },
+    {
+      "text": "1 tablespoon fresh ginger, grated",
+      "quantity": 1,
+      "unit": "tablespoon",
+      "name": "fresh ginger"
+    },
+    {
+      "text": "1 can (14 oz) crushed tomatoes",
+      "quantity": 1,
+      "unit": "can",
+      "name": "crushed tomatoes"
+    },
+    {
+      "text": "1 cup heavy cream",
+      "quantity": 1,
+      "unit": "cup",
+      "name": "heavy cream"
+    },
+    {
+      "text": "2 teaspoons garam masala",
+      "quantity": 2,
+      "unit": "teaspoons",
+      "name": "garam masala"
+    },
+    {
+      "text": "1 teaspoon ground cumin",
+      "quantity": 1,
+      "unit": "teaspoon",
+      "name": "ground cumin"
+    },
+    {
+      "text": "1/2 teaspoon ground coriander",
+      "quantity": 0.5,
+      "unit": "teaspoon",
+      "name": "ground coriander"
+    },
+    {
+      "text": "Fresh cilantro, for garnish",
+      "quantity": null,
+      "unit": null,
+      "name": "fresh cilantro"
+    }
+  ],
+  "instructions": "1. Combine the chicken pieces with yogurt, lemon juice, cumin, paprika, turmeric, garam masala, cayenne, and salt in a large bowl. Cover and refrigerate for at least 1 hour or overnight. 2. Preheat the oven to 450 degrees F. Thread the marinated chicken onto skewers and place on a lined baking sheet. Bake for 15 minutes until lightly charred. 3. While the chicken bakes, heat the vegetable oil in a large skillet over medium heat. Add the diced onion and cook until softened, about 5 minutes. 4. Add the garlic and ginger and cook for 1 minute until fragrant. 5. Stir in the crushed tomatoes, garam masala, cumin, and coriander. Simmer for 15 minutes, stirring occasionally. 6. Pour in the heavy cream and stir until the sauce turns a rich orange color. Simmer for 5 more minutes. 7. Add the baked chicken pieces to the sauce and stir to coat. Simmer together for 5 minutes. 8. Garnish with fresh cilantro and serve over basmati rice or with warm naan bread."
+}
