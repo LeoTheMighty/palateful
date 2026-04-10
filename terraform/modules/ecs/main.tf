@@ -208,6 +208,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
         { name = "CELERY_BROKER_URL", value = "sqs://" },
         { name = "CELERY_QUEUE_PREFIX", value = var.celery_queue_prefix },
+        { name = "OPENAI_MODEL", value = "gpt-4o-mini" },
       ]
 
       secrets = [
@@ -215,9 +216,8 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AUTH0_DOMAIN", valueFrom = "${var.auth0_secret_arn}:domain::" },
         { name = "AUTH0_CLIENT_ID", valueFrom = "${var.auth0_secret_arn}:client_id::" },
         { name = "AUTH0_AUDIENCE", valueFrom = "${var.auth0_secret_arn}:audience::" },
-        { name = "OPENAI_API_KEY", valueFrom = "${var.openai_secret_arn}:api_key::" },
+        { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
         { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
-        { name = "OPENAI_MODEL", valueFrom = "${var.openai_secret_arn}:model::" },
       ]
 
       healthCheck = {
@@ -316,12 +316,12 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "PARSER_OUTPUTS_BUCKET", value = var.parser_outputs_bucket },
         { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },
         { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
+        { name = "OPENAI_MODEL", value = "gpt-4o-mini" },
       ]
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
-        { name = "OPENAI_API_KEY", valueFrom = "${var.openai_secret_arn}:api_key::" },
-        { name = "OPENAI_MODEL", valueFrom = "${var.openai_secret_arn}:model::" },
+        { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
         { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
       ]
 
