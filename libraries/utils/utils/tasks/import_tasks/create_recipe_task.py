@@ -10,6 +10,7 @@ from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_ingredient import RecipeIngredient
+from utils.models.recipe_step import RecipeStep
 from utils.services.celery import celery_app
 from utils.services.units.conversion import normalize_quantity
 from utils.tasks.task import BaseTask
@@ -80,6 +81,30 @@ class CreateRecipeTask(BaseTask):
             ingredients_data = recipe_data.get("ingredients", [])
             for idx, ing_data in enumerate(ingredients_data):
                 self._create_recipe_ingredient(recipe, ing_data, idx)
+
+            # Create RecipeStep records from steps array
+            steps_data = recipe_data.get("steps", [])
+            if steps_data:
+                for step_data in steps_data:
+                    step = RecipeStep(
+                        recipe_id=recipe.id,
+                        step_number=step_data.get("order", 1),
+                        instruction=step_data.get("instruction", ""),
+                    )
+                    self.database.create(step)
+            elif recipe_data.get("instructions"):
+                # Fallback: split instructions string into steps
+                instructions = recipe_data["instructions"]
+                import re
+                raw_steps = re.split(r'\d+\.\s+', instructions)
+                raw_steps = [s.strip() for s in raw_steps if s.strip()]
+                for idx, step_text in enumerate(raw_steps):
+                    step = RecipeStep(
+                        recipe_id=recipe.id,
+                        step_number=idx + 1,
+                        instruction=step_text,
+                    )
+                    self.database.create(step)
 
             # Update import item
             item.status = "completed"

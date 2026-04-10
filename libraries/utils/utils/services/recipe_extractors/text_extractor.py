@@ -42,6 +42,10 @@ Return a JSON object with EXACTLY this structure:
         }
     ],
     "instructions": "All steps as a single string, numbered. E.g.: 1. Preheat oven to 350F. 2. Mix dry ingredients...",
+    "steps": [
+        {"instruction": "Preheat oven to 350F.", "order": 1},
+        {"instruction": "Mix dry ingredients in a large bowl.", "order": 2}
+    ],
     "servings": 4,
     "prep_time_minutes": 15,
     "cook_time_minutes": 30,
