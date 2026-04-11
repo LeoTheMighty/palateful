@@ -41,10 +41,10 @@ Return a JSON object with EXACTLY this structure:
             "is_optional": false
         }
     ],
-    "instructions": "All steps as a single string, numbered. E.g.: 1. Preheat oven to 350F. 2. Mix dry ingredients...",
     "steps": [
         {"instruction": "Preheat oven to 350F.", "order": 1},
-        {"instruction": "Mix dry ingredients in a large bowl.", "order": 2}
+        {"instruction": "Mix dry ingredients in a large bowl.", "order": 2},
+        {"instruction": "Bake for 25 minutes.", "order": 3}
     ],
     "servings": 4,
     "prep_time_minutes": 15,
@@ -78,6 +78,16 @@ General rules:
 
 OCR Text:
 """
+
+
+def _steps_to_instructions(steps: list[dict] | None) -> str | None:
+    """Convert steps array to a single instructions string for backward compat."""
+    if not steps:
+        return None
+    return "\n".join(
+        f"{s.get('order', i+1)}. {s.get('instruction', '')}"
+        for i, s in enumerate(steps)
+    )
 
 
 def extract_recipe_from_text(
@@ -213,7 +223,7 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         name=data.get("name") or "Untitled Recipe",
         description=data.get("description"),
         ingredients=ingredients,
-        instructions=data.get("instructions"),
+        instructions=_steps_to_instructions(data.get("steps")) or data.get("instructions"),
         servings=data.get("servings"),
         prep_time_minutes=data.get("prep_time_minutes"),
         cook_time_minutes=data.get("cook_time_minutes"),
