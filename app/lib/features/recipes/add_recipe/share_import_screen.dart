@@ -219,7 +219,7 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
     }
   }
 
-  Future<void> _skip() async {
+  Future<void> _dismiss() async {
     if (_importItem != null) {
       final itemId = _importItem!['id']?.toString();
       if (itemId != null) {
@@ -473,8 +473,8 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
             child: Row(
               children: [
                 OutlinedButton(
-                  onPressed: _isApproving ? null : _skip,
-                  child: const Text('Skip'),
+                  onPressed: _isApproving ? null : _dismiss,
+                  child: const Text('Dismiss'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

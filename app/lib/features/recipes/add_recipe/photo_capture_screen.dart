@@ -306,6 +306,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       }
 
       bool allDone = true;
+      String? serverImportJobId;
 
       for (final job in _jobResults) {
         if (job.status == 'succeeded' || job.status == 'failed') continue;
@@ -313,6 +314,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         try {
           final response = await _apiClient.getParserJob(job.jobId);
           final status = response.data['status'] as String;
+
+          // Check if server-side pipeline already created an import job
+          final importJobId = response.data['import_job_id'] as String?;
+          if (importJobId != null) {
+            serverImportJobId = importJobId;
+          }
 
           setState(() {
             job.status = status;
@@ -337,7 +344,14 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         if (!mounted) return;
         final anySucceeded = _jobResults.any((j) => j.status == 'succeeded');
         if (anySucceeded) {
-          _startImportPipeline();
+          // If server-side pipeline already created an import job, use it directly
+          if (serverImportJobId != null) {
+            _importJobId = serverImportJobId;
+            setState(() => _status = 'structuring');
+            _startImportPolling();
+          } else {
+            _startImportPipeline();
+          }
         } else {
           setState(() {
             _status = 'failed';
@@ -385,8 +399,12 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     }
   }
 
+  int _importPollCount = 0;
+  static const _maxImportPolls = 30; // 60 seconds at 2s intervals
+
   void _startImportPolling() {
     _importPollTimer?.cancel();
+    _importPollCount = 0;
     _importPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       _pollImportJob();
     });
@@ -394,6 +412,18 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
 
   Future<void> _pollImportJob() async {
     if (_importJobId == null) return;
+
+    _importPollCount++;
+    if (_importPollCount > _maxImportPolls) {
+      _importPollTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _status = 'failed';
+          _error = 'Recipe structuring is taking too long. Check Import Activity for results.';
+        });
+      }
+      return;
+    }
 
     try {
       final response = await _apiClient.getImportJob(_importJobId!);
@@ -426,9 +456,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       final items = response.data['items'] as List? ?? [];
       if (items.isNotEmpty) {
         final item = items.first;
+        final recipe = item['parsed_recipe'] as Map<String, dynamic>?;
+
+        // Show success state briefly before transitioning to preview
+        setState(() => _status = 'succeeded');
+        await Future.delayed(const Duration(milliseconds: 1200));
+        if (!mounted) return;
+
         setState(() {
           _importItem = item;
-          _parsedRecipe = item['parsed_recipe'] as Map<String, dynamic>?;
+          _parsedRecipe = recipe;
           _status = 'previewing';
         });
       } else {
@@ -474,15 +511,21 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     }
   }
 
-  Future<void> _skipImport() async {
+  Future<void> _dismissImport() async {
     if (_importItem == null) return;
     final itemId = _importItem!['id']?.toString();
     if (itemId == null) return;
 
     try {
       await _apiClient.skipImportItem(itemId);
-    } catch (_) {}
-    if (mounted) context.pop();
+      if (mounted) context.pop();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not dismiss item.')),
+        );
+      }
+    }
   }
 
   @override
@@ -1003,8 +1046,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
             child: Row(
               children: [
                 OutlinedButton(
-                  onPressed: _isApproving ? null : _skipImport,
-                  child: const Text('Skip'),
+                  onPressed: _isApproving ? null : _dismissImport,
+                  child: const Text('Dismiss'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

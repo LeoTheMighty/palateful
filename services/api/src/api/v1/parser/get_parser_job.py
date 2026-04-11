@@ -53,6 +53,7 @@ class GetParserJob(Endpoint):
                 output_s3_key=parser_job.output_s3_key,
                 extracted_text=parser_job.extracted_text,
                 error_message=parser_job.error_message,
+                import_job_id=str(parser_job.import_job_id) if parser_job.import_job_id else None,
                 created_at=parser_job.created_at.isoformat(),
                 completed_at=parser_job.completed_at.isoformat() if parser_job.completed_at else None,
             )
@@ -103,5 +104,6 @@ class GetParserJob(Endpoint):
         output_s3_key: str | None
         extracted_text: str | None
         error_message: str | None
+        import_job_id: str | None
         created_at: str
         completed_at: str | None

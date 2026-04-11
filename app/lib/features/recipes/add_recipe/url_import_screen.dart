@@ -244,15 +244,21 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
     }
   }
 
-  Future<void> _skipImport() async {
+  Future<void> _dismissImport() async {
     if (_importItem == null) return;
     final itemId = _importItem!['id']?.toString();
     if (itemId == null) return;
 
     try {
       await _apiClient.skipImportItem(itemId);
-    } catch (_) {}
-    if (mounted) context.pop();
+      if (mounted) context.pop();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not dismiss item.')),
+        );
+      }
+    }
   }
 
   Future<void> _loadFailedItemError() async {
@@ -586,8 +592,8 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
             child: Row(
               children: [
                 OutlinedButton(
-                  onPressed: _isApproving ? null : _skipImport,
-                  child: const Text('Skip'),
+                  onPressed: _isApproving ? null : _dismissImport,
+                  child: const Text('Dismiss'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

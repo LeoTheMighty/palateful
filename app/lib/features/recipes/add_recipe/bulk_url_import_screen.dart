@@ -770,7 +770,7 @@ class _BulkUrlImportScreenState extends State<BulkUrlImportScreen> {
                       icon: const Icon(Icons.close),
                       iconSize: 20,
                       onPressed: () => _skipItem(itemId),
-                      tooltip: 'Skip',
+                      tooltip: 'Dismiss',
                     ),
                     IconButton(
                       icon: Icon(Icons.check, color: colorScheme.primary),
