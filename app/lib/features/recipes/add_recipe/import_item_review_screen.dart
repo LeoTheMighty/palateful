@@ -30,6 +30,7 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   final _servingsController = TextEditingController();
   final _instructionsController = TextEditingController();
   final _ingredientControllers = <TextEditingController>[];
+  final _stepControllers = <TextEditingController>[];
 
   // Action state
   bool _isApproving = false;
@@ -51,6 +52,9 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     _cookTimeController.dispose();
     _servingsController.dispose();
     _instructionsController.dispose();
+    for (final c in _stepControllers) {
+      c.dispose();
+    }
     for (final c in _ingredientControllers) {
       c.dispose();
     }
@@ -99,6 +103,29 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     _servingsController.text = servings != null ? servings.toString() : '';
     _instructionsController.text = recipe['instructions'] as String? ?? '';
 
+    // Build step controllers from steps array
+    for (final c in _stepControllers) {
+      c.dispose();
+    }
+    _stepControllers.clear();
+
+    final steps = recipe['steps'] as List? ?? [];
+    if (steps.isNotEmpty) {
+      for (final step in steps) {
+        final text = step is Map ? (step['instruction'] ?? '') : step.toString();
+        _stepControllers.add(TextEditingController(text: text));
+      }
+    } else if (_instructionsController.text.isNotEmpty) {
+      // Fallback: split instructions string into steps
+      final parts = _instructionsController.text.split(RegExp(r'\d+\.\s+'));
+      for (final part in parts) {
+        final trimmed = part.trim();
+        if (trimmed.isNotEmpty) {
+          _stepControllers.add(TextEditingController(text: trimmed));
+        }
+      }
+    }
+
     // Build ingredient controllers
     for (final c in _ingredientControllers) {
       c.dispose();
@@ -131,10 +158,18 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
         .map((t) => {'text': t})
         .toList();
 
+    final steps = _stepControllers
+        .asMap()
+        .entries
+        .where((e) => e.value.text.trim().isNotEmpty)
+        .map((e) => {'instruction': e.value.text.trim(), 'order': e.key + 1})
+        .toList();
+
     final edits = <String, dynamic>{
       'name': _nameController.text.trim(),
       'description': _descriptionController.text.trim(),
-      'instructions': _instructionsController.text.trim(),
+      'instructions': steps.map((s) => "${s['order']}. ${s['instruction']}").join('\n'),
+      'steps': steps,
       'ingredients': ingredients,
     };
 
@@ -475,22 +510,70 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
               }),
               const SizedBox(height: 24),
 
-              // Instructions
-              Text(
-                'Instructions',
-                style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              // Steps
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Steps',
+                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: () {
+                      setState(() {
+                        _stepControllers.add(TextEditingController());
+                      });
+                    },
+                    tooltip: 'Add step',
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _instructionsController,
-                decoration: const InputDecoration(
-                  hintText: 'Step-by-step instructions...',
-                  border: OutlineInputBorder(),
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 8,
-                onChanged: (_) => _onFieldChanged(),
-              ),
+              ..._stepControllers.asMap().entries.map((entry) {
+                final idx = entry.key;
+                final controller = entry.value;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 14),
+                        child: Text(
+                          '${idx + 1}.',
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: controller,
+                          decoration: InputDecoration(
+                            hintText: 'Step ${idx + 1}...',
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, size: 20),
+                              onPressed: () {
+                                setState(() {
+                                  _stepControllers[idx].dispose();
+                                  _stepControllers.removeAt(idx);
+                                  _onFieldChanged();
+                                });
+                              },
+                            ),
+                          ),
+                          maxLines: 3,
+                          onChanged: (_) => _onFieldChanged(),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
               const SizedBox(height: 32),
             ],
           ),
