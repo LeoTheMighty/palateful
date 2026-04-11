@@ -56,10 +56,14 @@ class WatchParserJobTask(BaseTask):
             logger.error("Parser job %s has no batch_job_id", parser_job_id)
             return success({"error": "No batch job ID"})
 
-        # Already terminal
+        # Already terminal or already has an import job
         if parser_job.status in ("succeeded", "failed"):
             logger.info("Parser job %s already %s", parser_job_id, parser_job.status)
             return success({"status": parser_job.status})
+
+        if parser_job.import_job_id:
+            logger.info("Parser job %s already has import job %s", parser_job_id, parser_job.import_job_id)
+            return success({"status": parser_job.status, "import_job_id": str(parser_job.import_job_id)})
 
         aws = AWSService(
             region=AWS_REGION,
@@ -142,6 +146,11 @@ class WatchParserJobTask(BaseTask):
         # If no recipe_book_id, we're done (old-style client-driven flow)
         if not parser_job.recipe_book_id:
             logger.info("Parser job %s succeeded but no recipe_book_id; skipping import.", parser_job.id)
+            return
+
+        # Guard: don't create duplicate import jobs
+        if parser_job.import_job_id:
+            logger.info("Parser job %s already has import job %s; skipping.", parser_job.id, parser_job.import_job_id)
             return
 
         # Create ImportJob
