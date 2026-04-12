@@ -37,6 +37,9 @@ class NotificationType(str, Enum):
     RECIPE_BOOK_SHARED = "recipe_book_shared"
     RECIPE_ADDED = "recipe_added"
 
+    # Import pipeline
+    IMPORT_NEEDS_REVIEW = "import_needs_review"
+
     # Meal events
     MEAL_EVENT_INVITE = "meal_event_invite"
     MEAL_EVENT_REMINDER = "meal_event_reminder"

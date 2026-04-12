@@ -201,6 +201,8 @@ class CreateRecipeTask(BaseTask):
             for s in ["completed", "failed", "skipped"]
         )
 
+        previous_status = job.status
+
         # Check if job is complete
         total_final = job.succeeded_items + job.failed_items + status_counts.get("skipped", 0)
         if total_final >= job.total_items:
@@ -225,6 +227,16 @@ class CreateRecipeTask(BaseTask):
             job.status = "awaiting_review"
 
         self.database.db.commit()
+
+        if (
+            job.status == "awaiting_review"
+            and previous_status != "awaiting_review"
+        ):
+            from utils.services.import_notifications import (
+                notify_import_needs_review,
+            )
+
+            notify_import_needs_review(self.database, job)
 
 
 # Register task with Celery

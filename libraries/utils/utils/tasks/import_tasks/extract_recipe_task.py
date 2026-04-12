@@ -278,6 +278,8 @@ class ExtractRecipeTask(BaseTask):
         job.succeeded_items = status_counts.get("completed", 0)
         job.pending_review_items = status_counts.get("awaiting_review", 0)
 
+        previous_status = job.status
+
         # Check if job is complete
         total_processed = job.processed_items
         if total_processed >= job.total_items:
@@ -289,6 +291,16 @@ class ExtractRecipeTask(BaseTask):
                 job.status = "completed"
 
         self.database.db.commit()
+
+        if (
+            job.status == "awaiting_review"
+            and previous_status != "awaiting_review"
+        ):
+            from utils.services.import_notifications import (
+                notify_import_needs_review,
+            )
+
+            notify_import_needs_review(self.database, job)
 
 
 # Register task with Celery

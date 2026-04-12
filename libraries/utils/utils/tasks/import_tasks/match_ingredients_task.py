@@ -358,6 +358,8 @@ class MatchIngredientsTask(BaseTask):
         job.pending_review_items = status_counts.get("awaiting_review", 0)
         job.succeeded_items = status_counts.get("completed", 0)
 
+        previous_status = job.status
+
         # Update job status
         total_done = sum(
             status_counts.get(s, 0)
@@ -373,6 +375,16 @@ class MatchIngredientsTask(BaseTask):
                 job.status = "completed"
 
         self.database.db.commit()
+
+        if (
+            job.status == "awaiting_review"
+            and previous_status != "awaiting_review"
+        ):
+            from utils.services.import_notifications import (
+                notify_import_needs_review,
+            )
+
+            notify_import_needs_review(self.database, job)
 
     def _dispatch_create_task(self, item: ImportItem):
         """Dispatch create recipe task for approved item."""

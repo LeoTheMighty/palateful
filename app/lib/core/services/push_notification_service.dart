@@ -202,6 +202,7 @@ class PushNotificationService {
     switch (notificationType) {
       case 'import_complete':
       case 'import_needs_attention':
+      case 'import_needs_review':
         final jobId = data['import_job_id'];
         if (jobId != null) return '/recipes/import/review-list/$jobId';
         return '/';
