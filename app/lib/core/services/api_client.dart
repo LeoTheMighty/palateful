@@ -483,6 +483,28 @@ class ApiClient {
     return _dio.get('/v1/parser/jobs/$jobId');
   }
 
+  // Parser batch endpoints (story 13.12+)
+  Future<Response> createParserBatch({
+    required String recipeBookId,
+    required List<Map<String, dynamic>> items,
+  }) {
+    return _dio.post('/v1/parser/batches', data: {
+      'recipe_book_id': recipeBookId,
+      'items': items,
+    });
+  }
+
+  Future<Response> getParserBatch(String batchId) {
+    return _dio.get('/v1/parser/batches/$batchId');
+  }
+
+  Future<Response> listParserBatches({bool activeOnly = true, int limit = 20}) {
+    return _dio.get('/v1/parser/batches', queryParameters: {
+      if (activeOnly) 'active': true,
+      'limit': limit,
+    });
+  }
+
   // Import endpoints
   Future<Response> startImport(String bookId, {required String sourceType, String? url, List<String>? urls, List<String>? ocrTexts, String? rawText, String? fileBase64, String? fileName}) {
     return _dio.post('/v1/recipe-books/$bookId/import', data: {

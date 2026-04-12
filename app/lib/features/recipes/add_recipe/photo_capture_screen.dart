@@ -1,37 +1,33 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/theme.dart';
 
+enum _UploadStatus { pending, uploading, complete, failed }
+
+enum _Phase { picking, grouping, submitting }
+
 class _SelectedImage {
   final XFile file;
   final Uint8List bytes;
+  String? s3Key;
+  _UploadStatus uploadStatus;
+  String? uploadError;
   bool previewFailed;
 
-  // ignore: unused_element_parameter
-  _SelectedImage({required this.file, required this.bytes, this.previewFailed = false});
-}
-
-class _JobResult {
-  final String jobId;
-  final String inputKey;
-  String status; // submitted, running, succeeded, failed
-  String? extractedText;
-  String? error;
-
-  // ignore: unused_element_parameter
-  _JobResult({required this.jobId, required this.inputKey, this.status = 'submitted'});
+  _SelectedImage({required this.file, required this.bytes})
+      : s3Key = null,
+        uploadStatus = _UploadStatus.pending,
+        uploadError = null,
+        previewFailed = false;
 }
 
 class PhotoCaptureScreen extends StatefulWidget {
@@ -48,37 +44,23 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
   final _imagePicker = ImagePicker();
 
   final List<_SelectedImage> _selectedImages = [];
-  String _status = 'idle'; // idle, uploading, submitting, polling, succeeded, failed, structuring, previewing
-  final List<_JobResult> _jobResults = [];
+  // Per-image group assignment, keyed by image index. Default = 1 group per image.
+  final Map<int, int> _groupAssignments = {};
+  final Set<int> _selectedForAssignment = {};
+
+  _Phase _phase = _Phase.picking;
   String? _error;
-  Timer? _pollTimer;
-  Timer? _importPollTimer;
-  int _ocrPollCount = 0;
-  static const _maxOcrPolls = 120; // 10 minutes at 5s intervals (GPU cold start can take 5+ min)
 
   // Book selection
   String? _selectedBookId;
   List<dynamic> _recipeBooks = [];
   bool _isLoadingBooks = true;
 
-  // Import pipeline state
-  String? _importJobId;
-  Map<String, dynamic>? _importItem;
-  Map<String, dynamic>? _parsedRecipe;
-  bool _isApproving = false;
-
   @override
   void initState() {
     super.initState();
     _selectedBookId = widget.recipeBookId;
     _loadRecipeBooks();
-  }
-
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    _importPollTimer?.cancel();
-    super.dispose();
   }
 
   Future<void> _loadRecipeBooks() async {
@@ -90,7 +72,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           _isLoadingBooks = false;
           if (_selectedBookId == null && _recipeBooks.isNotEmpty) {
             final defaultId = getIt<AuthService>().defaultRecipeBookId;
-            if (defaultId != null && _recipeBooks.any((b) => b['id']?.toString() == defaultId)) {
+            if (defaultId != null &&
+                _recipeBooks.any((b) => b['id']?.toString() == defaultId)) {
               _selectedBookId = defaultId;
             } else {
               _selectedBookId = _recipeBooks.first['id']?.toString();
@@ -105,6 +88,10 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     }
   }
 
+  // ----------------------------------------------------------------
+  // Picking + uploading
+  // ----------------------------------------------------------------
+
   Future<void> _pickFromCamera() async {
     try {
       final image = await _imagePicker.pickImage(
@@ -115,10 +102,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       );
       if (image != null) {
         final bytes = await image.readAsBytes();
-        setState(() {
-          _selectedImages.add(_SelectedImage(file: image, bytes: bytes));
-          _resetResults();
-        });
+        _addImage(_SelectedImage(file: image, bytes: bytes));
       }
     } catch (e) {
       setState(() => _error = 'Failed to capture image: $e');
@@ -132,31 +116,90 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         maxHeight: 2048,
         imageQuality: 85,
       );
-      if (images.isNotEmpty) {
-        for (final image in images) {
-          final bytes = await image.readAsBytes();
-          _selectedImages.add(_SelectedImage(file: image, bytes: bytes));
-        }
-        setState(() => _resetResults());
+      for (final image in images) {
+        final bytes = await image.readAsBytes();
+        _addImage(_SelectedImage(file: image, bytes: bytes));
       }
     } catch (e) {
       setState(() => _error = 'Failed to pick images: $e');
     }
   }
 
-  void _resetResults() {
-    _jobResults.clear();
-    _error = null;
-    _status = 'idle';
-    _importJobId = null;
-    _importItem = null;
-    _parsedRecipe = null;
+  void _addImage(_SelectedImage img) {
+    final newIndex = _selectedImages.length;
+    setState(() {
+      _selectedImages.add(img);
+      _groupAssignments[newIndex] = newIndex; // default 1 group per image
+      _error = null;
+    });
+    _uploadImage(newIndex);
+  }
+
+  Future<void> _uploadImage(int index) async {
+    if (index >= _selectedImages.length) return;
+    final img = _selectedImages[index];
+    setState(() {
+      img.uploadStatus = _UploadStatus.uploading;
+      img.uploadError = null;
+    });
+
+    try {
+      final uploadUrlResponse =
+          await _apiClient.getParserUploadUrl(img.file.name);
+      final uploadUrl = uploadUrlResponse.data['upload_url'] as String;
+      final s3Key = uploadUrlResponse.data['s3_key'] as String;
+      final contentType = uploadUrlResponse.data['content_type'] as String;
+
+      final uploadResponse = await http
+          .put(
+            Uri.parse(uploadUrl),
+            headers: {'Content-Type': contentType},
+            body: img.bytes,
+          )
+          .timeout(const Duration(seconds: 60));
+
+      if (!mounted) return;
+
+      // The image may have been removed while uploading; bail out gracefully.
+      if (!_selectedImages.contains(img)) return;
+
+      if (uploadResponse.statusCode != 200) {
+        throw Exception('S3 returned ${uploadResponse.statusCode}');
+      }
+
+      setState(() {
+        img.s3Key = s3Key;
+        img.uploadStatus = _UploadStatus.complete;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      if (!_selectedImages.contains(img)) return;
+      setState(() {
+        img.uploadStatus = _UploadStatus.failed;
+        img.uploadError = e.toString();
+      });
+    }
+  }
+
+  void _retryUpload(int index) {
+    if (index >= _selectedImages.length) return;
+    _uploadImage(index);
   }
 
   void _removeImage(int index) {
+    if (index >= _selectedImages.length) return;
     setState(() {
       _selectedImages.removeAt(index);
-      _resetResults();
+      // Rebuild group assignments to keep them aligned with image indices
+      final old = Map<int, int>.from(_groupAssignments);
+      _groupAssignments.clear();
+      for (var i = 0; i < _selectedImages.length; i++) {
+        final origIdx = i >= index ? i + 1 : i;
+        _groupAssignments[i] = old[origIdx] ?? i;
+      }
+      _selectedForAssignment.clear();
+      _compactGroupIndices();
+      if (_selectedImages.isEmpty) _phase = _Phase.picking;
     });
   }
 
@@ -207,326 +250,136 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  Future<void> _processImages() async {
-    if (_selectedImages.isEmpty || _selectedBookId == null) return;
+  // ----------------------------------------------------------------
+  // Grouping
+  // ----------------------------------------------------------------
 
+  bool get _allUploadsComplete =>
+      _selectedImages.isNotEmpty &&
+      _selectedImages.every((i) => i.uploadStatus == _UploadStatus.complete);
+
+  /// Distinct contiguous group indices (numbered from 0).
+  List<int> get _activeGroupIndices {
+    final groups = _groupAssignments.values.toSet().toList()..sort();
+    return groups;
+  }
+
+  int get _recipeCount => _activeGroupIndices.length;
+
+  /// Renumber groups so they form a contiguous 0..N-1 range.
+  void _compactGroupIndices() {
+    final unique = _groupAssignments.values.toSet().toList()..sort();
+    final remap = {for (var i = 0; i < unique.length; i++) unique[i]: i};
+    for (final key in _groupAssignments.keys.toList()) {
+      _groupAssignments[key] = remap[_groupAssignments[key]!]!;
+    }
+  }
+
+  void _assignSelectedTo(int targetGroup) {
     setState(() {
-      _status = 'uploading';
-      _error = null;
-      _jobResults.clear();
-    });
-
-    try {
-      // Upload all images and collect their S3 keys
-      final s3Keys = <String>[];
-
-      for (int i = 0; i < _selectedImages.length; i++) {
-        final img = _selectedImages[i];
-
-        // Get presigned upload URL
-        final uploadUrlResponse = await _apiClient.getParserUploadUrl(img.file.name);
-        final uploadUrl = uploadUrlResponse.data['upload_url'] as String;
-        final s3Key = uploadUrlResponse.data['s3_key'] as String;
-        final contentType = uploadUrlResponse.data['content_type'] as String;
-
-        // Upload image to S3 with timeout
-        debugPrint('Uploading image ${i + 1} (${img.bytes.length} bytes) to S3...');
-        debugPrint('Upload URL host: ${Uri.parse(uploadUrl).host}');
-        final http.Response uploadResponse;
-        try {
-          uploadResponse = await http.put(
-            Uri.parse(uploadUrl),
-            headers: {'Content-Type': contentType},
-            body: img.bytes,
-          ).timeout(const Duration(seconds: 60));
-        } catch (uploadError) {
-          debugPrint('S3 upload failed: $uploadError');
-          throw Exception('Image upload failed: $uploadError');
-        }
-
-        debugPrint('S3 upload response: ${uploadResponse.statusCode}');
-        if (uploadResponse.statusCode != 200) {
-          debugPrint('S3 error body: ${uploadResponse.body.substring(0, (uploadResponse.body.length).clamp(0, 500))}');
-          throw Exception('Image upload returned ${uploadResponse.statusCode}');
-        }
-
-        s3Keys.add(s3Key);
+      for (final idx in _selectedForAssignment) {
+        _groupAssignments[idx] = targetGroup;
       }
+      _selectedForAssignment.clear();
+      _compactGroupIndices();
+    });
+  }
 
-      // Submit job(s)
-      setState(() => _status = 'submitting');
+  void _addNewGroupAndAssign() {
+    if (_selectedForAssignment.isEmpty) return;
+    final newGroup = (_groupAssignments.values.fold<int>(-1, (a, b) => a > b ? a : b)) + 1;
+    setState(() {
+      for (final idx in _selectedForAssignment) {
+        _groupAssignments[idx] = newGroup;
+      }
+      _selectedForAssignment.clear();
+      _compactGroupIndices();
+    });
+  }
 
-      if (s3Keys.length == 1) {
-        final submitResponse = await _apiClient.submitParserJob(
-          s3Keys.first,
-          recipeBookId: _selectedBookId,
-        );
-        final jobId = submitResponse.data['id'] as String;
-        setState(() {
-          _jobResults.add(_JobResult(jobId: jobId, inputKey: s3Keys.first));
-          _status = 'polling';
-        });
+  void _toggleSelection(int index) {
+    setState(() {
+      if (_selectedForAssignment.contains(index)) {
+        _selectedForAssignment.remove(index);
       } else {
-        final submitResponse = await _apiClient.submitBatchParserJob(s3Keys);
-        final jobs = submitResponse.data['jobs'] as List;
-        setState(() {
-          for (final job in jobs) {
-            _jobResults.add(_JobResult(
-              jobId: job['id'] as String,
-              inputKey: job['input_s3_key'] as String,
-            ));
-          }
-          _status = 'polling';
-        });
-      }
-
-      _startOcrPolling();
-    } catch (e) {
-      setState(() {
-        _status = 'failed';
-        _error = 'Processing failed: $e';
-      });
-    }
-  }
-
-  void _startOcrPolling() {
-    _pollTimer?.cancel();
-    _ocrPollCount = 0;
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      _ocrPollCount++;
-      if (_ocrPollCount > _maxOcrPolls) {
-        timer.cancel();
-        if (mounted) {
-          setState(() {
-            _status = 'failed';
-            _error = 'OCR processing timed out. Please try again.';
-          });
-        }
-        return;
-      }
-
-      bool allDone = true;
-      String? serverImportJobId;
-
-      for (final job in _jobResults) {
-        if (job.status == 'succeeded' || job.status == 'failed') continue;
-
-        try {
-          final response = await _apiClient.getParserJob(job.jobId);
-          final status = response.data['status'] as String;
-
-          // Check if server-side pipeline already created an import job
-          final importJobId = response.data['import_job_id'] as String?;
-          if (importJobId != null) {
-            serverImportJobId = importJobId;
-          }
-
-          setState(() {
-            job.status = status;
-            if (status == 'succeeded') {
-              job.extractedText = response.data['extracted_text'] as String?;
-            } else if (status == 'failed') {
-              job.error = response.data['error_message'] as String? ?? 'Job failed';
-            }
-          });
-
-          if (status != 'succeeded' && status != 'failed') {
-            allDone = false;
-          }
-        } catch (e) {
-          allDone = false;
-          debugPrint('Polling error for job ${job.jobId}: $e');
-        }
-      }
-
-      if (allDone) {
-        timer.cancel();
-        if (!mounted) return;
-        final anySucceeded = _jobResults.any((j) => j.status == 'succeeded');
-        if (anySucceeded) {
-          // If server-side pipeline already created an import job, use it directly
-          if (serverImportJobId != null) {
-            _importJobId = serverImportJobId;
-            setState(() => _status = 'structuring');
-            _startImportPolling();
-          } else {
-            _startImportPipeline();
-          }
-        } else {
-          setState(() {
-            _status = 'failed';
-            _error = 'OCR processing failed for all images.';
-          });
-        }
+        _selectedForAssignment.add(index);
       }
     });
   }
 
-  Future<void> _startImportPipeline() async {
-    setState(() => _status = 'structuring');
+  void _enterGrouping() {
+    setState(() {
+      // Reset to one-group-per-image as the starting point for grouping
+      for (var i = 0; i < _selectedImages.length; i++) {
+        _groupAssignments[i] = i;
+      }
+      _selectedForAssignment.clear();
+      _phase = _Phase.grouping;
+    });
+  }
 
-    // Collect OCR texts from succeeded jobs
-    final ocrTexts = _jobResults
-        .where((j) => j.status == 'succeeded' && j.extractedText != null)
-        .map((j) => j.extractedText!)
-        .toList();
+  void _exitGrouping() {
+    setState(() {
+      _selectedForAssignment.clear();
+      _phase = _Phase.picking;
+    });
+  }
 
-    if (ocrTexts.isEmpty) {
-      setState(() {
-        _status = 'failed';
-        _error = 'No text was extracted from the images.';
-      });
-      return;
-    }
+  // ----------------------------------------------------------------
+  // Submission
+  // ----------------------------------------------------------------
 
+  Future<void> _submitAsOneRecipe() async {
+    if (_selectedBookId == null || !_allUploadsComplete) return;
+    final items = <Map<String, dynamic>>[
+      for (final img in _selectedImages)
+        {'s3_key': img.s3Key!, 'group_index': 0},
+    ];
+    await _submitBatch(items);
+  }
+
+  Future<void> _submitGrouped() async {
+    if (_selectedBookId == null || !_allUploadsComplete) return;
+    final items = <Map<String, dynamic>>[
+      for (var i = 0; i < _selectedImages.length; i++)
+        {
+          's3_key': _selectedImages[i].s3Key!,
+          'group_index': _groupAssignments[i] ?? 0,
+        },
+    ];
+    await _submitBatch(items);
+  }
+
+  Future<void> _submitBatch(List<Map<String, dynamic>> items) async {
+    setState(() {
+      _phase = _Phase.submitting;
+      _error = null;
+    });
     try {
-      final response = await _apiClient.startImport(
-        _selectedBookId!,
-        sourceType: 'photo',
-        ocrTexts: ocrTexts,
+      await _apiClient.createParserBatch(
+        recipeBookId: _selectedBookId!,
+        items: items,
       );
       if (!mounted) return;
-
-      _importJobId = response.data['id']?.toString();
-      _startImportPolling();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Started import — we'll let you know when it's ready"),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      context.pop(true);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _status = 'failed';
-          _error = 'Could not start recipe structuring. Please try again.';
-        });
-      }
-    }
-  }
-
-  int _importPollCount = 0;
-  static const _maxImportPolls = 30; // 60 seconds at 2s intervals
-
-  void _startImportPolling() {
-    _importPollTimer?.cancel();
-    _importPollCount = 0;
-    _importPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      _pollImportJob();
-    });
-  }
-
-  Future<void> _pollImportJob() async {
-    if (_importJobId == null) return;
-
-    _importPollCount++;
-    if (_importPollCount > _maxImportPolls) {
-      _importPollTimer?.cancel();
-      if (mounted) {
-        setState(() {
-          _status = 'failed';
-          _error = 'Recipe structuring is taking too long. Check Import Activity for results.';
-        });
-      }
-      return;
-    }
-
-    try {
-      final response = await _apiClient.getImportJob(_importJobId!);
       if (!mounted) return;
-
-      final status = response.data['status']?.toString();
-
-      if (status == 'awaiting_review' || status == 'completed') {
-        _importPollTimer?.cancel();
-        await _loadImportItems();
-      } else if (status == 'failed') {
-        _importPollTimer?.cancel();
-        setState(() {
-          _status = 'failed';
-          _error = 'Could not structure recipe from OCR text.';
-        });
-      }
-    } catch (e) {
-      // Keep polling on transient errors
+      setState(() {
+        _phase = _allUploadsComplete ? _Phase.picking : _Phase.picking;
+        _error = 'Could not start import: $e';
+      });
     }
   }
 
-  Future<void> _loadImportItems() async {
-    if (_importJobId == null) return;
-
-    try {
-      final response = await _apiClient.listImportItems(_importJobId!);
-      if (!mounted) return;
-
-      final items = response.data['items'] as List? ?? [];
-      if (items.isNotEmpty) {
-        final item = items.first;
-        final recipe = item['parsed_recipe'] as Map<String, dynamic>?;
-
-        // Show success state briefly before transitioning to preview
-        setState(() => _status = 'succeeded');
-        await Future.delayed(const Duration(milliseconds: 1200));
-        if (!mounted) return;
-
-        setState(() {
-          _importItem = item;
-          _parsedRecipe = recipe;
-          _status = 'previewing';
-        });
-      } else {
-        setState(() {
-          _status = 'failed';
-          _error = 'No recipe data was extracted from the photos.';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _status = 'failed';
-          _error = 'Could not load extracted recipe. Please try again.';
-        });
-      }
-    }
-  }
-
-  Future<void> _approveImport() async {
-    if (_isApproving || _importItem == null) return;
-
-    final itemId = _importItem!['id']?.toString();
-    if (itemId == null) return;
-
-    setState(() => _isApproving = true);
-    try {
-      HapticFeedback.selectionClick();
-      await _apiClient.approveImportItem(itemId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recipe imported successfully!')),
-        );
-        context.pop(true);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save recipe. Please try again.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isApproving = false);
-    }
-  }
-
-  Future<void> _dismissImport() async {
-    if (_importItem == null) return;
-    final itemId = _importItem!['id']?.toString();
-    if (itemId == null) return;
-
-    try {
-      await _apiClient.skipImportItem(itemId);
-      if (mounted) context.pop();
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not dismiss item.')),
-        );
-      }
-    }
-  }
+  // ----------------------------------------------------------------
+  // Build
+  // ----------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -535,33 +388,37 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
         backgroundColor: colorScheme.surface,
-        title: const Text('Add from Photo'),
+        title: Text(
+          _phase == _Phase.grouping ? 'Group photos' : 'Add from Photo',
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
+          icon: Icon(_phase == _Phase.grouping ? Icons.arrow_back : Icons.close),
+          onPressed: _phase == _Phase.grouping ? _exitGrouping : () => context.pop(),
         ),
       ),
-      body: _parsedRecipe != null
-          ? _buildRecipePreview()
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildImageSection(),
-                  const SizedBox(height: 16),
-                  _buildBookSelector(),
-                  const SizedBox(height: 16),
-                  _buildProcessButton(),
-                  const SizedBox(height: 16),
-                  _buildStatusIndicator(),
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
-                    _buildErrorSection(),
-                  ],
-                ],
-              ),
-            ),
+      body: _phase == _Phase.grouping
+          ? _buildGroupingView()
+          : _buildPickingView(),
+    );
+  }
+
+  Widget _buildPickingView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildImageSection(),
+          const SizedBox(height: 16),
+          _buildBookSelector(),
+          const SizedBox(height: 16),
+          _buildSubmitSection(),
+          if (_error != null) ...[
+            const SizedBox(height: 16),
+            _buildErrorSection(),
+          ],
+        ],
+      ),
     );
   }
 
@@ -575,9 +432,8 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
         style: TextStyle(color: Theme.of(context).colorScheme.error),
       );
     }
-
     return DropdownButtonFormField<String>(
-      value: _selectedBookId,
+      initialValue: _selectedBookId,
       decoration: const InputDecoration(
         labelText: 'Destination Book',
         prefixIcon: Icon(Icons.book_outlined),
@@ -589,9 +445,9 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           child: Text(book['name'] ?? 'Untitled'),
         );
       }).toList(),
-      onChanged: _status == 'idle' ? (value) {
-        setState(() => _selectedBookId = value);
-      } : null,
+      onChanged: _phase == _Phase.submitting
+          ? null
+          : (value) => setState(() => _selectedBookId = value),
     );
   }
 
@@ -645,7 +501,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
               ),
             ),
             TextButton.icon(
-              onPressed: _status == 'idle' ? _showImageSourceDialog : null,
+              onPressed: _phase == _Phase.submitting ? null : _showImageSourceDialog,
               icon: const Icon(Icons.add_photo_alternate, size: 20),
               label: const Text('Add more'),
             ),
@@ -696,7 +552,11 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
                     ),
             ),
           ),
-          if (_status == 'idle')
+          // Upload status overlay
+          Positioned.fill(
+            child: _buildUploadOverlay(img, index),
+          ),
+          if (_phase != _Phase.submitting)
             Positioned(
               top: 4,
               right: 4,
@@ -732,6 +592,59 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
+  Widget _buildUploadOverlay(_SelectedImage img, int index) {
+    switch (img.uploadStatus) {
+      case _UploadStatus.complete:
+        return Align(
+          alignment: Alignment.bottomRight,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: const BoxDecoration(
+                color: Colors.green,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check, size: 14, color: Colors.white),
+            ),
+          ),
+        );
+      case _UploadStatus.failed:
+        return GestureDetector(
+          onTap: () => _retryUpload(index),
+          child: Container(
+            color: Colors.black.withValues(alpha: 0.45),
+            child: const Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white, size: 28),
+                  SizedBox(height: 4),
+                  Text('Tap to retry',
+                      style: TextStyle(color: Colors.white, fontSize: 11)),
+                ],
+              ),
+            ),
+          ),
+        );
+      case _UploadStatus.uploading:
+      case _UploadStatus.pending:
+        return Container(
+          color: Colors.black.withValues(alpha: 0.25),
+          child: const Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+          ),
+        );
+    }
+  }
+
   Widget _buildThumbnailFallback(_SelectedImage img) {
     final extension = img.file.name.split('.').last.toUpperCase();
     final colorScheme = Theme.of(context).colorScheme;
@@ -750,127 +663,277 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     );
   }
 
-  Widget _buildProcessButton() {
-    final isProcessing = _status != 'idle' && _status != 'failed' && _status != 'succeeded';
+  Widget _buildSubmitSection() {
+    if (_selectedImages.isEmpty) return const SizedBox.shrink();
+    final canSubmit = _allUploadsComplete &&
+        _selectedBookId != null &&
+        _phase != _Phase.submitting;
 
-    final label = _selectedImages.length <= 1
-        ? 'Extract Recipe with AI'
-        : 'Extract Recipe from ${_selectedImages.length} Photos';
-
-    return ElevatedButton(
-      onPressed: _selectedImages.isNotEmpty && !isProcessing && _selectedBookId != null
-          ? _processImages
-          : null,
-      style: ElevatedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      child: isProcessing
-          ? Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(_getProcessingText()),
-              ],
-            )
-          : Text(
-              label,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton(
+          onPressed: canSubmit ? _submitAsOneRecipe : null,
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-    );
-  }
-
-  String _getProcessingText() {
-    switch (_status) {
-      case 'uploading':
-        return 'Uploading images...';
-      case 'submitting':
-        return 'Submitting OCR job...';
-      case 'polling':
-        final done = _jobResults.where((j) => j.status == 'succeeded' || j.status == 'failed').length;
-        return 'Reading text ($done/${_jobResults.length})...';
-      case 'structuring':
-        return 'Structuring recipe...';
-      default:
-        return 'Processing...';
-    }
-  }
-
-  Widget _buildStatusIndicator() {
-    final appColors = context.appColors;
-    final colorScheme = Theme.of(context).colorScheme;
-    IconData icon;
-    Color color;
-    String text;
-
-    switch (_status) {
-      case 'uploading':
-        icon = Icons.cloud_upload;
-        color = appColors.info;
-        text = 'Uploading ${_selectedImages.length} image${_selectedImages.length == 1 ? '' : 's'}...';
-        break;
-      case 'submitting':
-        icon = Icons.send;
-        color = appColors.info;
-        text = 'Submitting OCR job...';
-        break;
-      case 'polling':
-        icon = Icons.hourglass_empty;
-        color = appColors.warning;
-        final done = _jobResults.where((j) => j.status == 'succeeded' || j.status == 'failed').length;
-        text = 'Reading text ($done/${_jobResults.length} complete)... This may take a minute.';
-        break;
-      case 'structuring':
-        icon = Icons.auto_awesome;
-        color = appColors.info;
-        text = 'AI is structuring your recipe...';
-        break;
-      case 'succeeded':
-        icon = Icons.check_circle;
-        color = appColors.success;
-        text = 'Recipe extracted successfully!';
-        break;
-      case 'failed':
-        icon = Icons.error;
-        color = colorScheme.error;
-        text = _error ?? 'Processing failed';
-        break;
-      default:
-        icon = Icons.info_outline;
-        color = appColors.textTertiary;
-        text = 'Select images and tap "Extract Recipe"';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: color, fontWeight: FontWeight.w500),
+          ),
+          child: _phase == _Phase.submitting
+              ? const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Starting import...'),
+                  ],
+                )
+              : const Text(
+                  'Import as one recipe',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+        ),
+        if (_selectedImages.length > 1) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: canSubmit ? _enterGrouping : null,
+            child: const Text('These are separate recipes →'),
+          ),
+        ],
+        if (!_allUploadsComplete && _selectedImages.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Waiting for uploads to finish...',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.appColors.textTertiary,
+              fontSize: 12,
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // Grouping view
+  // ----------------------------------------------------------------
+
+  Widget _buildGroupingView() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final groups = _activeGroupIndices;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              const Icon(Icons.menu_book_outlined, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                'Will create $_recipeCount recipe${_recipeCount == 1 ? '' : 's'}',
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              if (_selectedForAssignment.isNotEmpty)
+                Text(
+                  '${_selectedForAssignment.length} selected',
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Tap images to select, then tap a recipe chip to assign them.',
+            style: TextStyle(
+              color: context.appColors.textTertiary,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(16),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.8,
+            ),
+            itemCount: _selectedImages.length,
+            itemBuilder: (context, index) => _buildGroupingTile(index),
+          ),
+        ),
+        _buildChipRow(groups),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: ElevatedButton(
+              onPressed: _phase == _Phase.submitting ? null : _submitGrouped,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _phase == _Phase.submitting
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text('Starting import...'),
+                      ],
+                    )
+                  : Text(
+                      'Create $_recipeCount recipe${_recipeCount == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: _buildErrorSection(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildGroupingTile(int index) {
+    final img = _selectedImages[index];
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSelected = _selectedForAssignment.contains(index);
+    final groupIndex = _groupAssignments[index] ?? index;
+    final recipeNumber = groupIndex + 1;
+
+    return GestureDetector(
+      onTap: () => _toggleSelection(index),
+      child: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.secondary.withValues(alpha: 0.3),
+                width: isSelected ? 3 : 1,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: img.previewFailed
+                  ? _buildThumbnailFallback(img)
+                  : Image.memory(
+                      img.bytes,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+            ),
+          ),
+          Positioned(
+            top: 4,
+            left: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: colorScheme.primary,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                'Recipe $recipeNumber',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          if (isSelected)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check, size: 14, color: Colors.white),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChipRow(List<int> groups) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasSelection = _selectedForAssignment.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: colorScheme.outlineVariant, width: 0.5),
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final g in groups)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ActionChip(
+                  label: Text('Recipe ${g + 1}'),
+                  backgroundColor: hasSelection
+                      ? colorScheme.primaryContainer
+                      : colorScheme.surfaceContainerHighest,
+                  onPressed: hasSelection ? () => _assignSelectedTo(g) : null,
+                ),
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 16),
+              label: const Text('New recipe'),
+              backgroundColor: hasSelection
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surfaceContainerHighest,
+              onPressed: hasSelection ? _addNewGroupAndAssign : null,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -897,177 +960,6 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildRecipePreview() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    final name = _parsedRecipe!['name'] ?? 'Untitled Recipe';
-    final description = _parsedRecipe!['description'] as String?;
-    final imageUrl = _parsedRecipe!['image_url'] as String?;
-    final ingredients = _parsedRecipe!['ingredients'] as List? ?? [];
-    final instructions = _parsedRecipe!['instructions'] as String?;
-    final prepTime = _parsedRecipe!['prep_time_minutes'];
-    final cookTime = _parsedRecipe!['cook_time_minutes'];
-    final servings = _parsedRecipe!['servings'];
-    final extractorUsed = _parsedRecipe!['extractor_used'] as String?;
-
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // Extracted badge
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome, size: 16, color: colorScheme.primary),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Extracted from photo via ${extractorUsed ?? 'AI'}',
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colorScheme.primary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Image
-              if (imageUrl != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CachedNetworkImage(
-                    imageUrl: imageUrl,
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-              if (imageUrl != null) const SizedBox(height: 16),
-
-              // Name
-              Text(
-                name,
-                style: textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (description != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  description,
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-
-              // Metadata
-              if (prepTime != null || cookTime != null || servings != null) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  children: [
-                    if (prepTime != null)
-                      Chip(
-                        avatar: const Icon(Icons.timer_outlined, size: 16),
-                        label: Text('Prep ${prepTime}m'),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    if (cookTime != null)
-                      Chip(
-                        avatar: const Icon(Icons.local_fire_department_outlined, size: 16),
-                        label: Text('Cook ${cookTime}m'),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    if (servings != null)
-                      Chip(
-                        avatar: const Icon(Icons.people_outline, size: 16),
-                        label: Text('Serves $servings'),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                  ],
-                ),
-              ],
-
-              // Ingredients
-              if (ingredients.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text(
-                  'Ingredients (${ingredients.length})',
-                  style: textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...ingredients.map((ing) {
-                  final text = ing is Map ? (ing['text'] ?? '') : ing.toString();
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('  \u2022  ', style: textTheme.bodyMedium),
-                        Expanded(
-                          child: Text(text, style: textTheme.bodyMedium),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
-
-              // Instructions
-              if (instructions != null && instructions.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Text(
-                  'Instructions',
-                  style: textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(instructions, style: textTheme.bodyMedium),
-              ],
-
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-
-        // Bottom action bar
-        SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                OutlinedButton(
-                  onPressed: _isApproving ? null : _dismissImport,
-                  child: const Text('Dismiss'),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _isApproving ? null : _approveImport,
-                    icon: _isApproving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.check),
-                    label: const Text('Save Recipe'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
