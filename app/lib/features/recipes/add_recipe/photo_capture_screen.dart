@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +11,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/theme.dart';
+import 'state/import_batches_provider.dart';
 
 enum _UploadStatus { pending, uploading, complete, failed }
 
@@ -30,16 +32,16 @@ class _SelectedImage {
         previewFailed = false;
 }
 
-class PhotoCaptureScreen extends StatefulWidget {
+class PhotoCaptureScreen extends ConsumerStatefulWidget {
   final String? recipeBookId;
 
   const PhotoCaptureScreen({super.key, this.recipeBookId});
 
   @override
-  State<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
+  ConsumerState<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
 }
 
-class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
+class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
   final _apiClient = getIt<ApiClient>();
   final _imagePicker = ImagePicker();
 
@@ -356,10 +358,16 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
       _error = null;
     });
     try {
-      await _apiClient.createParserBatch(
+      final response = await _apiClient.createParserBatch(
         recipeBookId: _selectedBookId!,
         items: items,
       );
+      final batchId = response.data['id']?.toString();
+      if (batchId != null) {
+        final notifier = ref.read(importBatchesProvider.notifier);
+        notifier.markJustStarted(batchId);
+        await notifier.refresh();
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -371,7 +379,7 @@ class _PhotoCaptureScreenState extends State<PhotoCaptureScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _phase = _allUploadsComplete ? _Phase.picking : _Phase.picking;
+        _phase = _Phase.picking;
         _error = 'Could not start import: $e';
       });
     }

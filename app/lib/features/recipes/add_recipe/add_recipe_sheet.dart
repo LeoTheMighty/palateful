@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-class AddRecipeSheet extends StatefulWidget {
+import 'state/import_batches_provider.dart';
+import 'widgets/import_batches_strip.dart';
+
+class AddRecipeSheet extends ConsumerStatefulWidget {
   final String? recipeBookId;
 
   const AddRecipeSheet({super.key, this.recipeBookId});
 
   @override
-  State<AddRecipeSheet> createState() => _AddRecipeSheetState();
+  ConsumerState<AddRecipeSheet> createState() => _AddRecipeSheetState();
 }
 
-class _AddRecipeSheetState extends State<AddRecipeSheet> {
+class _AddRecipeSheetState extends ConsumerState<AddRecipeSheet> {
   bool _moreExpanded = false;
 
   @override
@@ -19,6 +23,7 @@ class _AddRecipeSheetState extends State<AddRecipeSheet> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final bookId = widget.recipeBookId;
+    final batches = ref.watch(importBatchesProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -28,10 +33,11 @@ class _AddRecipeSheetState extends State<AddRecipeSheet> {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               // Drag handle
               Center(
                 child: Container(
@@ -56,6 +62,13 @@ class _AddRecipeSheetState extends State<AddRecipeSheet> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // In-progress imports strip (story 13.14)
+              batches.when(
+                data: (s) => ImportBatchesStrip(state: s),
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
 
               // Quick Import section
               Padding(
@@ -184,7 +197,8 @@ class _AddRecipeSheetState extends State<AddRecipeSheet> {
                     : CrossFadeState.showFirst,
                 duration: const Duration(milliseconds: 200),
               ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
