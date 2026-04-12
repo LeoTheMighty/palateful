@@ -1,8 +1,16 @@
 """Parser endpoints router."""
 
-from api.v1.parser import GetParserJob, GetUploadUrl, SubmitBatchParserJob, SubmitParserJob
+from api.v1.parser import (
+    CreateParserBatch,
+    GetParserBatch,
+    GetParserJob,
+    GetUploadUrl,
+    ListParserBatches,
+    SubmitBatchParserJob,
+    SubmitParserJob,
+)
 from dependencies import get_current_user, get_database
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from utils.models.user import User
 from utils.services.database import Database
 
@@ -60,6 +68,50 @@ async def get_parser_job(
     """Get parser job status and results."""
     return GetParserJob.call(
         job_id=job_id,
+        user=user,
+        database=database,
+    )
+
+
+@parser_router.post("/batches")
+async def create_parser_batch(
+    params: CreateParserBatch.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Create a parser batch and submit a single AWS Batch job for all images."""
+    return CreateParserBatch.call(
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@parser_router.get("/batches")
+async def list_parser_batches(
+    active: bool = Query(False),
+    limit: int = Query(20),
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """List parser batches for the current user."""
+    return ListParserBatches.call(
+        active=active,
+        limit=limit,
+        user=user,
+        database=database,
+    )
+
+
+@parser_router.get("/batches/{batch_id}")
+async def get_parser_batch(
+    batch_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Get a parser batch with nested job state."""
+    return GetParserBatch.call(
+        batch_id=batch_id,
         user=user,
         database=database,
     )

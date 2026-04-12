@@ -4,13 +4,14 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, DateTime, ForeignKey, String, Text
+from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
 
 if TYPE_CHECKING:
     from utils.models.import_job import ImportJob
+    from utils.models.parser_batch import ParserBatch
     from utils.models.recipe_book import RecipeBook
     from utils.models.user import User
 
@@ -51,8 +52,21 @@ class ParserJob(Base):
     import_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID, ForeignKey("import_jobs.id", ondelete="SET NULL"), nullable=True
     )
+    parser_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("parser_batches.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    # Group index used to merge multiple OCR results into one ImportItem
+    # (default 0 means single-image / not part of a multi-recipe batch)
+    group_index: Mapped[int] = mapped_column(Integer, default=0)
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="parser_jobs")
     recipe_book: Mapped["RecipeBook | None"] = relationship()
     import_job: Mapped["ImportJob | None"] = relationship()
+    parser_batch: Mapped["ParserBatch | None"] = relationship(
+        back_populates="parser_jobs"
+    )

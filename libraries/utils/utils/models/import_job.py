@@ -45,6 +45,11 @@ class ImportJob(Base):
     recipe_book_id: Mapped[uuid.UUID] = mapped_column(
         UUID, ForeignKey("recipe_books.id", ondelete="CASCADE"), index=True
     )
+    parser_batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID,
+        ForeignKey("parser_batches.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -22,6 +22,7 @@ from utils.models.notification import Notification
 from utils.models.pantry import Pantry
 from utils.models.pantry_ingredient import PantryIngredient
 from utils.models.pantry_user import PantryUser
+from utils.models.parser_batch import ParserBatch
 from utils.models.parser_job import ParserJob
 from utils.models.prep_step import PrepStep
 from utils.models.recipe import Recipe
@@ -95,6 +96,7 @@ __all__ = [
     "ImportJob",
     "ImportItem",
     # Parser System
+    "ParserBatch",
     "ParserJob",
     # Favorites
     "UserActivity",
