@@ -38,8 +38,11 @@ Backend: parser → OCR → read S3 → extract recipe → match ingredients →
 | 13.9 | Import History Frontend | 1 day | 13.2 |
 | 13.10 | Import Activity Attention View | 1.5 days | 13.9 |
 | 13.11 | Unified Import Status | 1 day | 13.10 |
+| 13.12 | Parser Batch Data Model & Grouped Import Pipeline | 2 days | 13.1 |
+| 13.13 | Photo Batch Import UX | 1.5 days | 13.12 |
+| 13.14 | Live Import Progress Controller & Strip | 1.5 days | 13.12, 13.13 |
 
-**Total: ~14.5 days**
+**Total: ~19.5 days**
 
 **Parallel tracks:**
 ```
@@ -47,6 +50,7 @@ Track A (pipeline):  13.1 → 13.2 → 13.3
 Track B (evals):     13.4 → 13.5 → 13.7 → 13.8
                      13.4 → 13.6 ↗
 Track C (frontend):  13.2 → 13.9 → 13.10 → 13.11
+Track D (batches):   13.12 → 13.13 → 13.14
 ```
 
 ---
@@ -284,3 +288,99 @@ so that I always know where to look for import progress.
 - Simplify `batch_import_status_widget.dart` to notification badge only
 - Add `BatchParserService` stream subscription to Import Activity screen
 - Show local active jobs in Processing section alongside server-side jobs
+
+---
+
+## Story 13.12: Parser Batch Data Model & Grouped Import Pipeline
+
+As a user,
+I want multiple photos of the same recipe to be imported as a single recipe,
+so that page 1 and page 2 of a cookbook don't become two fragmented recipes.
+
+### The Bug This Fixes
+
+`WatchParserJobTask._handle_success` currently creates one `ImportJob(total_items=1)` per parser job, so N photos → N recipes. Combined with `submit_batch_parser_job.py` not passing `recipe_book_id`, the multi-image flow relies on a fragile frontend fallback path that dies if the user navigates away.
+
+### Acceptance Criteria
+
+1. New `parser_batches` table with `id, user_id, recipe_book_id, status, group_count, error_message, timestamps`
+2. `parser_jobs` gains `parser_batch_id` (FK, CASCADE) and `group_index` (Int default 0)
+3. `import_jobs` gains `parser_batch_id` (FK, SET NULL) for traceability
+4. New endpoint `POST /v1/parser/batches` accepts `{recipe_book_id, items: [{s3_key, group_index}]}`, creates batch + N parser jobs, submits one AWS Batch job, dispatches `WatchParserBatchTask`
+5. New endpoint `GET /v1/parser/batches/{id}` returns nested job + import job state
+6. New endpoint `GET /v1/parser/batches?active=true&limit=20` lists user's active batches
+7. New `WatchParserBatchTask` waits for all jobs in a batch to reach terminal state, then fans out to one `ImportJob` per `group_index` with OCR texts concatenated within each group
+8. Per-group `s3_keys` threaded through `raw_data` so downstream `extract_recipe_task` can pick correct `image_url`
+9. `parser_batch.status` reflects aggregate: `succeeded | partial | failed`
+10. Old `WatchParserJobTask` retained for single-image path; new batch path uses new task exclusively
+11. Test coverage for happy path, partial failure, total failure, idempotency
+
+### Technical Approach
+
+- Migration in `services/migrator/migrations/versions/` following existing naming convention
+- New model: `libraries/utils/utils/models/parser_batch.py`
+- New task: `libraries/utils/utils/tasks/import_tasks/watch_parser_batch_task.py`
+- New endpoints in `services/api/src/api/v1/parser/` (one file each), wired in `parser_router.py`
+- Scope limited to photo import — other paths (URL bulk, PDF, spreadsheet, text, audio) untouched
+
+---
+
+## Story 13.13: Photo Batch Import UX
+
+As a user,
+I want to select multiple photos and decide in one tap whether they're one recipe or several,
+so that the common case (one recipe, N pages) is effortless and the edge case (multiple recipes in one selection) is still possible.
+
+### Acceptance Criteria
+
+1. Images begin uploading to S3 **immediately on selection** — no "process" button required; upload progress shown per thumbnail
+2. Once all uploads complete, the screen shows a primary "Import as one recipe" button and a tertiary "These are separate recipes →" link
+3. Primary button calls `POST /v1/parser/batches` with `group_index=0` for every image, then **immediately pops back to the import hub** with a confirmation snackbar — no wait screen
+4. Secondary link transitions to a grouping view (grid of thumbnails, each badged `Recipe 1`, `Recipe 2`, ... defaulting to one-per-image)
+5. Grouping view uses **tap-to-assign** with a chip row (`Recipe 1`, `Recipe 2`, `+ New recipe`) — no drag-and-drop
+6. Live counter: "Will create N recipes" at top of grouping view
+7. Recipe numbers auto-compact when reassignments leave gaps
+8. Grouping submit calls `POST /v1/parser/batches` with assembled `items: [{s3_key, group_index}]`, then pops back
+9. Existing recipe preview / approval flow inside `photo_capture_screen.dart` is **removed** — review now happens via the existing `ImportReviewListScreen` reached from Needs Review
+10. All parser-job and import-job polling state is deleted from `_PhotoCaptureScreenState` — the screen no longer owns any polling (handed off to 13.14's provider)
+11. After submit + pop-back, the user can immediately start another import — no global lock
+
+### Technical Approach
+
+- Add `createParserBatch`, `getParserBatch`, `listParserBatches` to `api_client.dart`
+- Major rewrite of `photo_capture_screen.dart` around a `_Phase { picking, grouping, submitting }` state enum
+- Per-image upload state tracked on `_SelectedImage` with background upload kicked off on add
+- Grouping state = `Map<int imageIndex, int groupIndex>` with compaction helper
+- Scope: photo capture screen only; no changes to other import screens
+
+---
+
+## Story 13.14: Live Import Progress Controller & Strip
+
+As a user,
+I want to see my active imports ticking live at the top of the Add Recipe sheet,
+so that I can start multiple imports in quick succession and watch each one progress without navigating away — plus peek at extracted OCR text for debugging.
+
+### Acceptance Criteria
+
+1. New Riverpod provider `importBatchesProvider` polls `GET /v1/parser/batches?active=true` on a **5s** interval while any batch is active, **30s** when idle
+2. Provider survives navigation — polling does not die when the photo capture screen is popped
+3. Provider exposes `refresh()` + `markJustStarted(batchId)` — photo capture screen calls both after a successful submit so the new batch appears in the strip within one frame
+4. Polling pauses on `AppLifecycleState.paused`, resumes on `resumed`
+5. Recently-completed batches linger in the strip for **5 minutes** after `completed_at` before auto-dismissing
+6. New `ImportBatchesStrip` widget embedded at the top of `add_recipe_sheet.dart`, **above** the import-type buttons
+7. Strip renders **nothing** when there are zero active or recently-completed batches
+8. Each row shows: source-type icon + progress pill + status label + disclosure chevron
+9. Status labels map to batch state: "Reading text X/Y", "Structuring recipe", "Ready to review", "N of M recipes ready" (partial), "Failed"
+10. Row expansion reveals per-parser-job debug info: input filename, status, and a "Show extracted text" toggle that displays `extractedText` in a monospaced scrollable container — **the "click more to see text" debug affordance**
+11. Just-started batches pulse/highlight for ~3 seconds then settle
+12. Tapping a `succeeded` / `awaiting_review` row navigates to `ImportReviewListScreen` for the most recent such import job
+13. Strip does NOT duplicate the Needs Review section from `activity_screen.dart` — Needs Review picks up batches automatically once their import jobs flip to `awaiting_review` (already wired via 13.9 / 13.10)
+
+### Technical Approach
+
+- New provider: `app/lib/features/recipes/add_recipe/state/import_batches_provider.dart`
+- New models: `app/lib/features/recipes/add_recipe/models/import_batch.dart`
+- New widget: `app/lib/features/recipes/add_recipe/widgets/import_batches_strip.dart`
+- Embed via `Consumer` in `add_recipe_sheet.dart`
+- Convert `PhotoCaptureScreen` to `ConsumerStatefulWidget` if not already (to call `markJustStarted` on submit)

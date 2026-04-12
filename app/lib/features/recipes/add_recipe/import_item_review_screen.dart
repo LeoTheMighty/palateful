@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -255,6 +256,91 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     _onFieldChanged();
   }
 
+  bool _showRawJson = false;
+
+  Widget _buildRawJsonSection(ColorScheme colorScheme, TextTheme textTheme) {
+    final parsed = _item?['parsed_recipe'] as Map<String, dynamic>?;
+    if (parsed == null) return const SizedBox.shrink();
+
+    final encoder = const JsonEncoder.withIndent('  ');
+    final jsonString = encoder.convert(parsed);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _showRawJson = !_showRawJson),
+          child: Row(
+            children: [
+              Icon(
+                Icons.data_object,
+                size: 18,
+                color: colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Extracted Recipe Data',
+                style: textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                _showRawJson ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+        if (_showRawJson) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SelectableText(
+                    jsonString,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: colorScheme.onSurface,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: IconButton(
+                    icon: Icon(Icons.copy, size: 16, color: colorScheme.onSurfaceVariant),
+                    tooltip: 'Copy JSON',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: jsonString));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Copied to clipboard')),
+                      );
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -464,19 +550,9 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
               const SizedBox(height: 24),
 
               // Ingredients
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Ingredients (${_ingredientControllers.length})',
-                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: _addIngredient,
-                    tooltip: 'Add ingredient',
-                  ),
-                ],
+              Text(
+                'Ingredients (${_ingredientControllers.length})',
+                style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               ...List.generate(_ingredientControllers.length, (i) {
@@ -508,26 +584,19 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
                   ),
                 );
               }),
+              Center(
+                child: TextButton.icon(
+                  onPressed: _addIngredient,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Ingredient'),
+                ),
+              ),
               const SizedBox(height: 24),
 
               // Steps
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Steps',
-                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: () {
-                      setState(() {
-                        _stepControllers.add(TextEditingController());
-                      });
-                    },
-                    tooltip: 'Add step',
-                  ),
-                ],
+              Text(
+                'Steps (${_stepControllers.length})',
+                style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               ..._stepControllers.asMap().entries.map((entry) {
@@ -574,6 +643,22 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
                   ),
                 );
               }),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _stepControllers.add(TextEditingController());
+                    });
+                    _onFieldChanged();
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Step'),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Raw extracted recipe JSON (debug)
+              _buildRawJsonSection(colorScheme, textTheme),
               const SizedBox(height: 32),
             ],
           ),

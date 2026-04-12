@@ -178,6 +178,25 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
     }
   }
 
+  Future<void> _dismissSingleItem(
+      _JobWithItems jobWithItems, dynamic item) async {
+    final itemId = item['id'].toString();
+
+    // Optimistic removal
+    setState(() {
+      jobWithItems.items.removeWhere((i) => i['id'].toString() == itemId);
+      if (jobWithItems.items.isEmpty) {
+        _failedJobs.remove(jobWithItems);
+      }
+    });
+
+    try {
+      await _apiClient.skipImportItem(itemId);
+    } catch (_) {
+      if (mounted) _loadAttentionView();
+    }
+  }
+
   bool get _hasActionableItems =>
       _processingJobs.isNotEmpty ||
       _reviewJobs.isNotEmpty ||
@@ -433,7 +452,15 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
               title: recipeName,
               subtitle: errorMsg,
               subtitleColor: colorScheme.error,
-              trailing: const Icon(Icons.chevron_right, size: 18),
+              trailing: IconButton(
+                icon: Icon(Icons.close, size: 18,
+                    color: colorScheme.onSurfaceVariant),
+                tooltip: 'Dismiss',
+                onPressed: () => _dismissSingleItem(jw, item),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                visualDensity: VisualDensity.compact,
+              ),
               onTap: () => _onItemTap(itemId, jw),
             );
           }),

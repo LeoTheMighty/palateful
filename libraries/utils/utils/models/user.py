@@ -81,6 +81,9 @@ class User(Base):
         index=True,
     )
 
+    # Auth0 profile snapshot (synced on login)
+    auth0_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     # Notification settings
     notification_preferences: Mapped[dict | None] = mapped_column(
         JSONB,

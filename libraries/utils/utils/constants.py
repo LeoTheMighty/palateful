@@ -9,6 +9,7 @@ LOGGING_LEVEL = getattr(logging, _logging_level_str, logging.INFO)
 
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL")
 CELERY_QUEUE_PREFIX = os.environ.get("CELERY_QUEUE_PREFIX", "palateful-")
+CELERY_POLLING_INTERVAL = int(os.environ.get("CELERY_POLLING_INTERVAL", "1"))
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 AWS_ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL")  # For LocalStack
 DATABASE_URL = os.environ.get("DATABASE_URL")

@@ -10,6 +10,7 @@ from utils.constants import (
     AWS_ENDPOINT_URL,
     AWS_REGION,
     CELERY_BROKER_URL,
+    CELERY_POLLING_INTERVAL,
     CELERY_QUEUE_PREFIX,
     LOGGING_LEVEL,
 )
@@ -25,7 +26,7 @@ broker_transport_options = {
     'queue_name_prefix': CELERY_QUEUE_PREFIX,
     'region': AWS_REGION,
     'visibility_timeout': 3600,  # 1 hour
-    'polling_interval': 1,
+    'polling_interval': CELERY_POLLING_INTERVAL,
 }
 
 # Add LocalStack endpoint URL if configured (for local development)

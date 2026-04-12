@@ -90,9 +90,40 @@ async def get_current_user(
             "email": claims.get("email") or None,
             "name": claims.get("name"),
             "picture": claims.get("picture"),
-            "email_verified": claims.get("email_verified", False)
+            "email_verified": claims.get("email_verified", False),
         }
     )
+
+    # Finalize auth: sync missing profile fields and store Auth0 profile
+    user = _finalize_auth(database, user, claims)
+
+    return user
+
+
+def _finalize_auth(database, user: User, claims: dict) -> User:
+    """Sync profile fields from Auth0 claims when missing, and store full profile snapshot."""
+    updates = {}
+
+    # Fill missing core fields from Auth0
+    if not user.email and claims.get("email"):
+        updates["email"] = claims["email"]
+    if not user.name and claims.get("name"):
+        updates["name"] = claims["name"]
+    if not user.picture and claims.get("picture"):
+        updates["picture"] = claims["picture"]
+    if claims.get("email_verified") and not user.email_verified:
+        updates["email_verified"] = True
+
+    # Store full Auth0 profile snapshot (nickname, given_name, family_name, locale, etc.)
+    auth0_profile = {
+        k: v for k, v in claims.items()
+        if k not in ("sub", "aud", "iss", "iat", "exp", "azp", "scope", "permissions")
+    }
+    if auth0_profile != user.auth0_profile:
+        updates["auth0_profile"] = auth0_profile
+
+    if updates:
+        database.update(user, **updates)
 
     return user
 

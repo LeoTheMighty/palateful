@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/theme/theme.dart';
 
 /// Activity feed screen — shows notifications like invites, partner actions, reminders.
-/// Import status lives in the dedicated Import Activity screen.
+/// Also surfaces high-priority "Needs Review" import items in a collapsed section.
+/// Import details live in the dedicated Import Activity screen.
 class ActivityScreen extends StatefulWidget {
   const ActivityScreen({super.key});
 
@@ -22,6 +24,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
   String? _error;
   Timer? _pollTimer;
 
+  // Import review data for the "Needs Review" section + badge
+  List<dynamic> _reviewJobSummaries = [];
+  List<_ReviewJobWithItems> _reviewItems = [];
+  int _importActionCount = 0;
+  bool _reviewExpanded = false;
+  bool _isLoadingReviewItems = false;
+
   /// Activity types that belong in Import Activity, not here.
   static const _importActivityTypes = {
     'import_started',
@@ -35,9 +44,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
   @override
   void initState() {
     super.initState();
-    _loadActivities();
+    _loadAll();
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _loadActivities(silent: true);
+      _loadAll(silent: true);
     });
   }
 
@@ -45,6 +54,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
   void dispose() {
     _pollTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadAll({bool silent = false}) async {
+    await Future.wait([
+      _loadActivities(silent: silent),
+      _loadImportSummary(),
+    ]);
   }
 
   Future<void> _loadActivities({bool silent = false}) async {
@@ -77,6 +93,79 @@ class _ActivityScreenState extends State<ActivityScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadImportSummary() async {
+    try {
+      final results = await Future.wait([
+        _apiClient.listImportJobs(status: 'awaiting_review', limit: 50),
+        _apiClient.listImportJobs(status: 'failed', limit: 50),
+      ]);
+      if (!mounted) return;
+
+      final reviewJobs = List<dynamic>.from(results[0].data['jobs'] ?? []);
+      final failedJobs = List<dynamic>.from(results[1].data['jobs'] ?? []);
+
+      int reviewCount = 0;
+      for (final job in reviewJobs) {
+        reviewCount += (job['pending_review_items'] as int? ?? 0);
+      }
+      int failedCount = 0;
+      for (final job in failedJobs) {
+        failedCount += (job['failed_items'] as int? ?? 0);
+      }
+
+      setState(() {
+        _reviewJobSummaries = reviewJobs;
+        _importActionCount = reviewCount + failedCount;
+        // If review jobs disappeared, reset expanded state
+        if (reviewJobs.isEmpty) {
+          _reviewExpanded = false;
+          _reviewItems = [];
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadReviewItems() async {
+    if (_reviewJobSummaries.isEmpty) return;
+    setState(() => _isLoadingReviewItems = true);
+
+    try {
+      final futures = _reviewJobSummaries.map(
+        (job) => _apiClient.listImportItems(job['id'].toString()),
+      );
+      final results = await Future.wait(futures);
+      if (!mounted) return;
+
+      final items = <_ReviewJobWithItems>[];
+      for (var i = 0; i < _reviewJobSummaries.length; i++) {
+        final jobItems = List<dynamic>.from(results[i].data['items'] ?? [])
+            .where((item) => item['status'] == 'awaiting_review')
+            .toList();
+        if (jobItems.isNotEmpty) {
+          items.add(_ReviewJobWithItems(
+            job: _reviewJobSummaries[i],
+            items: jobItems,
+          ));
+        }
+      }
+
+      setState(() {
+        _reviewItems = items;
+        _isLoadingReviewItems = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingReviewItems = false);
+    }
+  }
+
+  Future<void> _onReviewItemTap(String itemId) async {
+    final result = await context.push('/recipes/import/review/$itemId');
+    if (!mounted) return;
+    if (result != null) {
+      _loadAll();
     }
   }
 
@@ -149,6 +238,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
   }
 
+  int get _totalReviewItemCount {
+    int count = 0;
+    for (final job in _reviewJobSummaries) {
+      count += (job['pending_review_items'] as int? ?? 0);
+    }
+    return count;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -159,9 +256,16 @@ class _ActivityScreenState extends State<ActivityScreen> {
         title: const Text('Activity'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.import_export),
+            icon: Badge(
+              label: Text('$_importActionCount'),
+              isLabelVisible: _importActionCount > 0,
+              child: const Icon(Icons.import_export),
+            ),
             tooltip: 'Import Activity',
-            onPressed: () => context.push('/activity/import-history'),
+            onPressed: () async {
+              await context.push('/activity/import-history');
+              if (mounted) _loadAll();
+            },
           ),
           if (hasUnread)
             IconButton(
@@ -175,70 +279,197 @@ class _ActivityScreenState extends State<ActivityScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : _activities.isEmpty
-                  ? _buildEmptyState(colorScheme)
-                  : RefreshIndicator(
-                      onRefresh: _loadActivities,
-                      child: _buildBody(colorScheme),
-                    ),
-    );
-  }
-
-  Widget _buildEmptyState(ColorScheme colorScheme) {
-    final textTheme = Theme.of(context).textTheme;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.check_circle_outline,
-            size: 64,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'All caught up!',
-            style: textTheme.titleMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'No new activity',
-            style: textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
+              : RefreshIndicator(
+                  onRefresh: _loadAll,
+                  child: _buildBody(colorScheme),
+                ),
     );
   }
 
   Widget _buildBody(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
     final groups = _groupByDay();
+    final hasReviewItems = _totalReviewItemCount > 0;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
-      children: groups.entries.map((entry) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                entry.key,
-                style: textTheme.labelLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
+      children: [
+        // Needs Review collapsed section
+        if (hasReviewItems) _buildNeedsReviewSection(colorScheme, textTheme),
+
+        // Regular activity feed
+        if (_activities.isEmpty && !hasReviewItems)
+          _buildEmptyState(colorScheme)
+        else
+          ...groups.entries.map((entry) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    entry.key,
+                    style: textTheme.labelLarge?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
+                ...entry.value.map(
+                    (a) => _buildActivityTile(a, colorScheme, textTheme)),
+              ],
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _buildNeedsReviewSection(
+      ColorScheme colorScheme, TextTheme textTheme) {
+    final appColors = context.appColors;
+    final reviewColor = appColors.warning;
+    final count = _totalReviewItemCount;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header — tappable to expand/collapse
+        InkWell(
+          onTap: () {
+            final willExpand = !_reviewExpanded;
+            setState(() => _reviewExpanded = willExpand);
+            if (willExpand && _reviewItems.isEmpty) {
+              _loadReviewItems();
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.circle, size: 12, color: reviewColor),
+                const SizedBox(width: 8),
+                Text(
+                  'Needs Review',
+                  style: textTheme.titleSmall?.copyWith(
+                    color: reviewColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: reviewColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: reviewColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Icon(
+                  _reviewExpanded ? Icons.expand_less : Icons.expand_more,
+                  size: 20,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Collapsed summary
+        if (!_reviewExpanded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(36, 0, 16, 8),
+            child: Text(
+              '$count recipe${count == 1 ? '' : 's'} need${count == 1 ? 's' : ''} your review',
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
-            ...entry.value.map(
-                (a) => _buildActivityTile(a, colorScheme, textTheme)),
+          ),
+
+        // Expanded items
+        if (_reviewExpanded) ...[
+          if (_isLoadingReviewItems)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            ..._reviewItems.expand((rj) {
+              return rj.items.map((item) {
+                final itemId = item['id']?.toString() ?? '';
+                final recipeName =
+                    item['recipe_name'] as String? ?? 'Untitled';
+                return ListTile(
+                  dense: true,
+                  leading: Icon(Icons.circle, size: 10, color: reviewColor),
+                  title: Text(
+                    recipeName,
+                    style: textTheme.bodyMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing:
+                      Icon(Icons.chevron_right, size: 18, color: reviewColor),
+                  onTap: () => _onReviewItemTap(itemId),
+                );
+              });
+            }),
+        ],
+
+        // Divider after section
+        Divider(
+          indent: 16,
+          endIndent: 16,
+          color: colorScheme.outlineVariant,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(ColorScheme colorScheme) {
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 120),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              size: 64,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'All caught up!',
+              style: textTheme.titleMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'No new activity',
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
+            ),
           ],
-        );
-      }).toList(),
+        ),
+      ),
     );
   }
 
@@ -288,4 +519,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
       onTap: () => _onActivityTap(activity),
     );
   }
+}
+
+class _ReviewJobWithItems {
+  final dynamic job;
+  final List<dynamic> items;
+
+  _ReviewJobWithItems({required this.job, required this.items});
 }
