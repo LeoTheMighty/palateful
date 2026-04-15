@@ -1,6 +1,10 @@
 import 'dart:async';
 
+import 'dart:ui';
+
+import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -29,6 +33,18 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Crashlytics: disable in debug, capture all uncaught errors in release
+    await FirebaseCrashlytics.instance
+        .setCrashlyticsCollectionEnabled(!kDebugMode);
+
+    FlutterError.onError =
+        FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
   }
 
   setupDependencies();
@@ -89,11 +105,17 @@ void main() async {
             defaultRecipeBookId: userData['default_recipe_book_id'],
           );
           authService.updateAdminState(userData['is_admin'] ?? false);
+
+          // Tag crash reports with user ID
+          if (!kE2EMode && userData['id'] != null) {
+            FirebaseCrashlytics.instance
+                .setUserIdentifier(userData['id'].toString());
+          }
         }
       } catch (e) {
         debugPrint('Failed to fetch user data on startup: $e');
-        // If getMe fails with auth error, try refreshing token and retrying
-        if (authService.needsRefresh || e.toString().contains('401')) {
+        if (_isAuthError(e)) {
+          // Auth error (401/403): try refreshing token once, then logout
           final refreshed = await authService.refreshToken();
           if (refreshed) {
             apiClient.setAuthToken(authService.accessToken!);
@@ -109,9 +131,14 @@ void main() async {
               }
             } catch (retryError) {
               debugPrint('Retry after refresh also failed: $retryError');
+              await authService.logout();
             }
+          } else {
+            await authService.logout();
           }
         }
+        // Network/server errors: skip silently — user keeps auth state and
+        // the app will retry on next launch or navigation
       }
 
       // Initialize push notifications after auth
@@ -132,6 +159,16 @@ void main() async {
       child: const PalatefulApp(),
     ),
   );
+}
+
+/// Returns true for auth-related errors (401/403) where we should reset auth.
+/// Returns false for network/server errors where the user should just retry.
+bool _isAuthError(Object e) {
+  if (e is DioException) {
+    final statusCode = e.response?.statusCode;
+    return statusCode == 401 || statusCode == 403;
+  }
+  return false;
 }
 
 class PalatefulApp extends ConsumerStatefulWidget {

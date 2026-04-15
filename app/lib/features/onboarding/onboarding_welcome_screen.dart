@@ -4,6 +4,8 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/buttons.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 /// Onboarding welcome screen where users confirm their name.
 class OnboardingWelcomeScreen extends StatefulWidget {
@@ -19,6 +21,7 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
   final _nameController = TextEditingController();
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -58,6 +61,7 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load user data. Please try again.';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }
@@ -146,18 +150,7 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
               ),
               const SizedBox(height: 32),
               if (_error != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: colorScheme.onErrorContainer),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+                ErrorBanner(message: _error!, detail: _errorDetail),
                 const SizedBox(height: 16),
               ],
               Text(

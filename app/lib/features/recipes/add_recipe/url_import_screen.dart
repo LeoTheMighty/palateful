@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 class UrlImportScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -37,6 +39,7 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
   Map<String, dynamic>? _parsedRecipe;
   bool _isApproving = false;
   String? _error;
+  String? _errorDetail;
   String? _errorCode;
   int _pollCount = 0;
 
@@ -127,6 +130,7 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
         setState(() {
           _isImporting = false;
           _error = 'Could not start import. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
         });
       }
     }
@@ -212,6 +216,7 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
         setState(() {
           _isImporting = false;
           _error = 'Could not load extracted recipe. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
         });
       }
     }

@@ -15,6 +15,8 @@ import 'widgets/cook_mode_chat_sheet.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/post_cook_feedback_sheet.dart';
 import 'widgets/step_navigator.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 class CookModeScreen extends StatefulWidget {
   final String recipeId;
@@ -38,6 +40,7 @@ class _CookModeScreenState extends State<CookModeScreen>
   bool _isLoading = true;
   bool _isOffline = false;
   String? _error;
+  String? _errorDetail;
 
   int _currentStep = 0;
   final Set<int> _completedSteps = {};
@@ -184,6 +187,7 @@ class _CookModeScreenState extends State<CookModeScreen>
       if (mounted) {
         setState(() {
           _error = 'Failed to load recipe: $e';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

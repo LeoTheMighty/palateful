@@ -10,6 +10,8 @@ import '../models/shopping_list_item.dart';
 import '../services/shopping_cart_service.dart';
 import 'member_presence.dart';
 import 'shopping_list_item_tile.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 /// Floating shopping cart widget that persists across screens.
 class FloatingCartWidget extends StatefulWidget {
@@ -37,6 +39,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
   bool _isExpanded = false;
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   WebSocketState _connectionState = WebSocketState.disconnected;
 
   // Stream subscriptions
@@ -105,6 +108,7 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
       if (mounted) {
         setState(() {
           _error = 'Failed to load shopping list';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

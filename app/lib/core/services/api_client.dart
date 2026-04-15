@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../config/environment.dart';
 import 'auth_service.dart';
+import 'error_reporter.dart';
 
 /// API client for communicating with the Palateful backend.
 class ApiClient {
@@ -53,6 +54,19 @@ class ApiClient {
             debugPrint('Token refresh during request failed: $e');
           }
           _isRefreshing = false;
+        }
+
+        // Report server-side failures (5xx) to Crashlytics as non-fatal
+        // events. Resolved 401 retries above don't reach here. Client
+        // errors (4xx) and connectivity failures are intentionally
+        // skipped for now — see Phase 1 scope.
+        final status = error.response?.statusCode;
+        if (status != null && status >= 500 && status < 600) {
+          ErrorReporter.report(
+            error,
+            error.stackTrace,
+            area: 'api',
+          );
         }
 
         return handler.next(error);

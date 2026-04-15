@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class AdminLogsScreen extends StatefulWidget {
   const AdminLogsScreen({super.key});
@@ -20,6 +22,7 @@ class _AdminLogsScreenState extends State<AdminLogsScreen> {
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   List<dynamic> _logs = [];
 
   // Filters
@@ -83,6 +86,7 @@ class _AdminLogsScreenState extends State<AdminLogsScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load logs: $e';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

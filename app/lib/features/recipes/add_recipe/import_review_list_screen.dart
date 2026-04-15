@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 class ImportReviewListScreen extends StatefulWidget {
   final String jobId;
@@ -17,6 +19,7 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   List<dynamic> _items = [];
 
   @override
@@ -44,6 +47,7 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
         setState(() {
           _isLoading = false;
           _error = 'Could not load import items.';
+          _errorDetail = ErrorReporter.detail(e);
         });
       }
     }

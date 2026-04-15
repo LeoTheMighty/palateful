@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class AdminErrorsScreen extends StatefulWidget {
   const AdminErrorsScreen({super.key});
@@ -18,6 +20,7 @@ class _AdminErrorsScreenState extends State<AdminErrorsScreen> {
   bool _isLoading = true;
   bool _isLoadingMore = false;
   String? _error;
+  String? _errorDetail;
   List<dynamic> _errors = [];
   int _offset = 0;
   bool _hasMore = true;
@@ -73,6 +76,7 @@ class _AdminErrorsScreenState extends State<AdminErrorsScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load errors: $e';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

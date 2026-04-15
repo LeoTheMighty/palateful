@@ -4,6 +4,8 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class RecipeBooksScreen extends StatefulWidget {
   const RecipeBooksScreen({super.key});
@@ -17,6 +19,7 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
   List<dynamic> _recipeBooks = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
       if (mounted) {
         setState(() {
           _error = 'Could not load recipe books. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }
@@ -193,18 +197,7 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: colorScheme.errorContainer,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _error!,
-                            style: TextStyle(color: colorScheme.onErrorContainer),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
+                        ErrorBanner(message: _error!, detail: _errorDetail),
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: _loadRecipeBooks,

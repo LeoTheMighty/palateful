@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
 import '../../core/router/app_router.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/buttons.dart';
+import '../../shared/widgets/error_banner.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
 
 /// Start method selection for recipe book population.
@@ -26,11 +28,13 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
   final _authService = getIt<AuthService>();
   bool _isLoading = false;
   String? _error;
+  String? _errorDetail;
 
   Future<void> _selectStartMethod(String method) async {
     setState(() {
       _isLoading = true;
       _error = null;
+      _errorDetail = null;
     });
 
     try {
@@ -84,6 +88,7 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'An error occurred. Please try again.';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }
@@ -127,18 +132,7 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
               ),
               const SizedBox(height: 32),
               if (_error != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: colorScheme.onErrorContainer),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+                ErrorBanner(message: _error!, detail: _errorDetail),
                 const SizedBox(height: 16),
               ],
               if (_isLoading)

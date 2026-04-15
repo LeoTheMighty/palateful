@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -16,6 +18,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   int _totalUsers = 0;
   int _totalRecipes = 0;
@@ -52,6 +55,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load stats: $e';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

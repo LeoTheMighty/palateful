@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class EditRecipeScreen extends StatefulWidget {
   final String recipeId;
@@ -21,6 +23,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   final _apiClient = getIt<ApiClient>();
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   // Save state
   Timer? _debounceTimer;
@@ -103,6 +106,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       if (mounted) {
         setState(() {
           _error = 'Failed to load recipe. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

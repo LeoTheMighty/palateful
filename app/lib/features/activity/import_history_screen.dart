@@ -6,6 +6,8 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../recipes/add_recipe/batch_parser_service.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 /// Attention-first Import Activity screen.
 ///
@@ -38,6 +40,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -136,6 +139,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load import activity';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

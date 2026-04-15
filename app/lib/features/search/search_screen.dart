@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -19,6 +21,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   bool _isLoading = false;
   String? _error;
+  String? _errorDetail;
   List<dynamic> _myRecipes = [];
   List<dynamic> _publicRecipes = [];
   List<dynamic> _users = [];
@@ -90,6 +93,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (mounted) {
         setState(() {
           _error = 'Search failed: $e';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
           _hasSearched = true;
         });

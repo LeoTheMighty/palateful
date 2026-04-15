@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({super.key});
@@ -17,6 +19,7 @@ class _NotificationPreferencesScreenState
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   bool _pushEnabled = true;
   bool _partnerActivity = true;
@@ -55,6 +58,7 @@ class _NotificationPreferencesScreenState
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load notification preferences.';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

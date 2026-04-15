@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -17,6 +19,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   List<dynamic> _users = [];
   int _offset = 0;
   bool _hasMore = true;
@@ -73,6 +76,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load users: $e';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

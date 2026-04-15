@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 class AudioImportScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -27,6 +29,7 @@ class _AudioImportScreenState extends State<AudioImportScreen> {
   Timer? _pollTimer;
   int _pollCount = 0;
   String? _error;
+  String? _errorDetail;
 
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
@@ -94,6 +97,7 @@ class _AudioImportScreenState extends State<AudioImportScreen> {
       setState(() {
         _isImporting = false;
         _error = 'Import failed. Please try again.';
+        _errorDetail = ErrorReporter.detail(e);
       });
     }
   }

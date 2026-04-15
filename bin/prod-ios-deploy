@@ -1,0 +1,61 @@
+#!/bin/bash
+# Build, archive, and upload Flutter iOS app to TestFlight.
+#
+# Usage:
+#   bin/prod-ios-deploy          # Build, archive, upload to TestFlight
+
+set -euo pipefail
+
+TEAM_ID="H66YP2QFW2"
+
+echo "=== Palateful iOS Deploy ==="
+
+cd app
+
+# Read current version
+CURRENT=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+echo "  Version: $CURRENT"
+
+# Build iOS release
+echo ""
+echo "Building iOS release..."
+flutter build ios --release
+
+# Archive
+echo ""
+echo "Archiving..."
+xcodebuild -workspace ios/Runner.xcworkspace \
+  -scheme Runner \
+  -configuration Release \
+  -archivePath build/ios/Runner.xcarchive \
+  archive -quiet
+
+# Create export options plist
+cat > build/ios/ExportOptions.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>destination</key>
+	<string>upload</string>
+	<key>teamID</key>
+	<string>${TEAM_ID}</string>
+</dict>
+</plist>
+PLIST
+
+# Export and upload to TestFlight
+echo ""
+echo "Uploading to TestFlight..."
+xcodebuild -exportArchive \
+  -archivePath build/ios/Runner.xcarchive \
+  -exportOptionsPlist build/ios/ExportOptions.plist \
+  -exportPath build/ios/export \
+  -allowProvisioningUpdates
+
+echo ""
+echo "=== iOS deploy complete ($CURRENT) ==="
+echo "  Build uploaded to TestFlight"
+echo "  Don't forget to commit the version bump!"

@@ -12,6 +12,8 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/theme/theme.dart';
 import 'state/import_batches_provider.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 enum _UploadStatus { pending, uploading, complete, failed }
 
@@ -52,6 +54,7 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
 
   _Phase _phase = _Phase.picking;
   String? _error;
+  String? _errorDetail;
 
   // Book selection
   String? _selectedBookId;
@@ -381,6 +384,7 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
       setState(() {
         _phase = _Phase.picking;
         _error = 'Could not start import: $e';
+        _errorDetail = ErrorReporter.detail(e);
       });
     }
   }

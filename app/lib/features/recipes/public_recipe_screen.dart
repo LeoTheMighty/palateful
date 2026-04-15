@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 /// Read-only public view of a recipe accessed via a share token.
 /// No authentication required.
@@ -19,6 +21,7 @@ class _PublicRecipeScreenState extends State<PublicRecipeScreen> {
   Map<String, dynamic>? _recipe;
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -40,10 +43,11 @@ class _PublicRecipeScreenState extends State<PublicRecipeScreen> {
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _error = 'Recipe not found or link has been revoked.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

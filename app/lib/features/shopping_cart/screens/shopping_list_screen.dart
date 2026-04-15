@@ -13,6 +13,8 @@ import '../models/shopping_list_item.dart';
 import '../services/shopping_cart_service.dart';
 import '../widgets/member_presence.dart';
 import '../widgets/shopping_list_item_tile.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 /// Full screen shopping list view.
 class ShoppingListScreen extends StatefulWidget {
@@ -34,6 +36,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   List<OnlineUser> _onlineUsers = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   bool _showChecked = true;
   // Items with an in-flight check/uncheck request — prevents double-tap races
   final _pendingItemIds = <String>{};
@@ -85,6 +88,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       if (mounted) {
         setState(() {
           _error = 'Failed to load shopping list';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

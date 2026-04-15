@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../di/injection.dart';
 import '../services/auth_service.dart';
+import '../services/error_reporter.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
@@ -72,6 +73,7 @@ GoRouter get appRouter {
   _router ??= GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/login',
+    observers: [CrashlyticsNavObserver()],
     refreshListenable: getIt<AuthService>(),
     redirect: (context, state) {
       final authService = getIt<AuthService>();

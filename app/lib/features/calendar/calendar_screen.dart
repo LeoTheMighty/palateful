@@ -9,6 +9,8 @@ import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
 import 'services/meal_calendar_service.dart';
 import 'widgets/plan_meal_sheet.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 /// Calendar tab — week view showing scheduled meal events.
 class CalendarScreen extends StatefulWidget {
@@ -29,6 +31,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Map<DateTime, List<MealEvent>> _eventsByDay = {};
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   /// Incremented on every load; prevents stale responses from overwriting newer state.
   int _loadGeneration = 0;
@@ -82,6 +85,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (mounted) {
         setState(() {
           _error = 'Failed to load calendar';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

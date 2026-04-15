@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class RecipeVersionHistoryScreen extends StatefulWidget {
   final String recipeId;
@@ -24,6 +26,7 @@ class _RecipeVersionHistoryScreenState
   List<dynamic> _versions = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -48,6 +51,7 @@ class _RecipeVersionHistoryScreenState
       if (mounted) {
         setState(() {
           _error = 'Failed to load version history: $e';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

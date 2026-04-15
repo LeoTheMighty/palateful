@@ -16,6 +16,8 @@ import '../../shared/widgets/vibe_picker_sheet.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final String recipeId;
@@ -33,6 +35,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   List<dynamic> _notes = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   final Set<int> _checkedIngredients = {};
   bool _isFavorite = false;
   bool _isTogglingFavorite = false;
@@ -77,6 +80,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       if (mounted) {
         setState(() {
           _error = 'Failed to load recipe: $e';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

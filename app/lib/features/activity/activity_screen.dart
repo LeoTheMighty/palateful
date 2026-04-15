@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 /// Activity feed screen — shows notifications like invites, partner actions, reminders.
 /// Also surfaces high-priority "Needs Review" import items in a collapsed section.
@@ -22,6 +24,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
   List<dynamic> _activities = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   Timer? _pollTimer;
 
   // Import review data for the "Needs Review" section + badge
@@ -90,6 +93,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       if (!silent) {
         setState(() {
           _error = 'Failed to load activities';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

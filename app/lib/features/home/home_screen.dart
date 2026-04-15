@@ -19,6 +19,8 @@ import 'widgets/sort_chips.dart';
 import '../../core/theme/theme.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
 import 'widgets/recipe_card.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final Set<String> _togglingFavoriteIds = {};
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   MealFilter _mealFilter = MealFilter.all;
   String? _vibeFilter;
@@ -96,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {
           _error = 'Failed to load recipes: $e';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }
@@ -1115,18 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _error!,
-                style: TextStyle(color: colorScheme.onErrorContainer),
-                textAlign: TextAlign.center,
-              ),
-            ),
+            ErrorBanner(message: _error!, detail: _errorDetail),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadRecipes,

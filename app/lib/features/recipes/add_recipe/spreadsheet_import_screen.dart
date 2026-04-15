@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 /// Screen for importing recipes from a CSV or XLSX spreadsheet.
 class SpreadsheetImportScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class _SpreadsheetImportScreenState extends State<SpreadsheetImportScreen> {
   PlatformFile? _selectedFile;
   bool _isImporting = false;
   String? _error;
+  String? _errorDetail;
 
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
@@ -85,6 +88,7 @@ class _SpreadsheetImportScreenState extends State<SpreadsheetImportScreen> {
       setState(() {
         _isImporting = false;
         _error = 'Import failed. Please try again.';
+        _errorDetail = ErrorReporter.detail(e);
       });
     }
   }

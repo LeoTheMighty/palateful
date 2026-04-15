@@ -1,4 +1,5 @@
 import 'package:auth0_flutter/auth0_flutter.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import '../config/environment.dart';
 
@@ -49,6 +50,12 @@ class AuthService extends ChangeNotifier {
         debugPrint('AuthService: Restored credentials from secure storage');
         notifyListeners();
         return true;
+      }
+    } on CredentialsManagerException catch (e) {
+      debugPrint('AuthService.tryRestoreCredentials error: $e');
+      if (e.isTokenRenewFailed || e.isNoRefreshTokenFound || e.isNoCredentialsFound) {
+        await _auth0!.credentialsManager.clearCredentials();
+        debugPrint('AuthService: Cleared invalid credentials');
       }
     } catch (e) {
       debugPrint('AuthService.tryRestoreCredentials error: $e');
@@ -207,17 +214,7 @@ class AuthService extends ChangeNotifier {
         await _auth0!.webAuthentication(scheme: Environment.auth0Scheme).logout();
       }
 
-      _credentials = null;
-      _userProfile = null;
-      _manualToken = null;
-      _hasCompletedOnboarding = false;
-      _isAdmin = false;
-      _defaultRecipeBookId = null;
-      _previousRecipeBookId = null;
-      _defaultShoppingListId = null;
-      _previousShoppingListId = null;
-
-      _isLoading = false;
+      _clearSessionState();
       notifyListeners();
     } catch (e) {
       debugPrint('Logout error: $e');
@@ -227,17 +224,30 @@ class AuthService extends ChangeNotifier {
           await _auth0!.credentialsManager.clearCredentials();
         } catch (_) {}
       }
-      _credentials = null;
-      _userProfile = null;
-      _manualToken = null;
-      _hasCompletedOnboarding = false;
-      _isAdmin = false;
-      _defaultRecipeBookId = null;
-      _previousRecipeBookId = null;
-      _defaultShoppingListId = null;
-      _previousShoppingListId = null;
-      _isLoading = false;
+      _clearSessionState();
       notifyListeners();
+    }
+  }
+
+  /// Reset in-memory session state. Also clears the Crashlytics user id
+  /// so post-logout crash reports aren't tagged with the previous user.
+  void _clearSessionState() {
+    _credentials = null;
+    _userProfile = null;
+    _manualToken = null;
+    _hasCompletedOnboarding = false;
+    _isAdmin = false;
+    _defaultRecipeBookId = null;
+    _previousRecipeBookId = null;
+    _defaultShoppingListId = null;
+    _previousShoppingListId = null;
+    _isLoading = false;
+    if (!kIsWeb && !kDebugMode) {
+      try {
+        FirebaseCrashlytics.instance.setUserIdentifier('');
+      } catch (_) {
+        // Firebase may not be initialized yet (e.g. kE2EMode startup path)
+      }
     }
   }
 

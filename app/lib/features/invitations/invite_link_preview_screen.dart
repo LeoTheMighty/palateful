@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class InviteLinkPreviewScreen extends StatefulWidget {
   final String token;
@@ -18,6 +20,7 @@ class _InviteLinkPreviewScreenState extends State<InviteLinkPreviewScreen> {
   Map<String, dynamic>? _previewData;
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   bool _isJoining = false;
 
   @override
@@ -43,6 +46,7 @@ class _InviteLinkPreviewScreenState extends State<InviteLinkPreviewScreen> {
       if (mounted) {
         setState(() {
           _error = 'Could not load invite link. It may be invalid or expired.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

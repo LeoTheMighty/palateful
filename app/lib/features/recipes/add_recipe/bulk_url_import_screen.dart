@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 class BulkUrlImportScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -45,6 +47,7 @@ class _BulkUrlImportScreenState extends State<BulkUrlImportScreen> {
   List<dynamic> _importItems = [];
   bool _isLoadingItems = false;
   String? _error;
+  String? _errorDetail;
 
   // Item action state
   final Set<String> _processingItemIds = {};
@@ -175,6 +178,7 @@ class _BulkUrlImportScreenState extends State<BulkUrlImportScreen> {
         setState(() {
           _isImporting = false;
           _error = 'Could not start import. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
         });
       }
     }
@@ -253,6 +257,7 @@ class _BulkUrlImportScreenState extends State<BulkUrlImportScreen> {
           _isImporting = false;
           _isLoadingItems = false;
           _error = 'Could not load import results.';
+          _errorDetail = ErrorReporter.detail(e);
         });
       }
     }

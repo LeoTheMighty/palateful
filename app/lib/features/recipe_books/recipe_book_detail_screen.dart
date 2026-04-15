@@ -11,6 +11,8 @@ import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
 import 'services/recipe_book_sync_service.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class RecipeBookDetailScreen extends StatefulWidget {
   final String recipeBookId;
@@ -28,6 +30,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   List<dynamic> _recipes = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   bool _isMovingOrCopying = false;
   String _userRole = 'owner';
   bool _isShared = false;
@@ -113,6 +116,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
       if (mounted) {
         setState(() {
           _error = 'Could not load recipe book. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }
@@ -813,18 +817,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: colorScheme.errorContainer,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            _error!,
-                            style: TextStyle(color: colorScheme.onErrorContainer),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
+                        ErrorBanner(message: _error!, detail: _errorDetail),
                         const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: _loadRecipeBook,

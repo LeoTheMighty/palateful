@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../shared/widgets/empty_state.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class ArchivedRecipeBooksScreen extends StatefulWidget {
   const ArchivedRecipeBooksScreen({super.key});
@@ -18,6 +20,7 @@ class _ArchivedRecipeBooksScreenState extends State<ArchivedRecipeBooksScreen> {
   List<dynamic> _archivedBooks = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   final Set<String> _restoringIds = {};
 
   @override
@@ -44,6 +47,7 @@ class _ArchivedRecipeBooksScreenState extends State<ArchivedRecipeBooksScreen> {
       if (mounted) {
         setState(() {
           _error = 'Could not load archived books. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

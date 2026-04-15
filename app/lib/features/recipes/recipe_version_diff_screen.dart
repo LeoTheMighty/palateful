@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 
 /// Diff change type for an ingredient or step.
@@ -33,6 +35,7 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
   String? _createdAt;
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   bool _canEdit = false;
   bool _isRestoring = false;
 
@@ -70,6 +73,7 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
       if (mounted) {
         setState(() {
           _error = 'Failed to load version diff: $e';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

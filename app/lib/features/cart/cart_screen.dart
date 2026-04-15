@@ -6,6 +6,8 @@ import '../../core/services/auth_service.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 /// Cart tab — shows all shopping lists owned by or shared with the current user.
 class CartScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class _CartScreenState extends State<CartScreen> {
   List<ShoppingList> _lists = [];
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
 
   @override
   void initState() {
@@ -46,6 +49,7 @@ class _CartScreenState extends State<CartScreen> {
       if (mounted) {
         setState(() {
           _error = 'Could not load shopping lists. Please try again.';
+          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }

@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class AdminErrorDetailScreen extends StatefulWidget {
   final String errorId;
@@ -19,6 +21,7 @@ class _AdminErrorDetailScreenState extends State<AdminErrorDetailScreen> {
 
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   Map<String, dynamic> _errorData = {};
 
   @override
@@ -45,6 +48,7 @@ class _AdminErrorDetailScreenState extends State<AdminErrorDetailScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load error detail: $e';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }

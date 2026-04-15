@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/services/error_reporter.dart';
+import '../../../shared/widgets/error_banner.dart';
 
 class ImportItemReviewScreen extends StatefulWidget {
   final String itemId;
@@ -22,6 +24,7 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   // Loading state
   bool _isLoading = true;
   String? _error;
+  String? _errorDetail;
   Map<String, dynamic>? _item;
   // Edit controllers
   final _nameController = TextEditingController();
@@ -88,6 +91,7 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
         setState(() {
           _isLoading = false;
           _error = 'Could not load import item.';
+          _errorDetail = ErrorReporter.detail(e);
         });
       }
     }

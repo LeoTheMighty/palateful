@@ -15,6 +15,8 @@ import '../../services/share_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/push_notification_service.dart';
 import '../../providers/theme_mode_provider.dart';
+import '../../core/services/error_reporter.dart';
+import '../../shared/widgets/error_banner.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -30,6 +32,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _isLoading = true;
   bool _isExporting = false;
   String? _error;
+  String? _errorDetail;
 
   // Profile data
   String? _name;
@@ -73,6 +76,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _error = 'Failed to load profile. Please try again.';
+        _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
     }
@@ -516,18 +520,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               color: colorScheme.error,
             ),
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.errorContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _error!,
-                style: TextStyle(color: colorScheme.onErrorContainer),
-                textAlign: TextAlign.center,
-              ),
-            ),
+            ErrorBanner(message: _error!, detail: _errorDetail),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _fetchProfile,
