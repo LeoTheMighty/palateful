@@ -46,7 +46,7 @@ two of the script finishing.
 ## iOS (Flutter → TestFlight)
 
 ```bash
-# 1. Bump the version in app/pubspec.yaml, e.g. 1.0.4+10 → 1.0.5+11
+# 1. Bump the version in app/pubspec.yaml, e.g. 1.0.5+11 → 1.0.6+12
 # 2. Build, archive, upload — fully CLI-driven, no Xcode UI needed:
 bin/prod-ios-deploy
 # 3. Commit the version bump
@@ -54,15 +54,28 @@ bin/prod-ios-deploy
 
 What `bin/prod-ios-deploy` does:
 
-1. `flutter build ios --release`
-2. `xcodebuild ... archive` — produces `build/ios/Runner.xcarchive`
-3. Writes an `ExportOptions.plist` pinned to
+1. Stages `app/.env.prod` as `app/.env` for the duration of the build
+   (backed up and restored on exit) so the bundled dotenv asset points
+   at `https://api.palateful.app` instead of whatever dev URL your
+   working copy has. Also passes `--dart-define=ENV=prod` as a
+   belt-and-suspenders second channel.
+2. `flutter build ios --release --dart-define=ENV=prod`
+3. `xcodebuild ... archive` — produces `build/ios/Runner.xcarchive`
+4. Writes an `ExportOptions.plist` pinned to
    `method=app-store-connect` and `destination=upload`
-4. `xcodebuild -exportArchive -allowProvisioningUpdates` — uploads
+5. `xcodebuild -exportArchive -allowProvisioningUpdates` — uploads
    the archive to TestFlight
 
 TestFlight processing takes ~5–15 minutes after upload before the
 build becomes available to testers.
+
+### Xcode Cloud (alternate path)
+
+Pushes to `main` also trigger an Xcode Cloud workflow that archives
+and uploads to TestFlight without running `bin/prod-ios-deploy`. The
+post-clone hook (`app/ios/ci_scripts/ci_post_clone.sh`) installs
+Flutter and stages `.env.prod` as `.env` before `xcodebuild` runs, so
+CI builds ship with prod config the same way the local script does.
 
 ## Terraform (infra-only changes)
 
