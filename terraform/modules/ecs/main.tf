@@ -72,11 +72,6 @@ variable "db_master_secret_arn" {
   description = "ARN of the RDS-managed Secrets Manager secret containing username/password JSON. DB_PASSWORD is pulled from the 'password' JSON key at task start, which eliminates drift between RDS and a separately-maintained DATABASE_URL secret."
 }
 
-variable "database_url_secret_arn" {
-  type        = string
-  description = "Legacy Secrets Manager ARN holding the full DATABASE_URL. Kept alongside the new DB_* env vars until all deployed container images stop importing utils.constants.DATABASE_URL at settings-validation time (services/api/src/config.py). Removed when the API's pydantic Settings no longer requires this env var."
-}
-
 variable "db_host" {
   type        = string
   description = "RDS hostname (no port)"
@@ -249,7 +244,6 @@ resource "aws_ecs_task_definition" "api" {
       ]
 
       secrets = [
-        { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
         { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "AUTH0_DOMAIN", valueFrom = "${var.auth0_secret_arn}:domain::" },
         { name = "AUTH0_CLIENT_ID", valueFrom = "${var.auth0_secret_arn}:client_id::" },
@@ -364,7 +358,6 @@ resource "aws_ecs_task_definition" "worker" {
       ]
 
       secrets = [
-        { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
         { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
         { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
@@ -449,7 +442,6 @@ resource "aws_ecs_task_definition" "migrator" {
       ]
 
       secrets = [
-        { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
         { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
       ]
 
