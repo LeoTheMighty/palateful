@@ -28,8 +28,13 @@ class TestGetUploadUrl:
 class TestSubmitParserJob:
     """Tests for POST /v1/parser/jobs."""
 
+    @patch(
+        "utils.tasks.import_tasks.watch_parser_job_task.watch_parser_job_task"
+    )
     @patch("api.v1.parser.submit_parser_job.AWSService")
-    def test_submit_parser_job_success(self, mock_aws_cls, client, mock_db, mock_user):
+    def test_submit_parser_job_success(
+        self, mock_aws_cls, _mock_watch_task, client, mock_db, mock_user
+    ):
         """Test submitting a parser job."""
         mock_aws = MagicMock()
         mock_aws_cls.return_value = mock_aws
