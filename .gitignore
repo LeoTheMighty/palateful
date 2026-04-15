@@ -98,5 +98,8 @@ celerybeat.pid
 # Test reports
 reports/
 
+# Claude Code per-project state (memory, session data)
+.claude/projects/
+
 # Alembic
 alembic/versions/__pycache__/
