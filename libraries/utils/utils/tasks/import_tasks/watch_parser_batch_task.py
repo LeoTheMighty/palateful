@@ -20,6 +20,7 @@ from utils.constants import (
     BATCH_JOB_QUEUE,
     PARSER_INPUTS_BUCKET,
     PARSER_OUTPUTS_BUCKET,
+    STAGE_PARSED,
 )
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -238,6 +239,7 @@ class WatchParserBatchTask(BaseTask):
                 import_job_id=import_job.id,
                 source_type="photo",
                 status="pending",
+                last_successful_stage=STAGE_PARSED,
                 raw_data={
                     "text": concatenated_text,
                     "s3_keys": s3_keys,

@@ -5,6 +5,7 @@ import logging
 from sqlalchemy import func, text
 
 from utils.api.endpoint import success
+from utils.constants import STAGE_MATCHED
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
@@ -82,6 +83,10 @@ class MatchIngredientsTask(BaseTask):
             else:
                 # Auto-approve if all matches are high confidence or auto-created
                 item.status = "approved"
+
+            # Matching finished successfully either way; mark the stage so the
+            # retry endpoint resumes from create_recipe_task on next retry.
+            item.last_successful_stage = STAGE_MATCHED
 
             self.database.db.commit()
 

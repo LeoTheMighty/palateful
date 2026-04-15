@@ -32,6 +32,14 @@ class ImportItem(Base):
     parsed_recipe: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # Extracted recipe
     user_edits: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # User modifications
 
+    # Last pipeline stage the item completed successfully.
+    # One of: "parsed" | "extracted" | "matched" | NULL.
+    # Read by the retry endpoint to resume from the next stage instead of
+    # starting over.
+    last_successful_stage: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None
+    )
+
     # Error handling
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)

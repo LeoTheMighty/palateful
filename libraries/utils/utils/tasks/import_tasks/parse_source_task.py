@@ -107,6 +107,7 @@ class ParseSourceTask(BaseTask):
 
     def _dispatch_extraction_tasks(self, job: ImportJob):
         """Dispatch ExtractRecipeTask for all pending items."""
+        from utils.constants import STAGE_PARSED
         from utils.tasks.import_tasks.extract_recipe_task import extract_task
 
         # Get all pending item IDs
@@ -117,6 +118,13 @@ class ParseSourceTask(BaseTask):
 
         if not items:
             return
+
+        # All pending items under this job have reached the "parsed" stage by
+        # virtue of existing with raw_data; mark them so the retry endpoint can
+        # resume from the next stage instead of starting over.
+        for item in items:
+            item.last_successful_stage = STAGE_PARSED
+        self.database.db.commit()
 
         # Dispatch in batches
         batch_size = 10

@@ -79,3 +79,17 @@ EXPONENTIAL_BACKOFF_FACTOR = float(os.environ.get("EXPONENTIAL_BACKOFF_FACTOR", 
 MIN_BATCH_SIZE = int(os.environ.get("MIN_BATCH_SIZE", "2"))  # Minimum chunk size
 MAX_BATCH_SIZE = int(os.environ.get("MAX_BATCH_SIZE", "10"))  # Maximum chunk size
 MAX_TASK_COUNTDOWN = int(os.environ.get("MAX_TASK_COUNTDOWN", "30"))  # Maximum task countdown
+
+# Stuck-import sweeper (used by sweep_stuck_imports_task)
+STUCK_IMPORT_JOB_TIMEOUT_MINUTES = int(
+    os.environ.get("STUCK_IMPORT_JOB_TIMEOUT_MINUTES", "10")
+)
+STUCK_IMPORT_SWEEPER_INTERVAL_SECONDS = int(
+    os.environ.get("STUCK_IMPORT_SWEEPER_INTERVAL_SECONDS", "120")
+)
+
+# Pipeline stage markers (written by each task on successful stage completion,
+# read by the retry endpoint to resume from the next stage)
+STAGE_PARSED = "parsed"
+STAGE_EXTRACTED = "extracted"
+STAGE_MATCHED = "matched"

@@ -169,3 +169,16 @@ development_status:
   vibes-3-flutter-vibechip-and-integration: done
   vibes-4-flutter-vibe-filter-and-user-override: done
   epic-vibes-retrospective: optional
+
+  # Epic MVP Finalization: Dogfood-Confidence Release
+  epic-mvp-finalization: backlog
+  mvp-1-multi-image-group-index-fix: blocked
+  mvp-2-structured-recipe-steps: ready-for-dev
+  mvp-3-home-header-recipe-book-icon: ready-for-dev
+  mvp-4-filter-pill-bottom-sheet: ready-for-dev
+  mvp-5-stage-markers-and-stuck-sweeper: done
+  mvp-6-retry-endpoint: ready-for-dev
+  mvp-7-dismiss-endpoints: ready-for-dev
+  mvp-8-flutter-failed-state-ui: ready-for-dev
+  mvp-9-clear-all-and-swipe-to-dismiss: ready-for-dev
+  epic-mvp-finalization-retrospective: optional

@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from utils.api.endpoint import success
+from utils.constants import STAGE_EXTRACTED
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.services.celery import celery_app
@@ -171,6 +172,7 @@ class ExtractRecipeTask(BaseTask):
             }
             # Move to matching stage
             item.status = "matching"
+            item.last_successful_stage = STAGE_EXTRACTED
         else:
             item.status = "failed"
             item.error_message = result.error_message

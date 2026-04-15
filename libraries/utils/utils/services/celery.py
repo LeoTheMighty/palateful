@@ -13,6 +13,7 @@ from utils.constants import (
     CELERY_POLLING_INTERVAL,
     CELERY_QUEUE_PREFIX,
     LOGGING_LEVEL,
+    STUCK_IMPORT_SWEEPER_INTERVAL_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,11 @@ celery_app.conf.beat_schedule = {
     'cleanup-error-logs': {
         'task': 'cleanup_error_logs',
         'schedule': 86400.0,  # Every 24 hours
+        'options': {'queue': 'celery'},
+    },
+    'sweep-stuck-imports': {
+        'task': 'sweep_stuck_imports_task',
+        'schedule': float(STUCK_IMPORT_SWEEPER_INTERVAL_SECONDS),
         'options': {'queue': 'celery'},
     },
 }
