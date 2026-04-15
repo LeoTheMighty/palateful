@@ -3,6 +3,8 @@
 from api.v1.import_job import (
     ApproveImportItem,
     CancelImportJob,
+    DismissAllFailedImports,
+    DismissImportItem,
     GetImportItem,
     GetImportJob,
     ListImportItems,
@@ -169,6 +171,32 @@ async def retry_import_item(
     """Retry a failed import item from its last successful stage."""
     return RetryImportItem.call(
         item_id=item_id,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/import-items/{item_id}/dismiss")
+async def dismiss_import_item(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Hide a failed import item from the UI. Hard dismiss — no undo."""
+    return DismissImportItem.call(
+        item_id=item_id,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/import-jobs/dismiss-all-failed")
+async def dismiss_all_failed_imports(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Hide all failed import items owned by the current user."""
+    return DismissAllFailedImports.call(
         user=user,
         database=database,
     )

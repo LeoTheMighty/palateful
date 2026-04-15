@@ -455,6 +455,8 @@ class MockImportJob(MockModel):
             "total_ai_cost_cents": 0,
             "started_at": None,
             "completed_at": None,
+            "dismissed_at": None,
+            "error_message": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -472,9 +474,13 @@ class MockImportItem(MockModel):
             "status": "pending",
             "parsed_recipe": None,
             "error_message": None,
+            "error_code": None,
             "ai_cost_cents": 0,
             "needs_review": False,
             "recipe_name": None,
+            "retry_count": 0,
+            "last_successful_stage": None,
+            "dismissed_at": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

@@ -1,9 +1,10 @@
 """ImportItem model for individual recipes within an import job."""
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, ForeignKey, Integer, String, Text
+from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +48,13 @@ class ImportItem(Base):
 
     # Cost tracking (in cents)
     ai_cost_cents: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Hard-dismiss marker. When set, the item is hidden from list endpoints.
+    # We do not delete the row — dismissal is a UI hide, not a DB delete,
+    # so audit history and debugging are preserved.
+    dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     # Foreign keys
     import_job_id: Mapped[uuid.UUID] = mapped_column(

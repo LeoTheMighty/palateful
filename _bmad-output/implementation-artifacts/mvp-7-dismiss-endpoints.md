@@ -1,6 +1,6 @@
 # Story MVP.7: Hard-Dismiss Endpoints for Failed Imports
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -115,8 +115,33 @@ And adds a `dismissed_at` column on `ImportItem` (and possibly `ImportJob`) so t
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `npx nx run api:test` — 1253 passed, 100.00% coverage
+- `npx nx run api:lint` — clean
+- `npx nx run utils:test` — 18 passed (no regressions from schema change)
 
 ### Completion Notes List
 
+- `dismiss_all_failed_imports` iterates Python-side rather than a single bulk `UPDATE` statement — simpler and fine for MVP volume. Revisit if it becomes a hot path.
+- Removed an unreachable defensive `if job is not None` guard in the bulk endpoint to keep coverage at 100%. The guard can't fire in production because `affected_job_ids` is built from items we just updated.
+- Updated `MockImportJob`, `MockImportItem`, and `MockBatchImportJob` defaults to include `dismissed_at=None` plus the mvp-5/mvp-6 fields (`last_successful_stage`, `retry_count`). This prevents `AttributeError: 'MockModel' object has no attribute 'dismissed_at'` in unrelated existing tests after the schema grew.
+- The `list_parser_batches` filter keeps pre-fan-out batches visible (running/submitted with zero linked `ImportJob`s) and only hides terminal batches whose jobs have all been dismissed. Verified via two new tests.
+- No backend un-dismiss endpoint. The snackbar undo in mvp-8 is local-only — if the user waits out the 4-second timer, the dismissal is permanent.
+
 ### File List
+
+- `libraries/utils/utils/models/import_item.py` (modified)
+- `libraries/utils/utils/models/import_job.py` (modified)
+- `services/migrator/migrations/versions/20260415000001_add_dismissed_at.py` (new)
+- `services/api/src/api/v1/import_job/dismiss_import_item.py` (new)
+- `services/api/src/api/v1/import_job/dismiss_all_failed_imports.py` (new)
+- `services/api/src/api/v1/import_job/__init__.py` (modified)
+- `services/api/src/routers/v1/import_router.py` (modified)
+- `services/api/src/api/v1/parser/list_parser_batches.py` (modified — dismissed filter)
+- `services/api/tests/conftest.py` (modified — mock defaults)
+- `services/api/tests/test_import.py` (modified — TestDismissImportItem, TestDismissAllFailedImports)
+- `services/api/tests/test_parser_batches.py` (modified — MockBatchImportJob default + two new list tests)
+- `_bmad-output/implementation-artifacts/mvp-7-qa-walkthrough.md` (new)

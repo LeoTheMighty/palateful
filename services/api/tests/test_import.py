@@ -2846,3 +2846,266 @@ class TestRetryImportItem:
         assert item.status == "pending"
 
         mock_parse.delay.assert_called_once_with(str(job.id))
+
+
+class TestDismissImportItem:
+    """Tests for POST /v1/import-items/{item_id}/dismiss."""
+
+    def _setup(
+        self,
+        mock_db,
+        mock_user,
+        *,
+        item_status="failed",
+        job_status="failed",
+        role="owner",
+        siblings=None,
+    ):
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status=item_status,
+            dismissed_at=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            status=job_status,
+            dismissed_at=None,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role=role,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        # Sibling query returns the current item plus any provided siblings.
+        # The endpoint calls db.query(ImportItem).filter(...).all().
+        all_items_under_job = [item] + (siblings or [])
+        mock_db.db.query.return_value = MockQuery(all_items_under_job)
+
+        return item, job, item_id
+
+    def test_dismiss_happy_path_last_item_marks_job(
+        self, client, mock_db, mock_user
+    ):
+        item, job, item_id = self._setup(mock_db, mock_user)
+
+        response = client.post(f"/v1/import-items/{item_id}/dismiss")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["item_id"] == item_id
+        assert data["job_dismissed"] is True
+        assert item.dismissed_at is not None
+        assert job.dismissed_at is not None
+
+    def test_dismiss_with_sibling_not_dismissed_leaves_job(
+        self, client, mock_db, mock_user
+    ):
+        sibling = MockImportItem(
+            id="sibling-id",
+            import_job_id="test-job-id",
+            status="failed",
+            dismissed_at=None,
+        )
+        item, job, item_id = self._setup(
+            mock_db, mock_user, siblings=[sibling]
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/dismiss")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_dismissed"] is False
+        assert item.dismissed_at is not None
+        assert job.dismissed_at is None
+
+    def test_dismiss_item_not_found(self, client, mock_db, mock_user):
+        response = client.post("/v1/import-items/nonexistent/dismiss")
+        assert response.status_code == 404
+
+    def test_dismiss_job_not_found(self, client, mock_db, mock_user):
+        item_id = "test-item-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id="missing-job",
+            status="failed",
+        )
+        from utils.models.import_item import ImportItem
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+
+        response = client.post(f"/v1/import-items/{item_id}/dismiss")
+        assert response.status_code == 404
+
+    def test_dismiss_forbidden_viewer(self, client, mock_db, mock_user):
+        self._setup(mock_db, mock_user, role="viewer")
+        response = client.post("/v1/import-items/test-item-id/dismiss")
+        assert response.status_code == 403
+
+    def test_dismiss_forbidden_no_membership(
+        self, client, mock_db, mock_user
+    ):
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id, import_job_id=job_id, status="failed"
+        )
+        job = MockImportJob(
+            id=job_id, user_id="other-user", recipe_book_id=book_id
+        )
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+
+        response = client.post(f"/v1/import-items/{item_id}/dismiss")
+        assert response.status_code == 403
+
+    def test_dismiss_rejects_non_failed(self, client, mock_db, mock_user):
+        self._setup(
+            mock_db,
+            mock_user,
+            item_status="completed",
+            job_status="completed",
+        )
+        response = client.post("/v1/import-items/test-item-id/dismiss")
+        assert response.status_code == 400
+
+
+class TestDismissAllFailedImports:
+    """Tests for POST /v1/import-jobs/dismiss-all-failed."""
+
+    def test_dismiss_all_zero_failed_returns_zero(
+        self, client, mock_db, mock_user
+    ):
+        # Candidate query returns an empty list.
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.post("/v1/import-jobs/dismiss-all-failed")
+        assert response.status_code == 200
+        assert response.json()["dismissed_count"] == 0
+
+    def test_dismiss_all_marks_items_and_jobs(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        job_id_1 = "job-1"
+        job_id_2 = "job-2"
+
+        item_1 = MockImportItem(
+            id="item-1",
+            import_job_id=job_id_1,
+            status="failed",
+            dismissed_at=None,
+        )
+        item_2 = MockImportItem(
+            id="item-2",
+            import_job_id=job_id_2,
+            status="failed",
+            dismissed_at=None,
+        )
+
+        job_1 = MockImportJob(
+            id=job_id_1,
+            user_id=str(mock_user.id),
+            status="failed",
+            dismissed_at=None,
+        )
+        job_2 = MockImportJob(
+            id=job_id_2,
+            user_id=str(mock_user.id),
+            status="failed",
+            dismissed_at=None,
+        )
+
+        mock_db.set_find_by(ImportJob, job_1, id=job_id_1)
+        mock_db.set_find_by(ImportJob, job_2, id=job_id_2)
+
+        # First call: candidate failed items (initial query with join).
+        # Subsequent calls: sibling lookups per affected job (one call each).
+        # Then update calls for user_activities.
+        candidate_query = MockQuery([item_1, item_2])
+        sibling_query_1 = MockQuery([item_1])
+        sibling_query_2 = MockQuery([item_2])
+        activity_update = MockQuery([])
+
+        mock_db.db.query.side_effect = [
+            candidate_query,
+            sibling_query_1,
+            sibling_query_2,
+            activity_update,
+            activity_update,
+        ]
+
+        response = client.post("/v1/import-jobs/dismiss-all-failed")
+        assert response.status_code == 200
+        assert response.json()["dismissed_count"] == 2
+        assert item_1.dismissed_at is not None
+        assert item_2.dismissed_at is not None
+        assert job_1.dismissed_at is not None
+        assert job_2.dismissed_at is not None
+
+    def test_dismiss_all_leaves_job_with_remaining_non_dismissed_items(
+        self, client, mock_db, mock_user
+    ):
+        """If a job has one failed item (dismissed) plus one still-processing
+        sibling, the job itself should NOT be marked dismissed."""
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        job_id = "job-partial"
+        failed_item = MockImportItem(
+            id="failed-item",
+            import_job_id=job_id,
+            status="failed",
+            dismissed_at=None,
+        )
+        sibling = MockImportItem(
+            id="sibling-item",
+            import_job_id=job_id,
+            status="matching",
+            dismissed_at=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            status="processing",
+            dismissed_at=None,
+        )
+
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+
+        candidate_query = MockQuery([failed_item])
+        sibling_query = MockQuery([failed_item, sibling])
+        activity_update = MockQuery([])
+        mock_db.db.query.side_effect = [
+            candidate_query,
+            sibling_query,
+            activity_update,
+        ]
+
+        response = client.post("/v1/import-jobs/dismiss-all-failed")
+        assert response.status_code == 200
+        assert response.json()["dismissed_count"] == 1
+        assert failed_item.dismissed_at is not None
+        # Job NOT dismissed because sibling is still in-flight
+        assert job.dismissed_at is None

@@ -2,6 +2,10 @@
 
 from api.v1.import_job.approve_import_item import ApproveImportItem
 from api.v1.import_job.cancel_import_job import CancelImportJob
+from api.v1.import_job.dismiss_all_failed_imports import (
+    DismissAllFailedImports,
+)
+from api.v1.import_job.dismiss_import_item import DismissImportItem
 from api.v1.import_job.get_import_item import GetImportItem
 from api.v1.import_job.get_import_job import GetImportJob
 from api.v1.import_job.list_import_items import ListImportItems
@@ -20,6 +24,8 @@ __all__ = [
     "UpdateImportItem",
     "ApproveImportItem",
     "RetryImportItem",
+    "DismissImportItem",
+    "DismissAllFailedImports",
     "SkipImportItem",
     "CancelImportJob",
 ]

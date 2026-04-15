@@ -55,6 +55,7 @@ class MockBatchImportJob(MockModel):
             "source_type": "photo",
             "parser_batch_id": None,
             "total_items": 1,
+            "dismissed_at": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
@@ -286,3 +287,67 @@ class TestListParserBatches:
         assert response.status_code == 200
         data = response.json()
         assert data["batches"] == []
+
+    def test_list_batches_hides_batches_with_all_jobs_dismissed(
+        self, client, mock_db, mock_user
+    ):
+        """A batch whose only ImportJob has dismissed_at set should not
+        appear in the list."""
+        from utils.models.import_job import ImportJob
+        from utils.models.parser_batch import ParserBatch
+
+        visible_batch = MockParserBatch(
+            user_id=str(mock_user.id), status="running", parser_jobs=[]
+        )
+        hidden_batch = MockParserBatch(
+            user_id=str(mock_user.id), status="succeeded", parser_jobs=[]
+        )
+
+        visible_job = MockBatchImportJob(
+            parser_batch_id=visible_batch.id, dismissed_at=None
+        )
+        dismissed_job = MockBatchImportJob(
+            parser_batch_id=hidden_batch.id,
+            dismissed_at="2026-04-15T12:00:00Z",
+        )
+
+        def query_side_effect(model):
+            if model is ParserBatch:
+                return MockQuery([visible_batch, hidden_batch])
+            if model is ImportJob:
+                return MockQuery([visible_job, dismissed_job])
+            return MockQuery()
+
+        mock_db.db.query.side_effect = query_side_effect
+
+        response = client.get("/v1/parser/batches")
+        assert response.status_code == 200
+        batches = response.json()["batches"]
+        assert len(batches) == 1
+        assert batches[0]["status"] == "running"
+
+    def test_list_batches_shows_pre_fanout_batch_with_no_jobs(
+        self, client, mock_db, mock_user
+    ):
+        """A running batch that has no linked ImportJob rows yet (parser
+        hasn't fanned out) still shows on the strip."""
+        from utils.models.import_job import ImportJob
+        from utils.models.parser_batch import ParserBatch
+
+        pre_fanout = MockParserBatch(
+            user_id=str(mock_user.id), status="running", parser_jobs=[]
+        )
+
+        def query_side_effect(model):
+            if model is ParserBatch:
+                return MockQuery([pre_fanout])
+            if model is ImportJob:
+                return MockQuery([])  # no jobs yet
+            return MockQuery()
+
+        mock_db.db.query.side_effect = query_side_effect
+
+        response = client.get("/v1/parser/batches")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["batches"]) == 1

@@ -54,6 +54,12 @@ class ImportJob(Base):
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hard-dismiss marker. Set when every child ImportItem is dismissed or
+    # when the job is bulk-dismissed directly. List endpoints filter these
+    # out. Row is preserved for audit / debugging.
+    dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="import_jobs")
