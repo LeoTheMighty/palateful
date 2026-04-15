@@ -1,6 +1,5 @@
 """Get error logs endpoint."""
 
-from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import func, select

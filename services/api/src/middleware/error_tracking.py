@@ -7,7 +7,6 @@ import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-
 from utils.models.error_log import ErrorLog
 from utils.services.database import Database
 

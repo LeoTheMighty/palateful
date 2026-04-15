@@ -66,6 +66,35 @@ class TestListRecipes:
         response = client.get(f"/v1/recipe-books/{book_id}/recipes?search=pasta")
         assert response.status_code == 200
 
+    def test_list_recipes_with_vibe_filter(self, client, mock_db, mock_user):
+        """Test listing recipes with vibe filter."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.db.query.side_effect = [MockQuery([]), MockQuery([])]
+
+        response = client.get(f"/v1/recipe-books/{book_id}/recipes?vibe=cozy")
+        assert response.status_code == 200
+
+
+class TestGetVibeOptions:
+    """Tests for GET /v1/recipes/vibes/options."""
+
+    def test_returns_vibe_options(self, client):
+        from utils.constants import VIBE_OPTIONS
+
+        response = client.get("/v1/recipes/vibes/options")
+        assert response.status_code == 200
+        assert response.json() == VIBE_OPTIONS
+
 
 class TestGetRecipe:
     """Tests for GET /v1/recipes/{recipe_id}."""
@@ -2279,6 +2308,37 @@ class TestUpdateRecipeMissingBranches:
         assert response.status_code == 200
         data = response.json()
         assert data["source_url"] == "https://example.com/recipe"
+
+    def test_update_recipe_primary_vibe_only(self, client, mock_db, mock_user):
+        """Update only primary_vibe (secondary unchanged)."""
+        from utils.constants import VALID_VIBES
+
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        valid_vibe = next(iter(VALID_VIBES))
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"primary_vibe": valid_vibe},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["primary_vibe"] == valid_vibe
+
+    def test_update_recipe_secondary_vibe_only_invalid(
+        self, client, mock_db, mock_user
+    ):
+        """Update only secondary_vibe with an invalid value → stored as None."""
+        recipe_id = "test-recipe-id"
+        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"secondary_vibe": "not-a-real-vibe"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["secondary_vibe"] is None
 
     def test_update_recipe_with_ingredients(self, client, mock_db, mock_user):
         """Test updating recipe ingredients (delete-and-recreate)."""

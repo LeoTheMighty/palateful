@@ -63,9 +63,12 @@ class MockBatchImportJob(MockModel):
 class TestCreateParserBatch:
     """POST /v1/parser/batches."""
 
+    @patch(
+        "utils.tasks.import_tasks.watch_parser_batch_task.watch_parser_batch_task"
+    )
     @patch("api.v1.parser.create_parser_batch.AWSService")
     def test_create_batch_with_two_groups(
-        self, mock_aws_cls, client, mock_db, mock_user
+        self, mock_aws_cls, _mock_watch_task, client, mock_db, mock_user
     ):
         """3 items split as 2+1 → group_count=2, all jobs share batch_job_id."""
         mock_aws = MagicMock()
@@ -98,9 +101,12 @@ class TestCreateParserBatch:
         call_kwargs = mock_aws.submit_batch_manifest_job.call_args.kwargs
         assert len(call_kwargs["items"]) == 3
 
+    @patch(
+        "utils.tasks.import_tasks.watch_parser_batch_task.watch_parser_batch_task"
+    )
     @patch("api.v1.parser.create_parser_batch.AWSService")
     def test_create_batch_single_recipe(
-        self, mock_aws_cls, client, mock_db, mock_user
+        self, mock_aws_cls, _mock_watch_task, client, mock_db, mock_user
     ):
         """All items with group_index=0 → group_count=1."""
         mock_aws = MagicMock()
@@ -243,12 +249,13 @@ class TestListParserBatches:
             status="running",
             parser_jobs=[],
         )
+        related_job = MockBatchImportJob(parser_batch_id=batch.id)
 
         def query_side_effect(model):
             if model is ParserBatch:
                 return MockQuery([batch])
             if model is ImportJob:
-                return MockQuery([])
+                return MockQuery([related_job])
             return MockQuery()
 
         mock_db.db.query.side_effect = query_side_effect

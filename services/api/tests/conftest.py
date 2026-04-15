@@ -493,6 +493,7 @@ class MockParserJob(MockModel):
             "extracted_text": None,
             "error_message": None,
             "completed_at": None,
+            "import_job_id": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

@@ -3,7 +3,6 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import func
 from utils.api.endpoint import Endpoint, success
 from utils.models.import_job import ImportJob
 from utils.models.user import User

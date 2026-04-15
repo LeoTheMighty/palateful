@@ -200,3 +200,71 @@ class TestGetCurrentUser:
             )
 
         mock_database.update.assert_called_once_with(mock_user, has_completed_onboarding=True)
+
+
+class TestFinalizeAuth:
+    """Tests for _finalize_auth helper that syncs Auth0 claims onto the user."""
+
+    def test_fills_missing_fields_from_claims(self):
+        from dependencies import _finalize_auth
+
+        mock_database = MagicMock()
+        user = MagicMock()
+        user.email = None
+        user.name = None
+        user.picture = None
+        user.email_verified = False
+        user.auth0_profile = None
+
+        claims = {
+            "sub": "auth0|abc",
+            "email": "new@example.com",
+            "name": "New Name",
+            "picture": "https://img/x.png",
+            "email_verified": True,
+            "nickname": "newnick",
+        }
+
+        result = _finalize_auth(mock_database, user, claims)
+        assert result is user
+        mock_database.update.assert_called_once()
+        update_kwargs = mock_database.update.call_args.kwargs
+        assert update_kwargs["email"] == "new@example.com"
+        assert update_kwargs["name"] == "New Name"
+        assert update_kwargs["picture"] == "https://img/x.png"
+        assert update_kwargs["email_verified"] is True
+        assert "auth0_profile" in update_kwargs
+        assert update_kwargs["auth0_profile"]["nickname"] == "newnick"
+        # JWT-only claims should be stripped from the snapshot
+        assert "sub" not in update_kwargs["auth0_profile"]
+
+    def test_no_updates_when_user_already_complete(self):
+        from dependencies import _finalize_auth
+
+        mock_database = MagicMock()
+        user = MagicMock()
+        user.email = "existing@example.com"
+        user.name = "Existing"
+        user.picture = "https://img/old.png"
+        user.email_verified = True
+        # auth0_profile snapshot must equal what _finalize_auth would build
+        # (claims minus the JWT-only keys), or it'll trigger an update.
+        snapshot = {
+            "email": "existing@example.com",
+            "name": "Existing",
+            "picture": "https://img/old.png",
+            "email_verified": True,
+        }
+        user.auth0_profile = snapshot
+
+        claims = {
+            "sub": "auth0|abc",
+            "iat": 1,
+            "email": "existing@example.com",
+            "name": "Existing",
+            "picture": "https://img/old.png",
+            "email_verified": True,
+        }
+
+        _finalize_auth(mock_database, user, claims)
+        mock_database.update.assert_not_called()

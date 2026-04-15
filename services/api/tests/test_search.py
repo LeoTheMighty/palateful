@@ -656,6 +656,65 @@ class TestGenerateRecipeEmbedding:
         assert result is None
 
 
+class TestAssignVibesForRecipe:
+    """Tests for assign_vibes_for_recipe helper."""
+
+    @patch("openai.OpenAI")
+    def test_returns_valid_vibes_with_ingredients(self, mock_openai_cls):
+        """Successful LLM response with ingredients_text — covers lines 54, 78-80."""
+        from api.v1.search.generate_recipe_embedding import assign_vibes_for_recipe
+        from utils.constants import VALID_VIBES
+
+        valid = list(VALID_VIBES)
+        primary = valid[0]
+        secondary = valid[1] if len(valid) > 1 else None
+
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_message = MagicMock()
+        mock_message.content = (
+            f'{{"primary_vibe": "{primary}", "secondary_vibe": "{secondary}"}}'
+        )
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=mock_message)]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        result = assign_vibes_for_recipe(
+            "Pasta", "Cozy dinner", ingredients_text="tomato, basil"
+        )
+        assert result == (primary, secondary)
+        # Verify ingredients_text path was hit
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        user_msg = call_kwargs["messages"][1]["content"]
+        assert "Ingredients: tomato, basil" in user_msg
+
+    @patch("openai.OpenAI")
+    def test_invalid_vibes_filtered_out(self, mock_openai_cls):
+        """LLM returns vibes not in VALID_VIBES — both filtered to None."""
+        from api.v1.search.generate_recipe_embedding import assign_vibes_for_recipe
+
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_message = MagicMock()
+        mock_message.content = (
+            '{"primary_vibe": "not-real", "secondary_vibe": "also-fake"}'
+        )
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=mock_message)]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        result = assign_vibes_for_recipe("Pasta", None, None)
+        assert result == (None, None)
+
+    @patch("openai.OpenAI")
+    def test_exception_returns_none_pair(self, mock_openai_cls):
+        from api.v1.search.generate_recipe_embedding import assign_vibes_for_recipe
+
+        mock_openai_cls.side_effect = Exception("boom")
+        result = assign_vibes_for_recipe("Pasta", "Desc", None)
+        assert result == (None, None)
+
+
 class TestUnifiedSearchQueryEmbedding:
     """Tests for the _generate_query_embedding method on the endpoint."""
 

@@ -570,6 +570,43 @@ class TestStartImport:
         assert response.status_code == 201
 
 
+class TestListImportJobs:
+    """Tests for GET /v1/import-jobs."""
+
+    def test_list_import_jobs_success(self, client, mock_db, mock_user):
+        job1 = MockImportJob(user_id=str(mock_user.id), status="completed")
+        job2 = MockImportJob(user_id=str(mock_user.id), status="pending")
+        mock_db.db.query.return_value = MockQuery([job1, job2])
+
+        response = client.get("/v1/import-jobs")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["jobs"]) == 2
+        assert data["has_more"] is False
+
+    def test_list_import_jobs_with_status_filter(
+        self, client, mock_db, mock_user
+    ):
+        job = MockImportJob(user_id=str(mock_user.id), status="completed")
+        mock_db.db.query.return_value = MockQuery([job])
+
+        response = client.get("/v1/import-jobs?status=completed&limit=10&offset=0")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["jobs"][0]["status"] == "completed"
+
+    def test_list_import_jobs_empty(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-jobs")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["jobs"] == []
+        assert data["has_more"] is False
+
+
 class TestGetImportJob:
     """Tests for GET /v1/import-jobs/{job_id}."""
 

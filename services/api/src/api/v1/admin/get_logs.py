@@ -1,7 +1,6 @@
 """Get CloudWatch logs endpoint."""
 
 import logging
-from datetime import datetime
 
 from config import settings
 from pydantic import BaseModel

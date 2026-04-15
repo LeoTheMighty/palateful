@@ -1,8 +1,8 @@
 """V1 API router aggregating all v1 routers."""
 
 from fastapi import APIRouter
-from routers.v1.admin_router import admin_router
 from routers.v1.activity_router import activity_router
+from routers.v1.admin_router import admin_router
 from routers.v1.chat_router import chat_router
 from routers.v1.cooking_log_router import cooking_log_router
 from routers.v1.friends_router import friends_router

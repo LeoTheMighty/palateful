@@ -1,6 +1,6 @@
 """Get dashboard stats endpoint."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -16,7 +16,7 @@ class GetStats(Endpoint):
 
     def execute(self):
         """Compute and return aggregate counts."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         twenty_four_hours_ago = now - timedelta(hours=24)
         seven_days_ago = now - timedelta(days=7)
 
