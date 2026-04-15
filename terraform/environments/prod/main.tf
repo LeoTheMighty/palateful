@@ -195,11 +195,14 @@ module "ecs" {
   # env vars because they're not secret. This kills the drift vector we
   # hit when DATABASE_URL lived in a separately-maintained secret.
   #
-  # The legacy DATABASE_URL secret is still wired in for one migration
-  # cycle because pre-refactor container images read it directly; the
-  # new utils.constants prefers DB_* components when present, so new
-  # images silently ignore DATABASE_URL. Drop database_url_secret_arn
-  # once every deployed image ships the constants.py refactor.
+  # Legacy DATABASE_URL is still wired because services/api/src/config.py
+  # imports utils.constants.DATABASE_URL at settings-validation time; if
+  # that value is empty at import, the Settings constructor raises. The
+  # new utils.constants builds the URL from DB_* components when present,
+  # so the legacy DATABASE_URL env var is silently ignored in normal
+  # operation — but it still has to be set so import-time validation
+  # passes on the currently-deployed image. Remove once config.py no
+  # longer depends on DATABASE_URL being set.
   db_master_secret_arn    = module.rds.db_master_secret_arn
   db_host                 = module.rds.db_address
   db_port                 = module.rds.db_port

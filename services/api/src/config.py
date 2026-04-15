@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
+from utils.constants import DATABASE_URL as _UTILS_DATABASE_URL
 
 
 class Settings(BaseSettings):
@@ -14,8 +15,11 @@ class Settings(BaseSettings):
     auth0_audience: str = ""
     auth0_client_id: str = ""
 
-    # Database
-    database_url: str = ""
+    # Database — defaults to utils.constants.DATABASE_URL, which builds
+    # the URL from DB_HOST/DB_USERNAME/DB_PASSWORD/etc components when
+    # those are set (prod path) and otherwise falls back to the raw
+    # DATABASE_URL env var (local dev / tests).
+    database_url: str = _UTILS_DATABASE_URL or ""
 
     # Redis (optional for MVP)
     redis_url: str = ""

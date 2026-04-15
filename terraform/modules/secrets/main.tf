@@ -11,7 +11,10 @@ variable "project" {
   description = "Project name"
 }
 
-# Database URL (full connection string, populated manually after RDS creation)
+# Database URL (full connection string, populated manually after RDS creation).
+# Legacy path — kept until services/api/src/config.py stops requiring
+# DATABASE_URL as a pydantic Settings field. See project_db_credential_cleanup
+# memory for the removal procedure.
 resource "aws_secretsmanager_secret" "database_url" {
   name        = "${var.project}-database-url-${var.environment}"
   description = "PostgreSQL connection string for ${var.environment}"

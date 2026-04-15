@@ -74,7 +74,7 @@ variable "db_master_secret_arn" {
 
 variable "database_url_secret_arn" {
   type        = string
-  description = "Legacy Secrets Manager ARN holding the full DATABASE_URL. Kept alongside the new DB_* env vars for one migration cycle so pre-refactor container images (which read DATABASE_URL directly from env) keep working during the rollout. Remove once all deployed images ship the utils.constants refactor that builds DATABASE_URL from components."
+  description = "Legacy Secrets Manager ARN holding the full DATABASE_URL. Kept alongside the new DB_* env vars until all deployed container images stop importing utils.constants.DATABASE_URL at settings-validation time (services/api/src/config.py). Removed when the API's pydantic Settings no longer requires this env var."
 }
 
 variable "db_host" {
