@@ -1,5 +1,6 @@
 import logging
 import os
+from urllib.parse import quote
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT")
 
@@ -12,7 +13,32 @@ CELERY_QUEUE_PREFIX = os.environ.get("CELERY_QUEUE_PREFIX", "palateful-")
 CELERY_POLLING_INTERVAL = int(os.environ.get("CELERY_POLLING_INTERVAL", "1"))
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 AWS_ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL")  # For LocalStack
-DATABASE_URL = os.environ.get("DATABASE_URL")
+
+
+def _build_database_url() -> str | None:
+    """Construct DATABASE_URL.
+
+    Prefer component env vars (DB_HOST, DB_PORT, DB_NAME, DB_USERNAME,
+    DB_PASSWORD, DB_SSLMODE) when all the required ones are present — ECS
+    tasks in prod get DB_PASSWORD pulled straight from the RDS-managed
+    Secrets Manager secret, which eliminates the drift vector we hit
+    when the URL was kept in a separately-maintained secret. Fall back
+    to DATABASE_URL verbatim so local docker-compose and CI keep working
+    unchanged.
+    """
+    host = os.environ.get("DB_HOST")
+    user = os.environ.get("DB_USERNAME")
+    pwd = os.environ.get("DB_PASSWORD")
+    name = os.environ.get("DB_NAME")
+    if host and user and pwd and name:
+        port = os.environ.get("DB_PORT", "5432")
+        sslmode = os.environ.get("DB_SSLMODE")
+        query = f"?sslmode={sslmode}" if sslmode else ""
+        return f"postgresql://{user}:{quote(pwd, safe='')}@{host}:{port}/{name}{query}"
+    return os.environ.get("DATABASE_URL")
+
+
+DATABASE_URL = _build_database_url()
 DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "10"))
 DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "20"))
 

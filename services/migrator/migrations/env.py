@@ -1,11 +1,11 @@
 """Alembic environment configuration."""
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from utils.constants import DATABASE_URL
 # Import all models to register them with the Base
 from utils.db.base import Base
 from utils.db.models import (  # noqa: F401
@@ -62,8 +62,13 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    """Get database URL from environment."""
-    url = os.environ.get("DATABASE_URL", "")
+    """Get database URL from shared utils.constants.
+
+    In prod this is built from component env vars (DB_HOST, DB_USERNAME,
+    DB_PASSWORD pulled from the RDS-managed secret, etc.). Locally it
+    falls back to the DATABASE_URL env var set in docker-compose.
+    """
+    url = DATABASE_URL or ""
     # Convert asyncpg URL to psycopg2 for sync operations
     if url.startswith("postgresql+asyncpg://"):
         url = url.replace("postgresql+asyncpg://", "postgresql://")

@@ -67,9 +67,41 @@ variable "api_target_group_arn" {
   description = "ALB target group ARN for API"
 }
 
+variable "db_master_secret_arn" {
+  type        = string
+  description = "ARN of the RDS-managed Secrets Manager secret containing username/password JSON. DB_PASSWORD is pulled from the 'password' JSON key at task start, which eliminates drift between RDS and a separately-maintained DATABASE_URL secret."
+}
+
 variable "database_url_secret_arn" {
   type        = string
-  description = "Secrets Manager ARN for DATABASE_URL"
+  description = "Legacy Secrets Manager ARN holding the full DATABASE_URL. Kept alongside the new DB_* env vars for one migration cycle so pre-refactor container images (which read DATABASE_URL directly from env) keep working during the rollout. Remove once all deployed images ship the utils.constants refactor that builds DATABASE_URL from components."
+}
+
+variable "db_host" {
+  type        = string
+  description = "RDS hostname (no port)"
+}
+
+variable "db_port" {
+  type        = number
+  default     = 5432
+  description = "RDS port"
+}
+
+variable "db_name" {
+  type        = string
+  description = "PostgreSQL database name"
+}
+
+variable "db_username" {
+  type        = string
+  description = "PostgreSQL username"
+}
+
+variable "db_sslmode" {
+  type        = string
+  default     = "require"
+  description = "libpq sslmode. RDS prod parameter group sets rds.force_ssl=1, so this must be 'require' or stronger for the connection to succeed."
 }
 
 variable "auth0_secret_arn" {
@@ -209,10 +241,16 @@ resource "aws_ecs_task_definition" "api" {
         { name = "CELERY_BROKER_URL", value = "sqs://" },
         { name = "CELERY_QUEUE_PREFIX", value = var.celery_queue_prefix },
         { name = "OPENAI_MODEL", value = "gpt-4o-mini" },
+        { name = "DB_HOST", value = var.db_host },
+        { name = "DB_PORT", value = tostring(var.db_port) },
+        { name = "DB_NAME", value = var.db_name },
+        { name = "DB_USERNAME", value = var.db_username },
+        { name = "DB_SSLMODE", value = var.db_sslmode },
       ]
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
+        { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "AUTH0_DOMAIN", valueFrom = "${var.auth0_secret_arn}:domain::" },
         { name = "AUTH0_CLIENT_ID", valueFrom = "${var.auth0_secret_arn}:client_id::" },
         { name = "AUTH0_AUDIENCE", valueFrom = "${var.auth0_secret_arn}:audience::" },
@@ -318,10 +356,16 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },
         { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
         { name = "OPENAI_MODEL", value = "gpt-4o-mini" },
+        { name = "DB_HOST", value = var.db_host },
+        { name = "DB_PORT", value = tostring(var.db_port) },
+        { name = "DB_NAME", value = var.db_name },
+        { name = "DB_USERNAME", value = var.db_username },
+        { name = "DB_SSLMODE", value = var.db_sslmode },
       ]
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
+        { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
         { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
         { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
       ]
@@ -397,10 +441,16 @@ resource "aws_ecs_task_definition" "migrator" {
 
       environment = [
         { name = "ENVIRONMENT", value = var.environment },
+        { name = "DB_HOST", value = var.db_host },
+        { name = "DB_PORT", value = tostring(var.db_port) },
+        { name = "DB_NAME", value = var.db_name },
+        { name = "DB_USERNAME", value = var.db_username },
+        { name = "DB_SSLMODE", value = var.db_sslmode },
       ]
 
       secrets = [
         { name = "DATABASE_URL", valueFrom = var.database_url_secret_arn },
+        { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
       ]
 
       logConfiguration = {

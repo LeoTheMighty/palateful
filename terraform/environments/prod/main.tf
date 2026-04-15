@@ -100,7 +100,13 @@ module "iam" {
   ecr_repository_arn        = module.ecr.repository_arn
   create_ecs_roles          = true
   sqs_queue_arns            = [module.sqs.celery_queue_arn, module.sqs.celery_dlq_arn]
-  secrets_arns              = concat(module.secrets.all_secret_arns, ["arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"])
+  secrets_arns = concat(
+    module.secrets.all_secret_arns,
+    [
+      "arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N",
+      module.rds.db_master_secret_arn,
+    ],
+  )
 }
 
 # ─── Database ───
@@ -170,28 +176,45 @@ module "alb" {
 module "ecs" {
   source = "../../modules/ecs"
 
-  environment             = local.environment
-  project                 = local.project
-  aws_region              = var.aws_region
-  subnet_ids              = module.vpc.public_subnet_ids
-  security_group_ids      = [module.vpc.ecs_security_group_id]
-  execution_role_arn      = module.iam.ecs_execution_role_arn
-  api_task_role_arn       = module.iam.ecs_api_task_role_arn
-  worker_task_role_arn    = module.iam.ecs_worker_task_role_arn
-  migrator_task_role_arn  = module.iam.ecs_migrator_task_role_arn
-  api_image               = "${module.ecr.additional_repository_urls["api"]}:${var.api_image_tag}"
-  worker_image            = "${module.ecr.additional_repository_urls["worker"]}:${var.worker_image_tag}"
-  migrator_image          = "${module.ecr.additional_repository_urls["migrator"]}:${var.migrator_image_tag}"
-  api_target_group_arn    = module.alb.api_target_group_arn
+  environment            = local.environment
+  project                = local.project
+  aws_region             = var.aws_region
+  subnet_ids             = module.vpc.public_subnet_ids
+  security_group_ids     = [module.vpc.ecs_security_group_id]
+  execution_role_arn     = module.iam.ecs_execution_role_arn
+  api_task_role_arn      = module.iam.ecs_api_task_role_arn
+  worker_task_role_arn   = module.iam.ecs_worker_task_role_arn
+  migrator_task_role_arn = module.iam.ecs_migrator_task_role_arn
+  api_image              = "${module.ecr.additional_repository_urls["api"]}:${var.api_image_tag}"
+  worker_image           = "${module.ecr.additional_repository_urls["worker"]}:${var.worker_image_tag}"
+  migrator_image         = "${module.ecr.additional_repository_urls["migrator"]}:${var.migrator_image_tag}"
+  api_target_group_arn   = module.alb.api_target_group_arn
+
+  # DB credentials: ECS pulls DB_PASSWORD directly from the RDS-managed
+  # Secrets Manager secret at task start. Host/port/name/user are plain
+  # env vars because they're not secret. This kills the drift vector we
+  # hit when DATABASE_URL lived in a separately-maintained secret.
+  #
+  # The legacy DATABASE_URL secret is still wired in for one migration
+  # cycle because pre-refactor container images read it directly; the
+  # new utils.constants prefers DB_* components when present, so new
+  # images silently ignore DATABASE_URL. Drop database_url_secret_arn
+  # once every deployed image ships the constants.py refactor.
+  db_master_secret_arn    = module.rds.db_master_secret_arn
+  db_host                 = module.rds.db_address
+  db_port                 = module.rds.db_port
+  db_name                 = module.rds.db_name
+  db_username             = module.rds.db_username
   database_url_secret_arn = module.secrets.database_url_secret_arn
-  auth0_secret_arn        = module.secrets.auth0_secret_arn
-  openai_secret_arn       = module.secrets.openai_secret_arn
-  celery_queue_prefix     = module.sqs.celery_queue_prefix
-  parser_inputs_bucket    = module.s3.parser_inputs_bucket_name
-  parser_outputs_bucket   = module.s3.parser_outputs_bucket_name
-  batch_job_queue         = module.batch.job_queue_name
-  batch_job_definition    = module.batch.job_definition_name
-  firebase_secret_arn     = "arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"
+
+  auth0_secret_arn      = module.secrets.auth0_secret_arn
+  openai_secret_arn     = module.secrets.openai_secret_arn
+  celery_queue_prefix   = module.sqs.celery_queue_prefix
+  parser_inputs_bucket  = module.s3.parser_inputs_bucket_name
+  parser_outputs_bucket = module.s3.parser_outputs_bucket_name
+  batch_job_queue       = module.batch.job_queue_name
+  batch_job_definition  = module.batch.job_definition_name
+  firebase_secret_arn   = "arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"
 }
 
 # ─── Outputs ───
