@@ -4,8 +4,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
-
 from utils.constants import DATABASE_URL
+
 # Import all models to register them with the Base
 from utils.db.base import Base
 from utils.db.models import (  # noqa: F401
