@@ -2584,3 +2584,265 @@ class TestSkipImportItem:
         assert job.succeeded_items == 1
         assert job.failed_items == 1
         assert job.status == "completed"
+
+
+class TestRetryImportItem:
+    """Tests for POST /v1/import-items/{item_id}/retry."""
+
+    def _setup_retryable_item(
+        self,
+        mock_db,
+        mock_user,
+        *,
+        last_successful_stage=None,
+        item_status="failed",
+        job_status="failed",
+        role="owner",
+        owner_user_id=None,
+    ):
+        """Build a retryable item/job/membership triple and wire it into mock_db."""
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status=item_status,
+            last_successful_stage=last_successful_stage,
+            retry_count=0,
+            error_message="prior error",
+            error_code="PRIOR_ERROR",
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=owner_user_id or str(mock_user.id),
+            recipe_book_id=book_id,
+            status=job_status,
+            error_message="job failed",
+            completed_at="2026-04-15T12:00:00Z",
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role=role,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        return item, job, item_id
+
+    # ---- not found / permission gates ------------------------------------
+
+    def test_retry_item_not_found(self, client, mock_db, mock_user):
+        response = client.post("/v1/import-items/nonexistent/retry")
+        assert response.status_code == 404
+
+    def test_retry_job_not_found(self, client, mock_db, mock_user):
+        item_id = "test-item-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id="missing-job-id",
+            status="failed",
+        )
+        from utils.models.import_item import ImportItem
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 404
+
+    def test_retry_forbidden_no_membership(self, client, mock_db, mock_user):
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id, import_job_id=job_id, status="failed"
+        )
+        job = MockImportJob(
+            id=job_id, user_id="other-user", recipe_book_id=book_id
+        )
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 403
+
+    def test_retry_forbidden_viewer_role(self, client, mock_db, mock_user):
+        self._setup_retryable_item(
+            mock_db, mock_user, role="viewer", owner_user_id="other-user"
+        )
+        response = client.post("/v1/import-items/test-item-id/retry")
+        assert response.status_code == 403
+
+    def test_retry_rejected_non_failed_status(
+        self, client, mock_db, mock_user
+    ):
+        """Item and job both non-failed → 400."""
+        self._setup_retryable_item(
+            mock_db, mock_user,
+            item_status="completed",
+            job_status="completed",
+        )
+        response = client.post("/v1/import-items/test-item-id/retry")
+        assert response.status_code == 400
+
+    # ---- state machine: one test per stage marker ------------------------
+
+    @patch("api.v1.import_job.retry_import_item.parse_source_task")
+    def test_retry_null_stage_dispatches_parse_source_task(
+        self, mock_parse, client, mock_db, mock_user
+    ):
+        item, job, item_id = self._setup_retryable_item(
+            mock_db, mock_user, last_successful_stage=None
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dispatched_task"] == "parse_source_task"
+        assert data["resumed_from_stage"] == "start"
+        assert data["status"] == "pending"
+
+        # State reset on the item and the parent job.
+        assert item.status == "pending"
+        assert item.error_message is None
+        assert item.error_code is None
+        assert item.retry_count == 1
+        assert job.status == "processing"
+        assert job.error_message is None
+        assert job.completed_at is None
+
+        mock_parse.delay.assert_called_once_with(str(job.id))
+
+    @patch("api.v1.import_job.retry_import_item.extract_task")
+    def test_retry_parsed_stage_dispatches_extract_task(
+        self, mock_extract, client, mock_db, mock_user
+    ):
+        item, _job, item_id = self._setup_retryable_item(
+            mock_db, mock_user, last_successful_stage="parsed"
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dispatched_task"] == "extract_recipe_task"
+        assert data["resumed_from_stage"] == "parsed"
+        assert data["status"] == "extracting"
+        assert item.status == "extracting"
+        assert item.retry_count == 1
+        mock_extract.delay.assert_called_once_with(
+            item_ids=[item_id], user_id=str(mock_user.id)
+        )
+
+    @patch("api.v1.import_job.retry_import_item.match_ingredients_task")
+    def test_retry_extracted_stage_dispatches_match_task(
+        self, mock_match, client, mock_db, mock_user
+    ):
+        item, _job, item_id = self._setup_retryable_item(
+            mock_db, mock_user, last_successful_stage="extracted"
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dispatched_task"] == "match_ingredients_task"
+        assert data["resumed_from_stage"] == "extracted"
+        assert data["status"] == "matching"
+        assert item.status == "matching"
+        mock_match.delay.assert_called_once_with(
+            item_id=item_id, user_id=str(mock_user.id)
+        )
+
+    @patch("api.v1.import_job.retry_import_item.create_recipe_task")
+    def test_retry_matched_stage_dispatches_create_recipe_task(
+        self, mock_create, client, mock_db, mock_user
+    ):
+        item, _job, item_id = self._setup_retryable_item(
+            mock_db, mock_user, last_successful_stage="matched"
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dispatched_task"] == "create_recipe_task"
+        assert data["resumed_from_stage"] == "matched"
+        assert data["status"] == "approved"
+        assert item.status == "approved"
+        mock_create.delay.assert_called_once_with(
+            item_id=item_id, user_id=str(mock_user.id)
+        )
+
+    @patch("api.v1.import_job.retry_import_item.extract_task")
+    def test_retry_accepted_when_job_failed_but_item_mid_pipeline(
+        self, mock_extract, client, mock_db, mock_user
+    ):
+        """Sweeper case: item.status is still 'extracting', but parent job
+        was marked failed by the sweeper. Retry must be accepted and resume
+        based on last_successful_stage."""
+        item, _job, item_id = self._setup_retryable_item(
+            mock_db,
+            mock_user,
+            item_status="extracting",
+            job_status="failed",
+            last_successful_stage="parsed",
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        assert item.status == "extracting"
+        mock_extract.delay.assert_called_once()
+
+    @patch("api.v1.import_job.retry_import_item.parse_source_task")
+    def test_retry_item_failed_but_job_processing_does_not_touch_job(
+        self, mock_parse, client, mock_db, mock_user
+    ):
+        """Retry on a failed item whose parent job is still 'processing'
+        must not flip the job status — item-level retry is sufficient."""
+        item, job, item_id = self._setup_retryable_item(
+            mock_db,
+            mock_user,
+            item_status="failed",
+            job_status="processing",
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        # Item reset
+        assert item.status == "pending"
+        assert item.retry_count == 1
+        # Job status UNTOUCHED — still processing
+        assert job.status == "processing"
+
+        mock_parse.delay.assert_called_once_with(str(job.id))
+
+    @patch("api.v1.import_job.retry_import_item.parse_source_task")
+    def test_retry_unknown_stage_marker_falls_back_to_full_restart(
+        self, mock_parse, client, mock_db, mock_user
+    ):
+        """An unknown / forward-compat stage value should fall back to a
+        full restart rather than crashing the endpoint."""
+        item, job, item_id = self._setup_retryable_item(
+            mock_db,
+            mock_user,
+            last_successful_stage="this-stage-does-not-exist",
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["dispatched_task"] == "parse_source_task"
+        assert data["status"] == "pending"
+        assert item.status == "pending"
+
+        mock_parse.delay.assert_called_once_with(str(job.id))

@@ -1,6 +1,6 @@
 # Story MVP.6: Retry Endpoint + Stage-Aware Dispatch
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -107,8 +107,25 @@ Current state:
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `npx nx run api:test` — 1241 passed, 100.00% coverage
+- `npx nx run api:lint` — clean
 
 ### Completion Notes List
 
+- Refactored dispatch from if/elif chain to a module-level `_STAGE_PLAN` lookup dict for cleaner code and cleaner branch coverage.
+- The endpoint does NOT create a `user_activity` row on retry; mvp-8 handles user feedback on the frontend.
+- Unknown `last_successful_stage` values fall back to a full restart via `_FULL_RESTART_PLAN`, making the endpoint forward-compatible with future stage markers.
+- Job status is only flipped back to `processing` when it was previously `failed` — retry on a failed item whose parent job is still `processing` leaves the job untouched (tested).
+- Route is `POST /v1/import-items/{item_id}/retry` (following existing `/import-items` convention), not `/imports/items/{id}/retry` as originally written in the story draft.
+
 ### File List
+
+- `services/api/src/api/v1/import_job/retry_import_item.py` (new)
+- `services/api/src/api/v1/import_job/__init__.py` (modified)
+- `services/api/src/routers/v1/import_router.py` (modified)
+- `services/api/tests/test_import.py` (modified — appended `TestRetryImportItem` class with 12 tests)
+- `_bmad-output/implementation-artifacts/mvp-6-qa-walkthrough.md` (new)

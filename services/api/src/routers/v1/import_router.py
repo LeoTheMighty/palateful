@@ -7,6 +7,7 @@ from api.v1.import_job import (
     GetImportJob,
     ListImportItems,
     ListImportJobs,
+    RetryImportItem,
     SkipImportItem,
     StartImport,
     UpdateImportItem,
@@ -153,6 +154,20 @@ async def skip_import_item(
 ):
     """Skip import item (don't import this recipe)."""
     return SkipImportItem.call(
+        item_id=item_id,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/import-items/{item_id}/retry")
+async def retry_import_item(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Retry a failed import item from its last successful stage."""
+    return RetryImportItem.call(
         item_id=item_id,
         user=user,
         database=database,

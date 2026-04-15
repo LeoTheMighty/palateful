@@ -6,6 +6,7 @@ from api.v1.import_job.get_import_item import GetImportItem
 from api.v1.import_job.get_import_job import GetImportJob
 from api.v1.import_job.list_import_items import ListImportItems
 from api.v1.import_job.list_import_jobs import ListImportJobs
+from api.v1.import_job.retry_import_item import RetryImportItem
 from api.v1.import_job.skip_import_item import SkipImportItem
 from api.v1.import_job.start_import import StartImport
 from api.v1.import_job.update_import_item import UpdateImportItem
@@ -18,6 +19,7 @@ __all__ = [
     "GetImportItem",
     "UpdateImportItem",
     "ApproveImportItem",
+    "RetryImportItem",
     "SkipImportItem",
     "CancelImportJob",
 ]
