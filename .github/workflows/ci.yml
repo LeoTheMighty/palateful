@@ -113,6 +113,12 @@ jobs:
           fetch-depth: 0
           clean: false
 
+      - name: Install dependencies
+        run: |
+          poetry install --with dev
+          poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
+          poetry install
+
       - name: Run lint
         run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t lint --parallel=3
 

@@ -100,6 +100,7 @@ reports/
 
 # Claude Code per-project state (memory, session data)
 .claude/projects/
+.claude/scheduled_tasks.lock
 
 # Alembic
 alembic/versions/__pycache__/
