@@ -10,6 +10,7 @@ Batch mode:
   Manifest format: {"items": [{"input_s3_uri": "...", "output_s3_uri": "..."}, ...]}
 """
 
+import gc
 import io
 import json
 import os
@@ -46,7 +47,17 @@ def load_model(model_name: str):
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     print(f"Loading model {model_name} on {device} with {dtype}...")
 
-    processor = AutoProcessor.from_pretrained(model_name, use_fast=False, trust_remote_code=True)
+    # Qwen2-VL-style token budget: each 28x28 patch is one visual token.
+    # 1280*28*28 ≈ 1M pixels caps KV cache so large images fit alongside the model on a 16GB GPU.
+    min_pixels = int(os.environ.get("MIN_PIXELS", 256 * 28 * 28))
+    max_pixels = int(os.environ.get("MAX_PIXELS", 1280 * 28 * 28))
+    processor = AutoProcessor.from_pretrained(
+        model_name,
+        use_fast=False,
+        trust_remote_code=True,
+        min_pixels=min_pixels,
+        max_pixels=max_pixels,
+    )
     model = ModelClass.from_pretrained(
         model_name,
         dtype=dtype,
@@ -86,10 +97,15 @@ def run_ocr(model, processor, device, image: Image.Image) -> str:
             do_sample=False,
         )
 
-    # Strip input tokens from output
     input_len = inputs["input_ids"].shape[1]
     output_ids = generated_ids[:, input_len:]
-    return processor.batch_decode(output_ids, skip_special_tokens=True)[0]
+    result = processor.batch_decode(output_ids, skip_special_tokens=True)[0]
+
+    del inputs, generated_ids, output_ids
+    if device == "cuda":
+        torch.cuda.empty_cache()
+
+    return result
 
 
 def process_single(s3, model, processor, device, model_name, input_uri, output_uri):
@@ -101,7 +117,6 @@ def process_single(s3, model, processor, device, model_name, input_uri, output_u
     response = s3.get_object(Bucket=input_bucket, Key=input_key)
     image_bytes = response["Body"].read()
 
-    # Open and convert
     warnings = []
     image = Image.open(io.BytesIO(image_bytes))
     if image.mode != "RGB":
@@ -180,6 +195,10 @@ def main():
         except Exception as e:
             print(f"  FAILED: {e}")
             failed += 1
+        finally:
+            gc.collect()
+            if device == "cuda":
+                torch.cuda.empty_cache()
             # Write error output so the caller knows what happened
             try:
                 error_output = {

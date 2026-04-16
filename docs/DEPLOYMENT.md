@@ -77,6 +77,110 @@ post-clone hook (`app/ios/ci_scripts/ci_post_clone.sh`) installs
 Flutter and stages `.env.prod` as `.env` before `xcodebuild` runs, so
 CI builds ship with prod config the same way the local script does.
 
+## Parser (AWS Batch, GPU)
+
+The parser runs on AWS Batch with a GPU instance, not ECS, so it is
+**not** part of `bin/prod-deploy`. Deploying means pushing a new image
+to ECR and making sure Batch actually picks it up — the second half is
+where things go wrong.
+
+```bash
+AWS_REGION=us-east-1 npx nx run parser:push
+```
+
+Builds `services/parser/Dockerfile.batch`, tags it `:latest`, and
+pushes to the `palateful-parser` ECR repository. Takes ~5–10 min;
+the HunyuanOCR weights and CUDA base image make this a fat build.
+
+### The revision trap
+
+Batch job definitions are **versioned revisions**, and every
+`register-job-definition` call creates a new one. Submitting a job by
+name alone (which is what `libraries/utils/utils/services/aws.py`
+does) always runs the **highest-numbered active revision**.
+
+Terraform owns rev N with `image = ":latest"`. If anyone runs
+`aws batch register-job-definition` out of band — a debugging session,
+a one-off script — that creates rev N+1, which becomes the default,
+and terraform has no idea. If that rev pins a digest instead of
+`:latest`, every subsequent `parser:push` is silently ignored: the
+image lands in ECR but Batch keeps running the old digest.
+
+**Always check after deploying**:
+
+```bash
+aws batch describe-job-definitions \
+  --job-definition-name palateful-parser-job-prod \
+  --status ACTIVE \
+  --query 'jobDefinitions[].{rev:revision,image:containerProperties.image}' \
+  --output table
+```
+
+The highest-numbered row **must** point to `palateful-parser:latest`,
+not a digest. If it doesn't:
+
+1. Fetch the terraform-owned revision (the one that still has
+   `:latest`) as a JSON template.
+2. `aws batch register-job-definition --cli-input-json file://...` to
+   create a fresh revision with the same config.
+3. `aws batch deregister-job-definition` on the stale digest-pinned
+   revision so nothing reuses it.
+
+Never pin a digest in a manually registered revision unless you're
+deliberately rolling back and you `deregister` it immediately after.
+
+### Verify the new image actually ran
+
+Pushing to ECR is necessary but not sufficient — EC2 instances in the
+Batch compute environment may cache images. Confirm a job has run on
+the new code by checking the latest log stream:
+
+```bash
+aws logs describe-log-streams \
+  --log-group-name /aws/batch/palateful-parser-prod \
+  --order-by LastEventTime --descending --max-items 1 \
+  --query 'logStreams[0].logStreamName' --output text
+```
+
+Then `aws logs get-log-events` on that stream and look for whatever
+distinguishing output your change added. If the old behavior persists
+byte-for-byte (same allocation sizes, same warnings), you're still on
+the old image.
+
+### Rollback
+
+Find the previous working image digest in ECR, then register a new
+revision pinning that digest and deregister the broken one. This is
+the only legitimate reason to pin a digest in a Batch job definition
+— and clean it up afterward.
+
+### Known gotchas
+
+- **Batch job role needs `s3:GetObject` on both the inputs and
+  outputs buckets.** The outputs bucket holds the manifest the
+  container reads at startup. Terraform: `terraform/modules/iam/main.tf`
+  under `aws_iam_role_policy.batch_job_s3`. AccessDenied on the
+  manifest surfaces to users as the opaque "Photo OCR failed,
+  essential container in a task exited".
+- **CUDA OOM on large images.** The 16 GB GPU has room for the
+  ~7 GB bf16 model plus roughly 6 GB of activations/KV cache.
+  Images much above ~1 M pixels can blow that budget on the second
+  item in a multi-image manifest because residual allocations from
+  the first item aren't released. The parser code now calls
+  `torch.cuda.empty_cache()` between items; if OOM returns, the next
+  lever is capping image resolution in `process_single`.
+- **`max_pixels` / `min_pixels` kwargs on `AutoProcessor`** are a
+  Qwen2-VL convention. HunyuanOCR inherits the architecture via
+  `trust_remote_code` but the custom processor **may silently ignore
+  them** — verify with a log-visible image resize, not by trusting
+  the kwargs to take effect.
+- **`:latest` caching.** Batch's ECS agent pulls `:latest` fresh when
+  an instance has no cached copy, which is most of the time since
+  the compute environment scales to zero between jobs. But if you
+  see stale behavior right after a push, a stuck EC2 instance is one
+  possible culprit — force a new instance by scaling the compute
+  environment.
+
 ## Terraform (infra-only changes)
 
 For changes that don't need a new container image:
