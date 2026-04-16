@@ -732,12 +732,22 @@ jobs:
           aws ecs update-service --cluster palateful-prod --service palateful-api-prod --force-new-deployment
           echo "API deployment triggered — waiting for stable..."
           aws ecs wait services-stable --cluster palateful-prod --services palateful-api-prod
-          # services-stable returns 0 even when the circuit breaker rolled
-          # back (it's "stable" on the old revision). Check rolloutState
-          # explicitly to catch rollbacks.
-          STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
-            --query 'services[0].deployments[?status==`PRIMARY`][0].rolloutState' --output text)
-          echo "API primary deployment rolloutState=$STATE"
+          # services-stable returns as soon as runningCount == desiredCount,
+          # but the deployment's rolloutState can sit at IN_PROGRESS for
+          # another ~90s while ECS closes its stability window. Poll until
+          # rolloutState settles (COMPLETED == success, FAILED == rollback).
+          # Use deployments[0] (always PRIMARY) — the `[?status=='PRIMARY']`
+          # filter sometimes returns [] mid-transition when taskSets flip.
+          STATE=""
+          for _ in $(seq 1 30); do
+            STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
+              --query 'services[0].deployments[0].rolloutState' --output text)
+            echo "API primary deployment rolloutState=$STATE"
+            case "$STATE" in
+              COMPLETED|FAILED) break ;;
+            esac
+            sleep 10
+          done
           if [ "$STATE" != "COMPLETED" ]; then
             echo "::error::API deployment did NOT complete (rolloutState=$STATE). Deployment was likely rolled back by the circuit breaker. Check ECS service events and CloudWatch logs."
             aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
@@ -751,9 +761,17 @@ jobs:
           aws ecs update-service --cluster palateful-prod --service palateful-worker-prod --force-new-deployment
           echo "Worker deployment triggered — waiting for stable..."
           aws ecs wait services-stable --cluster palateful-prod --services palateful-worker-prod
-          STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
-            --query 'services[0].deployments[?status==`PRIMARY`][0].rolloutState' --output text)
-          echo "Worker primary deployment rolloutState=$STATE"
+          # Poll rolloutState until it settles — see API step above for why.
+          STATE=""
+          for _ in $(seq 1 30); do
+            STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
+              --query 'services[0].deployments[0].rolloutState' --output text)
+            echo "Worker primary deployment rolloutState=$STATE"
+            case "$STATE" in
+              COMPLETED|FAILED) break ;;
+            esac
+            sleep 10
+          done
           if [ "$STATE" != "COMPLETED" ]; then
             echo "::error::Worker deployment did NOT complete (rolloutState=$STATE). Deployment was likely rolled back by the circuit breaker."
             aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
