@@ -280,6 +280,12 @@ jobs:
           poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
           poetry install
 
+      # migrator:check-models depends on migrate-test, which runs `poetry run
+      # alembic` inside services/migrator — that needs the migrator's own
+      # per-service venv populated (alembic isn't in the root venv).
+      - name: Install migrator dependencies
+        run: npx nx run migrator:install
+
       - name: Check models match migrations
         run: npx nx run migrator:check-models
 
