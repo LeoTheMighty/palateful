@@ -189,7 +189,7 @@ development_status:
   mcp-1-mcp-infrastructure-server-auth-mount: done
   mcp-2-core-agent-tools: done
   mcp-3-recipe-crud-ingredient-resolution: done
-  mcp-4-import-ocr-tools: in-progress
-  mcp-5-recipe-books-shopping-lists-meal-planning: backlog
+  mcp-4-import-ocr-tools: done
+  mcp-5-recipe-books-shopping-lists-meal-planning: in-progress
   mcp-6-search-tools-integration-testing: backlog
   epic-mcp-retrospective: optional
