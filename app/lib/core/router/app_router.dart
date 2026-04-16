@@ -35,6 +35,8 @@ import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
 import '../../features/shopping_cart/screens/shopping_list_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
+import '../../features/pantry/screens/pantry_editor_screen.dart';
+import '../../features/pantry/screens/pantry_list_screen.dart';
 import '../../features/invitations/invitations_screen.dart';
 import '../../features/invitations/invite_link_preview_screen.dart';
 import '../../features/recipes/public_recipe_screen.dart';
@@ -417,6 +419,18 @@ GoRouter get appRouter {
               GoRoute(
                 path: '/search',
                 builder: (context, state) => const SearchScreen(),
+              ),
+              GoRoute(
+                path: '/pantry',
+                builder: (context, state) => const PantryListScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'edit/:ingredientId',
+                    builder: (context, state) => PantryEditorScreen(
+                      ingredientId: state.pathParameters['ingredientId']!,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

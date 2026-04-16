@@ -539,6 +539,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(width: 8),
 
+          // Pantry Button
+          CircleIconButton(
+            icon: Icons.kitchen_outlined,
+            onPressed: () => context.push('/pantry'),
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            tooltip: 'Pantry',
+          ),
+          const SizedBox(width: 8),
+
           // AI Chat Button
           CircleIconButton(
             icon: Icons.chat_bubble_outline,
