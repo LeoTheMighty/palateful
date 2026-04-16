@@ -30,6 +30,12 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
   String? _error;
   String? _errorDetail;
 
+  /// Escape hatch for users stuck on a bad token: logout clears
+  /// credentials and the router's refreshListenable redirects to /login.
+  Future<void> _signOutAndReturnToLogin() async {
+    await _authService.logout();
+  }
+
   Future<void> _selectStartMethod(String method) async {
     setState(() {
       _isLoading = true;
@@ -133,6 +139,12 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
               const SizedBox(height: 32),
               if (_error != null) ...[
                 ErrorBanner(message: _error!, detail: _errorDetail),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _signOutAndReturnToLogin,
+                  icon: const Icon(Icons.logout, size: 18),
+                  label: const Text('Back to sign in'),
+                ),
                 const SizedBox(height: 16),
               ],
               if (_isLoading)

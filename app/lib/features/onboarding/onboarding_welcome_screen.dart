@@ -80,6 +80,22 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
     context.push('/onboarding/start', extra: {'name': name});
   }
 
+  /// Escape hatch for users stuck on a bad token (e.g. Auth0 issuer
+  /// mismatch): logout clears credentials and the router's
+  /// `refreshListenable` on AuthService redirects to `/login`.
+  Future<void> _signOutAndReturnToLogin() async {
+    await _authService.logout();
+  }
+
+  Future<void> _retryLoad() async {
+    setState(() {
+      _error = null;
+      _errorDetail = null;
+      _isLoading = true;
+    });
+    await _loadUserData();
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -151,6 +167,26 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
               const SizedBox(height: 32),
               if (_error != null) ...[
                 ErrorBanner(message: _error!, detail: _errorDetail),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _retryLoad,
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Try again'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _signOutAndReturnToLogin,
+                        icon: const Icon(Icons.logout, size: 18),
+                        label: const Text('Back to sign in'),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 16),
               ],
               Text(
