@@ -136,6 +136,7 @@ class AWSService:
         job_name: str,
         items: list[dict[str, str]],
         manifest_s3_key: str,
+        extra_environment: dict[str, str] | None = None,
     ) -> str:
         """
         Submit a multi-image parser job using a batch manifest.
@@ -147,6 +148,8 @@ class AWSService:
             job_name: Name for the Batch job.
             items: List of dicts with "input_s3_key" and "output_s3_key".
             manifest_s3_key: S3 key where the manifest will be stored.
+            extra_environment: Additional env vars to pass to the container
+                (e.g. PARSER_BATCH_ID, API_CALLBACK_URL for the completion callback).
 
         Returns:
             Batch job ID.
@@ -171,15 +174,17 @@ class AWSService:
 
         manifest_uri = f"s3://{self.parser_outputs_bucket}/{manifest_s3_key}"
 
+        environment = [{"name": "BATCH_MANIFEST_URI", "value": manifest_uri}]
+        if extra_environment:
+            for key, value in extra_environment.items():
+                if value is not None:
+                    environment.append({"name": key, "value": str(value)})
+
         response = self._batch.submit_job(
             jobName=job_name,
             jobQueue=self.batch_job_queue,
             jobDefinition=self.batch_job_definition,
-            containerOverrides={
-                "environment": [
-                    {"name": "BATCH_MANIFEST_URI", "value": manifest_uri},
-                ],
-            },
+            containerOverrides={"environment": environment},
         )
 
         return response["jobId"]

@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     batch_job_queue: str = ""
     batch_job_definition: str = ""
 
+    # Self URL used by the Batch container to POST completion callbacks.
+    # Set via API_BASE_URL env var on the ECS task. Empty in dev/local, in which
+    # case CreateParserBatch falls back to polling-only mode.
+    api_base_url: str = ""
+
     @field_validator("auth0_domain", "auth0_audience", "database_url")
     @classmethod
     def require_non_empty(cls, v: str, info) -> str:

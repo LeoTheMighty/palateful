@@ -134,6 +134,12 @@ variable "batch_job_definition" {
   description = "Batch job definition name"
 }
 
+variable "api_base_url" {
+  type        = string
+  default     = ""
+  description = "Public base URL of the API, used by the parser Batch container to POST completion callbacks. Empty disables the callback path and relies on polling only."
+}
+
 variable "cors_origins" {
   type        = string
   default     = "[\"http://localhost:3000\",\"http://localhost:8080\",\"https://palateful.app\",\"https://www.palateful.app\"]"
@@ -229,6 +235,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "AWS_REGION", value = var.aws_region },
         { name = "LOGGING_LEVEL", value = "INFO" },
         { name = "CORS_ORIGINS", value = var.cors_origins },
+        { name = "API_BASE_URL", value = var.api_base_url },
         { name = "PARSER_INPUTS_BUCKET", value = var.parser_inputs_bucket },
         { name = "PARSER_OUTPUTS_BUCKET", value = var.parser_outputs_bucket },
         { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },

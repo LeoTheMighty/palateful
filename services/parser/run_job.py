@@ -15,6 +15,8 @@ import io
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 import boto3
@@ -223,8 +225,37 @@ def main():
     print(f"\n{'=' * 50}")
     print(f"Done. {succeeded} succeeded, {failed} failed out of {len(items)} items.")
 
+    _notify_api_callback(succeeded=succeeded, failed=failed)
+
     if failed > 0 and succeeded == 0:
         sys.exit(1)
+
+
+def _notify_api_callback(succeeded: int, failed: int) -> None:
+    """POST a completion callback to the API so downstream processing starts
+    immediately instead of waiting for the polling watcher. Best-effort:
+    any failure here is logged and swallowed because the polling watcher is
+    still running as a safety net.
+    """
+    callback_url = os.environ.get("API_CALLBACK_URL")
+    if not callback_url:
+        print("No API_CALLBACK_URL set; skipping completion callback")
+        return
+
+    payload = json.dumps({"succeeded": succeeded, "failed": failed}).encode("utf-8")
+    req = urllib.request.Request(
+        callback_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            print(f"Completion callback: {callback_url} -> {resp.status}")
+    except urllib.error.HTTPError as e:
+        print(f"Completion callback HTTP error {e.code}: {e.reason}")
+    except Exception as e:
+        print(f"Completion callback failed: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":

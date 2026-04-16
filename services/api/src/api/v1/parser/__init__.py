@@ -1,5 +1,6 @@
 """Parser API endpoints."""
 
+from api.v1.parser.complete_parser_batch import CompleteParserBatch
 from api.v1.parser.create_parser_batch import CreateParserBatch
 from api.v1.parser.get_parser_batch import GetParserBatch
 from api.v1.parser.get_parser_job import GetParserJob
@@ -16,4 +17,5 @@ __all__ = [
     "CreateParserBatch",
     "GetParserBatch",
     "ListParserBatches",
+    "CompleteParserBatch",
 ]

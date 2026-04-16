@@ -1,6 +1,7 @@
 """Parser endpoints router."""
 
 from api.v1.parser import (
+    CompleteParserBatch,
     CreateParserBatch,
     GetParserBatch,
     GetParserJob,
@@ -113,5 +114,24 @@ async def get_parser_batch(
     return GetParserBatch.call(
         batch_id=batch_id,
         user=user,
+        database=database,
+    )
+
+
+@parser_router.post("/batches/{batch_id}/complete")
+async def complete_parser_batch(
+    batch_id: str,
+    params: CompleteParserBatch.Params,
+    database: Database = Depends(get_database),
+):
+    """Callback invoked by the parser Batch container when it finishes.
+
+    Unauthenticated by design: the handler re-queries AWS Batch for the
+    authoritative job state before mutating anything, so untrusted callers
+    cannot force a status transition.
+    """
+    return CompleteParserBatch.call(
+        batch_id=batch_id,
+        params=params,
         database=database,
     )

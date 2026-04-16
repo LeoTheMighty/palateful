@@ -81,10 +81,23 @@ class CreateParserBatch(Endpoint):
             f"manifests/{self.user.id}/{timestamp}_{batch_short_id}.json"
         )
         job_name = f"parser-batch-{batch_short_id}"
+
+        # Build callback URL so the container can POST on completion. Empty
+        # api_base_url (dev / local) means callback-less — the polling watcher
+        # takes over as the sole path.
+        extra_env: dict[str, str] = {"PARSER_BATCH_ID": str(parser_batch.id)}
+        if settings.api_base_url:
+            callback_url = (
+                f"{settings.api_base_url.rstrip('/')}/parser/batches/"
+                f"{parser_batch.id}/complete"
+            )
+            extra_env["API_CALLBACK_URL"] = callback_url
+
         batch_job_id = aws.submit_batch_manifest_job(
             job_name=job_name,
             items=manifest_items,
             manifest_s3_key=manifest_s3_key,
+            extra_environment=extra_env,
         )
 
         # Update all parser jobs and the batch to "submitted"

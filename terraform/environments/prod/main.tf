@@ -207,6 +207,7 @@ module "ecs" {
   parser_outputs_bucket = module.s3.parser_outputs_bucket_name
   batch_job_queue       = module.batch.job_queue_name
   batch_job_definition  = module.batch.job_definition_name
+  api_base_url          = "https://api.palateful.app"
   firebase_secret_arn   = "arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"
 }
 
