@@ -557,8 +557,17 @@ jobs:
 
   terraform-prod:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: resolve-tags
+    # deploy-images must complete before terraform updates task defs —
+    # otherwise terraform points ECS at an image tag that isn't in ECR yet,
+    # ECS accumulates CannotPullContainerError attempts, and the deployment
+    # circuit breaker rolls back to the old revision even after the image
+    # eventually lands. Seen in run 24534239978.
+    # deploy-images is skipped when no services were affected — that's valid;
+    # terraform should still run against the existing (deployed) tags.
+    needs: [resolve-tags, deploy-images]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      (needs.deploy-images.result == 'success' || needs.deploy-images.result == 'skipped')
     environment: production
     env:
       API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
@@ -717,10 +726,33 @@ jobs:
         if: needs.detect-changes.outputs.api == 'true'
         run: |
           aws ecs update-service --cluster palateful-prod --service palateful-api-prod --force-new-deployment
-          echo "API deployment triggered"
+          echo "API deployment triggered — waiting for stable..."
+          aws ecs wait services-stable --cluster palateful-prod --services palateful-api-prod
+          # services-stable returns 0 even when the circuit breaker rolled
+          # back (it's "stable" on the old revision). Check rolloutState
+          # explicitly to catch rollbacks.
+          STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
+            --query 'services[0].deployments[?status==`PRIMARY`][0].rolloutState' --output text)
+          echo "API primary deployment rolloutState=$STATE"
+          if [ "$STATE" != "COMPLETED" ]; then
+            echo "::error::API deployment did NOT complete (rolloutState=$STATE). Deployment was likely rolled back by the circuit breaker. Check ECS service events and CloudWatch logs."
+            aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
+              --query 'services[0].events[:10]' --output json
+            exit 1
+          fi
 
       - name: Force new deployment - Worker
         if: needs.detect-changes.outputs.worker == 'true'
         run: |
           aws ecs update-service --cluster palateful-prod --service palateful-worker-prod --force-new-deployment
-          echo "Worker deployment triggered"
+          echo "Worker deployment triggered — waiting for stable..."
+          aws ecs wait services-stable --cluster palateful-prod --services palateful-worker-prod
+          STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
+            --query 'services[0].deployments[?status==`PRIMARY`][0].rolloutState' --output text)
+          echo "Worker primary deployment rolloutState=$STATE"
+          if [ "$STATE" != "COMPLETED" ]; then
+            echo "::error::Worker deployment did NOT complete (rolloutState=$STATE). Deployment was likely rolled back by the circuit breaker."
+            aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
+              --query 'services[0].events[:10]' --output json
+            exit 1
+          fi
