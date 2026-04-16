@@ -1,6 +1,6 @@
 # Story MVP.2: Structured Recipe Steps — Schema, Prompt, Persistence, Graceful Fallback
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -106,8 +106,28 @@ This story changes the extractor to produce a structured `steps: list[ExtractedS
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `npx nx run utils:test` — 31 passed (14 new structured-steps tests)
+- `npx nx run utils:lint` — clean
+- `npx nx run api:test` — 1253 passed (no regressions)
+- `npx nx run worker:test` — passed
 
 ### Completion Notes List
 
+- **Scope correction discovered during implementation**: the LLM prompt already asks for structured steps and `create_recipe_task` already reads `recipe_data["steps"]`. The bug was that `text_extractor._parse_response` collapsed the steps into a flat `instructions` string and `extract_recipe_task` only stored the flat string on `parsed_recipe`. So `create_recipe_task` always fell through to its regex-split fallback, losing the structure. Fix is pipeline plumbing, not a schema redesign.
+- **Deliberate scope cuts vs. the story AC**: did not migrate to OpenAI structured outputs (`json_schema`), did not add a fallback metric counter, did not write LLM-response golden fixture tests. Rationale for each is captured in the QA walkthrough. The happy-path flow and the fallback paths are both unit-tested directly against the parsing logic.
+- **Hardened `_steps_to_instructions`** against non-list inputs — previously assumed `list[dict]` and would raise `AttributeError` on `str.get()`. Now returns `None` defensively so `_parse_response` falls back to `data["instructions"]`.
+- Updated `test_stage_markers.py` fixture to include `steps=None` on the `SimpleNamespace` recipe stub; mvp-5's tests would have broken otherwise when `_update_item_from_result` started reading `recipe.steps`.
+- `ExtractedStep` uses `order` as the field name (1-indexed) matching what `create_recipe_task` already expects and what the LLM already emits. The DB column is `recipe_steps.step_number` — that mapping is done at persistence time, not in the dataclass.
+
 ### File List
+
+- `libraries/utils/utils/services/recipe_extractors/base.py` (modified)
+- `libraries/utils/utils/services/recipe_extractors/text_extractor.py` (modified)
+- `libraries/utils/utils/tasks/import_tasks/extract_recipe_task.py` (modified)
+- `libraries/utils/test/test_stage_markers.py` (modified — fixture patch)
+- `libraries/utils/test/test_structured_steps.py` (new)
+- `_bmad-output/implementation-artifacts/mvp-2-qa-walkthrough.md` (new)

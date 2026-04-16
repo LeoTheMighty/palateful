@@ -171,9 +171,9 @@ development_status:
   epic-vibes-retrospective: optional
 
   # Epic MVP Finalization: Dogfood-Confidence Release
-  epic-mvp-finalization: backlog
+  epic-mvp-finalization: in-progress
   mvp-1-multi-image-group-index-fix: blocked
-  mvp-2-structured-recipe-steps: ready-for-dev
+  mvp-2-structured-recipe-steps: done
   mvp-3-home-header-recipe-book-icon: done
   mvp-4-filter-pill-bottom-sheet: done
   mvp-5-stage-markers-and-stuck-sweeper: done

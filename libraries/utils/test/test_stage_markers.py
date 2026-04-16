@@ -114,6 +114,7 @@ def test_extract_task_marks_extracted_on_success():
         name="Test Recipe",
         description=None,
         ingredients=[],
+        steps=None,
         instructions="Mix it up.",
         servings=None,
         prep_time_minutes=None,

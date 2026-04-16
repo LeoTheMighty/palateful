@@ -7,6 +7,7 @@ from typing import Any
 from utils.services.recipe_extractors.base import (
     ExtractedIngredient,
     ExtractedRecipe,
+    ExtractedStep,
     ExtractionResult,
     validate_vibe,
 )
@@ -80,14 +81,49 @@ OCR Text:
 """
 
 
-def _steps_to_instructions(steps: list[dict] | None) -> str | None:
-    """Convert steps array to a single instructions string for backward compat."""
-    if not steps:
+def _steps_to_instructions(steps: Any) -> str | None:
+    """Convert steps array to a single instructions string for backward compat.
+
+    Accepts `Any` because the LLM sometimes returns the field as a string,
+    a dict, or None; all of those fall through to None here and the caller
+    falls back to `data["instructions"]`.
+    """
+    if not steps or not isinstance(steps, list):
         return None
-    return "\n".join(
-        f"{s.get('order', i+1)}. {s.get('instruction', '')}"
-        for i, s in enumerate(steps)
-    )
+    lines = []
+    for i, s in enumerate(steps):
+        if not isinstance(s, dict):
+            continue
+        lines.append(f"{s.get('order', i + 1)}. {s.get('instruction', '')}")
+    return "\n".join(lines) if lines else None
+
+
+def _parse_steps(raw_steps: Any) -> list[ExtractedStep] | None:
+    """Parse the LLM's steps array into ExtractedStep objects.
+
+    Returns None if the input is missing, not a list, or malformed in a
+    way we can't recover from. Missing `order` values are backfilled by
+    position. Missing `instruction` strings drop the step. On total
+    failure the caller falls back to the joined `instructions` string.
+    """
+    if not raw_steps or not isinstance(raw_steps, list):
+        return None
+    parsed: list[ExtractedStep] = []
+    for idx, raw in enumerate(raw_steps, start=1):
+        if not isinstance(raw, dict):
+            continue
+        instruction = raw.get("instruction")
+        if not isinstance(instruction, str) or not instruction.strip():
+            continue
+        order_raw = raw.get("order", idx)
+        try:
+            order = int(order_raw)
+        except (TypeError, ValueError):
+            order = idx
+        parsed.append(
+            ExtractedStep(order=order, instruction=instruction.strip())
+        )
+    return parsed or None
 
 
 def extract_recipe_from_text(
@@ -223,6 +259,12 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         name=data.get("name") or "Untitled Recipe",
         description=data.get("description"),
         ingredients=ingredients,
+        # Preserve BOTH shapes: structured `steps` for downstream
+        # consumers that can handle them (create_recipe_task writes one
+        # RecipeStep row per entry), and the joined `instructions`
+        # string as a fallback for display and for the "graceful
+        # degradation" path when steps parsing fails.
+        steps=_parse_steps(data.get("steps")),
         instructions=_steps_to_instructions(data.get("steps")) or data.get("instructions"),
         servings=data.get("servings"),
         prep_time_minutes=data.get("prep_time_minutes"),

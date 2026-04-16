@@ -18,13 +18,35 @@ class ExtractedIngredient:
 
 
 @dataclass
+class ExtractedStep:
+    """A single structured recipe step.
+
+    `order` is 1-indexed. `instruction` is the text of the step as the
+    user would read it. Additional fields (duration_seconds,
+    ingredient_refs, etc.) may be added later without breaking existing
+    extractors — all downstream consumers default-handle missing keys.
+    """
+
+    order: int
+    instruction: str
+
+
+@dataclass
 class ExtractedRecipe:
     """Extracted recipe data."""
 
     name: str
     description: str | None = None
     ingredients: list[ExtractedIngredient] = field(default_factory=list)
+    # Legacy fallback: joined, numbered string. Still populated by every
+    # extractor for display purposes and as a safety net when structured
+    # steps are unavailable or malformed.
     instructions: str | None = None
+    # Structured recipe steps. Populated by extractors that can produce
+    # structured output (currently: text_extractor). Extractors that
+    # still emit only a joined instructions string leave this as None,
+    # and downstream code falls back to parsing `instructions`.
+    steps: list[ExtractedStep] | None = None
     servings: int | None = None
     prep_time_minutes: int | None = None
     cook_time_minutes: int | None = None

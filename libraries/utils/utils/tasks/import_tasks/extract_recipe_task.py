@@ -141,6 +141,20 @@ class ExtractRecipeTask(BaseTask):
         if result.success and result.recipe:
             # Store parsed recipe as dict
             recipe = result.recipe
+            # Structured steps, when available, are the preferred format
+            # downstream. create_recipe_task already reads this field and
+            # creates one recipe_step row per entry. When the extractor
+            # couldn't produce structured steps (or the LLM returned
+            # malformed data) we fall through to the legacy `instructions`
+            # string, which create_recipe_task splits with a regex.
+            steps_dict = (
+                [
+                    {"order": s.order, "instruction": s.instruction}
+                    for s in recipe.steps
+                ]
+                if recipe.steps
+                else None
+            )
             item.parsed_recipe = {
                 "name": recipe.name,
                 "description": recipe.description,
@@ -155,6 +169,7 @@ class ExtractRecipeTask(BaseTask):
                     }
                     for ing in recipe.ingredients
                 ],
+                "steps": steps_dict,
                 "instructions": recipe.instructions,
                 "servings": recipe.servings,
                 "prep_time_minutes": recipe.prep_time_minutes,
