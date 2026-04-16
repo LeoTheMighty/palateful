@@ -3041,17 +3041,22 @@ class TestDismissAllFailedImports:
         mock_db.set_find_by(ImportJob, job_2, id=job_id_2)
 
         # First call: candidate failed items (initial query with join).
-        # Subsequent calls: sibling lookups per affected job (one call each).
-        # Then update calls for user_activities.
+        # Per affected job (2 jobs here):
+        #   - 1 sibling query
+        #   - 3 counter-recompute queries (succeeded / failed / awaiting_review)
+        # Then 2 user_activities update calls (one per dismissed item).
         candidate_query = MockQuery([item_1, item_2])
         sibling_query_1 = MockQuery([item_1])
         sibling_query_2 = MockQuery([item_2])
+        counter_query = MockQuery([])  # recompute_import_job_counters
         activity_update = MockQuery([])
 
         mock_db.db.query.side_effect = [
             candidate_query,
             sibling_query_1,
+            counter_query, counter_query, counter_query,
             sibling_query_2,
+            counter_query, counter_query, counter_query,
             activity_update,
             activity_update,
         ]
@@ -3096,10 +3101,12 @@ class TestDismissAllFailedImports:
 
         candidate_query = MockQuery([failed_item])
         sibling_query = MockQuery([failed_item, sibling])
+        counter_query = MockQuery([])  # recompute_import_job_counters (3 calls)
         activity_update = MockQuery([])
         mock_db.db.query.side_effect = [
             candidate_query,
             sibling_query,
+            counter_query, counter_query, counter_query,
             activity_update,
         ]
 

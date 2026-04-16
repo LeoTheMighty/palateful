@@ -108,8 +108,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
       ]);
       if (!mounted) return;
 
-      final reviewJobs = List<dynamic>.from(results[0].data['jobs'] ?? []);
-      final failedJobs = List<dynamic>.from(results[1].data['jobs'] ?? []);
+      // Filter out fully-dismissed jobs — even if the server's cached
+      // counters lag, dismissed jobs shouldn't contribute to the badge.
+      bool notDismissed(dynamic job) => job['dismissed_at'] == null;
+      final reviewJobs = List<dynamic>.from(results[0].data['jobs'] ?? [])
+          .where(notDismissed)
+          .toList();
+      final failedJobs = List<dynamic>.from(results[1].data['jobs'] ?? [])
+          .where(notDismissed)
+          .toList();
 
       int reviewCount = 0;
       for (final job in reviewJobs) {
@@ -408,6 +415,19 @@ class _ActivityScreenState extends State<ActivityScreen> {
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (_reviewItems.isEmpty)
+            // Counter said "(1)" but the fetch returned nothing — stale
+            // server state. Tell the user instead of silently showing an
+            // empty expansion so the tap isn't a perceived no-op.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(36, 0, 16, 12),
+              child: Text(
+                'All caught up — nothing else to review.',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
             )

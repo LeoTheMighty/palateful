@@ -11,6 +11,8 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.tasks.import_tasks.create_recipe_task import create_recipe_task
 
+from .counters import recompute_import_job_counters
+
 
 class ApproveImportItem(Endpoint):
     """Approve import item and create recipe."""
@@ -74,8 +76,12 @@ class ApproveImportItem(Endpoint):
                 code=ErrorCode.IMPORT_NO_RECIPE_DATA,
             )
 
-        # Update status to approved
+        # Update status to approved. Also recompute the parent job's
+        # counters so the activity-screen badge decrements immediately;
+        # otherwise the caller sees "(1)" lingering after every item
+        # in the job is reviewed.
         item.status = "approved"
+        recompute_import_job_counters(self.database.db, job)
         self.database.db.commit()
 
         # Dispatch recipe creation task

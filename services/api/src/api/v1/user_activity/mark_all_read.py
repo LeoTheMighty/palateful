@@ -16,6 +16,7 @@ class MarkAllRead(Endpoint):
             UserActivity.read.is_(False),
             UserActivity.archived_at.is_(None),
         ).update({"read": True})
-        self.db.flush()
+        # Must commit — flush alone is rolled back on session close.
+        self.db.commit()
 
         return success()

@@ -12,6 +12,8 @@ from utils.models.import_job import ImportJob
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
 
+from .counters import recompute_import_job_counters
+
 
 class DismissAllFailedImports(Endpoint):
     """Bulk-dismiss every failed ImportItem owned by the requesting user."""
@@ -47,6 +49,9 @@ class DismissAllFailedImports(Endpoint):
         # that we just updated items for, we'd have a deeper data problem —
         # no defensive guard here.)
         for job_id in affected_job_ids:
+            job = self.database.find_by(ImportJob, id=job_id)
+            if job is None:
+                continue
             siblings = (
                 self.database.db.query(ImportItem)
                 .filter(ImportItem.import_job_id == job_id)
@@ -55,8 +60,10 @@ class DismissAllFailedImports(Endpoint):
             if siblings and all(
                 sib.dismissed_at is not None for sib in siblings
             ):
-                job = self.database.find_by(ImportJob, id=job_id)
                 job.dismissed_at = now
+            # Decrement the cached counters so the activity-screen badge
+            # drops to 0 immediately.
+            recompute_import_job_counters(self.database.db, job)
 
         # Mark linked import_failed activities as read for each dismissed
         # item. We do this in a single UPDATE per item to avoid an N+1;

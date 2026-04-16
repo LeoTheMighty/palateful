@@ -271,6 +271,38 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
     return _formatTime(job['created_at']?.toString());
   }
 
+  /// Human-readable title for a history row.
+  ///
+  /// "0 / 1 imported" is unhelpful — it reads like a failure when the job
+  /// might actually be in progress, or like "pending" when it's actually
+  /// dead. Use the status to pick a specific phrase.
+  String _historyJobTitle({
+    required String? status,
+    required int succeeded,
+    required int total,
+  }) {
+    final recipeWord = succeeded == 1 ? 'recipe' : 'recipes';
+    final totalWord = total == 1 ? 'recipe' : 'recipes';
+    switch (status) {
+      case 'completed':
+        if (total == 0) return 'Completed';
+        if (succeeded == total) return '$succeeded $recipeWord imported';
+        if (succeeded == 0) return 'Import failed';
+        return 'Imported $succeeded of $total';
+      case 'failed':
+        return 'Import failed';
+      case 'processing':
+        if (total == 0) return 'Importing…';
+        return 'Importing $succeeded of $total…';
+      case 'pending':
+        return total == 0 ? 'Queued' : 'Queued $total $totalWord';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return total == 0 ? '—' : '$succeeded of $total';
+    }
+  }
+
   IconData _iconForSourceType(String? sourceType) {
     switch (sourceType) {
       case 'url':
@@ -722,6 +754,11 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
           final jobId = job['id']?.toString() ?? '';
           final succeeded = job['succeeded_items'] as int? ?? 0;
           final total = job['total_items'] as int? ?? 0;
+          final title = _historyJobTitle(
+            status: status,
+            succeeded: succeeded,
+            total: total,
+          );
 
           return Card(
             margin: const EdgeInsets.only(bottom: 6),
@@ -735,7 +772,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
                 color: colorScheme.onSurfaceVariant,
               ),
               title: Text(
-                '$succeeded / $total imported',
+                title,
                 style: textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),

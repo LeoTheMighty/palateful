@@ -16,6 +16,8 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
 
+from .counters import recompute_import_job_counters
+
 
 class DismissImportItem(Endpoint):
     """Mark a failed ImportItem as dismissed so the UI hides it."""
@@ -74,6 +76,10 @@ class DismissImportItem(Endpoint):
         )
         if all(sib.dismissed_at is not None for sib in siblings):
             job.dismissed_at = now
+
+        # Recompute the job's cached counters so the activity-screen
+        # badge decrements when failed items are dismissed.
+        recompute_import_job_counters(self.database.db, job)
 
         # Auto-mark any linked import_failed activities as read. Dismissing
         # the import is a stronger action than reading the notification.

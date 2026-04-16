@@ -503,6 +503,16 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         children: [
+          // Recipe Books button — primary "where do I go" destination, sits
+          // to the left of the search bar so it's the first thing thumb hits.
+          CircleIconButton(
+            icon: Icons.menu_book_outlined,
+            onPressed: () => context.push('/recipe-books'),
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            tooltip: 'Recipe Books',
+          ),
+          const SizedBox(width: 12),
+
           // Search Field
           Expanded(
             child: GestureDetector(
@@ -530,15 +540,6 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 12),
 
           // Nav group: destinations the user can jump to.
-          // Recipe Books Button
-          CircleIconButton(
-            icon: Icons.menu_book_outlined,
-            onPressed: () => context.push('/recipe-books'),
-            backgroundColor: colorScheme.surfaceContainerHighest,
-            tooltip: 'Recipe Books',
-          ),
-          const SizedBox(width: 8),
-
           // Pantry Button
           CircleIconButton(
             icon: Icons.kitchen_outlined,

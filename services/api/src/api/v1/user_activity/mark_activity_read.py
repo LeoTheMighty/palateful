@@ -26,6 +26,11 @@ class MarkActivityRead(Endpoint):
 
         activity.read = True
         self.database.db.add(activity)
-        self.database.db.flush()
+        # flush() alone sends SQL but leaves an open transaction that
+        # gets rolled back when the session closes at end-of-request.
+        # commit() is required to actually persist the read state —
+        # without it, GET /v1/activities always returns the same
+        # unread items. Reported bug: Activity tab always shows unread.
+        self.database.db.commit()
 
         return success()
