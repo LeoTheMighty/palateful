@@ -29,6 +29,8 @@
           "target": "migrator",
           "load": false,
           "platforms": ["linux/arm64/v8"],
+          "cache-from": ["type=gha,scope=migrator"],
+          "cache-to": ["type=gha,scope=migrator,mode=max"],
           "metadata": {
             "images": ["$AWS_ECR_ACCOUNT_URL/palateful/migrator"],
             "tags": ["type=raw,value=${IMAGE_TAG}"]

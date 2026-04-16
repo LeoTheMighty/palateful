@@ -27,6 +27,8 @@
         "ci": {
           "load": false,
           "platforms": ["linux/amd64"],
+          "cache-from": ["type=gha,scope=parser"],
+          "cache-to": ["type=gha,scope=parser,mode=max"],
           "metadata": {
             "images": ["$AWS_ECR_ACCOUNT_URL/palateful-parser"],
             "tags": ["type=raw,value=${IMAGE_TAG}"]

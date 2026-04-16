@@ -29,6 +29,8 @@
           "target": "production",
           "load": false,
           "platforms": ["linux/arm64/v8"],
+          "cache-from": ["type=gha,scope=worker"],
+          "cache-to": ["type=gha,scope=worker,mode=max"],
           "metadata": {
             "images": ["$AWS_ECR_ACCOUNT_URL/palateful/worker"],
             "tags": ["type=raw,value=${IMAGE_TAG}"]
