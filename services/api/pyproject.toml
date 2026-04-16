@@ -18,7 +18,6 @@ python-jose = {extras = ["cryptography"], version = "^3.3"}
 httpx = "^0.27"
 redis = "^5.0"
 openai = "^2.8"
-sse-starlette = "^2.0"
 python-multipart = "^0.0.20"
 utils = {path = "../../libraries/utils", develop = true}
 agent = {path = "../../libraries/agent", develop = true}
