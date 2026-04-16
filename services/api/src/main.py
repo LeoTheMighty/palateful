@@ -14,6 +14,10 @@ mcp_app = build_mcp_app()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast on a malformed shelf-life seed (pantry-2).
+    from utils.services.shelf_life_service import load_shelf_life_data
+    load_shelf_life_data()
+
     # Start the MCP streamable-http session manager for the life of the process.
     # The session manager enforces a single .run() call per instance; tests that
     # enter this lifespan multiple times would trip that guard, so fall back to

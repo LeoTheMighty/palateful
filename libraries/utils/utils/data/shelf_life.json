@@ -1,0 +1,58 @@
+{
+  "_default": { "fridge_days": 5, "pantry_days": 14, "freezer_days": 60 },
+
+  "leafy_greens":       { "fridge_days": 7,   "pantry_days": null, "freezer_days": 30  },
+  "root_vegetables":    { "fridge_days": 30,  "pantry_days": 21,   "freezer_days": 240 },
+  "citrus":             { "fridge_days": 21,  "pantry_days": 7,    "freezer_days": 120 },
+  "berries":            { "fridge_days": 5,   "pantry_days": 2,    "freezer_days": 180 },
+  "stone_fruit":        { "fridge_days": 7,   "pantry_days": 3,    "freezer_days": 180 },
+  "apples":             { "fridge_days": 42,  "pantry_days": 14,   "freezer_days": 240 },
+  "bananas":            { "fridge_days": 7,   "pantry_days": 5,    "freezer_days": 90  },
+  "tomatoes":           { "fridge_days": 7,   "pantry_days": 4,    "freezer_days": 240 },
+  "avocados":           { "fridge_days": 5,   "pantry_days": 4,    "freezer_days": 180 },
+  "onions":             { "fridge_days": 21,  "pantry_days": 30,   "freezer_days": 240 },
+  "garlic":             { "fridge_days": 60,  "pantry_days": 60,   "freezer_days": 240 },
+  "potatoes":           { "fridge_days": 21,  "pantry_days": 21,   "freezer_days": null },
+  "mushrooms":          { "fridge_days": 7,   "pantry_days": null, "freezer_days": 240 },
+  "herbs":              { "fridge_days": 5,   "pantry_days": null, "freezer_days": 120 },
+
+  "raw_chicken":        { "fridge_days": 2,   "pantry_days": null, "freezer_days": 270 },
+  "raw_beef":           { "fridge_days": 3,   "pantry_days": null, "freezer_days": 270 },
+  "raw_pork":           { "fridge_days": 3,   "pantry_days": null, "freezer_days": 270 },
+  "raw_fish":           { "fridge_days": 2,   "pantry_days": null, "freezer_days": 180 },
+  "cooked_meat":        { "fridge_days": 4,   "pantry_days": null, "freezer_days": 90  },
+  "tofu":               { "fridge_days": 5,   "pantry_days": null, "freezer_days": 150 },
+  "eggs":               { "fridge_days": 35,  "pantry_days": null, "freezer_days": null },
+
+  "milk":               { "fridge_days": 7,   "pantry_days": null, "freezer_days": 90  },
+  "yogurt":             { "fridge_days": 14,  "pantry_days": null, "freezer_days": 60  },
+  "butter":             { "fridge_days": 60,  "pantry_days": null, "freezer_days": 270 },
+  "hard_cheese":        { "fridge_days": 90,  "pantry_days": null, "freezer_days": 180 },
+  "soft_cheese":        { "fridge_days": 14,  "pantry_days": null, "freezer_days": 60  },
+  "cream":              { "fridge_days": 7,   "pantry_days": null, "freezer_days": 120 },
+
+  "rice":               { "fridge_days": 180, "pantry_days": 730,  "freezer_days": null },
+  "pasta":              { "fridge_days": null,"pantry_days": 730,  "freezer_days": null },
+  "flour":              { "fridge_days": 180, "pantry_days": 365,  "freezer_days": 730 },
+  "sugar":              { "fridge_days": null,"pantry_days": 730,  "freezer_days": null },
+  "oil":                { "fridge_days": null,"pantry_days": 365,  "freezer_days": null },
+  "canned_goods":       { "fridge_days": null,"pantry_days": 730,  "freezer_days": null },
+  "dried_beans":        { "fridge_days": null,"pantry_days": 730,  "freezer_days": null },
+  "nuts":               { "fridge_days": 180, "pantry_days": 90,   "freezer_days": 365 },
+
+  "bread":              { "fridge_days": 14,  "pantry_days": 5,    "freezer_days": 90  },
+  "tortillas":          { "fridge_days": 30,  "pantry_days": 14,   "freezer_days": 240 },
+
+  "opened_sauces":      { "fridge_days": 90,  "pantry_days": 21,   "freezer_days": null },
+  "unopened_sauces":    { "fridge_days": null,"pantry_days": 365,  "freezer_days": null },
+
+  "frozen_vegetables":  { "fridge_days": 5,   "pantry_days": null, "freezer_days": 240 },
+  "frozen_fruit":       { "fridge_days": 5,   "pantry_days": null, "freezer_days": 240 },
+
+  "produce":            { "fridge_days": 7,   "pantry_days": 5,    "freezer_days": 90  },
+  "protein":            { "fridge_days": 3,   "pantry_days": null, "freezer_days": 180 },
+  "dairy":              { "fridge_days": 7,   "pantry_days": null, "freezer_days": 60  },
+  "baking":             { "fridge_days": 180, "pantry_days": 365,  "freezer_days": 365 },
+  "spices":             { "fridge_days": null,"pantry_days": 730,  "freezer_days": null },
+  "condiments":         { "fridge_days": 180, "pantry_days": 365,  "freezer_days": null }
+}
