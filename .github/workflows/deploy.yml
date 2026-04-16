@@ -12,7 +12,9 @@
 #   AWS_ACCESS_KEY_ID       - IAM user key with ECR push + Terraform permissions
 #   AWS_SECRET_ACCESS_KEY   - IAM user secret
 #   AWS_ECR_ACCOUNT_URL     - ECR registry base URL (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com)
-#   AWS_REGION              - AWS region (e.g. us-east-1)
+#
+# AWS region is pinned to us-east-1 via the workflow env (not a secret — the
+# value is public and matches terraform/*.tfvars).
 
 name: Deploy
 
@@ -28,6 +30,7 @@ concurrency:
 
 env:
   NODE_VERSION: '22'
+  AWS_REGION: us-east-1
 
 jobs:
   # Gate: only proceed when CI passed
@@ -97,7 +100,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Resolve image tags
         id: tags
@@ -151,7 +154,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform init (dev)
         run: terraform init
@@ -195,7 +198,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
 
@@ -240,7 +243,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform init (prod)
         run: terraform init -backend-config=../../backend-prod.hcl
@@ -284,7 +287,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Get Terraform outputs
         id: tf
@@ -337,7 +340,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Force new deployment - API
         if: needs.detect-changes.outputs.api == 'true'
