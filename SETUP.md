@@ -97,7 +97,7 @@ Create separate Auth0 tenants for dev and prod. Free plan covers dev; Pro plan r
 |---------|-----|------|
 | Tenant name | `palateful-dev` | `palateful` |
 | Region | US | US (or closest to your users) |
-| Domain | `palateful-dev.us.auth0.com` | `palateful.us.auth0.com` |
+| Domain | `palateful-dev.us.auth0.com` | `auth.palateful.app` (custom domain) |
 
 #### Per-tenant configuration (repeat for each)
 
@@ -111,13 +111,13 @@ Create separate Auth0 tenants for dev and prod. Free plan covers dev; Pro plan r
 - Name: `Palateful Mobile`
 - Allowed Callback URLs (replace `YOUR_TENANT` with your actual Auth0 domain):
   ```
-  com.palateful.app://YOUR_TENANT.us.auth0.com/ios/com.palateful.palateful/callback,
-  com.palateful.app://YOUR_TENANT.us.auth0.com/android/com.palateful.palateful/callback
+  com.palateful.app://auth.palateful.app/ios/com.palateful.palateful/callback,
+  com.palateful.app://auth.palateful.app/android/com.palateful.palateful/callback
   ```
 - Allowed Logout URLs:
   ```
-  com.palateful.app://YOUR_TENANT.us.auth0.com/ios/com.palateful.palateful/callback,
-  com.palateful.app://YOUR_TENANT.us.auth0.com/android/com.palateful.palateful/callback
+  com.palateful.app://auth.palateful.app/ios/com.palateful.palateful/callback,
+  com.palateful.app://auth.palateful.app/android/com.palateful.palateful/callback
   ```
 - For web: add your web origin (e.g. `http://localhost:3000`, `https://app.palateful.app`)
 - Note the **Client ID** (no secret needed for native apps)
@@ -135,7 +135,7 @@ Create separate Auth0 tenants for dev and prod. Free plan covers dev; Pro plan r
 
 | Variable | Where to find it |
 |----------|-----------------|
-| `AUTH0_DOMAIN` | Tenant domain (e.g. `palateful-dev.us.auth0.com`) |
+| `AUTH0_DOMAIN` | Tenant domain (e.g. `auth.palateful.app`) |
 | `AUTH0_CLIENT_ID` | Native Application → Settings → Client ID |
 | `AUTH0_CLIENT_SECRET` | Native Application → Settings → Client Secret (backend only) |
 | `AUTH0_AUDIENCE` | API → identifier (`https://api.palateful.app`) |
@@ -194,7 +194,7 @@ Save as `secrets/firebase-credentials.json`. This directory is gitignored. Never
 In GCP Console → APIs & Services → Credentials → Create OAuth 2.0 Client ID:
 - Application type: Web application
 - Authorized redirect URIs: add your Auth0 callback, e.g.:
-  `https://palateful-dev.us.auth0.com/login/callback`
+  `https://auth.palateful.app/login/callback`
 - Copy the Client ID and Secret into Auth0 → Authentication → Social → Google
 
 **6. Restrict Firebase API keys**
@@ -342,7 +342,7 @@ Required for: iOS builds, App Store submission, and Apple Sign-In in Auth0.
 2. Identifier: `com.palateful.palateful.siwa`
 3. Enable "Sign In with Apple"
 4. Configure: add your Auth0 domain as a Return URL:
-   `https://palateful.us.auth0.com/login/callback`
+   `https://auth.palateful.app/login/callback`
 5. Copy this Services ID into Auth0 → Authentication → Social → Apple
 
 #### Push Notification Certificate or Key
@@ -466,7 +466,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful
 REDIS_URL=redis://localhost:6379/0
 
 # Auth0 — use your dev tenant values
-AUTH0_DOMAIN=palateful-dev.us.auth0.com
+AUTH0_DOMAIN=auth.palateful.app
 AUTH0_CLIENT_ID=<native-app-client-id>
 AUTH0_CLIENT_SECRET=<native-app-client-secret>
 AUTH0_AUDIENCE=https://api.palateful.app
@@ -503,7 +503,7 @@ Fill in `app/.env`:
 
 ```bash
 API_BASE_URL=http://localhost:8000
-AUTH0_DOMAIN=palateful-dev.us.auth0.com
+AUTH0_DOMAIN=auth.palateful.app
 AUTH0_CLIENT_ID=<native-app-client-id>
 AUTH0_AUDIENCE=https://api.palateful.app
 ```
@@ -652,8 +652,8 @@ DATABASE_URL=postgresql://user:pass@rds-endpoint:5432/palateful
 # Redis (ElastiCache)
 REDIS_URL=redis://elasticache-endpoint:6379/0
 
-# Auth0 — PROD tenant
-AUTH0_DOMAIN=palateful.us.auth0.com
+# Auth0 — PROD tenant (custom domain)
+AUTH0_DOMAIN=auth.palateful.app
 AUTH0_CLIENT_ID=<prod-client-id>
 AUTH0_CLIENT_SECRET=<prod-client-secret>
 AUTH0_AUDIENCE=https://api.palateful.app

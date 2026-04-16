@@ -31,7 +31,7 @@ In your new application's settings:
 ### Basic Information
 
 Note these values (you'll need them for `.env`):
-- **Domain** (e.g., `dev-xxxxx.us.auth0.com`)
+- **Domain** (e.g., `auth.palateful.app`)
 - **Client ID**
 - **Client Secret** (click to reveal)
 
@@ -84,7 +84,7 @@ Click **Save Changes** at the bottom of the page.
    ```
    https://YOUR_AUTH0_DOMAIN/login/callback
    ```
-   Replace `YOUR_AUTH0_DOMAIN` with your Auth0 domain (e.g., `dev-xxxxx.us.auth0.com`)
+   Replace `YOUR_AUTH0_DOMAIN` with your Auth0 domain (e.g., `auth.palateful.app`)
 6. Click **Create**
 7. Copy the **Client ID** and **Client Secret**
 
@@ -229,7 +229,7 @@ exports.onExecutePostLogin = async (event, api) => {
 
 1. In the Action editor, click **Secrets** (key icon on the left)
 2. Add three secrets:
-   - `domain`: Your Auth0 domain (e.g., `dev-t08v6dtzszs25fnh.us.auth0.com`)
+   - `domain`: Your Auth0 domain (e.g., `auth.palateful.app`)
    - `clientId`: The Client ID from the M2M app created in Step 1
    - `clientSecret`: The Client Secret from the M2M app created in Step 1
 
@@ -269,7 +269,7 @@ AUTH0_SECRET="your-generated-secret"
 AUTH0_BASE_URL="http://localhost:3000"
 
 # Your Auth0 domain (include https://)
-AUTH0_ISSUER_BASE_URL="https://dev-xxxxx.us.auth0.com"
+AUTH0_ISSUER_BASE_URL="https://auth.palateful.app"
 
 # From Auth0 Application Settings
 AUTH0_CLIENT_ID="your-client-id"

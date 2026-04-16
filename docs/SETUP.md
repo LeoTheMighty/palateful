@@ -62,7 +62,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/palateful
 REDIS_URL=redis://localhost:6379/0
 
 # Auth0 — create an API in Auth0 dashboard and use its identifier as AUDIENCE
-AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_DOMAIN=auth.palateful.app
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
 AUTH0_AUDIENCE=https://api.palateful.app
@@ -156,7 +156,7 @@ API_BASE_URL=http://localhost:8000
 # API_BASE_URL=https://abc123.ngrok.io
 
 # Auth0 (use the Native app credentials from Step 3)
-AUTH0_DOMAIN=your-tenant.us.auth0.com
+AUTH0_DOMAIN=auth.palateful.app
 AUTH0_CLIENT_ID=your-native-client-id
 AUTH0_AUDIENCE=https://api.palateful.app
 ```
