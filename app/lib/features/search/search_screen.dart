@@ -8,7 +8,11 @@ import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  /// Optional query to pre-populate the search field — used by the pantry
+  /// "Use me up" CTA (pantry-7). Null when opened directly.
+  final String? initialQuery;
+
+  const SearchScreen({super.key, this.initialQuery});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -31,6 +35,18 @@ class _SearchScreenState extends State<SearchScreen> {
   String? _filterBookId;
   Set<String> _filterTags = {};
   int? _maxTotalTime;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialQuery?.trim();
+    if (initial != null && initial.isNotEmpty) {
+      _searchController.text = initial;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _performSearch(initial);
+      });
+    }
+  }
 
   @override
   void dispose() {

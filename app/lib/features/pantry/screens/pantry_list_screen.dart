@@ -110,6 +110,12 @@ class _PantryListScreenState extends State<PantryListScreen> {
     return (expiringSoon, fresh, noDate);
   }
 
+  void _onUseMeUp(PantryIngredient item) {
+    final name = item.ingredientName;
+    if (name == null || name.isEmpty) return;
+    context.push('/search?q=${Uri.encodeQueryComponent(name)}');
+  }
+
   Future<void> _handleDelete(PantryIngredient item) async {
     final pantryId = item.pantryId;
     final removed = item;
@@ -201,7 +207,7 @@ class _PantryListScreenState extends State<PantryListScreen> {
             selectedCategories: _selectedCategories,
             onChanged: (next) => setState(() => _selectedCategories = next),
           ),
-          _section(context, 'Expiring Soon', expiringSoon),
+          _section(context, 'Expiring Soon', expiringSoon, showUseMeUp: true),
           _section(context, 'Fresh', fresh),
           _section(context, 'No Date', noDate),
         ],
@@ -212,8 +218,9 @@ class _PantryListScreenState extends State<PantryListScreen> {
   Widget _section(
     BuildContext context,
     String title,
-    List<PantryIngredient> items,
-  ) {
+    List<PantryIngredient> items, {
+    bool showUseMeUp = false,
+  }) {
     if (items.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return Column(
@@ -244,6 +251,9 @@ class _PantryListScreenState extends State<PantryListScreen> {
               item: item,
               onTap: () =>
                   context.push('/pantry/edit/${item.ingredientId}'),
+              onUseMeUp: showUseMeUp
+                  ? () => _onUseMeUp(item)
+                  : null,
             ),
           ),
       ],

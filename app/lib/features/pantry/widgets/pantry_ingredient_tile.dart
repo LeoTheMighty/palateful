@@ -8,11 +8,15 @@ import 'fuzzy_expiry_text.dart';
 class PantryIngredientTile extends StatelessWidget {
   final PantryIngredient item;
   final VoidCallback? onTap;
+  /// Non-null only on rows in the "Expiring Soon" section — the pantry-7
+  /// "Use me up" CTA routes to recipe search filtered by this ingredient.
+  final VoidCallback? onUseMeUp;
 
   const PantryIngredientTile({
     super.key,
     required this.item,
     this.onTap,
+    this.onUseMeUp,
   });
 
   @override
@@ -57,6 +61,24 @@ class PantryIngredientTile extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  if (onUseMeUp != null) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.tonalIcon(
+                        onPressed: onUseMeUp,
+                        icon: const Icon(Icons.restaurant_menu, size: 18),
+                        label: const Text('Use me up'),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

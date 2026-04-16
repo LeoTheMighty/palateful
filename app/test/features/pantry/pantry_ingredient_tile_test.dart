@@ -50,4 +50,31 @@ void main() {
     await tester.tap(find.text('Flour'));
     expect(taps, 1);
   });
+
+  testWidgets('no "Use me up" button when onUseMeUp is null', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: PantryIngredientTile(item: _item())),
+      ),
+    );
+    expect(find.text('Use me up'), findsNothing);
+  });
+
+  testWidgets('renders "Use me up" button when callback provided',
+      (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PantryIngredientTile(
+            item: _item(),
+            onUseMeUp: () => taps++,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Use me up'), findsOneWidget);
+    await tester.tap(find.text('Use me up'));
+    expect(taps, 1);
+  });
 }
