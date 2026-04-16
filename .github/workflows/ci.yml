@@ -514,10 +514,14 @@ jobs:
   deploy-images:
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Skip quietly when nothing is affected — GHA errors out on an empty
+    # matrix ("Matrix vector 'service' does not contain any values"), so
+    # we short-circuit at the job level instead of letting it explode.
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.detect-changes.outputs.services_to_build != '[]'
     environment: production
-    # Parallel fan-out: one runner per affected service. If none are
-    # affected, services_to_build is [] and GHA skips the job entirely.
+    # Parallel fan-out: one runner per affected service.
     strategy:
       fail-fast: false
       matrix:
