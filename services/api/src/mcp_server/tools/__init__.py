@@ -17,6 +17,6 @@ def register_all_tools() -> None:
         return
 
     # Importing the modules is what triggers @mcp.tool() registration.
-    from mcp_server.tools import agent_tools, user  # noqa: F401
+    from mcp_server.tools import agent_tools, recipes, user  # noqa: F401
 
     _REGISTERED = True
