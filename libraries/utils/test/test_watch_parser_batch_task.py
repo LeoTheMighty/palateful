@@ -1,35 +1,41 @@
-"""Tests for WatchParserBatchTask.
+"""Tests for parser batch completion logic.
 
-These tests stub out the database, AWS service, and downstream Celery dispatch
-to focus on the fan-out + status-rollup logic.
+The fan-out logic (group-by-group_index → ImportJob + ImportItem) lives in
+`complete_parser_batch` inside `utils.services.parser_batch_completion`. The
+`WatchParserBatchTask` is a thin polling wrapper that calls it repeatedly;
+these tests exercise the core function directly.
 """
 
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 
-def _make_db_with_jobs(parser_jobs):
-    """Build a fake database whose `query(...).filter(...).all()` returns the jobs."""
+def _make_db_with_jobs(parser_jobs, existing_import_job=None):
+    """Build a fake database whose queries return the pre-built fixtures."""
     db = MagicMock()
-    chain = MagicMock()
-    chain.filter.return_value.all.return_value = parser_jobs
-    chain.options.return_value = chain
-    db.query.return_value = chain
+
+    # query(ParserJob).filter(...).all() → parser_jobs
+    # query(ImportJob).filter(...).first() → existing_import_job (dedup guard)
+    def query_dispatch(model):
+        from utils.models.import_job import ImportJob
+        from utils.models.parser_job import ParserJob as _PJ
+        chain = MagicMock()
+        if model is _PJ:
+            chain.filter.return_value.all.return_value = parser_jobs
+        elif model is ImportJob:
+            chain.filter.return_value.first.return_value = existing_import_job
+        return chain
+
+    db.query.side_effect = query_dispatch
     db.commit = MagicMock()
     return db
 
 
-def _make_database(parser_batch, parser_jobs):
+def _make_database(parser_jobs, existing_import_job=None):
     database = MagicMock()
-    database.db = _make_db_with_jobs(parser_jobs)
-
-    def find_by(model, **kwargs):
-        from utils.models.parser_batch import ParserBatch
-        if model is ParserBatch:
-            return parser_batch
-        return None
+    database.db = _make_db_with_jobs(parser_jobs, existing_import_job)
 
     def create(model):
         if not getattr(model, "id", None):
@@ -38,7 +44,6 @@ def _make_database(parser_batch, parser_jobs):
             model.created_at = datetime.now(UTC)
         return model
 
-    database.find_by.side_effect = find_by
     database.create.side_effect = create
     return database
 
@@ -77,9 +82,7 @@ def _make_parser_batch(recipe_book_id=None, group_count=1):
 
 def test_happy_path_single_group_creates_one_import_job():
     """3 jobs / 1 group → 1 ImportJob with concatenated OCR text."""
-    from utils.tasks.import_tasks.watch_parser_batch_task import (
-        WatchParserBatchTask,
-    )
+    from utils.services.parser_batch_completion import complete_parser_batch
 
     batch = _make_parser_batch(group_count=1)
     jobs = [
@@ -90,8 +93,7 @@ def test_happy_path_single_group_creates_one_import_job():
     for j in jobs:
         j.parser_batch_id = batch.id
 
-    task = WatchParserBatchTask()
-    task.database = _make_database(batch, jobs)
+    database = _make_database(jobs)
 
     aws_mock = MagicMock()
     aws_mock.describe_batch_job.return_value = {"status": "SUCCEEDED"}
@@ -103,21 +105,18 @@ def test_happy_path_single_group_creates_one_import_job():
     ]
 
     created_objects: list = []
-    original_create = task.database.create.side_effect
+    original_create = database.create.side_effect
 
     def tracking_create(obj):
         created_objects.append(obj)
         return original_create(obj)
 
-    task.database.create.side_effect = tracking_create
+    database.create.side_effect = tracking_create
 
     with patch(
-        "utils.tasks.import_tasks.watch_parser_batch_task.AWSService",
-        return_value=aws_mock,
-    ), patch(
         "utils.tasks.import_tasks.parse_source_task.parse_source_task"
     ) as mock_dispatch:
-        task.execute(str(batch.id), user_id=str(batch.user_id))
+        complete_parser_batch(database, aws_mock, batch)
 
     from utils.models.import_item import ImportItem
     from utils.models.import_job import ImportJob
@@ -142,9 +141,7 @@ def test_happy_path_single_group_creates_one_import_job():
 
 def test_happy_path_two_groups_creates_two_import_jobs():
     """3 jobs / 2 groups → 2 ImportJobs."""
-    from utils.tasks.import_tasks.watch_parser_batch_task import (
-        WatchParserBatchTask,
-    )
+    from utils.services.parser_batch_completion import complete_parser_batch
 
     batch = _make_parser_batch(group_count=2)
     jobs = [
@@ -155,8 +152,7 @@ def test_happy_path_two_groups_creates_two_import_jobs():
     for j in jobs:
         j.parser_batch_id = batch.id
 
-    task = WatchParserBatchTask()
-    task.database = _make_database(batch, jobs)
+    database = _make_database(jobs)
 
     aws_mock = MagicMock()
     aws_mock.describe_batch_job.return_value = {"status": "SUCCEEDED"}
@@ -168,21 +164,18 @@ def test_happy_path_two_groups_creates_two_import_jobs():
     ]
 
     created_objects: list = []
-    original_create = task.database.create.side_effect
+    original_create = database.create.side_effect
 
     def tracking_create(obj):
         created_objects.append(obj)
         return original_create(obj)
 
-    task.database.create.side_effect = tracking_create
+    database.create.side_effect = tracking_create
 
     with patch(
-        "utils.tasks.import_tasks.watch_parser_batch_task.AWSService",
-        return_value=aws_mock,
-    ), patch(
         "utils.tasks.import_tasks.parse_source_task.parse_source_task"
     ) as mock_dispatch:
-        task.execute(str(batch.id), user_id=str(batch.user_id))
+        complete_parser_batch(database, aws_mock, batch)
 
     from utils.models.import_item import ImportItem
     from utils.models.import_job import ImportJob
@@ -201,9 +194,7 @@ def test_happy_path_two_groups_creates_two_import_jobs():
 
 def test_partial_failure_marks_batch_partial():
     """1 of 3 jobs fails to fetch S3 → batch.status = partial, only successful group imported."""
-    from utils.tasks.import_tasks.watch_parser_batch_task import (
-        WatchParserBatchTask,
-    )
+    from utils.services.parser_batch_completion import complete_parser_batch
 
     batch = _make_parser_batch(group_count=2)
     jobs = [
@@ -214,8 +205,7 @@ def test_partial_failure_marks_batch_partial():
     for j in jobs:
         j.parser_batch_id = batch.id
 
-    task = WatchParserBatchTask()
-    task.database = _make_database(batch, jobs)
+    database = _make_database(jobs)
 
     aws_mock = MagicMock()
     aws_mock.describe_batch_job.return_value = {"status": "SUCCEEDED"}
@@ -227,21 +217,18 @@ def test_partial_failure_marks_batch_partial():
     ]
 
     created_objects: list = []
-    original_create = task.database.create.side_effect
+    original_create = database.create.side_effect
 
     def tracking_create(obj):
         created_objects.append(obj)
         return original_create(obj)
 
-    task.database.create.side_effect = tracking_create
+    database.create.side_effect = tracking_create
 
     with patch(
-        "utils.tasks.import_tasks.watch_parser_batch_task.AWSService",
-        return_value=aws_mock,
-    ), patch(
         "utils.tasks.import_tasks.parse_source_task.parse_source_task"
     ) as mock_dispatch:
-        task.execute(str(batch.id), user_id=str(batch.user_id))
+        complete_parser_batch(database, aws_mock, batch)
 
     from utils.models.import_job import ImportJob
 
@@ -253,9 +240,7 @@ def test_partial_failure_marks_batch_partial():
 
 def test_total_failure_creates_no_import_jobs():
     """All jobs fail S3 fetch → batch.status = failed, no import jobs."""
-    from utils.tasks.import_tasks.watch_parser_batch_task import (
-        WatchParserBatchTask,
-    )
+    from utils.services.parser_batch_completion import complete_parser_batch
 
     batch = _make_parser_batch(group_count=1)
     jobs = [
@@ -265,8 +250,7 @@ def test_total_failure_creates_no_import_jobs():
     for j in jobs:
         j.parser_batch_id = batch.id
 
-    task = WatchParserBatchTask()
-    task.database = _make_database(batch, jobs)
+    database = _make_database(jobs)
 
     aws_mock = MagicMock()
     aws_mock.describe_batch_job.return_value = {"status": "SUCCEEDED"}
@@ -277,48 +261,40 @@ def test_total_failure_creates_no_import_jobs():
     ]
 
     created_objects: list = []
-    original_create = task.database.create.side_effect
+    original_create = database.create.side_effect
 
     def tracking_create(obj):
         created_objects.append(obj)
         return original_create(obj)
 
-    task.database.create.side_effect = tracking_create
+    database.create.side_effect = tracking_create
 
     with patch(
-        "utils.tasks.import_tasks.watch_parser_batch_task.AWSService",
-        return_value=aws_mock,
-    ), patch(
         "utils.tasks.import_tasks.parse_source_task.parse_source_task"
-    ) as mock_dispatch, patch(
+    ), patch(
         "utils.services.activity_service.create_activity"
     ):
-        task.execute(str(batch.id), user_id=str(batch.user_id))
+        complete_parser_batch(database, aws_mock, batch)
 
     from utils.models.import_job import ImportJob
 
     import_jobs = [o for o in created_objects if isinstance(o, ImportJob)]
     assert len(import_jobs) == 0
-    assert mock_dispatch.delay.call_count == 0
     assert batch.status == "failed"
 
 
 def test_idempotent_on_terminal_batch():
-    """Running the task on a terminal batch is a no-op."""
-    from utils.tasks.import_tasks.watch_parser_batch_task import (
-        WatchParserBatchTask,
-    )
+    """Running complete_parser_batch on a terminal batch is a no-op."""
+    from utils.services.parser_batch_completion import complete_parser_batch
 
     batch = _make_parser_batch()
     batch.status = "succeeded"
 
-    task = WatchParserBatchTask()
-    task.database = _make_database(batch, [])
+    database = _make_database([])
 
-    with patch(
-        "utils.tasks.import_tasks.watch_parser_batch_task.AWSService"
-    ) as mock_aws_cls:
-        result = task.execute(str(batch.id), user_id=str(batch.user_id))
+    aws_mock = MagicMock()
 
-    mock_aws_cls.assert_not_called()
-    assert result["data"]["status"] == "succeeded"
+    result = complete_parser_batch(database, aws_mock, batch)
+
+    aws_mock.describe_batch_job.assert_not_called()
+    assert result == "succeeded"

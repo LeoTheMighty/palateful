@@ -351,3 +351,77 @@ class TestListParserBatches:
         assert response.status_code == 200
         data = response.json()
         assert len(data["batches"]) == 1
+
+
+class TestCompleteParserBatch:
+    """POST /v1/parser/batches/{batch_id}/complete."""
+
+    @patch("api.v1.parser.complete_parser_batch.complete_parser_batch")
+    @patch("api.v1.parser.complete_parser_batch.AWSService")
+    def test_complete_batch_happy_path(
+        self, mock_aws_cls, mock_complete, client, mock_db, mock_user
+    ):
+        """Existing batch → delegates to complete_parser_batch, returns status."""
+        from utils.models.parser_batch import ParserBatch
+
+        batch_id = "batch-1"
+        batch = MockParserBatch(id=batch_id, status="running")
+        mock_db.db.query.return_value = MockQuery([batch])
+        mock_complete.return_value = "succeeded"
+
+        response = client.post(
+            f"/v1/parser/batches/{batch_id}/complete",
+            json={},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == batch_id
+        assert data["status"] == "succeeded"
+        mock_complete.assert_called_once()
+
+    def test_complete_batch_not_found(self, client, mock_db, mock_user):
+        """Unknown batch_id → 404."""
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.post(
+            "/v1/parser/batches/nonexistent/complete",
+            json={},
+        )
+        assert response.status_code == 404
+
+
+class TestCreateParserBatchCallbackUrl:
+    """Verify the callback-URL branch in CreateParserBatch."""
+
+    @patch("utils.tasks.import_tasks.watch_parser_batch_task.watch_parser_batch_task")
+    @patch("api.v1.parser.create_parser_batch.AWSService")
+    @patch("api.v1.parser.create_parser_batch.settings")
+    def test_callback_url_set_when_api_base_url_configured(
+        self, mock_settings, mock_aws_cls, _mock_watch, client, mock_db, mock_user
+    ):
+        """When settings.api_base_url is set, the callback URL is passed in
+        extra_environment to the Batch job."""
+        mock_settings.api_base_url = "https://api.palateful.app/v1"
+        mock_settings.aws_region = "us-east-1"
+        mock_settings.parser_inputs_bucket = "inputs"
+        mock_settings.parser_outputs_bucket = "outputs"
+        mock_settings.batch_job_queue = "q"
+        mock_settings.batch_job_definition = "def"
+
+        mock_aws = MagicMock()
+        mock_aws_cls.return_value = mock_aws
+        mock_aws.submit_batch_manifest_job.return_value = "aws-batch-123"
+
+        response = client.post(
+            "/v1/parser/batches",
+            json={
+                "recipe_book_id": str(uuid.uuid4()),
+                "items": [{"s3_key": "uploads/a.jpg"}],
+            },
+        )
+        assert response.status_code == 201
+
+        call_kwargs = mock_aws.submit_batch_manifest_job.call_args
+        extra_env = call_kwargs.kwargs.get("extra_environment", {})
+        assert "API_CALLBACK_URL" in extra_env
+        assert "complete" in extra_env["API_CALLBACK_URL"]

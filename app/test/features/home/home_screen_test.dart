@@ -160,13 +160,12 @@ void main() {
       expect(find.byTooltip('Import Photos'), findsOneWidget);
     });
 
-    testWidgets('"See All" link is removed from My Books section',
+    testWidgets('My Books section is removed from home screen',
         (tester) async {
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      // Seed at least one recipe book so the My Books section renders.
       _registerFakes(_FakeApiClient(
         recipeBooks: [
           {
@@ -178,13 +177,12 @@ void main() {
       ));
 
       await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
-      // Drain the initial async recipe-book fetch.
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
 
-      // "My Books" section header still present; "See All" link gone.
-      expect(find.text('My Books'), findsOneWidget);
+      // The books section is gone entirely — header icon is the entry point.
+      expect(find.text('My Books'), findsNothing);
       expect(find.text('See All'), findsNothing);
     });
   });
