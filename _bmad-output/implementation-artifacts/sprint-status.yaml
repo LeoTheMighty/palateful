@@ -185,7 +185,7 @@ development_status:
   epic-mvp-finalization-retrospective: optional
 
   # Epic MCP: MCP Server Integration
-  epic-mcp: in-progress
+  epic-mcp: done
   mcp-1-mcp-infrastructure-server-auth-mount: done
   mcp-2-core-agent-tools: done
   mcp-3-recipe-crud-ingredient-resolution: done
