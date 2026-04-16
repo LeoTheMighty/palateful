@@ -25,6 +25,7 @@ class PantryIngredient(JoinsBase):
     unit_display: Mapped[str] = mapped_column(String, nullable=False)
     quantity_normalized: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
     unit_normalized: Mapped[str] = mapped_column(String, nullable=False)
+    storage_location: Mapped[str | None] = mapped_column(String(16), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Foreign keys (composite primary key)

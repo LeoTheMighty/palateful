@@ -220,3 +220,9 @@ class ErrorCode(BaseEnum):
 
     # AI Chat errors (260-269)
     TOKEN_CAP_EXCEEDED = 260
+
+    # Pantry errors (270-289)
+    PANTRY_NOT_FOUND = 270
+    PANTRY_ACCESS_DENIED = 271
+    PANTRY_INGREDIENT_NOT_FOUND = 272
+    PANTRY_INVALID_STORAGE_LOCATION = 273

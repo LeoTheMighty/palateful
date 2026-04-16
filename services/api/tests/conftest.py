@@ -335,6 +335,51 @@ class MockShoppingListItem(MockModel):
         super().__init__(**defaults)
 
 
+class MockPantry(MockModel):
+    """Mock Pantry model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "name": "My Pantry",
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
+class MockPantryUser(MockModel):
+    """Mock PantryUser model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "user_id": str(uuid.uuid4()),
+            "pantry_id": str(uuid.uuid4()),
+            "role": "owner",
+            "invited_by_id": None,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
+class MockPantryIngredient(MockModel):
+    """Mock PantryIngredient model."""
+
+    def __init__(self, **kwargs):
+        from decimal import Decimal
+        defaults = {
+            "pantry_id": str(uuid.uuid4()),
+            "ingredient_id": str(uuid.uuid4()),
+            "quantity_display": Decimal("1.000"),
+            "unit_display": "each",
+            "quantity_normalized": Decimal("1.000"),
+            "unit_normalized": "each",
+            "storage_location": None,
+            "expires_at": None,
+            "ingredient": None,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockActiveTimer(MockModel):
     """Mock ActiveTimer model."""
 
