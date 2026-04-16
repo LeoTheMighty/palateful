@@ -33,6 +33,11 @@ variable "migrator_image_tag" {
   default = "latest"
 }
 
+variable "parser_image_tag" {
+  type    = string
+  default = "latest"
+}
+
 locals {
   environment = "prod"
   project     = "palateful"
@@ -153,6 +158,7 @@ module "batch" {
   batch_job_role_arn         = module.iam.batch_job_role_arn
   spot_fleet_role_arn        = module.iam.spot_fleet_role_arn
   ecr_repository_url         = module.ecr.repository_url
+  image_tag                  = var.parser_image_tag
   subnet_ids                 = module.vpc.public_subnet_ids
   security_group_ids         = [module.vpc.batch_security_group_id]
   max_vcpus                  = 32

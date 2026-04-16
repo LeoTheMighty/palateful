@@ -12,13 +12,26 @@
       }
     },
     "build": {
-      "executor": "nx:run-commands",
+      "executor": "@nx-tools/nx-container:build",
       "options": {
-        "commands": [
-          "docker build -t palateful-parser:latest -f services/parser/Dockerfile.batch ."
-        ],
-        "cwd": "{workspaceRoot}",
-        "parallel": false
+        "context": "{workspaceRoot}",
+        "engine": "docker",
+        "file": "{projectRoot}/Dockerfile.batch",
+        "load": true,
+        "metadata": {
+          "images": ["palateful-parser"],
+          "tags": ["type=raw,value=latest"]
+        }
+      },
+      "configurations": {
+        "ci": {
+          "load": false,
+          "platforms": ["linux/amd64"],
+          "metadata": {
+            "images": ["$AWS_ECR_ACCOUNT_URL/palateful-parser"],
+            "tags": ["type=raw,value=${IMAGE_TAG}"]
+          }
+        }
       }
     },
     "docker-login": {

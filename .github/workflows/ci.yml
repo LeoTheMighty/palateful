@@ -355,6 +355,7 @@ jobs:
       api: ${{ steps.affected.outputs.api }}
       worker: ${{ steps.affected.outputs.worker }}
       migrator: ${{ steps.affected.outputs.migrator }}
+      parser: ${{ steps.affected.outputs.parser }}
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -396,6 +397,11 @@ jobs:
           else
             echo "migrator=false" >> "$GITHUB_OUTPUT"
           fi
+          if echo "$AFFECTED" | grep -q "^parser$"; then
+            echo "parser=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "parser=false" >> "$GITHUB_OUTPUT"
+          fi
 
   resolve-tags:
     runs-on: ubuntu-latest
@@ -406,6 +412,7 @@ jobs:
       api_tag: ${{ steps.tags.outputs.api_tag }}
       worker_tag: ${{ steps.tags.outputs.worker_tag }}
       migrator_tag: ${{ steps.tags.outputs.migrator_tag }}
+      parser_tag: ${{ steps.tags.outputs.parser_tag }}
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -420,30 +427,47 @@ jobs:
           API_AFFECTED: ${{ needs.detect-changes.outputs.api }}
           WORKER_AFFECTED: ${{ needs.detect-changes.outputs.worker }}
           MIGRATOR_AFFECTED: ${{ needs.detect-changes.outputs.migrator }}
+          PARSER_AFFECTED: ${{ needs.detect-changes.outputs.parser }}
         run: |
-          get_current_tag() {
+          get_ecs_tag() {
             aws ecs describe-task-definition \
               --task-definition "$1" \
               --query 'taskDefinition.containerDefinitions[0].image' \
               --output text | rev | cut -d: -f1 | rev
           }
 
+          get_batch_tag() {
+            # Parser runs on AWS Batch, not ECS — read current deployed tag
+            # from the job definition's container image.
+            aws batch describe-job-definitions \
+              --job-definition-name "$1" \
+              --status ACTIVE \
+              --query 'reverse(sort_by(jobDefinitions, &revision))[0].containerProperties.image' \
+              --output text | rev | cut -d: -f1 | rev
+          }
+
           if [ "$API_AFFECTED" = "true" ]; then
             echo "api_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           else
-            echo "api_tag=$(get_current_tag palateful-api-prod)" >> "$GITHUB_OUTPUT"
+            echo "api_tag=$(get_ecs_tag palateful-api-prod)" >> "$GITHUB_OUTPUT"
           fi
 
           if [ "$WORKER_AFFECTED" = "true" ]; then
             echo "worker_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           else
-            echo "worker_tag=$(get_current_tag palateful-worker-prod)" >> "$GITHUB_OUTPUT"
+            echo "worker_tag=$(get_ecs_tag palateful-worker-prod)" >> "$GITHUB_OUTPUT"
           fi
 
           if [ "$MIGRATOR_AFFECTED" = "true" ]; then
             echo "migrator_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           else
-            echo "migrator_tag=$(get_current_tag palateful-migrator-prod)" >> "$GITHUB_OUTPUT"
+            echo "migrator_tag=$(get_ecs_tag palateful-migrator-prod)" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$PARSER_AFFECTED" = "true" ]; then
+            echo "parser_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "parser_tag=$(get_batch_tag palateful-parser-job-prod)" >> "$GITHUB_OUTPUT"
           fi
 
   # Dev infra is managed locally — terraform/environments/dev uses local state
@@ -457,7 +481,8 @@ jobs:
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       (needs.detect-changes.outputs.api == 'true' ||
        needs.detect-changes.outputs.worker == 'true' ||
-       needs.detect-changes.outputs.migrator == 'true')
+       needs.detect-changes.outputs.migrator == 'true' ||
+       needs.detect-changes.outputs.parser == 'true')
     environment: production
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
@@ -505,6 +530,12 @@ jobs:
         env:
           INPUT_PUSH: 'true'
 
+      - name: Build and push Parser
+        if: needs.detect-changes.outputs.parser == 'true'
+        run: npx nx run parser:build:ci
+        env:
+          INPUT_PUSH: 'true'
+
   terraform-prod:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -514,6 +545,7 @@ jobs:
       API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
       WORKER_TAG: ${{ needs.resolve-tags.outputs.worker_tag }}
       MIGRATOR_TAG: ${{ needs.resolve-tags.outputs.migrator_tag }}
+      PARSER_TAG: ${{ needs.resolve-tags.outputs.parser_tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -534,7 +566,8 @@ jobs:
           terraform plan -no-color -input=false \
             -var "api_image_tag=$API_TAG" \
             -var "worker_image_tag=$WORKER_TAG" \
-            -var "migrator_image_tag=$MIGRATOR_TAG"
+            -var "migrator_image_tag=$MIGRATOR_TAG" \
+            -var "parser_image_tag=$PARSER_TAG"
         working-directory: terraform/environments/prod
 
       - name: Terraform apply (prod)
@@ -542,7 +575,8 @@ jobs:
           terraform apply -auto-approve -input=false \
             -var "api_image_tag=$API_TAG" \
             -var "worker_image_tag=$WORKER_TAG" \
-            -var "migrator_image_tag=$MIGRATOR_TAG"
+            -var "migrator_image_tag=$MIGRATOR_TAG" \
+            -var "parser_image_tag=$PARSER_TAG"
         working-directory: terraform/environments/prod
 
   run-migrator:

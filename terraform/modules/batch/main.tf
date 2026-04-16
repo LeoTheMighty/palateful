@@ -42,6 +42,12 @@ variable "ecr_repository_url" {
   description = "ECR repository URL for parser container"
 }
 
+variable "image_tag" {
+  type        = string
+  default     = "latest"
+  description = "Image tag to deploy for the parser container (SHA in CI, 'latest' for local)"
+}
+
 variable "subnet_ids" {
   type        = list(string)
   description = "List of subnet IDs for compute environment"
@@ -179,7 +185,7 @@ resource "aws_batch_job_definition" "parser" {
   }
 
   container_properties = jsonencode({
-    image = "${var.ecr_repository_url}:latest"
+    image = "${var.ecr_repository_url}:${var.image_tag}"
 
     resourceRequirements = [
       { type = "VCPU", value = "4" },
