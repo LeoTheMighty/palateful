@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from utils.models.pantry import Pantry
 from utils.models.pantry_ingredient import PantryIngredient
+from utils.models.pantry_ingredient_event import PantryIngredientEvent
 from utils.models.pantry_user import PantryUser
 
 if TYPE_CHECKING:
@@ -170,3 +171,119 @@ def soft_delete_pantry_ingredient(
         row.archived_at = datetime.now(UTC)
         database.db.commit()
     return row
+
+
+@dataclass
+class DecrementOutcome:
+    """Result summary of ``decrement_pantry_from_recipe``."""
+
+    decremented: list[PantryIngredientEvent]
+    skipped_unit_mismatch: int
+    skipped_missing_pantry_row: int
+    skipped_invalid_recipe_data: int
+
+
+def decrement_pantry_from_recipe(
+    database: Database,
+    *,
+    pantry_id,
+    recipe,
+    servings_scale: float = 1.0,
+    source_meal_event_id=None,
+) -> DecrementOutcome:
+    """Decrement pantry quantities for every ingredient on ``recipe``.
+
+    Best-effort: strict string match on ``unit_normalized``. On mismatch,
+    logs at WARNING and skips (never raises, never prompts). Writes an
+    audit row to ``pantry_ingredient_events`` for each actual decrement.
+    Quantities clamp at zero; a decrement that reaches zero also archives
+    the pantry row.
+    """
+    decremented: list[PantryIngredientEvent] = []
+    skipped_unit_mismatch = 0
+    skipped_missing_pantry_row = 0
+    skipped_invalid_recipe_data = 0
+
+    for ri in getattr(recipe, "ingredients", []) or []:
+        if ri.quantity_normalized is None or ri.unit_normalized is None:
+            skipped_invalid_recipe_data += 1
+            logger.warning(
+                "pantry_decrement_skip_invalid_recipe_data recipe_id=%s ingredient_id=%s",
+                getattr(recipe, "id", None),
+                ri.ingredient_id,
+            )
+            continue
+
+        consumed = Decimal(ri.quantity_normalized) * Decimal(str(servings_scale))
+
+        row = (
+            database.db.query(PantryIngredient)
+            .filter(
+                PantryIngredient.pantry_id == pantry_id,
+                PantryIngredient.ingredient_id == ri.ingredient_id,
+                PantryIngredient.archived_at.is_(None),
+            )
+            .first()
+        )
+        if row is None:
+            skipped_missing_pantry_row += 1
+            logger.debug(
+                "pantry_decrement_skip_missing_row pantry_id=%s ingredient_id=%s",
+                pantry_id,
+                ri.ingredient_id,
+            )
+            continue
+
+        if row.unit_normalized != ri.unit_normalized:
+            # Epic rule: best-effort, silent skip on unit mismatch.
+            skipped_unit_mismatch += 1
+            logger.warning(
+                "pantry_decrement_skip_unit_mismatch pantry_id=%s ingredient_id=%s "
+                "pantry_unit=%r recipe_unit=%r",
+                pantry_id,
+                ri.ingredient_id,
+                row.unit_normalized,
+                ri.unit_normalized,
+            )
+            continue
+
+        before = Decimal(row.quantity_normalized)
+        after = before - consumed
+        if after < 0:
+            after = Decimal(0)
+            # delta is the actual amount removed, not the attempted amount.
+            delta = before
+        else:
+            delta = consumed
+
+        row.quantity_normalized = after
+        if after == 0:
+            row.archived_at = datetime.now(UTC)
+
+        event = PantryIngredientEvent(
+            pantry_id=pantry_id,
+            ingredient_id=ri.ingredient_id,
+            event_type="decrement",
+            delta_quantity=-delta,
+            source_meal_event_id=source_meal_event_id,
+        )
+        database.db.add(event)
+        decremented.append(event)
+
+        logger.info(
+            "pantry_auto_decrement pantry_id=%s ingredient_id=%s from=%s to=%s",
+            pantry_id,
+            ri.ingredient_id,
+            before,
+            after,
+        )
+
+    if decremented or skipped_unit_mismatch or skipped_missing_pantry_row:
+        database.db.commit()
+
+    return DecrementOutcome(
+        decremented=decremented,
+        skipped_unit_mismatch=skipped_unit_mismatch,
+        skipped_missing_pantry_row=skipped_missing_pantry_row,
+        skipped_invalid_recipe_data=skipped_invalid_recipe_data,
+    )

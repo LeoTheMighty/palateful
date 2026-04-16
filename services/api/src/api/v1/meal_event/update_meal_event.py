@@ -1,15 +1,19 @@
 """Update meal event endpoint."""
 
+import logging
 from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.events import MealEventCompleted, dispatch
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.recipe import Recipe
 from utils.models.user import User
+
+logger = logging.getLogger(__name__)
 
 VALID_STATUSES = ["planned", "shopping", "prepping", "cooking", "completed", "skipped"]
 VALID_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
@@ -79,6 +83,9 @@ class UpdateMealEvent(Endpoint):
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
 
+        # Capture pre-update state for pantry-4 event dispatch.
+        previous_status = meal_event.status
+
         # Update fields
         if params.title is not None:
             meal_event.title = params.title
@@ -113,6 +120,32 @@ class UpdateMealEvent(Endpoint):
 
         self.database.db.commit()
         self.database.db.refresh(meal_event)
+
+        # Pantry decrement hook (pantry-4). Only fires on the transition
+        # into "completed" — re-submitting completed→completed is a no-op
+        # and skipped→completed still triggers (a skipped meal that later
+        # flips to cooked should consume the pantry).
+        if (
+            meal_event.status == "completed"
+            and previous_status != "completed"
+            and meal_event.recipe_id is not None
+        ):
+            try:
+                dispatch(
+                    "MealEventCompleted",
+                    MealEventCompleted(
+                        user_id=user.id,
+                        meal_event_id=meal_event.id,
+                        recipe_id=meal_event.recipe_id,
+                        servings=None,
+                    ),
+                )
+            except Exception:
+                # Best-effort: never block the mark-as-cooked action.
+                logger.exception(
+                    "meal_event_completed_dispatch_failed meal_event_id=%s",
+                    meal_event.id,
+                )
 
         # Build recipe summary if present
         recipe_summary = None

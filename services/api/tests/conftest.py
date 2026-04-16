@@ -360,6 +360,22 @@ class MockPantryUser(MockModel):
         super().__init__(**defaults)
 
 
+class MockPantryIngredientEvent(MockModel):
+    """Mock PantryIngredientEvent audit row."""
+
+    def __init__(self, **kwargs):
+        from decimal import Decimal
+        defaults = {
+            "pantry_id": str(uuid.uuid4()),
+            "ingredient_id": str(uuid.uuid4()),
+            "event_type": "decrement",
+            "delta_quantity": Decimal("0.000"),
+            "source_meal_event_id": None,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockPantryIngredient(MockModel):
     """Mock PantryIngredient model."""
 
