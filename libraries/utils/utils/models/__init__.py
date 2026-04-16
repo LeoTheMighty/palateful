@@ -21,6 +21,7 @@ from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.notification import Notification
 from utils.models.pantry import Pantry
 from utils.models.pantry_ingredient import PantryIngredient
+from utils.models.pantry_ingredient_event import PantryIngredientEvent
 from utils.models.pantry_user import PantryUser
 from utils.models.parser_batch import ParserBatch
 from utils.models.parser_job import ParserJob
@@ -65,6 +66,7 @@ __all__ = [
     "Pantry",
     "PantryUser",
     "PantryIngredient",
+    "PantryIngredientEvent",
     # Recipe Book
     "RecipeBook",
     "RecipeBookUser",

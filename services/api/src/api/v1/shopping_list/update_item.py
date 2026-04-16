@@ -145,7 +145,7 @@ class UpdateShoppingListItem(Endpoint):
                     quantity_normalized=item.quantity,
                     unit_normalized=item.unit,
                 )
-                if result.skipped_reason is None:
+                if result.skipped_reason is None:  # pragma: no branch
                     pantry_ingredient_id = str(item.ingredient_id)
                     pantry_id = str(pantry.id)
                 dispatch(

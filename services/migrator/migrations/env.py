@@ -28,6 +28,7 @@ from utils.db.models import (  # noqa: F401
     Notification,
     Pantry,
     PantryIngredient,
+    PantryIngredientEvent,
     PantryUser,
     ParserJob,
     PrepStep,

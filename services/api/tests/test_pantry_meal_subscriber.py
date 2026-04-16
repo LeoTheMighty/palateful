@@ -232,3 +232,58 @@ class TestDecrementSubscriber:
             )
 
         assert db.close.called
+        # Rollback was called to leave a clean transaction.
+        assert db.db.rollback.called
+
+    def test_scales_by_servings_when_event_servings_provided(self):
+        """If event.servings is set, the scale = event/recipe servings."""
+        user = MockUser()
+        ing = MockIngredient(canonical_name="flour")
+        ri = MockRecipeIngredient(
+            ingredient_id=str(ing.id),
+            quantity_normalized=Decimal("100.000"),
+            unit_normalized="g",
+        )
+        # Recipe natively makes 4 servings, event only cooked 2 → half.
+        recipe = MockRecipe(id=str(uuid.uuid4()), servings=4, ingredients=[ri])
+        pantry = MockPantry()
+        membership = MockPantryUser(user_id=str(user.id), pantry_id=str(pantry.id))
+        pantry_row = MockPantryIngredient(
+            pantry_id=str(pantry.id),
+            ingredient_id=str(ing.id),
+            quantity_normalized=Decimal("200.000"),
+            unit_normalized="g",
+        )
+
+        db = _make_mock_database(
+            recipe, membership, pantry, {str(ing.id): pantry_row}
+        )
+        _invoke(
+            _event(str(user.id), uuid.uuid4(), uuid.UUID(recipe.id), servings=2.0),
+            db,
+        )
+
+        # 100g × (2/4) = 50g consumed. Pantry was 200g → 150g remains.
+        assert pantry_row.quantity_normalized == Decimal("150.000")
+
+    def test_missing_recipe_returns_early(self):
+        """If the recipe can't be loaded, log a warning and skip."""
+        from utils.models.recipe import Recipe
+
+        db = MagicMock()
+        db.db.query.side_effect = lambda model, *a, **kw: MockQuery([])
+        db.close = MagicMock()
+
+        with patch(
+            "api.subscribers.pantry_meal_subscriber.Database", return_value=db
+        ):
+            from api.subscribers.pantry_meal_subscriber import (
+                handle_meal_event_completed,
+            )
+            handle_meal_event_completed(
+                _event(uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+            )
+
+        # Bailed out before touching pantry or rollback.
+        assert db.close.called
+        assert not db.db.rollback.called

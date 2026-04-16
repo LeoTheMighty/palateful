@@ -193,6 +193,37 @@ class TestAddPantryIngredient:
         response = client.post(f"/v1/pantries/{pantry_id}/ingredients", json=body)
         assert response.status_code == 422
 
+    def test_unknown_ingredient_returns_404(self, client, mock_db, mock_user):
+        """A valid pantry but a non-existent ingredient returns 404."""
+        from utils.models.pantry_user import PantryUser
+
+        pantry_id = str(uuid.uuid4())
+        _pantry, membership, _ = self._setup_access(mock_db, mock_user, pantry_id)
+        _query_router(mock_db, {PantryUser: [membership]})
+
+        body = {
+            "ingredient_id": str(uuid.uuid4()),
+            "quantity_display": "1",
+            "unit_display": "each",
+            "quantity_normalized": "1",
+            "unit_normalized": "each",
+        }
+        response = client.post(f"/v1/pantries/{pantry_id}/ingredients", json=body)
+        assert response.status_code == 404
+
+    def test_missing_pantry_returns_404(self, client, mock_db, mock_user):
+        """A mutate call on a non-existent pantry returns 404."""
+        pantry_id = str(uuid.uuid4())
+        body = {
+            "ingredient_id": str(uuid.uuid4()),
+            "quantity_display": "1",
+            "unit_display": "each",
+            "quantity_normalized": "1",
+            "unit_normalized": "each",
+        }
+        response = client.post(f"/v1/pantries/{pantry_id}/ingredients", json=body)
+        assert response.status_code == 404
+
 
 class TestUpdatePantryIngredient:
     """Tests for PATCH /v1/pantries/{pantry_id}/ingredients/{ingredient_id}."""
@@ -262,6 +293,52 @@ class TestUpdatePantryIngredient:
         assert response.status_code == 200
         assert row.quantity_normalized == Decimal(0)
         assert row.archived_at is not None
+
+    def test_updates_all_optional_fields(self, client, mock_db, mock_user):
+        """Covers the remaining conditional branches in update_ingredient."""
+        from datetime import UTC, datetime
+        from utils.models.pantry import Pantry
+        from utils.models.pantry_ingredient import PantryIngredient
+        from utils.models.pantry_user import PantryUser
+
+        pantry_id = str(uuid.uuid4())
+        ingredient_id = str(uuid.uuid4())
+        pantry = MockPantry(id=pantry_id)
+        membership = MockPantryUser(
+            user_id=str(mock_user.id), pantry_id=pantry_id, role="owner"
+        )
+        mock_db.set_find_by(Pantry, pantry, id=pantry_id)
+
+        row = MockPantryIngredient(
+            pantry_id=pantry_id,
+            ingredient_id=ingredient_id,
+            quantity_display=Decimal("1.000"),
+            unit_display="kg",
+            quantity_normalized=Decimal("1000.000"),
+            unit_normalized="g",
+            storage_location="pantry",
+        )
+        _query_router(
+            mock_db, {PantryUser: [membership], PantryIngredient: [row]}
+        )
+
+        future = datetime(2027, 1, 1, tzinfo=UTC).isoformat()
+        response = client.patch(
+            f"/v1/pantries/{pantry_id}/ingredients/{ingredient_id}",
+            json={
+                "quantity_display": "5",
+                "unit_display": "g",
+                "quantity_normalized": "500",
+                "unit_normalized": "g",
+                "storage_location": "freezer",
+                "expires_at": future,
+            },
+        )
+        assert response.status_code == 200
+        assert row.quantity_display == Decimal(5)
+        assert row.unit_display == "g"
+        assert row.quantity_normalized == Decimal(500)
+        assert row.storage_location == "freezer"
 
     def test_archived_row_returns_404(self, client, mock_db, mock_user):
         """PATCH on an archived ingredient returns 404."""

@@ -9,7 +9,6 @@ import logging
 
 from sqlalchemy.orm import selectinload
 from utils.events import MealEventCompleted
-from utils.models.meal_event import MealEvent
 from utils.models.recipe import Recipe
 from utils.services.database import Database
 from utils.services.pantry_service import (
@@ -78,12 +77,7 @@ def handle_meal_event_completed(event: MealEventCompleted) -> None:
         # Make sure we don't leave a dirty transaction around.
         try:
             database.db.rollback()
-        except Exception:
+        except Exception:  # pragma: no cover — defensive rollback
             logger.exception("pantry_decrement_rollback_failed")
     finally:
         database.close()
-
-
-def _find_meal_event(db, meal_event_id) -> MealEvent | None:
-    # Kept for future extensibility / direct tests.
-    return db.query(MealEvent).filter(MealEvent.id == meal_event_id).first()
