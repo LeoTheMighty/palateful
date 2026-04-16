@@ -247,6 +247,15 @@ jobs:
           fetch-depth: 0
           clean: false
 
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install Python dependencies
+        run: |
+          poetry install --with dev
+          poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
+          poetry install
+
       - name: Check models match migrations
         run: npx nx run migrator:check-models
 
