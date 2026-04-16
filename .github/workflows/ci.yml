@@ -82,6 +82,7 @@ jobs:
         run: pipx install poetry
 
       - name: Cache Poetry virtualenv
+        id: venv-cache
         uses: actions/cache@v4
         with:
           path: .venv
@@ -90,6 +91,7 @@ jobs:
             venv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install Python dependencies
+        if: steps.venv-cache.outputs.cache-hit != 'true'
         run: |
           poetry install --with dev
           poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
@@ -125,6 +127,7 @@ jobs:
         run: pipx install poetry
 
       - name: Restore workspace
+        id: workspace-cache
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -137,7 +140,10 @@ jobs:
           fetch-depth: 0
           clean: false
 
+      # Setup already ran `poetry install` and cached the whole workspace
+      # (including .venv). If the workspace restore hit, skip the reinstall.
       - name: Install dependencies
+        if: steps.workspace-cache.outputs.cache-hit != 'true'
         run: |
           poetry install --with dev
           poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
@@ -178,6 +184,7 @@ jobs:
         run: pipx install poetry
 
       - name: Restore workspace
+        id: workspace-cache
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -191,6 +198,7 @@ jobs:
           clean: false
 
       - name: Install Python dependencies
+        if: steps.workspace-cache.outputs.cache-hit != 'true'
         run: |
           poetry install --with dev
           poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
@@ -259,6 +267,7 @@ jobs:
         run: pipx install poetry
 
       - name: Restore workspace
+        id: workspace-cache
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -272,9 +281,11 @@ jobs:
           clean: false
 
       - name: Install Node dependencies
+        if: steps.workspace-cache.outputs.cache-hit != 'true'
         run: yarn install --frozen-lockfile
 
       - name: Install Python dependencies
+        if: steps.workspace-cache.outputs.cache-hit != 'true'
         run: |
           poetry install --with dev
           poetry run pip uninstall utils test-helper agent -y 2>/dev/null || true
