@@ -8,12 +8,14 @@ class SortChips extends StatelessWidget {
   final SortOption selected;
   final ValueChanged<SortOption> onChanged;
   final int recipeCount;
+  final Widget? leading;
 
   const SortChips({
     super.key,
     required this.selected,
     required this.onChanged,
     required this.recipeCount,
+    this.leading,
   });
 
   @override
@@ -23,6 +25,10 @@ class SortChips extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       child: Row(
         children: [
+          if (leading != null) ...[
+            leading!,
+            const SizedBox(width: 12),
+          ],
           _SortIcon(
             icon: Icons.star_rounded,
             tooltip: 'Best',

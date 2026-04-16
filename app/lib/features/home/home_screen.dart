@@ -467,20 +467,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            // Unified filter pill — replaces the stacked meal + vibe bars.
-            // Tapping opens a bottom sheet with both filters grouped.
-            FilterPill(
-              activeCount: _activeFilterCount,
-              onTap: _openFilterSheet,
-            ),
-
-            const SizedBox(height: 4),
-
-            // Sort Chips
             SortChips(
               selected: _sortOption,
               onChanged: _onSortChanged,
               recipeCount: _recipes.length,
+              leading: FilterPill(
+                activeCount: _activeFilterCount,
+                onTap: _openFilterSheet,
+              ),
             ),
 
             // Batch Import Status
