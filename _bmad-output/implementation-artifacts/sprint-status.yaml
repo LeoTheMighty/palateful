@@ -180,5 +180,5 @@ development_status:
   mvp-6-retry-endpoint: done
   mvp-7-dismiss-endpoints: done
   mvp-8-flutter-failed-state-ui: done
-  mvp-9-clear-all-and-swipe-to-dismiss: ready-for-dev
+  mvp-9-clear-all-and-swipe-to-dismiss: done
   epic-mvp-finalization-retrospective: optional

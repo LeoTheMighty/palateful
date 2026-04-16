@@ -239,6 +239,9 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
       _failedJobs.isNotEmpty ||
       _localBatchJobs.isNotEmpty;
 
+  int get _totalFailedItemCount =>
+      _failedJobs.fold<int>(0, (sum, jw) => sum + jw.items.length);
+
   String _formatTime(String? dateStr) {
     if (dateStr == null) return '';
     final parsed = DateTime.tryParse(dateStr);
@@ -293,6 +296,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final failedCount = _totalFailedItemCount;
 
     return Scaffold(
       appBar: AppBar(
@@ -301,6 +305,19 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
+        actions: [
+          if (failedCount > 0)
+            TextButton(
+              onPressed: _handleClearAllFailed,
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.error,
+              ),
+              child: Text(
+                'Clear all failed ($failedCount)',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -311,6 +328,67 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
                   child: _buildBody(colorScheme, textTheme),
                 ),
     );
+  }
+
+  Future<void> _handleClearAllFailed() async {
+    final count = _totalFailedItemCount;
+    if (count == 0) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: const Text('Dismiss all failed imports?'),
+          content: Text(
+            count == 1
+                ? "Dismiss 1 failed import? This can't be undone."
+                : "Dismiss $count failed imports? This can't be undone.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+              child: const Text('Dismiss all'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Optimistic: drop every failed group from local state.
+    final snapshot = List<_JobWithItems>.from(_failedJobs);
+    setState(() => _failedJobs = []);
+
+    try {
+      final response = await _apiClient.dismissAllFailedImports();
+      final dismissed = (response.data['dismissed_count'] as num?)?.toInt() ??
+          count;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Dismissed $dismissed import${dismissed == 1 ? '' : 's'}',
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _failedJobs = snapshot);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to clear: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 
   Widget _buildBody(ColorScheme colorScheme, TextTheme textTheme) {
@@ -480,39 +558,51 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
             final recipeName =
                 item['recipe_name'] as String? ?? 'Untitled';
             final errorMsg = item['error_message'] as String?;
-            return _buildItemTile(
-              colorScheme: colorScheme,
-              textTheme: textTheme,
-              leading: Icon(Icons.error_outline, size: 16,
-                  color: colorScheme.error),
-              title: recipeName,
-              subtitle: errorMsg,
-              subtitleColor: colorScheme.error,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.refresh, size: 18,
-                        color: colorScheme.primary),
-                    tooltip: 'Retry',
-                    onPressed: () => _retrySingleItem(jw, item),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: Icon(Icons.close, size: 18,
-                        color: colorScheme.onSurfaceVariant),
-                    tooltip: 'Dismiss',
-                    onPressed: () => _dismissSingleItem(jw, item),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ],
+            return Dismissible(
+              key: ValueKey('failed-item-$itemId'),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                color: colorScheme.error,
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: const Icon(Icons.delete_outline,
+                    color: Colors.white),
               ),
-              onTap: () => _onItemTap(itemId, jw),
+              onDismissed: (_) => _dismissSingleItem(jw, item),
+              child: _buildItemTile(
+                colorScheme: colorScheme,
+                textTheme: textTheme,
+                leading: Icon(Icons.error_outline, size: 16,
+                    color: colorScheme.error),
+                title: recipeName,
+                subtitle: errorMsg,
+                subtitleColor: colorScheme.error,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.refresh, size: 18,
+                          color: colorScheme.primary),
+                      tooltip: 'Retry',
+                      onPressed: () => _retrySingleItem(jw, item),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.close, size: 18,
+                          color: colorScheme.onSurfaceVariant),
+                      tooltip: 'Dismiss',
+                      onPressed: () => _dismissSingleItem(jw, item),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+                onTap: () => _onItemTap(itemId, jw),
+              ),
             );
           }),
           // Dismiss All Failed button

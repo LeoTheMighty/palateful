@@ -1,6 +1,6 @@
 # Story MVP.9: "Clear All Failed" + Swipe-to-Dismiss in the Import Hub
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -116,8 +116,23 @@ This is a P2 polish story and explicitly depends on mvp-7 and mvp-8 shipping fir
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `flutter test test/features/activity/import_history_screen_test.dart` — 4/4 pass
+- `flutter analyze` on the touched file — clean (pre-existing warnings only)
 
 ### Completion Notes List
 
+- Clear-all button lives on the AppBar action slot (not inside the body) so it's always reachable without scrolling.
+- Used a local `snapshot` of `_failedJobs` before clearing state, so an API failure can restore exactly what was there before — cleaner than re-fetching.
+- `Dismissible` wraps only failed rows, using an outer key prefix (`failed-item-$itemId`) so the key namespace is distinct from any other `ValueKey(itemId)` used elsewhere on the screen.
+- Did not add a swipe-to-dismiss undo snackbar on this screen — mvp-8's `_dismissSingleItem` already does an optimistic revert on API error, and adding a separate "Undo" flow here would duplicate logic. Documented in QA walkthrough as a deliberate narrowing.
+- No backend changes in this story — uses the bulk endpoint from mvp-7.
+
 ### File List
+
+- `app/lib/features/activity/import_history_screen.dart` (modified — Clear all action, confirmation dialog, `Dismissible` wrapper, `_totalFailedItemCount`, `_handleClearAllFailed`)
+- `app/test/features/activity/import_history_screen_test.dart` (new — 4 widget tests)
+- `_bmad-output/implementation-artifacts/mvp-9-qa-walkthrough.md` (new)
