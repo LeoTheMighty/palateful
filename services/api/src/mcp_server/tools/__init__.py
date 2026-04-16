@@ -23,6 +23,7 @@ def register_all_tools() -> None:
         meal_planning,
         recipe_books,
         recipes,
+        search,
         shopping,
         user,
     )

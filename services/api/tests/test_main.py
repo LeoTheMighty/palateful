@@ -83,6 +83,33 @@ class TestLifespan:
                 pass
 
     @pytest.mark.asyncio
+    async def test_lifespan_exits_mcp_context_cleanly(self):
+        """When the inner MCP context enters successfully, __aexit__ runs on teardown."""
+        import main
+
+        exit_args: list = []
+
+        class _CleanContext:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, exc_type, exc, tb):
+                exit_args.append((exc_type, exc, tb))
+                return False
+
+        class _CleanApp:
+            class router:
+                @staticmethod
+                def lifespan_context(_a):
+                    return _CleanContext()
+
+        with patch.object(main, "mcp_app", _CleanApp):
+            async with main.lifespan(main.app):
+                pass
+
+        assert exit_args == [(None, None, None)]
+
+    @pytest.mark.asyncio
     async def test_lifespan_reraises_unexpected_runtime_errors(self):
         """A RuntimeError unrelated to the session manager must propagate."""
         import main
