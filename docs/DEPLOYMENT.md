@@ -7,6 +7,25 @@ clicks; everything runs from the CLI on your laptop.
 
 ## Backend (API + Worker + Migrator)
 
+### CI (standard path)
+
+Pushing to `main` triggers the full pipeline automatically:
+
+1. **CI** (`.github/workflows/ci.yml`) — lint, test, model checks
+2. **Deploy** (`.github/workflows/deploy.yml`) — triggered when CI
+   passes, gated by manual approval in the GitHub "production"
+   environment
+
+The deploy workflow uses NX affected detection to only build images,
+run migrations, and force-deploy ECS services for projects that
+actually changed. Unchanged services keep their existing image tags.
+
+To deploy, just push to `main` and approve in GitHub when prompted.
+
+### Manual deploy (emergency / ASAP)
+
+When you can't wait for CI or need to bypass the pipeline:
+
 ```bash
 bin/prod-deploy
 ```
