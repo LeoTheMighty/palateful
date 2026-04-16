@@ -560,6 +560,18 @@ class ApiClient {
     return _dio.post('/v1/import-items/$itemId/skip');
   }
 
+  Future<Response> retryImportItem(String itemId) {
+    return _dio.post('/v1/import-items/$itemId/retry');
+  }
+
+  Future<Response> dismissImportItem(String itemId) {
+    return _dio.post('/v1/import-items/$itemId/dismiss');
+  }
+
+  Future<Response> dismissAllFailedImports() {
+    return _dio.post('/v1/import-jobs/dismiss-all-failed');
+  }
+
   Future<Response> cancelImportJob(String jobId) {
     return _dio.delete('/v1/import-jobs/$jobId');
   }

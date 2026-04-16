@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/di/injection.dart';
+import '../../../../core/services/api_client.dart';
 import '../../../../core/theme/theme.dart';
 import '../models/import_batch.dart';
 import '../state/import_batches_provider.dart';
@@ -46,18 +50,21 @@ class ImportBatchesStrip extends ConsumerWidget {
   }
 }
 
-class _ImportBatchRow extends StatefulWidget {
+class _ImportBatchRow extends ConsumerStatefulWidget {
   final ImportBatch batch;
   final bool isJustStarted;
 
   const _ImportBatchRow({required this.batch, required this.isJustStarted});
 
   @override
-  State<_ImportBatchRow> createState() => _ImportBatchRowState();
+  ConsumerState<_ImportBatchRow> createState() => _ImportBatchRowState();
 }
 
-class _ImportBatchRowState extends State<_ImportBatchRow> {
+class _ImportBatchRowState extends ConsumerState<_ImportBatchRow> {
   bool _expanded = false;
+  bool _retrying = false;
+
+  ApiClient get _apiClient => getIt<ApiClient>();
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +72,7 @@ class _ImportBatchRowState extends State<_ImportBatchRow> {
     final batch = widget.batch;
     final summary = _summarizeStatus(batch);
     final isTappable = summary.isTappable;
+    final isFailed = batch.status == 'failed';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -140,8 +148,161 @@ class _ImportBatchRowState extends State<_ImportBatchRow> {
               ),
             ),
           ),
+          if (isFailed) _buildFailedActions(context),
           if (_expanded) _buildExpanded(context),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFailedActions(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _retrying ? null : _handleRetry,
+              icon: _retrying
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          colorScheme.primary,
+                        ),
+                      ),
+                    )
+                  : const Icon(Icons.refresh, size: 16),
+              label: Text(_retrying ? 'Retrying…' : 'Retry'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _retrying ? null : _handleDismiss,
+              icon: Icon(
+                Icons.close,
+                size: 16,
+                color: colorScheme.error,
+              ),
+              label: Text(
+                'Dismiss',
+                style: TextStyle(color: colorScheme.error),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                  color: colorScheme.error.withValues(alpha: 0.5),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Find every failed ImportItem under this batch's ImportJobs so we can
+  /// retry or dismiss them individually via the per-item endpoints.
+  Future<List<String>> _collectFailedItemIds() async {
+    final batch = widget.batch;
+    if (batch.importJobs.isEmpty) return const [];
+    final futures = batch.importJobs.map(
+      (ij) => _apiClient.listImportItems(ij.id, status: 'failed'),
+    );
+    final responses = await Future.wait(futures);
+    final itemIds = <String>[];
+    for (final r in responses) {
+      final items = (r.data['items'] as List?) ?? const [];
+      for (final raw in items) {
+        if (raw is Map && raw['id'] != null) {
+          itemIds.add(raw['id'].toString());
+        }
+      }
+    }
+    return itemIds;
+  }
+
+  Future<void> _handleRetry() async {
+    if (!mounted) return;
+    setState(() => _retrying = true);
+
+    try {
+      final itemIds = await _collectFailedItemIds();
+      if (itemIds.isEmpty) {
+        throw Exception('No failed items found to retry');
+      }
+      await Future.wait(
+        itemIds.map((id) => _apiClient.retryImportItem(id)),
+      );
+      if (!mounted) return;
+      // Refresh to pick up the new "processing" state from the server.
+      await ref.read(importBatchesProvider.notifier).refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Retrying import…'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _retrying = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Retry failed: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleDismiss() async {
+    final batch = widget.batch;
+    final notifier = ref.read(importBatchesProvider.notifier);
+
+    // Optimistic: hide the row immediately. We keep a reference to the
+    // batch so the snackbar undo can re-add it on local state only. If the
+    // user waits out the snackbar, the backend dismissal is permanent.
+    notifier.locallyRemoveBatch(batch.id);
+
+    // Fire-and-forget the backend call, but still handle errors.
+    Future<void> backendCall() async {
+      try {
+        final itemIds = await _collectFailedItemIds();
+        await Future.wait(
+          itemIds.map((id) => _apiClient.dismissImportItem(id)),
+        );
+      } catch (_) {
+        // On backend failure, restore locally so the user sees the row again.
+        if (mounted) notifier.locallyRestoreBatch(batch);
+      }
+    }
+
+    unawaited(backendCall());
+
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('Import dismissed'),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            // Local-only undo. If the backend dismissal already committed,
+            // the next poll refresh will find nothing to show for this id
+            // anyway, so the restore is purely optimistic UI.
+            notifier.locallyRestoreBatch(batch);
+          },
+        ),
       ),
     );
   }

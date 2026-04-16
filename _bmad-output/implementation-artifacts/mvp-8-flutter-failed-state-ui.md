@@ -1,6 +1,6 @@
 # Story MVP.8: Flutter Failed-State Row UI with Retry + Dismiss
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -134,8 +134,28 @@ This story does **not** add swipe-to-dismiss or a "Clear all failed" button — 
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `flutter analyze` — clean on all modified files (pre-existing warnings in `import_history_screen.dart` left alone)
+- `flutter test test/features/recipes/add_recipe/import_batches_strip_test.dart` — 3/3 pass
+- Cross-file smoke: home_screen_test + import_batches_strip_test + share_import_test — 16/16 pass
 
 ### Completion Notes List
 
+- Used per-item endpoints (`retryImportItem`, `dismissImportItem`) instead of adding new job-level backend endpoints. Keeps scope tight: one UI action = 1 list call + N per-item calls. Fine for typical 1–2 image batches.
+- Extended `ImportBatchesNotifier` with `locallyRemoveBatch` + `locallyRestoreBatch` for optimistic dismiss UX. These are **local-only** — no backend un-dismiss endpoint is called when the user taps Undo in the snackbar. The tradeoff is documented in the source and the QA walkthrough.
+- Switched `_ImportBatchRow` from `StatefulWidget`/`State` to `ConsumerStatefulWidget`/`ConsumerState` to get `ref` access for the provider calls.
+- Fixed the `pumpAndSettle` timeout in the Retry widget test by manually pumping several 100ms frames instead — the provider's internal poll timer never settles.
+- Also fixed a semantic bug in `import_history_screen.dart`: the "dismiss" action on failed items was previously calling `skipImportItem` (which sets `status=skipped`, meaning "I don't want this recipe" — the wrong verb). Now correctly calls `dismissImportItem`.
+- Pre-existing analyze warnings in `import_history_screen.dart` left alone (unused import, unused field — not introduced by this story).
+
 ### File List
+
+- `app/lib/core/services/api_client.dart` (modified — 3 new methods)
+- `app/lib/features/recipes/add_recipe/state/import_batches_provider.dart` (modified — `locallyRemoveBatch` / `locallyRestoreBatch`)
+- `app/lib/features/recipes/add_recipe/widgets/import_batches_strip.dart` (modified — `_buildFailedActions`, `_handleRetry`, `_handleDismiss`, `ConsumerStatefulWidget` conversion)
+- `app/lib/features/activity/import_history_screen.dart` (modified — inline Retry button on failed items, dismiss path switched to `dismissImportItem`)
+- `app/test/features/recipes/add_recipe/import_batches_strip_test.dart` (new — 3 widget tests)
+- `_bmad-output/implementation-artifacts/mvp-8-qa-walkthrough.md` (new)

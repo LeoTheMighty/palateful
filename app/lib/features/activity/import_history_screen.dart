@@ -175,7 +175,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
 
     try {
       await Future.wait(
-        itemIds.map((id) => _apiClient.skipImportItem(id)),
+        itemIds.map((id) => _apiClient.dismissImportItem(id)),
       );
     } catch (_) {
       if (mounted) _loadAttentionView();
@@ -195,9 +195,41 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
     });
 
     try {
-      await _apiClient.skipImportItem(itemId);
+      await _apiClient.dismissImportItem(itemId);
     } catch (_) {
       if (mounted) _loadAttentionView();
+    }
+  }
+
+  Future<void> _retrySingleItem(
+      _JobWithItems jobWithItems, dynamic item) async {
+    final itemId = item['id'].toString();
+
+    try {
+      await _apiClient.retryImportItem(itemId);
+      if (!mounted) return;
+      // Optimistically remove from failed list; the next refresh will
+      // pick up the item's new status.
+      setState(() {
+        jobWithItems.items.removeWhere((i) => i['id'].toString() == itemId);
+        if (jobWithItems.items.isEmpty) {
+          _failedJobs.remove(jobWithItems);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Retrying import…'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Retry failed: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 
@@ -456,14 +488,29 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
               title: recipeName,
               subtitle: errorMsg,
               subtitleColor: colorScheme.error,
-              trailing: IconButton(
-                icon: Icon(Icons.close, size: 18,
-                    color: colorScheme.onSurfaceVariant),
-                tooltip: 'Dismiss',
-                onPressed: () => _dismissSingleItem(jw, item),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                visualDensity: VisualDensity.compact,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.refresh, size: 18,
+                        color: colorScheme.primary),
+                    tooltip: 'Retry',
+                    onPressed: () => _retrySingleItem(jw, item),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(Icons.close, size: 18,
+                        color: colorScheme.onSurfaceVariant),
+                    tooltip: 'Dismiss',
+                    onPressed: () => _dismissSingleItem(jw, item),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ],
               ),
               onTap: () => _onItemTap(itemId, jw),
             );

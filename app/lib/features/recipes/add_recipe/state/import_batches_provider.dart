@@ -64,6 +64,44 @@ class ImportBatchesNotifier extends AsyncNotifier<ImportBatchesState>
     });
   }
 
+  /// Optimistically hide a batch from the strip without waiting for a
+  /// server round-trip. Used by the dismiss flow in mvp-8 so tapping
+  /// Dismiss feels instant. If the user taps Undo within the snackbar
+  /// window, [locallyRestoreBatch] puts it back.
+  ///
+  /// NOTE: local state only. Once the next refresh lands, whatever the
+  /// server returns wins — so the caller is responsible for firing the
+  /// backend dismiss call before/alongside this.
+  void locallyRemoveBatch(String batchId) {
+    if (!state.hasValue) return;
+    final current = state.value!;
+    state = AsyncData(
+      ImportBatchesState(
+        active: current.active.where((b) => b.id != batchId).toList(),
+        recentlyCompleted:
+            current.recentlyCompleted.where((b) => b.id != batchId).toList(),
+      ),
+    );
+  }
+
+  /// Undo a prior [locallyRemoveBatch] by stitching the batch back into
+  /// the active list. Only restores if the batch was previously present.
+  void locallyRestoreBatch(ImportBatch batch) {
+    if (!state.hasValue) return;
+    final current = state.value!;
+    // Dedupe guard — refresh may have already put it back.
+    final alreadyThere = current.all.any((b) => b.id == batch.id);
+    if (alreadyThere) return;
+    state = AsyncData(
+      ImportBatchesState(
+        active: batch.isActive ? [batch, ...current.active] : current.active,
+        recentlyCompleted: batch.isActive
+            ? current.recentlyCompleted
+            : [batch, ...current.recentlyCompleted],
+      ),
+    );
+  }
+
   Future<ImportBatchesState> _fetch() async {
     final response = await _apiClient.listParserBatches(
       activeOnly: false,
