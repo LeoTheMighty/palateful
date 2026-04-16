@@ -1,56 +1,25 @@
-"""Shared helpers for pantry endpoints."""
+"""API-layer helpers for pantry endpoints.
+
+Core mutation logic lives in ``utils.services.pantry_service``; this module
+adds HTTP-specific concerns (permission checks, response shaping).
+"""
 
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.models.pantry import Pantry
 from utils.models.pantry_user import PantryUser
 from utils.services.database import Database
+from utils.services.pantry_service import (
+    get_or_create_default_pantry,
+)
 
 from .schemas import PantryIngredientRead
 
-
-def _find_default_membership(user_id, database: Database) -> PantryUser | None:
-    return (
-        database.db.query(PantryUser)
-        .filter(
-            PantryUser.user_id == user_id,
-            PantryUser.archived_at.is_(None),
-        )
-        .order_by(PantryUser.created_at.asc())
-        .first()
-    )
-
-
-def get_or_create_default_pantry(user_id, database: Database) -> tuple[Pantry, PantryUser]:
-    """Return the caller's default pantry, creating it lazily if missing.
-
-    MVP: every user has exactly one pantry. First access creates a pantry with
-    the caller as owner. An advisory lock scoped to the user guards against
-    two concurrent requests each creating a pantry.
-    """
-    membership = _find_default_membership(user_id, database)
-    if membership:
-        pantry = database.find_by(Pantry, id=membership.pantry_id)
-        if pantry:
-            return pantry, membership
-
-    with database.lock(f"default_pantry_{user_id}"):
-        # Re-check inside the lock in case another request raced us.
-        membership = _find_default_membership(user_id, database)
-        if membership:
-            pantry = database.find_by(Pantry, id=membership.pantry_id)
-            if pantry:
-                return pantry, membership
-
-        pantry = Pantry(name="My Pantry")
-        database.create(pantry)
-        membership = PantryUser(
-            user_id=user_id,
-            pantry_id=pantry.id,
-            role="owner",
-        )
-        database.create(membership)
-        return pantry, membership
+__all__ = [
+    "format_pantry_ingredient",
+    "get_or_create_default_pantry",
+    "require_pantry_access",
+]
 
 
 def require_pantry_access(
@@ -104,8 +73,8 @@ def require_pantry_access(
 def format_pantry_ingredient(row, ingredient=None) -> PantryIngredientRead:
     """Serialize a PantryIngredient ORM row to the API read schema.
 
-    ``ingredient`` overrides row.ingredient when provided — useful when the
-    caller already has the ORM Ingredient object in hand and wants to avoid
+    ``ingredient`` overrides ``row.ingredient`` when provided — useful when
+    the caller already has the ORM Ingredient in hand and wants to avoid
     round-tripping through the relationship loader.
     """
     source = ingredient if ingredient is not None else getattr(row, "ingredient", None)

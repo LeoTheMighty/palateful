@@ -18,6 +18,10 @@ async def lifespan(app: FastAPI):
     from utils.services.shelf_life_service import load_shelf_life_data
     load_shelf_life_data()
 
+    # Register domain-event subscribers (pantry-3, pantry-4, ...).
+    from api.subscribers import register_subscribers
+    register_subscribers()
+
     # Start the MCP streamable-http session manager for the life of the process.
     # The session manager enforces a single .run() call per instance; tests that
     # enter this lifespan multiple times would trip that guard, so fall back to

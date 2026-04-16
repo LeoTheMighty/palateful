@@ -17,6 +17,10 @@ class ShoppingListItem {
   final String? assignedToUserId;
   final String? storeSection;
   final int? storeOrder;
+  /// Set by the backend when a check-off auto-added this item to the pantry
+  /// (pantry-3 hook). Null for every other update.
+  final String? pantryIngredientId;
+  final String? pantryId;
 
   ShoppingListItem({
     required this.id,
@@ -36,6 +40,8 @@ class ShoppingListItem {
     this.assignedToUserId,
     this.storeSection,
     this.storeOrder,
+    this.pantryIngredientId,
+    this.pantryId,
   });
 
   factory ShoppingListItem.fromJson(Map<String, dynamic> json) {
@@ -61,6 +67,8 @@ class ShoppingListItem {
       assignedToUserId: json['assigned_to_user_id'] as String?,
       storeSection: json['store_section'] as String?,
       storeOrder: json['store_order'] as int?,
+      pantryIngredientId: json['pantry_ingredient_id'] as String?,
+      pantryId: json['pantry_id'] as String?,
     );
   }
 

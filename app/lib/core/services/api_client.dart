@@ -387,6 +387,25 @@ class ApiClient {
     return _dio.delete('/v1/shopping-lists/$listId/items/$itemId');
   }
 
+  // ── Pantry ───────────────────────────────────────────────────────────────
+
+  Future<Response> getDefaultPantry() {
+    return _dio.get('/v1/pantries/default');
+  }
+
+  Future<Response> addPantryIngredient(String pantryId, Map<String, dynamic> data) {
+    return _dio.post('/v1/pantries/$pantryId/ingredients', data: data);
+  }
+
+  Future<Response> updatePantryIngredient(
+      String pantryId, String ingredientId, Map<String, dynamic> data) {
+    return _dio.patch('/v1/pantries/$pantryId/ingredients/$ingredientId', data: data);
+  }
+
+  Future<Response> deletePantryIngredient(String pantryId, String ingredientId) {
+    return _dio.delete('/v1/pantries/$pantryId/ingredients/$ingredientId');
+  }
+
   Future<Response> getShoppingListDeadlines(String listId) {
     return _dio.get('/v1/shopping-lists/$listId/deadlines');
   }

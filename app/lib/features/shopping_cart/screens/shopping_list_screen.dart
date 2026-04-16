@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../core/services/api_client.dart';
 import 'package:palateful/core/config/environment.dart' show kE2EMode;
 import '../../../core/theme/theme.dart';
 import '../../../services/share_service.dart';
@@ -145,6 +146,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     try {
       final updated = await _service.toggleItemChecked(_list!.id, item);
       _handleItemUpdated(updated);
+      _maybeShowPantryUndoSnackbar(updated);
     } catch (e) {
       // Rollback to original state
       _handleItemUpdated(item);
@@ -156,6 +158,37 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     } finally {
       _pendingItemIds.remove(item.id);
     }
+  }
+
+  /// Shows a "Added to pantry — Undo" snackbar when the backend reports a
+  /// pantry auto-add (pantry-3 hook).
+  void _maybeShowPantryUndoSnackbar(ShoppingListItem updated) {
+    if (!mounted) return;
+    final pantryId = updated.pantryId;
+    final pantryIngredientId = updated.pantryIngredientId;
+    if (pantryId == null || pantryIngredientId == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added "${updated.name}" to pantry'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            try {
+              await getIt<ApiClient>().deletePantryIngredient(
+                pantryId,
+                pantryIngredientId,
+              );
+            } catch (_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Undo failed')),
+              );
+            }
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _addItem() async {

@@ -1,5 +1,6 @@
 """Update shopping list item endpoint."""
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -10,9 +11,16 @@ from api.v1.shopping_list.utils.notifications import (
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.events import ShoppingListItemPurchased, dispatch
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
+from utils.services.pantry_service import (
+    get_or_create_default_pantry,
+    upsert_pantry_ingredient,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class UpdateShoppingListItem(Endpoint):
@@ -70,6 +78,9 @@ class UpdateShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ITEM_NOT_FOUND,
             )
 
+        # Capture pre-update state for event dispatch (pantry-3 hook).
+        previous_is_checked = item.is_checked
+
         # Update basic fields
         if params.name is not None:
             item.name = params.name
@@ -110,6 +121,52 @@ class UpdateShoppingListItem(Endpoint):
 
         self.database.db.commit()
         self.database.db.refresh(item)
+
+        # Pantry auto-add hook (pantry-3): only fire on the false → true
+        # transition AND when we have a resolved ingredient. Free-text items
+        # skip entirely. A failure here must not break the user's check-off.
+        pantry_ingredient_id: str | None = None
+        pantry_id: str | None = None
+        if (
+            params.is_checked is True
+            and previous_is_checked is False
+            and item.ingredient_id is not None
+        ):
+            try:
+                pantry, _membership = get_or_create_default_pantry(
+                    user.id, self.database
+                )
+                result = upsert_pantry_ingredient(
+                    self.database,
+                    pantry_id=pantry.id,
+                    ingredient_id=item.ingredient_id,
+                    quantity_display=item.quantity,
+                    unit_display=item.unit,
+                    quantity_normalized=item.quantity,
+                    unit_normalized=item.unit,
+                )
+                if result.skipped_reason is None:
+                    pantry_ingredient_id = str(item.ingredient_id)
+                    pantry_id = str(pantry.id)
+                dispatch(
+                    "ShoppingListItemPurchased",
+                    ShoppingListItemPurchased(
+                        user_id=user.id,
+                        shopping_list_id=shopping_list.id,
+                        item_id=item.id,
+                        ingredient_id=item.ingredient_id,
+                        quantity_normalized=(
+                            Decimal(item.quantity) if item.quantity is not None else None
+                        ),
+                        unit_normalized=item.unit,
+                        shopping_list_item_name=item.name,
+                    ),
+                )
+            except Exception:
+                # Best-effort: never block the user on the side effect.
+                logger.exception(
+                    "pantry_auto_add_failed user_id=%s item_id=%s", user.id, item_id
+                )
 
         # Send notification when item is checked off
         if params.is_checked is True:
@@ -158,6 +215,8 @@ class UpdateShoppingListItem(Endpoint):
                 store_order=item.store_order,
                 created_at=item.created_at,
                 updated_at=item.updated_at,
+                pantry_ingredient_id=pantry_ingredient_id,
+                pantry_id=pantry_id,
             )
         )
 
@@ -200,3 +259,7 @@ class UpdateShoppingListItem(Endpoint):
         store_order: int | None = None
         created_at: datetime
         updated_at: datetime
+        # Pantry auto-add hook (pantry-3): populated when is_checked transitions
+        # false → true and ``ingredient_id`` is set. Null otherwise.
+        pantry_ingredient_id: str | None = None
+        pantry_id: str | None = None
