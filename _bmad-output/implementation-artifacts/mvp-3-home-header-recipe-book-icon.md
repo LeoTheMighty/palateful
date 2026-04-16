@@ -1,6 +1,6 @@
 # Story MVP.3: Home Header — Add Recipe Book Icon, Remove Redundant "See All" Link
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -81,8 +81,23 @@ This story promotes Recipe Books to a first-class header icon and removes the re
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `flutter test test/features/home/home_screen_test.dart` — 4/4 pass
+- `flutter analyze lib/features/home/home_screen.dart` — clean (pre-existing warnings only)
 
 ### Completion Notes List
 
+- Reused the exact `CircleIconButton` component already used for Chat and Import, no new styling variant.
+- Used a 16px `SizedBox` gap between the Chat and Import icons to create the nav-vs-action visual grouping Sally proposed in Party Mode.
+- The test needed `AuthService` to be registered in GetIt because `_buildBooksSection` calls `getIt<AuthService>().defaultRecipeBookId`. Registering a plain `AuthService()` is enough — it defaults `defaultRecipeBookId` to null, which the widget handles.
+- Test pumps several 100ms frames after widget pump to drain the initial recipe-book fetch; a single `pump()` was not enough.
+- Pre-existing warnings in `home_screen.dart` unrelated to this story are not addressed.
+
 ### File List
+
+- `app/lib/features/home/home_screen.dart` (modified)
+- `app/test/features/home/home_screen_test.dart` (modified)
+- `_bmad-output/implementation-artifacts/mvp-3-qa-walkthrough.md` (new)

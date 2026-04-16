@@ -537,6 +537,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(width: 12),
 
+          // Nav group: destinations the user can jump to.
+          // Recipe Books Button
+          CircleIconButton(
+            icon: Icons.menu_book_outlined,
+            onPressed: () => context.push('/recipe-books'),
+            backgroundColor: colorScheme.surfaceContainerHighest,
+            tooltip: 'Recipe Books',
+          ),
+          const SizedBox(width: 8),
+
           // AI Chat Button
           CircleIconButton(
             icon: Icons.chat_bubble_outline,
@@ -544,8 +554,11 @@ class _HomeScreenState extends State<HomeScreen> {
             backgroundColor: colorScheme.surfaceContainerHighest,
             tooltip: 'AI Assistant',
           ),
-          const SizedBox(width: 8),
 
+          // Gap between nav group and action group.
+          const SizedBox(width: 16),
+
+          // Action group: things the user triggers from here.
           // Batch Photo Import Button
           CircleIconButton(
             icon: Icons.add_photo_alternate_outlined,
@@ -566,29 +579,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section header
+        // Section header. "See All" link removed — the Recipe Books icon
+        // in the header above is now the primary entry point to /recipe-books.
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'My Books',
-                style: textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              GestureDetector(
-                onTap: () => context.push('/recipe-books'),
-                child: Text(
-                  'See All',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
+          child: Text(
+            'My Books',
+            style: textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         // Horizontal scroll
