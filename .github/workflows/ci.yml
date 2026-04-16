@@ -462,6 +462,9 @@ jobs:
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
       IMAGE_TAG: ${{ github.sha }}
+      # @nx-tools/nx-container:build reads GITHUB_TOKEN for metadata extraction
+      # even when pushing to ECR. Auto-provided by the runner; no setup needed.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/setup-node@v4
         with:
