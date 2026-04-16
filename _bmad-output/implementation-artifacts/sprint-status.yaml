@@ -190,6 +190,6 @@ development_status:
   mcp-2-core-agent-tools: done
   mcp-3-recipe-crud-ingredient-resolution: done
   mcp-4-import-ocr-tools: done
-  mcp-5-recipe-books-shopping-lists-meal-planning: in-progress
-  mcp-6-search-tools-integration-testing: backlog
+  mcp-5-recipe-books-shopping-lists-meal-planning: done
+  mcp-6-search-tools-integration-testing: in-progress
   epic-mcp-retrospective: optional

@@ -20,7 +20,10 @@ def register_all_tools() -> None:
     from mcp_server.tools import (  # noqa: F401
         agent_tools,
         import_tools,
+        meal_planning,
+        recipe_books,
         recipes,
+        shopping,
         user,
     )
 
