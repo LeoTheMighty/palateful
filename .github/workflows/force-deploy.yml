@@ -74,6 +74,7 @@ jobs:
     environment: production
     env:
       IMAGE_TAG: ${{ github.sha }}
+      PARSER_TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -116,6 +117,23 @@ jobs:
             -var "migrator_image_tag=$IMAGE_TAG" \
             -var "parser_image_tag=$IMAGE_TAG"
         working-directory: terraform/environments/prod
+
+      # Parser's Batch job definition is versioned. Guard against out-of-band
+      # register-job-definition calls silently shadowing our revision.
+      # See docs/DEPLOYMENT.md#the-revision-trap.
+      - name: Verify parser job definition tracks deployed tag
+        run: |
+          ACTIVE_IMAGE=$(aws batch describe-job-definitions \
+            --job-definition-name palateful-parser-job-prod \
+            --status ACTIVE \
+            --query 'reverse(sort_by(jobDefinitions, &revision))[0].containerProperties.image' \
+            --output text)
+          ACTIVE_TAG="${ACTIVE_IMAGE##*:}"
+          if [ "$ACTIVE_TAG" != "$PARSER_TAG" ]; then
+            echo "::error::Parser job-def drift: highest active revision is $ACTIVE_IMAGE but expected tag $PARSER_TAG. See docs/DEPLOYMENT.md#the-revision-trap"
+            exit 1
+          fi
+          echo "Parser job-def points to expected tag: $PARSER_TAG"
 
   run-migrator:
     runs-on: ubuntu-latest
