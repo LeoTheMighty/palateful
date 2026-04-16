@@ -187,8 +187,8 @@ development_status:
   # Epic MCP: MCP Server Integration
   epic-mcp: in-progress
   mcp-1-mcp-infrastructure-server-auth-mount: done
-  mcp-2-core-agent-tools: in-progress
-  mcp-3-recipe-crud-ingredient-resolution: backlog
+  mcp-2-core-agent-tools: done
+  mcp-3-recipe-crud-ingredient-resolution: in-progress
   mcp-4-import-ocr-tools: backlog
   mcp-5-recipe-books-shopping-lists-meal-planning: backlog
   mcp-6-search-tools-integration-testing: backlog
