@@ -1,6 +1,6 @@
 # Story MVP.4: Filter Redesign — Filter Pill + Bottom Sheet
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -104,8 +104,26 @@ Per Sally's UX recommendation (Option 3 from Party Mode), this story replaces bo
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- `flutter test test/features/home/filter_pill_test.dart` — 6/6 pass
+- `flutter test test/features/home/home_screen_test.dart` — 4/4 pass (no regression)
+- `flutter analyze` — clean on all new/touched files
 
 ### Completion Notes List
 
+- Kept both legacy bar widgets alive. `VibeFilterBar` is still used by `recipe_book_detail_screen.dart`, so deleting it would break that screen. `MealFilterBar` is technically unused after this story but kept in case another screen wants the horizontal-scroll variant. Flagged as a tech-debt cleanup candidate in the QA walkthrough.
+- Used a static `FilterBottomSheet.show(...)` helper so the home screen stays thin — no `showModalBottomSheet` boilerplate in `_openFilterSheet`.
+- The bottom sheet uses `Wrap` instead of horizontal scroll for chips. Trade-off: more vertical space when there are lots of vibes, but easier to scan without scrolling.
+- First widget-test iteration tried `tester.tap(find.byType(FilterPill))`, which hit the pill's outer `Padding` / `Align` and missed the `InkWell`. Fixed by tapping the `"Filter"` text inside the pill.
+- Draft state is deliberately single-source: `onApply` fires only from the Apply button. Drag-down dismiss pops the sheet without calling it, so the parent's committed state is untouched — that's the cancel semantics.
+
 ### File List
+
+- `app/lib/features/home/widgets/filter_pill.dart` (new)
+- `app/lib/features/home/widgets/filter_bottom_sheet.dart` (new)
+- `app/lib/features/home/home_screen.dart` (modified)
+- `app/test/features/home/filter_pill_test.dart` (new)
+- `_bmad-output/implementation-artifacts/mvp-4-qa-walkthrough.md` (new)

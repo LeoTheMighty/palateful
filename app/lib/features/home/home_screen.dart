@@ -14,10 +14,11 @@ import '../chat/chat_service.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
 import '../recipes/add_recipe/batch_parser_service.dart';
 import 'widgets/batch_import_status_widget.dart';
+import 'widgets/filter_bottom_sheet.dart';
+import 'widgets/filter_pill.dart';
 import 'widgets/meal_filter_bar.dart';
 import 'widgets/sort_chips.dart';
 import '../../core/theme/theme.dart';
-import '../../shared/widgets/vibe_filter_bar.dart';
 import 'widgets/recipe_card.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -240,19 +241,27 @@ class _HomeScreenState extends State<HomeScreen> {
     return sorted;
   }
 
-  void _onMealFilterChanged(MealFilter filter) {
-    HapticFeedback.selectionClick();
-    setState(() {
-      _mealFilter = filter;
-    });
-    _reapplyFilters();
+  int get _activeFilterCount {
+    var count = 0;
+    if (_mealFilter != MealFilter.all) count++;
+    if (_vibeFilter != null) count++;
+    return count;
   }
 
-  void _onVibeFilterChanged(String? vibeId) {
-    setState(() {
-      _vibeFilter = vibeId;
-    });
-    _reapplyFilters();
+  Future<void> _openFilterSheet() async {
+    HapticFeedback.selectionClick();
+    await FilterBottomSheet.show(
+      context: context,
+      initialMeal: _mealFilter,
+      initialVibe: _vibeFilter,
+      onApply: (meal, vibe) {
+        setState(() {
+          _mealFilter = meal;
+          _vibeFilter = vibe;
+        });
+        _reapplyFilters();
+      },
+    );
   }
 
   void _reapplyFilters() {
@@ -464,16 +473,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            // Meal Filter Bar
-            MealFilterBar(
-              selected: _mealFilter,
-              onChanged: _onMealFilterChanged,
-            ),
-
-            // Vibe Filter Bar
-            VibeFilterBar(
-              selected: _vibeFilter,
-              onChanged: _onVibeFilterChanged,
+            // Unified filter pill — replaces the stacked meal + vibe bars.
+            // Tapping opens a bottom sheet with both filters grouped.
+            FilterPill(
+              activeCount: _activeFilterCount,
+              onTap: _openFilterSheet,
             ),
 
             const SizedBox(height: 4),
