@@ -35,7 +35,7 @@ jobs:
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
       IMAGE_TAG: ${{ github.sha }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/setup-node@v4
         with:
