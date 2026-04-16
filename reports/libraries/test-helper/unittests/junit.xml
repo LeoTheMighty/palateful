@@ -1,1 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="0.119" timestamp="2026-02-18T15:37:00.467867-07:00" hostname="Leos-MacBook-Pro-2.local"><testcase classname="tests.test_smoke" name="test_test_helper_importable" time="0.039" /></testsuite></testsuites>
