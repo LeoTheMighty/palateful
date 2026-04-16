@@ -181,4 +181,5 @@ development_status:
   mvp-7-dismiss-endpoints: done
   mvp-8-flutter-failed-state-ui: done
   mvp-9-clear-all-and-swipe-to-dismiss: done
+  mvp-10-ingredient-find-or-create: done
   epic-mvp-finalization-retrospective: optional

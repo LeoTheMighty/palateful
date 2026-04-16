@@ -208,20 +208,22 @@ class MatchIngredientsTask(BaseTask):
             self._cache_match(ingredient_text, fuzzy["ingredient_id"], "fuzzy", fuzzy["confidence"])
             return fuzzy
 
-        # Tier 4: No match found - auto-create ingredient with pending_review=True
+        # Tier 4: No match found - find or create ingredient with advisory lock
         ingredient_name = self._extract_ingredient_name(normalized)
-        new_ingredient = Ingredient(
+        ingredient = self.database.find_or_create_by(
+            Ingredient,
+            defaults={
+                "is_canonical": False,
+                "pending_review": True,
+                "submitted_by_id": self.user_id,
+            },
             canonical_name=ingredient_name,
-            is_canonical=False,
-            pending_review=True,
-            submitted_by_id=self.user_id,
         )
-        self.database.create(new_ingredient)
 
-        self._cache_match(ingredient_text, str(new_ingredient.id), "auto_created", 0.5)
+        self._cache_match(ingredient_text, str(ingredient.id), "auto_created", 0.5)
 
         return {
-            "ingredient_id": str(new_ingredient.id),
+            "ingredient_id": str(ingredient.id),
             "confidence": 0.5,
             "match_type": "auto_created",
             "needs_review": False,
