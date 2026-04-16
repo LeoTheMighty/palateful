@@ -67,7 +67,8 @@ class MealEvent {
   final String status;
   final bool isShared;
   final RecipeSummary? recipe;
-  final String ownerId;
+  /// Null on older server responses (list endpoint used to omit it).
+  final String? ownerId;
 
   const MealEvent({
     required this.id,
@@ -77,7 +78,7 @@ class MealEvent {
     required this.status,
     required this.isShared,
     this.recipe,
-    required this.ownerId,
+    this.ownerId,
   });
 
   factory MealEvent.fromJson(Map<String, dynamic> json) {
@@ -91,7 +92,7 @@ class MealEvent {
       recipe: json['recipe'] != null
           ? RecipeSummary.fromJson(json['recipe'] as Map<String, dynamic>)
           : null,
-      ownerId: json['owner_id'] as String,
+      ownerId: json['owner_id'] as String?,
     );
   }
 }

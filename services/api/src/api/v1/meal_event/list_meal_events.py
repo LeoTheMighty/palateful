@@ -110,6 +110,7 @@ class ListMealEvents(Endpoint):
                     recipe=recipe_summary,
                     participant_count=len(event.participants),
                     created_at=event.created_at,
+                    owner_id=str(event.owner_id),
                 )
             )
 
@@ -139,6 +140,10 @@ class ListMealEvents(Endpoint):
         recipe: Optional["ListMealEvents.RecipeSummary"] = None
         participant_count: int = 0
         created_at: datetime
+        # Flutter's MealEvent.fromJson required owner_id on the list
+        # response — omitting it here made the Flutter parser throw on
+        # the 200 payload and surface as "Failed to load calendar".
+        owner_id: str
 
     class Response(BaseModel):
         items: list["ListMealEvents.MealEventItem"]

@@ -126,8 +126,7 @@ class _ImportBatchRowState extends ConsumerState<_ImportBatchRow> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${batch.jobs.length} photo${batch.jobs.length == 1 ? '' : 's'}'
-                          ' · ${batch.groupCount} recipe${batch.groupCount == 1 ? '' : 's'}',
+                          _batchSubtitle(batch),
                           style: TextStyle(
                             color: context.appColors.textTertiary,
                             fontSize: 12,
@@ -333,7 +332,31 @@ class _ImportBatchRowState extends ConsumerState<_ImportBatchRow> {
             ),
             const SizedBox(height: 8),
           ],
-          ...batch.jobs.map((j) => _JobDebugRow(job: j)),
+          // Per-recipe status — one row per logical recipe. This is the
+          // user-facing detail; matches Import Activity's attention view.
+          if (batch.importJobs.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 6),
+              child: Text(
+                'Recipes in this batch',
+                style: TextStyle(
+                  color: context.appColors.textTertiary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+            ...batch.importJobs.asMap().entries.map(
+                  (e) => _ImportJobRow(
+                    index: e.key + 1,
+                    job: e.value,
+                  ),
+                ),
+            const SizedBox(height: 10),
+          ],
+          // OCR-level detail hidden by default — it's a debug view.
+          _DebugSection(jobs: batch.jobs),
         ],
       ),
     );
@@ -500,6 +523,193 @@ class _StatusSummary {
     required this.color,
     required this.isTappable,
   });
+}
+
+/// Subtitle that reports live progress by import-job status instead of the
+/// abstract "N photos · M recipes" count. Matches Import Activity phrasing.
+String _batchSubtitle(ImportBatch batch) {
+  if (batch.importJobs.isEmpty) {
+    // Pre-ingest: only parser jobs exist. Show OCR progress.
+    final done = batch.jobs
+        .where((j) => j.status == 'succeeded' || j.status == 'failed')
+        .length;
+    return 'Reading text · $done of ${batch.jobs.length}';
+  }
+  int review = 0;
+  int processing = 0;
+  int completed = 0;
+  int failed = 0;
+  for (final ij in batch.importJobs) {
+    switch (ij.status) {
+      case 'awaiting_review':
+        review++;
+        break;
+      case 'completed':
+        completed++;
+        break;
+      case 'failed':
+        failed++;
+        break;
+      default:
+        processing++;
+    }
+  }
+  final parts = <String>[
+    if (review > 0) '$review ready',
+    if (processing > 0) '$processing processing',
+    if (completed > 0) '$completed imported',
+    if (failed > 0) '$failed failed',
+  ];
+  return parts.isEmpty
+      ? '${batch.groupCount} recipe${batch.groupCount == 1 ? '' : 's'}'
+      : parts.join(' · ');
+}
+
+/// Single per-recipe row inside an expanded batch — mirrors the Import
+/// Activity attention-view row: number, status chip, inline review tap
+/// when awaiting_review.
+class _ImportJobRow extends StatelessWidget {
+  final int index;
+  final ImportBatchImportJob job;
+
+  const _ImportJobRow({required this.index, required this.job});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final (label, color) = _labelAndColor(job.status, context);
+    final tappable = job.status == 'awaiting_review';
+
+    return InkWell(
+      onTap: tappable
+          ? () => context.push('/recipes/import/review-list/${job.id}')
+          : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Text(
+                '$index',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: context.appColors.textTertiary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Recipe $index',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (tappable) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: colorScheme.primary,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  (String, Color) _labelAndColor(String status, BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    final app = context.appColors;
+    switch (status) {
+      case 'awaiting_review':
+        return ('Ready to review', app.info);
+      case 'completed':
+        return ('Imported', app.success);
+      case 'failed':
+        return ('Failed', c.error);
+      case 'processing':
+      case 'matching':
+      case 'extracting':
+        return ('Processing', app.warning);
+      case 'pending':
+        return ('Queued', app.textTertiary);
+      default:
+        return (status, app.textTertiary);
+    }
+  }
+}
+
+/// Collapsible OCR-level debug section — hidden by default so the
+/// expanded row reads as a user-facing recipe list, not engineer output.
+class _DebugSection extends StatefulWidget {
+  final List<ImportBatchJob> jobs;
+
+  const _DebugSection({required this.jobs});
+
+  @override
+  State<_DebugSection> createState() => _DebugSectionState();
+}
+
+class _DebugSectionState extends State<_DebugSection> {
+  bool _show = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (widget.jobs.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextButton.icon(
+          onPressed: () => setState(() => _show = !_show),
+          icon: Icon(
+            _show ? Icons.expand_less : Icons.expand_more,
+            size: 16,
+          ),
+          label: Text(
+            _show ? 'Hide OCR details' : 'Show OCR details',
+            style: const TextStyle(fontSize: 11),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: colorScheme.onSurfaceVariant,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        if (_show)
+          ...widget.jobs.map((j) => _JobDebugRow(job: j)),
+      ],
+    );
+  }
 }
 
 _StatusSummary _summarizeStatus(ImportBatch batch) {
