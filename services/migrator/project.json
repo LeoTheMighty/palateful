@@ -142,5 +142,6 @@
       }
     }
   },
+  "implicitDependencies": ["utils"],
   "tags": ["service", "python", "database"]
 }

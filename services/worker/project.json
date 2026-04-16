@@ -87,5 +87,6 @@
       }
     }
   },
+  "implicitDependencies": ["utils", "agent"],
   "tags": ["service", "python", "worker"]
 }

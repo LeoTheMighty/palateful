@@ -6,6 +6,8 @@
 # configured under:
 #   Settings → Environments → production → Required reviewers
 #
+# Uses NX affected detection to only build/deploy services that changed.
+#
 # Required GitHub Secrets (set under Settings → Secrets → Actions):
 #   AWS_ACCESS_KEY_ID       - IAM user key with ECR push + Terraform permissions
 #   AWS_SECRET_ACCESS_KEY   - IAM user secret
@@ -26,7 +28,6 @@ concurrency:
 
 env:
   NODE_VERSION: '22'
-  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   # Gate: only proceed when CI passed
@@ -36,10 +37,107 @@ jobs:
     steps:
       - run: echo "CI passed — proceeding to deployment approval"
 
+  # ─── Detect which services changed ───
+
+  detect-changes:
+    runs-on: ubuntu-latest
+    needs: ci-gate
+    outputs:
+      api: ${{ steps.affected.outputs.api }}
+      worker: ${{ steps.affected.outputs.worker }}
+      migrator: ${{ steps.affected.outputs.migrator }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      - uses: nrwl/nx-set-shas@v4
+        id: set-shas
+
+      - name: Determine affected projects
+        id: affected
+        run: |
+          AFFECTED=$(npx nx show projects --affected --base=${{ steps.set-shas.outputs.base }} --head=${{ steps.set-shas.outputs.head }})
+          echo "Affected projects: $AFFECTED"
+          if echo "$AFFECTED" | grep -q "^api$"; then
+            echo "api=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$AFFECTED" | grep -q "^worker$"; then
+            echo "worker=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "worker=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$AFFECTED" | grep -q "^migrator$"; then
+            echo "migrator=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrator=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Resolve image tags (new SHA for affected, current deployed for unchanged) ───
+
+  resolve-tags:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    outputs:
+      api_tag: ${{ steps.tags.outputs.api_tag }}
+      worker_tag: ${{ steps.tags.outputs.worker_tag }}
+      migrator_tag: ${{ steps.tags.outputs.migrator_tag }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Resolve image tags
+        id: tags
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          API_AFFECTED: ${{ needs.detect-changes.outputs.api }}
+          WORKER_AFFECTED: ${{ needs.detect-changes.outputs.worker }}
+          MIGRATOR_AFFECTED: ${{ needs.detect-changes.outputs.migrator }}
+        run: |
+          get_current_tag() {
+            aws ecs describe-task-definition \
+              --task-definition "$1" \
+              --query 'taskDefinition.containerDefinitions[0].image' \
+              --output text | rev | cut -d: -f1 | rev
+          }
+
+          if [ "$API_AFFECTED" = "true" ]; then
+            echo "api_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_tag=$(get_current_tag palateful-api-prod)" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$WORKER_AFFECTED" = "true" ]; then
+            echo "worker_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "worker_tag=$(get_current_tag palateful-worker-prod)" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$MIGRATOR_AFFECTED" = "true" ]; then
+            echo "migrator_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrator_tag=$(get_current_tag palateful-migrator-prod)" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ─── Dev Infrastructure ───
+
   terraform:
     runs-on: ubuntu-latest
     needs: ci-gate
-    environment: production   # <-- triggers manual approval
+    environment: production
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
     steps:
@@ -67,10 +165,16 @@ jobs:
         run: terraform apply -auto-approve -input=false -var-file=../../development.tfvars
         working-directory: terraform/environments/dev
 
+  # ─── Build & Push Docker Images (affected only) ───
+
   deploy-images:
     runs-on: ubuntu-latest
-    needs: ci-gate
-    environment: production   # <-- triggers manual approval (same gate as terraform)
+    needs: [ci-gate, detect-changes]
+    if: >-
+      needs.detect-changes.outputs.api == 'true' ||
+      needs.detect-changes.outputs.worker == 'true' ||
+      needs.detect-changes.outputs.migrator == 'true'
+    environment: production
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
       IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
@@ -98,16 +202,19 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Build and push API
+        if: needs.detect-changes.outputs.api == 'true'
         run: npx nx run api:build:ci
         env:
           INPUT_PUSH: 'true'
 
       - name: Build and push Migrator
+        if: needs.detect-changes.outputs.migrator == 'true'
         run: npx nx run migrator:build:ci
         env:
           INPUT_PUSH: 'true'
 
       - name: Build and push Worker
+        if: needs.detect-changes.outputs.worker == 'true'
         run: npx nx run worker:build:ci
         env:
           INPUT_PUSH: 'true'
@@ -116,10 +223,12 @@ jobs:
 
   terraform-prod:
     runs-on: ubuntu-latest
-    needs: ci-gate
+    needs: [ci-gate, resolve-tags]
     environment: production
     env:
-      IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+      API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
+      WORKER_TAG: ${{ needs.resolve-tags.outputs.worker_tag }}
+      MIGRATOR_TAG: ${{ needs.resolve-tags.outputs.migrator_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -140,24 +249,29 @@ jobs:
       - name: Terraform plan (prod)
         run: |
           terraform plan -no-color -input=false \
-            -var "api_image_tag=$IMAGE_TAG" \
-            -var "worker_image_tag=$IMAGE_TAG" \
-            -var "migrator_image_tag=$IMAGE_TAG"
+            -var "api_image_tag=$API_TAG" \
+            -var "worker_image_tag=$WORKER_TAG" \
+            -var "migrator_image_tag=$MIGRATOR_TAG"
         working-directory: terraform/environments/prod
 
       - name: Terraform apply (prod)
         run: |
           terraform apply -auto-approve -input=false \
-            -var "api_image_tag=$IMAGE_TAG" \
-            -var "worker_image_tag=$IMAGE_TAG" \
-            -var "migrator_image_tag=$IMAGE_TAG"
+            -var "api_image_tag=$API_TAG" \
+            -var "worker_image_tag=$WORKER_TAG" \
+            -var "migrator_image_tag=$MIGRATOR_TAG"
         working-directory: terraform/environments/prod
 
-  # ─── Run Migrations ───
+  # ─── Run Migrations (only when migrator affected) ───
 
   run-migrator:
     runs-on: ubuntu-latest
-    needs: [terraform-prod, deploy-images]
+    needs: [terraform-prod, deploy-images, detect-changes]
+    if: >-
+      always() &&
+      needs.terraform-prod.result == 'success' &&
+      (needs.deploy-images.result == 'success' || needs.deploy-images.result == 'skipped') &&
+      needs.detect-changes.outputs.migrator == 'true'
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -208,11 +322,15 @@ jobs:
           fi
           echo "Migrator completed successfully"
 
-  # ─── Deploy ECS Services ───
+  # ─── Deploy ECS Services (affected only) ───
 
   deploy-services:
     runs-on: ubuntu-latest
-    needs: run-migrator
+    needs: [run-migrator, detect-changes]
+    if: >-
+      always() &&
+      (needs.run-migrator.result == 'success' || needs.run-migrator.result == 'skipped') &&
+      (needs.detect-changes.outputs.api == 'true' || needs.detect-changes.outputs.worker == 'true')
     environment: production
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
@@ -221,8 +339,14 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Force new deployment
+      - name: Force new deployment - API
+        if: needs.detect-changes.outputs.api == 'true'
         run: |
           aws ecs update-service --cluster palateful-prod --service palateful-api-prod --force-new-deployment
+          echo "API deployment triggered"
+
+      - name: Force new deployment - Worker
+        if: needs.detect-changes.outputs.worker == 'true'
+        run: |
           aws ecs update-service --cluster palateful-prod --service palateful-worker-prod --force-new-deployment
-          echo "Deployment triggered for API and Worker services"
+          echo "Worker deployment triggered"
