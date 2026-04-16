@@ -23,6 +23,7 @@ python-multipart = "^0.0.20"
 utils = {path = "../../libraries/utils", develop = true}
 agent = {path = "../../libraries/agent", develop = true}
 psycopg2-binary = "^2.9.11"
+mcp = {extras = ["cli"], version = ">=1.9"}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.11"

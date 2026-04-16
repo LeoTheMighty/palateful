@@ -81,3 +81,26 @@ class TestLifespan:
             # Should not raise
             async with lifespan(app):
                 pass
+
+    @pytest.mark.asyncio
+    async def test_lifespan_reraises_unexpected_runtime_errors(self):
+        """A RuntimeError unrelated to the session manager must propagate."""
+        import main
+
+        class _BoomContext:
+            async def __aenter__(self):
+                raise RuntimeError("something totally different")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        class _BoomApp:
+            class router:
+                @staticmethod
+                def lifespan_context(_a):
+                    return _BoomContext()
+
+        with patch.object(main, "mcp_app", _BoomApp):
+            with pytest.raises(RuntimeError, match="something totally different"):
+                async with main.lifespan(main.app):
+                    pass

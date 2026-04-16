@@ -183,3 +183,13 @@ development_status:
   mvp-9-clear-all-and-swipe-to-dismiss: done
   mvp-10-ingredient-find-or-create: done
   epic-mvp-finalization-retrospective: optional
+
+  # Epic MCP: MCP Server Integration
+  epic-mcp: in-progress
+  mcp-1-mcp-infrastructure-server-auth-mount: done
+  mcp-2-core-agent-tools: in-progress
+  mcp-3-recipe-crud-ingredient-resolution: backlog
+  mcp-4-import-ocr-tools: backlog
+  mcp-5-recipe-books-shopping-lists-meal-planning: backlog
+  mcp-6-search-tools-integration-testing: backlog
+  epic-mcp-retrospective: optional
