@@ -130,7 +130,9 @@ Local checks catch most issues, but they do NOT catch:
 - Platform-specific breakage (CI runs linux/arm64, dev runs darwin/arm64)
 
 So after the push, you are NOT done — wait for remote CI before claiming
-the epic is shipped.
+the epic is shipped. Waiting is **not optional** — do NOT ask the user
+whether to wait; just do it. The epic isn't shipped until remote CI is
+green on the HEAD commit.
 
 1. Capture the latest run for the pushed commit:
    ```
