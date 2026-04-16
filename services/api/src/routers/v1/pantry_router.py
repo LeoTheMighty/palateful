@@ -3,6 +3,7 @@
 from api.v1.pantry import (
     AddPantryIngredient,
     DeletePantryIngredient,
+    EstimateExpiry,
     GetDefaultPantry,
     UpdatePantryIngredient,
 )
@@ -52,6 +53,22 @@ async def update_pantry_ingredient(
     return UpdatePantryIngredient.call(
         pantry_id=pantry_id,
         ingredient_id=ingredient_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@pantry_router.post("/pantries/{pantry_id}/estimate-expiry")
+async def estimate_pantry_expiry(
+    pantry_id: str,
+    params: EstimateExpiry.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Return an expires_at estimate for (ingredient, storage_location)."""
+    return EstimateExpiry.call(
+        pantry_id=pantry_id,
         params=params,
         user=user,
         database=database,

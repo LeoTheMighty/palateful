@@ -425,6 +425,11 @@ GoRouter get appRouter {
                 builder: (context, state) => const PantryListScreen(),
                 routes: [
                   GoRoute(
+                    path: 'add',
+                    builder: (context, state) =>
+                        const PantryEditorScreen(ingredientId: 'new'),
+                  ),
+                  GoRoute(
                     path: 'edit/:ingredientId',
                     builder: (context, state) => PantryEditorScreen(
                       ingredientId: state.pathParameters['ingredientId']!,

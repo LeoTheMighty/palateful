@@ -158,7 +158,7 @@ class _PantryListScreenState extends State<PantryListScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Pantry')),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/pantry/edit/new'),
+        onPressed: () => context.push('/pantry/add'),
         tooltip: 'Add item',
         child: const Icon(Icons.add),
       ),

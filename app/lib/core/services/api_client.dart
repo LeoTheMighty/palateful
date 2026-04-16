@@ -406,6 +406,11 @@ class ApiClient {
     return _dio.delete('/v1/pantries/$pantryId/ingredients/$ingredientId');
   }
 
+  Future<Response> estimatePantryExpiry(
+      String pantryId, Map<String, dynamic> data) {
+    return _dio.post('/v1/pantries/$pantryId/estimate-expiry', data: data);
+  }
+
   Future<Response> getShoppingListDeadlines(String listId) {
     return _dio.get('/v1/shopping-lists/$listId/deadlines');
   }
