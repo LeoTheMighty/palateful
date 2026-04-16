@@ -28,11 +28,13 @@
 #   === Deploy (main push only, after every CI job above) ===
 #   detect-changes  - Which services are NX-affected
 #   resolve-tags    - New SHA for affected, current deployed tag for unchanged
-#   terraform-dev   - Apply dev infra
 #   deploy-images   - Build + push Docker images for affected services
 #   terraform-prod  - Apply prod infra with resolved image tags
 #   run-migrator    - Run Alembic migrations (only when migrator affected)
 #   deploy-services - Force ECS deployments for affected api/worker
+#
+# Note: dev infra lives in terraform/environments/dev and uses local state —
+# it's managed from a developer's laptop, not CI.
 
 name: CI & Deploy
 
@@ -444,35 +446,9 @@ jobs:
             echo "migrator_tag=$(get_current_tag palateful-migrator-prod)" >> "$GITHUB_OUTPUT"
           fi
 
-  terraform-dev:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [setup, lint, test, check-models, flutter-test, terraform]
-    environment: production
-    env:
-      AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v3
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform init (dev)
-        run: terraform init
-        working-directory: terraform/environments/dev
-
-      - name: Terraform plan (dev)
-        run: terraform plan -no-color -input=false -var-file=../../development.tfvars
-        working-directory: terraform/environments/dev
-
-      - name: Terraform apply (dev)
-        run: terraform apply -auto-approve -input=false -var-file=../../development.tfvars
-        working-directory: terraform/environments/dev
+  # Dev infra is managed locally — terraform/environments/dev uses local state
+  # (backend "s3" block in main.tf is intentionally commented out). CI only
+  # manages prod infra via terraform-prod below.
 
   deploy-images:
     runs-on: ubuntu-latest
