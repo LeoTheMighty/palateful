@@ -32,6 +32,11 @@ jobs:
   deploy-images:
     runs-on: ubuntu-latest
     environment: production
+    # Parallel fan-out: one runner per service.
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, worker, migrator, parser]
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
       IMAGE_TAG: ${{ github.sha }}
@@ -58,23 +63,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push API
-        run: npx nx run api:build:ci
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Migrator
-        run: npx nx run migrator:build:ci
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Worker
-        run: npx nx run worker:build:ci
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Parser
-        run: npx nx run parser:build:ci
+      - name: Build and push ${{ matrix.service }}
+        run: npx nx run ${{ matrix.service }}:build:ci
         env:
           INPUT_PUSH: 'true'
 

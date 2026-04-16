@@ -380,6 +380,9 @@ jobs:
       worker: ${{ steps.affected.outputs.worker }}
       migrator: ${{ steps.affected.outputs.migrator }}
       parser: ${{ steps.affected.outputs.parser }}
+      # JSON array of affected services — fed into the deploy-images matrix
+      # so each image builds on its own runner in parallel.
+      services_to_build: ${{ steps.affected.outputs.services_to_build }}
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -426,6 +429,16 @@ jobs:
           else
             echo "parser=false" >> "$GITHUB_OUTPUT"
           fi
+
+          # Compose a JSON array of just the services that actually need to
+          # be built. Empty array = deploy-images matrix skips entirely.
+          services=()
+          for s in api worker migrator parser; do
+            if echo "$AFFECTED" | grep -q "^$s\$"; then
+              services+=("\"$s\"")
+            fi
+          done
+          printf 'services_to_build=[%s]\n' "$(IFS=,; echo "${services[*]}")" >> "$GITHUB_OUTPUT"
 
   resolve-tags:
     runs-on: ubuntu-latest
@@ -501,13 +514,14 @@ jobs:
   deploy-images:
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      (needs.detect-changes.outputs.api == 'true' ||
-       needs.detect-changes.outputs.worker == 'true' ||
-       needs.detect-changes.outputs.migrator == 'true' ||
-       needs.detect-changes.outputs.parser == 'true')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
+    # Parallel fan-out: one runner per affected service. If none are
+    # affected, services_to_build is [] and GHA skips the job entirely.
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services_to_build) }}
     env:
       AWS_ECR_ACCOUNT_URL: ${{ secrets.AWS_ECR_ACCOUNT_URL }}
       IMAGE_TAG: ${{ github.sha }}
@@ -536,27 +550,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build and push API
-        if: needs.detect-changes.outputs.api == 'true'
-        run: npx nx run api:build:ci
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Migrator
-        if: needs.detect-changes.outputs.migrator == 'true'
-        run: npx nx run migrator:build:ci
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Worker
-        if: needs.detect-changes.outputs.worker == 'true'
-        run: npx nx run worker:build:ci
-        env:
-          INPUT_PUSH: 'true'
-
-      - name: Build and push Parser
-        if: needs.detect-changes.outputs.parser == 'true'
-        run: npx nx run parser:build:ci
+      - name: Build and push ${{ matrix.service }}
+        run: npx nx run ${{ matrix.service }}:build:ci
         env:
           INPUT_PUSH: 'true'
 
