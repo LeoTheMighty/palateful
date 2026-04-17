@@ -9,6 +9,8 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/error_reporter.dart';
 import '../../../shared/widgets/error_banner.dart';
 import '../../activity/widgets/import_activity_detail.dart';
+import '../widgets/structured_ingredient_row.dart';
+import 'ingredient_edits_mapping.dart';
 
 class ImportItemReviewScreen extends StatefulWidget {
   final String itemId;
@@ -34,7 +36,11 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   final _cookTimeController = TextEditingController();
   final _servingsController = TextEditingController();
   final _instructionsController = TextEditingController();
-  final _ingredientControllers = <TextEditingController>[];
+  // Ingredients — structured shape. Parent owns the list; each entry
+  // carries a stable localKey so StructuredIngredientRow's internal
+  // controllers survive list-order mutations (add, delete+undo).
+  final _ingredientRows = <_IngredientEntry>[];
+  int _nextRowKey = 0;
   final _stepControllers = <TextEditingController>[];
 
   // Action state
@@ -58,9 +64,6 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     _servingsController.dispose();
     _instructionsController.dispose();
     for (final c in _stepControllers) {
-      c.dispose();
-    }
-    for (final c in _ingredientControllers) {
       c.dispose();
     }
     _saveTimer?.cancel();
@@ -132,16 +135,17 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
       }
     }
 
-    // Build ingredient controllers
-    for (final c in _ingredientControllers) {
-      c.dispose();
-    }
-    _ingredientControllers.clear();
-
+    // Build ingredient row data from structured shape. When both `name`
+    // and `text` are present, `name` wins — matches
+    // create_recipe_task._create_recipe_ingredient precedence. Empty-only
+    // rows still appear so the user can edit them.
+    _ingredientRows.clear();
     final ingredients = recipe['ingredients'] as List? ?? [];
     for (final ing in ingredients) {
-      final text = ing is Map ? (ing['text'] ?? '') : ing.toString();
-      _ingredientControllers.add(TextEditingController(text: text));
+      _ingredientRows.add(_IngredientEntry(
+        key: ValueKey('ing-${_nextRowKey++}'),
+        data: ingredientDataFromJson(ing),
+      ));
     }
   }
 
@@ -158,11 +162,16 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   }
 
   Map<String, dynamic> _buildUserEdits() {
-    final ingredients = _ingredientControllers
-        .map((c) => c.text.trim())
-        .where((t) => t.isNotEmpty)
-        .map((t) => {'text': t})
-        .toList();
+    // Serialize each row as {name, quantity, unit, notes, is_optional}.
+    // Empty fields go over the wire as null (not ""); create_recipe_task
+    // treats null as "no value supplied" and the extractor emits null too.
+    // Drop rows that have no meaningful content at all (no name, qty, unit,
+    // or notes) — they are empty placeholders the user never filled.
+    final ingredients = <Map<String, dynamic>>[];
+    for (final entry in _ingredientRows) {
+      if (!ingredientRowHasContent(entry.data)) continue;
+      ingredients.add(ingredientRowToUserEditJson(entry.data));
+    }
 
     final steps = _stepControllers
         .asMap()
@@ -248,17 +257,47 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
 
   void _addIngredient() {
     setState(() {
-      _ingredientControllers.add(TextEditingController());
+      _ingredientRows.add(_IngredientEntry(
+        key: ValueKey('ing-${_nextRowKey++}'),
+        data: const IngredientRowData(),
+      ));
     });
     _onFieldChanged();
   }
 
+  void _updateIngredient(int index, IngredientRowData next) {
+    // Fast path: avoid setState when nothing structurally changed (only
+    // per-row internal controller updates matter). Still emit edit-event.
+    _ingredientRows[index] =
+        _ingredientRows[index].copyWith(data: next);
+    _onFieldChanged();
+  }
+
   void _removeIngredient(int index) {
+    final removed = _ingredientRows[index];
     setState(() {
-      _ingredientControllers[index].dispose();
-      _ingredientControllers.removeAt(index);
+      _ingredientRows.removeAt(index);
     });
     _onFieldChanged();
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 3),
+        content: const Text('Ingredient removed.'),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () {
+            if (!mounted) return;
+            setState(() {
+              final target = index.clamp(0, _ingredientRows.length);
+              _ingredientRows.insert(target, removed);
+            });
+            _onFieldChanged();
+          },
+        ),
+      ),
+    );
   }
 
   bool _showRawJson = false;
@@ -517,38 +556,22 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Ingredients
+              // Ingredients — structured rows. See StructuredIngredientRow
+              // for layout + fraction-parsing behavior.
               Text(
-                'Ingredients (${_ingredientControllers.length})',
+                'Ingredients (${_ingredientRows.length})',
                 style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              ...List.generate(_ingredientControllers.length, (i) {
+              ...List.generate(_ingredientRows.length, (i) {
+                final entry = _ingredientRows[i];
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _ingredientControllers[i],
-                          decoration: InputDecoration(
-                            hintText: 'e.g. 2 cups flour',
-                            border: const OutlineInputBorder(),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            suffixIcon: IconButton(
-                              icon: Icon(Icons.remove_circle_outline,
-                                  size: 20, color: colorScheme.error),
-                              onPressed: () => _removeIngredient(i),
-                            ),
-                          ),
-                          onChanged: (_) => _onFieldChanged(),
-                        ),
-                      ),
-                    ],
+                  key: entry.key,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: StructuredIngredientRow(
+                    value: entry.data,
+                    onChanged: (next) => _updateIngredient(i, next),
+                    onDeleteRequested: () => _removeIngredient(i),
                   ),
                 );
               }),
@@ -664,3 +687,13 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     );
   }
 }
+
+class _IngredientEntry {
+  _IngredientEntry({required this.key, required this.data});
+  final ValueKey<String> key;
+  final IngredientRowData data;
+
+  _IngredientEntry copyWith({IngredientRowData? data}) =>
+      _IngredientEntry(key: key, data: data ?? this.data);
+}
+
