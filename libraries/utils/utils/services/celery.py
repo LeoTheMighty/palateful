@@ -3,6 +3,7 @@ import pkgutil
 from types import ModuleType
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import setup_logging
 
 from utils import tasks
@@ -51,6 +52,11 @@ celery_app.conf.beat_schedule = {
     'sweep-stuck-imports': {
         'task': 'sweep_stuck_imports_task',
         'schedule': float(STUCK_IMPORT_SWEEPER_INTERVAL_SECONDS),
+        'options': {'queue': 'celery'},
+    },
+    'advance-recurrence-windows': {
+        'task': 'advance_recurrence_windows',
+        'schedule': crontab(hour=3, minute=0),  # 03:00 UTC nightly
         'options': {'queue': 'celery'},
     },
 }

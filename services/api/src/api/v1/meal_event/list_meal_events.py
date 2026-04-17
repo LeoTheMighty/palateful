@@ -1,6 +1,6 @@
 """List meal events endpoint."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from pydantic import BaseModel
@@ -8,7 +8,9 @@ from sqlalchemy import or_
 from utils.api.endpoint import Endpoint, success
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
+from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
+from utils.recurrence.materializer import materialize
 
 
 class ListMealEvents(Endpoint):
@@ -38,6 +40,27 @@ class ListMealEvents(Endpoint):
             Paginated list of meal events
         """
         user: User = self.user
+
+        # Ensure rule-materialized occurrences exist for the requested window
+        # before the main query. Bounded work: only the user's own rules and
+        # only when the rule's watermark is behind the request.
+        if end_date is not None:
+            through_date = end_date + timedelta(days=1)
+            try:
+                active_rules = (
+                    self.db.query(MealRecurrenceRule)
+                    .filter(MealRecurrenceRule.owner_id == user.id)
+                    .filter(MealRecurrenceRule.archived_at.is_(None))
+                    .all()
+                )
+                for rule in active_rules:
+                    watermark = getattr(rule, "materialized_through", None)
+                    if watermark is None or watermark < through_date:
+                        materialize(rule, through_date, self.db)
+            except Exception:
+                # Never block a calendar read on materialization failure —
+                # the nightly worker is the authoritative fallback.
+                pass
 
         # Build query - include events user owns OR is a participant of
         query = (
@@ -111,6 +134,11 @@ class ListMealEvents(Endpoint):
                     participant_count=len(event.participants),
                     created_at=event.created_at,
                     owner_id=str(event.owner_id),
+                    recurrence_rule_id=(
+                        str(event.recurrence_rule_id)
+                        if event.recurrence_rule_id
+                        else None
+                    ),
                 )
             )
 
@@ -144,6 +172,7 @@ class ListMealEvents(Endpoint):
         # response — omitting it here made the Flutter parser throw on
         # the 200 payload and surface as "Failed to load calendar".
         owner_id: str
+        recurrence_rule_id: str | None = None
 
     class Response(BaseModel):
         items: list["ListMealEvents.MealEventItem"]

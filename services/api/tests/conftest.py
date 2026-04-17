@@ -244,6 +244,7 @@ class MockMealEvent(MockModel):
             "recurrence_rule": None,
             "recurrence_end_date": None,
             "parent_event_id": None,
+            "recurrence_rule_id": None,
             "participants": [],
         }
         defaults.update(kwargs)
