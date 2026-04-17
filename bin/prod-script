@@ -1,0 +1,98 @@
+#!/bin/bash
+# Run a local Python script inside the prod API ECS task.
+# Usage: bin/prod-script path/to/script.py
+#
+# The script runs with `db`, `database`, and every model + enum from
+# libraries/utils/utils preloaded into the namespace — same context as
+# bin/prod-console, but non-interactive.
+#
+# Requires: AWS CLI v2 with Session Manager plugin installed.
+#   brew install --cask session-manager-plugin
+
+set -euo pipefail
+
+SCRIPT="${1:-}"
+if [[ -z "$SCRIPT" ]]; then
+  echo "usage: $0 <script.py>" >&2
+  exit 1
+fi
+if [[ ! -f "$SCRIPT" ]]; then
+  echo "ERROR: $SCRIPT not found" >&2
+  exit 1
+fi
+
+CLUSTER="palateful-prod"
+SERVICE="palateful-api-prod"
+CONTAINER="api"
+
+echo "Finding running API task..."
+TASK_ARN=$(aws ecs list-tasks \
+  --cluster "$CLUSTER" \
+  --service-name "$SERVICE" \
+  --desired-status RUNNING \
+  --query 'taskArns[0]' \
+  --output text)
+
+if [ "$TASK_ARN" = "None" ] || [ -z "$TASK_ARN" ]; then
+  echo "ERROR: No running API tasks found in cluster $CLUSTER" >&2
+  exit 1
+fi
+
+echo "Connecting to task: $TASK_ARN"
+echo "Running $SCRIPT..."
+echo ""
+
+# Prelude: mirrors services/api/src/manage.py — dynamically imports every
+# SQLAlchemy model and enum, and exposes `db` + `database` helpers so the
+# user's script can reference models directly without their own imports.
+read -r -d '' PRELUDE <<'PY' || true
+import enum
+import importlib
+import inspect
+import pkgutil
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from utils import classes as _enums_pkg
+from utils import models as _models_pkg
+from utils.constants import DATABASE_URL
+from utils.services.database import Database
+
+
+def _import_all(package, predicate, context):
+    for _, module_name, is_pkg in pkgutil.walk_packages(
+        package.__path__, f"{package.__name__}."
+    ):
+        module = importlib.import_module(module_name)
+        if is_pkg:
+            _import_all(module, predicate, context)
+            continue
+        for name, obj in inspect.getmembers(module):
+            if (
+                inspect.isclass(obj)
+                and obj.__module__ == module_name
+                and predicate(obj)
+            ):
+                context[name] = obj
+
+
+_engine = create_engine(DATABASE_URL)
+db = sessionmaker(bind=_engine)()
+database = Database(db=db)
+
+_import_all(_models_pkg, lambda o: hasattr(o, "__table__"), globals())
+_import_all(_enums_pkg, lambda o: issubclass(o, enum.Enum), globals())
+PY
+
+# Concatenate prelude + user script, base64 so the payload survives
+# shell quoting and Session Manager transport.
+COMBINED="$PRELUDE"$'\n'"$(cat "$SCRIPT")"
+ENCODED=$(printf '%s' "$COMBINED" | base64 | tr -d '\n')
+
+aws ecs execute-command \
+  --cluster "$CLUSTER" \
+  --task "$TASK_ARN" \
+  --container "$CONTAINER" \
+  --interactive \
+  --command "python -c 'import base64; exec(base64.b64decode(\"$ENCODED\").decode())'"
