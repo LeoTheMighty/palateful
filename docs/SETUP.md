@@ -97,8 +97,6 @@ NGROK_AUTHTOKEN=your-ngrok-authtoken
    - **Allowed Logout URLs**: `com.palateful.app://logout-callback`
 4. Note the **Domain**, **Client ID** — you'll need these for the Flutter app
 
-See [AUTH0.md](./AUTH0.md) for detailed Auth0 configuration including Google and Apple OAuth setup.
-
 ## Step 4: Start All Backend Services
 
 ```bash
@@ -392,7 +390,8 @@ palateful/
 
 ## Next Steps
 
-- [Configure Google and Apple OAuth](./AUTH0.md)
-- [Database schema reference](./DATABASE.md)
-- [API reference](./api-reference.md)
 - [Recipe import system](./RECIPE_IMPORT_SYSTEM.md)
+- [Recipe experience (cooking UI)](./RECIPE_EXPERIENCE_IMPLEMENTATION.md)
+- [Shared shopping cart](./SHARED_SHOPPING_CART.md)
+- [Deployment procedures](./DEPLOYMENT.md)
+- Source of truth for the DB schema is the SQLAlchemy models in `services/api/src/db/models/`; for HTTP endpoints, see `services/api/src/routers/`.
