@@ -20,6 +20,7 @@
     },
     "lint": {
       "executor": "nx:run-commands",
+      "dependsOn": ["install"],
       "options": {
         "command": "poetry run ruff check src tests",
         "cwd": "{projectRoot}"
@@ -27,6 +28,7 @@
     },
     "test": {
       "executor": "nx:run-commands",
+      "dependsOn": ["install"],
       "options": {
         "command": "poetry run pytest",
         "cwd": "{projectRoot}"

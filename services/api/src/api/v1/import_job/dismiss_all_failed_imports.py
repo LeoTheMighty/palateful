@@ -50,8 +50,6 @@ class DismissAllFailedImports(Endpoint):
         # no defensive guard here.)
         for job_id in affected_job_ids:
             job = self.database.find_by(ImportJob, id=job_id)
-            if job is None:
-                continue
             siblings = (
                 self.database.db.query(ImportItem)
                 .filter(ImportItem.import_job_id == job_id)
