@@ -1,11 +1,16 @@
 """Complete user onboarding endpoint."""
 
+import logging
+
+from api.v1.shopping_list.bootstrap import ensure_default_shopping_list
 from schemas.user import OnboardingRequest, OnboardingResponse, RecipeBookResponse, UserResponse
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 class CompleteOnboarding(Endpoint):
@@ -80,6 +85,18 @@ class CompleteOnboarding(Endpoint):
         self.db.commit()
         self.db.refresh(user)
         self.db.refresh(recipe_book)
+
+        # Post-commit: idempotently ensure the user has a default shopping list.
+        # Wrapped in try/except so a failure here does NOT fail onboarding —
+        # the migration backfill sweep catches any users missed this way.
+        # (See services/api/src/api/v1/shopping_list/bootstrap.py)
+        try:
+            ensure_default_shopping_list(user, self.db)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "complete_onboarding.default_list_post_commit_failed",
+                extra={"user_id": str(user.id), "error": str(exc)},
+            )
 
         # Build response
         user_response = UserResponse(

@@ -3,6 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
+from api.v1.shopping_list.bootstrap import set_default_if_missing
 from pydantic import BaseModel
 from utils.api.endpoint import Endpoint, success
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
@@ -34,9 +35,10 @@ class CreateShoppingList(Endpoint):
         self.database.create(shopping_list)
         self.database.db.refresh(shopping_list)
 
-        # Auto-set as default if user has no default shopping list
-        if user.default_shopping_list_id is None:
-            user.default_shopping_list_id = shopping_list.id
+        # Auto-set as default if user has no default shopping list.
+        # Shared helper with onboarding + backfill (single source of truth
+        # for the default-list invariant).
+        if set_default_if_missing(user, shopping_list, self.database.db):
             self.database.db.commit()
             self.database.db.refresh(user)
 
