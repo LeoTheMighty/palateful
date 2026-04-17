@@ -130,6 +130,77 @@ class TestGetRecipe:
         response = client.get("/v1/recipes/nonexistent")
         assert response.status_code == 404
 
+    def test_get_recipe_debug_payload_for_admin(
+        self, client, mock_db, mock_user
+    ):
+        """Admin + debug=true returns the admin-only debug payload when an
+        ImportItem is attached to the recipe."""
+        from conftest import MockImportItem
+
+        from utils.models.import_item import ImportItem
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        recipe_id = "debug-recipe"
+        book_id = "debug-book"
+        mock_user.is_admin = True
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        import_item = MockImportItem(
+            id="import-item-1",
+            status="completed",
+            raw_data={"url": "https://example.com"},
+            parsed_recipe={"name": "Test"},
+            user_edits=None,
+        )
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.set_find_by(
+            ImportItem, import_item, created_recipe_id=recipe.id
+        )
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}?debug=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("debug") is not None
+        assert data["debug"]["import_item_id"] == "import-item-1"
+
+    def test_get_recipe_debug_no_import_item(
+        self, client, mock_db, mock_user
+    ):
+        """Admin + debug=true with no ImportItem returns a None payload."""
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        recipe_id = "no-item-recipe"
+        book_id = "no-item-book"
+        mock_user.is_admin = True
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recipes/{recipe_id}?debug=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("debug") is None
+
     def test_get_recipe_no_access(self, client, mock_db, mock_user):
         """Test getting a recipe without access to the book."""
         recipe_id = "test-recipe-id"
