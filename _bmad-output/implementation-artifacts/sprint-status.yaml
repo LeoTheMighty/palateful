@@ -230,3 +230,24 @@ development_status:
   bugs-onb-1-onboarding-default-shopping-list: done
   bugs-adm-1-admin-promotion-script: done
   epic-bugs-home-and-foundations-retrospective: optional
+
+  # Epic Recurring Meals — Foundation (planned 2026-04-17)
+  # Replaces the deferred bugs-cal-3 path (iCalendar RRULE at meal_event)
+  # with a slot-based rule + materialization model in a new table.
+  epic-recurring-meals-foundation: done
+  rm-found-1-recurrence-rule-model-and-crud: done
+  rm-found-2-rolling-window-materializer: done
+  rm-found-3-list-hook-and-worker-job: done
+  rm-found-4-flutter-repeats-picker: done
+  rm-found-5-calendar-recurring-visual-and-end-series: done
+  epic-recurring-meals-foundation-retrospective: optional
+
+  # Epic Recurring Meals — Editing & Manage (planned 2026-04-17)
+  # Depends on foundation epic. Adds This/Following/All edit prompts,
+  # monthly-nth-weekday grammar, and a Profile > Recurring Plans screen.
+  epic-recurring-meals-editing: done
+  rm-edit-1-edit-scope-prompt-flutter: done
+  rm-edit-2-backend-rule-split-and-in-place-update: done
+  rm-edit-3-monthly-nth-weekday-grammar: done
+  rm-edit-4-recurring-plans-manage-screen: done
+  epic-recurring-meals-editing-retrospective: optional

@@ -619,3 +619,51 @@ Three focused epics:
 - BUGS.md OLD section (lines 22–31): superseded or obsolete per the user's `skip the old` directive.
 - Rebuilding the AI assistant as anything new — the MCP server path is the strategic direction and this addendum only hides the in-app chat, it does not expand or redesign it.
 - Calendar recurrence series management (editing "this and future", split-series semantics). Initial recurrence creation only; power-user edits defer to a later epic.
+
+
+---
+
+## Addendum — 2026-04-17 — Recurring Meal Plans (slot-based)
+
+### Context
+
+Leo replans the same meals weekly (Pizza Friday, Meatless Monday, weekday-breakfast smoothies, Sunday family dinner). The calendar today forces him to retype every occurrence. The deferred `bugs-cal-3` story proposed iCalendar RRULE at a `meal_event` timestamp — that path is explicitly replaced by this addendum. Recurrence here is **slot-based** ("Every Monday lunch"), not time-based. A new `meal_recurrence_rules` table owns the rule; `meal_events` rows are materialized from it and can be individually overridden, consistent with the GCal-style "This / This and following / All" edit semantics users expect.
+
+Locked decisions from the 2026-04-17 planning intake (confirmed with user):
+
+- **Rule grammar**: weekly-by-weekday-chips + biweekly + monthly-nth-weekday (e.g., "first Saturday dinner"). No count-based ends.
+- **Edit scope**: Google-Calendar-style prompt — **This occurrence / This and following / All occurrences**.
+- **Slot collision**: manual meals and rule occurrences **stack**. No prompt, no hide. Mirrors current multi-meal-per-slot permissiveness.
+- **Rules surface**: both inline (create/edit in `plan_meal_sheet`, edit from meal detail sheet) **and** a dedicated "Recurring plans" screen under Profile/Settings.
+
+### New Functional Requirements
+
+- **FR73:** A recurring meal plan is defined by a **rule**, not a timestamp. The rule captures: meal slot (breakfast/lunch/dinner/snack), day-of-week selection (one or more weekdays), interval (every 1 or 2 weeks), optional "nth weekday of month" mode (e.g., "first Saturday"), and an optional end-date. Each rule has an `owner_id` (the original creator) and an `is_shared` flag. **Shared rules are co-editable by any household member of the owner** — any household partner can read, update, split, and delete a shared rule, and `owner_id` is preserved across co-edits (edits do not transfer ownership). Private rules (`is_shared == false`) are owner-only for every mutation. Shared-rule occurrences remain visible and schedulable per existing `meal_event.is_shared` semantics.
+- **FR74:** A rule may be attached to one recipe (preferred) or captured as free-text (e.g., "Leftovers"). Recipe attachment reuses the same autocomplete UX as one-off planning (FR64).
+- **FR75:** Rule occurrences are **materialized as concrete `meal_events` rows** linked back to the rule via a `recurrence_rule_id` FK. Materialization covers a rolling window (default: the current week plus 8 weeks forward). Materialization is re-run (a) on rule create/edit, (b) on list reads that cross the current window boundary, and (c) by a nightly job that extends the window and archives stale unused occurrences. Users always see concrete `meal_event` rows on the calendar — there is no virtual / rule-only display path.
+- **FR76:** The plan-meal sheet (both quick-add and edit-from-recipe) exposes a **"Repeats"** control. Default: **Never**. Selecting a repeat option reveals a day-of-week chip row (Mon–Sun, multi-select) and an interval toggle (Weekly / Every other week / Monthly on nth weekday). An end-date picker is optional; omission means "forever." Presets **Weekdays** (Mon–Fri) and **Weekends** (Sat–Sun) are one-tap chips.
+- **FR77:** Tapping a recurring occurrence on the calendar shows the existing meal detail sheet with an additional **"Recurring"** badge and a summary row ("Every Monday dinner · Pizza"). The sheet's edit/unschedule/reschedule actions prompt "**This occurrence / This and following / All occurrences**" before committing any destructive or series-affecting change. Non-destructive reads (Open Recipe, Mark as Cooked on one occurrence) do not prompt.
+- **FR78:** Single-occurrence overrides (from "This occurrence only") are stored on the concrete `meal_event` row as a detached copy — the row loses its `recurrence_rule_id` link and behaves as a one-off thereafter. The rule continues to materialize the next scheduled occurrence as normal.
+- **FR79:** "This and following" splits the rule: the original rule receives an end-date set to the day before the chosen occurrence; a new rule is created starting from the chosen occurrence with the new values. Future occurrences past the split point are materialized from the new rule.
+- **FR80:** "All occurrences" edits the rule in place. Already-materialized future occurrences are regenerated (replaced) to reflect the new rule. Past occurrences are never touched, regardless of edit scope.
+- **FR81:** A new **Recurring Plans** screen under Profile/Settings lists all the current user's rules (one row per rule: summary line, next-occurrence date, active/ended badge). Tapping a rule opens the same edit flow as tapping a recurring occurrence (with the "All occurrences" branch pre-selected — the per-occurrence branches are irrelevant from this surface). The screen exposes one-tap **End Series Today** (same as deleting the rule's future materializations while keeping the past).
+- **FR82:** Deleting a rule via **End Series Today** from any entry point (manage screen or "All occurrences" in the meal detail sheet) archives the rule and deletes all future materialized occurrences. Past occurrences remain for history/analytics. "This occurrence only" deletion leaves the rule intact and deletes only the chosen `meal_event` row (existing `DeleteMealEvent` path, with the rule's next materialization filling the slot as normal).
+- **FR83:** Weekly shopping-list aggregation (`PopulateFromCalendarRange`) continues to operate on concrete `meal_event` rows and therefore picks up rule-materialized occurrences automatically without endpoint changes. The existing integration remains correct as long as materialization covers the requested week.
+- **FR84:** Manual meal plans and rule-generated occurrences on the same slot/day **coexist** — no prompt, no hide, no dedupe. Users who want exclusivity must delete the manual or override the rule occurrence themselves. This matches the current calendar's existing multi-meal-per-slot permissiveness.
+
+### New Non-Functional Requirements
+
+- **NFR36:** Materialization of a new rule completes within 500ms at P95 for a 9-week window on a typical weekday-selection rule (up to ~45 occurrences). Rules are validated and materialization runs in a single transaction; partial state is not acceptable.
+- **NFR37:** `ListMealEvents` P95 latency stays within 20% of its current baseline after the rolling-window materialization check is added. The check is a bounded `SELECT` over `meal_recurrence_rules WHERE max_materialized_through < requested_end_date`; expansion is deferred to a job path if hot-path latency is threatened.
+- **NFR38:** The rule-edit flow's "All occurrences" regeneration path is idempotent and safe to retry — concurrent edits from different devices converge on the server-state rule, with the most recent `updated_at` winning.
+- **NFR39:** The Recurring Plans list loads within 200ms at P95 for a user with up to 50 rules, reusing the same caching layer as the recipes/books lists.
+
+### Explicitly Out of Scope for This Addendum
+
+- Arbitrary RRULE recurrence shapes (e.g., "every 3rd Thursday of odd months") — not worth modeling.
+- Count-based end conditions ("for 10 occurrences"). "Until date" and "forever" cover the vast majority of real usage.
+- Cross-slot rules ("rotating breakfast / lunch"). A user who wants both creates two rules.
+- Per-occurrence participant invites that differ from the rule's default participant set. Invites on a rule-materialized occurrence follow the rule's default; the user may re-invite individually on the concrete occurrence via the existing `InviteParticipant` path.
+- Yearly recurrence ("Thanksgiving turkey"). Manual entry covers this.
+- Back-filling past occurrences — materialization is forward-only from rule creation.
+- Removing legacy `is_recurring` / `recurrence_rule` / `recurrence_end_date` columns on `meal_events`. They remain as dead fields for backward compatibility with any legacy clients (to be cleaned up after this epic ships and stabilizes).

@@ -843,3 +843,49 @@ Flutter → POST /v1/imports (dio)
 2. Set up core architecture (theme update, routing migration, dio interceptors, base providers)
 3. Auth flow integration (Auth0 → dio JWT interceptor)
 4. Begin feature module implementation per sprint plan
+
+
+---
+
+## Addendum — 2026-04-17 — Rolling-Window Materialization for Recurring Meal Plans
+
+This addendum covers the one new cross-cutting pattern introduced by the recurring-meal-plans epic: a rolling-window materialization strategy for rule → occurrence expansion. No new services, languages, or infra; one new table and one scheduled job.
+
+### Pattern: Rolling-Window Materialization
+
+**Problem.** Recurring rules ("Every Monday lunch") could either be (a) pre-materialized on write into concrete rows, (b) virtualized on read in the list endpoint, or (c) a hybrid. Pure pre-materialization explodes the `meal_events` table and wastes writes for occurrences users never look at. Pure virtualization complicates every read path that joins `meal_events` (shopping-list aggregation, prep-step coupling, participant invites) and forces client-side merging. Hybrid lands where the real work is: users see concrete rows, the system caps how far forward occurrences exist.
+
+**Decision.** Rule occurrences materialize as concrete `meal_events` rows with a `recurrence_rule_id` FK pointing back to the rule. The materialization covers a rolling window of **current week + 8 weeks forward** (roughly the planning horizon real users operate at). Triggers:
+
+- **On rule create/edit**: run materialization for the current window inside the same transaction. Editing with "All occurrences" scope regenerates all future materialized rows (deletes + re-inserts); editing with "This and following" splits the rule and materializes the new child rule; editing with "This occurrence only" detaches one `meal_event` row from its rule (clears `recurrence_rule_id`) and edits it as a one-off.
+- **On `ListMealEvents` reads that cross the window boundary**: if the requested `end_date` exceeds the rule's `materialized_through` watermark, the endpoint extends materialization up to the requested date before querying. Bounded work per request; never arbitrary.
+- **Nightly job** (new — runs in the existing `worker` service): advances the window for every active rule (current week + 8 weeks forward), and archives materialized rows that are older than 6 months to keep the table bounded.
+
+**Why this shape:**
+- Every existing read path that joins `meal_events` (shopping-list aggregation via `PopulateFromCalendarRange`, prep-step expansion, participant invites, weekly calendar) keeps working with zero changes because it still sees concrete rows. No cross-cutting refactor.
+- Materialization is idempotent (regenerate deletes existing future rows that belong to the rule, then re-inserts) which survives retry, concurrent edits, and the nightly job running twice.
+- Per-occurrence overrides are trivial: detaching a row (`recurrence_rule_id := NULL`) is enough to make it immune to future regeneration passes.
+- Latency: the hot-path extension check is a bounded `SELECT` per user per request (`SELECT ... WHERE materialized_through < :requested_end_date`). Expansion beyond the window is rare and bounded. NFR37 caps the baseline drift.
+
+**What this rules out:**
+- Client-side rule expansion. The Flutter client has no visibility into rules during calendar reads; it renders `meal_events` rows verbatim as it does today. The only new Flutter state is the `Recurring Plans` list screen, which talks to a new dedicated rules endpoint.
+- Storing rules without materialization (pure-virtual). Rejected because every downstream join would need rewriting.
+- Generating occurrences permanently into the table (pure pre-materialize). Rejected because a "forever" rule with daily-weekday selection would blow up the row count.
+
+### New Data Model
+
+- **`meal_recurrence_rules`** (new table): stores the rule — slot, weekday selection (JSONB or a weekday-chip array column), interval (weekly / biweekly / monthly-nth-weekday), optional end-date, recipe link, owner, household sharing, and a `materialized_through` watermark (DATE). FK from `meal_events.recurrence_rule_id` (nullable; SET NULL on rule delete so orphaned historical rows remain queryable).
+- **`meal_events.recurrence_rule_id`** (new column): nullable UUID FK to `meal_recurrence_rules.id`. Non-null rows are materialized occurrences; null rows are one-offs (including detached overrides).
+
+Legacy `meal_events.is_recurring`, `recurrence_rule`, `recurrence_end_date`, `parent_event_id` columns are left in place for backward compatibility with any legacy clients (marked for removal in a follow-up epic once this ships and stabilizes).
+
+### New Service Surface
+
+A dedicated router namespace for recurrence rules: `POST/GET/PUT/DELETE /api/v1/recurrence-rules`, plus `GET /api/v1/recurrence-rules` (list for the user). Lives alongside the existing `meal_event_router.py` at `services/api/src/routers/v1/recurrence_rule_router.py`. Endpoints follow the existing `Endpoint` pattern (single-handler-per-file under `services/api/src/api/v1/recurrence_rule/`).
+
+### Impact on Existing Consistency Rules
+
+- **Directory patterns**: new handlers live at `services/api/src/api/v1/recurrence_rule/*.py`; new model at `libraries/utils/utils/models/meal_recurrence_rule.py`. Follows existing per-endpoint-file convention.
+- **Migration**: one alembic revision adding the new table + FK column. Located in `services/migrator/migrations/versions/`.
+- **Worker job**: new scheduled task registered in the existing `worker` service. No new worker infra.
+- **No feature flags**: per existing project pattern; the feature ships directly. Legacy columns stay as read-through compatibility for any stragglers.

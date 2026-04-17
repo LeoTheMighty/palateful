@@ -7,9 +7,11 @@ description: 'Autonomous BMAD planning loop: research → PRD → chunk into epi
 
 You are an autonomous planning agent that turns a raw pile of requirements into a shippable plan: research → PRD → architecture updates → epic chunking → YOLO draft of all epics → per-epic party-mode refinement (sequential) → readiness check. The output is exactly what `/dev` consumes, so a user can chain `/dev-plan ...` then `/dev <epic>` without hand-editing artifacts.
 
-**Draft-then-refine discipline:** every epic is written twice. First a YOLO draft in Phase 5 gives the full set of chunks shape quickly; then Phase 6 sequentially runs party-mode on each chunk to cross-examine it, propagating locked decisions forward. Never skip party-mode for any epic — even single-story ones get a short workshop.
+**End-user experience at the forefront.** Every epic must start with the question "what does the user see and do?" and trace that answer all the way through — the UI they tap, the API it calls, the data model it touches, the infrastructure that serves it. A plan that stops at any layer short of end-to-end is incomplete. Frontend, backend, and infrastructure are all first-class considerations; silent gaps in any layer are blockers.
 
-**Mode: fully autonomous (YOLO).** Do not pause for approval between phases. Only stop for (a) hard blockers, or (b) the final summary.
+**Draft-then-refine discipline:** every epic is written twice. First a YOLO draft in Phase 5 gives the full set of chunks shape quickly; then Phase 6 sequentially runs party-mode on each chunk to cross-examine it, propagating locked decisions forward. Party-mode is **mandatory for every epic, no exceptions** — even single-story ones get a short workshop. If you are tempted to skip it, don't.
+
+**Mode: fully autonomous (YOLO), with one exception.** Do not pause for approval between phases. The single exception: if the plan requires a component that doesn't exist today (a service, screen, integration, schema, infra resource, external account, etc.) and the user hasn't told you how it should look or behave, stop and ask once — don't invent it silently. Other halts are only for hard blockers or the final summary.
 
 ## Arguments
 
@@ -22,12 +24,14 @@ Parse from the user's message after `/dev-plan`:
 ## Core Principles
 
 1. **Research first, write second** — never draft a PRD from cold requirements; always ground decisions in research findings.
-2. **Parallelize the research fan-out** — domain, technical, and market research axes are independent; launch them concurrently.
-3. **Chunk by user value, not by layer** — epics should each ship a vertical slice (UI + API + data), not "all the backend" then "all the frontend".
-4. **Party-mode every epic, but after the YOLO draft** — draft all epics fast first (Phase 5), then run `/bmad-party-mode` sequentially on each chunk (Phase 6) to refine it. This ordering lets later workshops see the whole plan and inherit locked decisions from earlier ones, while still giving every epic its own cross-examination pass.
-5. **Emit what `/dev` expects** — `_bmad-output/planning-artifacts/epic-<slug>.md` and entries in `_bmad-output/implementation-artifacts/sprint-status.yaml`. Nothing ad hoc.
-6. **YOLO mode everywhere** — no interactive menus, no "waiting for user selection". If a BMAD workflow halts for input, make the sensible default choice and continue.
-7. **Append, don't overwrite** — if PRD/architecture/sprint-status already exist, extend them. Never clobber prior planning work.
+2. **Parallelize the research fan-out** — domain, frontend, backend, infrastructure, and (when relevant) market axes are independent; launch them concurrently.
+3. **Three-layer coverage is required** — every plan must explicitly address frontend (Flutter screens, nav, state), backend (FastAPI routes, services, data model, jobs), and infrastructure (AWS, migrations, env vars, deploy). If an epic doesn't touch a layer, say so explicitly with one line — don't leave it silent.
+4. **Chunk by user value, not by layer** — epics should each ship a vertical slice (UI + API + data + infra as needed), not "all the backend" then "all the frontend". Every epic must trace a user journey end-to-end.
+5. **Party-mode every epic, but after the YOLO draft** — draft all epics fast first (Phase 5), then run `/bmad-party-mode` sequentially on each chunk (Phase 6) to refine it. This ordering lets later workshops see the whole plan and inherit locked decisions from earlier ones, while still giving every epic its own cross-examination pass. **No epic ships from `/dev-plan` without its own party-mode pass.**
+6. **Ask when something doesn't exist** — if the plan requires a capability, screen, service, or resource that isn't in the repo today and isn't specified in the requirements, stop and ask the user one focused question ("What should the user see when X?"). Don't silently invent UX, naming, or behavior for net-new surfaces.
+7. **Emit what `/dev` expects** — `_bmad-output/planning-artifacts/epic-<slug>.md` and entries in `_bmad-output/implementation-artifacts/sprint-status.yaml`. Nothing ad hoc.
+8. **YOLO mode for BMAD menus** — no interactive menus, no "waiting for user selection". If a BMAD workflow halts for a stylistic/default choice, pick the sensible default and continue. This does NOT override principle 6 — structural gaps still surface as questions.
+9. **Append, don't overwrite** — if PRD/architecture/sprint-status already exist, extend them. Never clobber prior planning work.
 
 ## Execution Loop
 
@@ -41,22 +45,28 @@ Parse from the user's message after `/dev-plan`:
 
 ### Phase 2: Parallel Deep Research
 
-Identify research axes from the requirements. Typical axes:
+Identify research axes from the requirements. The axes below are all expected by default — only skip one if it is demonstrably irrelevant (and note why in the final summary):
 
-- **Domain**: What's the problem space? Who are the users? What mental models matter?
-- **Technical**: What are the build/buy decisions, integration points, performance constraints, security surface?
+- **Domain**: What's the problem space? Who are the users? What mental models and end-user journeys matter?
+- **Frontend**: Which Flutter screens, widgets, nav routes, providers, and UX patterns does this touch? What does the end user see and tap? Where are the existing analogs in `apps/flutter/lib/...`?
+- **Backend**: Which FastAPI routes, services, SQLAlchemy models, migrations, background jobs, and external integrations are implicated? Contracts, auth, performance, security surface.
+- **Infrastructure**: What AWS resources (ECS, RDS, Lambda, API Gateway, S3, secrets), Terraform, Docker, env vars, deploy steps, or CI/CD changes are needed? Any net-new infra that requires an account/credential?
+- **Codebase** (always): What existing patterns/endpoints/models in the repo does this overlap with?
 - **Market**: Only if the requirements mention competitors, pricing, or market positioning. Otherwise skip.
-- **Codebase**: What existing patterns/endpoints/models in the repo does this overlap with? (This one is always worth running.)
 
-**Launch all applicable research in parallel** — a single message with multiple `Agent` tool calls, `subagent_type: Explore` for codebase, and the appropriate BMAD research skills for the others:
+**Launch all applicable research in parallel** — a single message with multiple `Agent` tool calls, `subagent_type: Explore` for codebase + per-layer surveys, and the appropriate BMAD research skills for the others:
 
 - Domain: `bmad-bmm-domain-research`
-- Technical: `bmad-bmm-technical-research`
+- Frontend: `bmad-bmm-technical-research` (scoped to Flutter app) OR an `Explore` agent scoped to `apps/flutter/`
+- Backend: `bmad-bmm-technical-research` (scoped to services/) OR an `Explore` agent scoped to `services/api/` and `services/worker/`
+- Infrastructure: `bmad-bmm-technical-research` (scoped to infra) OR an `Explore` agent scoped to `terraform/`, `docker-compose.yml`, and `services/*/Dockerfile`
 - Market: `bmad-bmm-market-research`
 
-For each agent prompt: include the requirements verbatim, the scope statement from Phase 1, and a `Report in under 400 words` cap so results stay digestible.
+For each agent prompt: include the requirements verbatim, the scope statement from Phase 1, the layer this axis owns, and a `Report in under 400 words` cap so results stay digestible. Each technical-layer agent must report back (a) what exists today, (b) what's missing, (c) risks/unknowns, and (d) any net-new surface whose UX/shape is not already specified by the user.
 
 Collect all research reports into an in-memory synthesis — do NOT write a separate research doc unless the user asked for one.
+
+**After synthesis, apply principle 6**: if any layer has a net-new surface whose user-visible shape isn't specified in the requirements or the codebase, compile those into a single batched question set and ask the user once before proceeding to Phase 3. Frame each question as "What should the user see/do when X?" — not as a technical design question.
 
 ### Phase 3: PRD Synthesis
 
@@ -69,10 +79,12 @@ Collect all research reports into an in-memory synthesis — do NOT write a sepa
 
 1. Read the fresh PRD (including any new addendum).
 2. Propose epic boundaries. Heuristics:
-   - Each epic delivers a distinct user-visible capability, OR a distinct infra foundation that unblocks future epics.
+   - Each epic delivers a distinct user-visible capability, OR a distinct infra foundation that unblocks future epics (and the latter type must still name the user-facing capability it unblocks).
+   - Every epic must be traceable end-to-end: you can walk from "user taps X" → "frontend does Y" → "backend processes Z" → "infra serves W". If you can't, split, merge, or reshape.
+   - Explicitly state which of {frontend, backend, infrastructure} each epic touches. "None" is a valid answer (rarely) but must be stated, not silent.
    - 3–8 stories per epic. If an "epic" has only 1–2 stories, fold it into a neighbor. If it has 10+, split it.
-   - Epics should be orderable: declare dependencies explicitly.
-3. Write the epic list to `_bmad-output/planning-artifacts/epics.md` (append under a dated heading if the file exists).
+   - Epics should be orderable: declare dependencies explicitly, including cross-layer dependencies (e.g., "backend epic X must precede frontend epic Y because the route shape must be locked").
+3. Write the epic list to `_bmad-output/planning-artifacts/epics.md` (append under a dated heading if the file exists). For each epic, include a one-line "user sees:" statement.
 4. For each new epic, pick a slug (kebab-case, prefix with nothing — follow existing naming: `epic-<slug>.md`).
 
 ### Phase 5: YOLO Draft — All Epics + Sprint Status
@@ -81,25 +93,48 @@ Draft all epics fast, no party-mode yet. This gives every downstream step a shar
 
 For **each** new epic identified in Phase 4:
 
-1. **Draft epic file**: Write `_bmad-output/planning-artifacts/epic-<slug>.md` with: overview, goal, initial design principles (from research, not party-mode yet — those come in Phase 6), file structure, story list with ACs, dependencies. Mirror the shape of existing epic files like `epic-mcp-server.md`. Mark the epic file with a `<!-- draft: pre-party-mode -->` HTML comment at the top so Phase 6 knows which files still need refinement.
+1. **Draft epic file**: Write `_bmad-output/planning-artifacts/epic-<slug>.md` with, in this order:
+   - **Overview** and **goal** — what and why.
+   - **End-user flow** (required, new): a numbered walkthrough from the user's point of view. "User opens X → taps Y → sees Z → system does W → user sees result." Must read as a narrative a non-engineer can follow.
+   - **Frontend changes** (required section; write "None" with a one-line rationale if truly none): screens, widgets, nav routes, providers, state, empty/loading/error states.
+   - **Backend changes** (required section; write "None" with a one-line rationale if truly none): routes, request/response contracts, services, SQLAlchemy models, migrations, background jobs, external integrations.
+   - **Infrastructure changes** (required section; write "None" with a one-line rationale if truly none): Terraform, ECS/Lambda, env vars, secrets, IAM, deploy steps, CI/CD.
+   - **Initial design principles** (from research, not party-mode yet — those come in Phase 6).
+   - **File structure** — anticipated touched/new paths under `apps/flutter/`, `services/`, `libraries/`, `terraform/`.
+   - **Story list with ACs** — each story should itself trace a user-visible increment where possible.
+   - **Dependencies** — cross-epic and cross-layer.
+   - **Open questions for the user** — anything net-new that wasn't specified and wasn't batched in Phase 2; flag it here rather than inventing behavior.
+
+   Mirror the shape of existing epic files like `epic-mcp-server.md`. Mark the epic file with a `<!-- draft: pre-party-mode -->` HTML comment at the top so Phase 6 knows which files still need refinement.
 2. **Append sprint-status.yaml entries**: Add every story as `backlog`, and the epic header as `backlog`. Do NOT create story files — `/dev` Phase 1 creates those on demand.
-3. **Update `epics.md`** under the dated addendum heading with the one-line epic summaries.
+3. **Update `epics.md`** under the dated addendum heading with the one-line epic summaries, each including its "user sees:" statement.
 
 Run Phase 5 drafts in parallel where possible (epic files are independent writes) — this is pure output generation, no cross-epic dependencies yet.
 
+If any epic accumulates material "Open questions for the user" in its draft, batch them across all epics and ask the user once before entering Phase 6 — party-mode is wasted cycles on under-specified UX.
+
 ### Phase 6: Per-Epic Party Mode Refinement
 
-Now that every epic has a draft, critique and refine each one sequentially via party-mode. This is where tech, product, and design cross-examine the plan. Earlier epics' party-mode outputs inform later ones (shared architectural decisions, naming conventions, cross-epic dependencies) — which is why this phase is strictly sequential, not parallel.
+Now that every epic has a draft, critique and refine each one sequentially via party-mode. This is where PM, UX, frontend, backend, infra/devops, and QA lenses cross-examine the plan. Earlier epics' party-mode outputs inform later ones (shared architectural decisions, naming conventions, cross-epic dependencies) — which is why this phase is strictly sequential, not parallel.
 
 For **each** draft epic (in dependency order, foundational epics first):
 
-1. **Party mode workshop**: Invoke `/bmad-party-mode` (load `{project-root}/_bmad/core/workflows/party-mode/workflow.md` and follow it). Feed the personas: the draft epic file, the relevant PRD sections, the research synthesis, and a one-line list of *decisions already locked in by earlier party-modes this run* (so later epics inherit naming / architecture choices instead of re-litigating them). Autonomously pick "Continue" at any halts.
-2. **Capture outputs**: From the workshop, extract — design principles (replace the placeholder from Phase 5), risks / explicit cuts, changes to story boundaries or ACs, and any new cross-epic dependencies.
-3. **Rewrite the epic file in place**: Update `epic-<slug>.md` with the refined content. Remove the `<!-- draft: pre-party-mode -->` marker and add a `<!-- refined via party-mode YYYY-MM-DD -->` marker. Preserve the file's overall shape.
+1. **Party mode workshop**: Invoke `/bmad-party-mode` (load `{project-root}/_bmad/core/workflows/party-mode/workflow.md` and follow it). In the party-mode invocation prompt, explicitly require the following lenses to weigh in — silent layers are a failure mode:
+   - **PM / end-user** (`bmad-agent-bmm-pm`): does the end-user flow actually deliver the promised value? Would a real user notice this shipped?
+   - **UX designer** (`bmad-agent-bmm-ux-designer`): are empty/loading/error/edge states defined? Does the flow make sense without prior context?
+   - **Frontend** (`bmad-agent-bmm-dev` framed as Flutter lens): screens, nav, state, accessibility, platform behaviors.
+   - **Backend** (`bmad-agent-bmm-architect` or `bmad-agent-bmm-dev` framed as FastAPI lens): data model, contracts, idempotency, auth, performance.
+   - **Infrastructure / devops**: migrations, deploy order, env vars, secrets, rollback plan.
+   - **QA** (`bmad-agent-bmm-qa`): what does test coverage look like end-to-end?
+
+   Feed the personas: the draft epic file, the relevant PRD sections, the research synthesis, and a one-line list of *decisions already locked in by earlier party-modes this run* (so later epics inherit naming / architecture choices instead of re-litigating them). Autonomously pick "Continue" at any halts.
+2. **Capture outputs**: From the workshop, extract — refined end-user flow, design principles (replace the placeholder from Phase 5), risks / explicit cuts, changes to story boundaries or ACs, any new cross-epic dependencies, and any layer-by-layer gaps (did frontend, backend, and infra each get a real pass?).
+3. **Rewrite the epic file in place**: Update `epic-<slug>.md` with the refined content. Every required section (end-user flow, frontend, backend, infrastructure) must remain present and non-empty (or explicitly marked "None — <reason>"). Remove the `<!-- draft: pre-party-mode -->` marker and add a `<!-- refined via party-mode YYYY-MM-DD -->` marker. Preserve the file's overall shape.
 4. **Reconcile sprint-status.yaml**: If party-mode split, merged, renamed, or dropped stories, update the yaml to match. Never silently drop an entry — if a story was cut, mark it `deleted` with a one-line comment; don't delete the line.
 5. **Propagate cross-epic decisions**: If party-mode surfaces a decision that affects a *later* epic in the queue (e.g., "we'll share an ingredient-resolver service across cal and import epics"), write it into an in-memory "locked decisions" list that gets fed into every subsequent party-mode prompt.
+6. **Escalate net-new unknowns**: If party-mode surfaces a net-new user-visible surface whose shape wasn't specified (e.g., a new empty state, a new error recovery UI, a missing screen), pause and ask the user one focused question before continuing to the next epic — don't invent UX silently.
 
-**Do NOT skip party-mode for any epic**, even a small one. A one-story epic still gets a (shorter) workshop — the cost is low and the discipline of cross-examining every chunk is what keeps the plan honest.
+**Party-mode is non-negotiable for every epic.** Single-story epics get a shorter workshop but they still get one. The discipline of cross-examining every chunk — from PM through to infra — is what keeps the plan honest end-to-end. If you ever find yourself thinking "this one is small, I'll skip it," you are violating this command's contract.
 
 ### Phase 7: Readiness Check
 
@@ -111,14 +146,16 @@ For **each** draft epic (in dependency order, foundational epics first):
 
 Output, in order:
 
-1. **Research done**: which axes, one-line takeaway each.
-2. **PRD changes**: new sections added, or "created from scratch".
-3. **Architecture changes**: if any.
-4. **Epics drafted (Phase 5)**: slug + one-line initial scope.
-5. **Epics refined via party-mode (Phase 6)**: slug + one-line summary of the sharpest decision each workshop produced. If any were skipped, say so explicitly and why.
-6. **Cross-epic locked decisions**: the running list of shared decisions the workshops produced (naming, shared services, architectural rules).
-7. **Sprint-status entries added / reconciled**: counts (added, renamed, cut).
-8. **Next command**: the exact `/dev <epic-slug>` line(s) to run, in dependency order.
+1. **Research done**: which axes (domain, frontend, backend, infra, codebase, market), one-line takeaway each. Note any axis explicitly skipped and why.
+2. **User questions asked and answered**: every question you surfaced under principle 6 (and in YOLO-halts), paired with the user's answer. If none were needed, say "none — all surfaces were specified in requirements or present in the repo."
+3. **PRD changes**: new sections added, or "created from scratch".
+4. **Architecture changes**: if any.
+5. **Epics drafted (Phase 5)**: for each, `slug — user sees: <one line> — touches: {frontend?, backend?, infra?}`.
+6. **Epics refined via party-mode (Phase 6)**: slug + one-line summary of the sharpest decision each workshop produced + confirmation that PM/UX/frontend/backend/infra/QA lenses each weighed in. Party-mode MUST have run for every epic; if somehow one didn't, fix it before emitting this summary.
+7. **End-to-end traceability check**: for each epic, confirm in one line that the plan traces user action → frontend → backend → infra → result. Flag any broken chain.
+8. **Cross-epic locked decisions**: the running list of shared decisions the workshops produced (naming, shared services, architectural rules).
+9. **Sprint-status entries added / reconciled**: counts (added, renamed, cut).
+10. **Next command**: the exact `/dev <epic-slug>` line(s) to run, in dependency order.
 
 Do NOT push, commit, or run `/dev`. `/dev-plan` produces artifacts; `/dev` consumes them. Keep the separation clean — committing planning artifacts is the user's call.
 
@@ -130,7 +167,15 @@ BMAD workflows love interactive menus. You must bypass them autonomously:
 - If a menu asks for a stylistic choice (e.g., "brief vs. detailed") → pick detailed.
 - If a menu asks whether to include an optional section → include it.
 - If a workflow prompts for a missing config value → infer from `_bmad/bmm/config.yaml`, then from CLAUDE.md, then pick a sensible default and note it in the final summary.
-- Only halt for a hard blocker: missing source file, corrupt config, write failure. Report and stop.
+
+**When NOT to YOLO — halt and ask the user:**
+
+- A plan requires a net-new user-visible surface (screen, empty state, error recovery, notification, onboarding flow) and the requirements don't specify its shape. Ask "What should the user see when X?" — not "Which database should we use?"
+- A plan requires a net-new service, integration, or external account that doesn't exist in the repo and wasn't named in the requirements. Ask whether to build it, stub it, or descope the feature that needs it.
+- A plan requires a net-new infrastructure resource (new Lambda, new RDS instance, new queue) that will incur cost or ops load. Confirm before planning it in.
+- Hard blockers: missing source file, corrupt config, write failure. Report and stop.
+
+Batch these questions whenever possible — surface them at the end of Phase 2 or the end of Phase 5 — rather than asking ad hoc mid-phase.
 
 ## Hand-off to /dev
 

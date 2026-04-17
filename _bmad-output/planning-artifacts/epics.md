@@ -1268,3 +1268,13 @@ So that I can ask questions and add notes without touching my phone.
 **And** voice input provides audio or haptic confirmation that the command was received
 **And** the AI's response is displayed on screen (and optionally read aloud)
 **And** the entire interaction works hands-free — I don't need to touch the screen to complete the flow
+
+
+---
+
+## Addendum — 2026-04-17 — Recurring Meal Plans (slot-based)
+
+Two epics, sequential. Epic 2 depends on Epic 1 (rules table + materialization land first; edit-scope and manage screen follow).
+
+- **epic-recurring-meals-foundation** — user sees: tap "Repeats: Never" in the plan-meal sheet, pick one-or-more weekdays, pick weekly-or-biweekly, tap Add — every Monday & Wednesday dinner now shows the chosen recipe for 9 weeks, each tile marked with a subtle repeat glyph. From a recurring occurrence the user can End Series Today. Touches: **frontend + backend + infra** (new migration, nightly worker job).
+- **epic-recurring-meals-editing** — user sees: tapping Reschedule / swap recipe / unschedule on a recurring occurrence surfaces a "This one / This and following / All" prompt; a new "Recurring plans" section under Profile lists every rule with next-occurrence dates and one-tap series management; monthly-nth-weekday ("first Saturday dinner") grammar is available. Touches: **frontend + backend** (no new infra).
