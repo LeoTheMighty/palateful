@@ -4,7 +4,17 @@ import uuid
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +33,16 @@ class MealEvent(Base):
     """A planned meal on the calendar."""
 
     __tablename__ = "meal_events"
+
+    __table_args__ = (
+        Index(
+            "uq_meal_events_rule_scheduled_at",
+            "recurrence_rule_id",
+            "scheduled_at",
+            unique=True,
+            postgresql_where=text("recurrence_rule_id IS NOT NULL"),
+        ),
+    )
 
     # Basic info
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -63,6 +83,12 @@ class MealEvent(Base):
         ForeignKey("meal_events.id", ondelete="SET NULL"),
         nullable=True,
     )  # For instances of recurring events, points to the parent
+    recurrence_rule_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("meal_recurrence_rules.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Foreign keys
     recipe_id: Mapped[uuid.UUID | None] = mapped_column(

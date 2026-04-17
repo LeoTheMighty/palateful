@@ -16,6 +16,7 @@ from routers.v1.pantry_router import pantry_router
 from routers.v1.parser_router import parser_router
 from routers.v1.recipe_book_router import recipe_book_router
 from routers.v1.recipe_router import recipe_router
+from routers.v1.recurrence_rule_router import recurrence_rule_router
 from routers.v1.search_router import search_router
 from routers.v1.shopping_list_router import shopping_list_router
 from routers.v1.timer_router import timer_router
@@ -35,6 +36,7 @@ v1_router.include_router(recipe_book_router)
 v1_router.include_router(recipe_router)
 v1_router.include_router(search_router)
 v1_router.include_router(meal_event_router)
+v1_router.include_router(recurrence_rule_router)
 v1_router.include_router(pantry_router)
 v1_router.include_router(shopping_list_router)
 v1_router.include_router(timer_router)

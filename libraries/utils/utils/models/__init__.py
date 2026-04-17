@@ -18,6 +18,7 @@ from utils.models.invite_link import InviteLink
 from utils.models.joins_base import JoinsBase
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
+from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.notification import Notification
 from utils.models.pantry import Pantry
 from utils.models.pantry_ingredient import PantryIngredient
@@ -88,6 +89,7 @@ __all__ = [
     # Calendar/Meal Planning
     "MealEvent",
     "MealEventParticipant",
+    "MealRecurrenceRule",
     "PrepStep",
     "ShoppingList",
     "ShoppingListItem",

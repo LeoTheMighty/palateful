@@ -25,6 +25,7 @@ from utils.db.models import (  # noqa: F401
     InviteLink,
     MealEvent,
     MealEventParticipant,
+    MealRecurrenceRule,
     Notification,
     Pantry,
     PantryIngredient,

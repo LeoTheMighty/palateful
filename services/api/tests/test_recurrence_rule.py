@@ -1,0 +1,521 @@
+"""Tests for recurrence rule endpoints."""
+
+import uuid
+from datetime import date, timedelta
+
+from conftest import MockModel, MockQuery, MockUser
+
+
+class MockMealRecurrenceRule(MockModel):
+    """Mock MealRecurrenceRule model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "title": "Pizza Friday",
+            "recipe_id": None,
+            "owner_id": str(uuid.uuid4()),
+            "meal_type": "dinner",
+            "weekdays": ["fri"],
+            "interval": "weekly",
+            "monthly_nth": None,
+            "start_date": date.today(),
+            "end_date": None,
+            "tz_name": "America/Los_Angeles",
+            "is_shared": False,
+            "materialized_through": None,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
+def _valid_body(**overrides):
+    body = {
+        "title": "Pizza Night",
+        "meal_type": "dinner",
+        "weekdays": ["fri"],
+        "interval": "weekly",
+        "start_date": date.today().isoformat(),
+        "tz_name": "America/Los_Angeles",
+        "is_shared": False,
+    }
+    body.update(overrides)
+    return body
+
+
+class TestCreateRecurrenceRule:
+    def test_create_freetext_rule(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.post("/v1/recurrence-rules", json=_valid_body())
+        assert response.status_code == 201
+        data = response.json()
+        assert data["title"] == "Pizza Night"
+        assert data["interval"] == "weekly"
+        assert data["weekdays"] == ["fri"]
+
+    def test_create_rule_with_recipe(self, client, mock_db, mock_user):
+        from utils.models.recipe import Recipe
+
+        from conftest import MockRecipe
+
+        recipe_id = str(uuid.uuid4())
+        recipe = MockRecipe(id=recipe_id, name="Pizza")
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        body = _valid_body(recipe_id=recipe_id)
+        body.pop("title")
+        response = client.post("/v1/recurrence-rules", json=body)
+        assert response.status_code == 201
+
+    def test_create_rejects_missing_title_and_recipe(self, client, mock_db, mock_user):
+        body = _valid_body()
+        body.pop("title")
+        response = client.post("/v1/recurrence-rules", json=body)
+        assert response.status_code == 400
+
+    def test_create_rejects_empty_weekdays(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/recurrence-rules", json=_valid_body(weekdays=[])
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_invalid_weekday(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/recurrence-rules", json=_valid_body(weekdays=["fri", "xyz"])
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_bad_interval(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/recurrence-rules", json=_valid_body(interval="yearly")
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_bad_meal_type(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/recurrence-rules", json=_valid_body(meal_type="brunch")
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_start_after_end(self, client, mock_db, mock_user):
+        today = date.today()
+        response = client.post(
+            "/v1/recurrence-rules",
+            json=_valid_body(
+                start_date=today.isoformat(),
+                end_date=(today - timedelta(days=1)).isoformat(),
+            ),
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_missing_tz(self, client, mock_db, mock_user):
+        body = _valid_body()
+        body["tz_name"] = ""
+        response = client.post("/v1/recurrence-rules", json=body)
+        assert response.status_code == 400
+
+    def test_create_rejects_invalid_tz(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/recurrence-rules",
+            json=_valid_body(tz_name="Mars/Olympus_Mons"),
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_monthly_nth_without_monthly_interval(
+        self, client, mock_db, mock_user
+    ):
+        response = client.post(
+            "/v1/recurrence-rules",
+            json=_valid_body(monthly_nth="first"),
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_monthly_without_nth(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/recurrence-rules",
+            json=_valid_body(interval="monthly"),
+        )
+        assert response.status_code == 400
+
+    def test_create_rejects_monthly_with_multiple_weekdays(
+        self, client, mock_db, mock_user
+    ):
+        response = client.post(
+            "/v1/recurrence-rules",
+            json=_valid_body(
+                interval="monthly",
+                monthly_nth="first",
+                weekdays=["sat", "sun"],
+            ),
+        )
+        assert response.status_code == 400
+
+    def test_create_accepts_monthly(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.post(
+            "/v1/recurrence-rules",
+            json=_valid_body(
+                interval="monthly",
+                monthly_nth="first",
+                weekdays=["sat"],
+            ),
+        )
+        assert response.status_code == 201
+
+
+class TestGetRecurrenceRule:
+    def test_get_own_rule(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+
+        response = client.get(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(rule.id)
+
+    def test_get_missing_returns_404(self, client, mock_db, mock_user):
+        response = client.get(f"/v1/recurrence-rules/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_get_private_rule_of_other_user_returns_404(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        other_owner = str(uuid.uuid4())
+        rule = MockMealRecurrenceRule(owner_id=other_owner, is_shared=False)
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        # No shared pantry membership.
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 404
+
+    def test_get_shared_rule_via_pantry_mate(self, client, mock_db, mock_user):
+        from conftest import MockPantryUser
+
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.pantry_user import PantryUser
+
+        mate_id = str(uuid.uuid4())
+        shared_pantry = str(uuid.uuid4())
+        rule = MockMealRecurrenceRule(owner_id=mate_id, is_shared=True)
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+
+        mate_membership = MockPantryUser(
+            user_id=mate_id, pantry_id=shared_pantry
+        )
+        my_membership = MockPantryUser(
+            user_id=str(mock_user.id), pantry_id=shared_pantry
+        )
+
+        call_log = {"count": 0}
+
+        def _query(model):
+            if model is PantryUser:
+                call_log["count"] += 1
+                if call_log["count"] == 1:
+                    return MockQuery([mate_membership])
+                return MockQuery([my_membership])
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = _query
+
+        response = client.get(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 200
+        assert response.json()["id"] == str(rule.id)
+
+
+class TestListRecurrenceRules:
+    def test_list_empty(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/recurrence-rules")
+        assert response.status_code == 200
+        assert response.json() == {"items": [], "total": 0}
+
+    def test_list_returns_items(self, client, mock_db, mock_user):
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        # db.query is called for pantry-mate lookups (empty) AND for the
+        # rules themselves. Route by model class.
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.pantry_user import PantryUser
+
+        def _query(model):
+            if model is MealRecurrenceRule:
+                return MockQuery([rule])
+            if model is PantryUser:
+                return MockQuery([])
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = _query
+
+        response = client.get("/v1/recurrence-rules")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["id"] == str(rule.id)
+
+
+class TestCreateRecurrenceRuleExtras:
+    def test_create_rejects_unknown_recipe(self, client, mock_db, mock_user):
+        body = _valid_body(recipe_id=str(uuid.uuid4()))
+        body.pop("title")
+        response = client.post("/v1/recurrence-rules", json=body)
+        assert response.status_code == 404
+
+
+class TestListRecurrenceRulesPantryMates:
+    def test_list_includes_pantry_mate_shared_rules(
+        self, client, mock_db, mock_user
+    ):
+        from conftest import MockPantryUser
+
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.pantry_user import PantryUser
+
+        shared_pantry = str(uuid.uuid4())
+        mate_id = str(uuid.uuid4())
+        rule = MockMealRecurrenceRule(owner_id=mate_id, is_shared=True)
+
+        my_membership = MockPantryUser(
+            user_id=str(mock_user.id), pantry_id=shared_pantry
+        )
+        mate_membership = MockPantryUser(
+            user_id=mate_id, pantry_id=shared_pantry
+        )
+
+        call_order = {"count": 0}
+
+        def _query(model):
+            if model is PantryUser:
+                call_order["count"] += 1
+                if call_order["count"] == 1:
+                    return MockQuery([my_membership])
+                return MockQuery([mate_membership])
+            if model is MealRecurrenceRule:
+                return MockQuery([rule])
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = _query
+
+        response = client.get("/v1/recurrence-rules")
+        assert response.status_code == 200
+        assert response.json()["total"] == 1
+
+
+class TestDeleteRecurrenceRule:
+    def test_delete_own_rule(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.delete(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 200
+        assert response.json()["deleted"] is True
+
+    def test_delete_rejects_non_owner_on_private(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(uuid.uuid4()), is_shared=False
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.delete(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 403
+
+    def test_delete_idempotent(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from datetime import datetime
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            archived_at=datetime.utcnow(),
+        )
+        # Archived rules aren't returned by find_by's default — route through
+        # the direct-query fallback path.
+        mock_db.db.query.return_value = MockQuery([rule])
+
+        response = client.delete(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 200
+
+    def test_delete_missing_returns_404(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.delete(f"/v1/recurrence-rules/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_delete_scope_this_and_following(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        target = (date.today() + timedelta(days=7)).isoformat()
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=this_and_following&occurrence_date={target}"
+        )
+        assert response.status_code == 200
+
+    def test_delete_scope_this_and_following_missing_date(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=this_and_following"
+        )
+        assert response.status_code == 400
+
+    def test_delete_scope_this_and_following_past_end(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            end_date=date.today() - timedelta(days=10),
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        target = (date.today() + timedelta(days=7)).isoformat()
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=this_and_following&occurrence_date={target}"
+        )
+        assert response.status_code == 200
+
+    def test_delete_scope_this_occurrence(self, client, mock_db, mock_user):
+        from conftest import MockMealEvent
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        # Return an event so the detach branch executes.
+        event = MockMealEvent(recurrence_rule_id=str(rule.id))
+
+        def _query(model):
+            if model is MealEvent:
+                return MockQuery([event])
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = _query
+
+        target = (date.today() + timedelta(days=1)).isoformat()
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=this_occurrence&occurrence_date={target}"
+        )
+        assert response.status_code == 200
+        assert event.recurrence_rule_id is None
+        assert event.archived_at is not None
+
+    def test_delete_scope_this_occurrence_no_event(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        target = (date.today() + timedelta(days=1)).isoformat()
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=this_occurrence&occurrence_date={target}"
+        )
+        assert response.status_code == 200
+
+    def test_delete_scope_this_occurrence_missing_date(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=this_occurrence"
+        )
+        assert response.status_code == 400
+
+    def test_delete_invalid_scope(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.delete(
+            f"/v1/recurrence-rules/{rule.id}?scope=wat"
+        )
+        assert response.status_code == 400
+
+    def test_delete_shared_rule_by_pantry_mate(self, client, mock_db, mock_user):
+        from conftest import MockPantryUser
+
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.pantry_user import PantryUser
+
+        mate_id = str(uuid.uuid4())
+        shared_pantry = str(uuid.uuid4())
+        rule = MockMealRecurrenceRule(owner_id=mate_id, is_shared=True)
+
+        mate_membership = MockPantryUser(
+            user_id=mate_id, pantry_id=shared_pantry
+        )
+        my_membership = MockPantryUser(
+            user_id=str(mock_user.id), pantry_id=shared_pantry
+        )
+
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+
+        call_log = {"count": 0}
+
+        def _query(model):
+            if model is PantryUser:
+                call_log["count"] += 1
+                # First call: mate's pantry IDs. Second: my membership lookup.
+                if call_log["count"] == 1:
+                    return MockQuery([mate_membership])
+                return MockQuery([my_membership])
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = _query
+
+        response = client.delete(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 200
+
+    def test_delete_rejects_non_member_on_shared_rule(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.pantry_user import PantryUser
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(uuid.uuid4()), is_shared=True
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+
+        def _query(model):
+            # Owner has no pantry memberships -> not a pantry-mate.
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = _query
+
+        response = client.delete(f"/v1/recurrence-rules/{rule.id}")
+        assert response.status_code == 403
