@@ -158,8 +158,16 @@ void main() {
       // AI Assistant chat button was removed from the home header;
       // it now lives in Profile gated on is_admin (bugs-home-1).
       expect(find.byTooltip('AI Assistant'), findsNothing);
-      // Other header icons still present.
-      expect(find.byTooltip('Import Photos'), findsOneWidget);
+      // Batch photo import icon was removed from the header (home-polish-1);
+      // photo import now lives solely behind the + FAB → Add Recipe sheet.
+      expect(find.byTooltip('Import Photos'), findsNothing);
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Icon && w.icon == Icons.add_photo_alternate_outlined),
+        findsNothing,
+      );
+      // Remaining header destinations still present.
+      expect(find.byTooltip('Pantry'), findsOneWidget);
     });
 
     testWidgets('My Books section is removed from home screen',

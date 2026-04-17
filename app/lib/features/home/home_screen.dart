@@ -2,14 +2,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
-import '../recipes/add_recipe/batch_parser_service.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
@@ -28,8 +26,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _apiClient = getIt<ApiClient>();
-  final _batchService = getIt<BatchParserService>();
-  final _imagePicker = ImagePicker();
 
   List<dynamic> _recipes = [];
   List<dynamic> _favorites = [];
@@ -376,68 +372,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _pickMultiplePhotos() async {
-    try {
-      final images = await _imagePicker.pickMultiImage(
-        maxWidth: 2048,
-        imageQuality: 85,
-      );
-      if (images.isEmpty) return;
-
-      if (images.length == 1) {
-        _batchService.submitBatch(images);
-      } else {
-        _showBatchConfirmDialog(images);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to pick images: $e')),
-        );
-      }
-    }
-  }
-
-  void _showBatchConfirmDialog(List<XFile> images) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${images.length} photos selected'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'All different recipes?',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            SizedBox(height: 8),
-            Text('Each photo will be processed as a separate recipe.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Grouping coming soon!')),
-              );
-            },
-            child: const Text('Edit grouping'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _batchService.submitBatch(images);
-            },
-            // Uses theme's elevated button style (primary color)
-            child: const Text('Process all'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -546,18 +480,6 @@ class _HomeScreenState extends State<HomeScreen> {
               sort: _sortOption,
             ).isDefault,
             onTap: _openFilterSheet,
-          ),
-
-          // Gap between nav group and action group.
-          const SizedBox(width: 16),
-
-          // Action group: things the user triggers from here.
-          // Batch Photo Import Button
-          CircleIconButton(
-            icon: Icons.add_photo_alternate_outlined,
-            onPressed: _pickMultiplePhotos,
-            backgroundColor: colorScheme.surfaceContainerHighest,
-            tooltip: 'Import Photos',
           ),
         ],
       ),
