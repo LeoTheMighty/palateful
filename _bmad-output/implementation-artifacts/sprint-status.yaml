@@ -195,21 +195,26 @@ development_status:
   epic-mcp-retrospective: optional
 
   # Epic Bugs — Calendar Meal UX (planned 2026-04-16, refined via party-mode)
-  epic-bugs-calendar-ux: backlog
-  bugs-cal-1-meal-detail-and-day-sheet: backlog
+  epic-bugs-calendar-ux: in-progress
+  bugs-cal-1-meal-detail-and-day-sheet: done
   bugs-cal-2-recipe-autocomplete-in-plan-meal: backlog
-  bugs-cal-3-recurrence-ui-in-plan-meal: backlog
-  # Conditional — spawn only if Epic 6 post-cook feedback flow is NOT reachable from calendar
-  bugs-cal-1a-mark-as-cooked-wiring: conditional
-  # Conditional — spawn only if ListMealEvents lacks server-side recurrence expansion
-  bugs-cal-3b-backend-recurrence-expansion: conditional
+  bugs-cal-3-recurrence-ui-in-plan-meal: deferred  # see bugs-cal-3b
+  # Audit 2026-04-16 (bugs-cal-1): Epic 6 post-cook feedback flow IS reachable
+  # from the calendar via PostCookFeedbackSheet(recipeId, recipeName,
+  # apiClient, recipeCache, isOffline, onComplete). bugs-cal-1a NOT spawned —
+  # Mark-as-Cooked is wired directly inside bugs-cal-1.
+  bugs-cal-1a-mark-as-cooked-wiring: not-needed
+  # Audit 2026-04-16 (bugs-cal-3): ListMealEvents does NOT expand recurring
+  # occurrences server-side. Returns raw meal_event rows only. bugs-cal-3
+  # is deferred until backend expansion lands under bugs-cal-3b.
+  bugs-cal-3b-backend-recurrence-expansion: backlog
   epic-bugs-calendar-ux-retrospective: optional
 
   # Epic Bugs — Activity Hub Polish (planned 2026-04-16)
-  epic-bugs-activity-hub: in-progress
+  epic-bugs-activity-hub: done
   bugs-act-1-fix-persistent-unread: done
-  bugs-act-2-surface-hidden-import-fields: backlog
-  bugs-act-3-move-add-recipe-inprogress-to-hub: backlog
+  bugs-act-2-surface-hidden-import-fields: done
+  bugs-act-3-move-add-recipe-inprogress-to-hub: done
   # Spawned by bugs-act-2 field audit (2026-04-16). Backlog — backend
   # schema adds needed to surface: last_successful_stage in GetImportItem
   # response, last_retry_at column on import_items, confidence_score on

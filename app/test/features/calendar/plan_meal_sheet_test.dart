@@ -53,6 +53,13 @@ class _FakeMealCalendarService implements MealCalendarService {
 
   @override
   Future<void> deleteMealEvent(String eventId) async {}
+
+  @override
+  Future<MealEvent> rescheduleMealEvent(String eventId, DateTime scheduledAt) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> markMealCompleted(String eventId) async {}
 }
 
 void main() {

@@ -46,4 +46,19 @@ class MealCalendarService {
   Future<void> deleteMealEvent(String eventId) async {
     await _apiClient.deleteMealEvent(eventId);
   }
+
+  /// Partial-update: writes a new scheduled_at only. Callers derive the UTC
+  /// DateTime from a local picker (bugs-cal-1).
+  Future<MealEvent> rescheduleMealEvent(String eventId, DateTime scheduledAt) async {
+    final response = await _apiClient.updateMealEvent(eventId, {
+      'scheduled_at': scheduledAt.toUtc().toIso8601String(),
+    });
+    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Flip status to `completed`. The backend pantry-decrement hook fires on
+  /// the planned→completed transition (see update_meal_event.py).
+  Future<void> markMealCompleted(String eventId) async {
+    await _apiClient.updateMealEvent(eventId, {'status': 'completed'});
+  }
 }

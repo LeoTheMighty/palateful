@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/theme/theme.dart';
@@ -8,9 +9,14 @@ import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
 import 'services/meal_calendar_service.dart';
+import 'widgets/day_detail_sheet.dart';
+import 'widgets/meal_detail_sheet.dart';
 import 'widgets/plan_meal_sheet.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../recipes/cook_mode/widgets/post_cook_feedback_sheet.dart';
+import '../../core/services/api_client.dart';
+import '../../core/services/recipe_cache_service.dart';
 
 /// Calendar tab — week view showing scheduled meal events.
 class CalendarScreen extends StatefulWidget {
@@ -113,6 +119,141 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
       }
     }
+  }
+
+  /// Unschedule with optimistic removal + 3s snackbar undo (locked
+  /// decision #3 + bugs-cal-1 AC #3). Recurring series collapse silently
+  /// under the current backend — see locked decision #20 + the audit
+  /// filed as bugs-cal-3b.
+  void _unscheduleWithUndo(MealEvent event) {
+    final key = _dayKey(event.scheduledAt);
+    final list = _eventsByDay[key];
+    final index = list?.indexWhere((e) => e.id == event.id) ?? -1;
+
+    // Optimistic: remove from local grouping.
+    if (list != null && index >= 0) {
+      setState(() {
+        list.removeAt(index);
+        if (list.isEmpty) _eventsByDay.remove(key);
+      });
+    }
+
+    var undone = false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Meal unscheduled'),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            undone = true;
+            if (!mounted) return;
+            setState(() {
+              final restored = _eventsByDay.putIfAbsent(key, () => []);
+              restored.insert(index < 0 ? 0 : index.clamp(0, restored.length), event);
+            });
+          },
+        ),
+      ),
+    );
+
+    // Wait past the snackbar window before committing the server-side
+    // delete. If the user tapped Undo, we skip the call entirely.
+    Future.delayed(const Duration(seconds: 3), () async {
+      if (undone) return;
+      try {
+        await _service.deleteMealEvent(event.id);
+      } catch (_) {
+        if (!mounted) return;
+        // Restore on failure so the UI matches the server.
+        _loadEvents();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to unschedule meal')),
+        );
+      }
+    });
+  }
+
+  Future<void> _rescheduleEvent(MealEvent event, DateTime newLocal) async {
+    try {
+      await _service.rescheduleMealEvent(event.id, newLocal);
+      if (!mounted) return;
+      _loadEvents();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to reschedule meal')),
+        );
+      }
+    }
+  }
+
+  Future<void> _markMealCooked(MealEvent event) async {
+    final recipe = event.recipe;
+    if (recipe == null) return; // gated by the button's disabled state
+
+    final apiClient = getIt<ApiClient>();
+    final recipeCache = getIt<RecipeCacheService>();
+    // Kick off the status write independent of the feedback sheet so the
+    // pantry decrement fires whether or not the user rates. Failure is
+    // surfaced via snackbar but doesn't block the feedback flow.
+    unawaited(() async {
+      try {
+        await _service.markMealCompleted(event.id);
+        if (mounted) _loadEvents();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to mark cooked')),
+          );
+        }
+      }
+    }());
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => PostCookFeedbackSheet(
+        recipeId: recipe.id,
+        recipeName: recipe.name,
+        apiClient: apiClient,
+        recipeCache: recipeCache,
+        isOffline: false,
+        onComplete: () => Navigator.of(sheetCtx).pop(),
+      ),
+    );
+  }
+
+  void _openMealDetailSheet(MealEvent event) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => MealDetailSheet(
+        event: event,
+        onReschedule: (newLocal) => _rescheduleEvent(event, newLocal),
+        onUnschedule: () => _unscheduleWithUndo(event),
+        onMarkCooked: event.recipe == null ? null : () => _markMealCooked(event),
+      ),
+    );
+  }
+
+  void _openDayDetailSheet(DateTime day) {
+    final events = _eventsByDay[_dayKey(day)] ?? const <MealEvent>[];
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => DayDetailSheet(
+        day: day,
+        events: events,
+        onMealTap: _openMealDetailSheet,
+        onPlanMeal: () => _openQuickAdd(date: day),
+      ),
+    );
   }
 
   Future<void> _addIngredientsFromEvent(MealEvent event) async {
@@ -570,7 +711,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
           if (events.isEmpty)
             GestureDetector(
-              onTap: () => _openQuickAdd(date: day),
+              onTap: () => _openDayDetailSheet(day),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
@@ -600,11 +741,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final appColors = context.appColors;
 
     return InkWell(
-      onTap: () {
-        if (event.recipe != null) {
-          context.push('/recipes/${event.recipe!.id}');
-        }
-      },
+      // Every tap now opens the meal detail sheet (bugs-cal-1 AC #7 —
+      // "Bare tap on meal always opens the sheet"). Direct navigation to
+      // the recipe is done from inside the sheet's primary button.
+      onTap: () => _openMealDetailSheet(event),
       onLongPress: () => _showEventOptions(event),
       borderRadius: BorderRadius.circular(8),
       child: Padding(
