@@ -155,8 +155,10 @@ void main() {
         find.byTooltip('Recipe Books'),
         findsOneWidget,
       );
+      // AI Assistant chat button was removed from the home header;
+      // it now lives in Profile gated on is_admin (bugs-home-1).
+      expect(find.byTooltip('AI Assistant'), findsNothing);
       // Other header icons still present.
-      expect(find.byTooltip('AI Assistant'), findsOneWidget);
       expect(find.byTooltip('Import Photos'), findsOneWidget);
     });
 

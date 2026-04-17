@@ -17,6 +17,7 @@ import '../../core/services/push_notification_service.dart';
 import '../../providers/theme_mode_provider.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../chat/chat_service.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -454,6 +455,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _openAiAssistant() async {
+    try {
+      final chatService = ChatService(_apiClient.dio);
+      final thread = await chatService.createThread();
+      if (mounted) {
+        context.push('/chat/${thread.id}');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to open AI Assistant: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _logout() async {
     // Unregister FCM token before clearing credentials so the API call
     // still has a valid auth token.
@@ -636,6 +653,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               label: 'Admin Dashboard',
               value: 'Manage users, view logs and errors',
               onTap: () => context.push('/admin'),
+              colorScheme: colorScheme,
+              textTheme: textTheme,
+            ),
+            const SizedBox(height: 8),
+            _buildProfileTile(
+              icon: Icons.chat_bubble_outline,
+              label: 'AI Assistant (internal)',
+              value: 'Open the in-app chat surface',
+              onTap: _openAiAssistant,
               colorScheme: colorScheme,
               textTheme: textTheme,
             ),
