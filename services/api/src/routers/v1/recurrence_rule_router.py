@@ -7,6 +7,7 @@ from api.v1.recurrence_rule import (
     DeleteRecurrenceRule,
     GetRecurrenceRule,
     ListRecurrenceRules,
+    UpdateRecurrenceRule,
 )
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
@@ -48,6 +49,22 @@ async def get_recurrence_rule(
     """Get a recurrence rule."""
     return GetRecurrenceRule.call(
         rule_id=rule_id,
+        user=user,
+        database=database,
+    )
+
+
+@recurrence_rule_router.put("/recurrence-rules/{rule_id}")
+async def update_recurrence_rule(
+    rule_id: str,
+    params: UpdateRecurrenceRule.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Update a recurrence rule (scope=all or this_and_following)."""
+    return UpdateRecurrenceRule.call(
+        rule_id=rule_id,
+        params=params,
         user=user,
         database=database,
     )

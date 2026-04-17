@@ -307,6 +307,385 @@ class TestListRecurrenceRulesPantryMates:
         assert response.json()["total"] == 1
 
 
+class TestUpdateRecurrenceRule:
+    def test_update_scope_all(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "all",
+                "title": "Renamed",
+                "weekdays": ["mon", "wed"],
+            },
+        )
+        assert response.status_code == 200
+
+    def test_update_scope_invalid(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={"scope": "wat"},
+        )
+        assert response.status_code == 400
+
+    def test_update_not_found(self, client, mock_db, mock_user):
+        response = client.put(
+            f"/v1/recurrence-rules/{uuid.uuid4()}",
+            json={"scope": "all"},
+        )
+        assert response.status_code == 404
+
+    def test_update_rejects_non_owner_on_private(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(uuid.uuid4()), is_shared=False
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={"scope": "all"},
+        )
+        assert response.status_code == 403
+
+    def test_update_scope_all_with_recipe_not_found(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={"scope": "all", "recipe_id": str(uuid.uuid4())},
+        )
+        assert response.status_code == 404
+
+    def test_update_scope_all_monthly(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "all",
+                "interval": "monthly",
+                "monthly_nth": "first",
+                "weekdays": ["sat"],
+            },
+        )
+        assert response.status_code == 200
+
+    def test_update_split_missing_date(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={"scope": "this_and_following"},
+        )
+        assert response.status_code == 400
+
+    def test_update_split_past_date(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        past = (date.today() - timedelta(days=1)).isoformat()
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={"scope": "this_and_following", "occurrence_date": past},
+        )
+        assert response.status_code == 400
+
+    def test_update_split_before_start(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        future_start = date.today() + timedelta(days=30)
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            start_date=future_start,
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        before = (date.today() + timedelta(days=1)).isoformat()
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": before,
+            },
+        )
+        assert response.status_code == 400
+
+    def test_update_split_after_end(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            end_date=date.today() + timedelta(days=10),
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        after = (date.today() + timedelta(days=30)).isoformat()
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": after,
+            },
+        )
+        assert response.status_code == 400
+
+    def test_update_split_wrong_weekday(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            weekdays=["fri"],
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        # Pick a future date that is NOT a Friday.
+        target = date.today() + timedelta(days=1)
+        while target.weekday() == 4:  # 4 == Friday
+            target += timedelta(days=1)
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+            },
+        )
+        assert response.status_code == 400
+
+    def test_update_split_success(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            weekdays=["fri"],
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        # Find next Friday.
+        target = date.today() + timedelta(days=1)
+        while target.weekday() != 4:
+            target += timedelta(days=1)
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+                "title": "New title",
+            },
+        )
+        assert response.status_code == 200
+
+    def test_update_all_with_recipe_clears_title(
+        self, client, mock_db, mock_user
+    ):
+        from conftest import MockRecipe
+
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.recipe import Recipe
+
+        rule = MockMealRecurrenceRule(owner_id=str(mock_user.id))
+        recipe_id = str(uuid.uuid4())
+        recipe = MockRecipe(id=recipe_id, name="Pizza")
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={"scope": "all", "recipe_id": recipe_id},
+        )
+        assert response.status_code == 200
+
+    def test_update_split_with_recipe_not_found(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            weekdays=["fri"],
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        # Find next Friday.
+        target = date.today() + timedelta(days=1)
+        while target.weekday() != 4:
+            target += timedelta(days=1)
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+                "recipe_id": str(uuid.uuid4()),
+            },
+        )
+        assert response.status_code == 404
+
+    def test_update_split_with_recipe(self, client, mock_db, mock_user):
+        from conftest import MockRecipe
+
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+        from utils.models.recipe import Recipe
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            weekdays=["fri"],
+        )
+        recipe_id = str(uuid.uuid4())
+        recipe = MockRecipe(id=recipe_id, name="Pasta")
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        target = date.today() + timedelta(days=1)
+        while target.weekday() != 4:
+            target += timedelta(days=1)
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+                "recipe_id": recipe_id,
+            },
+        )
+        assert response.status_code == 200
+
+    def test_update_split_idempotent_but_no_sibling(
+        self, client, mock_db, mock_user
+    ):
+        """rule.end_date == split_end but no sibling exists — the regular
+        bounds check (occurrence_date past end_date) takes over with 400."""
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        target = date.today() + timedelta(days=1)
+        while target.weekday() != 4:
+            target += timedelta(days=1)
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            weekdays=["fri"],
+            end_date=target - timedelta(days=1),
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+                "title": "Replacement",
+            },
+        )
+        assert response.status_code == 400
+
+    def test_update_split_monthly(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            interval="monthly",
+            monthly_nth="first",
+            weekdays=["sat"],
+        )
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+        mock_db.db.query.return_value = MockQuery([])
+
+        # Find the first Saturday of next month.
+        today = date.today()
+        if today.month == 12:
+            next_month = date(today.year + 1, 1, 1)
+        else:
+            next_month = date(today.year, today.month + 1, 1)
+        target = next_month
+        while target.weekday() != 5:
+            target += timedelta(days=1)
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+                "interval": "monthly",
+                "monthly_nth": "first",
+                "weekdays": ["sat"],
+            },
+        )
+        assert response.status_code == 200
+
+    def test_update_split_idempotent(self, client, mock_db, mock_user):
+        from utils.models.meal_recurrence_rule import MealRecurrenceRule
+
+        # Find next Friday.
+        target = date.today() + timedelta(days=1)
+        while target.weekday() != 4:
+            target += timedelta(days=1)
+
+        rule = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            weekdays=["fri"],
+            end_date=target - timedelta(days=1),
+        )
+        existing_sibling = MockMealRecurrenceRule(
+            owner_id=str(mock_user.id),
+            start_date=target,
+        )
+
+        mock_db.set_find_by(MealRecurrenceRule, rule, id=str(rule.id))
+
+        def _query(model):
+            # The idempotency check issues one extra query for the sibling.
+            return MockQuery([existing_sibling])
+
+        mock_db.db.query.side_effect = _query
+
+        response = client.put(
+            f"/v1/recurrence-rules/{rule.id}",
+            json={
+                "scope": "this_and_following",
+                "occurrence_date": target.isoformat(),
+            },
+        )
+        assert response.status_code == 200
+        assert "new_rule" in response.json()
+
+
 class TestDeleteRecurrenceRule:
     def test_delete_own_rule(self, client, mock_db, mock_user):
         from utils.models.meal_recurrence_rule import MealRecurrenceRule
