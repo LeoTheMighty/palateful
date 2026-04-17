@@ -464,7 +464,12 @@ GoRouter get appRouter {
             routes: [
               GoRoute(
                 path: '/activity',
-                builder: (context, state) => const ActivityScreen(),
+                builder: (context, state) {
+                  // Canonical deep-link schema: /activity?filter=<enum>
+                  // enum: all | imports | partner | reminders (bugs-act-3)
+                  final filter = state.uri.queryParameters['filter'];
+                  return ActivityScreen(initialFilter: filter);
+                },
                 routes: [
                   GoRoute(
                     path: 'import-history',

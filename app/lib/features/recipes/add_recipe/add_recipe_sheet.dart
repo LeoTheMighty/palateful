@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'state/import_batches_provider.dart';
-import 'widgets/import_batches_strip.dart';
+import 'widgets/live_import_strip.dart';
 
 class AddRecipeSheet extends ConsumerStatefulWidget {
   final String? recipeBookId;
@@ -23,7 +22,6 @@ class _AddRecipeSheetState extends ConsumerState<AddRecipeSheet> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final bookId = widget.recipeBookId;
-    final batches = ref.watch(importBatchesProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -63,12 +61,10 @@ class _AddRecipeSheetState extends ConsumerState<AddRecipeSheet> {
               ),
               const SizedBox(height: 24),
 
-              // In-progress imports strip (story 13.14)
-              batches.when(
-                data: (s) => ImportBatchesStrip(state: s),
-                loading: () => const SizedBox.shrink(),
-                error: (_, _) => const SizedBox.shrink(),
-              ),
+              // Ambient live-progress strip. Taps through to Activity Hub
+              // imports filter — full pipeline-state UI lives there now
+              // (bugs-act-3). No render when no imports are active.
+              const LiveImportStrip(),
 
               // Quick Import section
               Padding(

@@ -8,12 +8,19 @@ import '../../core/theme/theme.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
 import 'providers/activity_read_provider.dart';
+import 'widgets/activity_filter_chips.dart';
 
 /// Activity feed screen — shows notifications like invites, partner actions, reminders.
 /// Also surfaces high-priority "Needs Review" import items in a collapsed section.
 /// Import details live in the dedicated Import Activity screen.
+///
+/// Supports a canonical deep-link schema `/activity?filter=<enum>`
+/// (bugs-act-3). Arriving with `filter=imports` opens the Import Activity
+/// screen as a replacement — pipeline state is owned there, not here.
 class ActivityScreen extends StatefulWidget {
-  const ActivityScreen({super.key});
+  final String? initialFilter;
+
+  const ActivityScreen({super.key, this.initialFilter});
 
   @override
   State<ActivityScreen> createState() => _ActivityScreenState();
@@ -28,6 +35,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
   String? _error;
   String? _errorDetail;
   Timer? _pollTimer;
+  ActivityFilter _filter = ActivityFilter.all;
+  bool _redirectedToImports = false;
 
   // Import review data for the "Needs Review" section + badge
   List<dynamic> _reviewJobSummaries = [];
@@ -49,10 +58,26 @@ class _ActivityScreenState extends State<ActivityScreen> {
   @override
   void initState() {
     super.initState();
+    _filter = ActivityFilterX.fromWire(widget.initialFilter);
     _loadAll();
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _loadAll(silent: true);
     });
+
+    // Deep-link `/activity?filter=imports` hands the user straight to the
+    // Import Activity screen — pipeline state and its retry/dismiss/approve
+    // actions are owned there. The redirect is post-frame so the parent
+    // Navigator has mounted this route first.
+    if (_filter == ActivityFilter.imports) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _redirectedToImports) return;
+        _redirectedToImports = true;
+        // Reset the chip back to "all" so backing out of import history
+        // lands on the full feed, not a stuck imports filter.
+        setState(() => _filter = ActivityFilter.all);
+        context.push('/activity/import-history');
+      });
+    }
   }
 
   @override
@@ -239,13 +264,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
   }
 
-  Map<String, List<dynamic>> _groupByDay() {
+  Map<String, List<dynamic>> _groupByDayFrom(List<dynamic> items) {
     final groups = <String, List<dynamic>>{};
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final yesterday = today.subtract(const Duration(days: 1));
 
-    for (final a in _activities) {
+    for (final a in items) {
       final createdAt = DateTime.tryParse(a['created_at']?.toString() ?? '');
       String label;
       if (createdAt == null) {
@@ -326,19 +351,72 @@ class _ActivityScreenState extends State<ActivityScreen> {
     );
   }
 
+  Set<ActivityFilter> _availableFilters() {
+    final available = <ActivityFilter>{};
+    for (final a in _activities) {
+      switch (a['type']?.toString()) {
+        case 'partner_action':
+          available.add(ActivityFilter.partner);
+          break;
+        case 'meal_reminder':
+          available.add(ActivityFilter.reminders);
+          break;
+      }
+    }
+    // Imports chip appears when there's any actionable import state. The
+    // `_importActionCount` covers review + failed items that the user can
+    // do something about; processing-only states still show via the strip.
+    if (_importActionCount > 0) available.add(ActivityFilter.imports);
+    return available;
+  }
+
+  List<dynamic> _applyFilter(List<dynamic> items) {
+    switch (_filter) {
+      case ActivityFilter.all:
+        return items;
+      case ActivityFilter.partner:
+        return items.where((a) => a['type'] == 'partner_action').toList();
+      case ActivityFilter.reminders:
+        return items.where((a) => a['type'] == 'meal_reminder').toList();
+      case ActivityFilter.imports:
+        // Imports filter redirects to /activity/import-history — should not
+        // be the active filter on this screen. Fall back to all.
+        return items;
+    }
+  }
+
+  void _onFilterChanged(ActivityFilter next) {
+    if (next == ActivityFilter.imports) {
+      // Treat the imports chip as a navigation action — not a local filter.
+      context.push('/activity/import-history');
+      return;
+    }
+    setState(() => _filter = next);
+  }
+
   Widget _buildBody(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
-    final groups = _groupByDay();
+    final filtered = _applyFilter(_activities);
+    final groups = _groupByDayFrom(filtered);
     final hasReviewItems = _totalReviewItemCount > 0;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 16),
       children: [
-        // Needs Review collapsed section
-        if (hasReviewItems) _buildNeedsReviewSection(colorScheme, textTheme),
+        ActivityFilterChips(
+          selected: _filter,
+          availableFilters: _availableFilters(),
+          onSelected: _onFilterChanged,
+        ),
 
-        // Regular activity feed
-        if (_activities.isEmpty && !hasReviewItems)
+        // Needs Review collapsed section — only shown when "all" filter is
+        // active; imports filter is a redirect so this block never renders
+        // under it.
+        if (hasReviewItems && _filter == ActivityFilter.all)
+          _buildNeedsReviewSection(colorScheme, textTheme),
+
+        // Regular activity feed — respects the active filter.
+        if (filtered.isEmpty && !(hasReviewItems && _filter == ActivityFilter.all))
           _buildEmptyState(colorScheme)
         else
           ...groups.entries.map((entry) {
