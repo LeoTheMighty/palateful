@@ -1,55 +1,58 @@
 import 'package:flutter/material.dart';
 
-/// Small tappable pill shown on the home screen that opens the filter
-/// bottom sheet. Displays a count badge when any filters are active so
-/// the user can tell at a glance whether the grid is filtered.
+/// Icon-only funnel button shown in the home header that opens the
+/// combined filter + sort bottom sheet. A small dot badge appears when
+/// any non-default sort or any filter is active — consolidating what
+/// used to be a separate sort-chip row and filter pill into one affordance.
 class FilterPill extends StatelessWidget {
-  final int activeCount;
+  final bool isActive;
   final VoidCallback onTap;
 
   const FilterPill({
     super.key,
-    required this.activeCount,
+    required this.isActive,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final hasActive = activeCount > 0;
-    final bg = hasActive
-        ? colorScheme.primary
-        : colorScheme.surfaceContainerHighest;
-    final fg = hasActive ? colorScheme.onPrimary : colorScheme.onSurface;
-    final label = hasActive ? 'Filter ($activeCount)' : 'Filter';
 
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 8,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.tune, size: 16, color: fg),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: fg,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.arrow_drop_down, size: 18, color: fg),
-            ],
+    return Tooltip(
+      message: 'Sort & filter',
+      child: Material(
+        color: colorScheme.surfaceContainerHighest,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(Icons.tune, size: 20, color: colorScheme.onSurface),
+                if (isActive)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      key: const ValueKey('filter_pill_active_dot'),
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: colorScheme.surfaceContainerHighest,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

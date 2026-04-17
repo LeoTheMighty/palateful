@@ -3,30 +3,54 @@ import 'package:flutter/material.dart';
 import '../../../shared/widgets/vibe_chip.dart';
 import 'meal_filter_bar.dart';
 
-/// Modal bottom sheet that groups meal-type and vibe filters in one place,
-/// replacing the previous pair of horizontally-scrolling bars stacked on
-/// the home screen.
-///
-/// Uses internal draft state so chip taps inside the sheet don't commit
-/// to the parent screen until the user taps Apply. Drag-down dismiss acts
-/// as cancel (the draft state is thrown away).
+/// Sort options for the home recipe grid. Moved here from the deleted
+/// sort_chips widget so the combined sort+filter sheet is the single
+/// source of truth.
+enum SortOption { best, newest, popular, quickest, random }
+
+/// Snapshot of the sheet's applied state, used for snackbar-undo of the
+/// Clear-all action. Home screen captures pre-clear state and restores
+/// it if the user taps Undo within the snackbar window.
+class HomeFilterState {
+  final MealFilter meal;
+  final String? vibe;
+  final SortOption sort;
+
+  const HomeFilterState({
+    required this.meal,
+    required this.vibe,
+    required this.sort,
+  });
+
+  static const defaults = HomeFilterState(
+    meal: MealFilter.all,
+    vibe: null,
+    sort: SortOption.best,
+  );
+
+  bool get isDefault =>
+      meal == defaults.meal &&
+      vibe == defaults.vibe &&
+      sort == defaults.sort;
+}
+
+/// Combined bottom sheet for Sort + Filters. Sort is monoexclusive
+/// (radio list); filters (meal, vibe) are multiselect chip groups.
+/// Both commit together on Apply; drag-down dismiss acts as cancel.
 class FilterBottomSheet extends StatefulWidget {
-  final MealFilter initialMeal;
-  final String? initialVibe;
-  final void Function(MealFilter meal, String? vibe) onApply;
+  final HomeFilterState initialState;
+  final void Function(HomeFilterState state) onApply;
 
   const FilterBottomSheet({
     super.key,
-    required this.initialMeal,
-    required this.initialVibe,
+    required this.initialState,
     required this.onApply,
   });
 
   static Future<void> show({
     required BuildContext context,
-    required MealFilter initialMeal,
-    required String? initialVibe,
-    required void Function(MealFilter meal, String? vibe) onApply,
+    required HomeFilterState initialState,
+    required void Function(HomeFilterState state) onApply,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -35,8 +59,7 @@ class FilterBottomSheet extends StatefulWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => FilterBottomSheet(
-        initialMeal: initialMeal,
-        initialVibe: initialVibe,
+        initialState: initialState,
         onApply: onApply,
       ),
     );
@@ -49,23 +72,30 @@ class FilterBottomSheet extends StatefulWidget {
 class _FilterBottomSheetState extends State<FilterBottomSheet> {
   late MealFilter _draftMeal;
   late String? _draftVibe;
+  late SortOption _draftSort;
 
   @override
   void initState() {
     super.initState();
-    _draftMeal = widget.initialMeal;
-    _draftVibe = widget.initialVibe;
+    _draftMeal = widget.initialState.meal;
+    _draftVibe = widget.initialState.vibe;
+    _draftSort = widget.initialState.sort;
   }
 
   void _clearAll() {
     setState(() {
-      _draftMeal = MealFilter.all;
-      _draftVibe = null;
+      _draftMeal = HomeFilterState.defaults.meal;
+      _draftVibe = HomeFilterState.defaults.vibe;
+      _draftSort = HomeFilterState.defaults.sort;
     });
   }
 
   void _apply() {
-    widget.onApply(_draftMeal, _draftVibe);
+    widget.onApply(HomeFilterState(
+      meal: _draftMeal,
+      vibe: _draftVibe,
+      sort: _draftSort,
+    ));
     Navigator.of(context).pop();
   }
 
@@ -75,79 +105,160 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
     final textTheme = Theme.of(context).textTheme;
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            Text(
-              'Filters',
-              style: textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
+              Text(
+                'Sort & filter',
+                style: textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Meals section
-            Text(
-              'Meals',
-              style: textTheme.titleSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
+              Text(
+                'Sort by',
+                style: textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            _MealChipWrap(
-              selected: _draftMeal,
-              onChanged: (m) => setState(() => _draftMeal = m),
-            ),
-            const SizedBox(height: 20),
-
-            // Vibes section
-            Text(
-              'Vibes',
-              style: textTheme.titleSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 8),
+              _SortRadioList(
+                selected: _draftSort,
+                onChanged: (s) => setState(() => _draftSort = s),
               ),
-            ),
-            const SizedBox(height: 8),
-            _VibeChipWrap(
-              selected: _draftVibe,
-              onChanged: (v) => setState(() => _draftVibe = v),
-            ),
-            const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-            // Action row
-            Row(
+              Text(
+                'Meals',
+                style: textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _MealChipWrap(
+                selected: _draftMeal,
+                onChanged: (m) => setState(() => _draftMeal = m),
+              ),
+              const SizedBox(height: 20),
+
+              Text(
+                'Vibes',
+                style: textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _VibeChipWrap(
+                selected: _draftVibe,
+                onChanged: (v) => setState(() => _draftVibe = v),
+              ),
+              const SizedBox(height: 24),
+
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: _clearAll,
+                    child: const Text('Clear all'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: _apply,
+                    child: const Text('Apply'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SortRadioList extends StatelessWidget {
+  final SortOption selected;
+  final ValueChanged<SortOption> onChanged;
+
+  const _SortRadioList({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  static const _entries = [
+    (SortOption.best, Icons.star_rounded, 'Best'),
+    (SortOption.newest, Icons.fiber_new_rounded, 'Newest'),
+    (SortOption.popular, Icons.local_fire_department_rounded, 'Popular'),
+    (SortOption.quickest, Icons.schedule_rounded, 'Quickest'),
+    (SortOption.random, Icons.shuffle_rounded, 'Random'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      children: _entries.map((entry) {
+        final (option, icon, label) = entry;
+        final isSelected = selected == option;
+        return InkWell(
+          onTap: () => onChanged(option),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Row(
               children: [
-                TextButton(
-                  onPressed: _clearAll,
-                  child: const Text('Clear all'),
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
                 ),
-                const Spacer(),
-                FilledButton(
-                  onPressed: _apply,
-                  child: const Text('Apply'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      color: isSelected
+                          ? colorScheme.primary
+                          : colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                Icon(
+                  isSelected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

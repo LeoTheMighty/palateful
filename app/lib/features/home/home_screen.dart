@@ -14,7 +14,6 @@ import 'widgets/batch_import_status_widget.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
 import 'widgets/meal_filter_bar.dart';
-import 'widgets/sort_chips.dart';
 import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
 import '../../core/services/error_reporter.dart';
@@ -236,40 +235,57 @@ class _HomeScreenState extends State<HomeScreen> {
     return sorted;
   }
 
-  int get _activeFilterCount {
-    var count = 0;
-    if (_mealFilter != MealFilter.all) count++;
-    if (_vibeFilter != null) count++;
-    return count;
-  }
-
   Future<void> _openFilterSheet() async {
     HapticFeedback.selectionClick();
+    final preState = HomeFilterState(
+      meal: _mealFilter,
+      vibe: _vibeFilter,
+      sort: _sortOption,
+    );
     await FilterBottomSheet.show(
       context: context,
-      initialMeal: _mealFilter,
-      initialVibe: _vibeFilter,
-      onApply: (meal, vibe) {
+      initialState: preState,
+      onApply: (state) {
+        final clearedAll = !preState.isDefault && state.isDefault;
         setState(() {
-          _mealFilter = meal;
-          _vibeFilter = vibe;
+          _mealFilter = state.meal;
+          _vibeFilter = state.vibe;
+          _sortOption = state.sort;
+          _recipes = _applySorting(List.from(_recipes));
         });
         _reapplyFilters();
+        if (clearedAll) _showClearAllUndo(preState);
       },
+    );
+  }
+
+  void _showClearAllUndo(HomeFilterState restoreTo) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 3),
+        content: const Text('Sort & filters cleared'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            if (!mounted) return;
+            setState(() {
+              _mealFilter = restoreTo.meal;
+              _vibeFilter = restoreTo.vibe;
+              _sortOption = restoreTo.sort;
+              _recipes = _applySorting(List.from(_recipes));
+            });
+            _reapplyFilters();
+          },
+        ),
+      ),
     );
   }
 
   void _reapplyFilters() {
     // Reload recipes to re-apply filters
     _loadRecipes();
-  }
-
-  void _onSortChanged(SortOption sort) {
-    HapticFeedback.selectionClick();
-    setState(() {
-      _sortOption = sort;
-      _recipes = _applySorting(List.from(_recipes));
-    });
   }
 
   void _showAddRecipeSheet() {
@@ -449,16 +465,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            SortChips(
-              selected: _sortOption,
-              onChanged: _onSortChanged,
-              recipeCount: _recipes.length,
-              leading: FilterPill(
-                activeCount: _activeFilterCount,
-                onTap: _openFilterSheet,
-              ),
-            ),
-
             // Batch Import Status
             const BatchImportStatusWidget(),
 
@@ -528,6 +534,18 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => context.push('/pantry'),
             backgroundColor: colorScheme.surfaceContainerHighest,
             tooltip: 'Pantry',
+          ),
+          const SizedBox(width: 8),
+
+          // Sort & filter funnel — consolidated sort + filter
+          // behind one icon + bottom sheet (bugs-home-2).
+          FilterPill(
+            isActive: !HomeFilterState(
+              meal: _mealFilter,
+              vibe: _vibeFilter,
+              sort: _sortOption,
+            ).isDefault,
+            onTap: _openFilterSheet,
           ),
 
           // Gap between nav group and action group.
