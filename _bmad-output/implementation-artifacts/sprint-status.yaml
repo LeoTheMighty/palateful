@@ -261,7 +261,7 @@ development_status:
   # endpoints today require ingredient_id and reject the wizard's payload).
   epic-bugs-import-structured-ingredients: in-progress
   bugs-imp-ing-1-units-catalog-and-input-widget: done
-  bugs-imp-ing-2-structured-ingredient-row-widget: backlog
+  bugs-imp-ing-2-structured-ingredient-row-widget: done
   bugs-imp-ing-3-review-import-integration: backlog
   bugs-imp-ing-4-recipe-wizard-integration: backlog
   bugs-imp-ing-5-backend-name-or-id-ingredient-input: backlog
