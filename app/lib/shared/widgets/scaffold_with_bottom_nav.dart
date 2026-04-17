@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
-import '../../core/services/api_client.dart';
 import '../../core/utils/responsive.dart';
+import '../../features/activity/providers/activity_read_provider.dart';
 
 /// Shell widget that provides adaptive navigation for the main app tabs.
 /// Uses bottom NavigationBar on mobile (<600px) and NavigationRail on wider screens.
@@ -22,33 +22,30 @@ class ScaffoldWithBottomNav extends StatefulWidget {
 }
 
 class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
-  int _unreadCount = 0;
+  final _readProvider = getIt<ActivityReadProvider>();
   Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    _fetchUnreadCount();
+    // Cold-start reconciliation: server wins. We fetch immediately so the
+    // badge matches server truth instead of any stale in-memory state.
+    _readProvider.refreshUnreadCount();
+    _readProvider.unreadCount.addListener(_onCountChanged);
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _fetchUnreadCount();
+      _readProvider.refreshUnreadCount();
     });
   }
 
   @override
   void dispose() {
+    _readProvider.unreadCount.removeListener(_onCountChanged);
     _pollTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _fetchUnreadCount() async {
-    try {
-      final response = await getIt<ApiClient>().getUnreadActivityCount();
-      if (!mounted) return;
-      final count = response.data['count'] as int? ?? 0;
-      if (count != _unreadCount) {
-        setState(() => _unreadCount = count);
-      }
-    } catch (_) {}
+  void _onCountChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onDestinationSelected(int index) {
@@ -57,15 +54,16 @@ class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
       initialLocation: index == widget.navigationShell.currentIndex,
     );
     // Refresh badge when switching to Activity tab
-    if (index == 2) _fetchUnreadCount();
+    if (index == 2) _readProvider.refreshUnreadCount();
   }
 
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.of(context).disableAnimations;
     final isWide = !ResponsiveUtils.isMobile(context);
-    final showBadge = _unreadCount > 0;
-    final badgeLabel = _unreadCount > 99 ? '99+' : '$_unreadCount';
+    final unreadCount = _readProvider.unreadCount.value;
+    final showBadge = unreadCount > 0;
+    final badgeLabel = unreadCount > 99 ? '99+' : '$unreadCount';
 
     if (isWide) {
       return Scaffold(

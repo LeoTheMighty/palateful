@@ -213,9 +213,9 @@ development_status:
   epic-bugs-activity-hub-retrospective: optional
 
   # Epic Bugs — Home Screen Declutter & Foundations (planned 2026-04-16)
-  epic-bugs-home-and-foundations: backlog
-  bugs-home-1-remove-ai-chat-from-header: backlog
-  bugs-home-2-consolidate-sort-and-filter: backlog
-  bugs-onb-1-onboarding-default-shopping-list: backlog
-  bugs-adm-1-admin-promotion-script: backlog
+  epic-bugs-home-and-foundations: done
+  bugs-home-1-remove-ai-chat-from-header: done
+  bugs-home-2-consolidate-sort-and-filter: done
+  bugs-onb-1-onboarding-default-shopping-list: done
+  bugs-adm-1-admin-promotion-script: done
   epic-bugs-home-and-foundations-retrospective: optional

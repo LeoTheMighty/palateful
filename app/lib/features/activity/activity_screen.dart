@@ -7,6 +7,7 @@ import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'providers/activity_read_provider.dart';
 
 /// Activity feed screen — shows notifications like invites, partner actions, reminders.
 /// Also surfaces high-priority "Needs Review" import items in a collapsed section.
@@ -20,6 +21,7 @@ class ActivityScreen extends StatefulWidget {
 
 class _ActivityScreenState extends State<ActivityScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _readProvider = getIt<ActivityReadProvider>();
 
   List<dynamic> _activities = [];
   bool _isLoading = true;
@@ -84,10 +86,34 @@ class _ActivityScreenState extends State<ActivityScreen> {
           .where((a) => !_importActivityTypes.contains(a['type']?.toString()))
           .toList();
 
+      // Tab-open marks all currently-loaded items read. No viewport
+      // tracking — locked design decision: every loaded item is acknowledged
+      // when the user opens this surface. Mark-all-as-read remains the
+      // safety valve for older unread items that aren't yet paginated in.
+      // Flip flags before the first rebuild so the UI goes straight to the
+      // read state without a flash-of-unread.
+      final idsToMark = <String>[];
+      for (final a in filtered) {
+        if (a['read'] != true) {
+          final id = a['id']?.toString();
+          if (id != null) {
+            idsToMark.add(id);
+            a['read'] = true;
+          }
+        }
+      }
+
       setState(() {
         _activities = filtered;
         _isLoading = false;
       });
+
+      if (idsToMark.isNotEmpty) {
+        _readProvider.setUnreadCount(0);
+        _readProvider.markIdsRead(idsToMark).then((_) {
+          if (mounted) _readProvider.refreshUnreadCount();
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       if (!silent) {
@@ -189,6 +215,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
           a['read'] = true;
         }
       });
+      _readProvider.setUnreadCount(0);
     } catch (_) {}
   }
 
@@ -197,12 +224,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
     final actionUrl = activity['action_url'] as String?;
 
     if (id != null && activity['read'] != true) {
-      try {
-        await _apiClient.markActivityRead(id);
-        if (mounted) {
-          setState(() => activity['read'] = true);
-        }
-      } catch (_) {}
+      setState(() => activity['read'] = true);
+      // Fire-and-forget with retry via provider. The bulk _markLoadedRead
+      // will usually have already covered this, but we keep this path so
+      // a user who navigates directly to a deep-linked activity still gets
+      // the read-flag written without depending on tab-open having run.
+      _readProvider.markIdsRead([id]).then((_) {
+        if (mounted) _readProvider.refreshUnreadCount();
+      });
     }
 
     if (actionUrl != null && actionUrl.isNotEmpty && mounted) {

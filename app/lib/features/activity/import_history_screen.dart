@@ -8,6 +8,7 @@ import '../../core/theme/theme.dart';
 import '../recipes/add_recipe/batch_parser_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'providers/activity_read_provider.dart';
 
 /// Attention-first Import Activity screen.
 ///
@@ -23,6 +24,7 @@ class ImportHistoryScreen extends StatefulWidget {
 class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
   final _apiClient = getIt<ApiClient>();
   final _batchService = getIt<BatchParserService>();
+  final _readProvider = getIt<ActivityReadProvider>();
 
   // Attention view data: jobs grouped by status, with their items loaded
   List<_JobWithItems> _processingJobs = [];
@@ -46,6 +48,10 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
   void initState() {
     super.initState();
     _loadAttentionView();
+    // Opening the Import Activity surface acknowledges the backend-stored
+    // import_* activity rows. Scoped: non-import activities stay unread so
+    // the main Activity tab badge reflects the untouched feed.
+    _readProvider.markLoadedImportActivitiesRead();
     _localBatchJobs = _batchService.jobs
         .where((j) =>
             j.status != BatchJobStatus.succeeded &&

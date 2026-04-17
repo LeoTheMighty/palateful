@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/import_history_screen.dart';
+import 'package:palateful/features/activity/providers/activity_read_provider.dart';
 import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
 
 Response<dynamic> _fakeResponse(dynamic data) {
@@ -49,6 +50,18 @@ class _FakeApiClient extends ApiClient {
   @override
   Future<Response> dismissImportItem(String itemId) async =>
       _fakeResponse({'item_id': itemId, 'job_dismissed': false});
+
+  @override
+  Future<Response> markActivityRead(String id) async =>
+      _fakeResponse({'success': true});
+
+  @override
+  Future<Response> getActivities({int limit = 50, int offset = 0}) async =>
+      _fakeResponse({'items': [], 'total': 0});
+
+  @override
+  Future<Response> getUnreadActivityCount() async =>
+      _fakeResponse({'count': 0});
 }
 
 void _registerFakes(_FakeApiClient client) {
@@ -59,6 +72,12 @@ void _registerFakes(_FakeApiClient client) {
     gi.unregister<BatchParserService>();
   }
   gi.registerLazySingleton<BatchParserService>(() => BatchParserService());
+  if (gi.isRegistered<ActivityReadProvider>()) {
+    gi.unregister<ActivityReadProvider>();
+  }
+  gi.registerLazySingleton<ActivityReadProvider>(
+    () => ActivityReadProvider(gi<ApiClient>()),
+  );
 }
 
 void _unregister() {
@@ -66,6 +85,9 @@ void _unregister() {
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   if (gi.isRegistered<BatchParserService>()) {
     gi.unregister<BatchParserService>();
+  }
+  if (gi.isRegistered<ActivityReadProvider>()) {
+    gi.unregister<ActivityReadProvider>();
   }
 }
 
