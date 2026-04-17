@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from conftest import MockExecuteResult, MockFriendRequest, MockRecipeBookUser, MockShoppingList, MockUser
 
@@ -803,6 +803,48 @@ class TestCompleteOnboarding:
         assert mock_user.name == "Existing Name"
         # db.add should NOT have been called (no new recipe book)
         mock_db.db.add.assert_not_called()
+
+    def test_complete_onboarding_default_list_bootstrap_failure_is_swallowed(
+        self, client, mock_user, mock_db
+    ):
+        """Default-list bootstrap failure must NOT fail onboarding.
+
+        The migration backfill sweep is the safety net (bugs-onb-1), so a
+        post-commit exception is logged and swallowed. Covers the except
+        branch in complete_onboarding.py.
+        """
+        from datetime import UTC, datetime
+
+        mock_user.has_completed_onboarding = False
+        mock_user.username = None
+        mock_user.username_changed_at = None
+        mock_db.db.commit = MagicMock()
+        mock_db.db.flush = MagicMock()
+        mock_db.db.add = MagicMock()
+
+        def refresh_with_defaults(obj):
+            if not hasattr(obj, "id") or obj.id is None:
+                obj.id = str(uuid.uuid4())
+            if hasattr(obj, "created_at") and obj.created_at is None:
+                obj.created_at = datetime.now(UTC)
+            if hasattr(obj, "updated_at") and obj.updated_at is None:
+                obj.updated_at = datetime.now(UTC)
+
+        mock_db.db.refresh = MagicMock(side_effect=refresh_with_defaults)
+
+        with patch(
+            "api.v1.user.complete_onboarding.ensure_default_shopping_list",
+            side_effect=RuntimeError("simulated bootstrap failure"),
+        ):
+            response = client.post(
+                "/v1/users/me/complete-onboarding",
+                json={"name": "Leo", "start_method": "browse"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert mock_user.has_completed_onboarding is True
 
 
 class TestGetMeShoppingListDefaults:

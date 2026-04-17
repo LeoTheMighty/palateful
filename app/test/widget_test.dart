@@ -1,17 +1,55 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/theme/app_colors.dart';
 import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/core/router/page_transitions.dart';
+import 'package:palateful/features/activity/providers/activity_read_provider.dart';
 import 'package:palateful/shared/widgets/shimmer_loading.dart';
 import 'package:palateful/shared/widgets/scaffold_with_bottom_nav.dart';
 
+class _StubApiClient extends ApiClient {
+  @override
+  Future<Response> getUnreadActivityCount() async => Response(
+        data: {'count': 0},
+        requestOptions: RequestOptions(path: ''),
+        statusCode: 200,
+      );
+}
+
+void _registerScaffoldDeps() {
+  final gi = GetIt.instance;
+  if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+  gi.registerSingleton<ApiClient>(_StubApiClient());
+  if (gi.isRegistered<ActivityReadProvider>()) {
+    gi.unregister<ActivityReadProvider>();
+  }
+  gi.registerLazySingleton<ActivityReadProvider>(
+    () => ActivityReadProvider(gi<ApiClient>()),
+  );
+}
+
+void _unregisterScaffoldDeps() {
+  final gi = GetIt.instance;
+  if (gi.isRegistered<ActivityReadProvider>()) {
+    gi.unregister<ActivityReadProvider>();
+  }
+  if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
+  });
 
   setUp(() {
     GoogleFonts.config.allowRuntimeFetching = false;
@@ -137,6 +175,9 @@ void main() {
   });
 
   group('ScaffoldWithBottomNav', () {
+    setUp(_registerScaffoldDeps);
+    tearDown(_unregisterScaffoldDeps);
+
     testWidgets('has 5 navigation destinations on mobile', (tester) async {
       // Force narrow viewport so ScaffoldWithBottomNav renders mobile bottom nav
       tester.view.physicalSize = const Size(400, 800);
