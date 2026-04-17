@@ -238,6 +238,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
         onReschedule: (newLocal) => _rescheduleEvent(event, newLocal),
         onUnschedule: () => _unscheduleWithUndo(event),
         onMarkCooked: event.recipe == null ? null : () => _markMealCooked(event),
+        onSeriesEnded: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Series ended. Future occurrences removed.')),
+          );
+          _loadEvents();
+        },
       ),
     );
   }
@@ -752,21 +758,46 @@ class _CalendarScreenState extends State<CalendarScreen> {
         child: Row(
           children: [
             // Recipe thumbnail or meal type icon
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: colorScheme.surfaceContainerHighest,
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: event.recipe?.imageUrl != null
-                  ? Image.network(
-                      event.recipe!.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _mealTypeIcon(event.mealType, colorScheme),
-                    )
-                  : _mealTypeIcon(event.mealType, colorScheme),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: colorScheme.surfaceContainerHighest,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: event.recipe?.imageUrl != null
+                      ? Image.network(
+                          event.recipe!.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _mealTypeIcon(event.mealType, colorScheme),
+                        )
+                      : _mealTypeIcon(event.mealType, colorScheme),
+                ),
+                if (event.recurrenceRuleId != null)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Semantics(
+                      label: 'Recurring meal',
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.repeat,
+                          size: 12,
+                          color: colorScheme.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 12),
 

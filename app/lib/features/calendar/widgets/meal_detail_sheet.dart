@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/di/injection.dart';
 import '../models/meal_event.dart';
+import '../services/meal_calendar_service.dart';
+import 'recurrence_field.dart';
 
 /// Bottom-sheet surfaced on calendar meal tap (bugs-cal-1). One primary
 /// action (Open Recipe) plus a secondary icon row: Reschedule, Unschedule,
@@ -10,7 +13,7 @@ import '../models/meal_event.dart';
 ///
 /// Callbacks are void-returning so the caller handles its own async
 /// (optimistic removal, snackbar-undo, etc.).
-class MealDetailSheet extends StatelessWidget {
+class MealDetailSheet extends StatefulWidget {
   final MealEvent event;
 
   /// Called when the user taps Reschedule after choosing a new datetime.
@@ -26,19 +29,55 @@ class MealDetailSheet extends StatelessWidget {
   /// Null when no recipe — the action is disabled in that case.
   final VoidCallback? onMarkCooked;
 
+  /// Called after a successful "End series today" so the caller can reload
+  /// the calendar week.
+  final VoidCallback? onSeriesEnded;
+
   const MealDetailSheet({
     super.key,
     required this.event,
     required this.onReschedule,
     required this.onUnschedule,
     required this.onMarkCooked,
+    this.onSeriesEnded,
   });
+
+  @override
+  State<MealDetailSheet> createState() => _MealDetailSheetState();
+}
+
+class _MealDetailSheetState extends State<MealDetailSheet> {
+  RecurrenceRule? _rule;
+  bool _ruleLoadFailed = false;
+
+  MealCalendarService get _service => getIt<MealCalendarService>();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.event.recurrenceRuleId != null) {
+      _loadRule();
+    }
+  }
+
+  Future<void> _loadRule() async {
+    try {
+      final rule = await _service.getRecurrenceRule(
+        widget.event.recurrenceRuleId!,
+      );
+      if (mounted) setState(() => _rule = rule);
+    } catch (_) {
+      if (mounted) setState(() => _ruleLoadFailed = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final event = widget.event;
     final recipe = event.recipe;
+    final isRecurring = event.recurrenceRuleId != null;
 
     return SafeArea(
       child: Padding(
@@ -86,13 +125,40 @@ class MealDetailSheet extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        event.title,
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              event.title,
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isRecurring) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colorScheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'Recurring',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSecondaryContainer,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -101,6 +167,16 @@ class MealDetailSheet extends StatelessWidget {
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (isRecurring) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _ruleSummaryText(),
+                          style: textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -139,33 +215,114 @@ class MealDetailSheet extends StatelessWidget {
                   destructive: true,
                   onTap: () {
                     Navigator.pop(context);
-                    onUnschedule();
+                    widget.onUnschedule();
                   },
                 ),
                 _SecondaryAction(
                   icon: Icons.restaurant_menu,
                   label: 'Mark Cooked',
-                  onTap: onMarkCooked == null
+                  onTap: widget.onMarkCooked == null
                       ? null
                       : () {
                           Navigator.pop(context);
-                          onMarkCooked!();
+                          widget.onMarkCooked!();
                         },
-                  disabledReason: onMarkCooked == null
+                  disabledReason: widget.onMarkCooked == null
                       ? 'No recipe attached'
                       : null,
                 ),
               ],
             ),
+            if (isRecurring && !_ruleLoadFailed) ...[
+              const SizedBox(height: 12),
+              Divider(color: colorScheme.outlineVariant),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  Icons.stop_circle_outlined,
+                  color: colorScheme.error,
+                ),
+                title: Text(
+                  'End series today',
+                  style: TextStyle(color: colorScheme.error),
+                ),
+                onTap: _handleEndSeries,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
+  Future<void> _handleEndSeries() async {
+    final title = widget.event.title;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Stop repeating $title?'),
+        content: const Text(
+          'Future occurrences will be removed. Past occurrences stay.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Stop'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _service.deleteRecurrenceRule(widget.event.recurrenceRuleId!);
+      if (!mounted) return;
+      Navigator.pop(context);
+      widget.onSeriesEnded?.call();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't end series. Try again.")),
+      );
+    }
+  }
+
+  String _ruleSummaryText() {
+    final rule = _rule;
+    if (rule == null) {
+      return _ruleLoadFailed ? 'Recurring meal' : 'Loading…';
+    }
+    final value = RecurrenceValue(
+      interval: rule.interval,
+      weekdays: rule.weekdays,
+      monthlyNth: rule.monthlyNth,
+      endDate: rule.endDate,
+    );
+    final summary = describeRecurrence(value);
+    return '$summary · ${_mealTypeLabel(rule.mealType)}';
+  }
+
+  String _mealTypeLabel(String type) {
+    switch (type) {
+      case 'breakfast':
+        return 'Breakfast';
+      case 'lunch':
+        return 'Lunch';
+      case 'dinner':
+        return 'Dinner';
+      case 'snack':
+        return 'Snack';
+    }
+    return type;
+  }
+
   Future<void> _handleReschedule(BuildContext context) async {
     final now = DateTime.now();
-    final current = event.scheduledAt;
+    final current = widget.event.scheduledAt;
 
     // Pre-fill with the existing local time.
     final pickedDate = await showDatePicker(
@@ -192,7 +349,7 @@ class MealDetailSheet extends StatelessWidget {
 
     if (!context.mounted) return;
     Navigator.pop(context);
-    await onReschedule(local);
+    await widget.onReschedule(local);
   }
 
   String _formatLocal(DateTime dt) {
