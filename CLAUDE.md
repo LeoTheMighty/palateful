@@ -66,3 +66,31 @@ See `.env.example` for required configuration. Key vars:
 - `REDIS_URL` - Redis connection string
 - `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, `AUTH0_CLIENT_ID` - Auth0 config
 - `OPENAI_API_KEY` - OpenAI API key
+
+## Ops Scripts
+
+Scripts in `services/api/scripts/` are one-off ops tools that talk directly
+to the database via `DATABASE_URL`. They do not require the FastAPI app to
+be running. Every mutation writes an audit row to `error_logs` with
+`service="audit"` so the change is queryable without polluting error
+dashboards (which filter on `service="api"`).
+
+### `promote_admin.py` — grant/revoke admin by email
+
+```bash
+# Dry-run (default): prints target user + planned change, no writes.
+DATABASE_URL=<prod-url> python services/api/scripts/promote_admin.py \
+    --email leonid@ac93.org
+
+# Commit the promotion.
+DATABASE_URL=<prod-url> python services/api/scripts/promote_admin.py \
+    --email leonid@ac93.org --yes
+
+# Revoke admin (mistake recovery or offboarding).
+DATABASE_URL=<prod-url> python services/api/scripts/promote_admin.py \
+    --email someone@example.com --demote --yes
+```
+
+Exit codes: `0` success / no-op, `2` no match or multiple matches, `1`
+other errors. Script is idempotent: re-running in the target state is a
+no-op.
