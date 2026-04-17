@@ -487,13 +487,17 @@ async def shopping_list_websocket(
         await websocket.close(code=4001, reason="Missing token")
         return
 
-    # Authenticate user (simplified - in production use proper JWT validation)
-    try:
-        # Import auth dependency
-        from dependencies import decode_jwt
-        payload = decode_jwt(f"Bearer {token}")  # pragma: no cover — WS auth
-        user = database.find_by(User, auth0_id=payload.get("sub"))  # pragma: no cover — WS auth
-        if not user:  # pragma: no cover — WS auth
+    # Validate the JWT against Auth0 the same way HTTP routes do. We can't
+    # reuse `get_current_user` directly because it pulls the Authorization
+    # header via FastAPI's Depends; the WS handshake carries the token in
+    # the query string instead.
+    try:  # pragma: no cover — WS auth
+        from utils.services.auth0 import get_auth0_verifier
+
+        verifier = get_auth0_verifier()
+        payload = await verifier.verify_token(token)
+        user = database.find_by(User, auth0_id=payload.get("sub"))
+        if not user:
             await websocket.close(code=4001, reason="Invalid user")
             return
     except Exception:
