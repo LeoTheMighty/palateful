@@ -633,6 +633,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             textTheme: textTheme,
           ),
 
+          const SizedBox(height: 8),
+          _buildProfileTile(
+            icon: Icons.event_repeat_outlined,
+            label: 'Recurring plans',
+            value: 'Manage every recurring meal you have scheduled',
+            onTap: () => context.push('/profile/recurring-plans'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+
           const SizedBox(height: 32),
 
           // Appearance section
