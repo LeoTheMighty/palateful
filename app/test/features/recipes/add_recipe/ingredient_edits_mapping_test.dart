@@ -147,4 +147,86 @@ void main() {
       expect(edit['is_optional'], isFalse);
     });
   });
+
+  group('ingredientRowFromGetRecipe', () {
+    double? parse(String s) {
+      // Minimal stand-in; real callers pass `parseFraction`.
+      if (s == '1 1/2') return 1.5;
+      if (s == '0.5') return 0.5;
+      return null;
+    }
+
+    test('structured row hydrates all fields + ingredient_id', () {
+      final entry = {
+        'ingredient': {'id': 'ing-123', 'canonical_name': 'butter'},
+        'quantity_display': '1 1/2',
+        'unit_display': 'cup',
+        'notes': 'melted',
+        'is_optional': false,
+      };
+      final row = ingredientRowFromGetRecipe(entry, parseQty: parse);
+      expect(row.name, 'butter');
+      expect(row.quantity, 1.5);
+      expect(row.unit, 'cup');
+      expect(row.notes, 'melted');
+      expect(row.isOptional, isFalse);
+      expect(row.ingredientId, 'ing-123');
+    });
+
+    test('legacy ingredient — only canonical_name populated', () {
+      final entry = {
+        'ingredient': {'id': 'ing-legacy', 'canonical_name': 'flour'},
+        // No quantity_display / unit_display / notes.
+      };
+      final row = ingredientRowFromGetRecipe(entry, parseQty: parse);
+      expect(row.name, 'flour');
+      expect(row.quantity, isNull);
+      expect(row.unit, isNull);
+      expect(row.notes, isNull);
+      expect(row.ingredientId, 'ing-legacy');
+    });
+
+    test('empty unit/notes hydrate as null', () {
+      final entry = {
+        'ingredient': {'id': 'x', 'canonical_name': 'salt'},
+        'quantity_display': '0.5',
+        'unit_display': '',
+        'notes': '',
+      };
+      final row = ingredientRowFromGetRecipe(entry, parseQty: parse);
+      expect(row.unit, isNull);
+      expect(row.notes, isNull);
+      expect(row.quantity, 0.5);
+    });
+
+    test('numeric quantity_display is accepted without parser fallback', () {
+      final entry = {
+        'ingredient': {'id': 'x', 'canonical_name': 'salt'},
+        'quantity_display': 2,
+      };
+      final row = ingredientRowFromGetRecipe(entry, parseQty: parse);
+      expect(row.quantity, 2);
+    });
+  });
+
+  group('ingredientRowToEditSavePayload', () {
+    test('existing row includes ingredient_id', () {
+      const r = IngredientRowData(
+        name: 'butter',
+        quantity: 0.5,
+        unit: 'cup',
+        ingredientId: 'ing-123',
+      );
+      final payload = ingredientRowToEditSavePayload(r);
+      expect(payload['ingredient_id'], 'ing-123');
+      expect(payload['name'], 'butter');
+    });
+
+    test('net-new row omits ingredient_id (relies on resolve_ingredient)', () {
+      const r = IngredientRowData(name: 'paprika', quantity: 1, unit: 'tsp');
+      final payload = ingredientRowToEditSavePayload(r);
+      expect(payload.containsKey('ingredient_id'), isFalse);
+      expect(payload['name'], 'paprika');
+    });
+  });
 }

@@ -77,3 +77,59 @@ bool ingredientRowHasContent(IngredientRowData row) {
       (row.unit?.isNotEmpty ?? false) ||
       (row.notes?.isNotEmpty ?? false);
 }
+
+/// Hydrate a GET-recipe response's `ingredients[]` entry — which uses the
+/// `{ingredient: {id, canonical_name}, quantity_display, unit_display, ...}`
+/// shape — into the editor's [IngredientRowData] shape. The
+/// `ingredient_id` is preserved so the edit screen's save payload can
+/// send it back and the backend's resolve_ingredient helper uses the
+/// existing canonical row instead of re-creating it via find-or-create.
+///
+/// Legacy rows (no `quantity_display` / `unit_display` / `notes`) hydrate
+/// with `canonical_name` in the Name field and empty qty/unit/notes —
+/// nothing is lost. See bugs-imp-ing-4 AC4.
+IngredientRowData ingredientRowFromGetRecipe(
+  Map<String, dynamic> entry, {
+  required double? Function(String) parseQty,
+}) {
+  final ingredientId = entry['ingredient'] is Map
+      ? (entry['ingredient']['id'] as String?)
+      : null;
+  final canonicalName = entry['ingredient'] is Map
+      ? (entry['ingredient']['canonical_name'] as String?)
+      : null;
+  final qtyDisplay = entry['quantity_display'];
+  double? qty;
+  if (qtyDisplay is num) {
+    qty = qtyDisplay.toDouble();
+  } else if (qtyDisplay is String) {
+    qty = parseQty(qtyDisplay);
+  }
+  final unitDisplay = entry['unit_display'] as String?;
+  final notes = entry['notes'] as String?;
+  final isOptional = entry['is_optional'] == true;
+  return IngredientRowData(
+    name: (canonicalName != null && canonicalName.trim().isNotEmpty)
+        ? canonicalName
+        : null,
+    quantity: qty,
+    unit: (unitDisplay != null && unitDisplay.trim().isNotEmpty)
+        ? unitDisplay
+        : null,
+    notes: (notes != null && notes.trim().isNotEmpty) ? notes : null,
+    isOptional: isOptional,
+    ingredientId: ingredientId,
+  );
+}
+
+/// Serialize a row from the edit screen into a payload for the
+/// recipe-update endpoint. Preserves `ingredient_id` when the row came
+/// from existing data; for net-new rows, only `name` is sent and the
+/// backend's resolve_ingredient helper runs find-or-create.
+Map<String, dynamic> ingredientRowToEditSavePayload(IngredientRowData row) {
+  final payload = ingredientRowToUserEditJson(row);
+  if (row.ingredientId != null) {
+    payload['ingredient_id'] = row.ingredientId;
+  }
+  return payload;
+}

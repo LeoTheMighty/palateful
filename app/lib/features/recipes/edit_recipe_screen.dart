@@ -8,7 +8,10 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/utils/fraction_parser.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'add_recipe/ingredient_edits_mapping.dart';
+import 'widgets/structured_ingredient_row.dart';
 
 class EditRecipeScreen extends StatefulWidget {
   final String recipeId;
@@ -46,6 +49,12 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   List<Map<String, dynamic>> _steps = [];
   final List<TextEditingController> _stepControllers = [];
   List<String> _tags = [];
+
+  // Ingredients — new section added by bugs-imp-ing-4. Rows carry a
+  // stable local id so StructuredIngredientRow's internal controllers
+  // survive list mutations (add / delete / undo) without leaking.
+  final List<_IngredientEntry> _ingredientRows = [];
+  int _nextIngredientKey = 0;
 
   @override
   void initState() {
@@ -101,6 +110,23 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         );
       }
 
+      // Hydrate ingredient rows. The GET response exposes
+      // `quantity_display` as a formatted string (e.g., "1 1/2") — parse
+      // back to a numeric value with fraction_parser so the row editor's
+      // format → parse → format round-trip is lossless. Legacy rows that
+      // only have `ingredient.canonical_name` populate the Name field and
+      // leave qty/unit/notes empty (no data loss).
+      _ingredientRows.clear();
+      final rawIngredients = data['ingredients'] as List? ?? [];
+      for (final raw in rawIngredients) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        _ingredientRows.add(_IngredientEntry(
+          key: ValueKey('edit-ing-${_nextIngredientKey++}'),
+          data: ingredientRowFromGetRecipe(map, parseQty: parseFraction),
+        ));
+      }
+
       setState(() => _isLoading = false);
     } catch (e) {
       if (mounted) {
@@ -137,6 +163,16 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             'instruction': e.value['instruction'] ?? '',
           }).toList();
 
+      // Build ingredient payload: existing rows keep their ingredient_id
+      // (so the backend doesn't rerun find-or-create on a name typo);
+      // net-new rows send just {name, quantity, unit, notes, is_optional}
+      // and let resolve_ingredient create the canonical row.
+      final ingredientPayloads = <Map<String, dynamic>>[
+        for (final entry in _ingredientRows)
+          if (ingredientRowHasContent(entry.data))
+            ingredientRowToEditSavePayload(entry.data),
+      ];
+
       final data = {
         'name': _nameController.text,
         'description': _descriptionController.text.isEmpty
@@ -150,6 +186,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
             : _sourceUrlController.text,
         'tags': _tags,
         'steps': structuredSteps,
+        'ingredients': ingredientPayloads,
       };
 
       await _apiClient.updateRecipe(widget.recipeId, data);
@@ -191,6 +228,46 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   void _onStepChanged(int index, String text) {
     _steps[index] = {..._steps[index], 'instruction': text};
     _scheduleSave();
+  }
+
+  void _updateIngredientRow(int index, IngredientRowData next) {
+    _ingredientRows[index] = _ingredientRows[index].copyWith(data: next);
+    _scheduleSave();
+  }
+
+  void _addIngredientRow() {
+    setState(() {
+      _ingredientRows.add(_IngredientEntry(
+        key: ValueKey('edit-ing-${_nextIngredientKey++}'),
+        data: const IngredientRowData(),
+      ));
+    });
+    _scheduleSave();
+  }
+
+  void _removeIngredientRow(int index) {
+    final removed = _ingredientRows[index];
+    setState(() => _ingredientRows.removeAt(index));
+    _scheduleSave();
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 3),
+        content: const Text('Ingredient removed.'),
+        action: SnackBarAction(
+          label: 'UNDO',
+          onPressed: () {
+            if (!mounted) return;
+            setState(() {
+              final target = index.clamp(0, _ingredientRows.length);
+              _ingredientRows.insert(target, removed);
+            });
+            _scheduleSave();
+          },
+        ),
+      ),
+    );
   }
 
   void _addTag() {
@@ -506,6 +583,33 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                       ),
                       const SizedBox(height: 24),
 
+                      // Ingredients section (new in bugs-imp-ing-4 —
+                      // previously this screen had no ingredient editor
+                      // at all).
+                      Text('Ingredients', style: textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      ..._ingredientRows.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final e = entry.value;
+                        return Padding(
+                          key: e.key,
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: StructuredIngredientRow(
+                            value: e.data,
+                            onChanged: (v) => _updateIngredientRow(idx, v),
+                            onDeleteRequested: () => _removeIngredientRow(idx),
+                          ),
+                        );
+                      }),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _addIngredientRow,
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add Ingredient'),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
                       // Steps section
                       Text('Steps', style: textTheme.titleMedium),
                       const SizedBox(height: 8),
@@ -612,3 +716,13 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     );
   }
 }
+
+class _IngredientEntry {
+  _IngredientEntry({required this.key, required this.data});
+  final ValueKey<String> key;
+  final IngredientRowData data;
+
+  _IngredientEntry copyWith({IngredientRowData? data}) =>
+      _IngredientEntry(key: key, data: data ?? this.data);
+}
+

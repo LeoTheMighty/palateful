@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../widgets/structured_ingredient_row.dart';
+import 'ingredient_edits_mapping.dart';
 
 class RecipeWizardScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -36,7 +38,11 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
   String? _imageUrl;
   Uint8List? _imageBytes;
   String? _imageFileName;
-  List<Map<String, dynamic>> _ingredients = [];
+  // Ingredients — canonical structured shape. Story bugs-imp-ing-4
+  // replaced the previous ad-hoc {quantity_display, unit_display,
+  // ingredient: {canonical_name}} map with the same value object the
+  // Review Import screen uses.
+  List<IngredientRowData> _ingredients = [];
   List<Map<String, dynamic>> _steps = [];
   String? _mealType;
   List<String> _tags = [];
@@ -136,6 +142,14 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
         'instruction': e.value['instruction'] ?? '',
       }).toList();
 
+      // Serialize ingredients as {name, quantity, unit, notes, is_optional}.
+      // The recipe-create endpoint runs find-or-create on `name` (see
+      // bugs-imp-ing-5). Empty placeholder rows are dropped.
+      final ingredientPayloads = <Map<String, dynamic>>[
+        for (final row in _ingredients)
+          if (ingredientRowHasContent(row)) ingredientRowToUserEditJson(row),
+      ];
+
       final recipeData = {
         'name': _nameController.text,
         'prep_time': int.tryParse(_prepTimeController.text),
@@ -146,7 +160,7 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
             ? null
             : _sourceUrlController.text,
         'tags': _tags.isEmpty ? [] : _tags,
-        'ingredients': _ingredients.isEmpty ? [] : _ingredients,
+        'ingredients': ingredientPayloads,
         'steps': structuredSteps.isEmpty ? [] : structuredSteps,
       };
 
@@ -246,6 +260,11 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
                 _StepIngredients(
                   ingredients: _ingredients,
                   onChanged: (v) => setState(() => _ingredients = v),
+                  onShowSnackbar: (snack) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).clearSnackBars();
+                    ScaffoldMessenger.of(context).showSnackBar(snack);
+                  },
                 ),
                 _StepSteps(
                   steps: _steps,
@@ -527,14 +546,20 @@ class _StepName extends StatelessWidget {
   }
 }
 
-// Step 2: Ingredients
+// Step 2: Ingredients — structured row editor (bugs-imp-ing-4).
+//
+// The parent owns `List<IngredientRowData>`. Each rendered row is keyed
+// by a locally-assigned id so StructuredIngredientRow's internal
+// controllers survive add/delete/undo cycles without leaking.
 class _StepIngredients extends StatefulWidget {
-  final List<Map<String, dynamic>> ingredients;
-  final ValueChanged<List<Map<String, dynamic>>> onChanged;
+  final List<IngredientRowData> ingredients;
+  final ValueChanged<List<IngredientRowData>> onChanged;
+  final ValueChanged<SnackBar> onShowSnackbar;
 
   const _StepIngredients({
     required this.ingredients,
     required this.onChanged,
+    required this.onShowSnackbar,
   });
 
   @override
@@ -542,46 +567,80 @@ class _StepIngredients extends StatefulWidget {
 }
 
 class _StepIngredientsState extends State<_StepIngredients> {
-  final _ingredientController = TextEditingController();
+  // Per-row local ids aligned with widget.ingredients by index. When the
+  // parent replaces the whole list (e.g., from a saved draft), we
+  // regenerate keys; during add/delete we mutate in place.
+  final List<String> _keys = <String>[];
+  int _counter = 0;
 
-  void _addIngredient() {
-    final text = _ingredientController.text.trim();
-    if (text.isEmpty) return;
-
-    // Simple parsing: "2 cups flour" -> quantity, unit, name
-    final parts = text.split(' ');
-    String? quantity;
-    String? unit;
-    String name;
-
-    if (parts.length >= 3 &&
-        double.tryParse(parts[0].replaceAll(RegExp(r'[^\d.]'), '')) != null) {
-      quantity = parts[0];
-      unit = parts[1];
-      name = parts.sublist(2).join(' ');
-    } else if (parts.length >= 2 &&
-        double.tryParse(parts[0].replaceAll(RegExp(r'[^\d.]'), '')) != null) {
-      quantity = parts[0];
-      name = parts.sublist(1).join(' ');
-    } else {
-      name = text;
+  @override
+  void initState() {
+    super.initState();
+    _syncKeys(widget.ingredients.length);
+    // Locked decision (Sally): the wizard's ingredients step always
+    // starts with one pre-rendered empty row so users don't face a
+    // blank "nothing here" state.
+    if (widget.ingredients.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final next = [const IngredientRowData()];
+        _keys.add(_allocKey());
+        widget.onChanged(next);
+      });
     }
-
-    final newIngredient = {
-      'quantity_display': quantity ?? '',
-      'unit_display': unit ?? '',
-      'ingredient': {'canonical_name': name},
-    };
-
-    final updated = [...widget.ingredients, newIngredient];
-    widget.onChanged(updated);
-    _ingredientController.clear();
   }
 
-  void _removeIngredient(int index) {
-    final updated = List<Map<String, dynamic>>.from(widget.ingredients);
-    updated.removeAt(index);
+  @override
+  void didUpdateWidget(covariant _StepIngredients old) {
+    super.didUpdateWidget(old);
+    if (widget.ingredients.length != _keys.length) {
+      _syncKeys(widget.ingredients.length);
+    }
+  }
+
+  String _allocKey() => 'wizard-ing-${_counter++}';
+
+  void _syncKeys(int target) {
+    while (_keys.length < target) {
+      _keys.add(_allocKey());
+    }
+    while (_keys.length > target) {
+      _keys.removeLast();
+    }
+  }
+
+  void _updateRow(int index, IngredientRowData next) {
+    final updated = [...widget.ingredients];
+    updated[index] = next;
     widget.onChanged(updated);
+  }
+
+  void _addRow() {
+    final updated = [...widget.ingredients, const IngredientRowData()];
+    _keys.add(_allocKey());
+    widget.onChanged(updated);
+  }
+
+  void _removeRow(int index) {
+    final removed = widget.ingredients[index];
+    final removedKey = _keys[index];
+    final updated = [...widget.ingredients]..removeAt(index);
+    _keys.removeAt(index);
+    widget.onChanged(updated);
+    widget.onShowSnackbar(SnackBar(
+      duration: const Duration(seconds: 3),
+      content: const Text('Ingredient removed.'),
+      action: SnackBarAction(
+        label: 'UNDO',
+        onPressed: () {
+          if (!mounted) return;
+          final target = index.clamp(0, widget.ingredients.length);
+          final restored = [...widget.ingredients]..insert(target, removed);
+          _keys.insert(target, removedKey);
+          widget.onChanged(restored);
+        },
+      ),
+    ));
   }
 
   @override
@@ -602,87 +661,40 @@ class _StepIngredientsState extends State<_StepIngredients> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Type ingredient with amount (e.g., "2 cups flour")',
+            'Enter amount, unit, and name for each ingredient',
             style: textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-          const SizedBox(height: 24),
-
-          // Input row
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _ingredientController,
-                  decoration: const InputDecoration(
-                    hintText: '2 cups all-purpose flour',
-                  ),
-                  textCapitalization: TextCapitalization.sentences,
-                  onSubmitted: (_) => _addIngredient(),
-                ),
-              ),
-              const SizedBox(width: 12),
-              IconButton.filled(
-                onPressed: _addIngredient,
-                icon: const Icon(Icons.add),
-                style: IconButton.styleFrom(
-                  backgroundColor: colorScheme.primary,
-                  foregroundColor: colorScheme.onPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Ingredients list
+          const SizedBox(height: 16),
           Expanded(
-            child: widget.ingredients.isEmpty
-                ? Center(
-                    child: Text(
-                      'No ingredients added yet',
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+            child: ListView.separated(
+              itemCount: widget.ingredients.length + 1,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, i) {
+                if (i == widget.ingredients.length) {
+                  return Center(
+                    child: TextButton.icon(
+                      onPressed: _addRow,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add ingredient'),
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: widget.ingredients.length,
-                    itemBuilder: (context, index) {
-                      final ing = widget.ingredients[index];
-                      final quantity = ing['quantity_display'] ?? '';
-                      final unit = ing['unit_display'] ?? '';
-                      final name =
-                          ing['ingredient']?['canonical_name'] ?? 'Unknown';
-
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${index + 1}',
-                              style: textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.secondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                        title: Text('$quantity $unit $name'.trim()),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close, size: 20),
-                          onPressed: () => _removeIngredient(index),
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      );
-                    },
+                  );
+                }
+                // Guard against transient length mismatch just after a
+                // parent-driven rebuild.
+                if (i >= _keys.length) _syncKeys(widget.ingredients.length);
+                return Padding(
+                  key: ValueKey(_keys[i]),
+                  padding: EdgeInsets.zero,
+                  child: StructuredIngredientRow(
+                    value: widget.ingredients[i],
+                    onChanged: (v) => _updateRow(i, v),
+                    onDeleteRequested: () => _removeRow(i),
                   ),
+                );
+              },
+            ),
           ),
         ],
       ),

@@ -259,11 +259,11 @@ development_status:
   # RecipeIngredientInput to accept name as alternative to ingredient_id
   # (the draft's "no backend changes" claim was wrong; create/update
   # endpoints today require ingredient_id and reject the wizard's payload).
-  epic-bugs-import-structured-ingredients: in-progress
+  epic-bugs-import-structured-ingredients: done
   bugs-imp-ing-1-units-catalog-and-input-widget: done
   bugs-imp-ing-2-structured-ingredient-row-widget: done
   bugs-imp-ing-3-review-import-integration: done
-  bugs-imp-ing-4-recipe-wizard-integration: backlog
+  bugs-imp-ing-4-recipe-wizard-integration: done
   bugs-imp-ing-5-backend-name-or-id-ingredient-input: done
   epic-bugs-import-structured-ingredients-retrospective: optional
 
