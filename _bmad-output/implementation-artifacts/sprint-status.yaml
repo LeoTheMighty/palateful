@@ -251,3 +251,94 @@ development_status:
   rm-edit-3-monthly-nth-weekday-grammar: done
   rm-edit-4-recurring-plans-manage-screen: done
   epic-recurring-meals-editing-retrospective: optional
+
+  # Epic Bugs — Import Structured Ingredients (planned 2026-04-17)
+  # Surfaces qty/unit/notes/optional fields in Review Import, recipe wizard,
+  # and recipe edit (which has no ingredient editor today). Party-mode
+  # workshop 2026-04-17 spawned bugs-imp-ing-5 — backend story to extend
+  # RecipeIngredientInput to accept name as alternative to ingredient_id
+  # (the draft's "no backend changes" claim was wrong; create/update
+  # endpoints today require ingredient_id and reject the wizard's payload).
+  epic-bugs-import-structured-ingredients: in-progress
+  bugs-imp-ing-1-units-catalog-and-input-widget: done
+  bugs-imp-ing-2-structured-ingredient-row-widget: backlog
+  bugs-imp-ing-3-review-import-integration: backlog
+  bugs-imp-ing-4-recipe-wizard-integration: backlog
+  bugs-imp-ing-5-backend-name-or-id-ingredient-input: backlog
+  epic-bugs-import-structured-ingredients-retrospective: optional
+
+  # Epic Bugs — Import Photo Pipeline (planned 2026-04-17, refined via party-mode)
+  # Bundles source-photo promotion to recipe hero (FR87) + multi-recipe per
+  # photo via extractor array contract + server-side fan-out (FR88).
+  # Workshop 2026-04-17 caught 3 draft errors: (1) fan-out lives in
+  # extract_recipe_task._update_item_from_result, NOT parser_batch_completion;
+  # (2) vision_extractor.py:30 literally says "extract only primary/largest"
+  # — must be deleted; (3) AWSService.copy_object doesn't exist yet, must be
+  # added. Bucket-reuse decided (reuse parser-inputs with recipe-photos/
+  # prefix); dedicated palateful-recipe-photos-{env} bucket deferred to a
+  # follow-up epic.
+  epic-bugs-import-photo-pipeline: backlog
+  bugs-imp-pho-1-extractor-multirecipe-prompt-and-array-contract: backlog
+  bugs-imp-pho-2-extract-recipe-task-fanout: backlog
+  bugs-imp-pho-3-aws-copy-object-and-recipe-image-promotion-helper: backlog
+  bugs-imp-pho-4-source-photo-promotion-in-create-recipe-task: backlog
+  bugs-imp-pho-5-multirecipe-eval-fixtures-and-gate: backlog
+  bugs-imp-pho-6-flutter-audit-and-batch-status-copy-edit: backlog
+  # Follow-up spawned by workshop Q2: image fixtures + VisionExtractionEvaluator.
+  # Vision path ships under text-only eval coverage; this story adds image-based
+  # eval graded at the same ≥0.8 recipe_count_accuracy bar.
+  bugs-imp-pho-7-vision-extraction-eval-suite: backlog
+  epic-bugs-import-photo-pipeline-retrospective: optional
+
+  # Epic Bugs — Recipe-Images Bucket Migration (planned 2026-04-17, placeholder)
+  # Deferred from epic-bugs-import-photo-pipeline workshop. Today recipe hero
+  # photos (Story 2.3 + new FR87 source-photo promotion) piggyback on
+  # palateful-parser-inputs-{env} with a recipe-photos/ prefix. Long-term
+  # cleanup is a dedicated palateful-recipe-photos-{env} bucket with both
+  # flows migrated over. Placeholder so this isn't lost; flesh out when
+  # storage entanglement becomes a real pain.
+  epic-bugs-recipe-images-bucket-migration: backlog
+
+  # Epic Bugs — Home Polish (planned 2026-04-17)
+  # Flutter-only cleanup pair. Finishes what bugs-home-and-foundations
+  # started (header declutter) and closes the post-add-recipe nav gap.
+  # Parallelizable with epic-notifications-ios-proofoflife.
+  epic-bugs-home-polish: backlog
+  home-polish-1-remove-add-image-icon: backlog
+  home-polish-2-post-add-recipe-nav: backlog
+  epic-bugs-home-polish-retrospective: optional
+
+  # Epic Notifications — iOS Proof-of-Life (planned 2026-04-17)
+  # Cross-layer. Goal is "one push arrives on Leo's iPhone" via an
+  # admin test-push button, NOT the full event firehose (follow-up).
+  # notif-3 and notif-4 soft-depend on notif-1 for end-to-end verification.
+  epic-notifications-ios-proofoflife: backlog
+  notif-1-ios-appdelegate-apns-registration: backlog
+  notif-2-backend-log-only-mode-and-send-logging: backlog
+  notif-3-admin-test-push-endpoint-and-button: backlog
+  notif-4-onboarding-notification-permission-step: backlog
+  epic-notifications-ios-proofoflife-retrospective: optional
+
+  # Epic Calendars — Foundation (planned 2026-04-17)
+  # First-class Calendar container: model + backfill migration + CRUD endpoints,
+  # auth rewire on meal_event + recurrence_rule, Flutter switcher + create/rename/delete,
+  # plan-meal Calendar picker + move-to-calendar. Sharing lands in a follow-up epic.
+  epic-calendars-foundation: backlog
+  cal-found-1-calendar-model-backfill-and-crud: backlog
+  cal-found-2-rewire-authorization-and-require-calendar-id: backlog
+  cal-found-3-flutter-switcher-and-active-calendar-provider: backlog
+  cal-found-4-flutter-create-rename-delete-and-user-provisioning: backlog
+  cal-found-5-plan-meal-calendar-row-and-move-to-calendar: backlog
+  epic-calendars-foundation-retrospective: optional
+
+  # Epic Calendars — Sharing (planned 2026-04-17)
+  # Invitation-system extension for resource_type=calendar (owner+editor roles only),
+  # member management endpoints (list/promote/remove/leave), Flutter share sheet +
+  # members screen + Profile shared-calendars surface. Depends on epic-calendars-foundation.
+  epic-calendars-sharing: backlog
+  cal-share-1-invitation-and-invite-link-extension: backlog
+  cal-share-2-calendar-member-management-endpoints: backlog
+  cal-share-3-flutter-share-calendar-sheet: backlog
+  cal-share-4-flutter-calendar-members-screen: backlog
+  cal-share-5-profile-shared-calendars-and-invitations-polish: backlog
+  epic-calendars-sharing-retrospective: optional
