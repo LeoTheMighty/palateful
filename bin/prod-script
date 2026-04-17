@@ -90,9 +90,20 @@ PY
 COMBINED="$PRELUDE"$'\n'"$(cat "$SCRIPT")"
 ENCODED=$(printf '%s' "$COMBINED" | base64 | tr -d '\n')
 
-aws ecs execute-command \
+# Notes on the shell wrapping:
+# - `python -u` forces unbuffered stdout so output streams back as it is
+#   written, instead of being lost when Session Manager closes the pipe.
+# - Trailing `sleep 1` gives Session Manager time to drain the final
+#   output before the container command exits.
+# - Piping `yes ""` into `aws ecs execute-command` keeps stdin active so
+#   Session Manager's `--interactive` mode does not close the stream
+#   during quiet moments (it otherwise terminates with
+#   "Cannot perform start session: EOF" as soon as the python process
+#   pauses for a slow DB query). `yes` gets SIGPIPE and exits cleanly
+#   when `aws` returns, so the wrapper still terminates.
+yes "" 2>/dev/null | aws ecs execute-command \
   --cluster "$CLUSTER" \
   --task "$TASK_ARN" \
   --container "$CONTAINER" \
   --interactive \
-  --command "python -c 'import base64; exec(base64.b64decode(\"$ENCODED\").decode())'"
+  --command "sh -c 'python -u -c \"import base64; exec(base64.b64decode(\\\"$ENCODED\\\").decode())\"; sleep 1'"
