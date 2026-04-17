@@ -51,11 +51,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Pinned to 3.13.5 — 3.13.12+ broke mcp 1.10.1's tool registration
-  # (`inspect.iscoroutinefunction` → `issubclass()` fails on specific
-  # agent-tool callables). Upgrading mcp is the forward fix; pin for now
-  # so CI matches local dev (3.13.5) and tests pass.
-  PYTHON_VERSION: '3.13.5'
+  PYTHON_VERSION: '3.13'
   NODE_VERSION: '22'
   POETRY_VIRTUALENVS_IN_PROJECT: 'true'
   AWS_REGION: us-east-1

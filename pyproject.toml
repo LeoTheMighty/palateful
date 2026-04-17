@@ -11,6 +11,7 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.13"
+mcp = {version = ">=1.25", extras = ["cli"]}
 
 [tool.poetry.dependencies.api]
 path = "services/api"
