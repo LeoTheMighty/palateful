@@ -206,10 +206,16 @@ development_status:
   epic-bugs-calendar-ux-retrospective: optional
 
   # Epic Bugs — Activity Hub Polish (planned 2026-04-16)
-  epic-bugs-activity-hub: backlog
-  bugs-act-1-fix-persistent-unread: backlog
+  epic-bugs-activity-hub: in-progress
+  bugs-act-1-fix-persistent-unread: done
   bugs-act-2-surface-hidden-import-fields: backlog
   bugs-act-3-move-add-recipe-inprogress-to-hub: backlog
+  # Spawned by bugs-act-2 field audit (2026-04-16). Backlog — backend
+  # schema adds needed to surface: last_successful_stage in GetImportItem
+  # response, last_retry_at column on import_items, confidence_score on
+  # parsed_recipe output. Deferred per locked principle 5 (missing backend
+  # fields spawn a follow-up, do not widen the UI story).
+  bugs-act-2a-backend-fields-addendum: backlog
   epic-bugs-activity-hub-retrospective: optional
 
   # Epic Bugs — Home Screen Declutter & Foundations (planned 2026-04-16)

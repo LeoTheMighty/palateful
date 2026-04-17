@@ -8,6 +8,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/error_reporter.dart';
 import '../../../shared/widgets/error_banner.dart';
+import '../../activity/widgets/import_activity_detail.dart';
 
 class ImportItemReviewScreen extends StatefulWidget {
   final String itemId;
@@ -419,57 +420,26 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   }
 
   Widget _buildFailedView(ColorScheme colorScheme) {
-    final textTheme = Theme.of(context).textTheme;
-    final errorMessage = _item?['error_message'] as String? ?? 'Unknown error';
-    final sourceUrl = _item?['source_url'] as String? ?? '';
+    final item = _item ?? const <String, dynamic>{};
 
-    return Padding(
+    return ListView(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 64, color: colorScheme.error),
-          const SizedBox(height: 16),
-          Text(
-            'Import Failed',
-            style: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          if (sourceUrl.isNotEmpty) ...[
-            Text(
-              sourceUrl,
-              style: textTheme.bodySmall?.copyWith(color: colorScheme.outline),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-          ],
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              errorMessage,
-              style: TextStyle(color: colorScheme.onErrorContainer),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
+      children: [
+        ImportActivityDetail(item: item),
+        const SizedBox(height: 24),
+        Center(
+          child: FilledButton(
             onPressed: _dismiss,
             child: const Text('Dismiss'),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildEditForm(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
-    final sourceUrl = _item?['source_url'] as String? ?? '';
+    final item = _item ?? const <String, dynamic>{};
 
     return Column(
       children: [
@@ -477,16 +447,10 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Source info
-              if (sourceUrl.isNotEmpty) ...[
-                Text(
-                  'Source: $sourceUrl',
-                  style: textTheme.bodySmall?.copyWith(color: colorScheme.outline),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 16),
-              ],
+              // Hierarchical detail header (error → stage → source →
+              // timestamps → retry). Replaces the old one-liner source row.
+              ImportActivityDetail(item: item),
+              const SizedBox(height: 16),
 
               // Recipe name
               TextField(
