@@ -36,7 +36,7 @@ Return a JSON object with EXACTLY this structure:
     "description": "Brief 1-2 sentence description of the dish",
     "ingredients": [
         {
-            "text": "2 cups all-purpose flour",
+            "text": "all-purpose flour, sifted",
             "quantity": 2,
             "unit": "cups",
             "name": "all-purpose flour",
@@ -56,18 +56,35 @@ Return a JSON object with EXACTLY this structure:
     "secondary_vibe": "a different vibe from the same list, or null"
 }
 
-Ingredient examples:
-  "3 large eggs"        -> {"text": "3 large eggs", "quantity": 3, "unit": null, "name": "large eggs", "notes": null, "is_optional": false}
-  "1/2 cup diced onion" -> {"text": "1/2 cup diced onion", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced", "is_optional": false}
-  "salt to taste"       -> {"text": "salt to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}
+Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
 
-Ingredient rules:
-- "text": the full ingredient line as it appears in the recipe
-- "quantity": a number (convert fractions: "1/2" -> 0.5, "1 1/2" -> 1.5) or null
-- "unit": standard unit (cup, tablespoon, teaspoon, pound, ounce, etc.) or null for count items
-- "name": ingredient name without quantity, unit, or preparation notes
-- "notes": preparation details (chopped, sauteed, room temperature) or null
-- "is_optional": true only if explicitly marked optional in the recipe
+- "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null when the source has no numeric quantity ("a pinch", "to taste", "Salt"). Never include the unit or ingredient name here.
+- "unit": the measurement unit ONLY (e.g. "cup", "tablespoon", "teaspoon", "pound", "ounce", "clove", "piece", "can", "recipe"). Use null for count items ("3 large eggs" -> unit: null) or when there is no unit. Never include the number or ingredient name here.
+- "name": the canonical ingredient name, stripped of quantity, unit, and prep notes. Use the most generic form: "onion" not "diced yellow onion", "butter" not "9 tablespoons butter".
+- "notes": preparation or state qualifiers ("chopped", "minced", "sauteed", "room temperature", "divided", "to taste") or null.
+- "text": the ingredient DESCRIPTION as it should appear next to the quantity and unit. Keep prep qualifiers in natural order, but STRIP the numeric quantity and the unit off the front. Never begins with a number or a unit. If the source has no quantity/unit to strip (e.g. "Salt"), use the whole line.
+- "is_optional": true only if explicitly marked optional in the recipe.
+
+Worked examples (source line -> extracted fields):
+- "9 tablespoons butter" ->
+    {"text": "butter", "quantity": 9, "unit": "tablespoons", "name": "butter", "notes": null, "is_optional": false}
+- "3 tablespoons minced shallots" ->
+    {"text": "minced shallots", "quantity": 3, "unit": "tablespoons", "name": "shallots", "notes": "minced", "is_optional": false}
+- "1/2 cup diced onion, sauteed" ->
+    {"text": "diced onion, sauteed", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced, sauteed", "is_optional": false}
+- "3 large eggs" ->
+    {"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}
+- "Pinch nutmeg" ->
+    {"text": "nutmeg", "quantity": null, "unit": null, "name": "nutmeg", "notes": "pinch", "is_optional": false}
+- "Salt to taste" ->
+    {"text": "salt, to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}
+- "1 recipe pasta dough, rolled out into wide ribbons, about 1/4-inch thick" ->
+    {"text": "pasta dough, rolled out into wide ribbons, about 1/4-inch thick", "quantity": 1, "unit": "recipe", "name": "pasta dough", "notes": "rolled out into wide ribbons, about 1/4-inch thick", "is_optional": false}
+
+BAD examples — do NOT produce these:
+- {"text": "9 tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}  # text repeats quantity+unit
+- {"text": "tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}   # text repeats unit
+- {"quantity": "9 tablespoons", ...}                                          # quantity must be a number
 
 Vibe assignment:
 - primary_vibe: the single best vibe for the dish

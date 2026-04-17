@@ -26,7 +26,7 @@ Return a JSON object with the following structure:
     "name": "Recipe name",
     "description": "Brief description",
     "ingredients": [
-        {"text": "2 cups all-purpose flour", "quantity": 2, "unit": "cups", "name": "all-purpose flour"}
+        {"text": "all-purpose flour, sifted", "quantity": 2, "unit": "cups", "name": "all-purpose flour", "notes": "sifted", "is_optional": false}
     ],
     "instructions": "Step-by-step instructions as a single string",
     "servings": 4,
@@ -41,11 +41,30 @@ Return a JSON object with the following structure:
 Also assign 1-2 vibes from: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
 Include in your JSON response: "primary_vibe": "...", "secondary_vibe": "..." or null
 
-Rules:
+Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
+
+- "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here.
+- "unit": the measurement unit ONLY (e.g. "cup", "tablespoon", "pound", "ounce", "clove", "can"). Use null for count items ("3 large eggs" -> unit: null) or when there is no unit. Never include the number or name here.
+- "name": the canonical ingredient name, stripped of quantity, unit, and prep notes (e.g. "onion" not "diced yellow onion"; "butter" not "9 tablespoons butter").
+- "notes": preparation/state qualifiers ("minced", "sauteed", "room temperature", "to taste", "divided") or null.
+- "text": the ingredient DESCRIPTION as it should appear next to the quantity and unit. Keep prep qualifiers in natural order, but STRIP the numeric quantity and the unit off the front. Never begins with a number or a unit. If the source has no quantity/unit to strip (e.g. "Salt"), use the whole line.
+- "is_optional": true only if the recipe explicitly marks the ingredient as optional.
+
+Worked examples (source line -> extracted fields):
+- "9 tablespoons butter" -> {"text": "butter", "quantity": 9, "unit": "tablespoons", "name": "butter", "notes": null, "is_optional": false}
+- "3 tablespoons minced shallots" -> {"text": "minced shallots", "quantity": 3, "unit": "tablespoons", "name": "shallots", "notes": "minced", "is_optional": false}
+- "1/2 cup diced onion" -> {"text": "diced onion", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced", "is_optional": false}
+- "3 large eggs" -> {"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}
+- "Pinch nutmeg" -> {"text": "nutmeg", "quantity": null, "unit": null, "name": "nutmeg", "notes": "pinch", "is_optional": false}
+- "Salt to taste" -> {"text": "salt, to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}
+
+BAD examples — do NOT produce these:
+- {"text": "9 tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}  # text repeats quantity+unit
+- {"text": "tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}   # text repeats unit
+- {"quantity": "9 tablespoons", ...}                                          # quantity must be a number
+
+General rules:
 - Only include fields you can find in the content
-- For ingredients, always include the full "text" field with the original text
-- Parse quantity as a number (e.g., "1/2" should be 0.5)
-- Parse unit and ingredient name separately when possible
 - If you cannot find recipe content, return {"error": "No recipe found"}
 
 HTML Content:

@@ -6,70 +6,81 @@
   "servings": 6,
   "ingredients": [
     {
-      "text": "1 unbaked 9-inch pie crust",
+      "text": "unbaked 9-inch pie crust",
       "quantity": 1,
       "unit": null,
-      "name": "unbaked 9-inch pie crust"
+      "name": "pie crust",
+      "notes": "unbaked, 9-inch"
     },
     {
-      "text": "3 large eggs",
+      "text": "large eggs",
       "quantity": 3,
       "unit": null,
-      "name": "large eggs"
+      "name": "eggs",
+      "notes": "large"
     },
     {
-      "text": "1 cup heavy cream",
+      "text": "heavy cream",
       "quantity": 1,
       "unit": "cup",
-      "name": "heavy cream"
+      "name": "heavy cream",
+      "notes": null
     },
     {
-      "text": "1/2 cup whole milk",
+      "text": "whole milk",
       "quantity": 0.5,
       "unit": "cup",
-      "name": "whole milk"
+      "name": "whole milk",
+      "notes": null
     },
     {
-      "text": "2 cups diced potatoes, cooked",
+      "text": "diced potatoes, cooked",
       "quantity": 2,
       "unit": "cups",
-      "name": "diced potatoes"
+      "name": "potatoes",
+      "notes": "diced, cooked"
     },
     {
-      "text": "1 cup shredded Gruyere cheese",
+      "text": "shredded Gruyere cheese",
       "quantity": 1,
       "unit": "cup",
-      "name": "shredded Gruyere cheese"
+      "name": "Gruyere cheese",
+      "notes": "shredded"
     },
     {
-      "text": "1/2 cup diced onion, sauteed",
+      "text": "diced onion, sauteed",
       "quantity": 0.5,
       "unit": "cup",
-      "name": "diced onion"
+      "name": "onion",
+      "notes": "diced, sauteed"
     },
     {
-      "text": "2 tablespoons fresh chives, chopped",
+      "text": "fresh chives, chopped",
       "quantity": 2,
       "unit": "tablespoons",
-      "name": "fresh chives"
+      "name": "chives",
+      "notes": "fresh, chopped"
     },
     {
-      "text": "1/2 teaspoon salt",
+      "text": "salt",
       "quantity": 0.5,
       "unit": "teaspoon",
-      "name": "salt"
+      "name": "salt",
+      "notes": null
     },
     {
-      "text": "1/4 teaspoon black pepper",
+      "text": "black pepper",
       "quantity": 0.25,
       "unit": "teaspoon",
-      "name": "black pepper"
+      "name": "black pepper",
+      "notes": null
     },
     {
-      "text": "1/4 teaspoon nutmeg",
+      "text": "nutmeg",
       "quantity": 0.25,
       "unit": "teaspoon",
-      "name": "nutmeg"
+      "name": "nutmeg",
+      "notes": null
     }
   ],
   "instructions": "1. Preheat the oven to 375 degrees F. 2. Place the pie crust in a 9-inch pie dish and crimp the edges. 3. In a large bowl, whisk together the eggs, heavy cream, and milk until smooth. 4. Spread the cooked diced potatoes evenly over the bottom of the pie crust. 5. Sprinkle the Gruyere cheese and sauteed onion over the potatoes. 6. Pour the egg mixture over the filling. 7. Sprinkle the chives, salt, pepper, and nutmeg on top. 8. Bake for 40-45 minutes until the center is set and the top is golden brown. 9. Let the quiche cool for 10 minutes before slicing and serving."

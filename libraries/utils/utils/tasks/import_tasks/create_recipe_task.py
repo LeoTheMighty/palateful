@@ -132,8 +132,17 @@ class CreateRecipeTask(BaseTask):
         """Create a RecipeIngredient record."""
         ingredient_id = ing_data.get("matched_ingredient_id")
         if not ingredient_id:
-            logger.warning("Auto-creating ingredient inline for: %s", ing_data.get("text"))
-            ingredient_name = ing_data.get("text", "Unknown ingredient").lower().strip()
+            # Prefer the extractor's canonical `name` field; fall back to `text`
+            # only when the extractor didn't populate `name`. Using `text` as the
+            # canonical name caused duplicated output downstream because `text`
+            # used to include the quantity+unit prefix.
+            raw_name = (
+                ing_data.get("name")
+                or ing_data.get("text")
+                or "Unknown ingredient"
+            )
+            logger.warning("Auto-creating ingredient inline for: %s", raw_name)
+            ingredient_name = raw_name.lower().strip()
             ingredient = self.database.find_or_create_by(
                 Ingredient,
                 defaults={

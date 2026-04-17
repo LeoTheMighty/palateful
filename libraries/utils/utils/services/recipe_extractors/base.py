@@ -9,10 +9,10 @@ from typing import Any
 class ExtractedIngredient:
     """Extracted ingredient from a recipe."""
 
-    text: str  # Original text like "2 cups all-purpose flour"
+    text: str  # Display string shown next to quantity+unit, e.g. "all-purpose flour, sifted" — must NOT include the quantity or unit
     quantity: float | None = None
     unit: str | None = None
-    name: str | None = None  # Parsed ingredient name
+    name: str | None = None  # Canonical ingredient name, stripped of quantity/unit/prep
     notes: str | None = None
     is_optional: bool = False
 
