@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../models/meal_event.dart';
 import '../services/meal_calendar_service.dart';
+import 'edit_scope_prompt.dart';
 import 'recurrence_field.dart';
 
 /// Bottom-sheet surfaced on calendar meal tap (bugs-cal-1). One primary
@@ -213,10 +214,7 @@ class _MealDetailSheetState extends State<MealDetailSheet> {
                   icon: Icons.event_busy,
                   label: 'Unschedule',
                   destructive: true,
-                  onTap: () {
-                    Navigator.pop(context);
-                    widget.onUnschedule();
-                  },
+                  onTap: () => _handleUnschedule(context),
                 ),
                 _SecondaryAction(
                   icon: Icons.restaurant_menu,
@@ -320,7 +318,165 @@ class _MealDetailSheetState extends State<MealDetailSheet> {
     return type;
   }
 
+  Future<void> _handleUnschedule(BuildContext context) async {
+    if (widget.event.recurrenceRuleId == null) {
+      Navigator.pop(context);
+      widget.onUnschedule();
+      return;
+    }
+
+    final scope = await showEditScopePrompt(
+      context,
+      action: EditAction.unschedule,
+    );
+    if (scope == null || !context.mounted) return;
+
+    switch (scope) {
+      case EditScope.thisOccurrence:
+        Navigator.pop(context);
+        widget.onUnschedule();
+        break;
+      case EditScope.thisAndFollowing:
+        await _deleteSeriesScoped(
+          context,
+          scope: 'this_and_following',
+          occurrenceDate: widget.event.scheduledAt.toLocal(),
+          snackbar: 'Series split. Past occurrences kept.',
+        );
+        break;
+      case EditScope.all:
+        await _deleteSeriesScoped(
+          context,
+          scope: 'series',
+          occurrenceDate: null,
+          snackbar: 'All future occurrences removed.',
+        );
+        break;
+    }
+  }
+
+  Future<void> _deleteSeriesScoped(
+    BuildContext context, {
+    required String scope,
+    required DateTime? occurrenceDate,
+    required String snackbar,
+  }) async {
+    try {
+      await _service.deleteRecurrenceRule(
+        widget.event.recurrenceRuleId!,
+        scope: scope,
+        occurrenceDate: occurrenceDate,
+      );
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      widget.onSeriesEnded?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(snackbar)),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't update series. Try again.")),
+      );
+    }
+  }
+
   Future<void> _handleReschedule(BuildContext context) async {
+    if (widget.event.recurrenceRuleId == null) {
+      await _handleSingleReschedule(context);
+      return;
+    }
+
+    final scope = await showEditScopePrompt(
+      context,
+      action: EditAction.reschedule,
+    );
+    if (scope == null || !context.mounted) return;
+
+    if (scope == EditScope.thisOccurrence) {
+      await _handleSingleReschedule(context);
+      return;
+    }
+
+    // For thisAndFollowing / all, the user picks a new weekday+time. We
+    // derive the new rule's weekday list from the picked date and update
+    // via the backend handler. For this_and_following the split point is
+    // the original scheduledAt's date; for all, the rule is updated
+    // in place.
+    final pickedLocal = await _pickLocalDateTime(context, widget.event.scheduledAt);
+    if (pickedLocal == null || !context.mounted) return;
+
+    final newWeekday = _weekdayCode(pickedLocal.weekday);
+    try {
+      final payload = <String, dynamic>{
+        'scope': scope == EditScope.thisAndFollowing ? 'this_and_following' : 'all',
+        'weekdays': [newWeekday],
+      };
+      if (scope == EditScope.thisAndFollowing) {
+        payload['occurrence_date'] = widget.event.scheduledAt
+            .toLocal()
+            .toIso8601String()
+            .substring(0, 10);
+      }
+      await _service.updateRecurrenceRule(
+        widget.event.recurrenceRuleId!,
+        scope: payload['scope'] as String,
+        occurrenceDate: scope == EditScope.thisAndFollowing
+            ? widget.event.scheduledAt.toLocal()
+            : null,
+        weekdays: [newWeekday],
+      );
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      widget.onSeriesEnded?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            scope == EditScope.thisAndFollowing
+                ? 'Series split. Past occurrences kept.'
+                : 'All future occurrences updated.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't reschedule series. Try again.")),
+      );
+    }
+  }
+
+  Future<DateTime?> _pickLocalDateTime(
+    BuildContext context,
+    DateTime initial,
+  ) async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(initial.year - 1),
+      lastDate: DateTime(initial.year + 2),
+    );
+    if (pickedDate == null || !context.mounted) return null;
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (pickedTime == null) return null;
+    return DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+  }
+
+  String _weekdayCode(int weekday) {
+    const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    return codes[weekday - 1];
+  }
+
+  Future<void> _handleSingleReschedule(BuildContext context) async {
     final now = DateTime.now();
     final current = widget.event.scheduledAt;
 
