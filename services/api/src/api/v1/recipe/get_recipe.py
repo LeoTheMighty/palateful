@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.formatting import format_quantity
+from utils.models.import_item import ImportItem
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -21,7 +22,7 @@ from utils.models.user_favorite import UserFavorite
 class GetRecipe(Endpoint):
     """Get recipe details by ID."""
 
-    def execute(self, recipe_id: str):
+    def execute(self, recipe_id: str, debug: bool = False):
         """
         Get recipe details including ingredients.
 
@@ -135,6 +136,28 @@ class GetRecipe(Endpoint):
             for n in notes
         ]
 
+        # Admin-only parser debug payload. Silently dropped for non-admins so
+        # the flag is harmless if it leaks into a non-admin client request.
+        debug_payload: GetRecipe.DebugPayload | None = None
+        if debug and user.is_admin:
+            import_item = self.database.find_by(
+                ImportItem, created_recipe_id=recipe.id
+            )
+            if import_item is not None:
+                debug_payload = GetRecipe.DebugPayload(
+                    import_item_id=str(import_item.id),
+                    status=import_item.status,
+                    source_type=import_item.source_type,
+                    source_reference=import_item.source_reference,
+                    source_url=import_item.source_url,
+                    last_successful_stage=import_item.last_successful_stage,
+                    error_code=import_item.error_code,
+                    error_message=import_item.error_message,
+                    raw_data=import_item.raw_data,
+                    parsed_recipe=import_item.parsed_recipe,
+                    user_edits=import_item.user_edits,
+                )
+
         return success(
             data=GetRecipe.Response(
                 id=str(recipe.id),
@@ -161,6 +184,7 @@ class GetRecipe(Endpoint):
                 forked_from_book_id=str(recipe.forked_from_book_id) if recipe.forked_from_book_id else None,
                 forked_from_recipe_name=recipe.forked_from_recipe_name,
                 forked_from_book_name=recipe.forked_from_book_name,
+                debug=debug_payload,
             )
         )
 
@@ -197,6 +221,19 @@ class GetRecipe(Endpoint):
         created_by: str | None = None
         created_at: datetime
 
+    class DebugPayload(BaseModel):
+        import_item_id: str
+        status: str
+        source_type: str
+        source_reference: str | None = None
+        source_url: str | None = None
+        last_successful_stage: str | None = None
+        error_code: str | None = None
+        error_message: str | None = None
+        raw_data: dict | None = None
+        parsed_recipe: dict | None = None
+        user_edits: dict | None = None
+
     class Response(BaseModel):
         id: str
         name: str
@@ -222,3 +259,4 @@ class GetRecipe(Endpoint):
         forked_from_book_id: str | None = None
         forked_from_recipe_name: str | None = None
         forked_from_book_name: str | None = None
+        debug: "GetRecipe.DebugPayload | None" = None

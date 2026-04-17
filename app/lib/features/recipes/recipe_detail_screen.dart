@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,7 +31,9 @@ class RecipeDetailScreen extends StatefulWidget {
 
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _authService = getIt<AuthService>();
   Map<String, dynamic>? _recipe;
+  Map<String, dynamic>? _debug;
   List<dynamic> _ingredients = [];
   List<dynamic> _notes = [];
   bool _isLoading = true;
@@ -64,12 +67,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     });
 
     try {
-      final response = await _apiClient.getRecipe(widget.recipeId);
+      final response = await _apiClient.getRecipe(
+        widget.recipeId,
+        debug: _authService.isAdmin,
+      );
       if (mounted) {
         setState(() {
           _recipe = response.data;
           _ingredients = response.data['ingredients'] ?? [];
           _notes = (response.data['notes'] as List?) ?? [];
+          _debug = response.data['debug'] as Map<String, dynamic>?;
           _isFavorite = response.data['is_favorite'] == true;
           _originalServings = (response.data['servings'] as int?) ?? 0;
           _currentServings = _originalServings;
@@ -1014,12 +1021,101 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                             const SizedBox(height: 24),
                           ],
 
+                          if (_debug != null)
+                            _buildDebugCard(colorScheme, textTheme),
+
                           const SizedBox(height: 32),
                         ]),
                       ),
                     ),
                   ],
                 ),
+    );
+  }
+
+  Widget _buildDebugCard(ColorScheme colorScheme, TextTheme textTheme) {
+    final debug = _debug!;
+    final raw = debug['raw_data'];
+    final parsed = debug['parsed_recipe'];
+    final edits = debug['user_edits'];
+    const encoder = JsonEncoder.withIndent('  ');
+
+    String pretty(Object? value) =>
+        value == null ? 'null' : encoder.convert(value);
+
+    Widget kv(String label, Object? value) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Text(
+            '$label: ${value ?? "—"}',
+            style: textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+
+    Widget jsonBlock(String title, Object? value) => Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: textTheme.labelMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: SelectableText(
+                  pretty(value),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          leading: Icon(Icons.bug_report, color: colorScheme.onSurfaceVariant),
+          title: Text('Parser debug', style: textTheme.titleMedium),
+          subtitle: Text(
+            'admin only · import_item ${debug['import_item_id']}',
+            style: textTheme.bodySmall
+                ?.copyWith(color: colorScheme.onSurfaceVariant),
+          ),
+          children: [
+            kv('status', debug['status']),
+            kv('source_type', debug['source_type']),
+            kv('source_reference', debug['source_reference']),
+            kv('source_url', debug['source_url']),
+            kv('last_successful_stage', debug['last_successful_stage']),
+            kv('error_code', debug['error_code']),
+            kv('error_message', debug['error_message']),
+            jsonBlock('raw_data', raw),
+            jsonBlock('parsed_recipe', parsed),
+            jsonBlock('user_edits', edits),
+          ],
+        ),
+      ),
     );
   }
 

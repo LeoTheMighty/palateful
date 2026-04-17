@@ -176,12 +176,14 @@ async def get_public_recipe_by_token(
 @recipe_router.get("/recipes/{recipe_id}")
 async def get_recipe(
     recipe_id: str,
+    debug: bool = False,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database)
 ):
-    """Get recipe details."""
+    """Get recipe details. `debug=true` attaches parser artifacts for admins."""
     return GetRecipe.call(
         recipe_id=recipe_id,
+        debug=debug,
         user=user,
         database=database
     )

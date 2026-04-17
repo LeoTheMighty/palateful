@@ -211,8 +211,11 @@ class ApiClient {
     return _dio.post('/v1/recipe-books/$bookId/recipes', data: data);
   }
 
-  Future<Response> getRecipe(String recipeId) {
-    return _dio.get('/v1/recipes/$recipeId');
+  Future<Response> getRecipe(String recipeId, {bool debug = false}) {
+    return _dio.get(
+      '/v1/recipes/$recipeId',
+      queryParameters: debug ? {'debug': 'true'} : null,
+    );
   }
 
   Future<Response> shareRecipe(String recipeId) =>
