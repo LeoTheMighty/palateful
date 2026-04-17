@@ -16,6 +16,10 @@ from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
+from utils.services.ingredient_resolver import (
+    IngredientResolutionError,
+    resolve_ingredient,
+)
 from utils.services.units.conversion import normalize_quantity
 
 # Fields that trigger a new version snapshot
@@ -134,34 +138,49 @@ class UpdateRecipe(Endpoint):
             for ri in existing:
                 self.database.delete(ri)
 
-            # Create new ingredients
+            # Create new ingredients. Input accepts either `ingredient_id`
+            # (canonical UUID, preserved when editing existing rows) or
+            # `name` (find-or-create via resolve_ingredient).
             for idx, ing_input in enumerate(params.ingredients):
-                # Verify ingredient exists
-                ingredient = self.database.find_by(Ingredient, id=ing_input.ingredient_id)
-                if not ingredient:
+                if not ing_input.ingredient_id and not (
+                    ing_input.name and ing_input.name.strip()
+                ):
                     raise APIException(
                         status_code=400,
-                        detail=f"Ingredient with ID '{ing_input.ingredient_id}' not found",
-                        code=ErrorCode.INGREDIENT_NOT_FOUND
+                        detail="Each ingredient must include either ingredient_id or a non-empty name",
+                        code=ErrorCode.INGREDIENT_INPUT_REQUIRED,
                     )
+                try:
+                    ingredient = resolve_ingredient(
+                        self.database,
+                        ingredient_id=ing_input.ingredient_id,
+                        name=ing_input.name,
+                        submitted_by_id=user.id,
+                    )
+                except IngredientResolutionError as exc:
+                    raise APIException(
+                        status_code=400,
+                        detail=str(exc),
+                        code=ErrorCode.INGREDIENT_NOT_FOUND,
+                    ) from exc
+
+                quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
+                unit = ing_input.unit or ""
 
                 # Normalize quantity
                 try:
-                    normalized = normalize_quantity(
-                        float(ing_input.quantity),
-                        ing_input.unit
-                    )
+                    normalized = normalize_quantity(float(quantity), unit)
                     quantity_normalized = Decimal(str(normalized.quantity_normalized))
                     unit_normalized = normalized.unit_normalized
                 except Exception:
-                    quantity_normalized = ing_input.quantity
-                    unit_normalized = ing_input.unit
+                    quantity_normalized = quantity
+                    unit_normalized = unit
 
                 recipe_ingredient = RecipeIngredient(
                     recipe_id=recipe_id,
-                    ingredient_id=ing_input.ingredient_id,
-                    quantity_display=ing_input.quantity,
-                    unit_display=ing_input.unit,
+                    ingredient_id=str(ingredient.id),
+                    quantity_display=quantity,
+                    unit_display=unit,
                     quantity_normalized=quantity_normalized,
                     unit_normalized=unit_normalized,
                     notes=ing_input.notes,
@@ -353,9 +372,14 @@ class UpdateRecipe(Endpoint):
         self.database.db.add(version)
 
     class IngredientInput(BaseModel):
-        ingredient_id: str
-        quantity: Decimal
-        unit: str
+        # Either `ingredient_id` (canonical UUID, preserved when editing
+        # an existing row) OR a free-text `name` (find-or-create via
+        # resolve_ingredient). At least one is required — enforced in
+        # `execute()` so the error carries a structured `ErrorCode`.
+        ingredient_id: str | None = None
+        name: str | None = None
+        quantity: Decimal | None = None
+        unit: str | None = None
         notes: str | None = None
         is_optional: bool = False
 

@@ -7,11 +7,11 @@ from decimal import Decimal
 from utils.api.endpoint import success
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
-from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.services.celery import celery_app
+from utils.services.ingredient_resolver import resolve_ingredient
 from utils.services.units.conversion import normalize_quantity
 from utils.tasks.task import BaseTask
 
@@ -131,7 +131,11 @@ class CreateRecipeTask(BaseTask):
     def _create_recipe_ingredient(self, recipe: Recipe, ing_data: dict, order_index: int):
         """Create a RecipeIngredient record."""
         ingredient_id = ing_data.get("matched_ingredient_id")
-        if not ingredient_id:
+        if ingredient_id:
+            ingredient = resolve_ingredient(
+                self.database, ingredient_id=ingredient_id
+            )
+        else:
             # Prefer the extractor's canonical `name` field; fall back to `text`
             # only when the extractor didn't populate `name`. Using `text` as the
             # canonical name caused duplicated output downstream because `text`
@@ -142,17 +146,12 @@ class CreateRecipeTask(BaseTask):
                 or "Unknown ingredient"
             )
             logger.warning("Auto-creating ingredient inline for: %s", raw_name)
-            ingredient_name = raw_name.lower().strip()
-            ingredient = self.database.find_or_create_by(
-                Ingredient,
-                defaults={
-                    "is_canonical": False,
-                    "pending_review": True,
-                    "submitted_by_id": self.user_id,
-                },
-                canonical_name=ingredient_name,
+            ingredient = resolve_ingredient(
+                self.database,
+                name=raw_name,
+                submitted_by_id=self.user_id,
             )
-            ingredient_id = str(ingredient.id)
+        ingredient_id = str(ingredient.id)
 
         # Parse quantity
         quantity = ing_data.get("quantity")

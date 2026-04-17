@@ -6,13 +6,16 @@ from decimal import Decimal
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
-from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.models.user import User
+from utils.services.ingredient_resolver import (
+    IngredientResolutionError,
+    resolve_ingredient,
+)
 from utils.services.units.conversion import normalize_quantity
 
 
@@ -88,36 +91,52 @@ class CreateRecipe(Endpoint):
             recipe.embedding = embedding
         self.database.db.commit()
 
-        # Create recipe ingredients
+        # Create recipe ingredients. Input accepts either `ingredient_id`
+        # (canonical UUID) or `name` (find-or-create) — the shared
+        # `resolve_ingredient` helper decides which path to take.
         ingredient_responses = []
         for idx, ing_input in enumerate(params.ingredients):
-            # Verify ingredient exists
-            ingredient = self.database.find_by(Ingredient, id=ing_input.ingredient_id)
-            if not ingredient:
+            if not ing_input.ingredient_id and not (ing_input.name and ing_input.name.strip()):
                 raise APIException(
                     status_code=400,
-                    detail=f"Ingredient with ID '{ing_input.ingredient_id}' not found",
-                    code=ErrorCode.INGREDIENT_NOT_FOUND
+                    detail="Each ingredient must include either ingredient_id or a non-empty name",
+                    code=ErrorCode.INGREDIENT_INPUT_REQUIRED,
                 )
+            try:
+                ingredient = resolve_ingredient(
+                    self.database,
+                    ingredient_id=ing_input.ingredient_id,
+                    name=ing_input.name,
+                    submitted_by_id=user.id,
+                )
+            except IngredientResolutionError as exc:
+                # `ingredient_id` was provided but didn't match an existing
+                # row — preserve the classic 400/INGREDIENT_NOT_FOUND shape
+                # so existing clients see no behavioral change.
+                raise APIException(
+                    status_code=400,
+                    detail=str(exc),
+                    code=ErrorCode.INGREDIENT_NOT_FOUND,
+                ) from exc
+
+            quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
+            unit = ing_input.unit or ""
 
             # Normalize quantity
             try:
-                normalized = normalize_quantity(
-                    float(ing_input.quantity),
-                    ing_input.unit
-                )
+                normalized = normalize_quantity(float(quantity), unit)
                 quantity_normalized = Decimal(str(normalized.quantity_normalized))
                 unit_normalized = normalized.unit_normalized
             except Exception:
                 # If normalization fails, use display values
-                quantity_normalized = ing_input.quantity
-                unit_normalized = ing_input.unit
+                quantity_normalized = quantity
+                unit_normalized = unit
 
             recipe_ingredient = RecipeIngredient(
                 recipe_id=recipe.id,
-                ingredient_id=ing_input.ingredient_id,
-                quantity_display=ing_input.quantity,
-                unit_display=ing_input.unit,
+                ingredient_id=str(ingredient.id),
+                quantity_display=quantity,
+                unit_display=unit,
                 quantity_normalized=quantity_normalized,
                 unit_normalized=unit_normalized,
                 notes=ing_input.notes,
@@ -196,9 +215,14 @@ class CreateRecipe(Endpoint):
         )
 
     class IngredientInput(BaseModel):
-        ingredient_id: str
-        quantity: Decimal
-        unit: str
+        # Either `ingredient_id` (canonical UUID) OR a free-text `name`
+        # (find-or-create on `canonical_name`, marked `pending_review`).
+        # At least one is required — enforced in `execute()` so the error
+        # can carry a structured `ErrorCode`.
+        ingredient_id: str | None = None
+        name: str | None = None
+        quantity: Decimal | None = None
+        unit: str | None = None
         notes: str | None = None
         is_optional: bool = False
 
