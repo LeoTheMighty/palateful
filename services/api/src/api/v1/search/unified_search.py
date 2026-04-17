@@ -26,6 +26,7 @@ class UnifiedSearch(Endpoint):
         tags: str | None = None,
         max_prep_time: int | None = None,
         max_cook_time: int | None = None,
+        scope: str | None = None,
     ):
         user: User = self.user
 
@@ -37,6 +38,12 @@ class UnifiedSearch(Endpoint):
                 detail="Search query must be at least 2 characters",
                 code=ErrorCode.VALIDATION_ERROR,
             )
+
+        # Scope gate (bugs-cal-2 locked decision #17): callers that want
+        # recipe-only results pass scope=recipes. Unknown scope values fall
+        # back to the default "everything" behaviour so old clients stay
+        # working.
+        recipes_only = scope == "recipes"
 
         limit = min(limit, 50)
 
@@ -55,7 +62,7 @@ class UnifiedSearch(Endpoint):
         # Tier 1: exact ILIKE search (name, description, ingredient, tag)
         my_exact = self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
         pub_exact = self._search_public_recipes(query, limit, user, filter_conditions)
-        users = self._search_users(query, limit, user)
+        users = [] if recipes_only else self._search_users(query, limit, user)
 
         # Tier 2: fuzzy pg_trgm (only when exact results don't fill the limit)
         my_exact_ids = {r.id for r in my_exact}

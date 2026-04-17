@@ -197,7 +197,7 @@ development_status:
   # Epic Bugs — Calendar Meal UX (planned 2026-04-16, refined via party-mode)
   epic-bugs-calendar-ux: in-progress
   bugs-cal-1-meal-detail-and-day-sheet: done
-  bugs-cal-2-recipe-autocomplete-in-plan-meal: backlog
+  bugs-cal-2-recipe-autocomplete-in-plan-meal: done
   bugs-cal-3-recurrence-ui-in-plan-meal: deferred  # see bugs-cal-3b
   # Audit 2026-04-16 (bugs-cal-1): Epic 6 post-cook feedback flow IS reachable
   # from the calendar via PostCookFeedbackSheet(recipeId, recipeName,

@@ -25,6 +25,35 @@ class TestUnifiedSearch:
         response = client.get("/v1/search?q=pasta")
         assert response.status_code == 200
 
+    def test_search_scope_recipes_returns_empty_users(
+        self, client, mock_db, mock_user
+    ):
+        """scope=recipes must skip the user-results tier entirely (bugs-cal-2).
+
+        The plan-meal autocomplete field relies on this: a typed query must
+        never surface accidentally matching users as suggestions.
+        """
+        mock_db.db.query.return_value = MockQuery([])
+        mock_db.db.execute.return_value = MockExecuteResult([])
+
+        response = client.get("/v1/search?q=pasta&scope=recipes")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["users"] == [], "scope=recipes must drop user results"
+
+    def test_search_scope_unknown_falls_back_to_default(
+        self, client, mock_db, mock_user
+    ):
+        """Unknown scope values fall back to default behavior (backwards compat)."""
+        mock_db.db.query.return_value = MockQuery([])
+        mock_db.db.execute.return_value = MockExecuteResult([])
+
+        response = client.get("/v1/search?q=pasta&scope=bogus")
+        assert response.status_code == 200
+        data = response.json()
+        # users list still exists (may be empty due to mocks, but key present)
+        assert "users" in data
+
     def test_search_short_query(self, client, mock_db, mock_user):
         """Test search with query shorter than min_length."""
         response = client.get("/v1/search?q=a")

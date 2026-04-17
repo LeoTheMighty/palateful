@@ -322,6 +322,7 @@ class ApiClient {
     List<String>? tags,
     int? maxPrepTime,
     int? maxCookTime,
+    String? scope,
   }) {
     final params = <String, dynamic>{
       'q': query,
@@ -331,6 +332,7 @@ class ApiClient {
     if (tags != null && tags.isNotEmpty) params['tags'] = tags.join(',');
     if (maxPrepTime != null) params['max_prep_time'] = maxPrepTime;
     if (maxCookTime != null) params['max_cook_time'] = maxCookTime;
+    if (scope != null) params['scope'] = scope;
     return _dio.get('/v1/search', queryParameters: params);
   }
 

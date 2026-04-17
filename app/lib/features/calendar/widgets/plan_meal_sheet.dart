@@ -4,6 +4,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/theme/theme.dart';
 import '../models/meal_event.dart';
 import '../services/meal_calendar_service.dart';
+import 'recipe_autocomplete_field.dart';
 
 /// Infers meal type from current hour.
 MealType inferMealType() {
@@ -52,8 +53,15 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
   bool _isSaving = false;
   List<String> _recentMeals = [];
 
+  /// Recipe id picked via the autocomplete. Null when the user is in
+  /// free-text mode (either they never tapped a match or they explicitly
+  /// detached). When the widget was opened from a recipe detail page (so
+  /// [widget.recipeId] is non-null), that wins.
+  String? _pickedRecipeId;
+
   bool get _isEditMode => widget.eventId != null;
   bool get _hasRecipe => widget.recipeId != null;
+  String? get _effectiveRecipeId => widget.recipeId ?? _pickedRecipeId;
 
   @override
   void initState() {
@@ -143,10 +151,15 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
           title: name,
           scheduledAt: scheduledAt,
           mealType: _selectedMealType,
-          recipeId: widget.recipeId,
+          recipeId: _effectiveRecipeId,
           isShared: true,
         );
-        await _saveRecentMeal(name);
+        // Only save to the free-text recent list when the meal isn't
+        // linked to a real recipe; otherwise the chip row starts polluting
+        // with duplicates of real recipe titles.
+        if (_effectiveRecipeId == null) {
+          await _saveRecentMeal(name);
+        }
       }
 
       if (mounted) {
@@ -226,44 +239,35 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
 
           // Meal name field
           if (!_isEditMode) ...[
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                hintText: _hasRecipe ? widget.recipeName : 'Meal name (e.g., Eating out, Leftovers)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              textCapitalization: TextCapitalization.sentences,
-              readOnly: _hasRecipe,
-            ),
-            // Quick-select chips for recent free-text meals
-            if (!_hasRecipe && _recentMeals.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 32,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _recentMeals.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 6),
-                  itemBuilder: (context, i) => ActionChip(
-                    label: Text(
-                      _recentMeals[i],
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      _nameController.text = _recentMeals[i];
-                      _nameController.selection = TextSelection.fromPosition(
-                        TextPosition(offset: _recentMeals[i].length),
-                      );
-                    },
+            if (_hasRecipe)
+              // Launched from a recipe detail page — recipe is already
+              // pinned; keep the read-only field shape.
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  hintText: widget.recipeName,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
+                textCapitalization: TextCapitalization.sentences,
+                readOnly: true,
+              )
+            else
+              // Quick-add mode: autocomplete against the user's recipes +
+              // fall back to free-text. Recent chips live inside the
+              // autocomplete's empty-state results area.
+              RecipeAutocompleteField(
+                controller: _nameController,
+                recentMeals: _recentMeals,
+                onPicked: (picked) {
+                  setState(() {
+                    _pickedRecipeId = picked.recipeId;
+                  });
+                },
               ),
-            ],
             const SizedBox(height: 16),
           ] else ...[
             // Edit mode: show recipe name as subtitle
