@@ -207,49 +207,39 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Force new deployment - API
+      - name: Force new deployments (parallel)
         run: |
-          aws ecs update-service --cluster palateful-prod --service palateful-api-prod --force-new-deployment
-          echo "API deployment triggered — waiting for stable..."
-          aws ecs wait services-stable --cluster palateful-prod --services palateful-api-prod
-          # services-stable returns on runningCount==desiredCount, but
-          # rolloutState can stay IN_PROGRESS for another ~90s while ECS
-          # closes its stability window. Poll until it settles.
-          STATE=""
-          for _ in $(seq 1 30); do
-            STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
-              --query 'services[0].deployments[0].rolloutState' --output text)
-            echo "API primary deployment rolloutState=$STATE"
-            case "$STATE" in
-              COMPLETED|FAILED) break ;;
-            esac
-            sleep 10
-          done
-          if [ "$STATE" != "COMPLETED" ]; then
-            echo "::error::API deployment did NOT complete (rolloutState=$STATE). Deployment was likely rolled back by the circuit breaker."
-            aws ecs describe-services --cluster palateful-prod --services palateful-api-prod \
-              --query 'services[0].events[:10]' --output json
-            exit 1
-          fi
+          # Roll API and Worker in parallel — each runs the update + poll
+          # loop independently. services-stable returns on
+          # runningCount==desiredCount, but rolloutState can stay IN_PROGRESS
+          # for another ~90s while ECS closes its stability window, so we
+          # poll until it settles.
+          deploy_service() {
+            local svc=$1
+            aws ecs update-service --cluster palateful-prod --service "$svc" --force-new-deployment
+            echo "$svc deployment triggered — waiting for stable..."
+            aws ecs wait services-stable --cluster palateful-prod --services "$svc"
+            local state=""
+            for _ in $(seq 1 30); do
+              state=$(aws ecs describe-services --cluster palateful-prod --services "$svc" \
+                --query 'services[0].deployments[0].rolloutState' --output text)
+              echo "$svc primary deployment rolloutState=$state"
+              case "$state" in
+                COMPLETED|FAILED) break ;;
+              esac
+              sleep 10
+            done
+            if [ "$state" != "COMPLETED" ]; then
+              echo "::error::$svc deployment did NOT complete (rolloutState=$state). Deployment was likely rolled back by the circuit breaker."
+              aws ecs describe-services --cluster palateful-prod --services "$svc" \
+                --query 'services[0].events[:10]' --output json
+              return 1
+            fi
+          }
 
-      - name: Force new deployment - Worker
-        run: |
-          aws ecs update-service --cluster palateful-prod --service palateful-worker-prod --force-new-deployment
-          echo "Worker deployment triggered — waiting for stable..."
-          aws ecs wait services-stable --cluster palateful-prod --services palateful-worker-prod
-          STATE=""
-          for _ in $(seq 1 30); do
-            STATE=$(aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
-              --query 'services[0].deployments[0].rolloutState' --output text)
-            echo "Worker primary deployment rolloutState=$STATE"
-            case "$STATE" in
-              COMPLETED|FAILED) break ;;
-            esac
-            sleep 10
-          done
-          if [ "$STATE" != "COMPLETED" ]; then
-            echo "::error::Worker deployment did NOT complete (rolloutState=$STATE). Deployment was likely rolled back by the circuit breaker."
-            aws ecs describe-services --cluster palateful-prod --services palateful-worker-prod \
-              --query 'services[0].events[:10]' --output json
-            exit 1
-          fi
+          deploy_service palateful-api-prod & api_pid=$!
+          deploy_service palateful-worker-prod & worker_pid=$!
+          rc=0
+          if ! wait "$api_pid"; then rc=1; fi
+          if ! wait "$worker_pid"; then rc=1; fi
+          exit "$rc"

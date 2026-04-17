@@ -112,9 +112,10 @@ done
 echo "  Old tasks stopped."
 
 aws ecs update-service --cluster "$CLUSTER" --service palateful-api-prod \
-  --force-new-deployment > /dev/null 2>&1
+  --force-new-deployment > /dev/null 2>&1 &
 aws ecs update-service --cluster "$CLUSTER" --service palateful-worker-prod \
-  --force-new-deployment > /dev/null 2>&1
+  --force-new-deployment > /dev/null 2>&1 &
+wait
 echo "  New deployments triggered."
 
 # Wait for API to stabilize
