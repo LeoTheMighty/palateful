@@ -12,8 +12,10 @@ import '../config/environment.dart';
 ///   2. Forward caught errors to Firebase Crashlytics as non-fatal events
 ///      via [report] / [guard].
 ///
-/// Reporting is a no-op in debug builds and in E2E mode so local development
-/// and integration tests never touch Firebase.
+/// Reporting is a no-op in debug builds, E2E mode, and on web. `firebase_crashlytics`
+/// has no web implementation, so every call site routes through this class to
+/// keep the guard in one place. Server-side errors from web users are still
+/// captured by the API's `error_logs` middleware.
 class ErrorReporter {
   ErrorReporter._();
   static final instance = ErrorReporter._();
@@ -41,9 +43,31 @@ class ErrorReporter {
     return error.toString();
   }
 
-  /// True when Crashlytics calls should be suppressed.
-  /// Mirrors the gate used when wiring fatal handlers in main.dart.
-  static bool get _reportingDisabled => kDebugMode || kE2EMode;
+  /// True when Crashlytics calls should be suppressed. `kIsWeb` is included
+  /// because `firebase_crashlytics` has no web platform implementation —
+  /// calling it on web throws `MissingPluginException` at startup.
+  static bool get _reportingDisabled => kDebugMode || kE2EMode || kIsWeb;
+
+  /// Enable Crashlytics collection and wire fatal-error handlers. Safe to
+  /// call from every platform — no-ops when reporting is disabled (debug,
+  /// E2E, or web), so callers don't need their own kIsWeb guard.
+  static Future<void> initialize() async {
+    if (_reportingDisabled) return;
+    final crashlytics = FirebaseCrashlytics.instance;
+    await crashlytics.setCrashlyticsCollectionEnabled(true);
+    FlutterError.onError = crashlytics.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      crashlytics.recordError(error, stack, fatal: true);
+      return true;
+    };
+  }
+
+  /// Tag subsequent crash reports with the given user id. Pass an empty
+  /// string on logout to clear the association.
+  static void setUserIdentifier(String id) {
+    if (_reportingDisabled) return;
+    FirebaseCrashlytics.instance.setUserIdentifier(id);
+  }
 
   /// Record a caught error as a non-fatal Crashlytics event.
   ///

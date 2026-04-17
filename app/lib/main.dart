@@ -1,10 +1,7 @@
 import 'dart:async';
 
-import 'dart:ui';
-
 import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -16,6 +13,7 @@ import 'core/router/app_router.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/api_client.dart';
 import 'core/services/cook_timer_notification_service.dart';
+import 'core/services/error_reporter.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
@@ -34,17 +32,9 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
-    // Crashlytics: disable in debug, capture all uncaught errors in release
-    await FirebaseCrashlytics.instance
-        .setCrashlyticsCollectionEnabled(!kDebugMode);
-
-    FlutterError.onError =
-        FirebaseCrashlytics.instance.recordFlutterFatalError;
-
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
+    // Crashlytics: enables collection and wires fatal handlers. No-ops in
+    // debug and on web (firebase_crashlytics has no web implementation).
+    await ErrorReporter.initialize();
   }
 
   setupDependencies();
@@ -108,8 +98,7 @@ void main() async {
 
           // Tag crash reports with user ID
           if (!kE2EMode && userData['id'] != null) {
-            FirebaseCrashlytics.instance
-                .setUserIdentifier(userData['id'].toString());
+            ErrorReporter.setUserIdentifier(userData['id'].toString());
           }
         }
       } catch (e) {

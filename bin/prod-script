@@ -50,6 +50,9 @@ import enum
 import importlib
 import inspect
 import pkgutil
+import sys
+import threading
+import time
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -58,6 +61,24 @@ from utils import classes as _enums_pkg
 from utils import models as _models_pkg
 from utils.constants import DATABASE_URL
 from utils.services.database import Database
+
+
+# Session Manager closes `--interactive` streams after ~1s of stdout
+# silence, truncating output during slow DB queries. A daemon keepalive
+# that writes an ANSI "cursor right 0" escape (no visible effect in a
+# terminal, a short byte sequence in captured pipes) keeps the stream
+# active. Daemon=True ensures it exits with the script.
+def _keepalive() -> None:
+    while True:
+        time.sleep(0.5)
+        try:
+            sys.stderr.write("\x1b[0C")  # CSI 0 C — move cursor right by 0
+            sys.stderr.flush()
+        except Exception:
+            return
+
+
+threading.Thread(target=_keepalive, daemon=True).start()
 
 
 def _import_all(package, predicate, context):
@@ -95,13 +116,12 @@ ENCODED=$(printf '%s' "$COMBINED" | base64 | tr -d '\n')
 #   written, instead of being lost when Session Manager closes the pipe.
 # - Trailing `sleep 1` gives Session Manager time to drain the final
 #   output before the container command exits.
-# - Piping `yes ""` into `aws ecs execute-command` keeps stdin active so
-#   Session Manager's `--interactive` mode does not close the stream
-#   during quiet moments (it otherwise terminates with
-#   "Cannot perform start session: EOF" as soon as the python process
-#   pauses for a slow DB query). `yes` gets SIGPIPE and exits cleanly
-#   when `aws` returns, so the wrapper still terminates.
-yes "" 2>/dev/null | aws ecs execute-command \
+# - The PRELUDE starts a daemon keepalive thread that writes an invisible
+#   escape to stderr every 500ms. That continuous output keeps Session
+#   Manager's `--interactive` stream open during slow DB queries — it
+#   otherwise terminates with "Cannot perform start session: EOF" after
+#   ~1s of stdout silence.
+aws ecs execute-command \
   --cluster "$CLUSTER" \
   --task "$TASK_ARN" \
   --container "$CONTAINER" \

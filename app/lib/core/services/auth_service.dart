@@ -1,7 +1,7 @@
 import 'package:auth0_flutter/auth0_flutter.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import '../config/environment.dart';
+import 'error_reporter.dart';
 
 // Conditional import for web
 import 'auth_service_stub.dart'
@@ -242,13 +242,7 @@ class AuthService extends ChangeNotifier {
     _defaultShoppingListId = null;
     _previousShoppingListId = null;
     _isLoading = false;
-    if (!kIsWeb && !kDebugMode) {
-      try {
-        FirebaseCrashlytics.instance.setUserIdentifier('');
-      } catch (_) {
-        // Firebase may not be initialized yet (e.g. kE2EMode startup path)
-      }
-    }
+    ErrorReporter.setUserIdentifier('');
   }
 
   /// Set access token manually (useful for testing)
