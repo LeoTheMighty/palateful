@@ -578,3 +578,44 @@ Spreadsheet import → Personal adoption → OCR stability → Frictionless new 
 - **NFR29:** Monthly infrastructure costs remain under $50 for personal/friends-and-family usage tier (≤50 users)
 - **NFR30:** AI API costs are monitored and capped per user to prevent runaway spending
 - **NFR31:** OCR batch jobs use spot/on-demand Batch compute sized to minimize idle cost
+
+---
+
+## Addendum — 2026-04-16 — Dogfood Bug Punch List (BUGS.md NEW section)
+
+Source: `BUGS.md` lines 1–20 ("NEW" section, OLD section explicitly skipped). These are items Leo hit while using the dogfood build. Already-landed items (ErrorLog table, admin dashboard, basic activity feed read endpoints, meal_event recurrence columns) are audited and excluded from this addendum — only gaps between shipped-code and dogfood-feel are specified below.
+
+### Scope
+
+Three focused epics:
+1. **Calendar Meal UX** — make the calendar an action surface, not a read-only grid.
+2. **Activity Hub Polish** — finish what Epic 13 started; the feed is wired but the user experience is still broken.
+3. **Home & Foundations** — declutter the home header, close the default-shopping-list onboarding gap, and ship the admin-promotion script that's been blocking Leo from using his own admin dashboard.
+
+### New Functional Requirements
+
+- **FR62:** Tapping a meal on the calendar opens a meal detail view that exposes all meal actions (view recipe, reschedule, unschedule, mark as cooked) without forcing a navigation to the recipe page.
+- **FR63:** When a user taps a calendar day (not a specific meal), they see a day-level view listing all meals planned for that day with the same actions.
+- **FR64:** Planning a meal surfaces a recipe autocomplete that searches the user's recipes as they type; selecting a recipe attaches it to the meal event. Free-text entry remains supported as a fallback but is de-emphasized.
+- **FR65:** The plan-meal sheet exposes a recurrence control with at minimum: None / Daily / Weekly / Monthly options and an end-date picker. The backend columns (`is_recurring`, `recurrence_rule`, `recurrence_end_date`) already exist; this is UI surfacing plus write-through.
+- **FR66:** Every user has a default shopping list from the moment their account exists. On account creation / onboarding completion the system auto-creates a shopping list named "Shopping List" and sets it as the default. For existing users who are missing a default (or any shopping list), a backfill runs idempotently on next sign-in.
+- **FR67:** The home screen no longer displays the AI assistant chat entry point. The AI assistant remains reachable from a secondary surface (Profile tab or overflow menu) but is not advertised from the main scrolling surface.
+- **FR68:** Sort options and Filter options on the home screen are consolidated into a single top-row icon (filter funnel) that opens a bottom sheet containing both sections. The separate row of sort chips is removed.
+- **FR69:** Activity items (both background-job activities and import activities) that the user has seen stay marked as read across navigations, app backgrounds, and app restarts. The current persistent-unread behavior is a bug.
+- **FR70:** The import activity detail view exposes all fields the backend already returns — currently only a subset renders. At minimum: error message, stage, last retry timestamp, and source link are visible when present.
+- **FR71:** The "In Progress" / import history list inside the Add Recipe screen is removed; its responsibilities move into the Activity Hub. The Add Recipe screen links to the Activity Hub for pipeline state.
+- **FR72:** An operator script exists to promote a user to admin by email address, runnable against the prod database via the deploy toolchain. The script is idempotent and logs the before/after `is_admin` state.
+
+### New Non-Functional Requirements
+
+- **NFR32:** Onboarding default-creation (recipe book + shopping list) completes in a single transaction — either both land or neither does. Partial state is not acceptable.
+- **NFR33:** Recipe autocomplete in the plan-meal sheet returns results within 300ms at P95 for collections up to 5,000 recipes (reusing existing search infrastructure from Epic 5).
+- **NFR34:** Activity read-state writes are fire-and-forget from the client's perspective — the UI optimistically marks items read and reconciles with the server async. A failed server write does not re-surface a notification as unread.
+- **NFR35:** The admin-promote script is defensive: it refuses to run without a target email, prints a dry-run of the change, and requires confirmation (or an explicit `--yes` flag for automation).
+
+### Explicitly Out of Scope for This Addendum
+
+- The "Maybe we should make our own error tracing in the database" item (BUGS.md line 13): the `ErrorLog` table and admin errors view already ship. The item is considered satisfied.
+- BUGS.md OLD section (lines 22–31): superseded or obsolete per the user's `skip the old` directive.
+- Rebuilding the AI assistant as anything new — the MCP server path is the strategic direction and this addendum only hides the in-app chat, it does not expand or redesign it.
+- Calendar recurrence series management (editing "this and future", split-series semantics). Initial recurrence creation only; power-user edits defer to a later epic.

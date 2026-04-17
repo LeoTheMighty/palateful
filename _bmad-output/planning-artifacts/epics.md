@@ -280,6 +280,30 @@ Users have an AI assistant that takes actions through tool calling — searching
 
 ---
 
+## Addendum — 2026-04-16 — Dogfood Bug Punch List (BUGS.md NEW section)
+
+Three focused epics derived from the PRD addendum of the same date. Only the NEW section of `BUGS.md` (lines 1–20) is addressed; the OLD section was explicitly skipped per user direction.
+
+### Epic: Bugs — Calendar Meal UX  (`epic-bugs-calendar-ux`)
+Make the calendar an action surface: meal tap opens a disclosure sheet, plan-meal offers recipe autocomplete, recurrence UI surfaces existing backend columns.
+**FRs covered:** FR62, FR63, FR64, FR65
+**Stories:** bugs-cal-1 (meal/day detail sheet), bugs-cal-2 (recipe autocomplete), bugs-cal-3 (recurrence UI)
+**Dependencies:** None — Flutter-only, reuses existing endpoints.
+
+### Epic: Bugs — Activity Hub Polish  (`epic-bugs-activity-hub`)
+Finish what Epic 13 started: fix persistent-unread bug, surface hidden import fields, consolidate Add Recipe's in-progress list into the Activity Hub.
+**FRs covered:** FR69, FR70, FR71
+**Stories:** bugs-act-1 (fix unread), bugs-act-2 (surface fields), bugs-act-3 (consolidate imports)
+**Dependencies:** None — no new backend fields.
+
+### Epic: Bugs — Home Screen Declutter & Foundations  (`epic-bugs-home-and-foundations`)
+Grab-bag of high-leverage, low-effort fixes: remove AI chat from home header, consolidate sort+filter, auto-create default shopping list in onboarding + backfill, ship admin-promote script.
+**FRs covered:** FR66, FR67, FR68, FR72
+**Stories:** bugs-home-1 (remove chat), bugs-home-2 (consolidate sort+filter), bugs-onb-1 (default shopping list), bugs-adm-1 (admin script)
+**Dependencies:** None between stories in this epic; can run in parallel.
+
+---
+
 ## Epic 1: Foundation & Authentication
 
 Users can sign in, set up their profile, and experience a polished onboarding that introduces the app and handles empty states gracefully.

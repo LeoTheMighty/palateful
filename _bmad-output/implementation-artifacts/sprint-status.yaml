@@ -193,3 +193,29 @@ development_status:
   mcp-5-recipe-books-shopping-lists-meal-planning: done
   mcp-6-search-tools-integration-testing: done
   epic-mcp-retrospective: optional
+
+  # Epic Bugs — Calendar Meal UX (planned 2026-04-16, refined via party-mode)
+  epic-bugs-calendar-ux: backlog
+  bugs-cal-1-meal-detail-and-day-sheet: backlog
+  bugs-cal-2-recipe-autocomplete-in-plan-meal: backlog
+  bugs-cal-3-recurrence-ui-in-plan-meal: backlog
+  # Conditional — spawn only if Epic 6 post-cook feedback flow is NOT reachable from calendar
+  bugs-cal-1a-mark-as-cooked-wiring: conditional
+  # Conditional — spawn only if ListMealEvents lacks server-side recurrence expansion
+  bugs-cal-3b-backend-recurrence-expansion: conditional
+  epic-bugs-calendar-ux-retrospective: optional
+
+  # Epic Bugs — Activity Hub Polish (planned 2026-04-16)
+  epic-bugs-activity-hub: backlog
+  bugs-act-1-fix-persistent-unread: backlog
+  bugs-act-2-surface-hidden-import-fields: backlog
+  bugs-act-3-move-add-recipe-inprogress-to-hub: backlog
+  epic-bugs-activity-hub-retrospective: optional
+
+  # Epic Bugs — Home Screen Declutter & Foundations (planned 2026-04-16)
+  epic-bugs-home-and-foundations: backlog
+  bugs-home-1-remove-ai-chat-from-header: backlog
+  bugs-home-2-consolidate-sort-and-filter: backlog
+  bugs-onb-1-onboarding-default-shopping-list: backlog
+  bugs-adm-1-admin-promotion-script: backlog
+  epic-bugs-home-and-foundations-retrospective: optional
