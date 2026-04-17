@@ -13,6 +13,8 @@
 #   AWS_ACCESS_KEY_ID       - AWS IAM access key for ECR push and Terraform
 #   AWS_SECRET_ACCESS_KEY   - AWS IAM secret key
 #   AWS_ECR_ACCOUNT_URL     - ECR registry URL (e.g., 123456789.dkr.ecr.us-east-1.amazonaws.com)
+#   CLOUDFLARE_API_TOKEN    - Cloudflare API token with Pages:Edit permission
+#   CLOUDFLARE_ACCOUNT_ID   - Cloudflare account ID (hosts the `palateful` Pages project)
 #
 # AWS region is pinned to us-east-1 via workflow env (not a secret — the
 # value is public and matches terraform/*.tfvars).
@@ -27,6 +29,9 @@
 #
 #   === Deploy (main push only, after every CI job above) ===
 #   detect-changes  - Which services are NX-affected
+#   deploy-web      - Flutter web → Cloudflare Pages (palateful.app); runs in
+#                     parallel with detect-changes — web is independent of
+#                     the ECS image/terraform pipeline.
 #   resolve-tags    - New SHA for affected, current deployed tag for unchanged
 #   deploy-images   - Build + push Docker images for affected services
 #   terraform-prod  - Apply prod infra with resolved image tags
@@ -370,6 +375,60 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════
   # Deployment — gated on CI passing AND push to main
   # ═══════════════════════════════════════════════════════════════════════
+
+  deploy-web:
+    # Flutter web → Cloudflare Pages (palateful.app). Independent of the ECS
+    # pipeline, so it runs in parallel with detect-changes. `.env.prod` is
+    # gitignored — we materialize it inline from the known public values
+    # (client IDs and public URLs end up in the JS bundle anyway, so they
+    # don't warrant secret storage). Only CLOUDFLARE_* are true secrets.
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [setup, lint, test, check-models, flutter-test, terraform]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Write prod env file
+        working-directory: app
+        run: |
+          cat > .env.prod << 'EOF'
+          API_BASE_URL=https://api.palateful.app
+          AUTH0_DOMAIN=auth.palateful.app
+          AUTH0_CLIENT_ID=Kge8bTdbfZ9rVQdCcTxDZLsF2YJ2I2Mc
+          AUTH0_AUDIENCE=https://api.palateful.app
+          EOF
+          # flutter_dotenv requires the default asset to exist too (declared
+          # in pubspec.yaml assets). Keep it empty — prod build reads .env.prod.
+          touch .env
+
+      - name: Install Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build Flutter web (prod)
+        working-directory: app
+        run: flutter build web --release --dart-define=ENV=prod
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@latest pages deploy build/web --project-name palateful --branch=main --commit-dirty=true
 
   detect-changes:
     runs-on: ubuntu-latest
