@@ -9,6 +9,8 @@ import 'package:palateful/features/calendar/widgets/plan_meal_sheet.dart';
 class _FakeMealCalendarService implements MealCalendarService {
   MealEvent? lastCreated;
   MealEvent? lastUpdated;
+  Map<String, dynamic>? lastRuleCreated;
+  bool throwOnRuleCreate = false;
 
   @override
   Future<MealEvent> createMealEvent({
@@ -60,6 +62,82 @@ class _FakeMealCalendarService implements MealCalendarService {
 
   @override
   Future<void> markMealCompleted(String eventId) async {}
+
+  @override
+  Future<RecurrenceRule> createRecurrenceRule({
+    required MealType mealType,
+    required List<String> weekdays,
+    required String interval,
+    required DateTime startDate,
+    required String tzName,
+    String? title,
+    String? recipeId,
+    DateTime? endDate,
+    String? monthlyNth,
+    bool isShared = true,
+  }) async {
+    if (throwOnRuleCreate) {
+      throw Exception('simulated failure');
+    }
+    lastRuleCreated = {
+      'title': title,
+      'recipe_id': recipeId,
+      'meal_type': mealType.name,
+      'weekdays': weekdays,
+      'interval': interval,
+      'monthly_nth': monthlyNth,
+      'start_date': startDate,
+      'end_date': endDate,
+      'tz_name': tzName,
+      'is_shared': isShared,
+    };
+    return RecurrenceRule(
+      id: 'rule-1',
+      ownerId: 'user-1',
+      mealType: mealType.name,
+      weekdays: weekdays,
+      interval: interval,
+      startDate: startDate,
+      tzName: tzName,
+      isShared: isShared,
+      title: title,
+      recipeId: recipeId,
+      monthlyNth: monthlyNth,
+      endDate: endDate,
+    );
+  }
+
+  @override
+  Future<List<RecurrenceRule>> listRecurrenceRules() async => [];
+
+  @override
+  Future<RecurrenceRule> getRecurrenceRule(String ruleId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteRecurrenceRule(
+    String ruleId, {
+    String scope = 'series',
+    DateTime? occurrenceDate,
+  }) async {}
+
+  @override
+  Future<Map<String, dynamic>> updateRecurrenceRule(
+    String ruleId, {
+    required String scope,
+    DateTime? occurrenceDate,
+    String? title,
+    String? recipeId,
+    String? mealType,
+    List<String>? weekdays,
+    String? interval,
+    String? monthlyNth,
+    DateTime? endDate,
+    bool clearEndDate = false,
+    bool? isShared,
+    String? tzName,
+  }) async =>
+      {};
 }
 
 void main() {

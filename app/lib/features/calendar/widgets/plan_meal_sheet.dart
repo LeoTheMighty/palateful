@@ -5,6 +5,7 @@ import '../../../core/theme/theme.dart';
 import '../models/meal_event.dart';
 import '../services/meal_calendar_service.dart';
 import 'recipe_autocomplete_field.dart';
+import 'recurrence_field.dart';
 
 /// Infers meal type from current hour.
 MealType inferMealType() {
@@ -58,6 +59,9 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
   /// detached). When the widget was opened from a recipe detail page (so
   /// [widget.recipeId] is non-null), that wins.
   String? _pickedRecipeId;
+
+  /// Non-null when the user has configured the meal to repeat.
+  RecurrenceValue? _recurrence;
 
   bool get _isEditMode => widget.eventId != null;
   bool get _hasRecipe => widget.recipeId != null;
@@ -146,6 +150,19 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
           scheduledAt: scheduledAt,
           mealType: _selectedMealType,
         );
+      } else if (_recurrence != null) {
+        await _service.createRecurrenceRule(
+          mealType: _selectedMealType,
+          weekdays: _recurrence!.weekdays,
+          interval: _recurrence!.interval,
+          monthlyNth: _recurrence!.monthlyNth,
+          startDate: _selectedDate,
+          endDate: _recurrence!.endDate,
+          tzName: _deviceTzName(),
+          title: _effectiveRecipeId == null ? name : null,
+          recipeId: _effectiveRecipeId,
+          isShared: true,
+        );
       } else {
         await _service.createMealEvent(
           title: name,
@@ -164,22 +181,39 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
 
       if (mounted) {
         Navigator.pop(context, true);
+        final message = _isEditMode
+            ? 'Meal rescheduled'
+            : _recurrence != null
+                ? 'Repeating ${_selectedMealType.displayName.toLowerCase()}s added.'
+                : '$name added to calendar';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEditMode ? 'Meal rescheduled' : '$name added to calendar',
-            ),
-          ),
+          SnackBar(content: Text(message)),
         );
       }
     } catch (e) {
       setState(() => _isSaving = false);
       if (mounted) {
+        final message = _recurrence != null
+            ? "Couldn't save repeating meal. Try again."
+            : 'Failed to save. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save. Please try again.')),
+          SnackBar(content: Text(message)),
         );
       }
     }
+  }
+
+  /// Best-effort IANA TZ name. DateTime.now().timeZoneName returns
+  /// abbreviations like "PDT" on some platforms; for those we fall back to
+  /// a UTC-offset string that the server validates and rejects, surfacing
+  /// the preserve-form-state error path. In production use the `timezone`
+  /// package to get the actual IANA name.
+  String _deviceTzName() {
+    final name = DateTime.now().timeZoneName;
+    // Heuristic: IANA names contain '/' (e.g. "America/Los_Angeles").
+    if (name.contains('/')) return name;
+    // Fall back to UTC when we can't resolve a real IANA name.
+    return 'UTC';
   }
 
   (int, int) _mealDefaultTime(MealType type) {
@@ -370,6 +404,26 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
             }).toList(),
           ),
 
+          // Repeats section — hidden in edit mode (series-level edits
+          // happen from the manage screen, not the reschedule flow).
+          if (!_isEditMode) ...[
+            const SizedBox(height: 20),
+            Text(
+              'Repeats',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            RecurrenceField(
+              value: _recurrence,
+              anchorDate: _selectedDate,
+              onChanged: (v) => setState(() => _recurrence = v),
+            ),
+          ],
+
           const SizedBox(height: 28),
 
           // Save button
@@ -395,7 +449,11 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
                       ),
                     )
                   : Text(
-                      _isEditMode ? 'Reschedule' : 'Add to Calendar',
+                      _isEditMode
+                          ? 'Reschedule'
+                          : _recurrence != null
+                              ? 'Add Recurring Meal'
+                              : 'Add to Calendar',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,

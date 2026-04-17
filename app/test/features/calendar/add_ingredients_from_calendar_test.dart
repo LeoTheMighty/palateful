@@ -120,6 +120,53 @@ class _FakeMealCalendarService implements MealCalendarService {
 
   @override
   Future<void> markMealCompleted(String eventId) async {}
+
+  @override
+  Future<RecurrenceRule> createRecurrenceRule({
+    required MealType mealType,
+    required List<String> weekdays,
+    required String interval,
+    required DateTime startDate,
+    required String tzName,
+    String? title,
+    String? recipeId,
+    DateTime? endDate,
+    String? monthlyNth,
+    bool isShared = true,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<List<RecurrenceRule>> listRecurrenceRules() async => [];
+
+  @override
+  Future<RecurrenceRule> getRecurrenceRule(String ruleId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteRecurrenceRule(
+    String ruleId, {
+    String scope = 'series',
+    DateTime? occurrenceDate,
+  }) async {}
+
+  @override
+  Future<Map<String, dynamic>> updateRecurrenceRule(
+    String ruleId, {
+    required String scope,
+    DateTime? occurrenceDate,
+    String? title,
+    String? recipeId,
+    String? mealType,
+    List<String>? weekdays,
+    String? interval,
+    String? monthlyNth,
+    DateTime? endDate,
+    bool clearEndDate = false,
+    bool? isShared,
+    String? tzName,
+  }) async =>
+      {};
 }
 
 // ---------------------------------------------------------------------------

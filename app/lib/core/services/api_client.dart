@@ -650,6 +650,37 @@ class ApiClient {
     return _dio.delete('/v1/meal-events/$eventId');
   }
 
+  // Recurrence rules
+  Future<Response> listRecurrenceRules() =>
+      _dio.get('/v1/recurrence-rules');
+
+  Future<Response> createRecurrenceRule(Map<String, dynamic> data) =>
+      _dio.post('/v1/recurrence-rules', data: data);
+
+  Future<Response> getRecurrenceRule(String ruleId) =>
+      _dio.get('/v1/recurrence-rules/$ruleId');
+
+  Future<Response> updateRecurrenceRule(
+    String ruleId,
+    Map<String, dynamic> data,
+  ) =>
+      _dio.put('/v1/recurrence-rules/$ruleId', data: data);
+
+  Future<Response> deleteRecurrenceRule(
+    String ruleId, {
+    String scope = 'series',
+    String? occurrenceDate,
+  }) {
+    final params = <String, dynamic>{'scope': scope};
+    if (occurrenceDate != null) {
+      params['occurrence_date'] = occurrenceDate;
+    }
+    return _dio.delete(
+      '/v1/recurrence-rules/$ruleId',
+      queryParameters: params,
+    );
+  }
+
   // Cooking logs
   Future<Response> getRecentlyCookedRecipes({int limit = 5}) {
     return _dio.get('/v1/cooking-logs', queryParameters: {'limit': limit});
