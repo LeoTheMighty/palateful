@@ -185,3 +185,36 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+
+      # Brings the `gcloud` binary onto $PATH. Auth creds are inherited from
+      # the google-github-actions/auth@v2 step earlier in the job.
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: palateful
+
+      # Soft-smoke Robo crawl on one Pixel-class emulator. Play Console's
+      # Pre-Launch Report catches the same class of issues post-upload, but
+      # burning a version code on each cycle is worse than running our own.
+      # continue-on-error + `|| true` inside the script so a Test Lab infra
+      # blip never blocks a healthy release — the upload has already happened.
+      - name: Firebase Test Lab soft-smoke (Robo)
+        continue-on-error: true
+        working-directory: app
+        run: |
+          AAB="android/app/build/outputs/bundle/release/app-release.aab"
+          if [ ! -f "$AAB" ]; then
+            echo "::warning::AAB not found at $AAB — skipping Test Lab."
+            exit 0
+          fi
+          gcloud firebase test android run \
+            --type=robo \
+            --app "$AAB" \
+            --device model=oriole,version=33,locale=en,orientation=portrait \
+            --timeout 2m \
+            --no-record-video \
+            --project palateful \
+            2>&1 | tee /tmp/testlab.log || true
+          RESULT_URL=$(grep -oE 'https://console.firebase.google.com[^ ]+' /tmp/testlab.log | head -n1 || true)
+          if [ -n "$RESULT_URL" ]; then
+            echo "::notice title=Firebase Test Lab::Robo crawl results: $RESULT_URL"
+          fi
