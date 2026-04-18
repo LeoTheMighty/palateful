@@ -305,9 +305,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Keep channel + version in sync with .github/workflows/mobile-builds.yml
+      # so CI doesn't pass on a Flutter version different from the one that
+      # ships the AAB. Bumping Flutter means updating both files in one PR.
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.32.0'
           cache: true
 
       - name: Cache pub dependencies

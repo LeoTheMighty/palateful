@@ -845,6 +845,33 @@ Watch the workflow for:
 - Crashlytics symbol upload failure → `FIREBASE_SERVICE_ACCOUNT_JSON`
   secret is missing or scoped without `firebase.crashlytics.access`.
 
+### 18.1 — YOLO acceptance (first tag push as pipeline verification)
+
+There is deliberately no pre-production end-to-end test of the
+"tag → Play upload" pipeline. The first real `v*.*.*` tag push **is**
+the end-to-end verification. This keeps the CI contract honest — any
+regression shows up the first time the pipeline runs for real, and
+every subsequent tag validates the same path.
+
+Acceptance for that first run:
+
+1. Watch the Actions tab for the `mobile-builds.yml` run.
+2. The workflow summary should show two `::notice::` annotations at
+   completion:
+   - `Firebase Test Lab: Robo crawl results: <URL>` (soft — may be
+     absent if Test Lab glitched; doesn't block).
+   - `Play Store Internal Track: Build vX.Y.Z uploaded. Review at
+     https://play.google.com/console/…` (hard — if absent, the upload
+     didn't happen).
+3. If something breaks — fix the root cause on `main` in a follow-up
+   commit, bump `app/pubspec.yaml` `version: 1.0.<NEW>+<NEW>`, and
+   push a **new** tag (`v1.0.<NEW>`). Do not try to re-push the old
+   tag; Play Store rejects duplicate version codes, so rolling a new
+   tag is always cheaper than reverting.
+4. No rollback is needed for a failed upload: if the AAB never reached
+   Play Console, there is nothing to revert. The version code is only
+   "burned" once Play Store accepts it.
+
 ## Section 19 — Verify Pre-Launch Report
 
 Play Console → Testing → Pre-launch report. The first report lands

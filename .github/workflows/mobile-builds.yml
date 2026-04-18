@@ -218,3 +218,12 @@ jobs:
           if [ -n "$RESULT_URL" ]; then
             echo "::notice title=Firebase Test Lab::Robo crawl results: $RESULT_URL"
           fi
+
+      # Surface the Play Console link in the workflow summary so the operator
+      # doesn't have to navigate there manually. Only runs on tag pushes; the
+      # version is parsed from the tag ref (refs/tags/v1.2.3 → 1.2.3).
+      - name: Emit Play Store summary link
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "::notice title=Play Store Internal Track::Build v${VERSION} uploaded. Review at https://play.google.com/console/u/0/developers"
