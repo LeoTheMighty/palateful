@@ -59,6 +59,13 @@ class ExtractedRecipe:
     keywords: list[str] = field(default_factory=list)
     primary_vibe: str | None = None
     secondary_vibe: str | None = None
+    # irrd-3 — self-reported model score (or heuristic fallback). `None`
+    # means "model declined AND heuristic has not yet run"; downstream
+    # serialization MUST resolve to a numeric score via
+    # `apply_confidence_score()` before persistence so the UI never sees
+    # null unless both paths failed.
+    confidence_score: float | None = None
+    confidence_source: str | None = None  # "model" | "heuristic"
     raw_data: dict = field(default_factory=dict)  # Original structured data
 
 

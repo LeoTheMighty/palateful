@@ -392,8 +392,15 @@ development_status:
   epic-import-row-rich-detail: in-progress
   irrd-1-backend-expose-stage-and-retry-fields: done
   irrd-2-backend-import-item-telemetry-endpoint: done
-  irrd-3-backend-extractor-confidence-score-e2e: backlog
-  irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: backlog
+  irrd-3-backend-extractor-confidence-score-e2e: done
+  # Spawned by irrd-3 dev loop 2026-04-18. AC8/AC9/AC11 (eval metric
+  # module + heuristic calibration gate + soft eval regression gate)
+  # require real LLM API calls + ~10min runtime — deferred so
+  # irrd-4..7 aren't blocked. Gate wiring runs against eval fixtures
+  # at services/eval/fixtures/expected/*.json; baseline file goes in
+  # services/eval/baselines/ when the gate lands.
+  irrd-3a-confidence-eval-calibration-gate: backlog
+  irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: done
   irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: backlog
   irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: backlog
   irrd-7-a11y-semantics-and-widget-test-pass: backlog

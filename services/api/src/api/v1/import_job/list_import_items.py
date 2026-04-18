@@ -11,6 +11,33 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
+def _extract_confidence_fields(
+    parsed_recipe: dict | None,
+) -> tuple[float | None, str | None]:
+    """Hoist ``confidence_score`` + ``confidence_source`` from parsed_recipe.
+
+    Mirrors the helper in ``get_import_item.py`` — kept local here so the
+    list endpoint doesn't depend on the detail endpoint's module. Drops
+    out-of-range or malformed values so legacy rows don't leak garbage.
+    """
+    if not parsed_recipe:
+        return (None, None)
+    raw_score = parsed_recipe.get("confidence_score")
+    raw_source = parsed_recipe.get("confidence_source")
+
+    score: float | None = None
+    if isinstance(raw_score, int | float) and not isinstance(raw_score, bool):
+        f = float(raw_score)
+        if 0.0 <= f <= 1.0:
+            score = f
+
+    source: str | None = None
+    if isinstance(raw_source, str) and raw_source in ("model", "heuristic"):
+        source = raw_source
+
+    return (score, source)
+
+
 class ListImportItems(Endpoint):
     """List import items for a job."""
 
@@ -75,6 +102,10 @@ class ListImportItems(Endpoint):
                 ingredients = item.parsed_recipe.get("ingredients", [])
                 needs_review = any(ing.get("needs_review", False) for ing in ingredients)
 
+            confidence_score, confidence_source = _extract_confidence_fields(
+                item.parsed_recipe
+            )
+
             item_responses.append(
                 ListImportItems.ItemSummary(
                     id=str(item.id),
@@ -90,6 +121,8 @@ class ListImportItems(Endpoint):
                     last_successful_stage=item.last_successful_stage,
                     last_retry_at=item.last_retry_at,
                     awaiting_review_reason=item.awaiting_review_reason,
+                    confidence_score=confidence_score,
+                    confidence_source=confidence_source,
                 )
             )
 
@@ -115,6 +148,8 @@ class ListImportItems(Endpoint):
         last_successful_stage: str | None = None
         last_retry_at: datetime | None = None
         awaiting_review_reason: str | None = None
+        confidence_score: float | None = None
+        confidence_source: str | None = None
 
     class Response(BaseModel):
         items: list["ListImportItems.ItemSummary"]

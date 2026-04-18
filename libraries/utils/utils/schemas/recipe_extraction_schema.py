@@ -46,6 +46,13 @@ RECIPE_EXTRACTION_SCHEMA: dict = {
         "image_url": {"type": ["string", "null"]},
         "primary_vibe": {"type": ["string", "null"]},
         "secondary_vibe": {"type": ["string", "null"]},
+        # irrd-3 — self-reported model score or heuristic fallback.
+        # `null` is a legitimate value ("model declined, heuristic has
+        # not yet run"); the extract_recipe_task pipeline resolves it
+        # before persistence so persisted parsed_recipe JSONB always
+        # carries a numeric score paired with a source label.
+        "confidence_score": {"type": ["number", "null"]},
+        "confidence_source": {"type": ["string", "null"]},
     },
 }
 

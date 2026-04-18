@@ -72,6 +72,11 @@ def _serialize_recipe(recipe, extractor_used: str | None, session) -> dict:
         "keywords": recipe.keywords,
         "primary_vibe": recipe.primary_vibe,
         "secondary_vibe": recipe.secondary_vibe,
+        # irrd-3 — persisted at the top level of parsed_recipe for easy
+        # hoisting onto GetImportItem / ListImportItems responses.
+        # `getattr` guards against mock callers that don't set these.
+        "confidence_score": getattr(recipe, "confidence_score", None),
+        "confidence_source": getattr(recipe, "confidence_source", None),
         "extractor_used": extractor_used,
     }
 

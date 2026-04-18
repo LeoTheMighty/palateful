@@ -1035,6 +1035,37 @@ class TestListImportItems:
         data = response.json()
         assert data["items"][0]["needs_review"] is True
 
+    def test_list_import_items_surfaces_confidence_fields(self, client, mock_db, mock_user):
+        """irrd-3 AC6: confidence_score + confidence_source hoist onto summary rows."""
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        item = MockImportItem(
+            import_job_id=job_id,
+            status="awaiting_review",
+            parsed_recipe={
+                "name": "Pasta",
+                "ingredients": [],
+                "confidence_score": 0.42,
+                "confidence_source": "heuristic",
+            },
+        )
+
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.db.query.return_value = MockQuery([item])
+
+        response = client.get(f"/v1/import-jobs/{job_id}/items")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"][0]["confidence_score"] == 0.42
+        assert data["items"][0]["confidence_source"] == "heuristic"
+
     def test_list_import_items_no_needs_review(self, client, mock_db, mock_user):
         """Test listing items where no ingredient needs review and status is not awaiting_review."""
         job_id = "test-job-id"
@@ -1517,6 +1548,94 @@ class TestGetImportItem:
         assert ings[0].get("pending_review_ingredient") is True
         assert ings[1].get("pending_review_ingredient") is True
 
+    def test_get_import_item_surfaces_confidence_fields(
+        self, client, mock_db, mock_user
+    ):
+        """irrd-3 AC6: confidence_score + confidence_source hoist to root."""
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            source_type="photo",
+            raw_data={},
+            parsed_recipe={
+                "name": "Pasta",
+                "confidence_score": 0.62,
+                "confidence_source": "model",
+                "ingredients": [],
+            },
+            user_edits=None,
+            error_message=None,
+            error_code=None,
+            retry_count=0,
+            ai_cost_cents=0,
+            created_recipe_id=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["confidence_score"] == 0.62
+        assert data["confidence_source"] == "model"
+
+    def test_get_import_item_drops_malformed_confidence(
+        self, client, mock_db, mock_user
+    ):
+        """Legacy / future-out-of-range rows never leak bad scores to UI."""
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            source_type="photo",
+            raw_data={},
+            parsed_recipe={
+                "name": "Pasta",
+                "confidence_score": 2.5,
+                "confidence_source": "bogus-literal",
+                "ingredients": [],
+            },
+            user_edits=None,
+            error_message=None,
+            error_code=None,
+            retry_count=0,
+            ai_cost_cents=0,
+            created_recipe_id=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["confidence_score"] is None
+        assert data["confidence_source"] is None
+
     def test_get_import_item_with_empty_raw_data(self, client, mock_db, mock_user):
         """Test getting item where raw_data is None (should default to {})."""
         item_id = "test-item-id"
@@ -1554,6 +1673,9 @@ class TestGetImportItem:
         assert response.status_code == 200
         data = response.json()
         assert data["raw_data"] == {}
+        # irrd-3: missing parsed_recipe -> both confidence fields null.
+        assert data["confidence_score"] is None
+        assert data["confidence_source"] is None
 
 
 class TestUpdateImportItem:

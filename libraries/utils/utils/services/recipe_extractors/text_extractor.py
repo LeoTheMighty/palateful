@@ -11,6 +11,8 @@ from utils.services.recipe_extractors.base import (
     ExtractionResult,
     validate_vibe,
 )
+from utils.services.recipe_extractors.confidence_heuristic import resolve_confidence
+from utils.services.recipe_extractors.confidence_prompt import confidence_rule
 from utils.services.recipe_extractors.unit_prompt import unit_rule
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,8 @@ General rules:
 - Set missing fields to null rather than guessing
 - If you cannot find recipe content at all, return {{"error": "No recipe found"}}
 - Return ONLY valid JSON. No markdown fences, no explanation text.
+
+{confidence_rule()}
 
 OCR Text:
 """
@@ -339,7 +343,7 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         elif isinstance(ing, str):
             ingredients.append(ExtractedIngredient(text=ing))
 
-    return ExtractedRecipe(
+    recipe = ExtractedRecipe(
         name=data.get("name") or "Untitled Recipe",
         description=data.get("description"),
         ingredients=ingredients,
@@ -363,3 +367,7 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         secondary_vibe=validate_vibe(data.get("secondary_vibe")),
         raw_data=data,
     )
+    score, source = resolve_confidence(data, recipe)
+    recipe.confidence_score = score
+    recipe.confidence_source = source
+    return recipe

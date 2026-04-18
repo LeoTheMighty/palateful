@@ -161,7 +161,7 @@ class JsonLdExtractor(BaseExtractor):
         # Parse keywords
         keywords = self._parse_keywords(data.get("keywords"))
 
-        return ExtractedRecipe(
+        recipe = ExtractedRecipe(
             name=self._clean_text(data.get("name")) or "Untitled Recipe",
             description=self._clean_text(data.get("description")),
             ingredients=ingredients,
@@ -178,6 +178,24 @@ class JsonLdExtractor(BaseExtractor):
             keywords=keywords,
             raw_data=data,
         )
+        # irrd-3 — json_ld is authoritative (Schema.org structured data),
+        # so skip the LLM path entirely and score deterministically.
+        # 1.0 when all three required signals are present; otherwise
+        # degraded proportionally with a 0.3 floor so we don't emit
+        # confidence=0 for a partial-but-real structured recipe.
+        present = sum(
+            [
+                bool(recipe.name and recipe.name != "Untitled Recipe"),
+                bool(recipe.ingredients),
+                bool(recipe.instructions and recipe.instructions.strip()),
+            ]
+        )
+        if present == 3:
+            recipe.confidence_score = 1.0
+        else:
+            recipe.confidence_score = max(0.3, present / 3.0)
+        recipe.confidence_source = "model"
+        return recipe
 
     def _parse_instructions(self, instructions: Any) -> str | None:
         """Parse instructions from various formats.

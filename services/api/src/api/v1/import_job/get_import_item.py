@@ -14,6 +14,34 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
+def _extract_confidence_fields(
+    parsed_recipe: dict | None,
+) -> tuple[float | None, str | None]:
+    """Pull `confidence_score` + `confidence_source` out of parsed_recipe.
+
+    Returns ``(None, None)`` when extraction has not yet run or the
+    extractor didn't write either key. Values are validated lightly —
+    out-of-range floats are dropped to None so the API response doesn't
+    pass through malformed scores from legacy rows.
+    """
+    if not parsed_recipe:
+        return (None, None)
+    raw_score = parsed_recipe.get("confidence_score")
+    raw_source = parsed_recipe.get("confidence_source")
+
+    score: float | None = None
+    if isinstance(raw_score, int | float) and not isinstance(raw_score, bool):
+        f = float(raw_score)
+        if 0.0 <= f <= 1.0:
+            score = f
+
+    source: str | None = None
+    if isinstance(raw_source, str) and raw_source in ("model", "heuristic"):
+        source = raw_source
+
+    return (score, source)
+
+
 def _annotate_pending_review_ingredients(
     parsed_recipe: dict | None,
     session,
@@ -116,6 +144,13 @@ class GetImportItem(Endpoint):
             item.parsed_recipe, self.database.db
         )
 
+        # irrd-3 — convenience hoist so the caret expansion doesn't have
+        # to drill into nested parsed_recipe JSON. Null when extraction
+        # hasn't run yet.
+        confidence_score, confidence_source = _extract_confidence_fields(
+            item.parsed_recipe
+        )
+
         return success(
             data=GetImportItem.Response(
                 id=str(item.id),
@@ -137,6 +172,8 @@ class GetImportItem(Endpoint):
                 last_successful_stage=item.last_successful_stage,
                 last_retry_at=item.last_retry_at,
                 awaiting_review_reason=item.awaiting_review_reason,
+                confidence_score=confidence_score,
+                confidence_source=confidence_source,
             )
         )
 
@@ -160,3 +197,5 @@ class GetImportItem(Endpoint):
         last_successful_stage: str | None = None
         last_retry_at: datetime | None = None
         awaiting_review_reason: str | None = None
+        confidence_score: float | None = None
+        confidence_source: str | None = None
