@@ -30,8 +30,11 @@ final mealByIdProvider =
 /// after a mutation. Callers usually know the book_id already (they have
 /// the Meal in hand); callers that don't should pass `null` and we skip
 /// the list invalidation.
+///
+/// Typed as `dynamic` so both `Ref` (provider-side) and `WidgetRef`
+/// (widget-side) can call it; both expose the same `invalidate` signature.
 void invalidateMeal(
-  Ref ref,
+  dynamic ref,
   String mealId, {
   String? bookId,
 }) {

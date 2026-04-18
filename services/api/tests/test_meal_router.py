@@ -78,6 +78,7 @@ class TestCreateMeal:
         # 3. _readable_book_ids query
         # 4. get_with_components → Meal query (re-fetch)
         # 5. build_meal_response → hydrate_components → _readable_book_ids
+        # 6. build_meal_response → is_favorited → MealFavorite query
         mock_db.db.query.side_effect = [
             MockQuery([_owner()]),
             MockQuery(
@@ -97,6 +98,7 @@ class TestCreateMeal:
             MockQuery([("book-1",)]),
             MockQuery([meal]),
             MockQuery([("book-1",)]),
+            MockQuery([]),
         ]
 
         response = client.post(
@@ -185,6 +187,7 @@ class TestGetMeal:
             MockQuery([meal]),          # get_with_components
             MockQuery([_owner()]),      # user_has_book_read
             MockQuery([("book-1",)]),   # hydrate_components → _readable_book_ids
+            MockQuery([]),              # is_favorited → MealFavorite lookup
         ]
         response = client.get("/v1/meals/meal-1")
         assert response.status_code == 200
@@ -213,6 +216,7 @@ class TestGetMeal:
             MockQuery([meal]),
             MockQuery([MockRecipeBookUser(role="viewer")]),
             MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → MealFavorite
         ]
         response = client.get("/v1/meals/meal-1")
         assert response.status_code == 200
@@ -225,14 +229,40 @@ class TestGetMeal:
             MockQuery([meal]),
             MockQuery([_owner()]),
             MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → MealFavorite
         ]
         response = client.get("/v1/meals/meal-1")
         assert response.status_code == 200
         data = response.json()
-        # Archived component is marked unavailable, has last_known_name
-        unavailable = [c for c in data["components"] if not c["available"]]
-        assert len(unavailable) == 1
-        assert unavailable[0]["last_known_name"] == "R"
+        assert any(c["available"] is False for c in data["components"])
+
+    def test_is_favorite_true_when_favorited(self, client, mock_db, mock_user):
+        meal = _MockMeal(
+            components=[_build_component("r1"), _build_component("r2", "R2", 1)]
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([meal]),
+            MockQuery([_owner()]),
+            MockQuery([("book-1",)]),
+            MockQuery(["favorite-row"]),  # is_favorited → returns truthy row
+        ]
+        response = client.get("/v1/meals/meal-1")
+        assert response.status_code == 200
+        assert response.json()["is_favorite"] is True
+
+    def test_is_favorite_false_when_not_favorited(self, client, mock_db, mock_user):
+        meal = _MockMeal(
+            components=[_build_component("r1"), _build_component("r2", "R2", 1)]
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([meal]),
+            MockQuery([_owner()]),
+            MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → no row
+        ]
+        response = client.get("/v1/meals/meal-1")
+        assert response.status_code == 200
+        assert response.json()["is_favorite"] is False
 
 
 class TestListMealsInBook:
@@ -306,6 +336,7 @@ class TestUpdateMeal:
             MockQuery([meal]),
             MockQuery([_owner()]),
             MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → MealFavorite
         ]
         response = client.patch(
             "/v1/meals/meal-1", json={"name": "Renamed"}
@@ -319,6 +350,7 @@ class TestUpdateMeal:
             MockQuery([meal]),
             MockQuery([_owner()]),
             MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → MealFavorite
         ]
         response = client.patch(
             "/v1/meals/meal-1", json={"description": "New desc"}

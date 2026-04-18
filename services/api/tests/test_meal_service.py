@@ -346,3 +346,15 @@ class TestArchiveRestore:
         meal = _MockMeal(archived_at=datetime.now(UTC))
         result = service.restore(meal)
         assert result.archived_at is None
+
+
+class TestIsFavorited:
+    def test_returns_true_when_row_exists(self):
+        service, session = _build_service()
+        session.query.return_value = MockQuery(["favorite-row"])
+        assert service.is_favorited(user_id="u-1", meal_id="m-1") is True
+
+    def test_returns_false_when_no_row(self):
+        service, session = _build_service()
+        session.query.return_value = MockQuery([])
+        assert service.is_favorited(user_id="u-1", meal_id="m-1") is False

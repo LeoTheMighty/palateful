@@ -115,6 +115,31 @@ void main() {
       ]);
       expect(m.components.length, 1);
     });
+
+    test('overrides isFavorite', () {
+      final m = _base().copyWith(isFavorite: true);
+      expect(m.isFavorite, true);
+    });
+  });
+
+  group('Meal.fromJson — is_favorite', () {
+    Map<String, dynamic> _base() => {
+          'id': 'meal-1',
+          'name': 'X',
+          'recipe_book_id': 'book-1',
+          'created_at': '2026-04-18T10:00:00Z',
+          'updated_at': '2026-04-18T10:00:00Z',
+        };
+
+    test('defaults to false when absent', () {
+      final m = Meal.fromJson(_base());
+      expect(m.isFavorite, false);
+    });
+
+    test('parses true when present', () {
+      final m = Meal.fromJson({..._base(), 'is_favorite': true});
+      expect(m.isFavorite, true);
+    });
   });
 
   group('MealSummary.fromJson', () {

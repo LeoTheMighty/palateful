@@ -329,6 +329,7 @@ class TestAddRecipeToMealEndpoint:
             MockQuery([("book-1",)]),
             MockQuery([meal]),
             MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → MealFavorite
         ]
         response = client.post(
             "/v1/meals/meal-1/recipes",
@@ -395,6 +396,7 @@ class TestRemoveRecipeFromMealEndpoint:
             MockQuery(rows),  # service.remove_component fetches rows
             MockQuery([meal]),  # re-fetch
             MockQuery([("book-1",)]),
+            MockQuery([]),  # is_favorited → MealFavorite
         ]
         response = client.delete("/v1/meals/meal-1/recipes/r3")
         assert response.status_code == 200
@@ -456,6 +458,7 @@ class TestReorderMealComponentsEndpoint:
             MockQuery(rows),      # reorder_components fetch
             MockQuery([meal]),    # re-fetch
             MockQuery([("book-1",)]),
+            MockQuery([]),        # is_favorited → MealFavorite
         ]
         response = client.post(
             "/v1/meals/meal-1/reorder",

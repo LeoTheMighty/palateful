@@ -82,6 +82,7 @@ class MealResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     components: list[MealComponentResponse] = []
+    is_favorite: bool = False
 
 
 class MealSummaryResponse(BaseModel):

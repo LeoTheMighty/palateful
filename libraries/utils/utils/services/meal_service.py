@@ -359,3 +359,15 @@ class MealService:
         self.db.delete(existing)
         self.db.flush()
         return True
+
+    def is_favorited(self, *, user_id, meal_id) -> bool:
+        """Return whether the given user has favorited this meal."""
+        return (
+            self.db.query(MealFavorite)
+            .filter(
+                MealFavorite.user_id == user_id,
+                MealFavorite.meal_id == meal_id,
+            )
+            .first()
+            is not None
+        )

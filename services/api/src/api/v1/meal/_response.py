@@ -11,7 +11,8 @@ from utils.services.meal_service import MealService
 
 def build_meal_response(meal: Meal, *, db, user_id) -> MealResponse:
     """Hydrate a Meal into the full response shape."""
-    hydrations = MealService(db).hydrate_components(meal, user_id=user_id)
+    service = MealService(db)
+    hydrations = service.hydrate_components(meal, user_id=user_id)
     components = [
         MealComponentResponse(
             recipe_id=h.recipe_id,
@@ -35,6 +36,7 @@ def build_meal_response(meal: Meal, *, db, user_id) -> MealResponse:
         created_at=meal.created_at,
         updated_at=meal.updated_at,
         components=components,
+        is_favorite=service.is_favorited(user_id=user_id, meal_id=meal.id),
     )
 
 

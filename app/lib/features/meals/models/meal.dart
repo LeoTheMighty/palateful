@@ -14,6 +14,7 @@ class Meal {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<MealComponent> components;
+  final bool isFavorite;
 
   const Meal({
     required this.id,
@@ -24,6 +25,7 @@ class Meal {
     this.description,
     this.archivedAt,
     this.components = const [],
+    this.isFavorite = false,
   });
 
   bool get isArchived => archivedAt != null;
@@ -43,6 +45,7 @@ class Meal {
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
       components: rawComponents.map(MealComponent.fromJson).toList(),
+      isFavorite: json['is_favorite'] as bool? ?? false,
     );
   }
 
@@ -51,6 +54,7 @@ class Meal {
     String? description,
     DateTime? archivedAt,
     List<MealComponent>? components,
+    bool? isFavorite,
     bool clearArchivedAt = false,
   }) {
     return Meal(
@@ -62,6 +66,7 @@ class Meal {
       createdAt: createdAt,
       updatedAt: updatedAt,
       components: components ?? this.components,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 }
