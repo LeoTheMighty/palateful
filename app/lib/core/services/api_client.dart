@@ -827,8 +827,43 @@ class ApiClient {
     });
   }
 
+  // Admin feedback inbox
+  Future<Response> getAdminFeedback({
+    String status = 'unread',
+    int offset = 0,
+    int limit = 25,
+  }) {
+    return _dio.get('/v1/admin/feedback', queryParameters: {
+      'status': status,
+      'offset': offset,
+      'limit': limit,
+    });
+  }
+
+  Future<Response> updateFeedbackStatus(String feedbackId, String status) {
+    return _dio.put(
+      '/v1/admin/feedback/$feedbackId/status',
+      data: {'status': status},
+    );
+  }
+
   Future<Response> getAdminStats() {
     return _dio.get('/v1/admin/stats');
+  }
+
+  // Admin latency metrics (obs-latency-2)
+  Future<Response> getEndpointMetrics({String window = '24h'}) {
+    return _dio.get(
+      '/v1/admin/metrics/endpoints',
+      queryParameters: {'window': window},
+    );
+  }
+
+  Future<Response> getTaskMetrics({String window = '24h'}) {
+    return _dio.get(
+      '/v1/admin/metrics/tasks',
+      queryParameters: {'window': window},
+    );
   }
 
   Future<Response> sendAdminTestPush({
