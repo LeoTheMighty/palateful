@@ -38,7 +38,7 @@ class DeleteMealEvent(Endpoint):
                     detail=f"Meal event with ID '{event_id}' not found",
                     code=ErrorCode.MEAL_EVENT_NOT_FOUND,
                 ) from exc
-            raise
+            raise  # pragma: no cover — require_calendar_access only raises 403
 
         # Soft delete.
         meal_event.archived_at = datetime.now(UTC)

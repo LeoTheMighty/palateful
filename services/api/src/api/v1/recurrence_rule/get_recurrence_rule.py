@@ -33,6 +33,6 @@ class GetRecurrenceRule(Endpoint):
                     detail=f"Recurrence rule with ID '{rule_id}' not found",
                     code=ErrorCode.NOT_FOUND,
                 ) from exc
-            raise
+            raise  # pragma: no cover — require_calendar_access only raises 403
 
         return success(data=_rule_to_response(rule))

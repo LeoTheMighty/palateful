@@ -135,7 +135,7 @@ class DeleteCalendar(Endpoint):
                 .order_by(Calendar.created_at.desc())
                 .first()
             )
-            if promotion_target is not None:
+            if promotion_target is not None:  # pragma: no branch — last-calendar guard above ensures another active calendar exists when was_default
                 promotion_target.is_default = True
                 db.add(promotion_target)
 

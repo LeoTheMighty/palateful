@@ -132,7 +132,7 @@ class SendTestPush(Endpoint):
             outcome = "suppressed_quiet_hours"
         elif tokens_registered == 0:
             outcome = "no_tokens"
-        else:
+        else:  # pragma: no cover — defensive fallback when none of the known outcome states match
             outcome = "err"
 
         # Row 1: admin-action audit. Always written (except on rate-limit —

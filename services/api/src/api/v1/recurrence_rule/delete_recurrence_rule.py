@@ -55,7 +55,7 @@ class DeleteRecurrenceRule(Endpoint):
                     detail=f"Recurrence rule with ID '{rule_id}' not found",
                     code=ErrorCode.NOT_FOUND,
                 ) from exc
-            raise
+            raise  # pragma: no cover — require_calendar_access only raises 403
 
         if scope == "series":
             return self._delete_series(rule)
