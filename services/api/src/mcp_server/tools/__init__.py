@@ -21,6 +21,7 @@ def register_all_tools() -> None:
         agent_tools,
         import_tools,
         meal_planning,
+        meals,
         recipe_books,
         recipes,
         search,
