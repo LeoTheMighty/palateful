@@ -11,12 +11,26 @@ from utils.services.recipe_extractors.base import (
     ExtractionResult,
     validate_vibe,
 )
+from utils.services.recipe_extractors.unit_prompt import unit_rule
 
 logger = logging.getLogger(__name__)
 
 GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015
 
-TEXT_EXTRACTION_PROMPT = """Extract every recipe from the following OCR text and return them as JSON.
+# Legacy freeform unit instruction kept for the rollback path
+# (EXTRACTOR_EMIT_CANONICAL_UNITS=false).
+_FREEFORM_UNIT_RULE = (
+    '- "unit": the measurement unit ONLY, lowercase, singular or the original '
+    'form (e.g. "cup", "tablespoon", "teaspoon", "pound", "ounce", "clove", '
+    '"piece", "can", "recipe"). Use null for count items ("3 large eggs" -> '
+    "unit: null) and for quantity-less items. Never include the number or "
+    "the ingredient name here."
+)
+
+
+def _text_extraction_prompt() -> str:
+    """riip-3: build the prompt with the canonical-or-freeform unit rule."""
+    return f"""Extract every recipe from the following OCR text and return them as JSON.
 
 The text was obtained via OCR from a photograph of a physical recipe (cookbook page, recipe card, handwritten note, etc.).
 It may contain OCR artifacts such as:
@@ -35,25 +49,25 @@ Multi-recipe detection:
 - If only one recipe is present, return a length-1 array.
 
 Return a JSON object with EXACTLY this structure:
-{
+{{
     "recipes": [
-        {
+        {{
             "name": "Recipe Name",
             "description": "Brief 1-2 sentence description of the dish",
             "ingredients": [
-                {
+                {{
                     "text": "all-purpose flour, sifted",
                     "quantity": 2,
-                    "unit": "cups",
+                    "unit": "cup",
                     "name": "all-purpose flour",
                     "notes": "sifted",
                     "is_optional": false
-                }
+                }}
             ],
             "steps": [
-                {"instruction": "Preheat oven to 350F.", "order": 1},
-                {"instruction": "Mix dry ingredients in a large bowl.", "order": 2},
-                {"instruction": "Bake for 25 minutes.", "order": 3}
+                {{"instruction": "Preheat oven to 350F.", "order": 1}},
+                {{"instruction": "Mix dry ingredients in a large bowl.", "order": 2}},
+                {{"instruction": "Bake for 25 minutes.", "order": 3}}
             ],
             "servings": 4,
             "prep_time_minutes": 15,
@@ -64,45 +78,43 @@ Return a JSON object with EXACTLY this structure:
             "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
             "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
             "secondary_vibe": "a different vibe from the same list, or null"
-        }
+        }}
     ]
-}
+}}
 
-Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
+Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tbsp 9 tbsp butter".
 
 - "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null when the source has no numeric quantity ("a pinch", "to taste", "Salt"). Never include the unit or the ingredient name here.
-- "unit": the measurement unit ONLY, lowercase, singular or the original form (e.g. "cup", "tablespoon", "teaspoon", "pound", "ounce", "clove", "piece", "can", "recipe"). Use null for count items ("3 large eggs" -> unit: null) and for quantity-less items. Never include the number or the ingredient name here.
-- "name": the canonical ingredient name with quantity, unit, AND preparation notes stripped off. Use the most generic form: "onion" not "diced yellow onion", "flour" or "all-purpose flour" not "2 cups sifted flour".
+{unit_rule(freeform_fallback=_FREEFORM_UNIT_RULE)}
+- "name": the canonical ingredient name with quantity, unit, AND preparation notes stripped off. Use the most generic form: "onion" not "diced yellow onion", "flour" or "all-purpose flour" not "2 cup sifted flour".
 - "notes": preparation or state qualifiers that do not belong in the name ("chopped", "minced", "sauteed", "room temperature", "divided", "to taste", "optional"). null if none.
 - "text": the ingredient DESCRIPTION as it should appear next to the quantity and unit — i.e. the ingredient with prep/state qualifiers kept in natural order, but with the numeric quantity AND the unit STRIPPED OFF. Think of it as "what you'd say after reading the amount aloud." Never begins with a number or a unit. If the source line has no quantity/unit to strip (e.g. "Salt"), use the whole line.
 - "is_optional": true only if the recipe explicitly marks the ingredient as optional.
 
 Worked examples (source line -> extracted fields):
 - "9 tablespoons butter" ->
-    {"text": "butter", "quantity": 9, "unit": "tablespoons", "name": "butter", "notes": null, "is_optional": false}
+    {{"text": "butter", "quantity": 9, "unit": "tbsp", "name": "butter", "notes": null, "is_optional": false}}
 - "3 tablespoons minced shallots" ->
-    {"text": "minced shallots", "quantity": 3, "unit": "tablespoons", "name": "shallots", "notes": "minced", "is_optional": false}
+    {{"text": "minced shallots", "quantity": 3, "unit": "tbsp", "name": "shallots", "notes": "minced", "is_optional": false}}
 - "1 cup roasted butternut squash puree" ->
-    {"text": "roasted butternut squash puree", "quantity": 1, "unit": "cup", "name": "butternut squash puree", "notes": "roasted", "is_optional": false}
+    {{"text": "roasted butternut squash puree", "quantity": 1, "unit": "cup", "name": "butternut squash puree", "notes": "roasted", "is_optional": false}}
 - "1/2 cup diced onion, sauteed" ->
-    {"text": "diced onion, sauteed", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced, sauteed", "is_optional": false}
+    {{"text": "diced onion, sauteed", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced, sauteed", "is_optional": false}}
 - "3 tablespoons grated Parmesan-Reggiano cheese, plus 2 ounces" ->
-    {"text": "grated Parmesan-Reggiano cheese, plus 2 ounces", "quantity": 3, "unit": "tablespoons", "name": "Parmesan-Reggiano cheese", "notes": "grated, plus 2 ounces", "is_optional": false}
+    {{"text": "grated Parmesan-Reggiano cheese, plus 2 oz", "quantity": 3, "unit": "tbsp", "name": "Parmesan-Reggiano cheese", "notes": "grated, plus 2 oz", "is_optional": false}}
 - "Pinch nutmeg" ->
-    {"text": "nutmeg", "quantity": null, "unit": null, "name": "nutmeg", "notes": "pinch", "is_optional": false}
+    {{"text": "nutmeg", "quantity": null, "unit": "pinch", "name": "nutmeg", "notes": null, "is_optional": false}}
 - "Salt" ->
-    {"text": "salt", "quantity": null, "unit": null, "name": "salt", "notes": null, "is_optional": false}
+    {{"text": "salt", "quantity": null, "unit": null, "name": "salt", "notes": null, "is_optional": false}}
 - "3 large eggs" ->
-    {"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}
-- "1 recipe pasta dough, rolled out into wide ribbons, about 1/4-inch thick" ->
-    {"text": "pasta dough, rolled out into wide ribbons, about 1/4-inch thick", "quantity": 1, "unit": "recipe", "name": "pasta dough", "notes": "rolled out into wide ribbons, about 1/4-inch thick", "is_optional": false}
+    {{"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}}
 - "12 fresh sage leaves" ->
-    {"text": "fresh sage leaves", "quantity": 12, "unit": null, "name": "sage leaves", "notes": "fresh", "is_optional": false}
+    {{"text": "fresh sage leaves", "quantity": 12, "unit": null, "name": "sage leaves", "notes": "fresh", "is_optional": false}}
 
 BAD examples — do NOT produce these:
-- {"text": "9 tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}  # text repeats quantity+unit
-- {"text": "tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}   # text repeats unit
-- {"quantity": "9 tablespoons", "unit": "tablespoons", ...}                   # quantity is not a number
+- {{"text": "9 tbsp butter", "quantity": 9, "unit": "tbsp", ...}}    # text repeats quantity+unit
+- {{"text": "tbsp butter", "quantity": 9, "unit": "tbsp", ...}}      # text repeats unit
+- {{"quantity": "9 tbsp", "unit": "tbsp", ...}}                      # quantity is not a number
 
 Vibe assignment:
 - Choose a primary_vibe that best captures the dish's character
@@ -112,11 +124,16 @@ Vibe assignment:
 General rules:
 - Only include fields you can actually find or reasonably infer from the text
 - Set missing fields to null rather than guessing
-- If you cannot find recipe content at all, return {"error": "No recipe found"}
+- If you cannot find recipe content at all, return {{"error": "No recipe found"}}
 - Return ONLY valid JSON. No markdown fences, no explanation text.
 
 OCR Text:
 """
+
+
+# Backward-compat alias — `TEXT_EXTRACTION_PROMPT` was a string before riip-3.
+# Kept for any test that imports it directly.
+TEXT_EXTRACTION_PROMPT = _text_extraction_prompt()
 
 
 def _steps_to_instructions(steps: Any) -> str | None:
@@ -211,7 +228,7 @@ def extract_recipe_from_text(
                 },
                 {
                     "role": "user",
-                    "content": TEXT_EXTRACTION_PROMPT + cleaned_text,
+                    "content": _text_extraction_prompt() + cleaned_text,
                 },
             ],
             response_format={"type": "json_object"},

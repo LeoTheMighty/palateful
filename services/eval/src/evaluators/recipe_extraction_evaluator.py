@@ -7,6 +7,7 @@ from src.config import EvalConfig
 from src.evaluators.base import BaseEvaluator, EvalCase, EvalResult
 from src.metrics.struct_metrics import StructMetrics
 from src.metrics.text_metrics import TextMetrics
+from src.metrics.unit_enum_compliance import compute_unit_enum_compliance
 
 
 class RecipeExtractionEvaluator(BaseEvaluator):
@@ -103,6 +104,11 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         # Calculate metrics
         if result.actual_output:
             metrics = self._calculate_metrics(result.actual_output, case.expected_data)
+            # riip-3: per-case unit-enum compliance + non-canonical
+            # breakdown so the eval report names the offending tokens.
+            metrics["unit_enum_compliance"] = compute_unit_enum_compliance(
+                result.actual_output
+            )
             result.metrics = metrics
 
             # Determine pass/fail based on field accuracy

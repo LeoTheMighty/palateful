@@ -12,6 +12,7 @@ from utils.services.recipe_extractors.base import (
     ExtractionResult,
     validate_vibe,
 )
+from utils.services.recipe_extractors.unit_prompt import unit_rule
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +20,30 @@ logger = logging.getLogger(__name__)
 GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015  # $0.00015 per 1K tokens average
 
 
-EXTRACTION_PROMPT = """Extract every recipe from the following HTML content and return them as JSON.
+# Legacy freeform unit instruction kept for the rollback path
+# (EXTRACTOR_EMIT_CANONICAL_UNITS=false).
+_FREEFORM_UNIT_RULE = (
+    '- "unit": the measurement unit ONLY (e.g. "cup", "tablespoon", "pound", '
+    '"ounce", "clove", "can"). Use null for count items ("3 large eggs" -> '
+    "unit: null) or when there is no unit. Never include the number or name "
+    "here."
+)
+
+
+def _extraction_prompt() -> str:
+    """riip-3: build the prompt with the canonical-or-freeform unit rule."""
+    return f"""Extract every recipe from the following HTML content and return them as JSON.
 
 If the page contains MULTIPLE DISTINCT recipes (with separate titles and separate ingredient lists), emit each as a separate object in the "recipes" array. A "Variation" or "Notes" section is NOT a distinct recipe. If there is only one recipe, return a length-1 array.
 
 Return a JSON object with the following structure:
-{
+{{
     "recipes": [
-        {
+        {{
             "name": "Recipe name",
             "description": "Brief description",
             "ingredients": [
-                {"text": "all-purpose flour, sifted", "quantity": 2, "unit": "cups", "name": "all-purpose flour", "notes": "sifted", "is_optional": false}
+                {{"text": "all-purpose flour, sifted", "quantity": 2, "unit": "cup", "name": "all-purpose flour", "notes": "sifted", "is_optional": false}}
             ],
             "instructions": "Step-by-step instructions as a single string",
             "servings": 4,
@@ -42,40 +55,45 @@ Return a JSON object with the following structure:
             "category": "Main Course",
             "primary_vibe": "...",
             "secondary_vibe": "..." or null
-        }
+        }}
     ]
-}
+}}
 
 Vibes: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
 
-Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
+Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tbsp 9 tbsp butter".
 
 - "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here.
-- "unit": the measurement unit ONLY (e.g. "cup", "tablespoon", "pound", "ounce", "clove", "can"). Use null for count items ("3 large eggs" -> unit: null) or when there is no unit. Never include the number or name here.
-- "name": the canonical ingredient name, stripped of quantity, unit, and prep notes (e.g. "onion" not "diced yellow onion"; "butter" not "9 tablespoons butter").
+{unit_rule(freeform_fallback=_FREEFORM_UNIT_RULE)}
+- "name": the canonical ingredient name, stripped of quantity, unit, and prep notes (e.g. "onion" not "diced yellow onion"; "butter" not "9 tbsp butter").
 - "notes": preparation/state qualifiers ("minced", "sauteed", "room temperature", "to taste", "divided") or null.
 - "text": the ingredient DESCRIPTION as it should appear next to the quantity and unit. Keep prep qualifiers in natural order, but STRIP the numeric quantity and the unit off the front. Never begins with a number or a unit. If the source has no quantity/unit to strip (e.g. "Salt"), use the whole line.
 - "is_optional": true only if the recipe explicitly marks the ingredient as optional.
 
 Worked examples (source line -> extracted fields):
-- "9 tablespoons butter" -> {"text": "butter", "quantity": 9, "unit": "tablespoons", "name": "butter", "notes": null, "is_optional": false}
-- "3 tablespoons minced shallots" -> {"text": "minced shallots", "quantity": 3, "unit": "tablespoons", "name": "shallots", "notes": "minced", "is_optional": false}
-- "1/2 cup diced onion" -> {"text": "diced onion", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced", "is_optional": false}
-- "3 large eggs" -> {"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}
-- "Pinch nutmeg" -> {"text": "nutmeg", "quantity": null, "unit": null, "name": "nutmeg", "notes": "pinch", "is_optional": false}
-- "Salt to taste" -> {"text": "salt, to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}
+- "9 tablespoons butter" -> {{"text": "butter", "quantity": 9, "unit": "tbsp", "name": "butter", "notes": null, "is_optional": false}}
+- "3 tablespoons minced shallots" -> {{"text": "minced shallots", "quantity": 3, "unit": "tbsp", "name": "shallots", "notes": "minced", "is_optional": false}}
+- "1/2 cup diced onion" -> {{"text": "diced onion", "quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced", "is_optional": false}}
+- "3 large eggs" -> {{"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}}
+- "Pinch nutmeg" -> {{"text": "nutmeg", "quantity": null, "unit": "pinch", "name": "nutmeg", "notes": null, "is_optional": false}}
+- "Salt to taste" -> {{"text": "salt, to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}}
 
 BAD examples — do NOT produce these:
-- {"text": "9 tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}  # text repeats quantity+unit
-- {"text": "tablespoons butter", "quantity": 9, "unit": "tablespoons", ...}   # text repeats unit
-- {"quantity": "9 tablespoons", ...}                                          # quantity must be a number
+- {{"text": "9 tbsp butter", "quantity": 9, "unit": "tbsp", ...}}   # text repeats quantity+unit
+- {{"text": "tbsp butter", "quantity": 9, "unit": "tbsp", ...}}     # text repeats unit
+- {{"quantity": "9 tbsp", ...}}                                     # quantity must be a number
 
 General rules:
 - Only include fields you can find in the content
-- If you cannot find recipe content, return {"error": "No recipe found"}
+- If you cannot find recipe content, return {{"error": "No recipe found"}}
 
 HTML Content:
 """
+
+
+# Backward-compat alias — `EXTRACTION_PROMPT` was a string before riip-3.
+# Kept for any test that imports it directly.
+EXTRACTION_PROMPT = _extraction_prompt()
 
 
 class AIExtractor(BaseExtractor):
@@ -133,7 +151,7 @@ class AIExtractor(BaseExtractor):
                     },
                     {
                         "role": "user",
-                        "content": EXTRACTION_PROMPT + cleaned_html,
+                        "content": _extraction_prompt() + cleaned_html,
                     },
                 ],
                 response_format={"type": "json_object"},
