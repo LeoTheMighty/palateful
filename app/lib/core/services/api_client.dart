@@ -664,6 +664,23 @@ class ApiClient {
   Future<Response> deleteCalendar(String id) =>
       _dio.delete('/v1/calendars/$id');
 
+  // Calendar member management (cal-share-2)
+  Future<Response> listCalendarMembers(String calendarId) =>
+      _dio.get('/v1/calendars/$calendarId/members');
+
+  Future<Response> updateCalendarMember(
+    String calendarId,
+    String userId,
+    Map<String, dynamic> data,
+  ) =>
+      _dio.patch('/v1/calendars/$calendarId/members/$userId', data: data);
+
+  Future<Response> removeCalendarMember(String calendarId, String userId) =>
+      _dio.delete('/v1/calendars/$calendarId/members/$userId');
+
+  Future<Response> leaveCalendar(String calendarId) =>
+      _dio.post('/v1/calendars/$calendarId/leave');
+
   Future<Response> createMealEvent(Map<String, dynamic> data) {
     return _dio.post('/v1/meal-events', data: data);
   }

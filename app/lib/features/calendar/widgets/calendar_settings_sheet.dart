@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/injection.dart';
 import '../models/calendar.dart';
+import '../models/calendar_member.dart';
 import '../providers/active_calendar_provider.dart';
 import '../services/calendar_service.dart';
+import 'share_calendar_sheet.dart';
 
 /// Calendar settings bottom sheet: rename, edit description, delete.
 ///
@@ -36,11 +38,18 @@ class _CalendarSettingsSheetState
   bool _deleting = false;
   String? _error;
 
+  // Members section state. Loaded on first build via _loadMembers; refreshed
+  // on pull-to-refresh and after a successful invite.
+  List<CalendarMember>? _members;
+  bool _loadingMembers = false;
+  String? _membersError;
+
   @override
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.calendar.name);
     _descCtrl = TextEditingController(text: widget.calendar.description ?? '');
+    _loadMembers();
   }
 
   @override
@@ -48,6 +57,45 @@ class _CalendarSettingsSheetState
     _nameCtrl.dispose();
     _descCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMembers() async {
+    setState(() {
+      _loadingMembers = true;
+      _membersError = null;
+    });
+    try {
+      final members = await getIt<CalendarService>()
+          .listCalendarMembers(widget.calendar.id);
+      if (mounted) {
+        setState(() {
+          _members = members;
+          _loadingMembers = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _membersError = 'Could not load members';
+          _loadingMembers = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openShareSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => ShareCalendarSheet(
+        calendarId: widget.calendar.id,
+        calendarName: widget.calendar.name,
+        onInvitationSent: _loadMembers,
+      ),
+    );
   }
 
   Future<void> _saveName() async {
@@ -208,22 +256,9 @@ class _CalendarSettingsSheetState
               ],
             ),
             const SizedBox(height: 20),
-            // Members section scaffold. Shows exactly the owner row; the
-            // sharing epic fills this in.
             Text('Members', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('You'),
-              subtitle: const Text('Owner'),
-              contentPadding: EdgeInsets.zero,
-            ),
-            Text(
-              'Sharing coming soon',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
+            _buildMembersSection(theme, colorScheme),
             const SizedBox(height: 24),
             if (_error != null) ...[
               Text(
@@ -260,5 +295,87 @@ class _CalendarSettingsSheetState
         ),
       ),
     );
+  }
+
+  Widget _buildMembersSection(ThemeData theme, ColorScheme colorScheme) {
+    if (_loadingMembers && _members == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_membersError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _membersError!,
+            style: TextStyle(color: colorScheme.error),
+          ),
+          TextButton(
+            onPressed: _loadMembers,
+            child: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+
+    final members = _members ?? const <CalendarMember>[];
+    return RefreshIndicator(
+      onRefresh: _loadMembers,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 220),
+        child: ListView(
+          shrinkWrap: true,
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            for (final m in members) _buildMemberTile(m, theme, colorScheme),
+            if (widget.calendar.isOwner) ...[
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _openShareSheet,
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Share Calendar'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemberTile(
+    CalendarMember m,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final title = m.isPending
+        ? (m.email ?? m.name ?? 'Pending invitation')
+        : (m.name ?? 'Member');
+    final subtitle = m.isPending
+        ? 'Pending • ${_roleLabel(m.role)}'
+        : _roleLabel(m.role);
+    final iconColor =
+        m.isPending ? colorScheme.onSurfaceVariant : colorScheme.primary;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        m.isPending ? Icons.mail_outline : Icons.person,
+        color: iconColor,
+      ),
+      title: Text(title),
+      subtitle: Text(subtitle, style: theme.textTheme.bodySmall),
+    );
+  }
+
+  String _roleLabel(String role) {
+    switch (role) {
+      case 'owner':
+        return 'Owner';
+      case 'editor':
+        return 'Editor';
+      default:
+        return role;
+    }
   }
 }

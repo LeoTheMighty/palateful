@@ -1,5 +1,6 @@
 import '../../../core/services/api_client.dart';
 import '../models/calendar.dart';
+import '../models/calendar_member.dart';
 
 /// Service for calendar CRUD — wraps ApiClient.
 class CalendarService {
@@ -42,5 +43,30 @@ class CalendarService {
 
   Future<void> deleteCalendar(String id) async {
     await _apiClient.deleteCalendar(id);
+  }
+
+  // Member management (cal-share-2)
+
+  Future<List<CalendarMember>> listCalendarMembers(String calendarId) async {
+    final response = await _apiClient.listCalendarMembers(calendarId);
+    final data = response.data as Map<String, dynamic>;
+    final items = (data['members'] as List).cast<Map<String, dynamic>>();
+    return items.map(CalendarMember.fromJson).toList();
+  }
+
+  Future<void> updateCalendarMember(
+    String calendarId,
+    String userId, {
+    required String role,
+  }) async {
+    await _apiClient.updateCalendarMember(calendarId, userId, {'role': role});
+  }
+
+  Future<void> removeCalendarMember(String calendarId, String userId) async {
+    await _apiClient.removeCalendarMember(calendarId, userId);
+  }
+
+  Future<void> leaveCalendar(String calendarId) async {
+    await _apiClient.leaveCalendar(calendarId);
   }
 }
