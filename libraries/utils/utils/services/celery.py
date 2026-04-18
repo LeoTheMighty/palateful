@@ -59,6 +59,11 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(hour=3, minute=0),  # 03:00 UTC nightly
         'options': {'queue': 'celery'},
     },
+    'cleanup-latency-samples': {
+        'task': 'cleanup_latency_samples',
+        'schedule': crontab(hour=2, minute=0),  # 02:00 UTC nightly
+        'options': {'queue': 'celery'},
+    },
 }
 celery_app.conf.timezone = 'UTC'
 
@@ -66,7 +71,27 @@ celery_app.conf.timezone = 'UTC'
 # Register observability signal handlers (obs-latency-1). Importing the
 # module connects handlers for task_prerun/task_postrun/task_failure/
 # worker_shutdown so we capture one row per Celery task lifecycle.
+# Load the unit-alias cache once per worker process (riip-1). Lazy-init
+# in `normalize_unit_display` covers the unit-test path; this hook
+# guarantees the production hot path never pays a query on first call.
+from celery.signals import worker_process_init  # noqa: E402
+
 from utils.services.observability import celery_hooks  # noqa: E402, F401
+
+
+@worker_process_init.connect
+def _load_unit_alias_cache(**_kwargs):  # pragma: no cover - integration-only
+    try:
+        from utils.services.database import Database
+        from utils.services.units import reload_unit_alias_cache
+
+        database = Database()
+        try:
+            reload_unit_alias_cache(database.db)
+        finally:
+            database.close()
+    except Exception:
+        logger.exception("Failed to load unit_alias cache on worker init")
 
 
 @setup_logging.connect

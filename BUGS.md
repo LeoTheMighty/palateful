@@ -1,4 +1,24 @@
 Bugs/Improvements:
+
+* Latency data now lands at `/admin/metrics` (endpoint + task p50/p95/p99 + sparklines). Use this as the first stop before filing a "feels slow" bug.
+
+========== OLD ==============
+
+* Latency metrics on endpoints/tasks would be good. Still don't want to use datadog, wonder what a good way to handle this is
+* Feedback from users will be crucial, I want that in the admin section, and also want notifications for it as an admin.
+* Also let's make a prod script for fetching feedbacks
+
+======= OLD ============
+
+* Remove the "add image" icon from the top, not useful.
+* Really need to get notifications going, I haven't seen a single one work yet. Do we even have firebase setup correctly?
+* After you add a recipe, should go back to the current page (like from Photo) going back to the home page is little jarring, esp if we want to add another
+* I wonder what would happen if we had two recipes in one image? Would we be smart enough to do it correctly? This feels like something HunyuanOCR could handle, we might be able to have it return separate recipes via a prompt.
+* Review Import definitely need to see the unit and quantity and notes here. After extractor changes don't see it at all, probably should be in separate dropdown/unit fields.
+* I wonder if the Import has an ability to store the images usually. Would be cool if we were able to grab a crop from the image for this, but I know that could be challenging. For web it might be easier to find and store the URL if that's accessible? But there are probably copyright issues there. Maybe we just have the end of a recipe having an easy to use "Snap Picture".
+* We want to be able to change calendars and share calendars with others and have them able to have full edit/add permissions too.
+
+========= OLD ================
 * Tapping calendar meal should bring you to the Meal page
     * Maybe some combination of meal and mealplan where you can see the recipe, or reschedule, or unschedule it
     * Hmm honestly it should be a "Day View" when you tap on it, or a specific element based on where you tap. Different levels
