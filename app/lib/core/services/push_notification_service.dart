@@ -54,6 +54,10 @@ class PushNotificationService {
         provisional: false,
       );
 
+      debugPrint(
+        'Push permission outcome: ${settings.authorizationStatus}',
+      );
+
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
         debugPrint('Push notification permission granted');
@@ -92,7 +96,12 @@ class PushNotificationService {
       final token = await _messaging.getToken();
       if (token != null) {
         _currentToken = token;
+        debugPrint(
+          'FCM token: ${token.substring(0, token.length < 12 ? token.length : 12)}…',
+        );
         await _registerTokenWithBackend(token);
+      } else {
+        debugPrint('FCM token: null (getToken returned nothing)');
       }
     } catch (e) {
       debugPrint('Failed to get FCM token: $e');

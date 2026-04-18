@@ -69,5 +69,12 @@
 	<string>Palateful uses the microphone for hands-free voice input while cooking</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Palateful uses speech recognition for hands-free voice input while cooking</string>
+	<!-- Push notifications (Firebase Cloud Messaging + APNs) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>Palateful sends notifications when your recipe imports finish and when partners update shared books or shopping lists.</string>
 </dict>
 </plist>
