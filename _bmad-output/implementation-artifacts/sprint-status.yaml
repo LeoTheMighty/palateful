@@ -589,7 +589,7 @@ development_status:
   mcv-4-flutter-meal-model-service-provider-and-router: done
   mcv-5-flutter-create-meal-multiselect-entry-and-standalone: done
   mcv-6-flutter-meal-detail-and-edit-screens: done
-  mcv-7-flutter-meal-tile-in-book-grid-fork-path: backlog
+  mcv-7-flutter-meal-tile-in-book-grid-fork-path: done
   epic-meals-create-and-view-retrospective: optional
 
   # Epic Meals — Discoverability (planned 2026-04-18, refined via party-mode)

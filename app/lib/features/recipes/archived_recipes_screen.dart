@@ -7,6 +7,8 @@ import '../../core/services/api_client.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../meals/models/meal.dart';
+import '../meals/services/meal_service.dart';
 
 class ArchivedRecipesScreen extends StatefulWidget {
   const ArchivedRecipesScreen({super.key});
@@ -17,7 +19,9 @@ class ArchivedRecipesScreen extends StatefulWidget {
 
 class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _mealService = getIt<MealService>();
   List<dynamic> _archivedRecipes = [];
+  List<MealSummary> _archivedMeals = const [];
   bool _isLoading = true;
   String? _error;
   String? _errorDetail;
@@ -45,6 +49,14 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
         .toList();
   }
 
+  List<MealSummary> get _filteredMeals {
+    final query = _searchController.text.toLowerCase().trim();
+    if (query.isEmpty) return _archivedMeals;
+    return _archivedMeals
+        .where((m) => m.name.toLowerCase().contains(query))
+        .toList();
+  }
+
   Future<void> _loadArchivedRecipes() async {
     setState(() {
       _isLoading = true;
@@ -52,10 +64,21 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
     });
 
     try {
-      final response = await _apiClient.getArchivedRecipes();
+      final results = await Future.wait([
+        _apiClient.getArchivedRecipes(),
+        _mealService
+            .listMeals(includeArchived: true, limit: 100)
+            .then<List<MealSummary>?>((v) => v)
+            .catchError((_) => null),
+      ]);
+      final response = results[0] as dynamic;
+      final meals = results[1] as List<MealSummary>?;
       if (mounted) {
         setState(() {
           _archivedRecipes = response.data['items'] ?? [];
+          _archivedMeals = (meals ?? const [])
+              .where((m) => m.isArchived)
+              .toList();
           _isLoading = false;
         });
       }
@@ -67,6 +90,34 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _restoreMeal(MealSummary meal) async {
+    if (_restoringIds.contains(meal.id)) return;
+    _restoringIds.add(meal.id);
+    try {
+      HapticFeedback.selectionClick();
+      await _mealService.restoreMeal(meal.id);
+      if (mounted) {
+        setState(() {
+          _archivedMeals =
+              _archivedMeals.where((m) => m.id != meal.id).toList();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Meal restored')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not restore meal. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      _restoringIds.remove(meal.id);
     }
   }
 
@@ -110,9 +161,6 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Archived Recipes'),
@@ -140,11 +188,12 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                     ),
                   ),
                 )
-              : _archivedRecipes.isEmpty
+              : (_archivedRecipes.isEmpty && _archivedMeals.isEmpty)
                   ? EmptyStateWidget(
                       icon: Icons.archive_outlined,
-                      title: 'No archived recipes',
-                      subtitle: 'Recipes you archive will appear here',
+                      title: 'No archived items',
+                      subtitle:
+                          'Recipes and meals you archive will appear here',
                     )
                   : RefreshIndicator(
                       onRefresh: _loadArchivedRecipes,
@@ -155,14 +204,15 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                             child: TextField(
                               controller: _searchController,
                               decoration: const InputDecoration(
-                                hintText: 'Search archived recipes...',
+                                hintText: 'Search archived...',
                                 prefixIcon: Icon(Icons.search),
                                 border: OutlineInputBorder(),
                               ),
                             ),
                           ),
                           Expanded(
-                            child: _filteredRecipes.isEmpty &&
+                            child: (_filteredRecipes.isEmpty &&
+                                        _filteredMeals.isEmpty) &&
                                     _searchController.text.trim().isNotEmpty
                                 ? LayoutBuilder(
                                     builder: (context, constraints) =>
@@ -175,108 +225,216 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                                           icon: Icons.search_off,
                                           title: 'No results',
                                           subtitle:
-                                              'No archived recipes match your search',
+                                              'No archived items match your search',
                                         ),
                                       ),
                                     ),
                                   )
-                                : ListView.builder(
+                                : ListView(
                                     padding: const EdgeInsets.fromLTRB(
                                         16, 0, 16, 16),
-                                    itemCount: _filteredRecipes.length,
-                                    itemBuilder: (context, index) {
-                                      final recipe = _filteredRecipes[index];
-                          final imageUrl = recipe['image_url'] as String?;
-                          final name = recipe['name'] ?? 'Untitled';
-                          final archivedDate = _formatArchivedDate(
-                              recipe['archived_at']?.toString());
-
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            clipBehavior: Clip.antiAlias,
-                            child: Padding(
-                              padding: EdgeInsets.zero,
-                              child: Row(
-                                children: [
-                                  // Image
-                                  SizedBox(
-                                    width: 80,
-                                    height: 80,
-                                    child: imageUrl != null
-                                        ? CachedNetworkImage(
-                                            imageUrl: imageUrl,
-                                            fit: BoxFit.cover,
-                                            placeholder: (context, url) =>
-                                                const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                            errorWidget: (context, url, error) =>
-                                                Container(
-                                              color: colorScheme
-                                                  .surfaceContainerHighest,
-                                              child: Icon(Icons.restaurant,
-                                                  color: colorScheme
-                                                      .onSurfaceVariant),
-                                            ),
-                                          )
-                                        : Container(
-                                            color: colorScheme
-                                                .surfaceContainerHighest,
-                                            child: Icon(Icons.restaurant,
-                                                color: colorScheme
-                                                    .onSurfaceVariant),
-                                          ),
-                                  ),
-                                  // Info
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 8),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            name,
-                                            style: textTheme.titleSmall
-                                                ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          if (archivedDate.isNotEmpty) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              archivedDate,
-                                              style: textTheme.bodySmall
-                                                  ?.copyWith(
-                                                color: colorScheme
-                                                    .onSurfaceVariant,
-                                              ),
-                                            ),
-                                          ],
-                                        ],
+                                    children: [
+                                      ..._filteredRecipes.map(
+                                        (recipe) => _ArchivedRecipeRow(
+                                          recipe: recipe,
+                                          onRestore: () =>
+                                              _restoreRecipe(recipe),
+                                          archivedDateFormatter:
+                                              _formatArchivedDate,
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                  // Restore button
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: TextButton.icon(
-                                      onPressed: () => _restoreRecipe(recipe),
-                                      icon: const Icon(Icons.restore, size: 18),
-                                      label: const Text('Restore'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                                    },
+                                      ..._filteredMeals.map(
+                                        (meal) => _ArchivedMealRow(
+                                          meal: meal,
+                                          onRestore: () => _restoreMeal(meal),
+                                          archivedDateFormatter:
+                                              _formatArchivedDate,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                           ),
                         ],
                       ),
                     ),
+    );
+  }
+}
+
+class _ArchivedRecipeRow extends StatelessWidget {
+  final dynamic recipe;
+  final VoidCallback onRestore;
+  final String Function(String?) archivedDateFormatter;
+
+  const _ArchivedRecipeRow({
+    required this.recipe,
+    required this.onRestore,
+    required this.archivedDateFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final imageUrl = recipe['image_url'] as String?;
+    final name = recipe['name'] ?? 'Untitled';
+    final archivedDate =
+        archivedDateFormatter(recipe['archived_at']?.toString());
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: imageUrl != null
+                ? CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (c, u) => const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    errorWidget: (c, u, e) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(Icons.restaurant,
+                          color: colorScheme.onSurfaceVariant),
+                    ),
+                  )
+                : Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Icon(Icons.restaurant,
+                        color: colorScheme.onSurfaceVariant),
+                  ),
+          ),
+          Expanded(
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (archivedDate.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      archivedDate,
+                      style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: onRestore,
+              icon: const Icon(Icons.restore, size: 18),
+              label: const Text('Restore'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArchivedMealRow extends StatelessWidget {
+  final MealSummary meal;
+  final VoidCallback onRestore;
+  final String Function(String?) archivedDateFormatter;
+
+  const _ArchivedMealRow({
+    required this.meal,
+    required this.onRestore,
+    required this.archivedDateFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final firstImage = meal.componentImageUrls.isNotEmpty
+        ? meal.componentImageUrls.first
+        : null;
+    final archivedDate =
+        archivedDateFormatter(meal.archivedAt?.toIso8601String());
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            height: 80,
+            child: firstImage != null
+                ? CachedNetworkImage(
+                    imageUrl: firstImage,
+                    fit: BoxFit.cover,
+                    errorWidget: (c, u, e) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(Icons.set_meal_outlined,
+                          color: colorScheme.onSurfaceVariant),
+                    ),
+                  )
+                : Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Icon(Icons.set_meal_outlined,
+                        color: colorScheme.onSurfaceVariant),
+                  ),
+          ),
+          Expanded(
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    meal.name,
+                    style: textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Meal · ${meal.componentCount} recipes',
+                    style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant),
+                  ),
+                  if (archivedDate.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      archivedDate,
+                      style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: onRestore,
+              icon: const Icon(Icons.restore, size: 18),
+              label: const Text('Restore'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

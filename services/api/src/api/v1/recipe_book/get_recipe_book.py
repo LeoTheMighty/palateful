@@ -73,7 +73,8 @@ class GetRecipeBook(Endpoint):
                 cook_time=recipe.cook_time,
                 servings=recipe.servings,
                 image_url=recipe.image_url,
-                created_at=recipe.created_at
+                created_at=recipe.created_at,
+                updated_at=recipe.updated_at,
             )
             for recipe in recipes
         ]
@@ -122,6 +123,7 @@ class GetRecipeBook(Endpoint):
         servings: int | None = None
         image_url: str | None = None
         created_at: datetime
+        updated_at: datetime
 
     class MemberItem(BaseModel):
         user_id: str
