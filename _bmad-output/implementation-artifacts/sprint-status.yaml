@@ -525,7 +525,7 @@ development_status:
   ach-2-gradle-cache-and-pre-build-analyze-test-gate: done
   ach-3-crashlytics-native-symbol-upload-in-fastlane: done
   ach-4-firebase-test-lab-soft-smoke-step: done
-  ach-5-promote-android-workflow-and-fastlane-promote-lane: backlog
+  ach-5-promote-android-workflow-and-fastlane-promote-lane: done
   ach-6-ci-yml-flutter-test-version-pin: backlog
   epic-android-ci-hardening-retrospective: optional
 

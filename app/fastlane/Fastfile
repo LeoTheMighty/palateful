@@ -97,4 +97,26 @@ platform :android do
       File.delete(keystore_path) if File.exist?(keystore_path)
     end
   end
+
+  desc "Promote an already-uploaded AAB between Play Store tracks without rebuilding"
+  lane :promote do |options|
+    source = options[:source] || "internal"
+    target = options[:target] || "production"
+
+    # Play Console's edit API moves the latest AAB on `track` to
+    # `track_promote_to`. All skip_upload_* flags on — we are NOT
+    # uploading a new artifact; the AAB already sits on the source
+    # track. Same service-account JSON as the internal lane.
+    upload_to_play_store(
+      track: source,
+      track_promote_to: target,
+      skip_upload_aab: true,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true,
+      json_key_data: ENV["PLAY_STORE_JSON_KEY"]
+    )
+  end
 end

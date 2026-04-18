@@ -1,0 +1,68 @@
+# Promote Android — manual track promotion
+#
+# Moves an already-uploaded AAB between Play Store tracks WITHOUT
+# rebuilding. Uses the Play Console edit API via Fastlane's
+# upload_to_play_store(track_promote_to: …) with all skip_upload_*
+# flags set — the AAB already exists on the source track, we just
+# flip its track assignment.
+#
+# Inputs:
+#   source_track  — where the AAB is today (internal | closed | production)
+#   target_track  — where the AAB is going (closed | production)
+#
+# Gated by `environment: production` — GitHub prompts for reviewer
+# approval before running. Approver list is managed in repo settings,
+# same convention as ci.yml's deploy-* jobs.
+#
+# Required GitHub Secret:
+#   PLAY_STORE_JSON_KEY  — Google Play service account JSON key. Same
+#                          secret mobile-builds.yml uses for the
+#                          initial internal upload.
+
+name: Promote Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_track:
+        description: Current track for the AAB
+        required: true
+        default: internal
+        type: choice
+        options:
+          - internal
+          - closed
+          - production
+      target_track:
+        description: Track to promote the AAB to
+        required: true
+        default: closed
+        type: choice
+        options:
+          - closed
+          - production
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.source_track }} → ${{ inputs.target_track }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby and Bundler
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: app
+
+      - name: Promote AAB via Fastlane
+        working-directory: app
+        run: bundle exec fastlane android promote source:${{ inputs.source_track }} target:${{ inputs.target_track }}
+        env:
+          PLAY_STORE_JSON_KEY: ${{ secrets.PLAY_STORE_JSON_KEY }}
+
+      - name: Summary
+        run: |
+          echo "::notice title=Play Store Track Promotion::AAB promoted from ${{ inputs.source_track }} to ${{ inputs.target_track }}. Verify in Play Console."
