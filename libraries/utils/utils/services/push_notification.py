@@ -1,12 +1,23 @@
 """Firebase Cloud Messaging push notification service.
 
-FCM works for both iOS and Android. It's free for unlimited notifications.
+Two-mode service: when FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_PATH
+is set, pushes are delivered via Firebase Cloud Messaging; otherwise the
+service runs in log-only mode, emitting what it would have sent so local
+dev and tests never require real Firebase credentials.
+
+Every send attempt logs its outcome (success, failure with FCM response,
+quiet-hours suppression, invalid token cleanup) so a missing push is
+always distinguishable from a silent drop. Send failures also persist an
+`error_logs` row with `service="push_notifications"` for queryable
+troubleshooting.
 
 Setup:
 1. Create Firebase project at console.firebase.google.com
 2. Download service account JSON from Project Settings > Service Accounts
-3. Set FIREBASE_CREDENTIALS_JSON env var to the JSON content (or path)
-4. For iOS: Upload APNs key to Firebase > Project Settings > Cloud Messaging
+3. Set FIREBASE_CREDENTIALS_JSON env var to the JSON content (or
+   FIREBASE_CREDENTIALS_PATH to a file path)
+4. For iOS: upload APNs .p8 key to Firebase > Project Settings > Cloud
+   Messaging. See docs/PUSH_NOTIFICATIONS.md for the full procedure.
 """
 
 import json
@@ -57,6 +68,15 @@ class NotificationType(str, Enum):
     MEMBER_JOINED = "member_joined"
     SYSTEM = "system"
 
+    # Diagnostic — always bypasses per-user prefs; bypasses quiet hours
+    # only when send_to_user is called with force=True.
+    TEST = "test"
+
+
+# Diagnostic types that always ignore per-user notification_preferences.
+# (Admin test-push should fire regardless of the target user's prefs.)
+_DIAGNOSTIC_TYPES = frozenset({NotificationType.TEST})
+
 
 @dataclass
 class PushNotification:
@@ -78,6 +98,13 @@ class PushNotification:
 class PushNotificationService:
     """Service for sending push notifications via Firebase Cloud Messaging.
 
+    Runs in one of two modes depending on env:
+    - **Delivery mode** — FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_PATH
+      is set and valid. Pushes go to FCM.
+    - **Log-only mode** — neither env var is set (or credentials are malformed).
+      Sends log the payload shape and return `{log_only: True, message_id: "log-only"}`
+      without touching the FCM SDK. Local dev default.
+
     Usage:
         service = PushNotificationService()
         service.send_to_user(user, PushNotification(
@@ -88,177 +115,282 @@ class PushNotificationService:
         ))
     """
 
-    _initialized = False
+    _initialized: bool = False
     _app: firebase_admin.App | None = None
+    _log_only: bool = False
 
     def __init__(self):
-        """Initialize Firebase Admin SDK if not already initialized."""
+        """Initialize Firebase Admin SDK (or log-only mode) if not already initialized."""
         if not PushNotificationService._initialized:
             self._initialize_firebase()
 
     def _initialize_firebase(self) -> None:
-        """Initialize Firebase Admin SDK from environment."""
-        try:
-            # Check for existing initialization
-            if firebase_admin._apps:
-                PushNotificationService._app = firebase_admin.get_app()
-                PushNotificationService._initialized = True
-                return
-
-            # Get credentials from environment
-            creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-            creds_path = os.environ.get("FIREBASE_CREDENTIALS_PATH")
-
-            if creds_json:
-                # JSON string in env var
-                creds_dict = json.loads(creds_json)
-                cred = credentials.Certificate(creds_dict)
-            elif creds_path:
-                # Path to JSON file
-                cred = credentials.Certificate(creds_path)
-            else:
-                logger.warning(
-                    "Firebase credentials not configured. "
-                    "Set FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_PATH"
-                )
-                return
-
-            PushNotificationService._app = firebase_admin.initialize_app(cred)
+        """Initialize Firebase Admin SDK from environment, or fall back to log-only."""
+        # If Firebase was already initialized elsewhere (e.g. by another
+        # service in the same process), reuse it.
+        if firebase_admin._apps:
+            PushNotificationService._app = firebase_admin.get_app()
             PushNotificationService._initialized = True
-            logger.info("Firebase Admin SDK initialized successfully")
+            PushNotificationService._log_only = False
+            return
 
-        except Exception as e:
-            logger.error("Failed to initialize Firebase: %s", e)
+        creds_json = os.environ.get("FIREBASE_CREDENTIALS_JSON")
+        creds_path = os.environ.get("FIREBASE_CREDENTIALS_PATH")
+
+        if not creds_json and not creds_path:
+            logger.info(
+                "push_notifications: running in log-only mode "
+                "(no FIREBASE_CREDENTIALS_JSON / FIREBASE_CREDENTIALS_PATH); "
+                "no pushes will be delivered"
+            )
+            PushNotificationService._log_only = True
+            PushNotificationService._initialized = True
+            return
+
+        try:
+            if creds_json:
+                cred = credentials.Certificate(json.loads(creds_json))
+            else:
+                cred = credentials.Certificate(creds_path)
+            PushNotificationService._app = firebase_admin.initialize_app(cred)
+            PushNotificationService._log_only = False
+            PushNotificationService._initialized = True
+            logger.info("push_notifications: Firebase Admin SDK initialized")
+        except Exception as e:  # noqa: BLE001 — never raise from init
+            logger.error(
+                "push_notifications: credentials present but init failed (%s); "
+                "falling back to log-only mode",
+                e,
+            )
+            PushNotificationService._log_only = True
+            PushNotificationService._initialized = True
+
+    @property
+    def log_only(self) -> bool:
+        """True when no Firebase creds are configured — sends are logged, not delivered."""
+        return PushNotificationService._log_only
 
     @property
     def is_available(self) -> bool:
-        """Check if Firebase is properly initialized."""
+        """True when Firebase is configured and pushes will actually be delivered."""
         return PushNotificationService._initialized and PushNotificationService._app is not None
+
+    # ------------------------------------------------------------------
+    # Send APIs
+    # ------------------------------------------------------------------
 
     def send_to_token(
         self,
         token: str,
         notification: PushNotification,
-    ) -> str | None:
+    ) -> dict[str, Any]:
         """Send a push notification to a specific device token.
 
-        Args:
-            token: FCM device token
-            notification: The notification to send
-
-        Returns:
-            FCM message ID if successful, None otherwise
+        Returns a dict with `message_id` (FCM id on success, "log-only"
+        in log-only mode, None on failure), `log_only` flag, and `error`
+        key on failure. Never raises.
         """
-        if not self.is_available:
-            logger.warning("Firebase not available, skipping push notification")
-            return None
+        type_value = notification.notification_type.value
+
+        if self.log_only:
+            logger.info(
+                "push_notifications: [log-only] would send type=%s title=%r body=%r",
+                type_value, notification.title, notification.body,
+            )
+            return {
+                "message_id": "log-only",
+                "log_only": True,
+                "target": token[:20],
+            }
 
         try:
             message = self._build_message(token, notification)
-            response = messaging.send(message)
-            logger.info("Successfully sent push notification: %s", response)
-            return response
-
+            message_id = messaging.send(message)
+            logger.info(
+                "push_notifications: sent type=%s message_id=%s",
+                type_value, message_id,
+            )
+            return {"message_id": message_id, "log_only": False}
         except messaging.UnregisteredError:
-            logger.warning("Token is no longer valid: %s", token[:20])
-            return None
-
-        except Exception as e:
-            logger.error("Failed to send push notification: %s", e)
-            return None
+            logger.warning(
+                "push_notifications: token invalid type=%s token=%s…",
+                type_value, token[:20],
+            )
+            return {
+                "message_id": None,
+                "log_only": False,
+                "error": "unregistered",
+            }
+        except Exception as e:  # noqa: BLE001 — never raise out
+            logger.error(
+                "push_notifications: send failed type=%s err=%s: %s",
+                type_value, type(e).__name__, e,
+            )
+            self._log_send_failure(
+                error_type=type(e).__name__,
+                detail=str(e),
+                notification_type=type_value,
+                target=token[:20],
+            )
+            return {
+                "message_id": None,
+                "log_only": False,
+                "error": str(e),
+            }
 
     def send_to_tokens(
         self,
         tokens: list[str],
         notification: PushNotification,
     ) -> dict[str, Any]:
-        """Send a push notification to multiple device tokens.
-
-        Args:
-            tokens: List of FCM device tokens
-            notification: The notification to send
-
-        Returns:
-            Dict with success_count, failure_count, and invalid_tokens
-        """
-        if not self.is_available:
-            logger.warning("Firebase not available, skipping push notifications")
-            return {"success_count": 0, "failure_count": len(tokens), "invalid_tokens": []}
+        """Send a push notification to multiple device tokens."""
+        type_value = notification.notification_type.value
 
         if not tokens:
-            return {"success_count": 0, "failure_count": 0, "invalid_tokens": []}
+            return {"success_count": 0, "failure_count": 0, "invalid_tokens": [], "message_id": None}
+
+        if self.log_only:
+            logger.info(
+                "push_notifications: [log-only] would multicast type=%s title=%r body=%r tokens=%d",
+                type_value, notification.title, notification.body, len(tokens),
+            )
+            return {
+                "success_count": len(tokens),
+                "failure_count": 0,
+                "invalid_tokens": [],
+                "message_id": "log-only",
+                "log_only": True,
+            }
 
         try:
             message = self._build_multicast_message(tokens, notification)
             response = messaging.send_each_for_multicast(message)
 
-            # Track invalid tokens for cleanup
             invalid_tokens = []
+            first_message_id = None
             for idx, send_response in enumerate(response.responses):
-                if not send_response.success and isinstance(send_response.exception, messaging.UnregisteredError):
+                if send_response.success:
+                    if first_message_id is None:
+                        first_message_id = send_response.message_id
+                elif isinstance(send_response.exception, messaging.UnregisteredError):
                     invalid_tokens.append(tokens[idx])
 
             logger.info(
-                "Sent %d/%d push notifications, %d invalid tokens",
-                response.success_count,
-                len(tokens),
-                len(invalid_tokens),
+                "push_notifications: multicast type=%s success=%d failure=%d invalid=%d",
+                type_value, response.success_count, response.failure_count, len(invalid_tokens),
             )
+
+            if response.failure_count and not invalid_tokens:
+                # At least one send failed for a non-unregistered reason —
+                # record an ops row so this is queryable.
+                self._log_send_failure(
+                    error_type="MulticastPartialFailure",
+                    detail=(
+                        f"success={response.success_count} failure={response.failure_count}"
+                    ),
+                    notification_type=type_value,
+                    target=f"{len(tokens)} tokens",
+                )
 
             return {
                 "success_count": response.success_count,
                 "failure_count": response.failure_count,
                 "invalid_tokens": invalid_tokens,
+                "message_id": first_message_id,
+                "log_only": False,
             }
-
-        except Exception as e:
-            logger.error("Failed to send multicast push notification: %s", e)
-            return {"success_count": 0, "failure_count": len(tokens), "invalid_tokens": []}
+        except Exception as e:  # noqa: BLE001 — never raise out
+            logger.error(
+                "push_notifications: multicast failed type=%s err=%s: %s",
+                type_value, type(e).__name__, e,
+            )
+            self._log_send_failure(
+                error_type=type(e).__name__,
+                detail=str(e),
+                notification_type=type_value,
+                target=f"{len(tokens)} tokens",
+            )
+            return {
+                "success_count": 0,
+                "failure_count": len(tokens),
+                "invalid_tokens": [],
+                "message_id": None,
+                "log_only": False,
+                "error": str(e),
+            }
 
     def send_to_user(
         self,
         user: Any,  # User model
         notification: PushNotification,
         db_session: Any = None,
+        force: bool = False,
     ) -> dict[str, Any]:
         """Send a push notification to all of a user's devices.
 
-        Args:
-            user: User model with push_tokens field
-            notification: The notification to send
-            db_session: Optional database session for cleaning up invalid tokens
-
-        Returns:
-            Dict with success_count, failure_count, and cleaned_tokens
+        `force=True` bypasses BOTH per-user `push_enabled` preference AND
+        quiet hours. Used by the admin test-push endpoint and for system-
+        critical notifications. `NotificationType.TEST` additionally
+        always bypasses per-user preferences regardless of `force`.
         """
+        type_value = notification.notification_type.value
+        is_diagnostic = notification.notification_type in _DIAGNOSTIC_TYPES
+
+        prefs = user.notification_preferences or {}
+        push_enabled = prefs.get("push_enabled", True)
+        in_quiet = self._is_quiet_hours(prefs)
+
+        base_result = {
+            "success_count": 0,
+            "failure_count": 0,
+            "cleaned_tokens": 0,
+            "log_only": self.log_only,
+            "quiet_hours_active": in_quiet,
+            "suppressed_by_prefs": False,
+            "suppressed_by_quiet_hours": False,
+            "message_id": None,
+        }
+
+        # Per-user preferences — diagnostic types always bypass.
+        if not push_enabled and not force and not is_diagnostic:
+            logger.info(
+                "push_notifications: suppressed (user prefs disabled) user=%s type=%s",
+                user.id, type_value,
+            )
+            return {**base_result, "suppressed_by_prefs": True}
+
+        # Quiet hours — `force=True` bypasses.
+        if in_quiet and not force:
+            logger.info(
+                "push_notifications: suppressed (quiet hours) user=%s type=%s window=%s-%s",
+                user.id, type_value,
+                prefs.get("quiet_hours_start"), prefs.get("quiet_hours_end"),
+            )
+            return {**base_result, "suppressed_by_quiet_hours": True}
+
         tokens = user.push_tokens or []
         if not tokens:
-            return {"success_count": 0, "failure_count": 0, "cleaned_tokens": 0}
-
-        # Check user notification preferences
-        prefs = user.notification_preferences or {}
-        if not prefs.get("push_enabled", True):
-            logger.debug("User %s has push notifications disabled", user.id)
-            return {"success_count": 0, "failure_count": 0, "cleaned_tokens": 0}
-
-        # Check quiet hours
-        if self._is_quiet_hours(prefs):
-            logger.debug("User %s is in quiet hours", user.id)
-            return {"success_count": 0, "failure_count": 0, "cleaned_tokens": 0}
+            logger.info(
+                "push_notifications: no tokens registered user=%s type=%s",
+                user.id, type_value,
+            )
+            return base_result
 
         result = self.send_to_tokens(tokens, notification)
 
-        # Clean up invalid tokens
         cleaned_tokens = 0
-        if result["invalid_tokens"] and db_session:
+        if result.get("invalid_tokens") and db_session is not None:
             cleaned_tokens = self._cleanup_invalid_tokens(
                 user, result["invalid_tokens"], db_session
             )
 
         return {
-            "success_count": result["success_count"],
-            "failure_count": result["failure_count"],
+            **base_result,
+            "success_count": result.get("success_count", 0),
+            "failure_count": result.get("failure_count", 0),
             "cleaned_tokens": cleaned_tokens,
+            "message_id": result.get("message_id"),
+            "log_only": result.get("log_only", self.log_only),
         }
 
     def send_to_users(
@@ -266,23 +398,15 @@ class PushNotificationService:
         users: list[Any],  # List of User models
         notification: PushNotification,
         db_session: Any = None,
+        force: bool = False,
     ) -> dict[str, Any]:
-        """Send a push notification to multiple users.
-
-        Args:
-            users: List of User models
-            notification: The notification to send
-            db_session: Optional database session for cleaning up invalid tokens
-
-        Returns:
-            Dict with total counts
-        """
+        """Send a push notification to multiple users."""
         total_success = 0
         total_failure = 0
         total_cleaned = 0
 
         for user in users:
-            result = self.send_to_user(user, notification, db_session)
+            result = self.send_to_user(user, notification, db_session, force=force)
             total_success += result["success_count"]
             total_failure += result["failure_count"]
             total_cleaned += result["cleaned_tokens"]
@@ -292,14 +416,18 @@ class PushNotificationService:
             "failure_count": total_failure,
             "cleaned_tokens": total_cleaned,
             "users_notified": len(users),
+            "log_only": self.log_only,
         }
+
+    # ------------------------------------------------------------------
+    # Message builders (unchanged from prior impl)
+    # ------------------------------------------------------------------
 
     def _build_message(
         self,
         token: str,
         notification: PushNotification,
     ) -> messaging.Message:
-        """Build a Firebase message for a single token."""
         return messaging.Message(
             token=token,
             notification=messaging.Notification(
@@ -317,7 +445,6 @@ class PushNotificationService:
         tokens: list[str],
         notification: PushNotification,
     ) -> messaging.MulticastMessage:
-        """Build a Firebase multicast message."""
         return messaging.MulticastMessage(
             tokens=tokens,
             notification=messaging.Notification(
@@ -345,7 +472,6 @@ class PushNotificationService:
         self,
         notification: PushNotification,
     ) -> messaging.AndroidConfig:
-        """Build Android-specific notification config."""
         return messaging.AndroidConfig(
             priority=notification.priority,
             notification=messaging.AndroidNotification(
@@ -360,7 +486,6 @@ class PushNotificationService:
         self,
         notification: PushNotification,
     ) -> messaging.APNSConfig:
-        """Build iOS-specific notification config."""
         return messaging.APNSConfig(
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
@@ -371,6 +496,10 @@ class PushNotificationService:
             ),
         )
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
     def _is_quiet_hours(self, prefs: dict) -> bool:
         """Check if current time is within user's quiet hours."""
         quiet_start = prefs.get("quiet_hours_start")
@@ -380,7 +509,6 @@ class PushNotificationService:
             return False
 
         try:
-            # Parse times (format: "22:00")
             now = datetime.now()
             start_hour, start_min = map(int, quiet_start.split(":"))
             end_hour, end_min = map(int, quiet_end.split(":"))
@@ -389,12 +517,10 @@ class PushNotificationService:
             start_minutes = start_hour * 60 + start_min
             end_minutes = end_hour * 60 + end_min
 
-            # Handle overnight quiet hours (e.g., 22:00 - 08:00)
+            # Handle overnight windows (e.g., 22:00 - 08:00)
             if start_minutes > end_minutes:
                 return current_minutes >= start_minutes or current_minutes < end_minutes
-            else:
-                return start_minutes <= current_minutes < end_minutes
-
+            return start_minutes <= current_minutes < end_minutes
         except (ValueError, AttributeError):
             return False
 
@@ -404,7 +530,7 @@ class PushNotificationService:
         invalid_tokens: list[str],
         db_session: Any,
     ) -> int:
-        """Remove invalid tokens from user's push_tokens."""
+        """Remove invalid tokens from user's push_tokens and log the cleanup."""
         if not invalid_tokens or not user.push_tokens:
             return 0
 
@@ -414,8 +540,50 @@ class PushNotificationService:
 
         cleaned = original_count - len(user.push_tokens)
         if cleaned:
-            logger.info("Cleaned %d invalid tokens for user %s", cleaned, user.id)
+            logger.info(
+                "push_notifications: cleaned %d invalid tokens user=%s reason=unregistered",
+                cleaned, user.id,
+            )
         return cleaned
+
+    def _log_send_failure(
+        self,
+        error_type: str,
+        detail: str,
+        notification_type: str,
+        target: str,
+    ) -> None:
+        """Persist a send-failure row to error_logs (service="push_notifications").
+
+        Uses its own DB session so it never interferes with the caller's
+        transaction. Failures here are swallowed — logging is best-effort.
+        """
+        try:
+            # Local imports so this module stays import-safe in environments
+            # without a configured DB (tests, schema checks, etc).
+            from utils.models.error_log import ErrorLog
+            from utils.services.database import Database
+        except Exception:
+            logger.exception("push_notifications: error_logs module unavailable")
+            return
+
+        try:
+            database = Database()
+            try:
+                message = (
+                    f"push send failed type={notification_type} target={target} "
+                    f"error={error_type}: {detail[:500]}"
+                )
+                error_log = ErrorLog(
+                    error_type="PushSendFailure",
+                    error_message=message,
+                    service="push_notifications",
+                )
+                database.create(error_log)
+            finally:
+                database.close()
+        except Exception:
+            logger.exception("push_notifications: failed to write error_log row")
 
 
 # Singleton instance

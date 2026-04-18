@@ -79,6 +79,10 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/palateful
       # REDIS_URL: redis://redis:6379/0  # uncomment when redis service is re-enabled
+      # Push notifications — empty by default triggers log-only mode.
+      # Set either in .env or via shell env to deliver real pushes locally.
+      FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON:-}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
     depends_on:
       db:
         condition: service_healthy
@@ -123,6 +127,9 @@ services:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      # Push notifications — empty by default triggers log-only mode.
+      FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON:-}
+      FIREBASE_CREDENTIALS_PATH: ${FIREBASE_CREDENTIALS_PATH:-}
     depends_on:
       db:
         condition: service_healthy
