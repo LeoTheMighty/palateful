@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../router/app_router.dart';
 import 'api_client.dart';
@@ -21,7 +22,8 @@ class PushNotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   String? _currentToken;
-  bool _initialized = false;
+  bool _listenersAttached = false;
+  bool _initialMessageHandled = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
   PushNotificationService(this._apiClient);
@@ -37,56 +39,90 @@ class PushNotificationService {
     _navigatorKey = key;
   }
 
-  /// Initialize Firebase and set up push notifications.
-  Future<void> initialize() async {
-    if (_initialized || !isAvailable) return;
+  /// Read the OS-level authorization status without prompting the user.
+  Future<AuthorizationStatus> getPermissionStatus() async {
+    if (!isAvailable) return AuthorizationStatus.notDetermined;
+    final settings = await _messaging.getNotificationSettings();
+    return settings.authorizationStatus;
+  }
+
+  /// Initialize Firebase handlers and register the FCM token with the backend.
+  ///
+  /// Safe to call repeatedly — on app launch, on foreground resume, and when the
+  /// user toggles the push preference on. Behaviour:
+  ///   - Wires OS-level listeners exactly once.
+  ///   - Prompts the OS if permission has not yet been determined (iOS will not
+  ///     re-prompt if the user previously denied).
+  ///   - Fetches a fresh FCM token and POSTs it to the backend when granted.
+  ///
+  /// Returns the resulting OS authorization status so callers can branch on it
+  /// (e.g. deep-link to Settings when `denied`).
+  Future<AuthorizationStatus> ensureRegistered() async {
+    if (!isAvailable) return AuthorizationStatus.notDetermined;
 
     try {
-      // Set up background handler
-      FirebaseMessaging.onBackgroundMessage(
-          _firebaseMessagingBackgroundHandler);
+      if (!_listenersAttached) {
+        FirebaseMessaging.onBackgroundMessage(
+            _firebaseMessagingBackgroundHandler);
+        _messaging.onTokenRefresh.listen(_onTokenRefresh);
+        FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+        FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
+        _listenersAttached = true;
+      }
 
-      // Request permission (required for iOS, optional for Android 13+)
-      final settings = await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
+      var settings = await _messaging.getNotificationSettings();
+      if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        settings = await _messaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
+      }
 
       debugPrint(
-        'Push permission outcome: ${settings.authorizationStatus}',
+        'Push permission: ${settings.authorizationStatus}',
       );
 
-      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
-          settings.authorizationStatus == AuthorizationStatus.provisional) {
-        debugPrint('Push notification permission granted');
+      final granted =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+              settings.authorizationStatus == AuthorizationStatus.provisional;
 
-        // Get and register token
+      if (granted) {
         await _getAndRegisterToken();
 
-        // Listen for token refresh
-        _messaging.onTokenRefresh.listen(_onTokenRefresh);
-
-        // Handle foreground messages
-        FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-
-        // Handle notification taps when app is in background
-        FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
-
-        // Check if app was opened from a notification (cold start)
-        final initialMessage = await _messaging.getInitialMessage();
-        if (initialMessage != null) {
-          _navigateToRoute(initialMessage, usePush: false);
+        if (!_initialMessageHandled) {
+          final initialMessage = await _messaging.getInitialMessage();
+          if (initialMessage != null) {
+            _navigateToRoute(initialMessage, usePush: false);
+          }
+          _initialMessageHandled = true;
         }
-
-        _initialized = true;
-        debugPrint('Push notification service initialized');
-      } else {
-        debugPrint('Push notification permission denied');
       }
+
+      return settings.authorizationStatus;
     } catch (e) {
-      debugPrint('Failed to initialize push notifications: $e');
+      debugPrint('ensureRegistered failed: $e');
+      return AuthorizationStatus.notDetermined;
+    }
+  }
+
+  /// Legacy alias retained for existing call sites.
+  Future<void> initialize() => ensureRegistered();
+
+  /// Open this app's page in the OS Settings so the user can grant/revoke
+  /// notification permission. iOS-only today; Android would need a dedicated
+  /// package (e.g. `permission_handler`) for a reliable deep link.
+  Future<bool> openOsSettings() async {
+    if (!isAvailable) return false;
+    try {
+      if (Platform.isIOS) {
+        return await launchUrl(Uri.parse('app-settings:'));
+      }
+      return false;
+    } catch (e) {
+      debugPrint('openOsSettings failed: $e');
+      return false;
     }
   }
 

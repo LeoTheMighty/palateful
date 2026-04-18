@@ -60,7 +60,19 @@ class TestRequireAdmin:
 class TestGetStats:
     def test_returns_aggregate_counts(self, client, mock_user, mock_db):
         mock_user.is_admin = True
-        mock_db.db.execute.return_value = MockExecuteResult([7])
+        # Queries in order: total_users, total_recipes, total_recipe_books,
+        # errors_24h, active_users_7d, unread_feedback, overall_p95_ms,
+        # slowest_endpoint.
+        mock_db.db.execute.side_effect = [
+            MockExecuteResult([7]),
+            MockExecuteResult([7]),
+            MockExecuteResult([7]),
+            MockExecuteResult([7]),
+            MockExecuteResult([7]),
+            MockExecuteResult([7]),
+            MockExecuteResult([None]),  # overall_p95_ms null on cold start
+            MockExecuteResult([]),      # slowest_endpoint null on cold start
+        ]
         response = client.get("/v1/admin/stats")
         assert response.status_code == 200
         data = response.json()

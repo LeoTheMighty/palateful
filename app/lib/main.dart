@@ -167,7 +167,8 @@ class PalatefulApp extends ConsumerStatefulWidget {
   ConsumerState<PalatefulApp> createState() => _PalatefulAppState();
 }
 
-class _PalatefulAppState extends ConsumerState<PalatefulApp> {
+class _PalatefulAppState extends ConsumerState<PalatefulApp>
+    with WidgetsBindingObserver {
   StreamSubscription? _shareSubscription;
 
   @override
@@ -178,10 +179,23 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp> {
     if (!kE2EMode) {
       final pushService = getIt<PushNotificationService>();
       pushService.setNavigatorKey(rootNavigatorKey);
+      WidgetsBinding.instance.addObserver(this);
     }
 
     if (!kIsWeb) {
       _initShareListener();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the app returns to foreground, verify OS permission + token state.
+    // Covers: user flipped iOS Settings while backgrounded, token rotated, etc.
+    if (state == AppLifecycleState.resumed && !kE2EMode) {
+      final authService = getIt<AuthService>();
+      if (authService.isAuthenticated) {
+        getIt<PushNotificationService>().ensureRegistered();
+      }
     }
   }
 
@@ -250,6 +264,9 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp> {
   @override
   void dispose() {
     _shareSubscription?.cancel();
+    if (!kE2EMode) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     super.dispose();
   }
 

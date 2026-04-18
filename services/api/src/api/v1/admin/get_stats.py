@@ -3,13 +3,38 @@
 from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from utils.api.endpoint import Endpoint, success
 from utils.models.error_log import ErrorLog
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
 from utils.models.user_feedback import UserFeedback
+
+# Top-level p95 + slowest-endpoint over the last 24 hours. Used for the
+# admin dashboard header strip added in obs-latency-3.
+_OVERALL_P95_SQL = text(
+    """
+    SELECT
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)::int AS p95_ms
+    FROM request_latencies
+    WHERE created_at >= :start_time
+    """
+)
+
+_SLOWEST_ENDPOINT_SQL = text(
+    """
+    SELECT
+        method,
+        normalized_path,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)::int AS p95_ms
+    FROM request_latencies
+    WHERE created_at >= :start_time
+    GROUP BY method, normalized_path
+    ORDER BY p95_ms DESC NULLS LAST
+    LIMIT 1
+    """
+)
 
 
 class GetStats(Endpoint):
@@ -60,6 +85,23 @@ class GetStats(Endpoint):
             or 0
         )
 
+        overall_p95_ms = self.db.execute(
+            _OVERALL_P95_SQL, {"start_time": twenty_four_hours_ago}
+        ).scalar()
+        overall_p95_ms = int(overall_p95_ms) if overall_p95_ms is not None else None
+
+        slowest_rows = self.db.execute(
+            _SLOWEST_ENDPOINT_SQL, {"start_time": twenty_four_hours_ago}
+        ).all()
+        slowest_endpoint: GetStats.SlowestEndpoint | None = None
+        if slowest_rows and slowest_rows[0].p95_ms is not None:
+            slowest_row = slowest_rows[0]
+            slowest_endpoint = GetStats.SlowestEndpoint(
+                method=slowest_row.method,
+                normalized_path=slowest_row.normalized_path,
+                p95_ms=int(slowest_row.p95_ms),
+            )
+
         return success(
             data=GetStats.Response(
                 total_users=total_users,
@@ -68,8 +110,17 @@ class GetStats(Endpoint):
                 errors_24h=errors_24h,
                 active_users_7d=active_users_7d,
                 unread_feedback=unread_feedback,
+                overall_p95_ms=overall_p95_ms,
+                slowest_endpoint=slowest_endpoint,
             )
         )
+
+    class SlowestEndpoint(BaseModel):
+        """The single slowest endpoint over the 24 h window."""
+
+        method: str
+        normalized_path: str
+        p95_ms: int
 
     class Response(BaseModel):
         """Response model."""
@@ -80,3 +131,5 @@ class GetStats(Endpoint):
         errors_24h: int
         active_users_7d: int
         unread_feedback: int
+        overall_p95_ms: int | None = None
+        slowest_endpoint: "GetStats.SlowestEndpoint | None" = None

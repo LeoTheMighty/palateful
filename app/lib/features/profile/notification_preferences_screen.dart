@@ -1,8 +1,10 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/services/push_notification_service.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class NotificationPreferencesScreen extends StatefulWidget {
@@ -16,6 +18,7 @@ class NotificationPreferencesScreen extends StatefulWidget {
 class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _pushService = getIt<PushNotificationService>();
 
   bool _isLoading = true;
   String? _error;
@@ -27,11 +30,27 @@ class _NotificationPreferencesScreenState
   String _quietHoursStart = '22:00';
   String _quietHoursEnd = '08:00';
   String _timezone = 'America/Denver';
+  AuthorizationStatus? _osPermissionStatus;
 
   @override
   void initState() {
     super.initState();
     _loadPreferences();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh OS permission state when the screen is resumed (e.g. after the
+    // user came back from iOS Settings).
+    _refreshOsPermissionStatus();
+  }
+
+  Future<void> _refreshOsPermissionStatus() async {
+    if (!_pushService.isAvailable) return;
+    final status = await _pushService.getPermissionStatus();
+    if (!mounted) return;
+    setState(() => _osPermissionStatus = status);
   }
 
   Future<void> _loadPreferences() async {
@@ -45,6 +64,10 @@ class _NotificationPreferencesScreenState
       if (!mounted) return;
 
       final data = response.data as Map<String, dynamic>;
+      final osStatus = _pushService.isAvailable
+          ? await _pushService.getPermissionStatus()
+          : null;
+      if (!mounted) return;
       setState(() {
         _pushEnabled = data['push_enabled'] as bool? ?? true;
         _partnerActivity = data['partner_activity'] as bool? ?? true;
@@ -52,6 +75,7 @@ class _NotificationPreferencesScreenState
         _quietHoursStart = data['quiet_hours_start'] as String? ?? '22:00';
         _quietHoursEnd = data['quiet_hours_end'] as String? ?? '08:00';
         _timezone = data['timezone'] as String? ?? 'America/Denver';
+        _osPermissionStatus = osStatus;
         _isLoading = false;
       });
     } catch (e) {
@@ -61,6 +85,61 @@ class _NotificationPreferencesScreenState
         _errorDetail = ErrorReporter.detail(e);
         _isLoading = false;
       });
+    }
+  }
+
+  bool get _osGranted =>
+      _osPermissionStatus == AuthorizationStatus.authorized ||
+      _osPermissionStatus == AuthorizationStatus.provisional;
+
+  Future<void> _handlePushToggle(bool value) async {
+    if (!value) {
+      setState(() => _pushEnabled = false);
+      _updatePreference(pushEnabled: false);
+      return;
+    }
+
+    // Turning on: make sure the OS permission is granted and the device's
+    // FCM token is registered with the backend before we flip the pref.
+    final status = await _pushService.ensureRegistered();
+    if (!mounted) return;
+
+    final granted = status == AuthorizationStatus.authorized ||
+        status == AuthorizationStatus.provisional;
+
+    setState(() => _osPermissionStatus = status);
+
+    if (granted) {
+      setState(() => _pushEnabled = true);
+      _updatePreference(pushEnabled: true);
+    } else {
+      await _showOpenSettingsDialog();
+    }
+  }
+
+  Future<void> _showOpenSettingsDialog() async {
+    final opened = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notifications are off'),
+        content: const Text(
+          "Palateful can't send notifications until you allow them in "
+          'your device settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+    if (opened == true) {
+      await _pushService.openOsSettings();
     }
   }
 
@@ -177,13 +256,17 @@ class _NotificationPreferencesScreenState
           label: 'Push Notifications',
           subtitle: 'Receive notifications on this device',
           value: _pushEnabled,
-          onChanged: (value) {
-            setState(() => _pushEnabled = value);
-            _updatePreference(pushEnabled: value);
-          },
+          onChanged: _handlePushToggle,
           colorScheme: colorScheme,
           textTheme: textTheme,
         ),
+        if (_pushEnabled &&
+            _pushService.isAvailable &&
+            _osPermissionStatus != null &&
+            !_osGranted) ...[
+          const SizedBox(height: 12),
+          _buildOsPermissionWarning(colorScheme, textTheme),
+        ],
 
         const SizedBox(height: 32),
 
@@ -382,6 +465,59 @@ class _NotificationPreferencesScreenState
               ),
             ),
             Switch(value: value, onChanged: onChanged),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOsPermissionWarning(
+      ColorScheme colorScheme, TextTheme textTheme) {
+    return Material(
+      color: colorScheme.errorContainer.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: colorScheme.onErrorContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Notifications blocked at the device level',
+                    style: textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'This toggle is on, but your device is not allowing '
+                    'notifications for Palateful. Open Settings to enable.',
+                    style: textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onErrorContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      foregroundColor: colorScheme.onErrorContainer,
+                    ),
+                    onPressed: () async {
+                      await _pushService.openOsSettings();
+                    },
+                    child: const Text('Open Settings'),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

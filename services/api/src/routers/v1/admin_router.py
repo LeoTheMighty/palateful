@@ -1,10 +1,12 @@
 """Admin endpoints router."""
 
 from api.v1.admin import (
+    GetEndpointMetrics,
     GetErrorDetail,
     GetErrors,
     GetLogs,
     GetStats,
+    GetTaskMetrics,
     ListFeedback,
     ListUsers,
     SendTestPush,
@@ -169,6 +171,39 @@ async def update_feedback_status(
     return UpdateFeedbackStatus.call(
         feedback_id=feedback_id,
         params=params,
+        user=user,
+        database=database,
+    )
+
+
+# ============================================================
+# Operator Observability — Latency Metrics (obs-latency-2)
+# ============================================================
+
+
+@admin_router.get("/metrics/endpoints")
+async def get_endpoint_metrics(
+    window: str = Query("24h", description="Window: 1h | 24h | 7d"),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Percentile + sparkline per (method, normalized_path)."""
+    return GetEndpointMetrics.call(
+        window=window,
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.get("/metrics/tasks")
+async def get_task_metrics(
+    window: str = Query("24h", description="Window: 1h | 24h | 7d"),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Percentile + sparkline per Celery task_name."""
+    return GetTaskMetrics.call(
+        window=window,
         user=user,
         database=database,
     )
