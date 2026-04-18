@@ -13,6 +13,7 @@ from routers.v1.ingredient_router import ingredient_router
 from routers.v1.invitations_router import invitations_router
 from routers.v1.invite_links_router import invite_links_router
 from routers.v1.meal_event_router import meal_event_router
+from routers.v1.meal_router import book_meal_router, meal_router
 from routers.v1.pantry_router import pantry_router
 from routers.v1.parser_router import parser_router
 from routers.v1.recipe_book_router import recipe_book_router
@@ -39,6 +40,8 @@ v1_router.include_router(recipe_book_router)
 v1_router.include_router(recipe_router)
 v1_router.include_router(search_router)
 v1_router.include_router(meal_event_router)
+v1_router.include_router(meal_router)
+v1_router.include_router(book_meal_router)
 v1_router.include_router(recurrence_rule_router)
 v1_router.include_router(pantry_router)
 v1_router.include_router(shopping_list_router)
