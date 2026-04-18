@@ -509,7 +509,7 @@ development_status:
   arh-2-remove-over-declared-read-media-permissions: done
   arh-3-adaptive-launcher-icon: done
   arh-4-https-app-links-and-assetlinks-json: done
-  arh-5-crashlytics-native-symbol-upload-config: backlog
+  arh-5-crashlytics-native-symbol-upload-config: done
   arh-6-local-release-mode-smoke-template: backlog
   epic-android-release-hardening-retrospective: optional
 

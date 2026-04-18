@@ -64,6 +64,18 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+
+            // arh-5: upload Dart/Kotlin mapping files + NDK native debug
+            // symbols so release-mode crashes (Flutter engine asserts,
+            // Firebase SDK natives) arrive in Firebase Crashlytics with
+            // method names + line numbers instead of raw addresses.
+            // FIREBASE_SERVICE_ACCOUNT_JSON env var must be present in
+            // CI for the actual upload step (wired by ach-3 in
+            // epic-android-ci-hardening).
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = true
+                nativeSymbolUploadEnabled = true
+            }
         }
     }
 }
