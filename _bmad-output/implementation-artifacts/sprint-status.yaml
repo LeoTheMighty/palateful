@@ -585,7 +585,7 @@ development_status:
   epic-meals-create-and-view: in-progress
   mcv-1-backend-meals-and-meal-recipes-and-meal-favorites-migration-and-models: done
   mcv-2-backend-meal-crud-endpoints-and-service: done
-  mcv-3-backend-component-add-remove-reorder-endpoints-and-favorite: backlog
+  mcv-3-backend-component-add-remove-reorder-endpoints-and-favorite: done
   mcv-4-flutter-meal-model-service-provider-and-router: backlog
   mcv-5-flutter-create-meal-multiselect-entry-and-standalone: backlog
   mcv-6-flutter-meal-detail-and-edit-screens: backlog

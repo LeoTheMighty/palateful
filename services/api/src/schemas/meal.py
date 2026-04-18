@@ -32,6 +32,26 @@ class MealUpdateRequest(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
 
 
+class MealComponentAddRequest(BaseModel):
+    """Body for POST /v1/meals/{meal_id}/recipes."""
+
+    recipe_id: str
+    order_index: int | None = None
+
+
+class MealReorderRequest(BaseModel):
+    """Body for POST /v1/meals/{meal_id}/reorder."""
+
+    recipe_ids: list[str] = Field(..., min_length=2)
+
+    @field_validator("recipe_ids")
+    @classmethod
+    def _reject_duplicates(cls, v: list[str]) -> list[str]:
+        if len(set(v)) != len(v):
+            raise ValueError("recipe_ids must be unique")
+        return v
+
+
 class MealComponentResponse(BaseModel):
     """A single component on a Meal.
 

@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import selectinload
 
 from utils.models.meal import Meal
+from utils.models.meal_favorite import MealFavorite
 from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook  # noqa: F401 — selectinload chain
@@ -34,6 +35,22 @@ class ComponentUnreadableError(MealServiceError):
     def __init__(self, recipe_ids: list[str]):
         super().__init__(f"Components unreadable: {recipe_ids}")
         self.recipe_ids = recipe_ids
+
+
+class ComponentDuplicateError(MealServiceError):
+    """The component is already attached to this Meal."""
+
+
+class ComponentNotFoundError(MealServiceError):
+    """The component isn't on this Meal."""
+
+
+class MinComponentsError(MealServiceError):
+    """Removing would drop the Meal below 2 components."""
+
+
+class ReorderMismatchError(MealServiceError):
+    """The reorder list doesn't match the current component set."""
 
 
 @dataclass
@@ -236,6 +253,77 @@ class MealService:
         self.db.refresh(meal)
         return meal
 
+    def add_component(
+        self, *, meal: Meal, recipe_id: str, order_index: int | None, user_id
+    ) -> MealRecipe:
+        existing = (
+            self.db.query(MealRecipe)
+            .filter(
+                MealRecipe.meal_id == meal.id,
+                MealRecipe.recipe_id == recipe_id,
+            )
+            .first()
+        )
+        if existing is not None:
+            raise ComponentDuplicateError(
+                f"recipe {recipe_id} already on meal {meal.id}"
+            )
+        self._ensure_components_readable([recipe_id], user_id=user_id)
+
+        if order_index is None:
+            max_row = (
+                self.db.query(MealRecipe)
+                .filter(MealRecipe.meal_id == meal.id)
+                .order_by(MealRecipe.order_index.desc())
+                .first()
+            )
+            order_index = (max_row.order_index + 1) if max_row else 0
+
+        row = MealRecipe(
+            meal_id=meal.id,
+            recipe_id=recipe_id,
+            order_index=order_index,
+        )
+        self.db.add(row)
+        self.db.flush()
+        return row
+
+    def remove_component(self, *, meal: Meal, recipe_id: str) -> None:
+        rows = (
+            self.db.query(MealRecipe)
+            .filter(MealRecipe.meal_id == meal.id)
+            .all()
+        )
+        if len(rows) <= 2:
+            raise MinComponentsError("Meal must retain at least 2 components")
+        target = next(
+            (r for r in rows if str(r.recipe_id) == recipe_id), None
+        )
+        if target is None:
+            raise ComponentNotFoundError(
+                f"recipe {recipe_id} not on meal {meal.id}"
+            )
+        self.db.delete(target)
+        self.db.flush()
+
+    def reorder_components(
+        self, *, meal: Meal, recipe_ids: list[str]
+    ) -> None:
+        current = (
+            self.db.query(MealRecipe)
+            .filter(MealRecipe.meal_id == meal.id)
+            .all()
+        )
+        current_ids = {str(r.recipe_id) for r in current}
+        if current_ids != set(recipe_ids) or len(recipe_ids) != len(current):
+            raise ReorderMismatchError(
+                "reorder set does not match current components"
+            )
+        by_recipe = {str(r.recipe_id): r for r in current}
+        for idx, rid in enumerate(recipe_ids):
+            by_recipe[rid].order_index = idx
+        self.db.flush()
+
     def archive(self, meal: Meal) -> Meal:
         meal.archived_at = datetime.now(UTC)
         self.db.flush()
@@ -245,3 +333,29 @@ class MealService:
         meal.archived_at = None
         self.db.flush()
         return meal
+
+    # ------------------------------------------------------------------
+    # Favorite helpers
+    # ------------------------------------------------------------------
+
+    def set_favorite(self, *, user_id, meal_id: str, favorite: bool) -> bool:
+        """Toggle `meal_favorites` row. Returns True if state changed."""
+        existing = (
+            self.db.query(MealFavorite)
+            .filter(
+                MealFavorite.user_id == user_id,
+                MealFavorite.meal_id == meal_id,
+            )
+            .first()
+        )
+        if favorite:
+            if existing is not None:
+                return False  # no-op, already favorited
+            self.db.add(MealFavorite(user_id=user_id, meal_id=meal_id))
+            self.db.flush()
+            return True
+        if existing is None:
+            return False  # no-op, already not favorited
+        self.db.delete(existing)
+        self.db.flush()
+        return True

@@ -10,17 +10,27 @@ carries both `/recipes` and `/recipe-books/{id}/recipes/...`).
 """
 
 from api.v1.meal import (
+    AddRecipeToMeal,
     ArchiveMeal,
     CreateMeal,
+    FavoriteMeal,
     GetMeal,
     ListMeals,
     ListMealsInBook,
+    RemoveRecipeFromMeal,
+    ReorderMealComponents,
     RestoreMeal,
+    UnfavoriteMeal,
     UpdateMeal,
 )
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
-from schemas.meal import MealCreateRequest, MealUpdateRequest
+from schemas.meal import (
+    MealComponentAddRequest,
+    MealCreateRequest,
+    MealReorderRequest,
+    MealUpdateRequest,
+)
 from utils.models.user import User
 from utils.services.database import Database
 
@@ -67,9 +77,73 @@ async def update_meal(
     database: Database = Depends(get_database),
 ):
     """Update name / description. Component edits go through the
-    dedicated add/remove/reorder endpoints (mcv-3)."""
+    dedicated add/remove/reorder endpoints."""
     return UpdateMeal.call(
         meal_id=meal_id, params=params, user=user, database=database
+    )
+
+
+@meal_router.post("/{meal_id}/recipes")
+async def add_recipe_to_meal(
+    meal_id: str,
+    params: MealComponentAddRequest,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Attach an additional component recipe to a Meal."""
+    return AddRecipeToMeal.call(
+        meal_id=meal_id, params=params, user=user, database=database
+    )
+
+
+@meal_router.delete("/{meal_id}/recipes/{recipe_id}")
+async def remove_recipe_from_meal(
+    meal_id: str,
+    recipe_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Detach a component from a Meal (rejects if it would leave <2)."""
+    return RemoveRecipeFromMeal.call(
+        meal_id=meal_id,
+        recipe_id=recipe_id,
+        user=user,
+        database=database,
+    )
+
+
+@meal_router.post("/{meal_id}/reorder")
+async def reorder_meal_components(
+    meal_id: str,
+    params: MealReorderRequest,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Atomically rewrite order_index for every component."""
+    return ReorderMealComponents.call(
+        meal_id=meal_id, params=params, user=user, database=database
+    )
+
+
+@meal_router.post("/{meal_id}/favorite")
+async def favorite_meal(
+    meal_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Pin a Meal to the user's favorites (idempotent)."""
+    return FavoriteMeal.call(meal_id=meal_id, user=user, database=database)
+
+
+@meal_router.delete("/{meal_id}/favorite")
+async def unfavorite_meal(
+    meal_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Remove a Meal from favorites (idempotent)."""
+    return UnfavoriteMeal.call(
+        meal_id=meal_id, user=user, database=database
     )
 
 
