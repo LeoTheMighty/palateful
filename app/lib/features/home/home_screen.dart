@@ -15,6 +15,7 @@ import 'widgets/meal_filter_bar.dart';
 import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/services/shared_state_service.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -59,6 +60,15 @@ class _HomeScreenState extends State<HomeScreen> {
       // Load recipes and favorites in parallel
       final booksResponse = await _apiClient.getRecipeBooks();
       final books = List<dynamic>.from(booksResponse.data['items'] ?? []);
+
+      // Mirror the book list into the iOS App Group so the Share Extension's
+      // book picker has something to show. Debounced inside the service.
+      getIt<SharedStateService>().syncRecipeBooks(
+        books
+            .whereType<Map>()
+            .map((m) => SharedRecipeBook.fromMap(Map<String, dynamic>.from(m)))
+            .toList(),
+      );
 
       final recipesFuture = _loadAllRecipesFromBooks(books);
       final favFuture = _apiClient.getFavorites();

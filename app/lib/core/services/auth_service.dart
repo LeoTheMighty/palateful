@@ -72,6 +72,7 @@ class AuthService extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   String? get accessToken => _credentials?.accessToken ?? _manualToken;
+  DateTime? get accessTokenExpiresAt => _credentials?.expiresAt;
   UserProfile? get userProfile => _userProfile;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
   bool get isAdmin => _isAdmin;

@@ -16,6 +16,7 @@ import 'core/services/cook_timer_notification_service.dart';
 import 'core/services/error_reporter.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/services/share_intent_handler.dart';
+import 'core/services/shared_state_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/theme_mode_provider.dart';
@@ -41,6 +42,28 @@ void main() async {
   setupDependencies();
 
   final authService = getIt<AuthService>();
+
+  // Wire the iOS Share Extension bridge. Initialize the App Group handle
+  // now (no-op on Android / non-iOS) and register a listener that re-syncs
+  // auth state on every notifyListeners call. Debounced 250 ms inside the
+  // service, so the listener firing on every profile/book field tick is
+  // cheap. See app/ios/PalatefulShare/SharedState.swift for the reader.
+  final sharedState = getIt<SharedStateService>();
+  await sharedState.initialize();
+  authService.addListener(() {
+    if (!authService.isAuthenticated) {
+      sharedState.clear();
+      return;
+    }
+    sharedState.syncAuth(
+      authJwt: authService.accessToken,
+      authJwtExpiresAt: authService.accessTokenExpiresAt,
+      userId: authService.userProfile?.sub,
+      apiBaseUrl: Environment.apiBaseUrl,
+      lastUsedBookId:
+          authService.defaultRecipeBookId ?? authService.previousRecipeBookId,
+    );
+  });
 
   // Initialize local timer notifications unconditionally (no auth required — purely local OS APIs)
   if (!kE2EMode) {
