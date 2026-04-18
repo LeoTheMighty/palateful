@@ -566,6 +566,7 @@ class MockImportItem(MockModel):
             "source_url": "https://example.com/recipe",
             "source_reference": None,
             "status": "pending",
+            "raw_data": {},
             "parsed_recipe": None,
             "error_message": None,
             "error_code": None,
@@ -577,6 +578,7 @@ class MockImportItem(MockModel):
             "last_retry_at": None,
             "awaiting_review_reason": None,
             "dismissed_at": None,
+            "s3_key": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

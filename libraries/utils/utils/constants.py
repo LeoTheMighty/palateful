@@ -45,6 +45,10 @@ DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "20"))
 # AWS Parser / Batch settings (used by worker tasks)
 PARSER_INPUTS_BUCKET = os.environ.get("PARSER_INPUTS_BUCKET", "")
 PARSER_OUTPUTS_BUCKET = os.environ.get("PARSER_OUTPUTS_BUCKET", "")
+# sbf-1 / sbf-3. Bucket that holds raw share-extension uploads
+# (imports/{user_id}/{uuid}.{ext}) and the ffmpeg-extracted audio
+# (sbf-4). Mirrors PARSER_INPUTS_BUCKET but lifecycle-scoped shorter.
+S3_IMPORTS_BUCKET = os.environ.get("S3_IMPORTS_BUCKET", "")
 BATCH_JOB_QUEUE = os.environ.get("BATCH_JOB_QUEUE", "")
 BATCH_JOB_DEFINITION = os.environ.get("BATCH_JOB_DEFINITION", "")
 
@@ -89,7 +93,10 @@ STUCK_IMPORT_SWEEPER_INTERVAL_SECONDS = int(
 )
 
 # Pipeline stage markers (written by each task on successful stage completion,
-# read by the retry endpoint to resume from the next stage)
+# read by the retry endpoint to resume from the next stage). STAGE_CREATED is
+# a telemetry-only token (irrd-2) — the terminal stage from the caret
+# expansion's timeline view, never written to `import_items.last_successful_stage`.
 STAGE_PARSED = "parsed"
 STAGE_EXTRACTED = "extracted"
 STAGE_MATCHED = "matched"
+STAGE_CREATED = "created"

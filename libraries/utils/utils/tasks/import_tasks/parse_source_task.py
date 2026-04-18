@@ -1,16 +1,23 @@
 """Parse source task - parses import source and creates ImportItem records."""
 
+import contextlib
 import logging
+import os
+import tempfile
 from datetime import UTC, datetime
 
+from utils import constants
 from utils.api.endpoint import success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
+from utils.services.aws import AWSService
 from utils.services.celery import celery_app
 from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
+
+_S3_KEYED_SOURCE_TYPES = ("audio", "pdf", "spreadsheet")
 
 
 class ParseSourceTask(BaseTask):
@@ -23,6 +30,9 @@ class ParseSourceTask(BaseTask):
     """
 
     name = "parse_source_task"
+
+    def _aws_service(self) -> AWSService:  # pragma: no cover - mocked in tests
+        return AWSService(region=constants.AWS_REGION)
 
     def execute(self, import_job_id: str):
         """Parse the import source and create ImportItem records.
@@ -49,7 +59,17 @@ class ParseSourceTask(BaseTask):
                 items_created = self._parse_url_list(job)
             elif job.source_type == "url":
                 items_created = self._parse_single_url(job)
-            elif job.source_type in ("photo", "text", "spreadsheet"):
+            elif (
+                job.source_type in _S3_KEYED_SOURCE_TYPES
+                and self._has_s3_keyed_items(job)
+            ):
+                # sbf-3: presigned-upload path. StartImport created one
+                # item with `s3_key` set; we fetch bytes here and fan out
+                # into text items for multi-recipe PDFs / multi-row
+                # spreadsheets so the existing extractor pipeline runs
+                # unchanged.
+                items_created = self._parse_s3_keyed_files(job)
+            elif job.source_type in ("photo", "text", "spreadsheet", "audio", "pdf"):
                 # Items are already created by StartImport with text in raw_data.
                 # total_items is already set by StartImport, so just read the count.
                 items_created = job.total_items
@@ -104,6 +124,145 @@ class ParseSourceTask(BaseTask):
         )
         self.database.create(item)
         return 1
+
+    def _has_s3_keyed_items(self, job: ImportJob) -> bool:
+        items = self.database.db.query(ImportItem).filter(
+            ImportItem.import_job_id == job.id,
+        ).all()
+        return any(item.s3_key is not None for item in items)
+
+    def _parse_s3_keyed_files(self, job: ImportJob) -> int:
+        """sbf-3: fetch bytes from S3 and parse per source_type.
+
+        The first item on the job is the one StartImport created with
+        `s3_key` populated. For audio we rewrite that single item into a
+        text item carrying the transcript. For PDFs we fan out: the
+        first recipe overwrites the original item, subsequent recipes
+        become sibling items. Spreadsheets behave the same way per row.
+        """
+        items = self.database.db.query(ImportItem).filter(
+            ImportItem.import_job_id == job.id,
+        ).all()
+        seed = next((i for i in items if i.s3_key), None)
+        if seed is None:
+            return 0
+
+        bucket = constants.S3_IMPORTS_BUCKET
+        aws = self._aws_service()
+        file_bytes = aws.read_object(seed.s3_key, bucket)
+
+        source_type = job.source_type
+        if source_type == "audio":
+            return self._parse_audio_bytes(job, seed, file_bytes)
+        if source_type == "pdf":
+            return self._parse_pdf_bytes(job, seed, file_bytes)
+        if source_type == "spreadsheet":
+            return self._parse_spreadsheet_bytes(job, seed, file_bytes)
+        return 0  # pragma: no cover — guarded by caller
+
+    def _parse_audio_bytes(
+        self, job: ImportJob, item: ImportItem, file_bytes: bytes,
+    ) -> int:
+        from utils.services.recipe_extractors.audio_extractor import (
+            transcribe_audio,
+        )
+
+        original_name = (item.raw_data or {}).get("original_filename") or "audio.m4a"
+        suffix = f".{original_name.split('.')[-1]}" if "." in original_name else ".m4a"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fh:
+            fh.write(file_bytes)
+            audio_path = fh.name
+        try:
+            transcript, cost_cents = transcribe_audio(audio_path)
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(audio_path)
+
+        item.source_type = "text"
+        item.raw_data = {
+            **(item.raw_data or {}),
+            "text": transcript,
+            "is_audio_import": True,
+            "transcription_cost_cents": cost_cents,
+        }
+        item.ai_cost_cents = (item.ai_cost_cents or 0) + cost_cents
+        job.total_ai_cost_cents = (job.total_ai_cost_cents or 0) + cost_cents
+        self.database.db.commit()
+        return 1
+
+    def _parse_pdf_bytes(
+        self, job: ImportJob, item: ImportItem, file_bytes: bytes,
+    ) -> int:
+        from utils.services.recipe_extractors.pdf_extractor import (
+            classify_pdf,
+            detect_recipe_boundaries,
+            extract_text_from_pdf,
+        )
+
+        pdf_type, _page_count = classify_pdf(file_bytes)
+        text = extract_text_from_pdf(file_bytes)
+
+        if pdf_type.value == "text":
+            recipes = detect_recipe_boundaries(text)
+            if not recipes:
+                recipes = [{"text": text, "title": None}]
+            first = recipes[0]
+            item.source_type = "text"
+            item.raw_data = {
+                **(item.raw_data or {}),
+                "text": first["text"],
+                "pdf_recipe_title": first.get("title"),
+            }
+            for i, chunk in enumerate(recipes[1:], start=2):
+                sibling = ImportItem(
+                    import_job_id=job.id,
+                    source_type="text",
+                    source_reference=f"recipe_{i}",
+                    raw_data={
+                        "text": chunk["text"],
+                        "pdf_recipe_title": chunk.get("title"),
+                    },
+                    status="pending",
+                )
+                self.database.create(sibling)
+            self.database.db.commit()
+            return len(recipes)
+
+        # Scanned PDF — one item carrying the full OCR body.
+        item.source_type = "text"
+        item.raw_data = {
+            **(item.raw_data or {}),
+            "text": text,
+            "is_scanned_pdf": True,
+        }
+        self.database.db.commit()
+        return 1
+
+    def _parse_spreadsheet_bytes(
+        self, job: ImportJob, item: ImportItem, file_bytes: bytes,
+    ) -> int:
+        from utils.services.spreadsheet_parser import parse_spreadsheet
+
+        filename = (item.raw_data or {}).get("original_filename") or "file.csv"
+        rows = parse_spreadsheet(file_bytes, filename)
+        if not rows:
+            item.source_type = "text"
+            item.raw_data = {**(item.raw_data or {}), "text": ""}
+            self.database.db.commit()
+            return 1
+
+        item.source_type = "text"
+        item.raw_data = {**(item.raw_data or {}), "text": rows[0]}
+        for row_text in rows[1:]:
+            sibling = ImportItem(
+                import_job_id=job.id,
+                source_type="text",
+                raw_data={"text": row_text},
+                status="pending",
+            )
+            self.database.create(sibling)
+        self.database.db.commit()
+        return len(rows)
 
     def _dispatch_extraction_tasks(self, job: ImportJob):
         """Dispatch ExtractRecipeTask for all pending items."""

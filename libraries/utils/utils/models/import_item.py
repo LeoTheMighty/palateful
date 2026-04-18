@@ -36,6 +36,15 @@ class ImportItem(Base):
             text("archived_at DESC"),
             postgresql_where=text("archived_at IS NOT NULL"),
         ),
+        # sbf-3 partial UNIQUE: one ImportItem per S3 key for the
+        # presigned-upload path; NULL rows (legacy base64 / url / text)
+        # are not covered by the constraint.
+        Index(
+            "ix_import_items_s3_key_unique",
+            "s3_key",
+            unique=True,
+            postgresql_where=text("s3_key IS NOT NULL"),
+        ),
     )
 
     # Status: pending | extracting | matching | awaiting_review | approved | completed | failed | skipped
@@ -45,6 +54,14 @@ class ImportItem(Base):
     source_type: Mapped[str] = mapped_column(String(20))  # row | url | pdf_page
     source_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)  # Row/page number
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # S3 key for file-based imports uploaded via the presigned-PUT flow
+    # (sbf-2/sbf-3). Nullable because the legacy base64 path never sets
+    # it, and the `url` / `text` paths never use S3. A partial UNIQUE
+    # index (`WHERE s3_key IS NOT NULL`, see migration
+    # 20260418070000) blocks replay — a second /import call with the
+    # same key returns 409 `duplicate_import`.
+    s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Data stages
     raw_data: Mapped[dict] = mapped_column(JSONB, default=dict)

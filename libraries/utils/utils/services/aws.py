@@ -151,6 +151,28 @@ class AWSService:
         )
         return json.loads(response["Body"].read().decode("utf-8"))
 
+    def read_object(self, s3_key: str, bucket: str) -> bytes:
+        """Read an S3 object as raw bytes.
+
+        Distinct from `get_s3_object` which JSON-decodes — the imports
+        flow (sbf-3/sbf-4) pulls PDFs, audio, and video files that are
+        not JSON. Bucket is required, no default — the caller knows
+        which bucket they're reading.
+        """
+        response = self._s3.get_object(Bucket=bucket, Key=s3_key)
+        return response["Body"].read()
+
+    def head_object(self, s3_key: str, bucket: str) -> dict[str, Any]:
+        """HeadObject wrapper — confirms an object exists and returns
+        its metadata (ContentLength, ETag, LastModified, Metadata, ...).
+
+        Raises `botocore.exceptions.ClientError` on 404 / NoSuchKey /
+        NotFound. sbf-3 maps those to `409 object_not_ready`; sbf-4
+        uses the ContentLength to validate video-file size before
+        kicking off ffmpeg.
+        """
+        return self._s3.head_object(Bucket=bucket, Key=s3_key)
+
     def copy_object(
         self,
         source_key: str,

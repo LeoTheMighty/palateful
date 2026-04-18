@@ -3903,3 +3903,224 @@ class TestGetImportUploadUrl:
             },
         )
         assert response.status_code in (401, 403, 422)
+
+
+class TestStartImportS3Key:
+    """sbf-3: `/import` with {s3_key, etag, mime_type}."""
+
+    @staticmethod
+    def _setup_access(mock_db, mock_user, book_id):
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        mock_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+    @staticmethod
+    def _reset_rate_limit():
+        from api.v1.import_job.start_import import _reset_rate_limit_for_test
+        _reset_rate_limit_for_test()
+
+    @staticmethod
+    def _ok_aws():
+        from unittest.mock import MagicMock
+
+        service = MagicMock()
+        service.head_object.return_value = {
+            "ContentLength": 12345,
+            "ETag": '"abc123"',
+        }
+        return service
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_s3_key_happy_path_audio(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        self._reset_rate_limit()
+        book_id = "book-s3-audio"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+        mock_task.delay.return_value = None
+
+        s3_key = f"imports/{mock_user.id}/abcd.m4a"
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "audio",
+                "s3_key": s3_key,
+                "mime_type": "audio/mp4",
+                "etag": '"abc123"',
+                "file_name": "voice.m4a",
+            },
+        )
+        assert response.status_code == 201, response.json()
+        body = response.json()
+        assert body["source_type"] == "audio"
+        mock_task.delay.assert_called_once()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_s3_key_cross_user_returns_403(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-s3-cross"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "s3_key": "imports/00000000-0000-0000-0000-000000000000/foo.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        assert response.status_code == 403
+        assert response.json()["error_code"] == ErrorCode.CROSS_USER_KEY.value
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_s3_key_object_not_ready_returns_409(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        from botocore.exceptions import ClientError
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-s3-notready"
+        self._setup_access(mock_db, mock_user, book_id)
+        service = self._ok_aws()
+        service.head_object.side_effect = ClientError(
+            {"Error": {"Code": "404", "Message": "Not Found"}},
+            "HeadObject",
+        )
+        mock_get_service.return_value = service
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "s3_key": f"imports/{mock_user.id}/deck.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == ErrorCode.OBJECT_NOT_READY.value
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_s3_key_duplicate_via_dedupe_query_returns_409(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-s3-dupe"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        s3_key = f"imports/{mock_user.id}/dup.pdf"
+        existing = MockImportItem(s3_key=s3_key)
+        mock_db.db.query.return_value = MockQuery([existing])
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "s3_key": s3_key,
+                "mime_type": "application/pdf",
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["error_code"] == ErrorCode.DUPLICATE_IMPORT.value
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_s3_key_mutual_exclusion_with_base64_returns_400(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-s3-mutex"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "audio",
+                "s3_key": f"imports/{mock_user.id}/x.m4a",
+                "file_base64": "Zm9v",
+                "file_name": "x.m4a",
+                "mime_type": "audio/mp4",
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_s3_key_rate_limit_returns_429(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-s3-rl"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+        mock_task.delay.return_value = None
+
+        # Saturate the limiter with 30 allowed calls, each with a unique
+        # key so dedupe doesn't kick in on the next attempt.
+        for i in range(30):
+            resp = client.post(
+                f"/v1/recipe-books/{book_id}/import",
+                json={
+                    "source_type": "audio",
+                    "s3_key": f"imports/{mock_user.id}/rl-{i:02d}.m4a",
+                    "mime_type": "audio/mp4",
+                },
+            )
+            assert resp.status_code == 201, (i, resp.json())
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "audio",
+                "s3_key": f"imports/{mock_user.id}/rl-over.m4a",
+                "mime_type": "audio/mp4",
+            },
+        )
+        assert response.status_code == 429
+        assert response.json()["error_code"] == ErrorCode.RATE_LIMITED.value
+
+    def test_rate_limit_reset_hook_clears_state(self):
+        """The test hook must actually clear module-level state —
+        otherwise the 30-call saturation above leaks across tests."""
+        from api.v1.import_job.start_import import (
+            _rate_limit_events,
+            _reset_rate_limit_for_test,
+        )
+
+        _rate_limit_events["u"] = [1.0, 2.0]
+        _reset_rate_limit_for_test()
+        assert _rate_limit_events == {}
