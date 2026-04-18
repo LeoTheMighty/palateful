@@ -8,6 +8,8 @@ import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
+import '../meals/models/meal.dart';
+import '../meals/widgets/meal_tile.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
@@ -72,26 +74,44 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final recipesFuture = _loadAllRecipesFromBooks(books);
       final favFuture = _apiClient.getFavorites();
+      // md-4: parallel Meal fetch. A failure here must NOT block the grid
+      // — a zero-Meal render is bit-identical to pre-epic, so we swallow
+      // the error and keep recipes rendering.
+      final mealsFuture = _loadMealsForHome();
 
-      final results = await Future.wait([recipesFuture, favFuture]);
+      final results = await Future.wait([recipesFuture, favFuture, mealsFuture]);
       List<dynamic> allRecipes = results[0] as List<dynamic>;
       final favResponse = results[1];
-      final favItems = ((favResponse as dynamic).data['items'] as List<dynamic>?) ?? [];
+      final mealItems = results[2] as List<dynamic>;
+      final favData = (favResponse as dynamic).data as Map<String, dynamic>;
+      final favItems = (favData['items'] as List<dynamic>?) ?? [];
       final favIds = favItems.map((f) => f['id'].toString()).toSet();
+
+      // md-3 additive response key: favorited Meals render alongside
+      // favorited recipes in the same carousel.
+      final favMealItems = ((favData['favorited_meals'] as List<dynamic>?) ?? [])
+          .map((m) => _tagMeal(m as Map<String, dynamic>))
+          .toList();
 
       // Merge is_favorite into recipes
       for (final recipe in allRecipes) {
         recipe['is_favorite'] = favIds.contains(recipe['id']?.toString());
+        recipe['kind'] = 'recipe';
       }
 
       // Apply filters and sorting
       allRecipes = _applyFilters(allRecipes);
       allRecipes = _applySorting(allRecipes);
 
+      // md-4: merge meals in. When meals is empty, the merge is a no-op
+      // and the existing filter+sort ordering is preserved bit-identically.
+      final mergedGrid = _mergeRecipesAndMeals(allRecipes, mealItems);
+      final mergedFavorites = <dynamic>[...favItems, ...favMealItems];
+
       if (mounted) {
         setState(() {
-          _recipes = allRecipes;
-          _favorites = favItems;
+          _recipes = mergedGrid;
+          _favorites = mergedFavorites;
           _favoriteIds = favIds;
           _isLoading = false;
         });
@@ -105,6 +125,47 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  /// Fetch Meals for the home grid. Swallows errors — a failed Meal
+  /// fetch must never block recipe rendering (zero-regression contract).
+  Future<List<dynamic>> _loadMealsForHome() async {
+    try {
+      final resp = await _apiClient.listMeals(scope: 'home');
+      final items = ((resp.data as Map<String, dynamic>)['items'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
+      return items.map(_tagMeal).toList();
+    } catch (_) {
+      return <dynamic>[];
+    }
+  }
+
+  /// Decorate a meal summary payload with `kind:'meal'` so the grid's
+  /// itemBuilder can discriminate without a second lookup table.
+  Map<String, dynamic> _tagMeal(Map<String, dynamic> meal) {
+    return {...meal, 'kind': 'meal'};
+  }
+
+  /// Merge recipes + meals for the grid. Zero-meal → recipes unchanged
+  /// (load-bearing zero-regression guarantee). Non-empty → union sorted
+  /// by `updated_at DESC` per the epic.
+  List<dynamic> _mergeRecipesAndMeals(
+    List<dynamic> recipes,
+    List<dynamic> meals,
+  ) {
+    if (meals.isEmpty) return recipes;
+    final merged = <dynamic>[...recipes, ...meals];
+    merged.sort((a, b) {
+      final aUpdated = (a['updated_at'] ?? '').toString();
+      final bUpdated = (b['updated_at'] ?? '').toString();
+      return bUpdated.compareTo(aUpdated);
+    });
+    return merged;
+  }
+
+  MealSummary _mealSummaryFrom(dynamic item) {
+    final map = Map<String, dynamic>.from(item as Map);
+    return MealSummary.fromJson(map);
   }
 
   Future<List<dynamic>> _loadAllRecipesFromBooks(List<dynamic> books) async {
@@ -527,13 +588,26 @@ class _HomeScreenState extends State<HomeScreen> {
             itemCount: _favorites.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final recipe = _favorites[index];
-              final imageUrl = recipe['image_url'];
-              final name = recipe['name'] ?? 'Untitled';
+              final item = _favorites[index];
+              final isMeal = item is Map && item['kind'] == 'meal';
+              // md-4: Meals use their first component image as the carousel
+              // thumbnail. Falling back to a restaurant icon keeps the tile
+              // from collapsing when a Meal has no image-bearing components.
+              final imageUrl = isMeal
+                  ? (((item['component_image_urls'] as List?) ?? []).isNotEmpty
+                      ? (item['component_image_urls'] as List).first as String?
+                      : null)
+                  : item['image_url'];
+              final name = item['name'] ?? 'Untitled';
 
               return GestureDetector(
                 onTap: () {
-                  context.push('/recipes/${recipe['id']}');
+                  final id = item['id'];
+                  if (isMeal) {
+                    context.push('/meals/$id');
+                  } else {
+                    context.push('/recipes/$id');
+                  }
                 },
                 child: SizedBox(
                   width: 120,
@@ -822,14 +896,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         itemCount: _recipes.length,
         itemBuilder: (context, index) {
-          final recipe = _recipes[index];
+          final item = _recipes[index];
+          if (item is Map && item['kind'] == 'meal') {
+            final meal = _mealSummaryFrom(item);
+            return MealTile(
+              meal: meal,
+              onTap: () => context.push('/meals/${meal.id}'),
+            );
+          }
           return RecipeCard(
-            recipe: recipe,
+            recipe: item,
             onTap: () {
-              context.push('/recipes/${recipe['id']}');
+              context.push('/recipes/${item['id']}');
             },
-            onLongPress: () => _showRecipeActions(recipe),
-            onFavoriteToggle: () => _toggleFavorite(recipe),
+            onLongPress: () => _showRecipeActions(item),
+            onFavoriteToggle: () => _toggleFavorite(item),
           );
         },
       ),
