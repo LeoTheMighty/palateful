@@ -15,7 +15,11 @@ async def search(
     limit: int = Query(20, ge=1, le=50, description="Max results per category"),
     scope: str | None = Query(
         None,
-        description="Optional scope. Pass `recipes` to skip the user-results tier (bugs-cal-2).",
+        description=(
+            "Optional comma-separated scope set. `recipes` — no users / no meals "
+            "(bugs-cal-2); `recipes,meals` — recipes + Meals + users; `meals` — "
+            "Meals only. Unknown / absent values fall back to everything (md-1)."
+        ),
     ),
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),

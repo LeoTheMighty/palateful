@@ -15,11 +15,13 @@ from api.v1.meal import (
     CreateMeal,
     FavoriteMeal,
     GetMeal,
+    GetPublicMealByToken,
     ListMeals,
     ListMealsInBook,
     RemoveRecipeFromMeal,
     ReorderMealComponents,
     RestoreMeal,
+    ShareMeal,
     UnfavoriteMeal,
     UpdateMeal,
 )
@@ -45,18 +47,40 @@ book_meal_router = APIRouter(prefix="/recipe-books", tags=["meals"])
 async def list_meals(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
-    limit: int = 20,
+    limit: int | None = None,
     offset: int = 0,
     include_archived: bool = False,
+    archived: bool | None = None,
+    scope: str | None = None,
 ):
-    """List Meals across every readable book."""
+    """List Meals across every readable book.
+
+    md-3 filter knobs: `archived=true` returns only archived (archive
+    view); `scope=home` raises the default limit to 30 and pins the sort
+    to `updated_at DESC` for the home grid.
+    """
     return ListMeals.call(
         limit=limit,
         offset=offset,
         include_archived=include_archived,
+        archived=archived,
+        scope=scope,
         user=user,
         database=database,
     )
+
+
+# Public Meal by share token (no auth — MUST be registered BEFORE any
+# `/{meal_id}` path-param route so FastAPI matches `public` literally
+# instead of treating it as a meal_id. Mirrors the pattern in
+# `recipe_router.py` line 165.)
+@meal_router.get("/public/{token}")
+async def get_public_meal_by_token(
+    token: str,
+    database: Database = Depends(get_database),
+):
+    """Get a Meal by its public share token (no auth required)."""
+    return GetPublicMealByToken.call(token=token, database=database)
 
 
 @meal_router.get("/{meal_id}")
@@ -145,6 +169,20 @@ async def unfavorite_meal(
     return UnfavoriteMeal.call(
         meal_id=meal_id, user=user, database=database
     )
+
+
+@meal_router.post("/{meal_id}/share")
+async def share_meal(
+    meal_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Generate (or return) a Meal's public share token.
+
+    Idempotent — re-POSTing returns the same token with a 200 instead of
+    rotating it. Matches the ShareRecipe contract.
+    """
+    return ShareMeal.call(meal_id=meal_id, user=user, database=database)
 
 
 @meal_router.post("/{meal_id}/archive")

@@ -1,4 +1,4 @@
-"""Unified search endpoint - recipes (my + public) and users."""
+"""Unified search endpoint - recipes (my + public), meals, and users."""
 
 from pydantic import BaseModel
 from sqlalchemy import exists, func, or_, select, text
@@ -8,6 +8,8 @@ from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
 from utils.models.friendship import Friendship
 from utils.models.ingredient import Ingredient
+from utils.models.meal import Meal
+from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
@@ -39,11 +41,13 @@ class UnifiedSearch(Endpoint):
                 code=ErrorCode.VALIDATION_ERROR,
             )
 
-        # Scope gate (bugs-cal-2 locked decision #17): callers that want
-        # recipe-only results pass scope=recipes. Unknown scope values fall
-        # back to the default "everything" behaviour so old clients stay
-        # working.
-        recipes_only = scope == "recipes"
+        # Scope gate — parsed as a comma-separated set (md-1).
+        # None / unknown values fall back to "everything" so old clients
+        # stay working. `scope=recipes` (old bugs-cal-2 behaviour) keeps
+        # the no-users, no-meals semantics. `scope=recipes,meals` is what
+        # the new search screen sends. `scope=meals` skips the recipe +
+        # user tiers entirely for callers that only care about Meals.
+        include_recipes, include_meals, include_users = self._resolve_scope(scope)
 
         limit = min(limit, 50)
 
@@ -60,16 +64,29 @@ class UnifiedSearch(Endpoint):
         filter_conditions = self._filter_conditions(filter_tags, max_prep_time, max_cook_time)
 
         # Tier 1: exact ILIKE search (name, description, ingredient, tag)
-        my_exact = self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
-        pub_exact = self._search_public_recipes(query, limit, user, filter_conditions)
-        users = [] if recipes_only else self._search_users(query, limit, user)
+        my_exact = (
+            self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
+            if include_recipes
+            else []
+        )
+        pub_exact = (
+            self._search_public_recipes(query, limit, user, filter_conditions)
+            if include_recipes
+            else []
+        )
+        users = self._search_users(query, limit, user) if include_users else []
+        my_meals = (
+            self._search_my_meals(query, limit, user, my_book_ids)
+            if include_meals
+            else []
+        )
 
         # Tier 2: fuzzy pg_trgm (only when exact results don't fill the limit)
         my_exact_ids = {r.id for r in my_exact}
         pub_exact_ids = {r.id for r in pub_exact}
 
         my_fuzzy: list = []
-        if len(my_exact) < limit:
+        if include_recipes and len(my_exact) < limit:
             my_fuzzy = self._search_my_recipes_fuzzy(
                 query, limit - len(my_exact), user, effective_book_ids,
                 exclude_ids=my_exact_ids,
@@ -79,7 +96,7 @@ class UnifiedSearch(Endpoint):
             )
 
         pub_fuzzy: list = []
-        if len(pub_exact) < limit:
+        if include_recipes and len(pub_exact) < limit:
             pub_fuzzy = self._search_public_recipes_fuzzy(
                 query, limit - len(pub_exact), user,
                 exclude_ids=pub_exact_ids,
@@ -94,7 +111,7 @@ class UnifiedSearch(Endpoint):
         my_total = len(my_exact) + len(my_fuzzy)
         pub_total = len(pub_exact) + len(pub_fuzzy)
 
-        if my_total < limit or pub_total < limit:
+        if include_recipes and (my_total < limit or pub_total < limit):
             query_embedding = self._generate_query_embedding(query)
             if query_embedding is not None:
                 if my_total < limit:
@@ -122,11 +139,34 @@ class UnifiedSearch(Endpoint):
                 query=query,
                 my_recipes=my_exact + my_fuzzy + my_semantic,
                 public_recipes=pub_exact + pub_fuzzy + pub_semantic,
+                my_meals=my_meals,
                 users=users,
             )
         )
 
     # ── helpers ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_scope(scope: str | None) -> tuple[bool, bool, bool]:
+        """Return (include_recipes, include_meals, include_users) for a scope.
+
+        * `None` or unknown values → everything (backward-compat).
+        * `recipes` (bugs-cal-2 locked) → recipes only, no users, no meals.
+        * `meals` → meals only, no recipes, no users.
+        * any comma-set containing both `recipes` and `meals` → everything.
+        """
+        if not scope:
+            return (True, True, True)
+        scope_set = {s.strip() for s in scope.split(",") if s.strip()}
+        if scope_set == {"recipes"}:
+            return (True, False, False)
+        if scope_set == {"meals"}:
+            return (False, True, False)
+        if {"recipes", "meals"}.issubset(scope_set):
+            return (True, True, True)
+        # Unknown scope (or recipes+users combos etc.) → default to
+        # everything so legacy callers keep their results.
+        return (True, True, True)
 
     def _get_my_book_ids(self, user: User) -> list:
         """Return recipe book IDs the user is a member of."""
@@ -639,6 +679,153 @@ class UnifiedSearch(Endpoint):
         except Exception:
             return []
 
+    # ── meals ────────────────────────────────────────────────────────────────
+
+    def _search_my_meals(
+        self,
+        query: str,
+        limit: int,
+        user: User,
+        book_ids: list,
+    ):
+        """Search Meals in books the user can read (exact ILIKE only, v1).
+
+        Ranking: direct-name/description matches rank before component-name
+        matches; within each rank, ORDER BY `updated_at DESC`.
+
+        Direct hits get `matched_component=None`. Component hits get the
+        first matching component's `{recipe_id, name}` surfaced so the
+        client can render the "Matches: X" disclosure.
+        """
+        if not book_ids:
+            return []
+
+        direct_rows = self.db.execute(
+            select(Meal, RecipeBook.name.label("book_name"))
+            .join(RecipeBook, Meal.recipe_book_id == RecipeBook.id)
+            .options(
+                selectinload(Meal.components)
+                .selectinload(MealRecipe.recipe)
+                .selectinload(Recipe.recipe_book)
+            )
+            .where(
+                Meal.recipe_book_id.in_(book_ids),
+                Meal.archived_at.is_(None),
+                or_(
+                    Meal.name.ilike(f"%{query}%"),
+                    Meal.description.ilike(f"%{query}%"),
+                ),
+            )
+            .order_by(
+                (Meal.name.ilike(query)).desc(),
+                (Meal.name.ilike(f"{query}%")).desc(),
+                Meal.updated_at.desc(),
+            )
+            .limit(limit)
+        ).all()
+
+        direct_meal_ids = {meal.id for meal, _ in direct_rows}
+
+        component_rows: list = []
+        remaining = limit - len(direct_rows)
+        if remaining > 0:
+            comp_stmt = (
+                select(Meal, RecipeBook.name.label("book_name"))
+                .join(RecipeBook, Meal.recipe_book_id == RecipeBook.id)
+                .options(
+                    selectinload(Meal.components)
+                    .selectinload(MealRecipe.recipe)
+                    .selectinload(Recipe.recipe_book)
+                )
+                .where(
+                    Meal.recipe_book_id.in_(book_ids),
+                    Meal.archived_at.is_(None),
+                    exists(
+                        select(MealRecipe.meal_id)
+                        .join(Recipe, MealRecipe.recipe_id == Recipe.id)
+                        .where(
+                            MealRecipe.meal_id == Meal.id,
+                            Recipe.name.ilike(f"%{query}%"),
+                        )
+                    ),
+                )
+                .order_by(Meal.updated_at.desc())
+                .limit(remaining)
+            )
+            if direct_meal_ids:
+                comp_stmt = comp_stmt.where(
+                    Meal.id.notin_(list(direct_meal_ids))
+                )
+            component_rows = self.db.execute(comp_stmt).all()
+
+        results: list[UnifiedSearch.MealSearchResult] = []
+        for meal, book_name in direct_rows:
+            results.append(
+                self._build_meal_search_result(
+                    meal, book_name, matched_component=None
+                )
+            )
+        lowered = query.lower()
+        for meal, book_name in component_rows:
+            matched = next(
+                (
+                    c
+                    for c in meal.components
+                    if c.recipe is not None
+                    and c.recipe.name
+                    and lowered in c.recipe.name.lower()
+                ),
+                None,
+            )
+            matched_payload: UnifiedSearch.MatchedComponent | None = None
+            if matched is not None:
+                matched_payload = UnifiedSearch.MatchedComponent(
+                    recipe_id=str(matched.recipe_id),
+                    name=matched.recipe.name,
+                )
+            results.append(
+                self._build_meal_search_result(
+                    meal, book_name, matched_component=matched_payload
+                )
+            )
+        return results
+
+    def _build_meal_search_result(
+        self,
+        meal: Meal,
+        book_name: str,
+        *,
+        matched_component,
+    ):
+        """Shape a Meal into a search result — reuses availability logic
+        from the grid tile so components that the user lost read access
+        to (or archived) do not leak their image URL into the response.
+        """
+        top_image_urls: list[str] = []
+        for comp in meal.components:
+            if len(top_image_urls) >= 4:
+                break
+            recipe = comp.recipe
+            if recipe is None or recipe.archived_at is not None:
+                continue
+            book = recipe.recipe_book
+            if book is None or book.archived_at is not None:
+                continue
+            if not recipe.image_url:
+                continue
+            top_image_urls.append(recipe.image_url)
+        component_count = len(meal.components)
+        return UnifiedSearch.MealSearchResult(
+            id=str(meal.id),
+            name=meal.name,
+            description=meal.description,
+            recipe_book_id=str(meal.recipe_book_id),
+            recipe_book_name=book_name,
+            component_count=component_count,
+            top_component_image_urls=top_image_urls,
+            matched_component=matched_component,
+        )
+
     # ── users ────────────────────────────────────────────────────────────────
 
     def _search_users(self, query: str, limit: int, user: User):
@@ -769,8 +956,23 @@ class UnifiedSearch(Endpoint):
         picture: str | None = None
         friendship_status: str
 
+    class MatchedComponent(BaseModel):
+        recipe_id: str
+        name: str
+
+    class MealSearchResult(BaseModel):
+        id: str
+        name: str
+        description: str | None = None
+        recipe_book_id: str
+        recipe_book_name: str
+        component_count: int
+        top_component_image_urls: list[str] = []
+        matched_component: "UnifiedSearch.MatchedComponent | None" = None
+
     class Response(BaseModel):
         query: str
         my_recipes: list["UnifiedSearch.RecipeResult"]
         public_recipes: list["UnifiedSearch.PublicRecipeResult"]
+        my_meals: list["UnifiedSearch.MealSearchResult"] = []
         users: list["UnifiedSearch.UserResult"]

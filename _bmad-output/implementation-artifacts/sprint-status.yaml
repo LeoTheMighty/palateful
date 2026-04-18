@@ -603,10 +603,10 @@ development_status:
   # recipe pages (privacy). Day-1 zero-regression bar: zero-Meal users see
   # bit-identical behavior on every surface touched. Parallelizable with
   # meals-calendar + meals-sharing-and-ai after foundation.
-  epic-meals-discoverability: backlog
-  md-1-backend-unified-search-extended-with-meal-matching: backlog
-  md-2-backend-reverse-lookup-meals-using-recipe: backlog
-  md-3-backend-meals-filter-extensions-and-favorites-meals-extension: backlog
+  epic-meals-discoverability: in-progress
+  md-1-backend-unified-search-extended-with-meal-matching: done
+  md-2-backend-reverse-lookup-meals-using-recipe: done
+  md-3-backend-meals-filter-extensions-and-favorites-meals-extension: done
   md-4-flutter-home-grid-and-favorites-carousel-render-meals: backlog
   md-5-flutter-search-results-include-meals-with-component-match-disclosure: backlog
   md-6-flutter-used-in-these-meals-on-recipe-detail: backlog
@@ -633,7 +633,7 @@ development_status:
   mcal-1-backend-migration-meal-id-on-events-recurrence-cooking-logs-and-shopping-list-items: done
   mcal-2-backend-aggregate-meal-ingredients-service-and-dedupe-correctness: backlog
   mcal-3-backend-meal-event-and-recurrence-endpoints-accept-meal-id-xor: backlog
-  mcal-4-backend-populate-from-calendar-meal-expansion-load-bearing: backlog
+  mcal-4-backend-populate-from-calendar-meal-expansion-load-bearing: deleted  # 2026-04-18: endpoint removed via epic-calendar-per-meal-shopping-add; Meal-event "add to shopping list" will route through a new per-event endpoint at implementation time (see FR-CPMS-7)
   mcal-5-backend-meal-autocomplete-list-param-and-add-meal-to-shopping-list-endpoint: backlog
   mcal-6-backend-rolling-window-materializer-meal-rules-and-cooking-log-fanout: backlog
   mcal-7-flutter-plan-meal-sheet-segmented-button-and-meal-autocomplete: backlog
@@ -664,3 +664,23 @@ development_status:
   msa-4-backend-create-meal-event-mcp-accepts-meal-id-and-eval-fixtures: backlog
   msa-4-backend-create-meal-event-mcp-accepts-meal-id-and-eval-fixtures: backlog
   epic-meals-sharing-and-ai-retrospective: optional
+
+  # Epic Calendar — Per-Meal Shopping Add (planned 2026-04-18)
+  # Replaces bulk "Add week to shopping list" AppBar button with per-meal
+  # Icons.add_shopping_cart_outlined on every calendar card (recipe-linked
+  # only). Reuses existing _addIngredientsFromEvent handler (default-list
+  # resolution + populateFromRecipe). Session-persistent "added" check-mark
+  # indicator via client-only Set<String> _addedEventIds cleared on
+  # _loadEvents. Deletes POST /v1/shopping-lists/{id}/populate-from-calendar,
+  # its impl module, __init__.py export, dedicated tests, and
+  # TestPopulateFromCalendarExtended class in test_coverage_gaps.py.
+  # Cross-epic impact: epic-meals-calendar's mcal-4 (load-bearing
+  # PopulateFromCalendar extension for Meal expansion) is dropped; that
+  # epic's end-user flow step 7 will route through a new per-event endpoint
+  # at implementation time. Driven by dogfood bug — bulk produced 12 garbage
+  # items from raw-string ingredients.canonical_name; per-meal reduces blast
+  # radius to 1 meal's worth per tap. canonical_name data fix is separate.
+  epic-calendar-per-meal-shopping-add: backlog
+  cpms-1-flutter-remove-weekly-button-and-add-per-card-shopping-cart-icon: backlog
+  cpms-2-backend-remove-populate-from-calendar-endpoint-and-tests: backlog
+  epic-calendar-per-meal-shopping-add-retrospective: optional

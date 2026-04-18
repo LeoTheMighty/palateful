@@ -1058,7 +1058,11 @@ class TestListFavorites:
         """Test listing favorites returns recipe data."""
         recipe = MockRecipe(name="Favorite Pasta", tags=["italian"])
         fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=str(recipe.id))
-        mock_db.db.query.return_value = MockQuery([(fav, recipe)])
+        # md-3: two queries now — recipe favorites + meal favorites.
+        mock_db.db.query.side_effect = [
+            MockQuery([(fav, recipe)]),
+            MockQuery([]),
+        ]
 
         response = client.get("/v1/favorites")
         assert response.status_code == 200
@@ -1066,6 +1070,8 @@ class TestListFavorites:
         assert data["total"] == 1
         assert data["items"][0]["name"] == "Favorite Pasta"
         assert data["items"][0]["is_favorite"] is True
+        # md-3: additive key is always present
+        assert data["favorited_meals"] == []
 
     def test_list_favorites_requires_auth(self, unauthed_client, mock_db):
         """Test that favorites endpoint requires authentication."""

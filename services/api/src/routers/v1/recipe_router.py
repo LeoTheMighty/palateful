@@ -20,6 +20,7 @@ from api.v1.recipe import (
     GetVibeOptions,
     ListArchivedRecipes,
     ListFavorites,
+    ListMealsUsingRecipe,
     ListRecipes,
     MoveRecipe,
     RestoreRecipe,
@@ -326,6 +327,20 @@ async def revoke_recipe_share(
 ):
     """Revoke the public share link for a recipe."""
     return RevokeRecipeShare.call(recipe_id=recipe_id, user=user, database=database)
+
+
+@recipe_router.get("/recipes/{recipe_id}/meals")
+async def list_meals_using_recipe(
+    recipe_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """md-2: List Meals that reference this recipe as a component."""
+    return ListMealsUsingRecipe.call(
+        recipe_id=recipe_id,
+        user=user,
+        database=database,
+    )
 
 
 @recipe_router.post("/recipes/{recipe_id}/favorite")

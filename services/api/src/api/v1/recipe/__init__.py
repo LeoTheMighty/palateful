@@ -18,6 +18,7 @@ from api.v1.recipe.get_recipe_versions import GetRecipeVersions
 from api.v1.recipe.get_vibe_options import GetVibeOptions
 from api.v1.recipe.list_archived_recipes import ListArchivedRecipes
 from api.v1.recipe.list_favorites import ListFavorites
+from api.v1.recipe.list_meals_using_recipe import ListMealsUsingRecipe
 from api.v1.recipe.list_recipes import ListRecipes
 from api.v1.recipe.move_recipe import MoveRecipe
 from api.v1.recipe.restore_recipe import RestoreRecipe
@@ -33,6 +34,7 @@ __all__ = [
     "ListRecipes",
     "ListArchivedRecipes",
     "ListFavorites",
+    "ListMealsUsingRecipe",
     "CreateRecipe",
     "CopyRecipe",
     "ForkRecipe",
