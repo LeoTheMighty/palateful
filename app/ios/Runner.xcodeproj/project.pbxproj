@@ -7,19 +7,35 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0CF6B974250E678154B8DF46 /* PalatefulShare.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 3963787D91FC5C733AFE56EC /* PalatefulShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
+		4A773C2D392F2F1BCB435285 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C19468345199BDF2A4A6164 /* ShareViewController.swift */; };
+		4F4D4D83459810A01B69338F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7966B80CF22C1DB6DC40E28A /* Foundation.framework */; };
+		564F3DE50BD488A0FC83BEA3 /* ShareViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85D61040AAAFBE060E3BF406 /* ShareViewModel.swift */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		9E0F499CDCBCD0E6DF81E585 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ED02147FF708F121628EE01F /* Pods_Runner.framework */; };
+		A36958572B879A45F03B9687 /* SharedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1B0886F056A519C8B058EA /* SharedState.swift */; };
+		B1033FB37005524408E820E9 /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F75F58DDC73B80991A3AC40 /* UploadService.swift */; };
+		BCFB202EC7EDA365A42761A6 /* PendingImports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09955AEE81E9C175BD8D45DB /* PendingImports.swift */; };
 		E4A43878EB14D22433E9872D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 63698FF7213A20BA75772542 /* GoogleService-Info.plist */; };
 		E6943F5CD058CD625521ECCF /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0F89117EA0D00BFCF1632102 /* Pods_RunnerTests.framework */; };
+		E96D7D84EAB26A9E3F40966D /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10C1AE7EC4EB7DCD69352271 /* Telemetry.swift */; };
+		EAE982DC9F220B63C8FFCA9A /* ShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F016D09050E08914426B5956 /* ShareView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		15EABEE8FB8C4226F89F1FB9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 48DDADC6900FE374B3C5C7F8;
+			remoteInfo = PalatefulShare;
+		};
 		331C8085294A63A400263BE5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
@@ -40,21 +56,40 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E40A804DFBF49901F8C51363 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				0CF6B974250E678154B8DF46 /* PalatefulShare.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		00336E4399BCD45981CC0396 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		09955AEE81E9C175BD8D45DB /* PendingImports.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PendingImports.swift; sourceTree = "<group>"; };
 		0F89117EA0D00BFCF1632102 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		10C1AE7EC4EB7DCD69352271 /* Telemetry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Telemetry.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		2C19468345199BDF2A4A6164 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3963787D91FC5C733AFE56EC /* PalatefulShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PalatefulShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
+		3F75F58DDC73B80991A3AC40 /* UploadService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
 		57AAF5A2840BB4F07C767309 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		63698FF7213A20BA75772542 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Runner/GoogleService-Info.plist"; sourceTree = "<group>"; };
+		6C1B0886F056A519C8B058EA /* SharedState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedState.swift; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		7966B80CF22C1DB6DC40E28A /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
+		85D61040AAAFBE060E3BF406 /* ShareViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewModel.swift; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -63,13 +98,24 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		ACA8556C614380878F9C239B /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
+		AFEC4E03DC12DC6BFF1E264F /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B1D9DCF4941712379A6A1044 /* PalatefulShare.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = PalatefulShare.entitlements; sourceTree = "<group>"; };
 		B93054D27FA250D630751336 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		BD0F1918D9D94D37BAA9EB62 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		CC5C1A360F33CBC613DBF4CF /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		ED02147FF708F121628EE01F /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		F016D09050E08914426B5956 /* ShareView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0448B96BE3DF00BD6147CBA2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4F4D4D83459810A01B69338F /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		97C146EB1CF9000F007C117D /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -89,6 +135,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		05EF3E54012D3E30EE0B1362 /* PalatefulShare */ = {
+			isa = PBXGroup;
+			children = (
+				2C19468345199BDF2A4A6164 /* ShareViewController.swift */,
+				F016D09050E08914426B5956 /* ShareView.swift */,
+				85D61040AAAFBE060E3BF406 /* ShareViewModel.swift */,
+				6C1B0886F056A519C8B058EA /* SharedState.swift */,
+				3F75F58DDC73B80991A3AC40 /* UploadService.swift */,
+				09955AEE81E9C175BD8D45DB /* PendingImports.swift */,
+				10C1AE7EC4EB7DCD69352271 /* Telemetry.swift */,
+				AFEC4E03DC12DC6BFF1E264F /* Info.plist */,
+				B1D9DCF4941712379A6A1044 /* PalatefulShare.entitlements */,
+			);
+			name = PalatefulShare;
+			path = PalatefulShare;
+			sourceTree = "<group>";
+		};
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -102,6 +165,7 @@
 			children = (
 				ED02147FF708F121628EE01F /* Pods_Runner.framework */,
 				0F89117EA0D00BFCF1632102 /* Pods_RunnerTests.framework */,
+				9D3F16F784ADF8357B454646 /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -127,6 +191,7 @@
 				63698FF7213A20BA75772542 /* GoogleService-Info.plist */,
 				DCFEDA5156BD4330A6B8C4F6 /* Pods */,
 				598C655C5D401BF8C2C1C77B /* Frameworks */,
+				05EF3E54012D3E30EE0B1362 /* PalatefulShare */,
 			);
 			sourceTree = "<group>";
 		};
@@ -135,6 +200,7 @@
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
+				3963787D91FC5C733AFE56EC /* PalatefulShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -152,6 +218,14 @@
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
+			sourceTree = "<group>";
+		};
+		9D3F16F784ADF8357B454646 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				7966B80CF22C1DB6DC40E28A /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		DCFEDA5156BD4330A6B8C4F6 /* Pods */ = {
@@ -189,6 +263,23 @@
 			productReference = 331C8081294A63A400263BE5 /* RunnerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		48DDADC6900FE374B3C5C7F8 /* PalatefulShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE1022ABF583F5EF602BB081 /* Build configuration list for PBXNativeTarget "PalatefulShare" */;
+			buildPhases = (
+				C35D2B77A364DB6C1C47E4B9 /* Sources */,
+				0448B96BE3DF00BD6147CBA2 /* Frameworks */,
+				47D3B566A122907FE4188001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PalatefulShare;
+			productName = PalatefulShare;
+			productReference = 3963787D91FC5C733AFE56EC /* PalatefulShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		97C146ED1CF9000F007C117D /* Runner */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
@@ -202,10 +293,12 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				D3827CFCB09BD75EB89022DF /* [CP] Embed Pods Frameworks */,
 				213B7696AD16AE5D92104CBB /* [CP] Copy Pods Resources */,
+				E40A804DFBF49901F8C51363 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				2520C8E34B168C2D5EB150A4 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			productName = Runner;
@@ -247,12 +340,20 @@
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
+				48DDADC6900FE374B3C5C7F8 /* PalatefulShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		331C807F294A63A400263BE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		47D3B566A122907FE4188001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -403,9 +504,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C35D2B77A364DB6C1C47E4B9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A773C2D392F2F1BCB435285 /* ShareViewController.swift in Sources */,
+				EAE982DC9F220B63C8FFCA9A /* ShareView.swift in Sources */,
+				564F3DE50BD488A0FC83BEA3 /* ShareViewModel.swift in Sources */,
+				A36958572B879A45F03B9687 /* SharedState.swift in Sources */,
+				B1033FB37005524408E820E9 /* UploadService.swift in Sources */,
+				BCFB202EC7EDA365A42761A6 /* PendingImports.swift in Sources */,
+				E96D7D84EAB26A9E3F40966D /* Telemetry.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2520C8E34B168C2D5EB150A4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = PalatefulShare;
+			target = 48DDADC6900FE374B3C5C7F8 /* PalatefulShare */;
+			targetProxy = 15EABEE8FB8C4226F89F1FB9 /* PBXContainerItemProxy */;
+		};
 		331C8086294A63A400263BE5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
@@ -713,6 +834,89 @@
 			};
 			name = Release;
 		};
+		AA392405C5BC99862AEAFAC1 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PalatefulShare/PalatefulShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = H66YP2QFW2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PalatefulShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.palateful.palateful.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Profile;
+		};
+		BAA584A62CF7E4A0C3BDBD9F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PalatefulShare/PalatefulShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = H66YP2QFW2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PalatefulShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.palateful.palateful.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		CD6913450EF64BEA30DD3EBA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PalatefulShare/PalatefulShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = H66YP2QFW2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PalatefulShare/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.palateful.palateful.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -742,6 +946,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE1022ABF583F5EF602BB081 /* Build configuration list for PBXNativeTarget "PalatefulShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BAA584A62CF7E4A0C3BDBD9F /* Release */,
+				CD6913450EF64BEA30DD3EBA /* Debug */,
+				AA392405C5BC99862AEAFAC1 /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

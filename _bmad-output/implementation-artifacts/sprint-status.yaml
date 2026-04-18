@@ -477,8 +477,8 @@ development_status:
   # by Epic Share Backend Foundations for the upload-url endpoint and
   # s3_key import path. Requires App Store Connect changes (new App ID,
   # provisioning profile, App Group capability).
-  epic-share-ios-extension: backlog
-  sie-1-xcode-target-skeleton-and-app-group: backlog
+  epic-share-ios-extension: in-progress
+  sie-1-xcode-target-skeleton-and-app-group: done
   sie-2-shared-state-bridge-flutter-to-app-group: backlog
   sie-3-minimal-confirmation-sheet-and-url-share-path: backlog
   sie-4-presigned-upload-for-file-based-shares: backlog
