@@ -21,6 +21,7 @@ from routers.v1.recurrence_rule_router import recurrence_rule_router
 from routers.v1.search_router import search_router
 from routers.v1.shopping_list_router import shopping_list_router
 from routers.v1.timer_router import timer_router
+from routers.v1.units_router import units_router
 from routers.v1.user_router import user_router
 
 v1_router = APIRouter(prefix="/v1")
@@ -46,3 +47,4 @@ v1_router.include_router(import_router)
 v1_router.include_router(parser_router)
 v1_router.include_router(invitations_router)
 v1_router.include_router(invite_links_router)
+v1_router.include_router(units_router)
