@@ -46,6 +46,7 @@ from utils.models import (
     User,
     UserActivity,
     UserFavorite,
+    UserFeedback,
 )
 
 __all__ = [
@@ -94,4 +95,5 @@ __all__ = [
     "Unit",
     "UserActivity",
     "UserFavorite",
+    "UserFeedback",
 ]

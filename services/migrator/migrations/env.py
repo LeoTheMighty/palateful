@@ -52,6 +52,7 @@ from utils.db.models import (  # noqa: F401
     User,
     UserActivity,
     UserFavorite,
+    UserFeedback,
 )
 
 # Alembic Config object

@@ -342,3 +342,16 @@ development_status:
   cal-share-4-flutter-calendar-members-screen: backlog
   cal-share-5-profile-shared-calendars-and-invitations-polish: backlog
   epic-calendars-sharing-retrospective: optional
+
+  # Epic User Feedback — Inbox + Prod Fetch Script (planned 2026-04-18)
+  # User-facing "Send Feedback" in Profile → Settings; admin inbox in the
+  # existing admin dashboard with push + unread-badge alerts; read-only
+  # (Mark Read / Archive); fetch_feedback.py prod script mirrors
+  # promote_admin.py. Parallelizable with epic-observability-latency.
+  epic-user-feedback: in-progress
+  feedback-1-backend-model-and-submit-endpoint: done
+  feedback-2-admin-endpoints-notification-fanout-and-stats: backlog
+  feedback-3-flutter-send-feedback-sheet: backlog
+  feedback-4-flutter-admin-inbox-and-dashboard-card: backlog
+  feedback-5-prod-fetch-script: backlog
+  epic-user-feedback-retrospective: optional

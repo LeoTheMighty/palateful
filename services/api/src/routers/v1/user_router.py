@@ -3,6 +3,7 @@
 from api.v1.user import (
     CheckUsername,
     CompleteOnboarding,
+    CreateUserFeedback,
     ExportRecipes,
     GetMe,
     GetNotificationPreferences,
@@ -174,3 +175,18 @@ async def search_users(
 ):
     """Search for users by username or name."""
     return SearchUsers.call(q=q, limit=limit, user=user, database=database)
+
+
+# ============================================================
+# User Feedback
+# ============================================================
+
+
+@user_router.post("/me/feedback")
+async def create_user_feedback(
+    params: CreateUserFeedback.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Submit user feedback to the admin inbox."""
+    return CreateUserFeedback.call(params=params, user=user, database=database)

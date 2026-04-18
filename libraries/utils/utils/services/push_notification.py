@@ -68,6 +68,9 @@ class NotificationType(str, Enum):
     MEMBER_JOINED = "member_joined"
     SYSTEM = "system"
 
+    # Admin-facing feedback inbox (fan-out from a user's `POST /v1/user/feedback`).
+    NEW_FEEDBACK = "new_feedback"
+
     # Diagnostic — always bypasses per-user prefs; bypasses quiet hours
     # only when send_to_user is called with force=True.
     TEST = "test"
