@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/theme/theme.dart';
+import '../models/calendar.dart';
 import '../models/meal_event.dart';
+import '../providers/active_calendar_provider.dart';
 import '../services/meal_calendar_service.dart';
+import 'calendar_picker_sheet.dart';
 import 'recipe_autocomplete_field.dart';
 import 'recurrence_field.dart';
 
@@ -23,7 +27,7 @@ MealType inferMealType() {
 /// - **Quick add mode**: launched from calendar FAB / day "+" with no recipe.
 ///
 /// Also supports edit mode (reschedule) when `eventId` is provided.
-class PlanMealSheet extends StatefulWidget {
+class PlanMealSheet extends ConsumerStatefulWidget {
   final String? recipeId;
   final String? recipeName;
 
@@ -32,6 +36,10 @@ class PlanMealSheet extends StatefulWidget {
   final DateTime? initialDate;
   final MealType? initialMealType;
 
+  /// Seed for the Calendar row. Falls back to
+  /// [activeCalendarProvider]'s current value at open time.
+  final String? initialCalendarId;
+
   const PlanMealSheet({
     super.key,
     this.recipeId,
@@ -39,13 +47,14 @@ class PlanMealSheet extends StatefulWidget {
     this.eventId,
     this.initialDate,
     this.initialMealType,
+    this.initialCalendarId,
   });
 
   @override
-  State<PlanMealSheet> createState() => _PlanMealSheetState();
+  ConsumerState<PlanMealSheet> createState() => _PlanMealSheetState();
 }
 
-class _PlanMealSheetState extends State<PlanMealSheet> {
+class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
   final _service = getIt<MealCalendarService>();
   final _nameController = TextEditingController();
 
@@ -53,6 +62,12 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
   late MealType _selectedMealType;
   bool _isSaving = false;
   List<String> _recentMeals = [];
+
+  /// Seeded once at sheet open from `activeCalendarProvider`. Changing
+  /// this via the Calendar row mutates form state only — it never
+  /// mutates the provider (principle #5: active and target are distinct
+  /// pieces of state).
+  String? _targetCalendarId;
 
   /// Recipe id picked via the autocomplete. Null when the user is in
   /// free-text mode (either they never tapped a match or they explicitly
@@ -75,6 +90,10 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
     if (widget.recipeName != null) {
       _nameController.text = widget.recipeName!;
     }
+    // Seed target calendar once — explicit override from caller wins,
+    // else snapshot the active calendar at open.
+    _targetCalendarId = widget.initialCalendarId ??
+        ref.read(activeCalendarProvider).value;
     _loadRecentMeals();
   }
 
@@ -122,6 +141,100 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
     }
   }
 
+  /// Writable calendars the user can target. In this epic, "writable"
+  /// is just "owned" — editor-role support arrives in the sharing epic.
+  List<Calendar> get _writableCalendars {
+    final all = ref.read(calendarsListProvider).value ?? const [];
+    return all.where((c) => c.isOwner).toList();
+  }
+
+  Widget _buildCalendarRow(ColorScheme colorScheme) {
+    final writable = _writableCalendars;
+    if (writable.length < 2) return const SizedBox.shrink();
+    final selectedName = writable
+        .firstWhere(
+          (c) => c.id == _targetCalendarId,
+          orElse: () => writable.first,
+        )
+        .name;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Calendar',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: _pickCalendar,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.event_note_outlined,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      selectedName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_drop_down,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickCalendar() async {
+    final writable = _writableCalendars;
+    if (writable.length < 2) return;
+    final picked = await showModalBottomSheet<Calendar>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: CalendarPickerSheet(
+            calendars: writable,
+            activeId: _targetCalendarId,
+            onSelect: (c) => Navigator.of(context).pop(c),
+          ),
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() => _targetCalendarId = picked.id);
+    }
+  }
+
   Future<void> _save() async {
     if (_isSaving) return;
     final name = _nameController.text.trim();
@@ -159,6 +272,7 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
           startDate: _selectedDate,
           endDate: _recurrence!.endDate,
           tzName: _deviceTzName(),
+          calendarId: _targetCalendarId ?? '',
           title: _effectiveRecipeId == null ? name : null,
           recipeId: _effectiveRecipeId,
           isShared: true,
@@ -168,6 +282,7 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
           title: name,
           scheduledAt: scheduledAt,
           mealType: _selectedMealType,
+          calendarId: _targetCalendarId ?? '',
           recipeId: _effectiveRecipeId,
           isShared: true,
         );
@@ -314,6 +429,12 @@ class _PlanMealSheetState extends State<PlanMealSheet> {
             ),
             const SizedBox(height: 24),
           ],
+
+          // Calendar row — hidden entirely when the user has only one
+          // writable calendar (principle #11: no dead UI for the solo
+          // case). Seeded from the active calendar on open; changing
+          // here mutates form state only.
+          _buildCalendarRow(colorScheme),
 
           // Date picker row
           Text(

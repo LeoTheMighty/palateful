@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/features/calendar/models/meal_event.dart';
 import 'package:palateful/features/calendar/widgets/meal_detail_sheet.dart';
@@ -15,8 +16,10 @@ MealEvent _makeEvent({RecipeSummary? recipe}) {
   );
 }
 
-Widget _host(Widget child) => MaterialApp(
-      home: Scaffold(body: child),
+Widget _host(Widget child) => ProviderScope(
+      child: MaterialApp(
+        home: Scaffold(body: child),
+      ),
     );
 
 void main() {
@@ -40,7 +43,7 @@ void main() {
     var unscheduled = false;
     late BuildContext rootContext;
 
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
       home: Scaffold(
         body: Builder(
           builder: (ctx) {
@@ -60,7 +63,7 @@ void main() {
           },
         ),
       ),
-    ));
+    )));
 
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();

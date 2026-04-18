@@ -26,6 +26,7 @@ class MealCalendarService {
     required String title,
     required DateTime scheduledAt,
     required MealType mealType,
+    required String calendarId,
     String? recipeId,
     bool isShared = true,
   }) async {
@@ -33,6 +34,7 @@ class MealCalendarService {
       'title': title,
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'meal_type': mealType.name,
+      'calendar_id': calendarId,
       if (recipeId != null) 'recipe_id': recipeId,
       'is_shared': isShared,
     });
@@ -43,10 +45,24 @@ class MealCalendarService {
     String eventId, {
     required DateTime scheduledAt,
     required MealType mealType,
+    String? calendarId,
   }) async {
     final response = await _apiClient.updateMealEvent(eventId, {
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'meal_type': mealType.name,
+      if (calendarId != null) 'calendar_id': calendarId,
+    });
+    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Move-to-calendar — delegates the calendar_id flip to the backend.
+  /// Same-calendar is a 200 no-op server-side.
+  Future<MealEvent> moveMealEventToCalendar(
+    String eventId,
+    String newCalendarId,
+  ) async {
+    final response = await _apiClient.updateMealEvent(eventId, {
+      'calendar_id': newCalendarId,
     });
     return MealEvent.fromJson(response.data as Map<String, dynamic>);
   }
@@ -79,6 +95,7 @@ class MealCalendarService {
     required String interval,
     required DateTime startDate,
     required String tzName,
+    required String calendarId,
     String? title,
     String? recipeId,
     DateTime? endDate,
@@ -91,6 +108,7 @@ class MealCalendarService {
       'interval': interval,
       'start_date': startDate.toIso8601String().substring(0, 10),
       'tz_name': tzName,
+      'calendar_id': calendarId,
       'is_shared': isShared,
     };
     if (title != null && title.isNotEmpty) data['title'] = title;
@@ -143,6 +161,7 @@ class MealCalendarService {
     bool clearEndDate = false,
     bool? isShared,
     String? tzName,
+    String? calendarId,
   }) async {
     final data = <String, dynamic>{'scope': scope};
     if (occurrenceDate != null) {
@@ -162,8 +181,21 @@ class MealCalendarService {
     }
     if (isShared != null) data['is_shared'] = isShared;
     if (tzName != null) data['tz_name'] = tzName;
+    if (calendarId != null) data['calendar_id'] = calendarId;
 
     final response = await _apiClient.updateRecurrenceRule(ruleId, data);
     return response.data as Map<String, dynamic>;
+  }
+
+  /// Rule-level Move-to-calendar. Cascades to future materialized events.
+  Future<void> moveRecurrenceRuleToCalendar(
+    String ruleId,
+    String newCalendarId,
+  ) async {
+    await updateRecurrenceRule(
+      ruleId,
+      scope: 'all',
+      calendarId: newCalendarId,
+    );
   }
 }

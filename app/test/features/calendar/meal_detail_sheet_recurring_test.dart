@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/features/calendar/models/meal_event.dart';
@@ -34,6 +35,7 @@ class _FakeService implements MealCalendarService {
     required String title,
     required DateTime scheduledAt,
     required MealType mealType,
+    required String calendarId,
     String? recipeId,
     bool isShared = true,
   }) async =>
@@ -43,10 +45,17 @@ class _FakeService implements MealCalendarService {
     String eventId, {
     required DateTime scheduledAt,
     required MealType mealType,
+    String? calendarId,
   }) async =>
       throw UnimplementedError();
   @override
   Future<void> deleteMealEvent(String eventId) async {}
+
+  @override
+  Future<MealEvent> moveMealEventToCalendar(String eventId, String newCalendarId) async => throw UnimplementedError();
+
+  @override
+  Future<void> moveRecurrenceRuleToCalendar(String ruleId, String newCalendarId) async {}
   @override
   Future<MealEvent> rescheduleMealEvent(
           String eventId, DateTime scheduledAt) async =>
@@ -60,6 +69,7 @@ class _FakeService implements MealCalendarService {
     required String interval,
     required DateTime startDate,
     required String tzName,
+    required String calendarId,
     String? title,
     String? recipeId,
     DateTime? endDate,
@@ -84,6 +94,7 @@ class _FakeService implements MealCalendarService {
     bool clearEndDate = false,
     bool? isShared,
     String? tzName,
+    String? calendarId,
   }) async =>
       {};
 }
@@ -129,7 +140,7 @@ void main() {
   });
 
   testWidgets('renders Recurring badge and End series today row', (tester) async {
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
       home: Scaffold(
         body: MealDetailSheet(
           event: _recurringEvent(),
@@ -138,7 +149,7 @@ void main() {
           onMarkCooked: null,
         ),
       ),
-    ));
+    )));
     await tester.pumpAndSettle();
 
     expect(find.text('Recurring'), findsOneWidget);
@@ -148,7 +159,7 @@ void main() {
   testWidgets('End series today — confirm triggers delete + callback',
       (tester) async {
     var ended = false;
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
       home: Scaffold(
         body: MealDetailSheet(
           event: _recurringEvent(),
@@ -158,7 +169,7 @@ void main() {
           onSeriesEnded: () => ended = true,
         ),
       ),
-    ));
+    )));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('End series today'));
@@ -174,7 +185,7 @@ void main() {
   });
 
   testWidgets('End series today — cancel does nothing', (tester) async {
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
       home: Scaffold(
         body: MealDetailSheet(
           event: _recurringEvent(),
@@ -183,7 +194,7 @@ void main() {
           onMarkCooked: null,
         ),
       ),
-    ));
+    )));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('End series today'));
@@ -197,7 +208,7 @@ void main() {
 
   testWidgets('rule load failure hides the End series row', (tester) async {
     fake.throwOnGet = true;
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
       home: Scaffold(
         body: MealDetailSheet(
           event: _recurringEvent(),
@@ -206,7 +217,7 @@ void main() {
           onMarkCooked: null,
         ),
       ),
-    ));
+    )));
     await tester.pumpAndSettle();
 
     expect(find.text('End series today'), findsNothing);
@@ -222,7 +233,7 @@ void main() {
       status: 'planned',
       isShared: false,
     );
-    await tester.pumpWidget(MaterialApp(
+    await tester.pumpWidget(ProviderScope(child: MaterialApp(
       home: Scaffold(
         body: MealDetailSheet(
           event: event,
@@ -231,7 +242,7 @@ void main() {
           onMarkCooked: null,
         ),
       ),
-    ));
+    )));
     await tester.pumpAndSettle();
 
     expect(find.text('Recurring'), findsNothing);

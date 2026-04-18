@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
+import '../models/calendar.dart';
 import '../models/meal_event.dart';
+import '../providers/active_calendar_provider.dart';
 import '../services/meal_calendar_service.dart';
+import 'calendar_picker_sheet.dart';
 import 'edit_scope_prompt.dart';
 import 'recurrence_field.dart';
 
@@ -14,7 +18,7 @@ import 'recurrence_field.dart';
 ///
 /// Callbacks are void-returning so the caller handles its own async
 /// (optimistic removal, snackbar-undo, etc.).
-class MealDetailSheet extends StatefulWidget {
+class MealDetailSheet extends ConsumerStatefulWidget {
   final MealEvent event;
 
   /// Called when the user taps Reschedule after choosing a new datetime.
@@ -44,14 +48,26 @@ class MealDetailSheet extends StatefulWidget {
   });
 
   @override
-  State<MealDetailSheet> createState() => _MealDetailSheetState();
+  ConsumerState<MealDetailSheet> createState() => _MealDetailSheetState();
 }
 
-class _MealDetailSheetState extends State<MealDetailSheet> {
+class _MealDetailSheetState extends ConsumerState<MealDetailSheet> {
   RecurrenceRule? _rule;
   bool _ruleLoadFailed = false;
 
   MealCalendarService get _service => getIt<MealCalendarService>();
+
+  /// Writable (owner-role) calendars, excluding the meal's current one.
+  /// In this epic, "writable" == "owned"; editor-role arrives in the
+  /// sharing epic.
+  List<Calendar> _moveDestinations() {
+    final all = ref.read(calendarsListProvider).value ?? const [];
+    return all
+        .where((c) => c.isOwner)
+        .toList();
+  }
+
+  bool get _hasMultipleWritableCalendars => _moveDestinations().length >= 2;
 
   @override
   void initState() {
@@ -231,6 +247,16 @@ class _MealDetailSheetState extends State<MealDetailSheet> {
                 ),
               ],
             ),
+            if (_hasMultipleWritableCalendars) ...[
+              const SizedBox(height: 12),
+              Divider(color: colorScheme.outlineVariant),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.drive_file_move_outlined),
+                title: const Text('Move to calendar'),
+                onTap: _handleMoveToCalendar,
+              ),
+            ],
             if (isRecurring && !_ruleLoadFailed) ...[
               const SizedBox(height: 12),
               Divider(color: colorScheme.outlineVariant),
@@ -251,6 +277,73 @@ class _MealDetailSheetState extends State<MealDetailSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleMoveToCalendar() async {
+    final destinations = _moveDestinations();
+    if (destinations.length < 2) return;
+
+    final picked = await showModalBottomSheet<Calendar>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: CalendarPickerSheet(
+          calendars: destinations,
+          activeId: null,
+          onSelect: (c) => Navigator.of(context).pop(c),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+
+    final isRecurring = widget.event.recurrenceRuleId != null;
+    final confirmMsg = isRecurring
+        ? "Move '${widget.event.title}' to '${picked.name}'? This moves the whole series."
+        : "Move '${widget.event.title}' to '${picked.name}'?";
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Move to calendar?'),
+        content: Text(confirmMsg),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Move'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      if (isRecurring) {
+        await _service.moveRecurrenceRuleToCalendar(
+          widget.event.recurrenceRuleId!,
+          picked.id,
+        );
+      } else {
+        await _service.moveMealEventToCalendar(widget.event.id, picked.id);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Moved to '${picked.name}'.")),
+      );
+      widget.onSeriesEnded?.call();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't move meal. Try again.")),
+      );
+    }
   }
 
   Future<void> _handleEndSeries() async {

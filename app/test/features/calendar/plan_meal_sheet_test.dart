@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/features/calendar/models/meal_event.dart';
@@ -17,6 +18,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required String title,
     required DateTime scheduledAt,
     required MealType mealType,
+    required String calendarId,
     String? recipeId,
     bool isShared = true,
   }) async {
@@ -37,6 +39,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     String eventId, {
     required DateTime scheduledAt,
     required MealType mealType,
+    String? calendarId,
   }) async {
     lastUpdated = MealEvent(
       id: eventId,
@@ -57,6 +60,12 @@ class _FakeMealCalendarService implements MealCalendarService {
   Future<void> deleteMealEvent(String eventId) async {}
 
   @override
+  Future<MealEvent> moveMealEventToCalendar(String eventId, String newCalendarId) async => throw UnimplementedError();
+
+  @override
+  Future<void> moveRecurrenceRuleToCalendar(String ruleId, String newCalendarId) async {}
+
+  @override
   Future<MealEvent> rescheduleMealEvent(String eventId, DateTime scheduledAt) async =>
       throw UnimplementedError();
 
@@ -70,6 +79,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required String interval,
     required DateTime startDate,
     required String tzName,
+    required String calendarId,
     String? title,
     String? recipeId,
     DateTime? endDate,
@@ -136,6 +146,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     bool clearEndDate = false,
     bool? isShared,
     String? tzName,
+    String? calendarId,
   }) async =>
       {};
 }
@@ -166,14 +177,17 @@ void main() {
     DateTime? initialDate,
     MealType? initialMealType,
   }) {
-    return MaterialApp(
-      home: Scaffold(
-        body: PlanMealSheet(
-          recipeId: 'r1',
-          recipeName: 'Pasta Carbonara',
-          eventId: eventId,
-          initialDate: initialDate,
-          initialMealType: initialMealType,
+    return ProviderScope(
+      child: MaterialApp(
+        home: Scaffold(
+          body: PlanMealSheet(
+            recipeId: 'r1',
+            recipeName: 'Pasta Carbonara',
+            eventId: eventId,
+            initialDate: initialDate,
+            initialMealType: initialMealType,
+            initialCalendarId: 'cal-test',
+          ),
         ),
       ),
     );

@@ -67,6 +67,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required String title,
     required DateTime scheduledAt,
     required MealType mealType,
+    required String calendarId,
     String? recipeId,
     bool isShared = true,
   }) async => throw UnimplementedError();
@@ -76,10 +77,17 @@ class _FakeMealCalendarService implements MealCalendarService {
     String eventId, {
     required DateTime scheduledAt,
     required MealType mealType,
+    String? calendarId,
   }) async => throw UnimplementedError();
 
   @override
   Future<void> deleteMealEvent(String eventId) async {}
+
+  @override
+  Future<MealEvent> moveMealEventToCalendar(String eventId, String newCalendarId) async => throw UnimplementedError();
+
+  @override
+  Future<void> moveRecurrenceRuleToCalendar(String ruleId, String newCalendarId) async {}
 
   @override
   Future<MealEvent> rescheduleMealEvent(String eventId, DateTime scheduledAt) async =>
@@ -95,6 +103,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required String interval,
     required DateTime startDate,
     required String tzName,
+    required String calendarId,
     String? title,
     String? recipeId,
     DateTime? endDate,
@@ -132,6 +141,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     bool clearEndDate = false,
     bool? isShared,
     String? tzName,
+    String? calendarId,
   }) async =>
       {};
 }
