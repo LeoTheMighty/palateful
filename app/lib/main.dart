@@ -17,6 +17,7 @@ import 'core/services/error_reporter.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/services/share_intent_handler.dart';
 import 'core/services/shared_state_service.dart';
+import 'core/services/pending_imports_reconciler.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/theme_mode_provider.dart';
@@ -163,6 +164,11 @@ void main() async {
       await pushService.ensureRegistered(
         autoPrompt: authService.hasCompletedOnboarding,
       );
+
+      // Cold-start reconciliation: the Share Extension may have queued
+      // pending imports while the main app was dead. Fire-and-forget
+      // from this point — the reconciler is server-idempotent.
+      unawaited(getIt<PendingImportsReconciler>().reconcile());
     }
   }
 
@@ -233,6 +239,10 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
         getIt<PushNotificationService>().ensureRegistered(
           autoPrompt: authService.hasCompletedOnboarding,
         );
+        // Reconcile anything the iOS Share Extension persisted while the
+        // main app was backgrounded. Server is idempotent by
+        // idempotency_key, so a double-fire is harmless.
+        unawaited(getIt<PendingImportsReconciler>().reconcile());
       }
     }
   }

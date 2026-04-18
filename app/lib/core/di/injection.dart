@@ -5,6 +5,7 @@ import '../services/cook_timer_notification_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/recipe_cache_service.dart';
 import '../services/shared_state_service.dart';
+import '../services/pending_imports_reconciler.dart';
 import '../../features/pantry/services/pantry_service.dart';
 import '../../features/shopping_cart/services/shopping_cart_service.dart';
 import '../../features/recipe_books/services/recipe_book_sync_service.dart';
@@ -33,6 +34,9 @@ void setupDependencies() {
   );
   getIt.registerLazySingleton<RecipeCacheService>(() => RecipeCacheService());
   getIt.registerLazySingleton<SharedStateService>(() => SharedStateService());
+  getIt.registerLazySingleton<PendingImportsReconciler>(
+    () => PendingImportsReconciler.forApi(getIt<ApiClient>()),
+  );
   getIt.registerLazySingleton<MealCalendarService>(
     () => MealCalendarService(getIt<ApiClient>()),
   );

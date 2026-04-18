@@ -585,6 +585,13 @@ class ApiClient {
     return _dio.get('/v1/import-jobs/$jobId');
   }
 
+  /// Low-level import POST used by PendingImportsReconciler — the Share
+  /// Extension builds the exact payload (including `idempotency_key`,
+  /// `s3_key`, `etag`) and the reconciler forwards it verbatim.
+  Future<Response> postImportForBook(String bookId, Map<String, dynamic> body) {
+    return _dio.post('/v1/recipe-books/$bookId/import', data: body);
+  }
+
   Future<Response> listImportItems(String jobId, {String? status}) {
     return _dio.get('/v1/import-jobs/$jobId/items', queryParameters: {
       if (status != null) 'status': status,

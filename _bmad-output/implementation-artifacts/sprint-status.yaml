@@ -401,7 +401,7 @@ development_status:
   # services/eval/baselines/ when the gate lands.
   irrd-3a-confidence-eval-calibration-gate: backlog
   irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: done
-  irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: backlog
+  irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: in-progress
   irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: backlog
   irrd-7-a11y-semantics-and-widget-test-pass: backlog
   epic-import-row-rich-detail-retrospective: optional
@@ -480,7 +480,7 @@ development_status:
   epic-share-ios-extension: in-progress
   sie-1-xcode-target-skeleton-and-app-group: done
   sie-2-shared-state-bridge-flutter-to-app-group: done
-  sie-3-minimal-confirmation-sheet-and-url-share-path: backlog
+  sie-3-minimal-confirmation-sheet-and-url-share-path: done
   sie-4-presigned-upload-for-file-based-shares: backlog
   sie-5-cold-start-ipad-and-edge-cases: backlog
   epic-share-ios-extension-retrospective: optional
