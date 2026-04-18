@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'import_history_screen.dart';
+import 'imports_tab.dart';
 import 'notifications_tab.dart';
 import 'providers/activity_tab_provider.dart';
 
@@ -10,9 +10,9 @@ import 'providers/activity_tab_provider.dart';
 /// Story ahr-2 owns the tab strip + tab controller sync with
 /// [activityTabProvider]. Story ahr-3 lifted the Notifications body
 /// into its own [NotificationsTab] widget (with swipe-to-archive + 3s
-/// undo). The Imports tab body still delegates to the legacy
-/// [ImportHistoryScreen] in `embedded: true` mode until ahr-4 replaces
-/// it with the color-sectioned layout.
+/// undo). Story ahr-4 replaced the embedded ImportHistoryScreen body
+/// with [ImportsTab] — four color sections + `ImportRow` + swipe
+/// rules (blue is read-only; others archive with 3s undo).
 ///
 /// Deep-link schema:
 ///  - `/activity?tab=<notifications|imports>` — canonical.
@@ -104,26 +104,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
         controller: _tabController,
         children: const [
           NotificationsTab(),
-          _ImportsTabBody(),
+          ImportsTab(),
         ],
       ),
     );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Imports tab body — ahr-2 delegates to the legacy [ImportHistoryScreen]
-// body so Leo still sees his imports. ahr-4 replaces this with the
-// color-sectioned layout (In Progress / Needs Review / Failed /
-// Auto-Imported) + swipe-to-archive + see-all footer.
-// ---------------------------------------------------------------------------
-
-class _ImportsTabBody extends StatelessWidget {
-  const _ImportsTabBody();
-
-  @override
-  Widget build(BuildContext context) {
-    // Render the existing screen content without its own Scaffold/AppBar.
-    return const ImportHistoryScreen(embedded: true);
   }
 }
