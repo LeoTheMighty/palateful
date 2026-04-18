@@ -56,6 +56,12 @@ class ImportRow extends StatelessWidget {
   /// an in-flight optimistic archive).
   final VoidCallback? onTap;
 
+  /// Optional widget rendered immediately to the right of [title] on
+  /// the same line. Used by irrd-6 for the collapsed-row confidence
+  /// badge + awaiting-review reason chip on yellow rows and the
+  /// `CompactStagePill` on blue rows.
+  final Widget? leadingInlineContent;
+
   const ImportRow({
     super.key,
     this.id,
@@ -67,6 +73,7 @@ class ImportRow extends StatelessWidget {
     this.timeLabel,
     this.trailing,
     this.onTap,
+    this.leadingInlineContent,
   });
 
   @override
@@ -94,12 +101,22 @@ class ImportRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      title,
-                      style: textTheme.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (leadingInlineContent != null) ...[
+                          const SizedBox(width: 6),
+                          leadingInlineContent!,
+                        ],
+                      ],
                     ),
                     if (statusLabel != null && statusLabel!.isNotEmpty) ...[
                       const SizedBox(height: 2),

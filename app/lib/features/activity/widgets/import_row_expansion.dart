@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/import_item_telemetry.dart';
 import '../providers/import_item_telemetry_provider.dart';
 import 'confidence_badge.dart';
+import 'import_row_expansion_actions.dart';
 import 'raw_text_preview.dart';
 import 'stage_timeline.dart';
 
@@ -41,6 +42,15 @@ class ImportRowExpansion extends ConsumerWidget {
   final double? confidenceScore;
   final String? confidenceSource;
 
+  /// Per-state action wiring rendered at the bottom of the expansion.
+  /// `rowState` decides which button set appears; the callbacks are
+  /// each nullable and disable the button when omitted.
+  final ImportRowState? rowState;
+  final VoidCallback? onReview;
+  final VoidCallback? onRetry;
+  final VoidCallback? onViewRecipe;
+  final VoidCallback? onArchive;
+
   const ImportRowExpansion({
     super.key,
     required this.itemId,
@@ -52,6 +62,11 @@ class ImportRowExpansion extends ConsumerWidget {
     this.sourceReference,
     this.confidenceScore,
     this.confidenceSource,
+    this.rowState,
+    this.onReview,
+    this.onRetry,
+    this.onViewRecipe,
+    this.onArchive,
   });
 
   @override
@@ -79,6 +94,11 @@ class ImportRowExpansion extends ConsumerWidget {
                   sourceReference: sourceReference,
                   confidenceScore: confidenceScore,
                   confidenceSource: confidenceSource,
+                  rowState: rowState,
+                  onReview: onReview,
+                  onRetry: onRetry,
+                  onViewRecipe: onViewRecipe,
+                  onArchive: onArchive,
                 ),
                 loading: () => const _SkeletonBody(),
                 error: (err, _) => _ErrorBody(
@@ -103,6 +123,11 @@ class _Body extends StatelessWidget {
   final String? sourceReference;
   final double? confidenceScore;
   final String? confidenceSource;
+  final ImportRowState? rowState;
+  final VoidCallback? onReview;
+  final VoidCallback? onRetry;
+  final VoidCallback? onViewRecipe;
+  final VoidCallback? onArchive;
 
   const _Body({
     required this.telemetry,
@@ -113,6 +138,11 @@ class _Body extends StatelessWidget {
     required this.sourceReference,
     required this.confidenceScore,
     required this.confidenceSource,
+    required this.rowState,
+    required this.onReview,
+    required this.onRetry,
+    required this.onViewRecipe,
+    required this.onArchive,
   });
 
   @override
@@ -156,6 +186,14 @@ class _Body extends StatelessWidget {
           _ErrorTile(message: errorMessage!.trim()),
         if (sourceReference != null && sourceReference!.isNotEmpty)
           _SourceTile(sourceType: sourceType, reference: sourceReference!),
+        if (rowState != null)
+          ImportRowExpansionActions(
+            state: rowState!,
+            onReview: onReview,
+            onRetry: onRetry,
+            onViewRecipe: onViewRecipe,
+            onArchive: onArchive,
+          ),
       ],
     );
   }

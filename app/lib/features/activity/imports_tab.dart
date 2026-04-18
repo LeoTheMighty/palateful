@@ -8,12 +8,18 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/theme/import_state_colors.dart';
+import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
+import 'providers/import_item_telemetry_provider.dart';
 import 'providers/import_row_expansion_provider.dart';
 import 'providers/imports_actionable_badge_provider.dart';
+import 'widgets/awaiting_review_reason_chip.dart';
+import 'widgets/compact_stage_pill.dart';
+import 'widgets/confidence_badge.dart';
 import 'widgets/import_row.dart';
 import 'widgets/import_row_caret.dart';
 import 'widgets/import_row_expansion.dart';
+import 'widgets/import_row_expansion_actions.dart';
 import 'widgets/import_state_section.dart';
 import 'widgets/see_all_footer.dart';
 
@@ -358,6 +364,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                       item: i,
                       stateColor: stateColors.needsReview,
                       chipLabel: 'Needs Review',
+                      rowState: ImportRowState.needsReview,
                       onTap: () => context
                           .push('/recipes/import/review/${i.id}'),
                     ))
@@ -372,6 +379,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                       item: i,
                       stateColor: stateColors.failed,
                       chipLabel: 'Failed',
+                      rowState: ImportRowState.failed,
                       onTap: () => context
                           .push('/recipes/import/review/${i.id}'),
                     ))
@@ -386,6 +394,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                       item: i,
                       stateColor: stateColors.autoImported,
                       chipLabel: 'Auto-Imported',
+                      rowState: ImportRowState.autoImported,
                       onTap: () {
                         final recipeId = i.createdRecipeId;
                         if (recipeId != null) {
@@ -470,6 +479,9 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   /// absence of swipe affordance is the "blue is read-only" signal.
   /// Trailing slot stacks a read-only progress ring under an interactive
   /// caret (irrd-4 AC12) so blue rows also get rich-detail expansion.
+  /// The title line mounts a `CompactStagePill` synthesized from the
+  /// job's aggregate status (irrd-6 AC2) so Leo gets his at-a-glance
+  /// stage scan without expanding.
   Widget _buildInProgressRow(_JobView job, ImportStateColors states) {
     final total = job.totalItems;
     final done = job.processedItems;
@@ -489,6 +501,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       sourceReference: null,
       confidenceScore: null,
       confidenceSource: null,
+      rowState: null,
+      onReview: null,
+      onRetry: null,
+      onViewRecipe: null,
+      onArchive: null,
       row: ImportRow(
         id: job.id,
         sourceIcon: _iconForSourceType(job.sourceType),
@@ -497,6 +514,9 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         stateColor: states.inProgress,
         stateChipLabel: 'In Progress',
         timeLabel: _formatTime(job.createdAt),
+        leadingInlineContent: CompactStagePill(
+          telemetry: _synthesizeJobTelemetry(done, total),
+        ),
         trailing: ImportRowCaret(
           rowId: job.id,
           recipeName: _jobTitle(job),
@@ -508,14 +528,99 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     );
   }
 
+  /// Synthesizes a stage timeline for a blue (in-progress) job row.
+  /// `parsed` is `ok` when the job has processed at least one item;
+  /// everything else stays `pending` so the current-stage pulse lands
+  /// on `extracted`.
+  ImportItemTelemetry _synthesizeJobTelemetry(int done, int total) {
+    return ImportItemTelemetry(stages: [
+      StageEntry(
+        stage: 'parsed',
+        status: done > 0 || total > 0 ? 'ok' : 'pending',
+      ),
+      const StageEntry(stage: 'extracted', status: 'pending'),
+      const StageEntry(stage: 'matched', status: 'pending'),
+      const StageEntry(stage: 'created', status: 'pending'),
+    ]);
+  }
+
+  Future<void> _retryItem(_ItemView item) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _apiClient.retryImportItem(item.id);
+      if (!mounted) return;
+      // Next poll will redraw the row's statusLabel; invalidate
+      // telemetry so the expansion's stage timeline refetches once
+      // the task completes.
+      ref.invalidate(importItemTelemetryProvider(item.id));
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Retrying'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text("Couldn't retry, try again"),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   Widget _buildSwipeableItemRow({
     required _ItemView item,
     required Color stateColor,
     required String chipLabel,
+    required ImportRowState rowState,
     required VoidCallback onTap,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final nonce = _restoreNonce[item.id] ?? 0;
+
+    // Yellow rows surface the confidence badge + reason chip inline
+    // with the title (irrd-6 AC1). Other states leave the slot empty.
+    Widget? inline;
+    if (rowState == ImportRowState.needsReview) {
+      inline = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConfidenceBadge(
+            score: item.confidenceScore,
+            source: item.confidenceSource,
+            dense: true,
+          ),
+          if (item.awaitingReviewReason != null) ...[
+            const SizedBox(width: 4),
+            AwaitingReviewReasonChip(reason: item.awaitingReviewReason),
+          ],
+        ],
+      );
+    }
+
+    VoidCallback? onReview;
+    VoidCallback? onRetry;
+    VoidCallback? onViewRecipe;
+    switch (rowState) {
+      case ImportRowState.needsReview:
+        onReview = () => context.push('/recipes/import/review/${item.id}');
+      case ImportRowState.failed:
+        onRetry = () => _retryItem(item);
+      case ImportRowState.autoImported:
+        final recipeId = item.createdRecipeId;
+        if (recipeId != null) {
+          onViewRecipe = () => context.push('/recipes/$recipeId');
+        }
+      case ImportRowState.inProgress:
+        break;
+    }
+
     return Dismissible(
       key: ValueKey('import-item-${item.id}-$nonce'),
       direction: DismissDirection.endToStart,
@@ -537,6 +642,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         sourceReference: item.sourceReference,
         confidenceScore: item.confidenceScore,
         confidenceSource: item.confidenceSource,
+        rowState: rowState,
+        onReview: onReview,
+        onRetry: onRetry,
+        onViewRecipe: onViewRecipe,
+        onArchive: () => _archiveItem(item),
         row: ImportRow(
           id: item.id,
           sourceIcon: _iconForSourceType(item.sourceType),
@@ -545,6 +655,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           stateColor: stateColor,
           stateChipLabel: chipLabel,
           timeLabel: _formatTime(item.createdAt),
+          leadingInlineContent: inline,
           trailing: ImportRowCaret(
             rowId: item.id,
             recipeName: item.title,
@@ -632,6 +743,11 @@ class _ExpandableRow extends ConsumerWidget {
   final String? sourceReference;
   final double? confidenceScore;
   final String? confidenceSource;
+  final ImportRowState? rowState;
+  final VoidCallback? onReview;
+  final VoidCallback? onRetry;
+  final VoidCallback? onViewRecipe;
+  final VoidCallback? onArchive;
   final Widget row;
 
   const _ExpandableRow({
@@ -645,6 +761,11 @@ class _ExpandableRow extends ConsumerWidget {
     required this.sourceReference,
     required this.confidenceScore,
     required this.confidenceSource,
+    required this.rowState,
+    required this.onReview,
+    required this.onRetry,
+    required this.onViewRecipe,
+    required this.onArchive,
     required this.row,
   });
 
@@ -670,6 +791,11 @@ class _ExpandableRow extends ConsumerWidget {
             sourceReference: sourceReference,
             confidenceScore: confidenceScore,
             confidenceSource: confidenceSource,
+            rowState: rowState,
+            onReview: onReview,
+            onRetry: onRetry,
+            onViewRecipe: onViewRecipe,
+            onArchive: onArchive,
           ),
       ],
     );
@@ -720,6 +846,7 @@ class _ItemView {
   final DateTime? lastRetryAt;
   final double? confidenceScore;
   final String? confidenceSource;
+  final String? awaitingReviewReason;
 
   _ItemView({
     required this.id,
@@ -734,6 +861,7 @@ class _ItemView {
     required this.lastRetryAt,
     required this.confidenceScore,
     required this.confidenceSource,
+    required this.awaitingReviewReason,
   });
 
   factory _ItemView.fromJson(dynamic item, dynamic parentJob) {
@@ -769,6 +897,7 @@ class _ItemView {
           ? rawConfidence.toDouble()
           : null,
       confidenceSource: item['confidence_source'] as String?,
+      awaitingReviewReason: item['awaiting_review_reason'] as String?,
     );
   }
 }

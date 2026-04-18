@@ -402,7 +402,7 @@ development_status:
   irrd-3a-confidence-eval-calibration-gate: backlog
   irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: done
   irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: done
-  irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: backlog
+  irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: done
   irrd-7-a11y-semantics-and-widget-test-pass: backlog
   epic-import-row-rich-detail-retrospective: optional
 
