@@ -110,3 +110,35 @@ class MealArchiveResponse(BaseModel):
 
 class MealFavoriteResponse(BaseModel):
     is_favorite: bool
+
+
+class ShareMealResponse(BaseModel):
+    """Response for POST /v1/meals/{meal_id}/share — mirrors ShareRecipe."""
+
+    token: str
+    deep_link: str
+
+
+class PublicMealComponent(BaseModel):
+    """A single component on a public Meal page.
+
+    Deliberately omits `recipe_id`, `order_index`, and `book_id` — a stranger
+    holding the public link MUST NOT be able to probe private recipe UUIDs
+    via a Meal share. `public_token` is populated iff the component recipe
+    has its own public share_token AND is not archived.
+    """
+
+    name: str
+    image_url: str | None = None
+    has_public_token: bool
+    public_token: str | None = None
+
+
+class PublicMealResponse(BaseModel):
+    """Unauthenticated read view of a shared Meal."""
+
+    id: str
+    name: str
+    description: str | None = None
+    recipe_book_name: str
+    components: list[PublicMealComponent] = []
