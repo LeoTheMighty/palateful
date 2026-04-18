@@ -543,7 +543,7 @@ development_status:
   epic-android-play-console-launch: in-progress
   apl-1-draft-android-md-runbook-skeleton: done
   apl-2-produce-play-console-store-listing-assets: backlog
-  apl-3-data-safety-paste-blocks-and-permission-justifications: backlog
+  apl-3-data-safety-paste-blocks-and-permission-justifications: done
   apl-4-tester-recruitment-checklist: backlog
   epic-android-play-console-launch-retrospective: optional
 

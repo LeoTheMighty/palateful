@@ -472,13 +472,198 @@ due to the alcohol ingredient reference.
 
 ## Section 15 — Data Safety form
 
-*Content below is owned by `apl-3` — paste-ready disclosure blocks
-for Firebase Crashlytics, Firebase Messaging, Auth0, S3 user media,
-Google/Apple Sign-In, OpenAI/Anthropic LLM chat, and reserved Play
-Billing. Each block is code-fenced and sized to paste verbatim into
-the Play Console text areas.*
+Path: **Play Console → App content → Data safety**. Each block below
+maps 1:1 to a "Data type" row in the form. Every subprocessor listed
+in `app/web/privacy.html` has a corresponding block — consistency
+between this form and the privacy policy is what Play reviewers
+check first. For v1 you can skip Block 7 (Play Billing — reserved
+for future subscriptions); the form accepts "not currently
+collected" for that data type.
 
-*(apl-3 content appends here — placeholder until that story lands.)*
+### Block 1 — Firebase Crashlytics (crash diagnostics)
+
+```
+Data type:            Crash logs + Device or other IDs + Approximate IP address
+Collected:            Yes
+Shared:               No
+Optional / Required:  Required (app functionality — crash reporting)
+Purpose(s):           Analytics
+Encrypted in transit: Yes
+Deletion request:     Not directly user-initiated. Collection stops
+                      when the user uninstalls the app. Per-user
+                      deletion can be requested via leonid@ac93.org;
+                      Crashlytics supports app-scoped data purge.
+Notes:                Firebase Crashlytics SDK (Google LLC) captures
+                      uncaught exceptions, native crashes, and
+                      breadcrumb logs. No PII is intentionally
+                      collected — device model + OS version + app
+                      version + approximate IP derived from the
+                      network request are implicit.
+```
+
+### Block 2 — Firebase Messaging (push notification delivery)
+
+```
+Data type:            App interactions + Device or other IDs (FCM installation ID)
+Collected:            Yes
+Shared:               No
+Optional / Required:  Optional (user must grant POST_NOTIFICATIONS)
+Purpose(s):           App functionality
+Encrypted in transit: Yes
+Deletion request:     Stops on app uninstall. Per-user deletion via
+                      account deletion (cascades to push_tokens row
+                      via the backend).
+Notes:                FCM installation ID tokens are used only to
+                      deliver push notifications (import-complete,
+                      meal reminders, household activity). No ad
+                      targeting. No third-party sharing.
+```
+
+### Block 3 — Auth0 (authentication + account management)
+
+```
+Data type:            Personal info — email address, name, User ID (sub)
+Collected:            Yes
+Shared:               Yes — with Auth0, Inc. / Okta, Inc. (identity provider)
+Optional / Required:  Required (account creation)
+Purpose(s):           Account management
+Encrypted in transit: Yes
+Deletion request:     Yes — email leonid@ac93.org; 30-day SLA per
+                      privacy policy at https://palateful.app/privacy.
+Notes:                Auth0 acts as our OIDC identity provider. The
+                      user's email + name + Auth0 sub claim are
+                      stored both in Auth0's directory and mirrored
+                      into Palateful's Postgres users table.
+```
+
+### Block 4 — S3 user-uploaded media (photos, audio, video)
+
+```
+Data type:            Photos + Audio files + Video files
+Collected:            Yes
+Shared:               Yes — with Amazon Web Services (storage processor, not downstream data-recipient)
+Optional / Required:  Optional (user chooses to attach media to a recipe)
+Purpose(s):           App functionality
+Encrypted in transit: Yes
+Encrypted at rest:    Yes (S3 SSE-S3 / KMS)
+Deletion request:     Yes — per-recipe deletion via the in-app edit
+                      flow; full-account deletion via
+                      leonid@ac93.org with 30-day SLA.
+Notes:                User media is stored in private AWS S3 buckets
+                      (recipe photos, OCR inputs, voice memos), read
+                      via signed URLs. AWS is a storage processor
+                      under our DPA; they do not access or further
+                      share customer media.
+```
+
+### Block 5 — Google / Apple Sign-In (federated OAuth)
+
+```
+Data type:            Personal info — email address, name, User ID
+Collected:            Yes (via Google Sign-In / Sign in with Apple SDKs)
+Shared:               No (beyond the provider's own use per their policies)
+Optional / Required:  Required when user chooses social sign-in
+                      (email/password is also offered via Auth0).
+Purpose(s):           Account management
+Encrypted in transit: Yes
+Deletion request:     Yes — same flow as Block 3 (Auth0). Social
+                      sign-in tokens are not separately retained;
+                      only the resulting Auth0 user.
+Notes:                Google Sign-In (Google LLC) and Sign in with
+                      Apple (Apple Inc.) SDKs surface an OAuth token
+                      that Palateful exchanges with Auth0. Apple's
+                      "Hide My Email" is supported transparently.
+```
+
+### Block 6 — OpenAI / Anthropic LLM chat (AI assistant)
+
+```
+Data type:            Messages — other in-app messages (user prompts + assistant responses)
+Collected:            Yes
+Shared:               Yes — with OpenAI, L.L.C. and Anthropic, PBC (LLM subprocessors)
+Optional / Required:  Optional — AI assistant is user-initiated; no
+                      message is sent unless the user sends one.
+Purpose(s):           App functionality + Personalization
+Encrypted in transit: Yes
+Deletion request:     Yes — in-app "clear chat history" clears
+                      server-side copies; account deletion cascades.
+                      Upstream subprocessors retain per their zero-
+                      retention endpoints (OpenAI: 30-day abuse
+                      monitoring; Anthropic: similar).
+Notes:                User prompts are forwarded to OpenAI (gpt-4o-
+                      mini primary) or Anthropic (Claude fallback /
+                      eval) for inference. The assistant may
+                      reference user-specific recipe context to
+                      personalize responses — hence Personalization.
+                      Subprocessor terms prohibit training on our
+                      data.
+```
+
+### Block 7 — Play Billing (reserved; not currently collected)
+
+```
+Data type:            Financial info — purchase history
+Collected:            No (v1 — Palateful is free, no in-app purchases)
+Shared:               N/A
+Optional / Required:  N/A
+Purpose(s):           App functionality + Fraud prevention
+                      (when enabled)
+Encrypted in transit: N/A
+Deletion request:     N/A
+Notes:                Block reserved. Flip "Collected" to Yes once
+                      subscription entitlements ship via Play
+                      Billing. At that point, collection is
+                      implicit (Google Play Billing Library handles
+                      the PII side — Palateful stores only a
+                      purchase token + entitlement state).
+```
+
+## Section 16 — Sensitive Permissions Declaration
+
+Path: **Play Console → App content → Sensitive app permissions →
++ Add declaration**. Each block below is one textarea. Paste
+verbatim; no edits required (each block is sized under the Play
+Console ~600-char soft cap).
+
+### Block 1 — `android.permission.SCHEDULE_EXACT_ALARM`
+
+```
+Cooking mode runs concurrent kitchen timers (e.g., pasta + sauce +
+roast at the same time). ±1-second firing is a core user-facing
+feature — inexact alarms drift under Doze/App-Standby by several
+minutes and ruin the dish. Exact alarms are scheduled only in
+response to the user tapping "Start timer" and cancelled on timer
+completion, cancellation, or app exit. No background work, no
+passive or silent use.
+```
+
+### Block 2 — `android.permission.POST_NOTIFICATIONS`
+
+```
+User-initiated pushes only: recipe-import completion, meal-plan
+reminders the user scheduled, and household activity (co-member
+shared a recipe). Runtime consent prompt shown during onboarding
+on Android 13+. No marketing or re-engagement pushes.
+```
+
+### Block 3 — `android.permission.CAMERA`
+
+```
+User-initiated only: recipe hero-photo capture and printed-cookbook
+OCR scan. Camera opens when the user taps the capture button; no
+continuous capture, no background use, no video. Frames are saved
+only after the user confirms "Save."
+```
+
+### Block 4 — `android.permission.RECORD_AUDIO`
+
+```
+User-initiated only: (1) voice memos attached to a recipe during
+cooking mode, recorded while the user holds a record button; (2)
+voice commands to the AI assistant, captured only while the
+speech-to-text modal is open. Never always-listening; never
+background.
+```
 
 ## Section 16 — Sensitive Permissions Declaration
 
