@@ -48,7 +48,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// Incremented on every load; prevents stale responses from overwriting newer state.
   int _loadGeneration = 0;
 
-  bool _isGeneratingList = false;
+  /// Session-scoped set of event ids whose ingredients have been added to a
+  /// shopping list in the current load. Cleared on every `_loadEvents()`.
+  final Set<String> _addedEventIds = <String>{};
 
   @override
   void initState() {
@@ -77,6 +79,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _addedEventIds.clear();
     });
     try {
       // Scope to the active calendar when resolved. Before the provider
@@ -278,6 +281,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   Future<void> _addIngredientsFromEvent(MealEvent event) async {
     assert(event.recipe != null, '_addIngredientsFromEvent requires a linked recipe');
+    // Capture the load generation before any await so a mid-flight
+    // `_loadEvents()` can't leave us writing a stale "added" indicator on a
+    // new grid. If the generation drifts by the time we resolve, silently
+    // drop the visual flip — the user still got their snackbar.
+    final generation = _loadGeneration;
     final authService = getIt<AuthService>();
     List<ShoppingList> lists;
     try {
@@ -346,6 +354,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       final result =
           await _cartService.populateFromRecipe(targetList.id, event.recipe!.id);
       if (mounted) {
+        // Only flip the per-card "added" indicator when the add landed on
+        // the current load's grid AND at least one ingredient was actually
+        // added. items_added == 0 still fires the snackbar (with the
+        // existing zero-count wording), but a check mark on a no-op would
+        // be a lie.
+        if (generation == _loadGeneration && result.itemsAdded > 0) {
+          setState(() => _addedEventIds.add(event.id));
+        }
         final n = result.itemsAdded;
         final label = n == 1 ? '1 ingredient' : '$n ingredients';
         final listName = targetList.name.isEmpty ? 'Shopping List' : targetList.name;
@@ -375,117 +391,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           const SnackBar(content: Text('Failed to add ingredients')),
         );
       }
-    }
-  }
-
-  Future<void> _generateWeeklyShoppingList() async {
-    if (_isGeneratingList) return;
-    setState(() => _isGeneratingList = true);
-
-    // Capture week range immediately — _weekStart can change if the user
-    // navigates weeks while this async method is awaiting.
-    final weekStart = _weekStart;
-    final weekEnd = _weekEnd;
-
-    try {
-      List<ShoppingList> lists;
-      try {
-        lists = await _cartService.getShoppingLists();
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to load shopping lists')),
-          );
-        }
-        return;
-      }
-
-      if (lists.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('No shopping lists — tap + to create one')),
-          );
-        }
-        return;
-      }
-
-      // Bulk action: always show picker with default pre-selected
-      final ShoppingList targetList;
-      if (lists.length == 1) {
-        targetList = lists.first;
-      } else {
-        if (!mounted) return;
-        final defaultId = getIt<AuthService>().defaultShoppingListId;
-        // Sort default list to top
-        final sortedLists = List<ShoppingList>.from(lists);
-        if (defaultId != null) {
-          sortedLists.sort((a, b) {
-            if (a.id == defaultId) return -1;
-            if (b.id == defaultId) return 1;
-            return 0;
-          });
-        }
-        final selected = await showModalBottomSheet<ShoppingList>(
-          context: context,
-          builder: (ctx) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'Choose a shopping list',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                ),
-                ...sortedLists.map((list) => ListTile(
-                      title: Text(list.name),
-                      subtitle: Text('${list.items.length} item(s)'),
-                      trailing: list.id == defaultId
-                          ? const Icon(Icons.star, size: 16, color: Colors.amber)
-                          : null,
-                      onTap: () => Navigator.pop(ctx, list),
-                    )),
-              ],
-            ),
-          ),
-        );
-        if (selected == null) return;
-        targetList = selected;
-      }
-
-      try {
-        final result = await _cartService.populateFromCalendarRange(
-            targetList.id, weekStart, weekEnd);
-        if (mounted) {
-          if (result.mealEventsIncluded == 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('No planned meals with recipes this week')),
-            );
-            return;
-          }
-          final n = result.itemsAdded;
-          final m = result.mealEventsIncluded;
-          final itemLabel = n == 1 ? '1 ingredient' : '$n ingredients';
-          final mealLabel = m == 1 ? '1 meal' : '$m meals';
-          final weeklyListName = targetList.name.isEmpty ? 'Shopping List' : targetList.name;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(
-                    'Added $itemLabel from $mealLabel to $weeklyListName')),
-          );
-        }
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to generate shopping list')),
-          );
-        }
-      }
-    } finally {
-      if (mounted) setState(() => _isGeneratingList = false);
     }
   }
 
@@ -616,14 +521,6 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         onCreateCalendar: _openCreateCalendarDialog,
         onOpenSettings: _openCalendarSettings,
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.add_shopping_cart_outlined),
-          color: colorScheme.onSurface,
-          tooltip: 'Add week to shopping list',
-          onPressed: _generateWeeklyShoppingList,
-        ),
-      ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(48),
         child: Padding(
@@ -905,6 +802,47 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 ],
               ),
             ),
+
+            // Per-card shopping-cart / added-check icon. Only rendered when
+            // the event has a linked recipe — no placeholder SizedBox in the
+            // null-recipe case, matching the chevron's visibility rule. The
+            // IconButton swallows its own tap so the row-level onTap (meal
+            // detail sheet) does NOT fire when the user aims for the icon.
+            //
+            // The outer `Semantics(excludeSemantics: true)` replaces the
+            // IconButton's own semantics with a richer label. The tooltip is
+            // kept for visual long-press discoverability, but is excluded
+            // from the a11y tree so screen-reader users hear our "double-tap
+            // to add again" hint in the checked state.
+            if (event.recipe != null)
+              Semantics(
+                button: true,
+                label: _addedEventIds.contains(event.id)
+                    ? 'Added to shopping list, double-tap to add again'
+                    : 'Add to shopping list',
+                onTap: () => _addIngredientsFromEvent(event),
+                excludeSemantics: true,
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 18,
+                    tooltip: _addedEventIds.contains(event.id)
+                        ? 'Added to shopping list'
+                        : 'Add to shopping list',
+                    icon: Icon(
+                      _addedEventIds.contains(event.id)
+                          ? Icons.check
+                          : Icons.add_shopping_cart_outlined,
+                      color: _addedEventIds.contains(event.id)
+                          ? colorScheme.onSurface.withValues(alpha: 0.45)
+                          : colorScheme.onSurface.withValues(alpha: 0.75),
+                    ),
+                    onPressed: () => _addIngredientsFromEvent(event),
+                  ),
+                ),
+              ),
 
             // Chevron if navigable
             if (event.recipe != null)
