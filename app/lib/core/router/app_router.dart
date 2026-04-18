@@ -26,6 +26,7 @@ import '../../features/recipes/add_recipe/import_review_list_screen.dart';
 import '../../features/recipes/add_recipe/share_import_screen.dart';
 import '../../features/recipes/add_recipe/audio_import_screen.dart';
 import '../../features/recipes/add_recipe/pdf_import_screen.dart';
+import '../../features/recipes/add_recipe/receive_import_screen.dart';
 import '../../features/recipes/add_recipe/spreadsheet_import_screen.dart';
 import '../../features/recipes/add_recipe/text_paste_import_screen.dart';
 import '../../features/recipes/add_recipe/url_import_screen.dart';
@@ -241,7 +242,11 @@ GoRouter get appRouter {
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           final recipeBookId = extra?['recipeBookId'] as String?;
-          return PhotoCaptureScreen(recipeBookId: recipeBookId);
+          final initialPath = state.uri.queryParameters['path'];
+          return PhotoCaptureScreen(
+            recipeBookId: recipeBookId,
+            initialPath: initialPath,
+          );
         },
       ),
       GoRoute(
@@ -283,7 +288,11 @@ GoRouter get appRouter {
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           final recipeBookId = extra?['recipeBookId'] as String?;
-          return AudioImportScreen(recipeBookId: recipeBookId);
+          final initialPath = state.uri.queryParameters['path'];
+          return AudioImportScreen(
+            recipeBookId: recipeBookId,
+            initialPath: initialPath,
+          );
         },
       ),
       GoRoute(
@@ -292,7 +301,11 @@ GoRouter get appRouter {
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           final recipeBookId = extra?['recipeBookId'] as String?;
-          return PdfImportScreen(recipeBookId: recipeBookId);
+          final initialPath = state.uri.queryParameters['path'];
+          return PdfImportScreen(
+            recipeBookId: recipeBookId,
+            initialPath: initialPath,
+          );
         },
       ),
       GoRoute(
@@ -301,7 +314,11 @@ GoRouter get appRouter {
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           final recipeBookId = extra?['recipeBookId'] as String?;
-          return SpreadsheetImportScreen(recipeBookId: recipeBookId);
+          final initialPath = state.uri.queryParameters['path'];
+          return SpreadsheetImportScreen(
+            recipeBookId: recipeBookId,
+            initialPath: initialPath,
+          );
         },
       ),
       GoRoute(
@@ -310,6 +327,23 @@ GoRouter get appRouter {
         builder: (context, state) {
           final url = state.uri.queryParameters['url'] ?? '';
           return ShareImportScreen(initialUrl: url);
+        },
+      ),
+      // sae-3: universal receive landing. Forwards supported MIMEs to the
+      // typed screen with `?path=`; renders the "we can't read this"
+      // state when `unsupported=true`. Placeholder until sru-1 lands the
+      // full receive UX.
+      GoRoute(
+        path: '/recipes/add/receive',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final qp = state.uri.queryParameters;
+          return ReceiveImportScreen(
+            path: qp['path'],
+            mime: qp['mime'],
+            unsupported: qp['unsupported'] == 'true',
+            filename: qp['filename'],
+          );
         },
       ),
       GoRoute(

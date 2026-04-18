@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -37,7 +38,16 @@ class _SelectedImage {
 class PhotoCaptureScreen extends ConsumerStatefulWidget {
   final String? recipeBookId;
 
-  const PhotoCaptureScreen({super.key, this.recipeBookId});
+  /// Pre-selected image path (sandbox file) from the share-intent flow.
+  /// When set, the screen skips its picker sheet and queues the image
+  /// for upload immediately. See epic-share-android-entrypoint / sae-2.
+  final String? initialPath;
+
+  const PhotoCaptureScreen({
+    super.key,
+    this.recipeBookId,
+    this.initialPath,
+  });
 
   @override
   ConsumerState<PhotoCaptureScreen> createState() => _PhotoCaptureScreenState();
@@ -66,6 +76,25 @@ class _PhotoCaptureScreenState extends ConsumerState<PhotoCaptureScreen> {
     super.initState();
     _selectedBookId = widget.recipeBookId;
     _loadRecipeBooks();
+    final seed = widget.initialPath;
+    if (seed != null && seed.isNotEmpty && !kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadSharedImage(seed));
+    }
+  }
+
+  Future<void> _loadSharedImage(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      _addImage(
+        _SelectedImage(file: XFile(path), bytes: bytes),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not open shared image.');
+    }
   }
 
   Future<void> _loadRecipeBooks() async {

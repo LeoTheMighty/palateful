@@ -14,7 +14,16 @@ import '../../../shared/widgets/error_banner.dart';
 class AudioImportScreen extends StatefulWidget {
   final String? recipeBookId;
 
-  const AudioImportScreen({super.key, this.recipeBookId});
+  /// Pre-selected audio path (sandbox file) from the share-intent flow.
+  /// When set, the screen skips its picker and pre-fills the file. See
+  /// epic-share-android-entrypoint / sae-2.
+  final String? initialPath;
+
+  const AudioImportScreen({
+    super.key,
+    this.recipeBookId,
+    this.initialPath,
+  });
 
   @override
   State<AudioImportScreen> createState() => _AudioImportScreenState();
@@ -33,6 +42,41 @@ class _AudioImportScreenState extends State<AudioImportScreen> {
 
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    final seed = widget.initialPath;
+    if (seed != null && seed.isNotEmpty) {
+      _prefillFromPath(seed);
+    }
+  }
+
+  Future<void> _prefillFromPath(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      final stat = await file.stat();
+      if (stat.size > 50 * 1024 * 1024) {
+        if (!mounted) return;
+        setState(() => _error = 'File too large — max 50MB');
+        return;
+      }
+      final name = path.split(Platform.pathSeparator).last;
+      if (!mounted) return;
+      setState(() {
+        _selectedFile = PlatformFile(
+          name: name,
+          path: path,
+          size: stat.size,
+        );
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not open shared audio.');
+    }
+  }
 
   @override
   void dispose() {

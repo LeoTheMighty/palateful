@@ -14,7 +14,16 @@ import '../../../shared/widgets/error_banner.dart';
 class SpreadsheetImportScreen extends StatefulWidget {
   final String? recipeBookId;
 
-  const SpreadsheetImportScreen({super.key, this.recipeBookId});
+  /// Pre-selected spreadsheet path (sandbox file) from the share-intent
+  /// flow. When set, the screen skips its picker and pre-fills the
+  /// file. See epic-share-android-entrypoint / sae-2.
+  final String? initialPath;
+
+  const SpreadsheetImportScreen({
+    super.key,
+    this.recipeBookId,
+    this.initialPath,
+  });
 
   @override
   State<SpreadsheetImportScreen> createState() => _SpreadsheetImportScreenState();
@@ -29,6 +38,50 @@ class _SpreadsheetImportScreenState extends State<SpreadsheetImportScreen> {
 
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    final seed = widget.initialPath;
+    if (seed != null && seed.isNotEmpty) {
+      _prefillFromPath(seed);
+    }
+  }
+
+  Future<void> _prefillFromPath(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      final stat = await file.stat();
+      final lowered = path.toLowerCase();
+      final ext = lowered.endsWith('.csv')
+          ? 'csv'
+          : lowered.endsWith('.xlsx')
+              ? 'xlsx'
+              : lowered.endsWith('.xls')
+                  ? 'xls'
+                  : '';
+      final maxSize = ext == 'csv' ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (stat.size > maxSize) {
+        if (!mounted) return;
+        setState(() => _error = 'File too large — max ${ext == "csv" ? "5MB" : "10MB"}');
+        return;
+      }
+      final name = path.split(Platform.pathSeparator).last;
+      if (!mounted) return;
+      setState(() {
+        _selectedFile = PlatformFile(
+          name: name,
+          path: path,
+          size: stat.size,
+        );
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not open shared spreadsheet.');
+    }
+  }
 
   Future<void> _pickFile() async {
     try {

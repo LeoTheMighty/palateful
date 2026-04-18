@@ -15,6 +15,7 @@ import 'core/services/api_client.dart';
 import 'core/services/cook_timer_notification_service.dart';
 import 'core/services/error_reporter.dart';
 import 'core/services/push_notification_service.dart';
+import 'core/services/share_intent_handler.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/theme_mode_provider.dart';
@@ -170,6 +171,8 @@ class PalatefulApp extends ConsumerStatefulWidget {
 class _PalatefulAppState extends ConsumerState<PalatefulApp>
     with WidgetsBindingObserver {
   StreamSubscription? _shareSubscription;
+  ShareIntentHandler? _shareHandler;
+  VoidCallback? _authListener;
 
   @override
   void initState() {
@@ -183,7 +186,9 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
     }
 
     if (!kIsWeb) {
+      _shareHandler = ShareIntentHandler(authService: getIt<AuthService>());
       _initShareListener();
+      _initAuthReplayListener();
     }
   }
 
@@ -212,51 +217,67 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
         .listen(_handleSharedFiles, onError: (_) {});
   }
 
-  void _handleSharedFiles(List<SharedMediaFile> files) {
-    for (final file in files) {
-      final path = file.path.trim();
-      if (path.startsWith('http://') || path.startsWith('https://')) {
-        _navigateAfterFrame('/recipes/add/share?url=${Uri.encodeComponent(path)}');
-        return;
-      }
-      // Try to extract URL from text
-      final urlMatch = RegExp(r'https?://\S+').firstMatch(path);
-      if (urlMatch != null) {
-        final url = urlMatch.group(0)!;
-        _navigateAfterFrame('/recipes/add/share?url=${Uri.encodeComponent(url)}');
-        return;
-      }
-      // Handle shared files by extension
-      final ext = path.split('.').last.toLowerCase();
-      if ({'csv', 'xlsx', 'xls'}.contains(ext)) {
-        _navigateAfterFrame('/recipes/add/spreadsheet');
-        return;
-      }
-      if ({'jpg', 'jpeg', 'png', 'heic', 'webp'}.contains(ext)) {
-        _navigateAfterFrame('/recipes/add/photo');
-        return;
-      }
-      if (ext == 'pdf') {
-        _navigateAfterFrame('/recipes/add/pdf');
-        return;
-      }
-      if ({'m4a', 'mp3', 'wav', 'aac', 'ogg'}.contains(ext)) {
-        _navigateAfterFrame('/recipes/add/audio');
-        return;
-      }
-      if ({'mp4', 'mov', 'avi', 'mkv', 'webm'}.contains(ext)) {
-        // Video files shared directly — route to URL import which handles video extraction
-        _navigateAfterFrame('/recipes/add/url');
-        return;
-      }
+  /// getInitialMedia() can resolve before AuthService rehydrates on cold
+  /// start. We persist the route to SharedPreferences in that window
+  /// and replay it on the first successful auth + onboarding tick.
+  /// Gating on both prevents the replay from firing mid-redirect to
+  /// /onboarding/welcome (which would consume + drop the payload).
+  void _initAuthReplayListener() {
+    final authService = getIt<AuthService>();
+    void onAuthChange() {
+      if (!authService.isAuthenticated) return;
+      if (!authService.hasCompletedOnboarding) return;
+      unawaited(_replayPendingShare());
+    }
+    _authListener = onAuthChange;
+    authService.addListener(onAuthChange);
+    // If auth rehydrated before initState ran, try now.
+    if (authService.isAuthenticated && authService.hasCompletedOnboarding) {
+      unawaited(_replayPendingShare());
     }
   }
 
-  void _navigateAfterFrame(String route) {
+  Future<void> _replayPendingShare() async {
+    final handler = _shareHandler;
+    if (handler == null) return;
+    final route = await handler.consumePending();
+    if (route == null) return;
+    _navigateAfterFrame(route);
+  }
+
+  void _handleSharedFiles(List<SharedMediaFile> files) {
+    final handler = _shareHandler;
+    if (handler == null) return;
+    unawaited(() async {
+      final resolved = await handler.resolve(files);
+      if (resolved == null) return;
+      if (!handler.isAuthenticated) {
+        await handler.persistPending(resolved.route);
+        return;
+      }
+      _navigateAfterFrame(resolved.route, skippedCount: resolved.skippedCount);
+    }());
+  }
+
+  void _navigateAfterFrame(String route, {int skippedCount = 0}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authService = getIt<AuthService>();
-      if (authService.isAuthenticated) {
-        appRouter.go(route);
+      if (!authService.isAuthenticated) return;
+      appRouter.go(route);
+      if (skippedCount > 0) {
+        final ctx = rootNavigatorKey.currentContext;
+        if (ctx != null) {
+          final messenger = ScaffoldMessenger.maybeOf(ctx);
+          messenger?.showSnackBar(
+            SnackBar(
+              content: Text(
+                skippedCount == 1
+                    ? 'Only the first item was imported (1 skipped).'
+                    : 'Only the first item was imported ($skippedCount skipped).',
+              ),
+            ),
+          );
+        }
       }
     });
   }
@@ -264,6 +285,10 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
   @override
   void dispose() {
     _shareSubscription?.cancel();
+    final listener = _authListener;
+    if (listener != null) {
+      getIt<AuthService>().removeListener(listener);
+    }
     if (!kE2EMode) {
       WidgetsBinding.instance.removeObserver(this);
     }

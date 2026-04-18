@@ -13,7 +13,16 @@ import '../../../shared/widgets/error_banner.dart';
 class PdfImportScreen extends StatefulWidget {
   final String? recipeBookId;
 
-  const PdfImportScreen({super.key, this.recipeBookId});
+  /// Pre-selected PDF path (sandbox file) from the share-intent flow.
+  /// When set, the screen skips its picker and pre-fills the file. See
+  /// epic-share-android-entrypoint / sae-2.
+  final String? initialPath;
+
+  const PdfImportScreen({
+    super.key,
+    this.recipeBookId,
+    this.initialPath,
+  });
 
   @override
   State<PdfImportScreen> createState() => _PdfImportScreenState();
@@ -28,6 +37,41 @@ class _PdfImportScreenState extends State<PdfImportScreen> {
 
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    final seed = widget.initialPath;
+    if (seed != null && seed.isNotEmpty) {
+      _prefillFromPath(seed);
+    }
+  }
+
+  Future<void> _prefillFromPath(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) return;
+      final stat = await file.stat();
+      if (stat.size > 50 * 1024 * 1024) {
+        if (!mounted) return;
+        setState(() => _error = 'File too large — max 50MB');
+        return;
+      }
+      final name = path.split(Platform.pathSeparator).last;
+      if (!mounted) return;
+      setState(() {
+        _selectedFile = PlatformFile(
+          name: name,
+          path: path,
+          size: stat.size,
+        );
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'Could not open shared PDF.');
+    }
+  }
 
   Future<void> _pickFile() async {
     try {
