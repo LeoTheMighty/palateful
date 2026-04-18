@@ -493,7 +493,7 @@ development_status:
   # (deploy-web already ships everything under app/web/).
   epic-android-privacy-policy-page: in-progress
   app-1-draft-privacy-policy-html: done
-  app-2-wire-play-console-form-references: backlog
+  app-2-wire-play-console-form-references: done
   app-3-post-deploy-verification: backlog
   epic-android-privacy-policy-page-retrospective: optional
 
