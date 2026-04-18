@@ -6,6 +6,7 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'widgets/meal_search_tile.dart';
 
 class SearchScreen extends StatefulWidget {
   /// Optional query to pre-populate the search field — used by the pantry
@@ -29,6 +30,9 @@ class _SearchScreenState extends State<SearchScreen> {
   List<dynamic> _myRecipes = [];
   List<dynamic> _publicRecipes = [];
   List<dynamic> _users = [];
+  // md-5: Meals render in a dedicated "My Meals" section between My and
+  // Public Recipes.
+  List<dynamic> _myMeals = [];
   bool _hasSearched = false;
 
   // Filter state — reset when query text changes
@@ -68,6 +72,7 @@ class _SearchScreenState extends State<SearchScreen> {
         _myRecipes = [];
         _publicRecipes = [];
         _users = [];
+        _myMeals = [];
         _hasSearched = false;
         _error = null;
       });
@@ -95,12 +100,17 @@ class _SearchScreenState extends State<SearchScreen> {
         tags: _filterTags.isEmpty ? null : _filterTags.toList(),
         maxPrepTime: _maxTotalTime,
         maxCookTime: _maxTotalTime,
+        // md-5: opt in to the new meals tier. The backend's scope parser
+        // falls back to legacy behaviour on unknown values, so this is
+        // safe even if the server hasn't been upgraded yet (md-1).
+        scope: 'recipes,meals',
       );
       if (mounted) {
         setState(() {
           _myRecipes = response.data['my_recipes'] ?? [];
           _publicRecipes = response.data['public_recipes'] ?? [];
           _users = response.data['users'] ?? [];
+          _myMeals = response.data['my_meals'] ?? [];
           _isLoading = false;
           _hasSearched = true;
         });
@@ -293,8 +303,10 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
 
-    final hasResults =
-        _myRecipes.isNotEmpty || _publicRecipes.isNotEmpty || _users.isNotEmpty;
+    final hasResults = _myRecipes.isNotEmpty ||
+        _publicRecipes.isNotEmpty ||
+        _users.isNotEmpty ||
+        _myMeals.isNotEmpty;
 
     if (!hasResults) {
       return Center(
@@ -321,6 +333,10 @@ class _SearchScreenState extends State<SearchScreen> {
         if (_myRecipes.isNotEmpty) ...[
           _buildSectionHeader('My Recipes'),
           ..._myRecipes.map((r) => _buildRecipeTile(r, isPublic: false)),
+        ],
+        if (_myMeals.isNotEmpty) ...[
+          _buildSectionHeader('My Meals'),
+          ..._myMeals.map(_buildMealTile),
         ],
         if (_publicRecipes.isNotEmpty) ...[
           _buildSectionHeader('Public Recipes'),
@@ -467,6 +483,24 @@ class _SearchScreenState extends State<SearchScreen> {
         size: size * 0.4,
         color: colorScheme.onSurfaceVariant,
       ),
+    );
+  }
+
+  Widget _buildMealTile(dynamic meal) {
+    final matched = meal['matched_component'];
+    final matchedName =
+        matched is Map ? matched['name'] as String? : null;
+    final images = ((meal['top_component_image_urls'] as List?) ?? [])
+        .cast<String>()
+        .toList();
+    return MealSearchTile(
+      mealId: meal['id'] as String,
+      name: meal['name'] as String,
+      bookName: meal['recipe_book_name'] as String?,
+      componentCount: (meal['component_count'] as num?)?.toInt() ?? 0,
+      componentImageUrls: images,
+      matchedComponentName: matchedName,
+      onTap: () => context.push('/meals/${meal['id']}'),
     );
   }
 
