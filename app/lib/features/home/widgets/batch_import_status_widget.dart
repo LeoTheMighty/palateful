@@ -9,8 +9,11 @@ import '../../recipes/add_recipe/batch_parser_service.dart';
 
 /// Compact notification badge for import status on the home screen.
 ///
-/// Shows a single-line summary ("X recipes to review", "Processing X photos...")
-/// and navigates to the Import Activity screen on tap.
+/// Shows a single-line summary ("Processing X photos...", "X photos
+/// processed — see Activity") and navigates to the Import Activity
+/// screen on tap. After FR88 fan-out, one photo can produce N review
+/// items, so the "processed" string counts photos (ParserJob successes)
+/// and nudges the user to Activity Hub for the actual recipe count.
 class BatchImportStatusWidget extends StatefulWidget {
   const BatchImportStatusWidget({super.key});
 
@@ -70,7 +73,9 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
         ),
       );
     } else if (succeeded > 0 && failed == 0) {
-      summary = '$succeeded recipe${succeeded == 1 ? '' : 's'} processed';
+      // FR88: a processed photo can yield N recipes. Count photos here
+      // and nudge the user to Activity Hub for the accurate recipe count.
+      summary = '$succeeded photo${succeeded == 1 ? '' : 's'} processed — see Activity';
       leadingIcon = Icon(Icons.check_circle, size: 18, color: appColors.success);
     } else if (failed > 0 && succeeded == 0) {
       summary = '$failed import${failed == 1 ? '' : 's'} failed';

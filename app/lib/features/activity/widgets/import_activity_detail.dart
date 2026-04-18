@@ -14,6 +14,8 @@
 //   source_reference    → rendered: source detail (row N / page N)
 //   source_url          → rendered: tappable URL in source row
 //   raw_data            → annotated-not-shown: debug-only blob
+//     └─ recipe_index   → annotated-not-shown: server-side traceability only
+//                         (set by extract_recipe_task fan-out, bugs-imp-pho-2)
 //   parsed_recipe       → rendered: the edit form below this header IS the view
 //   user_edits          → rendered: merged over parsed_recipe in edit form
 //   error_message       → rendered: top of hierarchy when failed, collapsed to
