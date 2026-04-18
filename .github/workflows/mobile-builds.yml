@@ -33,10 +33,13 @@ on:
       - 'v*.*.*'
 
 # Single source of truth for Flutter across iOS + Android + ci.yml flutter-test.
-# Keep in sync with .github/workflows/ci.yml (flutter-test job).
+# Keep in sync with .github/workflows/ci.yml (flutter-test job). Bumping Flutter
+# means updating both files in one PR, then watching for pubspec resolver breaks
+# — the app's Riverpod 3.0-dev + build_runner pins require the current stable's
+# Dart SDK (≥3.9 as of Flutter 3.41.x).
 env:
   FLUTTER_CHANNEL: stable
-  FLUTTER_VERSION: '3.32.0'
+  FLUTTER_VERSION: '3.41.7'
 
 jobs:
   ios-build:
