@@ -125,11 +125,39 @@ jobs:
           restore-keys: |
             pub-${{ runner.os }}-
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/**/*.gradle*', 'app/android/gradle/wrapper/gradle-wrapper.properties', 'app/pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: Install Flutter dependencies
         working-directory: app
         run: |
-          touch .env
+          # Dummy .env so assert() guards on required env vars don't fire during
+          # analyze + test. Real values are not needed for static analysis or
+          # the unit-test suite. Matches ci.yml's flutter-test job.
+          cat > .env << 'EOF'
+          API_BASE_URL=http://localhost:8000
+          AUTH0_DOMAIN=test.palateful.us.auth0.com
+          AUTH0_CLIENT_ID=test-client-id
+          AUTH0_AUDIENCE=https://api.palateful.app
+          EOF
           flutter pub get
+
+      - name: Flutter analyze
+        working-directory: app
+        # Fail-fast gate: a broken main should not produce an AAB. Matches
+        # ci.yml's flutter-test job flags — warnings surface but don't block.
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+
+      - name: Flutter test
+        working-directory: app
+        run: flutter test
 
       - name: Set up Ruby and Bundler
         uses: ruby/setup-ruby@v1
