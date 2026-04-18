@@ -348,11 +348,11 @@ development_status:
   # two new tables (request_latencies, task_latencies); dedicated /admin/metrics
   # page with p50/p95/p99 tables + sparklines; nightly prune. No Datadog, no
   # Prometheus. Parallelizable with epic-user-feedback (both extend /admin/stats).
-  epic-observability-latency: in-progress
+  epic-observability-latency: done
   obs-latency-1-backend-schema-and-writer: done
-  obs-latency-2-aggregation-endpoints-and-stats: backlog
-  obs-latency-3-flutter-metrics-screen: backlog
-  obs-latency-4-nightly-prune-and-ops-readiness: backlog
+  obs-latency-2-aggregation-endpoints-and-stats: done
+  obs-latency-3-flutter-metrics-screen: done
+  obs-latency-4-nightly-prune-and-ops-readiness: done
   epic-observability-latency-retrospective: optional
 
   # Epic User Feedback — Inbox + Prod Fetch Script (planned 2026-04-18)
@@ -416,3 +416,66 @@ development_status:
   riip-7-flutter-ingredient-row-state-badge: backlog
   riip-8-regression-three-surfaces-and-e2e-smoke: backlog
   epic-review-import-ingredient-polish-retrospective: optional
+
+  # Epic Share Backend Foundations (planned 2026-04-18)
+  # Presigned S3 upload endpoint + s3_key on /import + new video_file
+  # source_type with ffmpeg audio extraction + social URL routing moved to
+  # endpoint + new palateful-imports-{env} S3 bucket. Unblocks iOS Share
+  # Extension (sie) and Universal Receiving UX (sru). Independent.
+  epic-share-backend-foundations: backlog
+  sbf-1-s3-imports-bucket-and-iam: backlog
+  sbf-2-presigned-upload-url-endpoint: backlog
+  sbf-3-s3-key-import-path-audio-pdf-spreadsheet: backlog
+  sbf-4-ffmpeg-in-worker-and-video-file-source-type: backlog
+  sbf-5-social-url-routing-promoted-to-endpoint: backlog
+  epic-share-backend-foundations-retrospective: optional
+
+  # Epic Share Android Entry Point (planned 2026-04-18)
+  # AndroidManifest MIME expansion + Android 13+ READ_MEDIA_* permissions +
+  # content-aware _handleSharedFiles rewrite (MIME + extension + content
+  # prefix disambiguation). Unblocks shared photos / PDFs / video files /
+  # audio on Android. Partially depends on Epic Share Receiving UX for the
+  # /recipes/add/receive landing route; manifest work ships standalone.
+  epic-share-android-entrypoint: backlog
+  sae-1-androidmanifest-mime-and-permission-expansion: backlog
+  sae-2-flutter-content-aware-handler-and-sandbox-copy: backlog
+  sae-3-unsupported-type-fallback-wiring: backlog
+  epic-share-android-entrypoint-retrospective: optional
+
+  # Epic Share Receiving UX (planned 2026-04-18)
+  # New /recipes/add/receive universal landing screen + all typed import
+  # screens accept initialPath/initialText + new VideoFileImportScreen for
+  # local video files + graceful "we can't read this" fallback for
+  # unsupported types + oversize (100MB) hard-stop screen. Depends on
+  # Epic Share Backend Foundations for upload endpoints + video_file
+  # source_type.
+  epic-share-receiving-ux: backlog
+  sru-1-universal-receiving-landing-screen: backlog
+  sru-2-unsupported-type-and-oversize-screens: backlog
+  sru-3-typed-import-screens-accept-initial-path: backlog
+  sru-4-presigned-upload-for-pdf-audio-video-in-receive-screen: backlog
+  sru-5-video-file-import-screen-and-add-recipe-sheet-entry: backlog
+  epic-share-receiving-ux-retrospective: optional
+
+  # Epic iOS Share Extension (planned 2026-04-18)
+  # New PalatefulShare Xcode target -- minimal SwiftUI confirmation sheet,
+  # presigned S3 upload from inside the extension, direct API call without
+  # main-app dependency. Reuses group.com.palateful.app App Group. Blocked
+  # by Epic Share Backend Foundations for the upload-url endpoint and
+  # s3_key import path. Requires App Store Connect changes (new App ID,
+  # provisioning profile, App Group capability).
+  epic-share-ios-extension: backlog
+  sie-1-xcode-target-skeleton-and-app-group: backlog
+  sie-2-shared-state-bridge-flutter-to-app-group: backlog
+  sie-3-minimal-confirmation-sheet-and-url-share-path: backlog
+  sie-4-presigned-upload-for-file-based-shares: backlog
+  sie-5-cold-start-ipad-and-edge-cases: backlog
+  epic-share-ios-extension-retrospective: optional
+
+  # Retired: epic-media-import
+  # Planned 2026-03 as a 5-story universal media import epic; Story 5
+  # shipped as Media.5 (Add Recipe Sheet redesign, 9 days ago); Stories 1-4
+  # (social URL router, audio fallback, PDF, audio files) landed in the
+  # backend before the 2026-04-18 share planning loop. Remaining delta is
+  # covered by the four epic-share-* epics above. No stories scheduled here.
+  epic-media-import: deleted
