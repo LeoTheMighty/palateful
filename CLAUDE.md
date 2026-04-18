@@ -11,6 +11,7 @@ Palateful is an NX monorepo with Python microservices (FastAPI) and Flutter mobi
 - **`docs/`** - Feature/design docs (MVP, import pipeline, shared shopping cart, calendar, invitations, search, recipe experience, deployment, eval). Source of truth for schema and endpoints is the code itself (`services/api/src/db/models/`, `services/api/src/routers/`).
 - **`_bmad-output/planning-artifacts/epics.md`** - Current roadmap and epic status — **primary source for what to do next**
 - **`_bmad-output/planning-artifacts/architecture.md`** - Current system architecture
+- **`ANDROID.md`** - Play Store release runbook (single operator, Day 1 signup → Day 3 first tag). See `epic-android-play-console-launch` for epic-level context.
 
 ## Project Structure
 

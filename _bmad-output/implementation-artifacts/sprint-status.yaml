@@ -391,7 +391,7 @@ development_status:
   # last_retry_at). Depends on epic-activity-hub-redesign (row shell).
   epic-import-row-rich-detail: in-progress
   irrd-1-backend-expose-stage-and-retry-fields: done
-  irrd-2-backend-import-item-telemetry-endpoint: backlog
+  irrd-2-backend-import-item-telemetry-endpoint: done
   irrd-3-backend-extractor-confidence-score-e2e: backlog
   irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: backlog
   irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: backlog
@@ -540,8 +540,8 @@ development_status:
   # Sensitive Permissions Declaration (SCHEDULE_EXACT_ALARM justification),
   # tester recruitment via Google Group. Depends on all three preceding
   # Android epics.
-  epic-android-play-console-launch: backlog
-  apl-1-draft-android-md-runbook-skeleton: backlog
+  epic-android-play-console-launch: in-progress
+  apl-1-draft-android-md-runbook-skeleton: done
   apl-2-produce-play-console-store-listing-assets: backlog
   apl-3-data-safety-paste-blocks-and-permission-justifications: backlog
   apl-4-tester-recruitment-checklist: backlog
