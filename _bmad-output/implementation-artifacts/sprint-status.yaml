@@ -360,12 +360,12 @@ development_status:
   # existing admin dashboard with push + unread-badge alerts; read-only
   # (Mark Read / Archive); fetch_feedback.py prod script mirrors
   # promote_admin.py. Parallelizable with epic-observability-latency.
-  epic-user-feedback: in-progress
+  epic-user-feedback: done
   feedback-1-backend-model-and-submit-endpoint: done
   feedback-2-admin-endpoints-notification-fanout-and-stats: done
   feedback-3-flutter-send-feedback-sheet: done
   feedback-4-flutter-admin-inbox-and-dashboard-card: done
-  feedback-5-prod-fetch-script: backlog
+  feedback-5-prod-fetch-script: done
   epic-user-feedback-retrospective: optional
 
   # Epic Activity Hub Redesign (planned 2026-04-18)

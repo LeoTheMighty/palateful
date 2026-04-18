@@ -95,3 +95,32 @@ DATABASE_URL=<prod-url> python services/api/scripts/promote_admin.py \
 Exit codes: `0` success / no-op, `2` no match or multiple matches, `1`
 other errors. Script is idempotent: re-running in the target state is a
 no-op.
+
+### `fetch_feedback.py` — export user feedback rows
+
+```bash
+# Default — last 7 days of unread feedback as CSV to stdout.
+DATABASE_URL=<prod-url> python services/api/scripts/fetch_feedback.py \
+    > /tmp/feedback.csv
+
+# Last 30 days, all statuses, JSON-lines.
+DATABASE_URL=<prod-url> python services/api/scripts/fetch_feedback.py \
+    --since 30d --status all --format json > /tmp/feedback.jsonl
+
+# Everything ever, tab-separated.
+DATABASE_URL=<prod-url> python services/api/scripts/fetch_feedback.py \
+    --since all --status all --format tsv > /tmp/feedback.tsv
+```
+
+Flags:
+- `--since` — `7d` / `30d` / `90d` / `all` (default: `7d`)
+- `--status` — `unread` / `read` / `archived` / `all` (default: `unread`)
+- `--format` — `csv` / `tsv` / `json` (default: `csv`)
+
+Streams rows to stdout; memory stays bounded at any window size. Writes
+one audit row to `error_logs` at end-of-run (`service="audit"`,
+`error_type="FeedbackExport"`) with the filter args + row count.
+Read-only — no mutations — so no `--yes` flag is needed.
+
+Exit codes: `0` success (rows emitted), `2` no matching rows
+(informational, not a failure), `1` DB / other errors.
