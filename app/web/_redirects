@@ -1,0 +1,6 @@
+# Cloudflare Pages redirect rules. Format: <source> <destination> <status>
+# Belt-and-suspenders: Pages auto-strips .html so /privacy works even
+# without this rule, but we keep it explicit so the behavior doesn't
+# depend on project-level settings.
+/privacy  /privacy.html  200
+/privacy/ /privacy.html  200

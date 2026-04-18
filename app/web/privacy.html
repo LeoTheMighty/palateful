@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<!--
+  Palateful Privacy Policy — served at https://palateful.app/privacy
+
+  ⚠️  Do NOT remove, rename, or move this file without also:
+    1. Updating `ANDROID.md` (repo root) — the Privacy Policy URL line is
+       referenced by the Play Console Store Listing + Data Safety forms.
+    2. Updating the Play Console Store Listing → Privacy Policy URL
+       field and the Data Safety form, where this URL is pasted.
+    3. Updating the matching URL on the iOS App Store Connect listing.
+
+  The file is served by Cloudflare Pages from the Flutter-web bundle
+  (CI job: deploy-web). A `_redirects` sibling file maps /privacy →
+  /privacy.html as a belt-and-suspenders fallback.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Palateful privacy policy — what we collect, who we share it with, how long we keep it, and how to request deletion.">
+  <meta name="robots" content="index,follow">
+
+  <meta property="og:title" content="Privacy Policy — Palateful">
+  <meta property="og:description" content="Palateful privacy policy — what we collect, who we share it with, how long we keep it, and how to request deletion.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://palateful.app/privacy">
+
+  <title>Privacy Policy — Palateful</title>
+
+  <link rel="icon" type="image/png" href="/favicon.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #222;
+      background: #fff;
+    }
+    .breadcrumb { margin-bottom: 24px; }
+    .breadcrumb a {
+      color: #666;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .breadcrumb a:hover { color: #1a73e8; text-decoration: underline; }
+    h1 {
+      font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+      font-weight: 600;
+      font-size: 2.25rem;
+      margin: 0 0 0.25rem;
+      line-height: 1.2;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin: 2.25rem 0 0.75rem;
+      line-height: 1.3;
+    }
+    h3 {
+      font-size: 1rem;
+      margin: 1.25rem 0 0.5rem;
+      line-height: 1.3;
+    }
+    p, ul, ol { margin: 0 0 1rem; }
+    ul, ol { padding-left: 1.5rem; }
+    li { margin-bottom: 0.5rem; }
+    a { color: #1a73e8; }
+    .effective-date {
+      color: #666;
+      font-size: 0.95rem;
+      margin: 0 0 1.5rem;
+    }
+    .footer-meta {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #e5e5e5;
+      color: #666;
+      font-size: 0.9rem;
+    }
+    code {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.95em;
+      background: #f3f3f3;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+    @media (max-width: 420px) {
+      body { padding: 24px 16px 48px; }
+      h1 { font-size: 1.875rem; }
+      h2 { font-size: 1.15rem; }
+    }
+  </style>
+</head>
+<body>
+  <p class="breadcrumb"><a href="https://palateful.app">← Palateful</a></p>
+
+  <h1>Privacy Policy</h1>
+  <p class="effective-date">Effective 18 April 2026 · Version 1.0</p>
+
+  <h2>1. Who we are</h2>
+  <p>
+    Palateful is a kitchen-management mobile app (iOS and Android) and
+    companion web experience that helps you capture, organize, and cook
+    your recipes. This policy explains what data the Palateful app and
+    backend services collect, who we share it with, and how long we
+    keep it. If anything here is unclear, or you want a copy of your
+    data or a deletion, email us at
+    <a href="mailto:leonid@ac93.org">leonid@ac93.org</a>.
+  </p>
+
+  <h2>2. Data we collect</h2>
+
+  <h3>Account data</h3>
+  <p>
+    When you sign in we store your email address, your display name,
+    and a stable account identifier issued by our auth provider
+    (Auth0). If you sign in with Google or Apple, we additionally
+    receive the subset of profile fields those providers return
+    (typically email, name, and profile picture URL). We do not
+    receive or store your password — Auth0 handles authentication.
+  </p>
+
+  <h3>Recipe content you create</h3>
+  <p>
+    Recipes, ingredients, steps, notes, photos, audio memos, and video
+    memos you add to the app are stored in our database and (for
+    media) in Amazon S3 buckets we control. This content is yours — we
+    only use it to provide the app's core features (syncing across
+    your devices, searching your library, cooking mode playback).
+  </p>
+
+  <h3>Shared household data</h3>
+  <p>
+    If you invite someone to a shared recipe book, shopping list, or
+    meal-plan calendar, the contents of those resources are visible to
+    the members you invite. Membership is explicit: nothing is shared
+    publicly or discovered by other users without an invitation.
+  </p>
+
+  <h3>Device and crash data</h3>
+  <p>
+    We use Firebase Crashlytics to capture crash reports. A crash
+    report includes your device model, operating system version, a
+    stack trace, and an anonymous install identifier generated by
+    Firebase. Crash reports do not include your recipes, photos, or
+    account email.
+  </p>
+
+  <h3>Notification data</h3>
+  <p>
+    If you opt into push notifications, we register your device with
+    Firebase Cloud Messaging (on Android) and Apple Push Notification
+    Service (on iOS). We store the resulting push token alongside
+    your account so we can deliver notifications you asked for
+    (import finished, household activity, cooking timers). You can
+    turn these off at any time from the operating system's
+    notification settings.
+  </p>
+
+  <h3>AI chat messages (opt-in)</h3>
+  <p>
+    If you use the in-app AI assistant, the prompts you send and the
+    responses you receive are forwarded to our language-model
+    subprocessors (OpenAI and/or Anthropic) to generate the reply.
+    The assistant is strictly opt-in and clearly labelled in the UI.
+    We do not persist AI chat content on our servers beyond the
+    request lifecycle, except that we may retain a small random
+    sample for up to 90 days to review reply quality and debug
+    incidents.
+  </p>
+
+  <h2>3. Third-party subprocessors</h2>
+  <p>
+    Palateful relies on the following subprocessors. Each is named
+    with the data shared and the purpose it serves:
+  </p>
+  <ul>
+    <li>
+      <strong>Auth0 (Okta, Inc.)</strong> — authentication. Receives
+      your email address, display name, and provider account
+      identifier so we can recognize you on return visits.
+    </li>
+    <li>
+      <strong>Amazon Web Services (AWS)</strong> — server
+      infrastructure and media storage. Hosts our application servers,
+      Postgres database, and the S3 buckets that store your recipe
+      photos, audio memos, and video memos.
+    </li>
+    <li>
+      <strong>Google Firebase</strong> — crash reporting (Crashlytics)
+      and push notifications (Firebase Cloud Messaging). Receives
+      device and OS metadata plus your push token; never receives your
+      recipe content.
+    </li>
+    <li>
+      <strong>OpenAI, L.L.C.</strong> — AI assistant replies (opt-in
+      only). Receives the chat messages you send the assistant and the
+      relevant recipe context required to answer your prompt.
+      Governed by OpenAI's API Data Usage policy; we do not opt into
+      training-data contribution.
+    </li>
+    <li>
+      <strong>Anthropic, PBC</strong> — AI assistant replies (opt-in
+      only, same feature). Same data shared as OpenAI, routed to
+      Anthropic's Claude model when selected as the backend. Governed
+      by Anthropic's API Terms; we do not opt into training-data
+      contribution.
+    </li>
+    <li>
+      <strong>Google Play (Android)</strong> — store distribution and,
+      in the future, subscription billing. Receives only the data
+      Google Play collects as part of its store and billing APIs
+      (device identifier, purchase tokens). No subscription product is
+      live today; this is reserved for future releases.
+    </li>
+    <li>
+      <strong>Apple App Store (iOS)</strong> — store distribution and,
+      in the future, subscription billing via In-App Purchase. Same
+      scope as Google Play but for iOS devices.
+    </li>
+    <li>
+      <strong>Apple Push Notification Service (APNs)</strong> — push
+      delivery on iOS devices. Receives your device push token and
+      the notification payloads we originate.
+    </li>
+  </ul>
+  <p>
+    We do not sell your personal data and we do not share it with
+    advertising networks. Palateful runs no third-party advertising
+    SDKs.
+  </p>
+
+  <h2>4. How long we keep your data</h2>
+  <ul>
+    <li>
+      <strong>Account data and recipe content</strong> — kept while
+      your account is active. On deletion request, we remove your
+      account and associated content within 30 days (see Deletion,
+      below).
+    </li>
+    <li>
+      <strong>Crash logs</strong> — retained for up to 90 days by
+      Firebase Crashlytics, then aged out.
+    </li>
+    <li>
+      <strong>Push tokens</strong> — retained while your device is
+      opted into notifications; removed when you disable notifications
+      or delete your account.
+    </li>
+    <li>
+      <strong>AI chat messages</strong> — not persisted server-side
+      beyond the request lifecycle, except for a small random sample
+      kept up to 90 days for quality review.
+    </li>
+  </ul>
+
+  <h2>5. Children</h2>
+  <p>
+    Palateful is designated Teen (13+) and is not directed to
+    children under 13. We do not knowingly collect data from children
+    under 13, we do not make a COPPA compliance claim, and we do not
+    run targeted advertising of any kind — ever. If you believe a
+    child under 13 has created an account, contact us and we will
+    delete it.
+  </p>
+
+  <h2>6. Your rights</h2>
+  <p>
+    Depending on where you live, the following rights may apply. We
+    honor them for every Palateful user regardless of jurisdiction:
+  </p>
+  <ul>
+    <li>
+      <strong>GDPR (EU / UK)</strong> — right of access,
+      rectification, erasure, portability, and to object to
+      processing.
+    </li>
+    <li>
+      <strong>CCPA / CPRA (California)</strong> — right to know what
+      we collect, right to delete, right to opt out of the sale or
+      sharing of personal information. We do not sell or share your
+      personal information for cross-context behavioral advertising.
+    </li>
+  </ul>
+  <p>
+    To exercise any of these rights, email
+    <a href="mailto:leonid@ac93.org">leonid@ac93.org</a>. We will
+    respond within 30 days.
+  </p>
+
+  <h2>7. How to request deletion</h2>
+  <p>
+    Send an email to
+    <a href="mailto:leonid@ac93.org">leonid@ac93.org</a> from the
+    address on your Palateful account. We will confirm receipt,
+    verify that the request came from you, and permanently delete
+    your account and content within 30 days. Backups containing your
+    data age out of our systems within an additional 30 days, after
+    which no copy remains.
+  </p>
+
+  <h2>8. Data transfers</h2>
+  <p>
+    Palateful's servers run in the United States. If you access the
+    app from outside the United States, you consent to your data
+    being processed in the United States. Our subprocessors may
+    operate in additional regions; we rely on the standard contractual
+    clauses they offer where required.
+  </p>
+
+  <h2>9. Updates to this policy</h2>
+  <p>
+    We may update this policy to reflect changes in our app, our
+    subprocessors, or the law. Material changes will be announced in
+    the app and/or via email to the address on your account. The
+    "Effective" date at the top of this page and the version number
+    below always reflect the current version.
+  </p>
+
+  <h2>10. Contact</h2>
+  <p>
+    Questions, deletion requests, or privacy complaints:
+    <a href="mailto:leonid@ac93.org">leonid@ac93.org</a>.
+  </p>
+
+  <p class="footer-meta">
+    Palateful · Privacy Policy v1.0 · Last updated 18 April 2026
+  </p>
+</body>
+</html>
