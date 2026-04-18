@@ -403,7 +403,7 @@ development_status:
   irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: done
   irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: done
   irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: done
-  irrd-7-a11y-semantics-and-widget-test-pass: backlog
+  irrd-7-a11y-semantics-and-widget-test-pass: in-progress
   epic-import-row-rich-detail-retrospective: optional
 
   # Epic Review Import Ingredient Polish (planned 2026-04-18)
@@ -462,12 +462,18 @@ development_status:
   # unsupported types + oversize (100MB) hard-stop screen. Depends on
   # Epic Share Backend Foundations for upload endpoints + video_file
   # source_type.
-  epic-share-receiving-ux: backlog
-  sru-1-universal-receiving-landing-screen: backlog
-  sru-2-unsupported-type-and-oversize-screens: backlog
-  sru-3-typed-import-screens-accept-initial-path: backlog
+  # NOTE 2026-04-18 (/dev autonomous run): sru-1, sru-2, sru-3, sru-5
+  # landed together. sru-4 (real presigned-upload PUT for PDF / audio /
+  # video) is deferred — the receive screen stubs those branches by
+  # dwelling then routing to the Activity Hub with no upload body.
+  # sru-5's VideoFileImportScreen "Upload & Import" button surfaces an
+  # explicit "coming in next release" error until sru-4 lands.
+  epic-share-receiving-ux: in-progress
+  sru-1-universal-receiving-landing-screen: done
+  sru-2-unsupported-type-and-oversize-screens: done
+  sru-3-typed-import-screens-accept-initial-path: done
   sru-4-presigned-upload-for-pdf-audio-video-in-receive-screen: backlog
-  sru-5-video-file-import-screen-and-add-recipe-sheet-entry: backlog
+  sru-5-video-file-import-screen-and-add-recipe-sheet-entry: done
   epic-share-receiving-ux-retrospective: optional
 
   # Epic iOS Share Extension (planned 2026-04-18)
@@ -565,64 +571,96 @@ development_status:
   push-diag-3-admin-push-health-endpoint-and-panel: done
   epic-notifications-push-diagnostics-hardening-retrospective: optional
 
-  # Epic Meals — Create & View (planned 2026-04-18)
-  # Foundation epic: new meals + meal_recipes tables, full CRUD API, Flutter
-  # Create Meal flow (multi-select + standalone), Meal detail screen, Meal
-  # tile variant in book grid. Blocks the three follow-on meals epics.
-  # Locked decisions: reusable template, lives in recipe_book, UI name "Meal"
-  # with DB table `meals`, manual multi-select picker (AI pairings deferred).
+  # Epic Meals — Create & View (planned 2026-04-18, refined via party-mode)
+  # Foundation epic: new meals + meal_recipes + meal_favorites tables, full
+  # CRUD API, Flutter Create Meal flow (multi-select + standalone), Meal
+  # detail + edit screens, separate MealTile widget (NOT extended RecipeCard)
+  # in the book grid. Blocks the three follow-on meals epics. Locked:
+  # reusable template; lives in recipe_book; UI name "Meal" with DB table
+  # `meals`; manual multi-select picker (AI pairings deferred); 6-slot action
+  # bar contract (Favorite live, Plan-for-Date / Shopping-List / Share
+  # disabled-with-tooltip, Archive + Edit live); selectinload hydration;
+  # `meals.share_token` column present but no handler reads it until sharing
+  # epic; parallel meal_favorites table (not polymorphic user_favorites).
   epic-meals-create-and-view: backlog
-  mcv-1-backend-meals-and-meal-recipes-migration-and-models: backlog
+  mcv-1-backend-meals-and-meal-recipes-and-meal-favorites-migration-and-models: backlog
   mcv-2-backend-meal-crud-endpoints-and-service: backlog
-  mcv-3-backend-component-add-remove-reorder-endpoints: backlog
-  mcv-4-flutter-meal-model-service-provider: backlog
-  mcv-5-flutter-create-meal-multiselect-and-standalone: backlog
+  mcv-3-backend-component-add-remove-reorder-endpoints-and-favorite: backlog
+  mcv-4-flutter-meal-model-service-provider-and-router: backlog
+  mcv-5-flutter-create-meal-multiselect-entry-and-standalone: backlog
   mcv-6-flutter-meal-detail-and-edit-screens: backlog
-  mcv-7-flutter-meal-tile-and-book-grid-integration: backlog
+  mcv-7-flutter-meal-tile-in-book-grid-fork-path: backlog
   epic-meals-create-and-view-retrospective: optional
 
-  # Epic Meals — Discoverability (planned 2026-04-18)
-  # Home grid, global search, favorites, archive view all surface Meals
-  # alongside recipes with a "N recipes" badge. Search matches on component
-  # recipe names (typing "dressing" finds the Kale Salad Meal). Recipe
-  # detail screen gains "Used in these Meals" reverse-lookup section.
-  # Parallelizable with meals-calendar and meals-sharing-and-ai after
-  # foundation epic lands.
+  # Epic Meals — Discoverability (planned 2026-04-18, refined via party-mode)
+  # Home grid, global search, favorites carousel, archive view all surface
+  # Meals alongside recipes. Search response gains a new `my_meals` key
+  # sibling to `my_recipes` (sectioned, NOT cross-type ranked inline — old
+  # clients unaffected). Component-name matches surfaced with "Matches:
+  # <component>" subtitle. Search scope parameter is a comma-list
+  # (`scope=recipes,meals`). `/v1/favorites` extended with `favorited_meals`
+  # additive key. "Used in these Meals" on recipe detail HIDDEN on public
+  # recipe pages (privacy). Day-1 zero-regression bar: zero-Meal users see
+  # bit-identical behavior on every surface touched. Parallelizable with
+  # meals-calendar + meals-sharing-and-ai after foundation.
   epic-meals-discoverability: backlog
   md-1-backend-unified-search-extended-with-meal-matching: backlog
   md-2-backend-reverse-lookup-meals-using-recipe: backlog
-  md-3-flutter-home-search-archive-render-meals: backlog
-  md-4-flutter-used-in-these-meals-section-on-recipe-detail: backlog
-  md-5-favorites-support-for-meals: backlog
+  md-3-backend-meals-filter-extensions-and-favorites-meals-extension: backlog
+  md-4-flutter-home-grid-and-favorites-carousel-render-meals: backlog
+  md-5-flutter-search-results-include-meals-with-component-match-disclosure: backlog
+  md-6-flutter-used-in-these-meals-on-recipe-detail: backlog
+  md-7-flutter-archive-view-includes-meals: backlog
   epic-meals-discoverability-retrospective: optional
 
-  # Epic Meals — Calendar Integration (planned 2026-04-18)
-  # Cross-layer. meal_events + meal_recurrence_rules gain nullable meal_id
-  # FK with num_nonnulls(recipe_id, meal_id) <= 1 check constraint. Plan-meal
-  # sheet adds Recipe/Meal segmented toggle. Calendar tiles render Meal
-  # events with stack icon + "N recipes" caption. PopulateFromCalendarRange
-  # expands a Meal event's components with sum-within-meal dedupe (1 tbsp +
-  # 1 tbsp olive oil across components = 2 tbsp on the list). Parallelizable
-  # with discoverability + sharing-and-ai.
+  # Epic Meals — Calendar Integration (planned 2026-04-18, refined via party-mode)
+  # Biggest cross-layer integration. meal_events + meal_recurrence_rules
+  # gain nullable `meal_id` FK with check constraint
+  # ck_meal_events_recipe_meal_xor = num_nonnulls(recipe_id, meal_id) <= 1
+  # (NOT VALID then VALIDATE — safe on prod-sized table). Cooking-log
+  # fan-out: cooking_logs.recipe_id becomes nullable + new meal_id + new
+  # parent_meal_log_id self-FK (one Meal-level log + per-component children).
+  # shopping_list_items.source_meal_id for "shop without scheduling" path.
+  # Plan-meal sheet gains Recipe/Meal SegmentedButton. PopulateFromCalendar
+  # expands Meal events with sum-within-meal dedupe via aggregate_meal_
+  # ingredients service (unit_aliases IS already live — no fallback path).
+  # Point-in-time snapshot: dedupe reads current components at populate time.
+  # Wires action-bar slots 2+3 live (Plan-for-Date, Add-to-Shopping-List).
+  # kMealComponentCountLabel canonical Flutter helper. Default toggle state
+  # is Recipe except when launched from Meal detail Plan-for-Date.
+  # Parallelizable with discoverability + sharing-and-ai.
   epic-meals-calendar: backlog
-  mcal-1-backend-meal-id-columns-and-check-constraints-migration: backlog
-  mcal-2-backend-meal-event-and-recurrence-accept-meal-id-xor: backlog
-  mcal-3-backend-populate-from-calendar-range-with-meal-expansion: backlog
-  mcal-4-flutter-plan-meal-sheet-recipe-meal-toggle: backlog
-  mcal-5-flutter-calendar-grid-day-sheet-detail-sheet-render-meals: backlog
-  mcal-6-flutter-recurring-rules-accept-meals-and-profile-rendering: backlog
+  mcal-1-backend-migration-meal-id-on-events-recurrence-cooking-logs-and-shopping-list-items: backlog
+  mcal-2-backend-aggregate-meal-ingredients-service-and-dedupe-correctness: backlog
+  mcal-3-backend-meal-event-and-recurrence-endpoints-accept-meal-id-xor: backlog
+  mcal-4-backend-populate-from-calendar-meal-expansion-load-bearing: backlog
+  mcal-5-backend-meal-autocomplete-list-param-and-add-meal-to-shopping-list-endpoint: backlog
+  mcal-6-backend-rolling-window-materializer-meal-rules-and-cooking-log-fanout: backlog
+  mcal-7-flutter-plan-meal-sheet-segmented-button-and-meal-autocomplete: backlog
+  mcal-8-flutter-calendar-grid-day-sheet-detail-sheet-and-chooser: backlog
+  mcal-9-flutter-meal-detail-action-bar-wiring-and-recurring-plans-screen: backlog
   epic-meals-calendar-retrospective: optional
 
-  # Epic Meals — Sharing & AI Tools (planned 2026-04-18)
-  # Small parallel epic. Meal share_token (already on meals table from
-  # mcv-1) + share endpoint + public meal page. MCP tools (create_meal,
-  # get_meal, list_meals, update_meal, add_recipe_to_meal,
-  # remove_recipe_from_meal, archive_meal) so the AI assistant can build
-  # Meals via chat tool-calling. create_meal_event MCP tool extended to
-  # accept meal_id. Parallelizable with discoverability + calendar.
+  # Epic Meals — Sharing & AI Tools (planned 2026-04-18, refined via party-mode)
+  # Wires action-bar slot 6 (Share) live. POST /v1/meal/{id}/share +
+  # GET /v1/meal/public/{token} (unauthenticated, public-endpoint-before-
+  # path-param-route ordering gotcha documented). Token format reuses
+  # secrets.token_urlsafe(15) helper from ShareRecipe verbatim. Deep link
+  # `palateful://meal-public/{token}` matching existing recipe scheme.
+  # PublicMealComponent schema has NO recipe_id field (privacy invariant —
+  # enforced at construction + raw-JSON test; a stranger holding the public
+  # link cannot probe private component UUIDs). 7 MCP tools: create_meal,
+  # get_meal, list_meals, update_meal, add_recipe_to_meal, remove_recipe_
+  # from_meal, archive_meal. create_meal_event MCP tool extended to accept
+  # meal_id (XOR with recipe_id). AI confirmation policy: prompt on
+  # degenerate state (<2 components) or archive with live-reference. 7 eval
+  # fixtures covering create/update/mutate paths. Parallelizable with
+  # discoverability + calendar; depends on foundation (and calendar for
+  # msa-4's meal_event fixture coverage).
   epic-meals-sharing-and-ai: backlog
-  msa-1-backend-share-endpoint-and-public-meal-endpoint: backlog
-  msa-2-flutter-meal-detail-share-and-public-meal-screen: backlog
-  msa-3-backend-mcp-tools-for-meals: backlog
+  msa-1-backend-share-endpoint-and-public-meal-endpoint-with-privacy-schema: backlog
+  msa-2-flutter-meal-detail-share-action-and-public-meal-screen-and-routing: backlog
+  msa-3-backend-mcp-tools-for-meals-seven-tools-and-ai-confirmation-policy: backlog
+  msa-4-backend-create-meal-event-mcp-accepts-meal-id-and-eval-fixtures: backlog
   msa-4-backend-create-meal-event-mcp-accepts-meal-id-and-eval-fixtures: backlog
   epic-meals-sharing-and-ai-retrospective: optional

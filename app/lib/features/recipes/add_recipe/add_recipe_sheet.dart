@@ -176,6 +176,17 @@ class _AddRecipeSheetState extends ConsumerState<AddRecipeSheet> {
                       },
                     ),
                     _SheetOption(
+                      icon: Icons.videocam,
+                      title: 'Video File',
+                      subtitle: 'Pull a recipe from a local video clip',
+                      onTap: () {
+                        Navigator.pop(context);
+                        context.push('/recipes/add/video', extra: {
+                          if (bookId != null) 'recipeBookId': bookId,
+                        });
+                      },
+                    ),
+                    _SheetOption(
                       icon: Icons.edit,
                       title: 'Create Manually',
                       subtitle: 'Build from scratch',

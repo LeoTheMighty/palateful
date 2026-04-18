@@ -9,7 +9,16 @@ import '../../../core/services/auth_service.dart';
 class TextPasteImportScreen extends StatefulWidget {
   final String? recipeBookId;
 
-  const TextPasteImportScreen({super.key, this.recipeBookId});
+  /// Pre-filled text (from share-intent payload or extracted from a
+  /// shared text file). When set, the textarea opens with it already
+  /// populated. See epic-share-receiving-ux / sru-3.
+  final String? initialText;
+
+  const TextPasteImportScreen({
+    super.key,
+    this.recipeBookId,
+    this.initialText,
+  });
 
   @override
   State<TextPasteImportScreen> createState() => _TextPasteImportScreenState();
@@ -23,6 +32,15 @@ class _TextPasteImportScreenState extends State<TextPasteImportScreen> {
 
   String get _bookId =>
       widget.recipeBookId ?? getIt<AuthService>().defaultRecipeBookId ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    final seed = widget.initialText;
+    if (seed != null && seed.isNotEmpty) {
+      _controller.text = seed;
+    }
+  }
 
   @override
   void dispose() {
