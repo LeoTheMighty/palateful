@@ -63,6 +63,12 @@ celery_app.conf.beat_schedule = {
 celery_app.conf.timezone = 'UTC'
 
 
+# Register observability signal handlers (obs-latency-1). Importing the
+# module connects handlers for task_prerun/task_postrun/task_failure/
+# worker_shutdown so we capture one row per Celery task lifecycle.
+from utils.services.observability import celery_hooks  # noqa: E402, F401
+
+
 @setup_logging.connect
 def config_loggers(*_args, **_kwargs):
     """Configures celery loggers with json format and catalyst id defined in main.py"""

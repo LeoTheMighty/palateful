@@ -36,10 +36,12 @@ from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
+from utils.models.request_latency import RequestLatency
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_event import ShoppingListEvent
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.suggestion import Suggestion
+from utils.models.task_latency import TaskLatency
 from utils.models.thread import Thread
 from utils.models.unit import Unit
 from utils.models.user import User
@@ -48,48 +50,35 @@ from utils.models.user_favorite import UserFavorite
 from utils.models.user_feedback import UserFeedback
 
 __all__ = [
-    # Base classes
     "Base",
     "JoinsBase",
-    # Core
     "User",
-    # Collaboration
     "Invitation",
     "InviteLink",
     "Activity",
-    # Social/Friends
     "FriendRequest",
     "Friendship",
-    # Chat/AI
     "Thread",
     "Chat",
-    # Agent
     "Suggestion",
     "Notification",
-    # Pantry
     "Pantry",
     "PantryUser",
     "PantryIngredient",
     "PantryIngredientEvent",
-    # Recipe Book
     "RecipeBook",
     "RecipeBookUser",
-    # Recipe
     "Recipe",
     "RecipeIngredient",
     "RecipeNote",
     "RecipeStep",
     "RecipeVersion",
-    # Ingredient
     "Ingredient",
     "IngredientSubstitution",
     "IngredientMatch",
-    # Units
     "Unit",
-    # Logs
     "CookingLog",
     "ErrorLog",
-    # Calendar/Meal Planning
     "Calendar",
     "CalendarUser",
     "MealEvent",
@@ -101,15 +90,13 @@ __all__ = [
     "ShoppingListUser",
     "ShoppingListEvent",
     "ActiveTimer",
-    # Import System
     "ImportJob",
     "ImportItem",
-    # Parser System
     "ParserBatch",
     "ParserJob",
-    # Favorites
     "UserActivity",
     "UserFavorite",
-    # Feedback
     "UserFeedback",
+    "RequestLatency",
+    "TaskLatency",
 ]

@@ -83,6 +83,19 @@ class TestLifespan:
                 pass
 
     @pytest.mark.asyncio
+    async def test_lifespan_shutdown_drain_exception_swallowed(self):
+        """A crashing writer drain must not break lifespan shutdown."""
+        from main import lifespan, app
+
+        with patch(
+            "utils.services.observability.get_request_writer",
+            side_effect=RuntimeError("writer boom"),
+        ):
+            # Should not raise
+            async with lifespan(app):
+                pass
+
+    @pytest.mark.asyncio
     async def test_lifespan_exits_mcp_context_cleanly(self):
         """When the inner MCP context enters successfully, __aexit__ runs on teardown."""
         import main

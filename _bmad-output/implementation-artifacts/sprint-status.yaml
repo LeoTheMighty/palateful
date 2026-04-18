@@ -343,6 +343,18 @@ development_status:
   cal-share-5-profile-shared-calendars-and-invitations-polish: backlog
   epic-calendars-sharing-retrospective: optional
 
+  # Epic Observability — Endpoint & Task Latency (planned 2026-04-18)
+  # Postgres-backed latency capture via a new BatchedLatencyWriter primitive;
+  # two new tables (request_latencies, task_latencies); dedicated /admin/metrics
+  # page with p50/p95/p99 tables + sparklines; nightly prune. No Datadog, no
+  # Prometheus. Parallelizable with epic-user-feedback (both extend /admin/stats).
+  epic-observability-latency: in-progress
+  obs-latency-1-backend-schema-and-writer: done
+  obs-latency-2-aggregation-endpoints-and-stats: backlog
+  obs-latency-3-flutter-metrics-screen: backlog
+  obs-latency-4-nightly-prune-and-ops-readiness: backlog
+  epic-observability-latency-retrospective: optional
+
   # Epic User Feedback — Inbox + Prod Fetch Script (planned 2026-04-18)
   # User-facing "Send Feedback" in Profile → Settings; admin inbox in the
   # existing admin dashboard with push + unread-badge alerts; read-only
@@ -355,3 +367,52 @@ development_status:
   feedback-4-flutter-admin-inbox-and-dashboard-card: backlog
   feedback-5-prod-fetch-script: backlog
   epic-user-feedback-retrospective: optional
+
+  # Epic Activity Hub Redesign (planned 2026-04-18)
+  # Two-tab Activity shell (Notifications | Imports) with color-coded sections
+  # (blue/yellow/red/green), swipe-to-archive (except blue), "See all" footer
+  # for archived + >30d history. Retires /activity/import-history route.
+  # First of three epics in the Activity Hub + Imports redesign trio.
+  epic-activity-hub-redesign: backlog
+  ahr-1-backend-archive-columns-and-endpoints: backlog
+  ahr-2-flutter-two-tab-shell-and-routing: backlog
+  ahr-3-flutter-notifications-tab-swipe-archive: backlog
+  ahr-4-flutter-imports-tab-four-color-sections: backlog
+  ahr-5-flutter-see-all-footer: backlog
+  ahr-6-flutter-import-state-colors-theme-extension: backlog
+  ahr-7-retire-import-history-route-and-regression: backlog
+  epic-activity-hub-redesign-retrospective: optional
+
+  # Epic Import Row Rich Detail (planned 2026-04-18)
+  # Caret-expand per import row revealing stage timeline + raw parser text +
+  # confidence score + retry history + error detail + source ref.
+  # Confidence score built end-to-end (extractors -> API -> UI) with heuristic
+  # fallback. Surfaces backlogged bugs-act-2a fields (last_successful_stage,
+  # last_retry_at). Depends on epic-activity-hub-redesign (row shell).
+  epic-import-row-rich-detail: backlog
+  irrd-1-backend-expose-stage-and-retry-fields: backlog
+  irrd-2-backend-import-item-telemetry-endpoint: backlog
+  irrd-3-backend-extractor-confidence-score-e2e: backlog
+  irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: backlog
+  irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: backlog
+  irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: backlog
+  irrd-7-a11y-semantics-and-widget-test-pass: backlog
+  epic-import-row-rich-detail-retrospective: optional
+
+  # Epic Review Import Ingredient Polish (planned 2026-04-18)
+  # One-line ingredient row with notes+optional behind a caret + end-to-end
+  # unit normalization: extractor prompts enumerate canonical tokens, backend
+  # unit_aliases table + normalize_unit_display on every write path, Flutter
+  # UnitInput coerce-on-blur. IngredientRowStateBadge for pending-review
+  # auto-created canonicals. Independent -- can ship in parallel with the
+  # activity-hub trio.
+  epic-review-import-ingredient-polish: backlog
+  riip-1-backend-unit-aliases-table-and-normalizer: backlog
+  riip-2-backend-normalize-on-every-write-path: backlog
+  riip-3-backend-extractor-prompt-rewrites-and-eval-metric: backlog
+  riip-4-backend-units-aliases-endpoint-and-pending-review-annotation: backlog
+  riip-5-flutter-unit-input-coerce-on-blur-and-session-cache: backlog
+  riip-6-flutter-ingredient-row-one-line-with-caret: backlog
+  riip-7-flutter-ingredient-row-state-badge: backlog
+  riip-8-regression-three-surfaces-and-e2e-smoke: backlog
+  epic-review-import-ingredient-polish-retrospective: optional

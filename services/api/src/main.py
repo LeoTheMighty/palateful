@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from mcp_server import build_mcp_app
 from middleware.error_tracking import ErrorTrackingMiddleware
+from middleware.latency_capture import LatencyCaptureMiddleware
 from routers.v1_router import v1_router
 
 mcp_app = build_mcp_app()
@@ -39,6 +40,14 @@ async def lifespan(app: FastAPI):
     finally:
         if mcp_context is not None:
             await mcp_context.__aexit__(None, None, None)
+        # Drain the latency writer before closing the DB pool so the last
+        # ~2 s of in-flight samples land on disk rather than being lost on
+        # ECS SIGTERM. See obs-latency-1.
+        try:
+            from utils.services.observability import get_request_writer
+            get_request_writer().drain()
+        except Exception:
+            pass
         # Dispose the SQLAlchemy connection pool on shutdown to avoid leaked
         # connections against RDS/PostgreSQL when the container is stopped.
         try:
@@ -57,6 +66,10 @@ app = FastAPI(
 )
 
 # Error tracking middleware (must be added before CORS so it wraps all requests)
+# FastAPI/Starlette runs middleware in reverse registration order, so the
+# latency capture sits inside ErrorTrackingMiddleware — latency samples are
+# recorded whether or not the inner handlers raised.
+app.add_middleware(LatencyCaptureMiddleware)
 app.add_middleware(ErrorTrackingMiddleware)
 
 # Configure CORS
