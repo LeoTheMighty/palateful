@@ -107,6 +107,10 @@ final class ShareViewModel: ObservableObject {
       )
     }
 
+    // Take only the first attachment; the rest are discarded. Capturing
+    // by index (not slice) ensures the other NSItemProviders fall out of
+    // scope immediately so iOS can free any in-memory representations
+    // before we touch the network.
     let provider = attachments[0]
     loadFirstProvider(provider)
   }

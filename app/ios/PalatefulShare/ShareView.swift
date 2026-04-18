@@ -38,9 +38,11 @@ struct ShareView: View {
       Image(systemName: "fork.knife")
         .font(.title2)
         .foregroundColor(.accentColor)
+        .accessibilityHidden(true)
       Text("Save to Palateful")
         .font(.headline)
         .dynamicTypeSize(.medium ... .accessibility2)
+        .accessibilityAddTraits(.isHeader)
       Spacer()
     }
     .padding(.horizontal, 16)
