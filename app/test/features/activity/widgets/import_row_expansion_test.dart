@@ -79,20 +79,33 @@ void main() {
     if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   });
 
+  // StageTimeline's current-stage pulse animation runs forever, so
+  // `pumpAndSettle` would hang. The helper below pumps a bounded
+  // number of frames — enough to resolve the telemetry future and
+  // land the subsequent rebuild.
+  Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
   testWidgets(
       'expansion exposes the semantic group for screen readers (AC14)',
       (tester) async {
     await tester.pumpWidget(_wrap(itemId: 'item-sem', recipeName: 'Pie'));
-    await tester.pumpAndSettle();
+    await settle(tester);
     expect(find.bySemanticsLabel('Import details for Pie'), findsOneWidget);
   });
 
   testWidgets('renders body after telemetry resolves', (tester) async {
     await tester.pumpWidget(_wrap(itemId: 'item-2', recipeName: 'Bread'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    // Stage timeline slot surfaces the stages string.
-    expect(find.textContaining('parsed·ok'), findsOneWidget);
+    // Real StageTimeline renders one chip per stage label.
+    expect(find.text('Parsed'), findsOneWidget);
+    expect(find.text('Extracted'), findsOneWidget);
+    expect(find.text('Matched'), findsOneWidget);
+    expect(find.text('Created'), findsOneWidget);
     expect(apiClient.telemetryCalls, 1);
   });
 
@@ -111,9 +124,9 @@ void main() {
     // refetches.
     apiClient.nextError = null;
     await tester.tap(find.text('Retry'));
-    await tester.pumpAndSettle();
+    await settle(tester);
 
-    expect(find.textContaining('parsed·ok'), findsOneWidget);
+    expect(find.text('Parsed'), findsOneWidget);
     expect(apiClient.telemetryCalls, greaterThanOrEqualTo(2));
   });
 

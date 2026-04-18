@@ -481,13 +481,14 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       recipeName: _jobTitle(job),
       // Blue rows have no single item_id to hang telemetry off — the
       // expansion is job-level and skips the per-item telemetry fetch.
-      // irrd-5 renders stage-timeline off the job's aggregate status.
       itemIdForTelemetry: null,
       retryCount: 0,
       lastRetryAt: null,
       errorMessage: null,
       sourceType: job.sourceType,
       sourceReference: null,
+      confidenceScore: null,
+      confidenceSource: null,
       row: ImportRow(
         id: job.id,
         sourceIcon: _iconForSourceType(job.sourceType),
@@ -534,6 +535,8 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         errorMessage: item.errorMessage,
         sourceType: item.sourceType,
         sourceReference: item.sourceReference,
+        confidenceScore: item.confidenceScore,
+        confidenceSource: item.confidenceSource,
         row: ImportRow(
           id: item.id,
           sourceIcon: _iconForSourceType(item.sourceType),
@@ -619,7 +622,7 @@ class _ExpandableRow extends ConsumerWidget {
   /// Separate from `rowId` because in-progress rows are keyed on the
   /// job id (there's no single item to hang telemetry off), and the
   /// telemetry endpoint is item-level. `null` skips the fetch and the
-  /// expansion renders its skeleton-less placeholder (irrd-5 landing).
+  /// expansion renders nothing (job-level blue rows).
   final String? itemIdForTelemetry;
 
   final int retryCount;
@@ -627,6 +630,8 @@ class _ExpandableRow extends ConsumerWidget {
   final String? errorMessage;
   final String? sourceType;
   final String? sourceReference;
+  final double? confidenceScore;
+  final String? confidenceSource;
   final Widget row;
 
   const _ExpandableRow({
@@ -638,6 +643,8 @@ class _ExpandableRow extends ConsumerWidget {
     required this.errorMessage,
     required this.sourceType,
     required this.sourceReference,
+    required this.confidenceScore,
+    required this.confidenceSource,
     required this.row,
   });
 
@@ -661,6 +668,8 @@ class _ExpandableRow extends ConsumerWidget {
             errorMessage: errorMessage,
             sourceType: sourceType,
             sourceReference: sourceReference,
+            confidenceScore: confidenceScore,
+            confidenceSource: confidenceSource,
           ),
       ],
     );
@@ -709,6 +718,8 @@ class _ItemView {
   final DateTime? createdAt;
   final int retryCount;
   final DateTime? lastRetryAt;
+  final double? confidenceScore;
+  final String? confidenceSource;
 
   _ItemView({
     required this.id,
@@ -721,6 +732,8 @@ class _ItemView {
     required this.createdAt,
     required this.retryCount,
     required this.lastRetryAt,
+    required this.confidenceScore,
+    required this.confidenceSource,
   });
 
   factory _ItemView.fromJson(dynamic item, dynamic parentJob) {
@@ -736,6 +749,7 @@ class _ItemView {
       _ => status,
     };
 
+    final rawConfidence = item['confidence_score'];
     return _ItemView(
       id: item['id'].toString(),
       title: (name != null && name.isNotEmpty) ? name : 'Untitled',
@@ -751,6 +765,10 @@ class _ItemView {
       lastRetryAt: item['last_retry_at'] != null
           ? DateTime.tryParse(item['last_retry_at'].toString())
           : null,
+      confidenceScore: rawConfidence is num
+          ? rawConfidence.toDouble()
+          : null,
+      confidenceSource: item['confidence_source'] as String?,
     );
   }
 }

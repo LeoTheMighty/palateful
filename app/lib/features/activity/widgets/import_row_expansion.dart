@@ -3,16 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/import_item_telemetry.dart';
 import '../providers/import_item_telemetry_provider.dart';
+import 'confidence_badge.dart';
+import 'raw_text_preview.dart';
+import 'stage_timeline.dart';
 
 /// Body rendered below a collapsed `ImportRow` when the row's id is in
 /// the `importRowExpansionProvider` set.
 ///
-/// irrd-4 ships the scaffold + lazy telemetry fetch + invalidation
-/// wiring + a11y semantic group. The rich sub-widgets (StageTimeline,
-/// ConfidenceBadge, RawTextPreview) land in irrd-5; the action
-/// buttons (Review / Retry / View Recipe / Archive) land in irrd-6.
-/// Until then, placeholder tiles mark the slot so integration tests
-/// can assert presence without asserting fully-styled chrome.
+/// irrd-4 shipped the scaffold + lazy telemetry fetch + invalidation
+/// wiring + a11y semantic group. irrd-5 swaps the `_SlotTile`
+/// placeholders for the real rich-detail sub-widgets (StageTimeline,
+/// ConfidenceBadge, RawTextPreview). Action buttons (Review / Retry /
+/// View Recipe / Archive) land in irrd-6.
 class ImportRowExpansion extends ConsumerWidget {
   final String itemId;
   final String recipeName;
@@ -29,9 +31,15 @@ class ImportRowExpansion extends ConsumerWidget {
   final String? errorMessage;
 
   /// Surface source-reference (url / photo / text) for the Source
-  /// block. Rendering in irrd-5 / irrd-6.
+  /// block.
   final String? sourceType;
   final String? sourceReference;
+
+  /// Confidence score + source threaded from the list payload
+  /// (irrd-3 hoisted these to the response root). Null score renders
+  /// a muted "Unavailable" badge.
+  final double? confidenceScore;
+  final String? confidenceSource;
 
   const ImportRowExpansion({
     super.key,
@@ -42,6 +50,8 @@ class ImportRowExpansion extends ConsumerWidget {
     this.errorMessage,
     this.sourceType,
     this.sourceReference,
+    this.confidenceScore,
+    this.confidenceSource,
   });
 
   @override
@@ -67,6 +77,8 @@ class ImportRowExpansion extends ConsumerWidget {
                   errorMessage: errorMessage,
                   sourceType: sourceType,
                   sourceReference: sourceReference,
+                  confidenceScore: confidenceScore,
+                  confidenceSource: confidenceSource,
                 ),
                 loading: () => const _SkeletonBody(),
                 error: (err, _) => _ErrorBody(
@@ -89,6 +101,8 @@ class _Body extends StatelessWidget {
   final String? errorMessage;
   final String? sourceType;
   final String? sourceReference;
+  final double? confidenceScore;
+  final String? confidenceSource;
 
   const _Body({
     required this.telemetry,
@@ -97,69 +111,57 @@ class _Body extends StatelessWidget {
     required this.errorMessage,
     required this.sourceType,
     required this.sourceReference,
+    required this.confidenceScore,
+    required this.confidenceSource,
   });
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final parsed = telemetry.stage('parsed');
+    final extracted = telemetry.stage('extracted');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // irrd-5 replaces this with `StageTimeline(telemetry: telemetry)`.
-        _SlotTile(
-          label: 'Stage timeline',
-          subtitle:
-              telemetry.stages.map((s) => '${s.stage}·${s.status}').join(' '),
+        StageTimeline(telemetry: telemetry),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ConfidenceBadge(
+            score: confidenceScore,
+            source: confidenceSource,
+          ),
         ),
-        // irrd-5 replaces this with `ConfidenceBadge(...)`.
-        const _SlotTile(
-          label: 'Confidence badge',
-          subtitle: 'rendered in irrd-5',
-        ),
-        // irrd-5 replaces this with `RawTextPreview(...)` per stage.
-        _SlotTile(
-          label: 'Raw text preview',
-          subtitle: _previewSubtitle(telemetry),
-        ),
+        const SizedBox(height: 10),
+        if (parsed != null &&
+            parsed.rawOutputPreview != null &&
+            parsed.rawOutputPreview!.trim().isNotEmpty)
+          RawTextPreview(
+            label: 'Parsed text (OCR)',
+            text: parsed.rawOutputPreview,
+            truncated: parsed.truncated,
+          ),
+        if (extracted != null &&
+            extracted.rawOutputPreview != null &&
+            extracted.rawOutputPreview!.trim().isNotEmpty)
+          RawTextPreview(
+            label: 'Extracted recipe JSON',
+            text: extracted.rawOutputPreview,
+            truncated: extracted.truncated,
+          ),
         if (retryCount > 0) _retryLine(textTheme),
         if (errorMessage != null && errorMessage!.trim().isNotEmpty)
-          _SlotTile(
-            label: 'Error detail',
-            subtitle: errorMessage!.trim(),
-          ),
+          _ErrorTile(message: errorMessage!.trim()),
         if (sourceReference != null && sourceReference!.isNotEmpty)
-          _SlotTile(
-            label: 'Source',
-            subtitle: '${sourceType ?? "reference"}: $sourceReference',
-          ),
-        // irrd-6 replaces this with the action-button row.
-        const _SlotTile(
-          label: 'Actions',
-          subtitle: 'rendered in irrd-6',
-        ),
+          _SourceTile(sourceType: sourceType, reference: sourceReference!),
       ],
     );
   }
 
-  static String _previewSubtitle(ImportItemTelemetry t) {
-    for (final stage in ['parsed', 'extracted']) {
-      final entry = t.stage(stage);
-      if (entry != null &&
-          entry.rawOutputPreview != null &&
-          entry.rawOutputPreview!.isNotEmpty) {
-        final preview = entry.rawOutputPreview!;
-        final head = preview.length > 60 ? '${preview.substring(0, 60)}…' : preview;
-        return '$stage: $head';
-      }
-    }
-    return 'no preview yet';
-  }
-
   Widget _retryLine(TextTheme textTheme) {
-    final suffix = lastRetryAt != null
-        ? ' · last at ${_ago(lastRetryAt!)}'
-        : '';
+    final suffix = lastRetryAt != null ? ' · last at ${_ago(lastRetryAt!)}' : '';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Text(
@@ -179,10 +181,10 @@ class _Body extends StatelessWidget {
   }
 }
 
-class _SlotTile extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  const _SlotTile({required this.label, required this.subtitle});
+class _ErrorTile extends StatelessWidget {
+  final String message;
+
+  const _ErrorTile({required this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -193,9 +195,9 @@ class _SlotTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 96,
             child: Text(
-              label,
+              'Error detail',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
@@ -204,8 +206,48 @@ class _SlotTile extends StatelessWidget {
           ),
           Expanded(
             child: Text(
-              subtitle,
+              message,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceTile extends StatelessWidget {
+  final String? sourceType;
+  final String reference;
+
+  const _SourceTile({required this.sourceType, required this.reference});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              'Source',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              '${sourceType ?? "reference"}: $reference',
               style: theme.textTheme.bodySmall,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
