@@ -5,17 +5,48 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from utils.api.endpoint import success
+from utils.constants import (
+    AWS_REGION,
+    BATCH_JOB_DEFINITION,
+    BATCH_JOB_QUEUE,
+    PARSER_INPUTS_BUCKET,
+    PARSER_OUTPUTS_BUCKET,
+)
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.recipe import Recipe
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
+from utils.services.aws import AWSService
 from utils.services.celery import celery_app
 from utils.services.ingredient_resolver import resolve_ingredient
+from utils.services.recipe_image_promotion import promote_source_photo
 from utils.services.units.conversion import normalize_quantity
 from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
+
+_aws_service: AWSService | None = None
+
+
+def _get_aws_service() -> AWSService:
+    """Lazy-init an AWSService singleton for the worker process.
+
+    Mirrors the API-side singleton pattern in
+    `services/api/src/api/v1/recipe/get_photo_upload_url.py`. Pulled
+    from `utils.constants` which read the worker's env vars directly,
+    matching watch_parser_batch_task's AWS access.
+    """
+    global _aws_service
+    if _aws_service is None:
+        _aws_service = AWSService(
+            region=AWS_REGION,
+            parser_inputs_bucket=PARSER_INPUTS_BUCKET,
+            parser_outputs_bucket=PARSER_OUTPUTS_BUCKET,
+            batch_job_queue=BATCH_JOB_QUEUE,
+            batch_job_definition=BATCH_JOB_DEFINITION,
+        )
+    return _aws_service
 
 
 class CreateRecipeTask(BaseTask):
@@ -77,6 +108,13 @@ class CreateRecipeTask(BaseTask):
             self.database.create(recipe)
             self.database.db.refresh(recipe)
 
+            # Source-photo promotion (FR87): when the extractor didn't
+            # supply a hero image, copy the user-uploaded source photo
+            # from parser-inputs to a permanent recipe-photos/ key and
+            # use that URL. Best-effort — any failure leaves image_url
+            # None and recipe creation still succeeds.
+            self._maybe_promote_source_photo(recipe, item, job)
+
             # Create RecipeIngredient records
             ingredients_data = recipe_data.get("ingredients", [])
             for idx, ing_data in enumerate(ingredients_data):
@@ -127,6 +165,52 @@ class CreateRecipeTask(BaseTask):
             item.error_code = "CREATE_RECIPE_ERROR"
             self.database.db.commit()
             return success({"error": str(e), "item_id": item_id})
+
+    def _maybe_promote_source_photo(
+        self, recipe: Recipe, item: ImportItem, job: ImportJob
+    ) -> None:
+        """Promote the source photo to the recipe hero if no hero is set.
+
+        Conditions (both required):
+          * `recipe.image_url` is empty (the extractor didn't supply one), AND
+          * `item.raw_data['s3_keys']` is a non-empty list (a photo import).
+
+        The first key wins — multi-page recipes get their first page as
+        hero in v1. On success, commits the new URL to `recipe.image_url`.
+        Any failure is logged and left as a no-op; recipe creation is
+        never blocked by a failed promotion.
+        """
+        if recipe.image_url:
+            return
+        s3_keys = (item.raw_data or {}).get("s3_keys") or []
+        if not s3_keys:
+            return
+        try:
+            aws = _get_aws_service()
+            url = promote_source_photo(
+                aws,
+                user_id=job.user_id,
+                recipe_id=recipe.id,
+                source_s3_key=s3_keys[0],
+                region=AWS_REGION,
+                bucket=PARSER_INPUTS_BUCKET,
+            )
+        except Exception:
+            logger.warning(
+                "Source-photo promotion raised unexpectedly for recipe %s",
+                recipe.id,
+                exc_info=True,
+            )
+            return
+        if url:
+            recipe.image_url = url
+            self.database.db.commit()
+            logger.info(
+                "Promoted source photo for recipe %s: %s -> %s",
+                recipe.id,
+                s3_keys[0],
+                url,
+            )
 
     def _create_recipe_ingredient(self, recipe: Recipe, ing_data: dict, order_index: int):
         """Create a RecipeIngredient record."""
