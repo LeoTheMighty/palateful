@@ -5,9 +5,12 @@ from typing import Annotated
 
 from config import settings
 from fastapi import Depends, Header
+from sqlalchemy.exc import IntegrityError
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.constants import LOGGING_LEVEL
+from utils.models.calendar import Calendar
+from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
 from utils.services.database import Database, SessionLocal
 
@@ -16,6 +19,7 @@ logger.setLevel(LOGGING_LEVEL)
 
 _E2E_TOKEN = "e2e-test-token"
 _E2E_AUTH0_ID = "e2e|test-user"
+_DEFAULT_CALENDAR_NAME = "My Calendar"
 
 
 def get_db():
@@ -70,6 +74,7 @@ async def get_current_user(
         )
         if not user.has_completed_onboarding:
             database.update(user, has_completed_onboarding=True)
+        _ensure_default_calendar(database, user)
         return user
 
     # Import verifier here to avoid circular imports
@@ -96,6 +101,11 @@ async def get_current_user(
 
     # Finalize auth: sync missing profile fields and store Auth0 profile
     user = _finalize_auth(database, user, claims)
+
+    # Ensure this user has a default calendar. Idempotent — silent no-op if
+    # one already exists. Race-safe via the partial unique index on
+    # calendars(owner_id) WHERE is_default = true AND archived_at IS NULL.
+    _ensure_default_calendar(database, user)
 
     return user
 
@@ -126,6 +136,64 @@ def _finalize_auth(database, user: User, claims: dict) -> User:
         database.update(user, **updates)
 
     return user
+
+
+def _ensure_default_calendar(database: Database, user: User) -> Calendar | None:
+    """Ensure `user` owns a non-archived default calendar.
+
+    Called on every authed request, so it must be cheap + idempotent:
+      - SELECT filtered on archived_at IS NULL (matching the partial unique
+        index on calendars); an archived default from some historical flow
+        must NOT be treated as the active default.
+      - Provisioning INSERT runs inside a SAVEPOINT so a concurrent race
+        (Auth0 token refresh replays this path) rolls back only the
+        duplicate insert, not any staged writes on the outer request
+        transaction.
+    """
+    active_default = (
+        database.db.query(Calendar)
+        .filter(
+            Calendar.owner_id == user.id,
+            Calendar.is_default.is_(True),
+            Calendar.archived_at.is_(None),
+        )
+        .first()
+    )
+    if active_default is not None:
+        return active_default
+
+    try:
+        with database.db.begin_nested():
+            calendar = Calendar(
+                name=_DEFAULT_CALENDAR_NAME,
+                owner_id=user.id,
+                is_default=True,
+                is_shared=False,
+            )
+            database.create(calendar)
+            database.db.flush()
+
+            membership = CalendarUser(
+                user_id=user.id,
+                calendar_id=calendar.id,
+                role="owner",
+            )
+            database.create(membership)
+            database.db.flush()
+        return calendar
+    except IntegrityError:
+        # Concurrent provisioning won the race — re-read the active default.
+        # SAVEPOINT has already rolled back the inner transaction; the
+        # outer session remains usable.
+        return (
+            database.db.query(Calendar)
+            .filter(
+                Calendar.owner_id == user.id,
+                Calendar.is_default.is_(True),
+                Calendar.archived_at.is_(None),
+            )
+            .first()
+        )
 
 
 async def require_admin(

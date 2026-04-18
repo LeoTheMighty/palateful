@@ -25,6 +25,10 @@ class MealRecurrenceRule(Base):
             "ix_meal_recurrence_rules_materialized_through",
             "materialized_through",
         ),
+        Index(
+            "ix_meal_recurrence_rules_calendar_id",
+            "calendar_id",
+        ),
     )
 
     # Free-text title when recipe_id is null. Ignored when recipe_id is set —
@@ -66,6 +70,12 @@ class MealRecurrenceRule(Base):
 
     # High-water mark: materialize has populated events up to this date.
     materialized_through: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    calendar_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("calendars.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
 
     # Relationships
     recipe: Mapped["Recipe | None"] = relationship()

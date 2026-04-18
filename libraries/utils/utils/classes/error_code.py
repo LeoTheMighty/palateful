@@ -219,8 +219,13 @@ class ErrorCode(BaseEnum):
     INVITE_LINK_MAX_USES_REACHED = 253
     INVITE_LINK_ACCESS_DENIED = 254
 
-    # AI Chat errors (260-269)
+    # AI Chat errors (260)
     TOKEN_CAP_EXCEEDED = 260
+
+    # Calendar errors (261-269)
+    CALENDAR_CANNOT_DELETE_LAST = 261
+    CALENDAR_NOT_FOUND = 262
+    CALENDAR_ACCESS_DENIED = 263
 
     # Pantry errors (270-289)
     PANTRY_NOT_FOUND = 270

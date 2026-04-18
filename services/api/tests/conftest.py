@@ -221,6 +221,37 @@ class MockFriendship(MockModel):
         super().__init__(**defaults)
 
 
+class MockCalendar(MockModel):
+    """Mock Calendar model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "name": "My Calendar",
+            "description": None,
+            "is_default": True,
+            "is_shared": False,
+            "color": None,
+            "owner_id": str(uuid.uuid4()),
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
+class MockCalendarUser(MockModel):
+    """Mock CalendarUser model."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "user_id": str(uuid.uuid4()),
+            "calendar_id": str(uuid.uuid4()),
+            "role": "owner",
+            "invited_by_id": None,
+            "last_opened_at": None,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockMealEvent(MockModel):
     """Mock MealEvent model."""
 

@@ -3,6 +3,8 @@
 from utils.models.active_timer import ActiveTimer
 from utils.models.activity import Activity
 from utils.models.base import Base
+from utils.models.calendar import Calendar
+from utils.models.calendar_user import CalendarUser
 from utils.models.chat import Chat
 from utils.models.cooking_log import CookingLog
 from utils.models.error_log import ErrorLog
@@ -87,6 +89,8 @@ __all__ = [
     "CookingLog",
     "ErrorLog",
     # Calendar/Meal Planning
+    "Calendar",
+    "CalendarUser",
     "MealEvent",
     "MealEventParticipant",
     "MealRecurrenceRule",

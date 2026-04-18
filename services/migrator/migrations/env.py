@@ -11,6 +11,8 @@ from utils.db.base import Base
 from utils.db.models import (  # noqa: F401
     ActiveTimer,
     Activity,
+    Calendar,
+    CalendarUser,
     Chat,
     CookingLog,
     ErrorLog,

@@ -323,8 +323,8 @@ development_status:
   # First-class Calendar container: model + backfill migration + CRUD endpoints,
   # auth rewire on meal_event + recurrence_rule, Flutter switcher + create/rename/delete,
   # plan-meal Calendar picker + move-to-calendar. Sharing lands in a follow-up epic.
-  epic-calendars-foundation: backlog
-  cal-found-1-calendar-model-backfill-and-crud: backlog
+  epic-calendars-foundation: in-progress
+  cal-found-1-calendar-model-backfill-and-crud: done
   cal-found-2-rewire-authorization-and-require-calendar-id: backlog
   cal-found-3-flutter-switcher-and-active-calendar-provider: backlog
   cal-found-4-flutter-create-rename-delete-and-user-provisioning: backlog

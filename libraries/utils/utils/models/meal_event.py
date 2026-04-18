@@ -42,6 +42,11 @@ class MealEvent(Base):
             unique=True,
             postgresql_where=text("recurrence_rule_id IS NOT NULL"),
         ),
+        Index(
+            "ix_meal_events_calendar_id_scheduled_at",
+            "calendar_id",
+            "scheduled_at",
+        ),
     )
 
     # Basic info
@@ -106,6 +111,12 @@ class MealEvent(Base):
         UUID(as_uuid=True),
         ForeignKey("pantries.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    calendar_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("calendars.id", ondelete="RESTRICT"),
+        nullable=False,
     )
 
     # Relationships
