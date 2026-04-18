@@ -436,10 +436,16 @@ development_status:
   # prefix disambiguation). Unblocks shared photos / PDFs / video files /
   # audio on Android. Partially depends on Epic Share Receiving UX for the
   # /recipes/add/receive landing route; manifest work ships standalone.
-  epic-share-android-entrypoint: backlog
-  sae-1-androidmanifest-mime-and-permission-expansion: backlog
-  sae-2-flutter-content-aware-handler-and-sandbox-copy: backlog
-  sae-3-unsupported-type-fallback-wiring: backlog
+  epic-share-android-entrypoint: done
+  sae-1-androidmanifest-mime-and-permission-expansion: done
+  sae-2-flutter-content-aware-handler-and-sandbox-copy: done
+  sae-3-unsupported-type-fallback-wiring: done
+  # NOTE 2026-04-18 (/dev autonomous run): sae-2 + sae-3 landed a
+  # placeholder /recipes/add/receive screen — unsupported fallback card
+  # + MIME-based forward to typed screens. sru-1 (epic-share-receiving-
+  # ux) will replace the body with the full byte-level progress /
+  # double-fire-dedup / 600ms-min-dwell UX. The route + query-param
+  # contract is stable; sru-1 is a body-only swap.
   epic-share-android-entrypoint-retrospective: optional
 
   # Epic Share Receiving UX (planned 2026-04-18)
