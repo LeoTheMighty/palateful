@@ -491,10 +491,10 @@ development_status:
   # Pages deploy. Unblocks Play Console Store Listing + Data Safety forms
   # which hard-require a public HTTPS privacy URL. Zero workflow changes
   # (deploy-web already ships everything under app/web/).
-  epic-android-privacy-policy-page: in-progress
+  epic-android-privacy-policy-page: done
   app-1-draft-privacy-policy-html: done
   app-2-wire-play-console-form-references: done
-  app-3-post-deploy-verification: backlog
+  app-3-post-deploy-verification: done
   epic-android-privacy-policy-page-retrospective: optional
 
   # Epic Android Release Hardening (planned 2026-04-18)
