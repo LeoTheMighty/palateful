@@ -84,6 +84,7 @@ class TestSettings:
         )
         assert s.parser_inputs_bucket == "palateful-parser-inputs-production"
         assert s.parser_outputs_bucket == "palateful-parser-outputs-production"
+        assert s.s3_imports_bucket == "palateful-imports-production"
         assert s.batch_job_queue == "palateful-parser-queue-production"
         assert s.batch_job_definition == "palateful-parser-job-production"
 
@@ -98,11 +99,13 @@ class TestSettings:
             environment="production",
             parser_inputs_bucket="custom-inputs",
             parser_outputs_bucket="custom-outputs",
+            s3_imports_bucket="custom-imports",
             batch_job_queue="custom-queue",
             batch_job_definition="custom-job",
         )
         assert s.parser_inputs_bucket == "custom-inputs"
         assert s.parser_outputs_bucket == "custom-outputs"
+        assert s.s3_imports_bucket == "custom-imports"
         assert s.batch_job_queue == "custom-queue"
         assert s.batch_job_definition == "custom-job"
 
@@ -118,8 +121,23 @@ class TestSettings:
         )
         assert s.parser_inputs_bucket == "palateful-parser-inputs-development"
         assert s.parser_outputs_bucket == "palateful-parser-outputs-development"
+        assert s.s3_imports_bucket == "palateful-imports-development"
         assert s.batch_job_queue == "palateful-parser-queue-development"
         assert s.batch_job_definition == "palateful-parser-job-development"
+
+    def test_settings_whitespace_bucket_falls_back_to_default(self):
+        """Whitespace-only or empty values should not propagate as bucket names."""
+        from config import Settings
+
+        s = Settings(
+            auth0_domain="test.auth0.com",
+            auth0_audience="https://api.test",
+            database_url="postgresql://localhost/test",
+            environment="dev",
+            s3_imports_bucket="   ",
+        )
+        # `.strip()` fallback kicks in — boto3 would barf on a blank bucket name.
+        assert s.s3_imports_bucket == "palateful-imports-dev"
 
     def test_settings_partial_override(self):
         """Test setting some AWS fields explicitly while others use defaults."""
@@ -135,6 +153,7 @@ class TestSettings:
         )
         assert s.parser_inputs_bucket == "my-custom-bucket"
         assert s.parser_outputs_bucket == "palateful-parser-outputs-staging"
+        assert s.s3_imports_bucket == "palateful-imports-staging"
         assert s.batch_job_queue == "palateful-parser-queue-staging"
         assert s.batch_job_definition == "palateful-parser-job-staging"
 

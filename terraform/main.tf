@@ -94,6 +94,7 @@ module "iam" {
   project                   = var.project
   parser_inputs_bucket_arn  = module.s3.parser_inputs_bucket_arn
   parser_outputs_bucket_arn = module.s3.parser_outputs_bucket_arn
+  imports_bucket_arn        = module.s3.imports_bucket_arn
   ecr_repository_arn        = module.ecr.repository_arn
 }
 
@@ -127,6 +128,11 @@ output "parser_inputs_bucket" {
 output "parser_outputs_bucket" {
   value       = module.s3.parser_outputs_bucket_name
   description = "S3 bucket for parser output JSON"
+}
+
+output "imports_bucket" {
+  value       = module.s3.imports_bucket_name
+  description = "S3 bucket for user imports (presigned uploads)"
 }
 
 output "batch_job_queue" {

@@ -423,7 +423,7 @@ development_status:
   # endpoint + new palateful-imports-{env} S3 bucket. Unblocks iOS Share
   # Extension (sie) and Universal Receiving UX (sru). Independent.
   epic-share-backend-foundations: in-progress
-  sbf-1-s3-imports-bucket-and-iam: in-progress
+  sbf-1-s3-imports-bucket-and-iam: done
   sbf-2-presigned-upload-url-endpoint: backlog
   sbf-3-s3-key-import-path-audio-pdf-spreadsheet: backlog
   sbf-4-ffmpeg-in-worker-and-video-file-source-type: backlog

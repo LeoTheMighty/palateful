@@ -124,6 +124,12 @@ variable "parser_outputs_bucket" {
   description = "S3 bucket name for parser outputs"
 }
 
+variable "s3_imports_bucket" {
+  type        = string
+  default     = ""
+  description = "S3 bucket name for user imports (presigned uploads). Empty lets services fall back to the `palateful-imports-{env}` default in config.py."
+}
+
 variable "batch_job_queue" {
   type        = string
   description = "Batch job queue name"
@@ -238,6 +244,7 @@ resource "aws_ecs_task_definition" "api" {
         { name = "API_BASE_URL", value = var.api_base_url },
         { name = "PARSER_INPUTS_BUCKET", value = var.parser_inputs_bucket },
         { name = "PARSER_OUTPUTS_BUCKET", value = var.parser_outputs_bucket },
+        { name = "S3_IMPORTS_BUCKET", value = var.s3_imports_bucket },
         { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },
         { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
         { name = "CELERY_BROKER_URL", value = "sqs://" },
@@ -354,6 +361,7 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "CELERY_POLLING_INTERVAL", value = "10" },
         { name = "PARSER_INPUTS_BUCKET", value = var.parser_inputs_bucket },
         { name = "PARSER_OUTPUTS_BUCKET", value = var.parser_outputs_bucket },
+        { name = "S3_IMPORTS_BUCKET", value = var.s3_imports_bucket },
         { name = "BATCH_JOB_QUEUE", value = var.batch_job_queue },
         { name = "BATCH_JOB_DEFINITION", value = var.batch_job_definition },
         { name = "OPENAI_MODEL", value = "gpt-4o-mini" },

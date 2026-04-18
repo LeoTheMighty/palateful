@@ -102,6 +102,7 @@ module "iam" {
   project                   = local.project
   parser_inputs_bucket_arn  = module.s3.parser_inputs_bucket_arn
   parser_outputs_bucket_arn = module.s3.parser_outputs_bucket_arn
+  imports_bucket_arn        = module.s3.imports_bucket_arn
   ecr_repository_arn        = module.ecr.repository_arn
   create_ecs_roles          = true
   sqs_queue_arns            = [module.sqs.celery_queue_arn, module.sqs.celery_dlq_arn]
@@ -211,6 +212,7 @@ module "ecs" {
   celery_queue_prefix   = module.sqs.celery_queue_prefix
   parser_inputs_bucket  = module.s3.parser_inputs_bucket_name
   parser_outputs_bucket = module.s3.parser_outputs_bucket_name
+  s3_imports_bucket     = module.s3.imports_bucket_name
   batch_job_queue       = module.batch.job_queue_name
   batch_job_definition  = module.batch.job_definition_name
   api_base_url          = "https://api.palateful.app"
@@ -281,6 +283,10 @@ output "parser_inputs_bucket" {
 
 output "parser_outputs_bucket" {
   value = module.s3.parser_outputs_bucket_name
+}
+
+output "imports_bucket" {
+  value = module.s3.imports_bucket_name
 }
 
 output "batch_job_queue" {

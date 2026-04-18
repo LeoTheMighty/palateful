@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     parser_inputs_bucket: str = ""
     parser_outputs_bucket: str = ""
+    s3_imports_bucket: str = ""
     batch_job_queue: str = ""
     batch_job_definition: str = ""
 
@@ -65,15 +66,23 @@ class Settings(BaseSettings):
         return v
 
     def model_post_init(self, __context) -> None:
-        """Derive AWS resource names from environment when not explicitly set."""
+        """Derive AWS resource names from environment when not explicitly set.
+
+        `.strip()` is intentional: an unbound shell-style substitution
+        (e.g. Terraform emitting `S3_IMPORTS_BUCKET=` or a whitespace-only
+        value) should fall through to the env-derived default, not
+        propagate an invalid bucket name into boto3 calls.
+        """
         env = self.environment
-        if not self.parser_inputs_bucket:
+        if not self.parser_inputs_bucket.strip():
             object.__setattr__(self, "parser_inputs_bucket", f"palateful-parser-inputs-{env}")
-        if not self.parser_outputs_bucket:
+        if not self.parser_outputs_bucket.strip():
             object.__setattr__(self, "parser_outputs_bucket", f"palateful-parser-outputs-{env}")
-        if not self.batch_job_queue:
+        if not self.s3_imports_bucket.strip():
+            object.__setattr__(self, "s3_imports_bucket", f"palateful-imports-{env}")
+        if not self.batch_job_queue.strip():
             object.__setattr__(self, "batch_job_queue", f"palateful-parser-queue-{env}")
-        if not self.batch_job_definition:
+        if not self.batch_job_definition.strip():
             object.__setattr__(self, "batch_job_definition", f"palateful-parser-job-{env}")
 
     class Config:

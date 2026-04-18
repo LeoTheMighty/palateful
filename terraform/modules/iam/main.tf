@@ -21,6 +21,11 @@ variable "parser_outputs_bucket_arn" {
   description = "ARN of parser outputs S3 bucket"
 }
 
+variable "imports_bucket_arn" {
+  type        = string
+  description = "ARN of user-imports S3 bucket (presigned uploads)."
+}
+
 variable "ecr_repository_arn" {
   type        = string
   description = "ARN of ECR repository"
@@ -107,7 +112,12 @@ resource "aws_iam_role" "batch_job" {
   }
 }
 
-# S3 access policy for job role
+# S3 access policy for job role.
+# NOTE: The batch_job role runs the parser (Hunyuan OCR) Batch container,
+# which does NOT touch the user-imports bucket — ffmpeg / video_file work
+# in `sbf-4` lives in the ECS worker, which gets its S3 grant via the
+# api_service policy below. Do not extend this block to cover imports
+# unless a Batch job actually needs it.
 resource "aws_iam_role_policy" "batch_job_s3" {
   name = "${var.project}-batch-job-s3-${var.environment}"
   role = aws_iam_role.batch_job.id
@@ -263,6 +273,39 @@ resource "aws_iam_policy" "api_service" {
           "batch:ListJobs"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "S3ImportsAccess"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${var.imports_bucket_arn}/*"
+      },
+      {
+        # Presigned PUT includes `x-amz-tagging: unclaimed=true` so
+        # orphan uploads get swept by the 24h lifecycle rule. AWS
+        # requires s3:PutObjectTagging on the signer for a tag-bearing
+        # PUT. Post-success retag (clear `unclaimed`) in sbf-3 reuses
+        # the same grant. Scoped via Condition to the one tag key we
+        # actually write.
+        Sid      = "S3ImportsTagging"
+        Effect   = "Allow"
+        Action   = ["s3:PutObjectTagging"]
+        Resource = "${var.imports_bucket_arn}/*"
+        Condition = {
+          "ForAllValues:StringEquals" = {
+            "s3:RequestObjectTagKeys" = ["unclaimed"]
+          }
+        }
+      },
+      {
+        Sid      = "S3ImportsListBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = var.imports_bucket_arn
       }
     ]
   })
