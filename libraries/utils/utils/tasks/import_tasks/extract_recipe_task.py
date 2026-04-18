@@ -20,6 +20,53 @@ from utils.tasks.task import BaseTask
 logger = logging.getLogger(__name__)
 
 
+def _serialize_recipe(recipe, extractor_used: str | None) -> dict:
+    """Serialize an ExtractedRecipe into the `parsed_recipe` JSONB shape.
+
+    Structured `steps`, when available, are the preferred format
+    downstream. `create_recipe_task` already reads this field and
+    creates one recipe_step row per entry. When the extractor couldn't
+    produce structured steps (or the LLM returned malformed data) we
+    fall through to the legacy `instructions` string, which
+    `create_recipe_task` splits with a regex.
+    """
+    steps_dict = (
+        [{"order": s.order, "instruction": s.instruction} for s in recipe.steps]
+        if recipe.steps
+        else None
+    )
+    return {
+        "name": recipe.name,
+        "description": recipe.description,
+        "ingredients": [
+            {
+                "text": ing.text,
+                "quantity": ing.quantity,
+                "unit": ing.unit,
+                "name": ing.name,
+                "notes": ing.notes,
+                "is_optional": ing.is_optional,
+            }
+            for ing in recipe.ingredients
+        ],
+        "steps": steps_dict,
+        "instructions": recipe.instructions,
+        "servings": recipe.servings,
+        "prep_time_minutes": recipe.prep_time_minutes,
+        "cook_time_minutes": recipe.cook_time_minutes,
+        "total_time_minutes": recipe.total_time_minutes,
+        "image_url": recipe.image_url,
+        "source_url": recipe.source_url,
+        "author": recipe.author,
+        "cuisine": recipe.cuisine,
+        "category": recipe.category,
+        "keywords": recipe.keywords,
+        "primary_vibe": recipe.primary_vibe,
+        "secondary_vibe": recipe.secondary_vibe,
+        "extractor_used": extractor_used,
+    }
+
+
 class ExtractRecipeTask(BaseTask):
     """Extract recipe data from import items.
 
@@ -135,75 +182,117 @@ class ExtractRecipeTask(BaseTask):
             }
 
     def _update_item_from_result(self, item: ImportItem, result: ExtractionResult):
-        """Update import item from extraction result."""
+        """Update import item from extraction result.
+
+        When the extractor returns multiple recipes (`len(recipes) > 1`),
+        fans out siblings on the same ImportJob, one ImportItem per
+        recipe. The first recipe lands in the original item; the rest
+        are new rows with copies of `raw_data` (same s3_keys) plus a
+        `recipe_index` ordinal for dedupe/traceability. `total_items` is
+        bumped atomically. Dispatches `match_ingredients_task` for each
+        new sibling.
+        """
         item.ai_cost_cents = result.ai_cost_cents
 
-        if result.success and result.recipe:
-            # Store parsed recipe as dict
-            recipe = result.recipe
-            # Structured steps, when available, are the preferred format
-            # downstream. create_recipe_task already reads this field and
-            # creates one recipe_step row per entry. When the extractor
-            # couldn't produce structured steps (or the LLM returned
-            # malformed data) we fall through to the legacy `instructions`
-            # string, which create_recipe_task splits with a regex.
-            steps_dict = (
-                [
-                    {"order": s.order, "instruction": s.instruction}
-                    for s in recipe.steps
-                ]
-                if recipe.steps
-                else None
-            )
-            item.parsed_recipe = {
-                "name": recipe.name,
-                "description": recipe.description,
-                "ingredients": [
-                    {
-                        "text": ing.text,
-                        "quantity": ing.quantity,
-                        "unit": ing.unit,
-                        "name": ing.name,
-                        "notes": ing.notes,
-                        "is_optional": ing.is_optional,
-                    }
-                    for ing in recipe.ingredients
-                ],
-                "steps": steps_dict,
-                "instructions": recipe.instructions,
-                "servings": recipe.servings,
-                "prep_time_minutes": recipe.prep_time_minutes,
-                "cook_time_minutes": recipe.cook_time_minutes,
-                "total_time_minutes": recipe.total_time_minutes,
-                "image_url": recipe.image_url,
-                "source_url": recipe.source_url,
-                "author": recipe.author,
-                "cuisine": recipe.cuisine,
-                "category": recipe.category,
-                "keywords": recipe.keywords,
-                "primary_vibe": recipe.primary_vibe,
-                "secondary_vibe": recipe.secondary_vibe,
-                "extractor_used": result.extractor_used,
-            }
-            # Move to matching stage
-            item.status = "matching"
-            item.last_successful_stage = STAGE_EXTRACTED
-        else:
+        if not (result.success and result.recipes):
             item.status = "failed"
             item.error_message = result.error_message
             item.error_code = result.error_code
             item.retry_count += 1
+            self.database.db.commit()
+            self._update_job_counts(item.import_job_id)
+            return
+
+        recipes = result.recipes
+        extractor_used = result.extractor_used
+
+        # Write the first recipe into the existing item.
+        item.parsed_recipe = _serialize_recipe(recipes[0], extractor_used)
+        item.raw_data = {**(item.raw_data or {}), "recipe_index": 0}
+        item.status = "matching"
+        item.last_successful_stage = STAGE_EXTRACTED
+
+        # Fan out siblings for recipes[1..N-1].
+        siblings: list[ImportItem] = []
+        if len(recipes) > 1:
+            siblings = self._create_fanout_siblings(item, recipes, extractor_used)
 
         self.database.db.commit()
 
-        # Update job AI cost
+        # Job AI cost only reflects the original extractor call; siblings
+        # contribute 0 so we don't double-count.
         job = self.database.find_by(ImportJob, id=item.import_job_id)
-        if job and result.ai_cost_cents > 0:
-            job.total_ai_cost_cents += result.ai_cost_cents
+        if job:
+            if result.ai_cost_cents > 0:
+                job.total_ai_cost_cents += result.ai_cost_cents
+            if siblings:
+                job.total_items = (job.total_items or 0) + len(siblings)
             self.database.db.commit()
 
-        # Update job counts
+        # Dispatch matching for each sibling now that the row is
+        # committed and visible to the worker.
+        for sibling in siblings:
+            self._dispatch_matching_task(sibling)
+
         self._update_job_counts(item.import_job_id)
+
+    def _create_fanout_siblings(
+        self,
+        original: ImportItem,
+        recipes: list,
+        extractor_used: str | None,
+    ) -> list[ImportItem]:
+        """Create sibling ImportItems for recipes[1..N-1].
+
+        Idempotent: if a sibling for `(import_job_id, s3_keys, recipe_index)`
+        already exists (e.g. this task was retried by Celery), skip it.
+        Returns the list of newly-created siblings so the caller can
+        dispatch matching tasks for them.
+        """
+        from sqlalchemy import select
+
+        base_raw = dict(original.raw_data or {})
+        source_keys = base_raw.get("s3_keys") or []
+
+        # One query to find which recipe_index values are already materialized
+        # on this job. The dedupe key is (job_id, s3_keys, recipe_index) per
+        # the epic; in practice s3_keys is a stable list for a single photo
+        # import, so comparing s3_keys at the Python layer is sufficient.
+        existing = self.database.db.scalars(
+            select(ImportItem).where(ImportItem.import_job_id == original.import_job_id)
+        ).all()
+        existing_indices: set[int] = set()
+        for row in existing:
+            rd = row.raw_data or {}
+            if rd.get("s3_keys") == source_keys and "recipe_index" in rd:
+                try:
+                    existing_indices.add(int(rd["recipe_index"]))
+                except (TypeError, ValueError):
+                    continue
+
+        created: list[ImportItem] = []
+        for idx in range(1, len(recipes)):
+            if idx in existing_indices:
+                logger.info(
+                    "Skipping fanout for item %s recipe_index=%d (already exists)",
+                    original.id,
+                    idx,
+                )
+                continue
+            sibling = ImportItem(
+                import_job_id=original.import_job_id,
+                source_type=original.source_type,
+                source_reference=original.source_reference,
+                source_url=original.source_url,
+                status="matching",
+                last_successful_stage=STAGE_EXTRACTED,
+                parsed_recipe=_serialize_recipe(recipes[idx], extractor_used),
+                raw_data={**base_raw, "recipe_index": idx},
+                ai_cost_cents=0,
+            )
+            self.database.create(sibling)
+            created.append(sibling)
+        return created
 
     def _extract_from_raw_data(self, item: ImportItem):
         """Extract recipe from raw spreadsheet/form data.
