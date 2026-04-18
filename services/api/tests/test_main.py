@@ -168,3 +168,24 @@ class TestLifespan:
 
         mock_reload.assert_called_once_with(fake_session)
         fake_db.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_unit_alias_cache_failure_is_swallowed(self, caplog):
+        """riip-1: a failing cache reload must not break startup; it logs and continues."""
+        import logging
+        from main import lifespan, app
+
+        with (
+            patch(
+                "utils.services.database.Database",
+                side_effect=RuntimeError("pg is napping"),
+            ),
+            caplog.at_level(logging.ERROR, logger="main"),
+        ):
+            async with lifespan(app):
+                pass
+
+        assert any(
+            "Failed to load unit_alias cache" in rec.message
+            for rec in caplog.records
+        )
