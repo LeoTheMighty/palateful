@@ -582,8 +582,8 @@ development_status:
   # disabled-with-tooltip, Archive + Edit live); selectinload hydration;
   # `meals.share_token` column present but no handler reads it until sharing
   # epic; parallel meal_favorites table (not polymorphic user_favorites).
-  epic-meals-create-and-view: backlog
-  mcv-1-backend-meals-and-meal-recipes-and-meal-favorites-migration-and-models: backlog
+  epic-meals-create-and-view: in-progress
+  mcv-1-backend-meals-and-meal-recipes-and-meal-favorites-migration-and-models: done
   mcv-2-backend-meal-crud-endpoints-and-service: backlog
   mcv-3-backend-component-add-remove-reorder-endpoints-and-favorite: backlog
   mcv-4-flutter-meal-model-service-provider-and-router: backlog

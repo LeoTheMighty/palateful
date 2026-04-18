@@ -18,8 +18,11 @@ from utils.models.ingredient_substitution import IngredientSubstitution
 from utils.models.invitation import Invitation
 from utils.models.invite_link import InviteLink
 from utils.models.joins_base import JoinsBase
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
+from utils.models.meal_favorite import MealFavorite
+from utils.models.meal_recipe import MealRecipe
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.notification import Notification
 from utils.models.pantry import Pantry
@@ -83,6 +86,9 @@ __all__ = [
     "ErrorLog",
     "Calendar",
     "CalendarUser",
+    "Meal",
+    "MealFavorite",
+    "MealRecipe",
     "MealEvent",
     "MealEventParticipant",
     "MealRecurrenceRule",
