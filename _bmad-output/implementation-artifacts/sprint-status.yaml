@@ -389,7 +389,7 @@ development_status:
   # Confidence score built end-to-end (extractors -> API -> UI) with heuristic
   # fallback. Surfaces backlogged bugs-act-2a fields (last_successful_stage,
   # last_retry_at). Depends on epic-activity-hub-redesign (row shell).
-  epic-import-row-rich-detail: in-progress
+  epic-import-row-rich-detail: done
   irrd-1-backend-expose-stage-and-retry-fields: done
   irrd-2-backend-import-item-telemetry-endpoint: done
   irrd-3-backend-extractor-confidence-score-e2e: done
@@ -403,7 +403,7 @@ development_status:
   irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: done
   irrd-5-flutter-stage-timeline-confidence-badge-raw-preview: done
   irrd-6-flutter-collapsed-yellow-badge-and-expansion-actions: done
-  irrd-7-a11y-semantics-and-widget-test-pass: in-progress
+  irrd-7-a11y-semantics-and-widget-test-pass: done
   epic-import-row-rich-detail-retrospective: optional
 
   # Epic Review Import Ingredient Polish (planned 2026-04-18)
