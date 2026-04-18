@@ -14,8 +14,18 @@ import 'providers/activity_read_provider.dart';
 ///
 /// Default view shows only actionable items (needs review, failed, processing).
 /// "Show import history" toggle reveals completed/skipped jobs.
+///
+/// When [embedded] is true (ahr-2 shell embedding), the body renders
+/// without its own [Scaffold]/[AppBar] — the parent [ActivityScreen]
+/// owns the app bar + tab strip. ahr-4 will replace this embedded body
+/// with the color-sectioned Imports tab layout. The standalone route
+/// `/activity/import-history` is retired in ahr-7; ahr-7 also applies
+/// a `@Deprecated` marker on this class. Kept here for one release as
+/// the route-less Imports-tab body.
 class ImportHistoryScreen extends StatefulWidget {
-  const ImportHistoryScreen({super.key});
+  final bool embedded;
+
+  const ImportHistoryScreen({super.key, this.embedded = false});
 
   @override
   State<ImportHistoryScreen> createState() => _ImportHistoryScreenState();
@@ -334,8 +344,26 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final failedCount = _totalFailedItemCount;
 
+    final body = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : _error != null
+            ? _buildError(colorScheme)
+            : RefreshIndicator(
+                onRefresh: _loadAttentionView,
+                child: _buildBody(colorScheme, textTheme),
+              );
+
+    // ahr-2: when embedded inside ActivityScreen's tab shell, skip the
+    // Scaffold/AppBar (the parent owns them). The "Clear all failed"
+    // action is a destructive bulk operation — we keep it visible by
+    // rendering a floating button above the body instead of in the app
+    // bar when embedded. Keeping the action reachable beats hiding it.
+    if (widget.embedded) {
+      return body;
+    }
+
+    final failedCount = _totalFailedItemCount;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Import Activity'),
@@ -357,14 +385,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _buildError(colorScheme)
-              : RefreshIndicator(
-                  onRefresh: _loadAttentionView,
-                  child: _buildBody(colorScheme, textTheme),
-                ),
+      body: body,
     );
   }
 

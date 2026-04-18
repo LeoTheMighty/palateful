@@ -1,51 +1,146 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
-import '../../core/theme/theme.dart';
-import '../../core/services/error_reporter.dart';
-import '../../shared/widgets/error_banner.dart';
+import 'import_history_screen.dart';
 import 'providers/activity_read_provider.dart';
-import 'widgets/activity_filter_chips.dart';
+import 'providers/activity_tab_provider.dart';
 
-/// Activity feed screen — shows notifications like invites, partner actions, reminders.
-/// Also surfaces high-priority "Needs Review" import items in a collapsed section.
-/// Import details live in the dedicated Import Activity screen.
+/// Activity Hub shell — two top-of-screen tabs (Notifications | Imports)
+/// on a single `/activity` route.
 ///
-/// Supports a canonical deep-link schema `/activity?filter=<enum>`
-/// (bugs-act-3). Arriving with `filter=imports` opens the Import Activity
-/// screen as a replacement — pipeline state is owned there, not here.
-class ActivityScreen extends StatefulWidget {
-  final String? initialFilter;
+/// Story ahr-2: this file owns the tab strip + tab controller sync with
+/// [activityTabProvider] + mark-all-read action + the bottom-nav badge
+/// formula. The individual tab bodies are:
+///  - Notifications → [_NotificationsTabBody] below (to be replaced by
+///    the richer body in ahr-3).
+///  - Imports → the legacy `ImportHistoryScreen` body rendered in-place
+///    for now (ahr-4 replaces this with the color-sectioned layout).
+///
+/// Deep-link schema:
+///  - `/activity?tab=<notifications|imports>` — canonical.
+///  - `/activity?filter=imports` — legacy; router redirects to
+///    `?tab=imports` for one release (ahr-7 retires).
+class ActivityScreen extends ConsumerStatefulWidget {
+  final String? initialTab;
 
-  const ActivityScreen({super.key, this.initialFilter});
+  const ActivityScreen({super.key, this.initialTab});
 
   @override
-  State<ActivityScreen> createState() => _ActivityScreenState();
+  ConsumerState<ActivityScreen> createState() => _ActivityScreenState();
 }
 
-class _ActivityScreenState extends State<ActivityScreen> {
+class _ActivityScreenState extends ConsumerState<ActivityScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  bool _syncingFromController = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Seed the provider from the route's `?tab=` on mount — the router
+    // is the source of truth for the first frame; subsequent tab
+    // switches flow provider → controller (and vice versa).
+    final initial = ActivityTab.fromWire(widget.initialTab);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(activityTabProvider) != initial) {
+        ref.read(activityTabProvider.notifier).setTab(initial);
+      }
+    });
+
+    _tabController = TabController(
+      length: ActivityTab.values.length,
+      vsync: this,
+      initialIndex: initial.index,
+    );
+    _tabController.addListener(_onControllerChange);
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onControllerChange);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _onControllerChange() {
+    // Tab transitions fire twice — during the drag and when the new
+    // index settles. Only write on the settle to avoid thrashing the
+    // provider mid-swipe.
+    if (_tabController.indexIsChanging) return;
+    if (_syncingFromController) return;
+    final next = ActivityTab.values[_tabController.index];
+    if (ref.read(activityTabProvider) != next) {
+      _syncingFromController = true;
+      ref.read(activityTabProvider.notifier).setTab(next);
+      _syncingFromController = false;
+    }
+  }
+
+  void _syncControllerFromProvider(ActivityTab tab) {
+    if (_tabController.index != tab.index) {
+      _tabController.animateTo(tab.index);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Keep the TabController following the provider so external sources
+    // (deep-link, push notification) can drive the selection.
+    ref.listen<ActivityTab>(activityTabProvider, (prev, next) {
+      _syncControllerFromProvider(next);
+    });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Activity'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Notifications'),
+            Tab(text: 'Imports'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          _NotificationsTabBody(),
+          _ImportsTabBody(),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Notifications tab body — preserves the existing chronological feed.
+// ahr-3 replaces this with a Dismissible-wrapped version with per-row
+// swipe-to-archive + 3s undo snackbar.
+// ---------------------------------------------------------------------------
+
+class _NotificationsTabBody extends StatefulWidget {
+  const _NotificationsTabBody();
+
+  @override
+  State<_NotificationsTabBody> createState() => _NotificationsTabBodyState();
+}
+
+class _NotificationsTabBodyState extends State<_NotificationsTabBody>
+    with AutomaticKeepAliveClientMixin {
   final _apiClient = getIt<ApiClient>();
   final _readProvider = getIt<ActivityReadProvider>();
 
   List<dynamic> _activities = [];
   bool _isLoading = true;
   String? _error;
-  String? _errorDetail;
   Timer? _pollTimer;
-  ActivityFilter _filter = ActivityFilter.all;
-  bool _redirectedToImports = false;
 
-  // Import review data for the "Needs Review" section + badge
-  List<dynamic> _reviewJobSummaries = [];
-  List<_ReviewJobWithItems> _reviewItems = [];
-  int _importActionCount = 0;
-  bool _reviewExpanded = false;
-  bool _isLoadingReviewItems = false;
-
-  /// Activity types that belong in Import Activity, not here.
+  /// Activity types that belong on the Imports tab, not here.
   static const _importActivityTypes = {
     'import_started',
     'import_complete',
@@ -56,28 +151,15 @@ class _ActivityScreenState extends State<ActivityScreen> {
   };
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
-    _filter = ActivityFilterX.fromWire(widget.initialFilter);
-    _loadAll();
+    _load();
     _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _loadAll(silent: true);
+      _load(silent: true);
     });
-
-    // Deep-link `/activity?filter=imports` hands the user straight to the
-    // Import Activity screen — pipeline state and its retry/dismiss/approve
-    // actions are owned there. The redirect is post-frame so the parent
-    // Navigator has mounted this route first.
-    if (_filter == ActivityFilter.imports) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _redirectedToImports) return;
-        _redirectedToImports = true;
-        // Reset the chip back to "all" so backing out of import history
-        // lands on the full feed, not a stuck imports filter.
-        setState(() => _filter = ActivityFilter.all);
-        context.push('/activity/import-history');
-      });
-    }
   }
 
   @override
@@ -86,14 +168,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAll({bool silent = false}) async {
-    await Future.wait([
-      _loadActivities(silent: silent),
-      _loadImportSummary(),
-    ]);
-  }
-
-  Future<void> _loadActivities({bool silent = false}) async {
+  Future<void> _load({bool silent = false}) async {
     if (!silent) {
       setState(() {
         _isLoading = true;
@@ -104,19 +179,11 @@ class _ActivityScreenState extends State<ActivityScreen> {
     try {
       final response = await _apiClient.getActivities();
       if (!mounted) return;
-
       final all = List<dynamic>.from(response.data['items'] ?? []);
-      // Filter out import-related activities — those live in Import Activity
       final filtered = all
           .where((a) => !_importActivityTypes.contains(a['type']?.toString()))
           .toList();
 
-      // Tab-open marks all currently-loaded items read. No viewport
-      // tracking — locked design decision: every loaded item is acknowledged
-      // when the user opens this surface. Mark-all-as-read remains the
-      // safety valve for older unread items that aren't yet paginated in.
-      // Flip flags before the first rebuild so the UI goes straight to the
-      // read state without a flash-of-unread.
       final idsToMark = <String>[];
       for (final a in filtered) {
         if (a['read'] != true) {
@@ -139,155 +206,29 @@ class _ActivityScreenState extends State<ActivityScreen> {
           if (mounted) _readProvider.refreshUnreadCount();
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       if (!silent) {
         setState(() {
           _error = 'Failed to load activities';
-          _errorDetail = ErrorReporter.detail(e);
           _isLoading = false;
         });
       }
     }
   }
 
-  Future<void> _loadImportSummary() async {
-    try {
-      final results = await Future.wait([
-        _apiClient.listImportJobs(status: 'awaiting_review', limit: 50),
-        _apiClient.listImportJobs(status: 'failed', limit: 50),
-      ]);
-      if (!mounted) return;
-
-      // Filter out fully-dismissed jobs — even if the server's cached
-      // counters lag, dismissed jobs shouldn't contribute to the badge.
-      bool notDismissed(dynamic job) => job['dismissed_at'] == null;
-      final reviewJobs = List<dynamic>.from(results[0].data['jobs'] ?? [])
-          .where(notDismissed)
-          .toList();
-      final failedJobs = List<dynamic>.from(results[1].data['jobs'] ?? [])
-          .where(notDismissed)
-          .toList();
-
-      int reviewCount = 0;
-      for (final job in reviewJobs) {
-        reviewCount += (job['pending_review_items'] as int? ?? 0);
-      }
-      int failedCount = 0;
-      for (final job in failedJobs) {
-        failedCount += (job['failed_items'] as int? ?? 0);
-      }
-
-      setState(() {
-        _reviewJobSummaries = reviewJobs;
-        _importActionCount = reviewCount + failedCount;
-        // If review jobs disappeared, reset expanded state
-        if (reviewJobs.isEmpty) {
-          _reviewExpanded = false;
-          _reviewItems = [];
-        }
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _loadReviewItems() async {
-    if (_reviewJobSummaries.isEmpty) return;
-    setState(() => _isLoadingReviewItems = true);
-
-    try {
-      final futures = _reviewJobSummaries.map(
-        (job) => _apiClient.listImportItems(job['id'].toString()),
-      );
-      final results = await Future.wait(futures);
-      if (!mounted) return;
-
-      final items = <_ReviewJobWithItems>[];
-      for (var i = 0; i < _reviewJobSummaries.length; i++) {
-        final jobItems = List<dynamic>.from(results[i].data['items'] ?? [])
-            .where((item) => item['status'] == 'awaiting_review')
-            .toList();
-        if (jobItems.isNotEmpty) {
-          items.add(_ReviewJobWithItems(
-            job: _reviewJobSummaries[i],
-            items: jobItems,
-          ));
-        }
-      }
-
-      setState(() {
-        _reviewItems = items;
-        _isLoadingReviewItems = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingReviewItems = false);
-    }
-  }
-
-  Future<void> _onReviewItemTap(String itemId) async {
-    final result = await context.push('/recipes/import/review/$itemId');
-    if (!mounted) return;
-    if (result != null) {
-      _loadAll();
-    }
-  }
-
-  Future<void> _markAllRead() async {
-    try {
-      await _apiClient.markAllActivitiesRead();
-      if (!mounted) return;
-      setState(() {
-        for (final a in _activities) {
-          a['read'] = true;
-        }
-      });
-      _readProvider.setUnreadCount(0);
-    } catch (_) {}
-  }
-
   Future<void> _onActivityTap(dynamic activity) async {
     final id = activity['id']?.toString();
     final actionUrl = activity['action_url'] as String?;
-
     if (id != null && activity['read'] != true) {
       setState(() => activity['read'] = true);
-      // Fire-and-forget with retry via provider. The bulk _markLoadedRead
-      // will usually have already covered this, but we keep this path so
-      // a user who navigates directly to a deep-linked activity still gets
-      // the read-flag written without depending on tab-open having run.
       _readProvider.markIdsRead([id]).then((_) {
         if (mounted) _readProvider.refreshUnreadCount();
       });
     }
-
     if (actionUrl != null && actionUrl.isNotEmpty && mounted) {
       context.push(actionUrl);
     }
-  }
-
-  Map<String, List<dynamic>> _groupByDayFrom(List<dynamic> items) {
-    final groups = <String, List<dynamic>>{};
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-
-    for (final a in items) {
-      final createdAt = DateTime.tryParse(a['created_at']?.toString() ?? '');
-      String label;
-      if (createdAt == null) {
-        label = 'Earlier';
-      } else {
-        final day = DateTime(createdAt.year, createdAt.month, createdAt.day);
-        if (day == today) {
-          label = 'Today';
-        } else if (day == yesterday) {
-          label = 'Yesterday';
-        } else {
-          label = '${createdAt.month}/${createdAt.day}/${createdAt.year}';
-        }
-      }
-      groups.putIfAbsent(label, () => []).add(a);
-    }
-    return groups;
   }
 
   IconData _iconForType(String? type) {
@@ -303,358 +244,99 @@ class _ActivityScreenState extends State<ActivityScreen> {
     }
   }
 
-  int get _totalReviewItemCount {
-    int count = 0;
-    for (final job in _reviewJobSummaries) {
-      count += (job['pending_review_items'] as int? ?? 0);
-    }
-    return count;
-  }
-
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final hasUnread = _activities.any((a) => a['read'] != true);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Activity'),
-        actions: [
-          IconButton(
-            icon: Badge(
-              label: Text('$_importActionCount'),
-              isLabelVisible: _importActionCount > 0,
-              child: const Icon(Icons.import_export),
-            ),
-            tooltip: 'Import Activity',
-            onPressed: () async {
-              await context.push('/activity/import-history');
-              if (mounted) _loadAll();
-            },
-          ),
-          if (hasUnread)
-            IconButton(
-              icon: const Icon(Icons.done_all),
-              tooltip: 'Mark all as read',
-              onPressed: _markAllRead,
-            ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : RefreshIndicator(
-                  onRefresh: _loadAll,
-                  child: _buildBody(colorScheme),
-                ),
-    );
-  }
-
-  Set<ActivityFilter> _availableFilters() {
-    final available = <ActivityFilter>{};
-    for (final a in _activities) {
-      switch (a['type']?.toString()) {
-        case 'partner_action':
-          available.add(ActivityFilter.partner);
-          break;
-        case 'meal_reminder':
-          available.add(ActivityFilter.reminders);
-          break;
-      }
-    }
-    // Imports chip appears when there's any actionable import state. The
-    // `_importActionCount` covers review + failed items that the user can
-    // do something about; processing-only states still show via the strip.
-    if (_importActionCount > 0) available.add(ActivityFilter.imports);
-    return available;
-  }
-
-  List<dynamic> _applyFilter(List<dynamic> items) {
-    switch (_filter) {
-      case ActivityFilter.all:
-        return items;
-      case ActivityFilter.partner:
-        return items.where((a) => a['type'] == 'partner_action').toList();
-      case ActivityFilter.reminders:
-        return items.where((a) => a['type'] == 'meal_reminder').toList();
-      case ActivityFilter.imports:
-        // Imports filter redirects to /activity/import-history — should not
-        // be the active filter on this screen. Fall back to all.
-        return items;
-    }
-  }
-
-  void _onFilterChanged(ActivityFilter next) {
-    if (next == ActivityFilter.imports) {
-      // Treat the imports chip as a navigation action — not a local filter.
-      context.push('/activity/import-history');
-      return;
-    }
-    setState(() => _filter = next);
-  }
-
-  Widget _buildBody(ColorScheme colorScheme) {
     final textTheme = Theme.of(context).textTheme;
-    final filtered = _applyFilter(_activities);
-    final groups = _groupByDayFrom(filtered);
-    final hasReviewItems = _totalReviewItemCount > 0;
 
-    return ListView(
-      padding: const EdgeInsets.only(bottom: 16),
-      children: [
-        ActivityFilterChips(
-          selected: _filter,
-          availableFilters: _availableFilters(),
-          onSelected: _onFilterChanged,
-        ),
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return Center(child: Text(_error!));
 
-        // Needs Review collapsed section — only shown when "all" filter is
-        // active; imports filter is a redirect so this block never renders
-        // under it.
-        if (hasReviewItems && _filter == ActivityFilter.all)
-          _buildNeedsReviewSection(colorScheme, textTheme),
-
-        // Regular activity feed — respects the active filter.
-        if (filtered.isEmpty && !(hasReviewItems && _filter == ActivityFilter.all))
-          _buildEmptyState(colorScheme)
-        else
-          ...groups.entries.map((entry) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Text(
-                    entry.key,
-                    style: textTheme.labelLarge?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                ...entry.value.map(
-                    (a) => _buildActivityTile(a, colorScheme, textTheme)),
-              ],
-            );
-          }),
-      ],
-    );
-  }
-
-  Widget _buildNeedsReviewSection(
-      ColorScheme colorScheme, TextTheme textTheme) {
-    final appColors = context.appColors;
-    final reviewColor = appColors.warning;
-    final count = _totalReviewItemCount;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section header — tappable to expand/collapse
-        InkWell(
-          onTap: () {
-            final willExpand = !_reviewExpanded;
-            setState(() => _reviewExpanded = willExpand);
-            if (willExpand && _reviewItems.isEmpty) {
-              _loadReviewItems();
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
-              children: [
-                Icon(Icons.circle, size: 12, color: reviewColor),
-                const SizedBox(width: 8),
-                Text(
-                  'Needs Review',
-                  style: textTheme.titleSmall?.copyWith(
-                    color: reviewColor,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: reviewColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$count',
-                    style: textTheme.labelSmall?.copyWith(
-                      color: reviewColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Icon(
-                  _reviewExpanded ? Icons.expand_less : Icons.expand_more,
-                  size: 20,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ],
-            ),
+    if (_activities.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 120),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_outline,
+                  size: 64,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 16),
+              Text("You're all caught up",
+                  style: textTheme.titleMedium
+                      ?.copyWith(color: colorScheme.onSurfaceVariant)),
+            ],
           ),
         ),
+      );
+    }
 
-        // Collapsed summary
-        if (!_reviewExpanded)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(36, 0, 16, 8),
-            child: Text(
-              '$count recipe${count == 1 ? '' : 's'} need${count == 1 ? 's' : ''} your review',
-              style: textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 16),
+        itemCount: _activities.length,
+        itemBuilder: (context, i) {
+          final a = _activities[i];
+          final isUnread = a['read'] != true;
+          final type = a['type']?.toString();
+          return ListTile(
+            leading: CircleAvatar(
+              backgroundColor: isUnread
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surfaceContainerHighest,
+              child: Icon(
+                _iconForType(type),
+                size: 20,
+                color: isUnread
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
               ),
             ),
-          ),
-
-        // Expanded items
-        if (_reviewExpanded) ...[
-          if (_isLoadingReviewItems)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          else if (_reviewItems.isEmpty)
-            // Counter said "(1)" but the fetch returned nothing — stale
-            // server state. Tell the user instead of silently showing an
-            // empty expansion so the tap isn't a perceived no-op.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(36, 0, 16, 12),
-              child: Text(
-                'All caught up — nothing else to review.',
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          else
-            ..._reviewItems.expand((rj) {
-              return rj.items.map((item) {
-                final itemId = item['id']?.toString() ?? '';
-                final recipeName =
-                    item['recipe_name'] as String? ?? 'Untitled';
-                return ListTile(
-                  dense: true,
-                  leading: Icon(Icons.circle, size: 10, color: reviewColor),
-                  title: Text(
-                    recipeName,
-                    style: textTheme.bodyMedium,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing:
-                      Icon(Icons.chevron_right, size: 18, color: reviewColor),
-                  onTap: () => _onReviewItemTap(itemId),
-                );
-              });
-            }),
-        ],
-
-        // Divider after section
-        Divider(
-          indent: 16,
-          endIndent: 16,
-          color: colorScheme.outlineVariant,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmptyState(ColorScheme colorScheme) {
-    final textTheme = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.only(top: 120),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.check_circle_outline,
-              size: 64,
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'All caught up!',
-              style: textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'No new activity',
+            title: Text(
+              a['title'] ?? '',
               style: textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
               ),
             ),
-          ],
-        ),
+            subtitle: a['subtitle'] != null
+                ? Text(a['subtitle'],
+                    style: textTheme.bodySmall
+                        ?.copyWith(color: colorScheme.onSurfaceVariant))
+                : null,
+            trailing: isUnread
+                ? Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                : null,
+            onTap: () => _onActivityTap(a),
+          );
+        },
       ),
-    );
-  }
-
-  Widget _buildActivityTile(
-    dynamic activity,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    final isUnread = activity['read'] != true;
-    final type = activity['type']?.toString();
-
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: isUnread
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerHighest,
-        child: Icon(
-          _iconForType(type),
-          size: 20,
-          color: isUnread ? colorScheme.primary : colorScheme.onSurfaceVariant,
-        ),
-      ),
-      title: Text(
-        activity['title'] ?? '',
-        style: textTheme.bodyMedium?.copyWith(
-          fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
-        ),
-      ),
-      subtitle: activity['subtitle'] != null
-          ? Text(
-              activity['subtitle'],
-              style: textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            )
-          : null,
-      trailing: isUnread
-          ? Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: colorScheme.primary,
-                shape: BoxShape.circle,
-              ),
-            )
-          : null,
-      onTap: () => _onActivityTap(activity),
     );
   }
 }
 
-class _ReviewJobWithItems {
-  final dynamic job;
-  final List<dynamic> items;
+// ---------------------------------------------------------------------------
+// Imports tab body — ahr-2 delegates to the legacy [ImportHistoryScreen]
+// body so Leo still sees his imports. ahr-4 replaces this with the
+// color-sectioned layout (In Progress / Needs Review / Failed /
+// Auto-Imported) + swipe-to-archive + see-all footer.
+// ---------------------------------------------------------------------------
 
-  _ReviewJobWithItems({required this.job, required this.items});
+class _ImportsTabBody extends StatelessWidget {
+  const _ImportsTabBody();
+
+  @override
+  Widget build(BuildContext context) {
+    // Render the existing screen content without its own Scaffold/AppBar.
+    return const ImportHistoryScreen(embedded: true);
+  }
 }

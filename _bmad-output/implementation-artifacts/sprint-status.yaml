@@ -375,7 +375,7 @@ development_status:
   # First of three epics in the Activity Hub + Imports redesign trio.
   epic-activity-hub-redesign: in-progress
   ahr-1-backend-archive-columns-and-endpoints: done
-  ahr-2-flutter-two-tab-shell-and-routing: backlog
+  ahr-2-flutter-two-tab-shell-and-routing: done
   ahr-3-flutter-notifications-tab-swipe-archive: backlog
   ahr-4-flutter-imports-tab-four-color-sections: backlog
   ahr-5-flutter-see-all-footer: backlog

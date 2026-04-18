@@ -1,11 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/activity_screen.dart';
 import 'package:palateful/features/activity/providers/activity_read_provider.dart';
+import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
 
 Response<dynamic> _fakeResponse(dynamic data) => Response(
       data: data,
@@ -59,6 +61,9 @@ void _register(_FakeApiClient client) {
   gi.registerLazySingleton<ActivityReadProvider>(
     () => ActivityReadProvider(gi<ApiClient>()),
   );
+  if (!gi.isRegistered<BatchParserService>()) {
+    gi.registerLazySingleton<BatchParserService>(() => BatchParserService());
+  }
 }
 
 void _unregister() {
@@ -67,9 +72,12 @@ void _unregister() {
   if (gi.isRegistered<ActivityReadProvider>()) {
     gi.unregister<ActivityReadProvider>();
   }
+  // Leave BatchParserService registered — shared with import_history tests
+  // within the same test file batch.
 }
 
-Widget _wrap(Widget child) => MaterialApp(home: child);
+Widget _wrap(Widget child) =>
+    ProviderScope(child: MaterialApp(home: child));
 
 void main() {
   setUpAll(() async {
@@ -150,6 +158,37 @@ void main() {
         reason:
             'import_* activities belong to the Import Activity surface and '
             'must be acknowledged there, not here');
+  });
+
+  testWidgets(
+      'renders a two-tab shell with Notifications default + Imports second',
+      (tester) async {
+    final api = _FakeApiClient(activities: []);
+    _register(api);
+
+    await tester.pumpWidget(_wrap(const ActivityScreen()));
+    await tester.pump();
+
+    expect(find.text('Notifications'), findsOneWidget);
+    expect(find.text('Imports'), findsOneWidget);
+    expect(find.byType(TabBar), findsOneWidget);
+  });
+
+  testWidgets('initialTab=imports preselects the Imports tab', (tester) async {
+    final api = _FakeApiClient(activities: []);
+    _register(api);
+
+    await tester.pumpWidget(
+      _wrap(const ActivityScreen(initialTab: 'imports')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The TabController's animation completes in a couple of frames.
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+    final tabBar = tester.widget<TabBar>(find.byType(TabBar));
+    expect(tabBar.controller?.index, equals(1));
   });
 
   testWidgets('no-op when every loaded activity is already read',

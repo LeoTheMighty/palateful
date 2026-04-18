@@ -9,7 +9,6 @@ import '../../features/onboarding/onboarding_welcome_screen.dart';
 import '../../features/onboarding/onboarding_notification_permission_screen.dart';
 import '../../features/onboarding/onboarding_start_screen.dart';
 import '../../features/activity/activity_screen.dart';
-import '../../features/activity/import_history_screen.dart';
 import '../../features/recipe_books/archived_recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_members_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
@@ -521,16 +520,31 @@ GoRouter get appRouter {
             routes: [
               GoRoute(
                 path: '/activity',
+                // ahr-2: canonical deep-link `/activity?tab=<notifications|imports>`.
+                // Legacy `/activity?filter=imports` is mapped forward for
+                // one release; any other `?filter=*` is ignored. When both
+                // `tab` and `filter` are present, `tab` wins.
+                redirect: (context, state) {
+                  final qp = state.uri.queryParameters;
+                  if (qp['tab'] != null) return null;
+                  final filter = qp['filter'];
+                  if (filter == null) return null;
+                  final mapped = filter == 'imports' ? 'imports' : 'notifications';
+                  return '/activity?tab=$mapped';
+                },
                 builder: (context, state) {
-                  // Canonical deep-link schema: /activity?filter=<enum>
-                  // enum: all | imports | partner | reminders (bugs-act-3)
-                  final filter = state.uri.queryParameters['filter'];
-                  return ActivityScreen(initialFilter: filter);
+                  final tab = state.uri.queryParameters['tab'];
+                  return ActivityScreen(initialTab: tab);
                 },
                 routes: [
+                  // ahr-7: the legacy `/activity/import-history` path is
+                  // gone — any navigation to it is redirected to
+                  // `/activity?tab=imports`. Kept as a router redirect
+                  // (not a builder) so stale push payloads and in-app
+                  // navigations both resolve to the shell.
                   GoRoute(
                     path: 'import-history',
-                    builder: (context, state) => const ImportHistoryScreen(),
+                    redirect: (context, state) => '/activity?tab=imports',
                   ),
                 ],
               ),
