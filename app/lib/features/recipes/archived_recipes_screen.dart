@@ -149,6 +149,62 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
     }
   }
 
+  /// md-7: merge recipes + meals into a single list sorted by
+  /// `archived_at DESC`. When meals is empty, the ordering of recipes is
+  /// preserved bit-identically — that's the zero-regression guarantee
+  /// for users with only archived recipes.
+  List<Widget> _buildMergedRows() {
+    final recipes = _filteredRecipes;
+    final meals = _filteredMeals;
+    if (meals.isEmpty) {
+      return [
+        for (final recipe in recipes)
+          _ArchivedRecipeRow(
+            recipe: recipe,
+            onRestore: () => _restoreRecipe(recipe),
+            archivedDateFormatter: _formatArchivedDate,
+          ),
+      ];
+    }
+    DateTime? asDate(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is DateTime) return raw;
+      try {
+        return DateTime.parse(raw as String);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final entries = <_ArchiveEntry>[
+      for (final r in recipes)
+        _ArchiveEntry.recipe(r, asDate(r['archived_at'])),
+      for (final m in meals) _ArchiveEntry.meal(m, m.archivedAt),
+    ];
+    entries.sort((a, b) {
+      final aAt = a.archivedAt;
+      final bAt = b.archivedAt;
+      if (aAt == null && bAt == null) return 0;
+      if (aAt == null) return 1; // null archived_at goes last
+      if (bAt == null) return -1;
+      return bAt.compareTo(aAt); // newest archived first
+    });
+    return [
+      for (final entry in entries)
+        entry.isMeal
+            ? _ArchivedMealRow(
+                meal: entry.meal!,
+                onRestore: () => _restoreMeal(entry.meal!),
+                archivedDateFormatter: _formatArchivedDate,
+              )
+            : _ArchivedRecipeRow(
+                recipe: entry.recipe,
+                onRestore: () => _restoreRecipe(entry.recipe),
+                archivedDateFormatter: _formatArchivedDate,
+              ),
+    ];
+  }
+
   String _formatArchivedDate(String? dateStr) {
     if (dateStr == null) return '';
     try {
@@ -233,25 +289,7 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                                 : ListView(
                                     padding: const EdgeInsets.fromLTRB(
                                         16, 0, 16, 16),
-                                    children: [
-                                      ..._filteredRecipes.map(
-                                        (recipe) => _ArchivedRecipeRow(
-                                          recipe: recipe,
-                                          onRestore: () =>
-                                              _restoreRecipe(recipe),
-                                          archivedDateFormatter:
-                                              _formatArchivedDate,
-                                        ),
-                                      ),
-                                      ..._filteredMeals.map(
-                                        (meal) => _ArchivedMealRow(
-                                          meal: meal,
-                                          onRestore: () => _restoreMeal(meal),
-                                          archivedDateFormatter:
-                                              _formatArchivedDate,
-                                        ),
-                                      ),
-                                    ],
+                                    children: _buildMergedRows(),
                                   ),
                           ),
                         ],
@@ -259,6 +297,26 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
                     ),
     );
   }
+}
+
+class _ArchiveEntry {
+  final bool isMeal;
+  final dynamic recipe;
+  final MealSummary? meal;
+  final DateTime? archivedAt;
+
+  _ArchiveEntry._({
+    required this.isMeal,
+    required this.archivedAt,
+    this.recipe,
+    this.meal,
+  });
+
+  factory _ArchiveEntry.recipe(dynamic recipe, DateTime? archivedAt) =>
+      _ArchiveEntry._(isMeal: false, recipe: recipe, archivedAt: archivedAt);
+
+  factory _ArchiveEntry.meal(MealSummary meal, DateTime? archivedAt) =>
+      _ArchiveEntry._(isMeal: true, meal: meal, archivedAt: archivedAt);
 }
 
 class _ArchivedRecipeRow extends StatelessWidget {
