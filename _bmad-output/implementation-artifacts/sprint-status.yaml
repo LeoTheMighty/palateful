@@ -425,7 +425,7 @@ development_status:
   epic-share-backend-foundations: in-progress
   sbf-1-s3-imports-bucket-and-iam: done
   sbf-2-presigned-upload-url-endpoint: done
-  sbf-3-s3-key-import-path-audio-pdf-spreadsheet: backlog
+  sbf-3-s3-key-import-path-audio-pdf-spreadsheet: done
   sbf-4-ffmpeg-in-worker-and-video-file-source-type: backlog
   sbf-5-social-url-routing-promoted-to-endpoint: backlog
   epic-share-backend-foundations-retrospective: optional
@@ -546,3 +546,14 @@ development_status:
   apl-3-data-safety-paste-blocks-and-permission-justifications: backlog
   apl-4-tester-recruitment-checklist: backlog
   epic-android-play-console-launch-retrospective: optional
+
+  # Epic Notifications — Push Diagnostics & Hardening (planned 2026-04-18)
+  # Hardens the iOS proof-of-life shipped in epic-notifications-ios-proofoflife.
+  # Fix: route all push failures through ErrorReporter (Crashlytics), harden
+  # the already-existing boot-time auto-prompt in ensureRegistered, add admin
+  # per-user push health endpoint + dashboard panel + runbook docs.
+  epic-notifications-push-diagnostics-hardening: in-progress
+  push-diag-1-flutter-ios-errorreporter-integration: done
+  push-diag-2-harden-loud-on-boot-prompt: backlog
+  push-diag-3-admin-push-health-endpoint-and-panel: backlog
+  epic-notifications-push-diagnostics-hardening-retrospective: optional

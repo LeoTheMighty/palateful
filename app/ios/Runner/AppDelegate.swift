@@ -5,6 +5,9 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var pushChannel: FlutterMethodChannel?
+  private var apnsRegistrationTimer: Timer?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -16,6 +19,14 @@ import UserNotifications
     // to Dart. Our job here is just APNs-token forwarding (defensive,
     // the plugin also does it) and a belt-and-braces registration nudge.
     GeneratedPluginRegistrant.register(with: self)
+
+    if let controller = window?.rootViewController as? FlutterViewController {
+      pushChannel = FlutterMethodChannel(
+        name: "palateful/push",
+        binaryMessenger: controller.binaryMessenger
+      )
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -30,6 +41,7 @@ import UserNotifications
     Messaging.messaging().apnsToken = deviceToken
     let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
     print("APNs device token received: \(tokenString.prefix(12))…")
+    cancelAPNsTimeoutTimer()
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 
@@ -37,7 +49,17 @@ import UserNotifications
     _ application: UIApplication,
     didFailToRegisterForRemoteNotificationsWithError error: Error
   ) {
-    print("APNs register failed: \(error)")
+    let nsError = error as NSError
+    print("APNs register failed: \(nsError.domain)#\(nsError.code): \(nsError.localizedDescription)")
+    cancelAPNsTimeoutTimer()
+    pushChannel?.invokeMethod(
+      "apnsRegistrationFailed",
+      arguments: [
+        "domain": nsError.domain,
+        "code": nsError.code,
+        "description": nsError.localizedDescription,
+      ]
+    )
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
@@ -59,8 +81,27 @@ import UserNotifications
       DispatchQueue.main.async {
         if !UIApplication.shared.isRegisteredForRemoteNotifications {
           UIApplication.shared.registerForRemoteNotifications()
+          self.startAPNsTimeoutTimer()
         }
       }
     }
+  }
+
+  // Start a 10s watchdog after registerForRemoteNotifications. If neither
+  // didRegister nor didFailToRegister fires within 10s we report a silent
+  // hang via the Flutter MethodChannel so Crashlytics captures the case
+  // where APNs is unreachable. Timer is invalidated on either callback.
+  private func startAPNsTimeoutTimer() {
+    cancelAPNsTimeoutTimer()
+    apnsRegistrationTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { [weak self] _ in
+      DispatchQueue.main.async {
+        self?.pushChannel?.invokeMethod("apnsRegistrationTimeout", arguments: nil)
+      }
+    }
+  }
+
+  private func cancelAPNsTimeoutTimer() {
+    apnsRegistrationTimer?.invalidate()
+    apnsRegistrationTimer = nil
   }
 }

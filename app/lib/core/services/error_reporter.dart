@@ -20,6 +20,16 @@ class ErrorReporter {
   ErrorReporter._();
   static final instance = ErrorReporter._();
 
+  /// Test-only hook. When set, every [report] call invokes the hook
+  /// instead of touching Crashlytics / debugPrint. Tests register a
+  /// capture, run the code under test, then inspect captured args.
+  @visibleForTesting
+  static ReportHook? testReportHook;
+
+  /// Test-only hook. When set, every [log] call invokes the hook.
+  @visibleForTesting
+  static void Function(String message)? testLogHook;
+
   /// Extract a debug-friendly detail string from any caught error.
   /// Used by screens to show expandable debug info alongside user-facing
   /// error messages.
@@ -87,6 +97,12 @@ class ErrorReporter {
     Map<String, Object?>? extras,
     bool fatal = false,
   }) {
+    final hook = testReportHook;
+    if (hook != null) {
+      hook(error, stack, area: area, operation: operation, extras: extras, fatal: fatal);
+      return;
+    }
+
     if (_reportingDisabled) {
       debugPrint(
         '[ErrorReporter] (suppressed) area=$area op=$operation error=$error',
@@ -168,6 +184,12 @@ class ErrorReporter {
   /// Append a breadcrumb to the Crashlytics log. Shown alongside the
   /// stack trace in the dashboard when a crash is reported.
   static void log(String message) {
+    final hook = testLogHook;
+    if (hook != null) {
+      hook(message);
+      return;
+    }
+
     if (_reportingDisabled) {
       debugPrint('[ErrorReporter.log] $message');
       return;
@@ -175,6 +197,16 @@ class ErrorReporter {
     FirebaseCrashlytics.instance.log(message);
   }
 }
+
+/// Test-only callback signature for capturing [ErrorReporter.report] invocations.
+typedef ReportHook = void Function(
+  Object error,
+  StackTrace? stack, {
+  String? area,
+  String? operation,
+  Map<String, Object?>? extras,
+  bool fatal,
+});
 
 /// Navigator observer that records screen transitions as Crashlytics
 /// breadcrumbs and tags the current route as a custom key. Lets us see

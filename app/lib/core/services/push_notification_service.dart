@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../router/app_router.dart';
 import 'api_client.dart';
+import 'error_reporter.dart';
 
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
@@ -16,17 +20,102 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('Background message: ${message.messageId}');
 }
 
+/// Thin wrapper around [FirebaseMessaging] used by [PushNotificationService]
+/// so Firebase calls can be faked in unit tests. Production wiring uses
+/// [FirebaseMessagingClient]; tests supply a fake.
+abstract class PushMessagingClient {
+  Future<NotificationSettings> getNotificationSettings();
+  Future<NotificationSettings> requestPermission({
+    bool alert,
+    bool badge,
+    bool sound,
+    bool provisional,
+  });
+  Future<String?> getToken();
+  Stream<String> get onTokenRefresh;
+  Stream<RemoteMessage> get onMessage;
+  Stream<RemoteMessage> get onMessageOpenedApp;
+  Future<RemoteMessage?> getInitialMessage();
+  Future<void> subscribeToTopic(String topic);
+  Future<void> unsubscribeFromTopic(String topic);
+  void registerBackgroundHandler();
+}
+
+class FirebaseMessagingClient implements PushMessagingClient {
+  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  @override
+  Future<NotificationSettings> getNotificationSettings() =>
+      _messaging.getNotificationSettings();
+
+  @override
+  Future<NotificationSettings> requestPermission({
+    bool alert = false,
+    bool badge = false,
+    bool sound = false,
+    bool provisional = false,
+  }) =>
+      _messaging.requestPermission(
+        alert: alert,
+        badge: badge,
+        sound: sound,
+        provisional: provisional,
+      );
+
+  @override
+  Future<String?> getToken() => _messaging.getToken();
+
+  @override
+  Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
+
+  @override
+  Stream<RemoteMessage> get onMessage => FirebaseMessaging.onMessage;
+
+  @override
+  Stream<RemoteMessage> get onMessageOpenedApp =>
+      FirebaseMessaging.onMessageOpenedApp;
+
+  @override
+  Future<RemoteMessage?> getInitialMessage() => _messaging.getInitialMessage();
+
+  @override
+  Future<void> subscribeToTopic(String topic) =>
+      _messaging.subscribeToTopic(topic);
+
+  @override
+  Future<void> unsubscribeFromTopic(String topic) =>
+      _messaging.unsubscribeFromTopic(topic);
+
+  @override
+  void registerBackgroundHandler() {
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  }
+}
+
+/// MethodChannel used by iOS AppDelegate to forward APNs registration
+/// failures (didFailToRegisterForRemoteNotifications + 10s timeout) to
+/// Flutter so they reach Crashlytics via [ErrorReporter]. Android has no
+/// equivalent path today.
+@visibleForTesting
+const pushMethodChannelName = 'palateful/push';
+
 /// Service for managing push notifications via Firebase Cloud Messaging.
 class PushNotificationService {
   final ApiClient _apiClient;
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final PushMessagingClient _messaging;
+  final MethodChannel _channel;
 
   String? _currentToken;
   bool _listenersAttached = false;
   bool _initialMessageHandled = false;
   GlobalKey<NavigatorState>? _navigatorKey;
 
-  PushNotificationService(this._apiClient);
+  PushNotificationService(
+    this._apiClient, {
+    PushMessagingClient? messagingClient,
+    MethodChannel? channel,
+  })  : _messaging = messagingClient ?? FirebaseMessagingClient(),
+        _channel = channel ?? const MethodChannel(pushMethodChannelName);
 
   /// Check if push notifications are available on this platform.
   bool get isAvailable => !kIsWeb && (Platform.isIOS || Platform.isAndroid);
@@ -38,6 +127,8 @@ class PushNotificationService {
   void setNavigatorKey(GlobalKey<NavigatorState> key) {
     _navigatorKey = key;
   }
+
+  String get _platform => Platform.isIOS ? 'ios' : 'android';
 
   /// Read the OS-level authorization status without prompting the user.
   Future<AuthorizationStatus> getPermissionStatus() async {
@@ -62,11 +153,11 @@ class PushNotificationService {
 
     try {
       if (!_listenersAttached) {
-        FirebaseMessaging.onBackgroundMessage(
-            _firebaseMessagingBackgroundHandler);
+        _messaging.registerBackgroundHandler();
         _messaging.onTokenRefresh.listen(_onTokenRefresh);
-        FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-        FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
+        _messaging.onMessage.listen(_onForegroundMessage);
+        _messaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
+        _channel.setMethodCallHandler(_handleNativePushMethod);
         _listenersAttached = true;
       }
 
@@ -89,7 +180,7 @@ class PushNotificationService {
               settings.authorizationStatus == AuthorizationStatus.provisional;
 
       if (granted) {
-        await _getAndRegisterToken();
+        await _getAndRegisterToken(settings.authorizationStatus);
 
         if (!_initialMessageHandled) {
           final initialMessage = await _messaging.getInitialMessage();
@@ -101,8 +192,14 @@ class PushNotificationService {
       }
 
       return settings.authorizationStatus;
-    } catch (e) {
-      debugPrint('ensureRegistered failed: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'ensureRegistered.outer',
+        extras: {'platform': _platform},
+      );
       return AuthorizationStatus.notDetermined;
     }
   }
@@ -120,14 +217,20 @@ class PushNotificationService {
         return await launchUrl(Uri.parse('app-settings:'));
       }
       return false;
-    } catch (e) {
-      debugPrint('openOsSettings failed: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'openOsSettings',
+        extras: {'platform': _platform},
+      );
       return false;
     }
   }
 
   /// Get FCM token and register with backend.
-  Future<void> _getAndRegisterToken() async {
+  Future<void> _getAndRegisterToken(AuthorizationStatus authStatus) async {
     try {
       final token = await _messaging.getToken();
       if (token != null) {
@@ -135,12 +238,30 @@ class PushNotificationService {
         debugPrint(
           'FCM token: ${token.substring(0, token.length < 12 ? token.length : 12)}…',
         );
-        await _registerTokenWithBackend(token);
+        await _registerTokenWithBackend(token, authStatus);
       } else {
-        debugPrint('FCM token: null (getToken returned nothing)');
+        ErrorReporter.report(
+          StateError('FCM token null after granted permission'),
+          StackTrace.current,
+          area: 'push',
+          operation: 'getToken.nullAfterGranted',
+          extras: {
+            'platform': _platform,
+            'auth_status': authStatus.name,
+          },
+        );
       }
-    } catch (e) {
-      debugPrint('Failed to get FCM token: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'getToken.exception',
+        extras: {
+          'platform': _platform,
+          'auth_status': authStatus.name,
+        },
+      );
     }
   }
 
@@ -148,11 +269,15 @@ class PushNotificationService {
   Future<void> _onTokenRefresh(String token) async {
     debugPrint('FCM token refreshed');
     _currentToken = token;
-    await _registerTokenWithBackend(token);
+    final status = await _safePermissionStatus();
+    await _registerTokenWithBackend(token, status);
   }
 
   /// Register token with the backend API.
-  Future<void> _registerTokenWithBackend(String token) async {
+  Future<void> _registerTokenWithBackend(
+    String token,
+    AuthorizationStatus authStatus,
+  ) async {
     try {
       final deviceType = Platform.isIOS ? 'ios' : 'android';
       await _apiClient.registerPushToken(
@@ -160,19 +285,41 @@ class PushNotificationService {
         deviceType: deviceType,
       );
       debugPrint('Push token registered with backend');
-    } catch (e) {
-      debugPrint('Failed to register push token: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'registerToken.backend',
+        extras: {
+          'platform': _platform,
+          'auth_status': authStatus.name,
+          'fcm_token_prefix': _tokenPrefix(token),
+          'backend_status_code': _statusCodeOf(e),
+        },
+      );
     }
   }
 
   /// Unregister current token from backend (call on logout).
   Future<void> unregisterToken() async {
-    if (_currentToken != null) {
+    final token = _currentToken;
+    if (token != null) {
       try {
-        await _apiClient.unregisterPushToken(_currentToken!);
+        await _apiClient.unregisterPushToken(token);
         debugPrint('Push token unregistered');
-      } catch (e) {
-        debugPrint('Failed to unregister push token: $e');
+      } catch (e, st) {
+        ErrorReporter.report(
+          e,
+          st,
+          area: 'push',
+          operation: 'unregisterToken.backend',
+          extras: {
+            'platform': _platform,
+            'fcm_token_prefix': _tokenPrefix(token),
+            'backend_status_code': _statusCodeOf(e),
+          },
+        );
       }
     }
     _currentToken = null;
@@ -209,8 +356,14 @@ class PushNotificationService {
           ),
         ),
       );
-    } catch (e) {
-      debugPrint('Failed to show foreground notification banner: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'foregroundBanner.show',
+        extras: {'platform': _platform},
+      );
     }
   }
 
@@ -297,8 +450,14 @@ class PushNotificationService {
     try {
       await _messaging.subscribeToTopic(topic);
       debugPrint('Subscribed to topic: $topic');
-    } catch (e) {
-      debugPrint('Failed to subscribe to topic: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'subscribeToTopic',
+        extras: {'platform': _platform, 'topic': topic},
+      );
     }
   }
 
@@ -307,8 +466,87 @@ class PushNotificationService {
     try {
       await _messaging.unsubscribeFromTopic(topic);
       debugPrint('Unsubscribed from topic: $topic');
-    } catch (e) {
-      debugPrint('Failed to unsubscribe from topic: $e');
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'unsubscribeTopic',
+        extras: {'platform': _platform, 'topic': topic},
+      );
     }
+  }
+
+  /// Dispatch calls from the native iOS AppDelegate (APNs registration
+  /// failure + 10s registration timeout) into Crashlytics. The native
+  /// side invokes these on [pushMethodChannelName]; this handler is the
+  /// Flutter receive-side.
+  @visibleForTesting
+  Future<void> handleNativePushMethod(MethodCall call) =>
+      _handleNativePushMethod(call);
+
+  Future<void> _handleNativePushMethod(MethodCall call) async {
+    final status = await _safePermissionStatus();
+    switch (call.method) {
+      case 'apnsRegistrationFailed':
+        final args =
+            (call.arguments is Map) ? Map<String, Object?>.from(call.arguments) : const <String, Object?>{};
+        final domain = args['domain']?.toString() ?? 'unknown';
+        final code = args['code'];
+        final desc = args['description']?.toString() ?? '';
+        ErrorReporter.report(
+          PlatformException(
+            code: 'apns.registrationFailed',
+            message: desc,
+            details: {'domain': domain, 'code': code},
+          ),
+          StackTrace.current,
+          area: 'push',
+          operation: 'apns.registrationFailed',
+          extras: {
+            'platform': _platform,
+            'auth_status': status.name,
+            'ios_error_domain': domain,
+            'ios_error_code': code,
+          },
+        );
+        return;
+      case 'apnsRegistrationTimeout':
+        ErrorReporter.report(
+          TimeoutException('APNs registration did not complete within 10s'),
+          StackTrace.current,
+          area: 'push',
+          operation: 'apns.registrationTimeout',
+          extras: {'platform': _platform, 'auth_status': status.name},
+        );
+        return;
+      default:
+        // Unknown method. Report so regressions surface.
+        ErrorReporter.report(
+          ArgumentError('Unknown push channel method: ${call.method}'),
+          StackTrace.current,
+          area: 'push',
+          operation: 'channel.unknownMethod',
+          extras: {'platform': _platform, 'method': call.method},
+        );
+    }
+  }
+
+  Future<AuthorizationStatus> _safePermissionStatus() async {
+    try {
+      return await getPermissionStatus();
+    } catch (_) {
+      return AuthorizationStatus.notDetermined;
+    }
+  }
+
+  String? _tokenPrefix(String? token) {
+    if (token == null || token.isEmpty) return null;
+    return token.length < 8 ? token : token.substring(0, 8);
+  }
+
+  int? _statusCodeOf(Object error) {
+    if (error is DioException) return error.response?.statusCode;
+    return null;
   }
 }

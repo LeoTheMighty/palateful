@@ -160,7 +160,13 @@ class _NotificationPreferencesScreenState
         quietHoursEnd: quietHoursEnd,
         timezone: timezone,
       );
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'preferences.save',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to save preference.')),
