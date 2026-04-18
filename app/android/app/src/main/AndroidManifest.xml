@@ -6,14 +6,13 @@
          triggered by firebase_messaging.requestPermission() during
          onboarding (same code path as iOS). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Android 13+ scoped media permissions. Required for
-         ContentResolver.openInputStream on shared media URIs without
-         SecurityException. No runtime prompt: the OS grants read access
-         to the shared payload via Intent flags when the user picks
-         Palateful as the share target. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Note: sae-1 originally declared READ_MEDIA_IMAGES / VIDEO / AUDIO
+         on the theory that ContentResolver.openInputStream(uri) would
+         throw without them. arh-2 (Jan 2025 Play policy) removed those
+         permissions — shared files open via FLAG_GRANT_READ_URI_PERMISSION
+         carried on the intent, which scopes OS-granted read access to the
+         specific URI for the duration of the intent. No manifest
+         permission required, no runtime prompt, no Play policy friction. -->
     <application
         android:label="palateful"
         android:name="${applicationName}"
@@ -60,7 +59,10 @@
             <!-- sae-1: MIME-expanded share targets. Separate <intent-filter>
                  blocks per MIME type (required by Android for reliable share-
                  sheet surfacing across OEMs). No */* wildcard in v1 — see
-                 epic-share-android-entrypoint.md; metrics-gated unlock. -->
+                 epic-share-android-entrypoint.md; metrics-gated unlock.
+                 Shared files open via FLAG_GRANT_READ_URI_PERMISSION carried
+                 on the intent; no manifest permission required (Jan 2025
+                 Play policy — see arh-2 above for the rationale). -->
             <!-- Images -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

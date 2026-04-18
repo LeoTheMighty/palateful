@@ -506,7 +506,7 @@ development_status:
   # of privacy-policy-page.
   epic-android-release-hardening: in-progress
   arh-1-post-notifications-runtime-prompt-fcm-channel: done
-  arh-2-remove-over-declared-read-media-permissions: backlog
+  arh-2-remove-over-declared-read-media-permissions: done
   arh-3-adaptive-launcher-icon: backlog
   arh-4-https-app-links-and-assetlinks-json: backlog
   arh-5-crashlytics-native-symbol-upload-config: backlog
