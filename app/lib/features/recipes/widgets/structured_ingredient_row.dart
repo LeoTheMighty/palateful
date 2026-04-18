@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:palateful/core/utils/fraction_parser.dart';
 import 'package:palateful/features/recipes/services/session_alias_map.dart';
+import 'package:palateful/features/recipes/widgets/ingredient_row_state_badge.dart';
 import 'package:palateful/features/recipes/widgets/unit_input.dart';
 
 /// Value object for one row of the structured ingredient editor.
@@ -366,6 +367,10 @@ class _StructuredIngredientRowState extends State<StructuredIngredientRow> {
                   onChanged: _onNameChanged,
                 ),
               ),
+              if (widget.value.pendingReviewIngredient)
+                IngredientRowStateBadge(
+                  ingredientName: widget.value.name,
+                ),
               const SizedBox(width: 4),
               SizedBox(
                 width: _RowLayout.caret,
