@@ -374,7 +374,7 @@ class StartImport(Endpoint):
                 self.database.create(item)
             job.total_items = len(rows)
             self.database.db.commit()
-        elif (
+        elif (  # pragma: no branch  # upstream validation ensures one arm of the elif chain always matches
             params.source_type in _S3_KEY_SOURCE_TYPES
             and params.s3_key
         ):

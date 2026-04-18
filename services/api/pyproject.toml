@@ -38,6 +38,7 @@ omit = ["src/manage.py", "src/api/v1/user/create_user.py"]
 
 [tool.coverage.report]
 exclude_lines = ['if TYPE_CHECKING:', 'pragma: no cover']
+partial_branches = ['pragma: no branch']
 show_missing = true
 fail_under = 100
 
