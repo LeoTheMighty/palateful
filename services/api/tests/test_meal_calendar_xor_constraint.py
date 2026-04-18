@@ -131,9 +131,10 @@ class TestShoppingListItemModel:
         assert hasattr(ShoppingListItem, "source_meal")
 
     def test_no_new_check_constraint(self):
-        # Invariant: source_meal_id is purely descriptive provenance. A
-        # PopulateFromCalendar row from a Meal event can legitimately set
-        # recipe_id + meal_event_id + source_meal_id simultaneously.
+        # Invariant: source_meal_id is purely descriptive provenance. A row
+        # produced from a Meal-event add-to-shopping-list path can
+        # legitimately set recipe_id + meal_event_id + source_meal_id
+        # simultaneously, so no CheckConstraint should gate them.
         table_args = getattr(ShoppingListItem, "__table_args__", ())
         existing_cks = [
             ta for ta in table_args if isinstance(ta, CheckConstraint)

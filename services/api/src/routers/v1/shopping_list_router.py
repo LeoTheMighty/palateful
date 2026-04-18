@@ -19,7 +19,6 @@ from api.v1.shopping_list import (
     ListShoppingListMembers,
     ListShoppingLists,
     OrganizeByStore,
-    PopulateFromCalendar,
     PopulateFromRecipe,
     RemoveShoppingListMember,
     ShareShoppingList,
@@ -286,26 +285,6 @@ async def populate_shopping_list_from_recipe(
 ):
     """Add all ingredients from a recipe to an existing shopping list."""
     result = PopulateFromRecipe.call(
-        list_id=list_id,
-        params=params,
-        user=user,
-        database=database,
-    )
-    response_data = json.loads(result.body)
-    for item in response_data.get("items", []):
-        await broadcast_event_to_list(list_id, "item_added", item, user_id=str(user.id))
-    return result
-
-
-@shopping_list_router.post("/shopping-lists/{list_id}/populate-from-calendar")
-async def populate_from_calendar(
-    list_id: str,
-    params: PopulateFromCalendar.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
-):
-    """Populate a shopping list with ingredients from upcoming meal events."""
-    result = PopulateFromCalendar.call(
         list_id=list_id,
         params=params,
         user=user,

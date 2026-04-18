@@ -680,7 +680,7 @@ development_status:
   # at implementation time. Driven by dogfood bug — bulk produced 12 garbage
   # items from raw-string ingredients.canonical_name; per-meal reduces blast
   # radius to 1 meal's worth per tap. canonical_name data fix is separate.
-  epic-calendar-per-meal-shopping-add: in-progress
+  epic-calendar-per-meal-shopping-add: done
   cpms-1-flutter-remove-weekly-button-and-add-per-card-shopping-cart-icon: done
-  cpms-2-backend-remove-populate-from-calendar-endpoint-and-tests: in-progress
+  cpms-2-backend-remove-populate-from-calendar-endpoint-and-tests: done
   epic-calendar-per-meal-shopping-add-retrospective: optional

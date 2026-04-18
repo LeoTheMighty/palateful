@@ -676,20 +676,12 @@ PATCH  /v1/shopping-lists/{list_id}/items/{item_id}/assign
 
 ### Calendar Integration
 
-```
-POST   /v1/shopping-lists/{list_id}/populate-from-calendar
-       Request: {
-         "start_date": "2026-01-30",
-         "end_date": "2026-02-06",
-         "check_pantry": true,
-         "include_meal_event_ids": ["..."]  // Optional filter
-       }
-       Response: {
-         "items_added": 15,
-         "meal_events_included": 4,
-         "items": [...]
-       }
+<!-- 2026-04-18: `POST /v1/shopping-lists/{list_id}/populate-from-calendar`
+     removed per FR-CPMS-1. Per-meal adds now route through
+     `POST /v1/shopping-lists/{list_id}/populate-from-recipe` (one tap
+     per calendar event in the client). -->
 
+```
 GET    /v1/shopping-lists/{list_id}/deadlines
        Response: {
          "next_deadline": "2026-01-30T14:00:00Z",

@@ -25,8 +25,8 @@ Key invariants:
    `ck_cooking_logs_target` encodes all three in one two-clause CHECK.
 
 3. shopping_list_items.source_meal_id: purely descriptive provenance.
-   No constraint vs. recipe_id or meal_event_id -- a row produced by
-   `PopulateFromCalendar` on a Meal event legitimately sets all three.
+   No constraint vs. recipe_id or meal_event_id -- a row produced by a
+   Meal-event add-to-shopping-list path legitimately sets all three.
 
 Downgrade reverses cleanly. `cooking_logs.recipe_id` NOT NULL
 restoration is guarded by an assertion that no Meal-level (recipe_id
