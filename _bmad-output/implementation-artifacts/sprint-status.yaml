@@ -427,7 +427,7 @@ development_status:
   sbf-2-presigned-upload-url-endpoint: done
   sbf-3-s3-key-import-path-audio-pdf-spreadsheet: done
   sbf-4-ffmpeg-in-worker-and-video-file-source-type: done
-  sbf-5-social-url-routing-promoted-to-endpoint: backlog
+  sbf-5-social-url-routing-promoted-to-endpoint: done
   epic-share-backend-foundations-retrospective: optional
 
   # Epic Share Android Entry Point (planned 2026-04-18)

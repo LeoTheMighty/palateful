@@ -4175,3 +4175,112 @@ class TestStartImportS3Key:
         assert response.status_code == 400
         assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
         mock_task.delay.assert_not_called()
+
+
+class TestStartImportSocialUrlRouting:
+    """sbf-5: social URL promoted to source_type='video' at creation."""
+
+    @staticmethod
+    def _setup_access(mock_db, mock_user, book_id):
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        mock_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+    @staticmethod
+    def _reset_rate_limit():
+        from api.v1.import_job.start_import import _reset_rate_limit_for_test
+        _reset_rate_limit_for_test()
+
+    @staticmethod
+    def _track_created(mock_db):
+        """Wrap mock_db.create so we can inspect the ImportItem it saw."""
+        from utils.models.import_item import ImportItem
+
+        created: list[ImportItem] = []
+        real_create = mock_db.create
+
+        def _wrapped(model):
+            if isinstance(model, ImportItem):
+                created.append(model)
+            return real_create(model)
+
+        mock_db.create = _wrapped
+        return created
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_tiktok_url_promoted_to_video(
+        self, mock_task, client, mock_db, mock_user,
+    ):
+        self._reset_rate_limit()
+        book_id = "book-tt"
+        self._setup_access(mock_db, mock_user, book_id)
+        created = self._track_created(mock_db)
+        mock_task.delay.return_value = None
+
+        url = "https://www.tiktok.com/@chef/video/7123456789012345678"
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "url", "url": url},
+        )
+        assert response.status_code == 201, response.json()
+
+        assert created, "no ImportItem created"
+        item = created[0]
+        assert item.source_type == "video"
+        assert item.raw_data.get("detected_platform") == "tiktok"
+        assert item.source_url == url
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_instagram_url_promoted(
+        self, mock_task, client, mock_db, mock_user,
+    ):
+        self._reset_rate_limit()
+        book_id = "book-ig"
+        self._setup_access(mock_db, mock_user, book_id)
+        created = self._track_created(mock_db)
+        mock_task.delay.return_value = None
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://www.instagram.com/reel/CxYzAbc/",
+            },
+        )
+        assert response.status_code == 201
+        assert created[0].source_type == "video"
+        assert created[0].raw_data["detected_platform"] == "instagram"
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_web_url_stays_url(
+        self, mock_task, client, mock_db, mock_user,
+    ):
+        self._reset_rate_limit()
+        book_id = "book-web"
+        self._setup_access(mock_db, mock_user, book_id)
+        created = self._track_created(mock_db)
+        mock_task.delay.return_value = None
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://www.nytimes.com/recipes/1016847/risotto",
+            },
+        )
+        assert response.status_code == 201
+        assert created[0].source_type == "url"
+        # Non-social URLs must NOT get a detected_platform marker — a
+        # blank raw_data keeps downstream code paths unchanged.
+        assert created[0].raw_data.get("detected_platform") is None

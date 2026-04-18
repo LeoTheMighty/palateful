@@ -245,10 +245,23 @@ class StartImport(Endpoint):
             job.total_items = len(params.urls)
             self.database.db.commit()
         elif params.source_type == "url":
+            # sbf-5: social URL routing moved upstream. extract_recipe_task
+            # still has a defensive check, but the primary decision is
+            # here so Activity Hub can label rows correctly (e.g.
+            # "Importing from TikTok video") from the moment the item
+            # exists.
+            platform = detect_platform(params.url or "")
+            item_source_type = (
+                "video" if platform != SocialPlatform.WEB else "url"
+            )
+            item_raw_data: dict = {}
+            if platform != SocialPlatform.WEB:
+                item_raw_data["detected_platform"] = platform.value
             item = ImportItem(
                 import_job_id=job.id,
-                source_type="url",
+                source_type=item_source_type,
                 source_url=params.url,
+                raw_data=item_raw_data,
                 status="pending",
             )
             self.database.create(item)
