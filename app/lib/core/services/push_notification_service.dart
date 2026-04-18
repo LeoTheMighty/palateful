@@ -7,11 +7,20 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../router/app_router.dart';
 import 'api_client.dart';
 import 'error_reporter.dart';
+
+/// FCM channel id the backend declares in `android.notification.channel_id`.
+/// Mirrored server-side in `libraries/utils/utils/services/push_notification.py`
+/// as the `PushNotification.channel_id` default. Keep both in sync.
+const String palatefulDefaultChannelId = 'palateful_default';
+const String _palatefulDefaultChannelName = 'Palateful Notifications';
+const String _palatefulDefaultChannelDescription =
+    'General notifications from Palateful.';
 
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
@@ -39,6 +48,26 @@ abstract class PushMessagingClient {
   Future<void> subscribeToTopic(String topic);
   Future<void> unsubscribeFromTopic(String topic);
   void registerBackgroundHandler();
+}
+
+/// Thin wrapper around `flutter_local_notifications` for Android channel
+/// management. Keeps channel creation behind an injection seam so unit
+/// tests can assert creation without hitting native code.
+abstract class LocalNotificationsClient {
+  Future<void> createAndroidChannel(AndroidNotificationChannel channel);
+}
+
+class FlutterLocalNotificationsClient implements LocalNotificationsClient {
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
+
+  @override
+  Future<void> createAndroidChannel(AndroidNotificationChannel channel) async {
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
 }
 
 class FirebaseMessagingClient implements PushMessagingClient {
@@ -103,19 +132,45 @@ const pushMethodChannelName = 'palateful/push';
 class PushNotificationService {
   final ApiClient _apiClient;
   final PushMessagingClient _messaging;
+  final LocalNotificationsClient _localNotifications;
   final MethodChannel _channel;
 
   String? _currentToken;
   bool _listenersAttached = false;
+  bool _androidChannelCreated = false;
   bool _initialMessageHandled = false;
   GlobalKey<NavigatorState>? _navigatorKey;
+
+  /// In-session count of `requestPermission` invocations that the boot-path
+  /// has issued. Capped at [_maxRequestAttempts] per app launch so a broken
+  /// Firebase-messaging channel can't re-prompt the user every resume.
+  /// Resets on cold start (singleton reconstructed when the process restarts).
+  int _requestAttempts = 0;
+  static const int _maxRequestAttempts = 3;
+
+  @visibleForTesting
+  int get requestAttempts => _requestAttempts;
 
   PushNotificationService(
     this._apiClient, {
     PushMessagingClient? messagingClient,
+    LocalNotificationsClient? localNotificationsClient,
     MethodChannel? channel,
   })  : _messaging = messagingClient ?? FirebaseMessagingClient(),
+        _localNotifications =
+            localNotificationsClient ?? FlutterLocalNotificationsClient(),
         _channel = channel ?? const MethodChannel(pushMethodChannelName);
+
+  /// Override point for tests running on macOS that need to exercise the
+  /// Android branch of [_ensureAndroidChannel]. Production reads
+  /// `Platform.isAndroid`.
+  @visibleForTesting
+  bool get isAndroid => Platform.isAndroid;
+
+  /// Override point for tests that simulate the firebase-not-initialized
+  /// race. Production reads `Firebase.apps.isNotEmpty`.
+  @visibleForTesting
+  bool get isFirebaseReady => Firebase.apps.isNotEmpty;
 
   /// Check if push notifications are available on this platform.
   bool get isAvailable => !kIsWeb && (Platform.isIOS || Platform.isAndroid);
@@ -141,15 +196,40 @@ class PushNotificationService {
   ///
   /// Safe to call repeatedly — on app launch, on foreground resume, and when the
   /// user toggles the push preference on. Behaviour:
-  ///   - Wires OS-level listeners exactly once.
-  ///   - Prompts the OS if permission has not yet been determined (iOS will not
-  ///     re-prompt if the user previously denied).
+  ///   - Wires OS-level listeners exactly once (idempotent).
+  ///   - When [autoPrompt] is true AND status is `notDetermined`, fires the
+  ///     OS permission prompt (bounded to [_maxRequestAttempts] per app launch).
+  ///   - When [autoPrompt] is false, DOES NOT call `requestPermission` — the
+  ///     caller owns the prompt (notif-4 onboarding step or a user-initiated
+  ///     tap on Profile → Notifications).
   ///   - Fetches a fresh FCM token and POSTs it to the backend when granted.
+  ///
+  /// Defaults to `autoPrompt: false` so every call site explicitly opts in
+  /// to prompting.
   ///
   /// Returns the resulting OS authorization status so callers can branch on it
   /// (e.g. deep-link to Settings when `denied`).
-  Future<AuthorizationStatus> ensureRegistered() async {
+  Future<AuthorizationStatus> ensureRegistered({bool autoPrompt = false}) async {
     if (!isAvailable) return AuthorizationStatus.notDetermined;
+
+    ErrorReporter.log(
+      'push.ensureRegistered: entered, platform=$_platform, '
+      'autoPrompt=$autoPrompt, attempts=$_requestAttempts',
+    );
+
+    // Firebase readiness guard: if Firebase.initializeApp() hasn't completed
+    // upstream (race at cold start), bail loudly so the subsequent
+    // FirebaseMessaging calls don't fail with a cryptic MissingPluginException.
+    if (!isFirebaseReady) {
+      ErrorReporter.report(
+        StateError('Firebase not initialized in ensureRegistered'),
+        StackTrace.current,
+        area: 'push',
+        operation: 'ensureRegistered.firebaseNotReady',
+        extras: {'platform': _platform, 'autoPrompt': autoPrompt},
+      );
+      return AuthorizationStatus.notDetermined;
+    }
 
     try {
       if (!_listenersAttached) {
@@ -161,14 +241,47 @@ class PushNotificationService {
         _listenersAttached = true;
       }
 
+      await _ensureAndroidChannel();
+
       var settings = await _messaging.getNotificationSettings();
+      ErrorReporter.log(
+        'push.ensureRegistered: status=${settings.authorizationStatus.name}',
+      );
+
       if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
-        settings = await _messaging.requestPermission(
-          alert: true,
-          badge: true,
-          sound: true,
-          provisional: false,
-        );
+        if (!autoPrompt) {
+          ErrorReporter.log(
+            'push.ensureRegistered: autoPrompt=false, skipping requestPermission',
+          );
+        } else if (_requestAttempts >= _maxRequestAttempts) {
+          ErrorReporter.log(
+            'push.ensureRegistered: max retry attempts reached this launch '
+            '(attempts=$_requestAttempts)',
+          );
+        } else {
+          ErrorReporter.log(
+            'push.ensureRegistered: calling requestPermission '
+            '(attempt ${_requestAttempts + 1}/$_maxRequestAttempts)',
+          );
+          settings = await _messaging.requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+            provisional: false,
+          );
+          _requestAttempts++;
+          ErrorReporter.log(
+            'push.ensureRegistered: post-prompt status='
+            '${settings.authorizationStatus.name}',
+          );
+          if (settings.authorizationStatus ==
+              AuthorizationStatus.notDetermined) {
+            ErrorReporter.log(
+              'push: requestPermission returned notDetermined, '
+              'attempts=$_requestAttempts',
+            );
+          }
+        }
       }
 
       debugPrint(
@@ -180,6 +293,9 @@ class PushNotificationService {
               settings.authorizationStatus == AuthorizationStatus.provisional;
 
       if (granted) {
+        ErrorReporter.log(
+          'push.ensureRegistered: granted, fetching token',
+        );
         await _getAndRegisterToken(settings.authorizationStatus);
 
         if (!_initialMessageHandled) {
@@ -189,7 +305,15 @@ class PushNotificationService {
           }
           _initialMessageHandled = true;
         }
+      } else if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        ErrorReporter.log('push.ensureRegistered: denied, no-op');
       }
+
+      ErrorReporter.log(
+        'push.ensureRegistered: completed, '
+        'final_status=${settings.authorizationStatus.name}, '
+        'attempts=$_requestAttempts',
+      );
 
       return settings.authorizationStatus;
     } catch (e, st) {
@@ -198,14 +322,45 @@ class PushNotificationService {
         st,
         area: 'push',
         operation: 'ensureRegistered.outer',
-        extras: {'platform': _platform},
+        extras: {'platform': _platform, 'autoPrompt': autoPrompt},
       );
       return AuthorizationStatus.notDetermined;
     }
   }
 
-  /// Legacy alias retained for existing call sites.
-  Future<void> initialize() => ensureRegistered();
+  /// Legacy alias retained for existing call sites — opts out of the
+  /// boot-time auto-prompt. New code should call [ensureRegistered]
+  /// directly with an explicit `autoPrompt:` decision.
+  Future<void> initialize() => ensureRegistered(autoPrompt: false);
+
+  /// Create the `palateful_default` notification channel on Android so
+  /// incoming FCM payloads (which declare matching
+  /// `android.notification.channel_id`) surface under a named,
+  /// user-controllable channel instead of the system default bucket.
+  /// No-op on non-Android platforms or after the first successful call.
+  Future<void> _ensureAndroidChannel() async {
+    if (!isAndroid || _androidChannelCreated) return;
+    try {
+      await _localNotifications.createAndroidChannel(
+        const AndroidNotificationChannel(
+          palatefulDefaultChannelId,
+          _palatefulDefaultChannelName,
+          description: _palatefulDefaultChannelDescription,
+          importance: Importance.high,
+          showBadge: true,
+        ),
+      );
+      _androidChannelCreated = true;
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'androidChannel.create',
+        extras: {'platform': _platform, 'channel_id': palatefulDefaultChannelId},
+      );
+    }
+  }
 
   /// Open this app's page in the OS Settings so the user can grant/revoke
   /// notification permission. iOS-only today; Android would need a dedicated

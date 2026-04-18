@@ -131,9 +131,15 @@ void main() async {
         // the app will retry on next launch or navigation
       }
 
-      // Initialize push notifications after auth
+      // Initialize push notifications after auth. autoPrompt is gated on
+      // hasCompletedOnboarding so brand-new users on their first launch
+      // hit notif-4's onboarding prompt (not the boot-path prompt); the
+      // boot-path only auto-prompts past-onboarding users whose status is
+      // notDetermined (Leo's case). See push-diag-2.
       final pushService = getIt<PushNotificationService>();
-      await pushService.initialize();
+      await pushService.ensureRegistered(
+        autoPrompt: authService.hasCompletedOnboarding,
+      );
     }
   }
 
@@ -196,10 +202,14 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // When the app returns to foreground, verify OS permission + token state.
     // Covers: user flipped iOS Settings while backgrounded, token rotated, etc.
+    // autoPrompt mirrors the boot-path rule: only past-onboarding users may
+    // trigger the OS prompt from here. See push-diag-2.
     if (state == AppLifecycleState.resumed && !kE2EMode) {
       final authService = getIt<AuthService>();
       if (authService.isAuthenticated) {
-        getIt<PushNotificationService>().ensureRegistered();
+        getIt<PushNotificationService>().ensureRegistered(
+          autoPrompt: authService.hasCompletedOnboarding,
+        );
       }
     }
   }

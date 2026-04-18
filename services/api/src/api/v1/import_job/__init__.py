@@ -8,6 +8,7 @@ from api.v1.import_job.dismiss_all_failed_imports import (
 )
 from api.v1.import_job.dismiss_import_item import DismissImportItem
 from api.v1.import_job.get_import_item import GetImportItem
+from api.v1.import_job.get_import_item_telemetry import GetImportItemTelemetry
 from api.v1.import_job.get_import_job import GetImportJob
 from api.v1.import_job.get_upload_url import GetImportUploadUrl
 from api.v1.import_job.list_import_items import ListImportItems
@@ -24,6 +25,7 @@ __all__ = [
     "ListImportJobs",
     "ListImportItems",
     "GetImportItem",
+    "GetImportItemTelemetry",
     "GetImportUploadUrl",
     "UpdateImportItem",
     "ApproveImportItem",

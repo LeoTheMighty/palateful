@@ -504,8 +504,8 @@ development_status:
   # .json, Crashlytics native symbol upload config, local release-mode
   # smoke template. Blocks epic-android-play-console-launch; independent
   # of privacy-policy-page.
-  epic-android-release-hardening: backlog
-  arh-1-post-notifications-runtime-prompt-fcm-channel: backlog
+  epic-android-release-hardening: in-progress
+  arh-1-post-notifications-runtime-prompt-fcm-channel: done
   arh-2-remove-over-declared-read-media-permissions: backlog
   arh-3-adaptive-launcher-icon: backlog
   arh-4-https-app-links-and-assetlinks-json: backlog
@@ -554,6 +554,6 @@ development_status:
   # per-user push health endpoint + dashboard panel + runbook docs.
   epic-notifications-push-diagnostics-hardening: in-progress
   push-diag-1-flutter-ios-errorreporter-integration: done
-  push-diag-2-harden-loud-on-boot-prompt: backlog
+  push-diag-2-harden-loud-on-boot-prompt: done
   push-diag-3-admin-push-health-endpoint-and-panel: backlog
   epic-notifications-push-diagnostics-hardening-retrospective: optional

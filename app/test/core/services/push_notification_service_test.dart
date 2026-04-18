@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/error_reporter.dart';
@@ -77,7 +78,9 @@ void main() {
         messagingClient: fakeMessaging,
       );
 
-      final result = await service.ensureRegistered();
+      // autoPrompt: true forces the service into the requestPermission
+      // path so the fake's _Throw fires and we can assert the outer report.
+      final result = await service.ensureRegistered(autoPrompt: true);
 
       expect(result, AuthorizationStatus.notDetermined);
       final report = capturedReports.singleWhere(
@@ -148,6 +151,78 @@ void main() {
     });
   });
 
+  group('PushNotificationService — Android channel creation', () {
+    test('Android path creates palateful_default channel once', () async {
+      final fakeMessaging = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.authorized),
+        tokenBehavior: _ReturnToken('tkn1234567890'),
+      );
+      final fakeLocal = _FakeLocalNotificationsClient();
+      final service = _AndroidPushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fakeMessaging,
+        localNotificationsClient: fakeLocal,
+      );
+
+      await service.ensureRegistered();
+      await service.ensureRegistered();
+
+      expect(fakeLocal.createdChannels, hasLength(1));
+      final channel = fakeLocal.createdChannels.single;
+      expect(channel.id, 'palateful_default');
+      expect(channel.name, 'Palateful Notifications');
+      expect(channel.importance, Importance.high);
+      expect(channel.showBadge, isTrue);
+      expect(
+        capturedReports.where((r) => r.operation == 'androidChannel.create'),
+        isEmpty,
+      );
+    });
+
+    test('Non-Android path does not create any channel', () async {
+      final fakeMessaging = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.authorized),
+        tokenBehavior: _ReturnToken('tkn1234567890'),
+      );
+      final fakeLocal = _FakeLocalNotificationsClient();
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fakeMessaging,
+        localNotificationsClient: fakeLocal,
+      );
+
+      await service.ensureRegistered();
+
+      expect(fakeLocal.createdChannels, isEmpty);
+    });
+
+    test('Channel creation failure reports androidChannel.create', () async {
+      final fakeMessaging = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.authorized),
+        tokenBehavior: _ReturnToken('tkn1234567890'),
+      );
+      final fakeLocal = _FakeLocalNotificationsClient(
+        throwOnCreate: StateError('native channel create failed'),
+      );
+      final service = _AndroidPushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fakeMessaging,
+        localNotificationsClient: fakeLocal,
+      );
+
+      await service.ensureRegistered();
+
+      final report = capturedReports.singleWhere(
+        (r) => r.operation == 'androidChannel.create',
+        orElse: () =>
+            fail('Expected androidChannel.create report, got: $capturedReports'),
+      );
+      expect(report.area, 'push');
+      expect(report.error, isA<StateError>());
+      expect(report.extras!['channel_id'], 'palateful_default');
+    });
+  });
+
   group('PushNotificationService — MethodChannel handler', () {
     test('apnsRegistrationFailed → reports apns.registrationFailed', () async {
       final fakeMessaging = _FakePushMessagingClient(
@@ -201,19 +276,235 @@ void main() {
       expect(report.error, isA<TimeoutException>());
     });
   });
+
+  // push-diag-2: autoPrompt gating + Firebase readiness + 3-strike retry +
+  // breadcrumb ordering.
+  group('PushNotificationService — push-diag-2 (ensureRegistered hardening)',
+      () {
+    test('A — Firebase not initialized → reports firebaseNotReady', () async {
+      final fakeMessaging = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.notDetermined),
+      );
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fakeMessaging,
+        firebaseReady: false,
+      );
+
+      final result = await service.ensureRegistered(autoPrompt: true);
+
+      expect(result, AuthorizationStatus.notDetermined);
+      final report = capturedReports.singleWhere(
+        (r) => r.operation == 'ensureRegistered.firebaseNotReady',
+        orElse: () => fail(
+            'Expected firebaseNotReady report, got: $capturedReports'),
+      );
+      expect(report.area, 'push');
+      expect(report.error, isA<StateError>());
+    });
+
+    test(
+        'B — notDetermined + autoPrompt=true across 4 calls → requestPermission '
+        'called exactly 3 times', () async {
+      final fake = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.notDetermined),
+      );
+      // Configure requestPermission to keep returning notDetermined (OS
+      // prompt was suppressed). This is the retry-exhaustion path.
+      fake.requestPermissionBehavior = _ReturnSettings(
+        _settings(AuthorizationStatus.notDetermined),
+      );
+
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fake,
+      );
+
+      for (var i = 0; i < 4; i++) {
+        await service.ensureRegistered(autoPrompt: true);
+      }
+
+      expect(fake.requestPermissionCalls, 3);
+      expect(service.requestAttempts, 3);
+    });
+
+    test(
+        'C — notDetermined → authorized on first call → requestPermission called '
+        'once, no re-prompt on subsequent calls', () async {
+      final fake = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.notDetermined),
+      );
+      // First (and only) requestPermission call returns authorized AND
+      // updates the fake baseline so subsequent getNotificationSettings
+      // returns authorized, not notDetermined.
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fake,
+      );
+      fake.requestPermissionBehavior = _ReturnSettingsAndUpdate(
+        _settings(AuthorizationStatus.authorized),
+        fake,
+      );
+
+      await service.ensureRegistered(autoPrompt: true);
+      await service.ensureRegistered(autoPrompt: true);
+      await service.ensureRegistered(autoPrompt: true);
+
+      expect(fake.requestPermissionCalls, 1);
+      expect(service.requestAttempts, 1);
+    });
+
+    test('D — denied → requestPermission not called, breadcrumb emitted',
+        () async {
+      final fake = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.denied),
+      );
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fake,
+      );
+
+      await service.ensureRegistered(autoPrompt: true);
+
+      expect(fake.requestPermissionCalls, 0);
+      expect(service.requestAttempts, 0);
+      expect(
+        capturedLogs.any((l) => l.contains('denied, no-op')),
+        isTrue,
+        reason: 'Expected a denied-no-op breadcrumb, got: $capturedLogs',
+      );
+    });
+
+    test(
+        'E — breadcrumbs fire in documented order on notDetermined → authorized',
+        () async {
+      final fake = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.notDetermined),
+      );
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fake,
+      );
+      fake.requestPermissionBehavior = _ReturnSettingsAndUpdate(
+        _settings(AuthorizationStatus.authorized),
+        fake,
+      );
+
+      await service.ensureRegistered(autoPrompt: true);
+
+      final enteredIdx = capturedLogs.indexWhere((l) => l.contains('entered'));
+      final statusIdx = capturedLogs
+          .indexWhere((l) => l.startsWith('push.ensureRegistered: status='));
+      final callingIdx = capturedLogs
+          .indexWhere((l) => l.contains('calling requestPermission'));
+      final postPromptIdx =
+          capturedLogs.indexWhere((l) => l.contains('post-prompt'));
+      final grantedIdx =
+          capturedLogs.indexWhere((l) => l.contains('granted, fetching token'));
+      final completedIdx =
+          capturedLogs.indexWhere((l) => l.contains('completed, '));
+
+      expect(enteredIdx, isNonNegative);
+      expect(enteredIdx, lessThan(statusIdx));
+      expect(statusIdx, lessThan(callingIdx));
+      expect(callingIdx, lessThan(postPromptIdx));
+      expect(postPromptIdx, lessThan(grantedIdx));
+      expect(grantedIdx, lessThan(completedIdx));
+    });
+
+    test(
+        'F — autoPrompt=false + notDetermined → requestPermission NOT called, '
+        'skip breadcrumb emitted', () async {
+      final fake = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.notDetermined),
+      );
+      final service = _TestablePushNotificationService(
+        _FakeApiClient(),
+        messagingClient: fake,
+      );
+
+      await service.ensureRegistered(autoPrompt: false);
+
+      expect(fake.requestPermissionCalls, 0);
+      expect(service.requestAttempts, 0);
+      expect(
+        capturedLogs.any(
+          (l) => l.contains('autoPrompt=false, skipping requestPermission'),
+        ),
+        isTrue,
+        reason: 'Expected skip breadcrumb, got: $capturedLogs',
+      );
+    });
+
+    test(
+        'G — autoPrompt=false + authorized → getToken IS called (token refresh '
+        'not blocked)', () async {
+      final fake = _FakePushMessagingClient(
+        settings: _settings(AuthorizationStatus.authorized),
+        tokenBehavior: _ReturnToken('ghijklmn-xyz'),
+      );
+      final api = _FakeApiClient();
+      final service = _TestablePushNotificationService(
+        api,
+        messagingClient: fake,
+      );
+
+      await service.ensureRegistered(autoPrompt: false);
+
+      expect(api.registerCalls, 1);
+      // autoPrompt=false must NOT trigger requestPermission even in the
+      // authorized path (status is != notDetermined so the branch is skipped).
+      expect(fake.requestPermissionCalls, 0);
+    });
+  });
 }
 
-/// Subclass that forces [isAvailable] to true regardless of host platform,
-/// so the unit tests exercise the iOS code path when running on macOS in CI.
+/// Subclass that forces [isAvailable] to true regardless of host platform
+/// and stubs [isFirebaseReady] (production reads `Firebase.apps.isNotEmpty`,
+/// which requires a real bootstrap unavailable in unit tests).
 class _TestablePushNotificationService extends PushNotificationService {
   _TestablePushNotificationService(
     super.apiClient, {
     super.messagingClient,
+    super.localNotificationsClient,
     super.channel,
+    this.firebaseReady = true,
   });
+
+  bool firebaseReady;
 
   @override
   bool get isAvailable => true;
+
+  @override
+  bool get isFirebaseReady => firebaseReady;
+}
+
+/// Subclass that also forces [isAndroid] to true so macOS-hosted tests
+/// can exercise the Android-only channel-creation path.
+class _AndroidPushNotificationService extends _TestablePushNotificationService {
+  _AndroidPushNotificationService(
+    super.apiClient, {
+    super.messagingClient,
+    super.localNotificationsClient,
+  });
+
+  @override
+  bool get isAndroid => true;
+}
+
+class _FakeLocalNotificationsClient implements LocalNotificationsClient {
+  _FakeLocalNotificationsClient({this.throwOnCreate});
+
+  final Object? throwOnCreate;
+  final List<AndroidNotificationChannel> createdChannels = [];
+
+  @override
+  Future<void> createAndroidChannel(AndroidNotificationChannel channel) async {
+    final err = throwOnCreate;
+    if (err != null) throw err;
+    createdChannels.add(channel);
+  }
 }
 
 class _ReportCall {
@@ -266,11 +557,34 @@ class _Throw implements _PermissionBehavior {
   _Throw(this.error);
   final Object error;
   @override
-  Future<NotificationSettings> resolve() async => throw error;
+  Future<NotificationSettings> resolve(_FakePushMessagingClient _) async =>
+      throw error;
+}
+
+class _ReturnSettings implements _PermissionBehavior {
+  _ReturnSettings(this.toReturn);
+  final NotificationSettings toReturn;
+  @override
+  Future<NotificationSettings> resolve(_FakePushMessagingClient _) async =>
+      toReturn;
+}
+
+/// Returns the given settings AND mutates the fake's baseline so
+/// subsequent `getNotificationSettings()` calls observe the new status.
+/// Used for the "grant on first prompt" path.
+class _ReturnSettingsAndUpdate implements _PermissionBehavior {
+  _ReturnSettingsAndUpdate(this.toReturn, this._fake);
+  final NotificationSettings toReturn;
+  final _FakePushMessagingClient _fake;
+  @override
+  Future<NotificationSettings> resolve(_FakePushMessagingClient _) async {
+    _fake.settings = toReturn;
+    return toReturn;
+  }
 }
 
 abstract class _PermissionBehavior {
-  Future<NotificationSettings> resolve();
+  Future<NotificationSettings> resolve(_FakePushMessagingClient owner);
 }
 
 class _FakePushMessagingClient implements PushMessagingClient {
@@ -281,8 +595,9 @@ class _FakePushMessagingClient implements PushMessagingClient {
   }) : tokenBehavior = tokenBehavior ?? _ReturnNull();
 
   NotificationSettings settings;
-  final _PermissionBehavior? requestPermissionBehavior;
+  _PermissionBehavior? requestPermissionBehavior;
   final _TokenBehavior tokenBehavior;
+  int requestPermissionCalls = 0;
 
   @override
   Future<NotificationSettings> getNotificationSettings() async => settings;
@@ -294,8 +609,9 @@ class _FakePushMessagingClient implements PushMessagingClient {
     bool sound = false,
     bool provisional = false,
   }) async {
+    requestPermissionCalls++;
     final behavior = requestPermissionBehavior;
-    if (behavior != null) return behavior.resolve();
+    if (behavior != null) return behavior.resolve(this);
     return settings;
   }
 
@@ -327,6 +643,7 @@ class _FakePushMessagingClient implements PushMessagingClient {
 class _FakeApiClient extends ApiClient {
   _FakeApiClient({this.registerThrows});
   final Object? registerThrows;
+  int registerCalls = 0;
 
   @override
   Future<Response> registerPushToken({
@@ -334,6 +651,7 @@ class _FakeApiClient extends ApiClient {
     String? deviceType,
     String? deviceName,
   }) async {
+    registerCalls++;
     final err = registerThrows;
     if (err != null) throw err;
     return Response(

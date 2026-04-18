@@ -108,6 +108,7 @@ class ParseSourceTask(BaseTask):
     def _dispatch_extraction_tasks(self, job: ImportJob):
         """Dispatch ExtractRecipeTask for all pending items."""
         from utils.constants import STAGE_PARSED
+        from utils.logging import log_stage_transition
         from utils.tasks.import_tasks.extract_recipe_task import extract_task
 
         # Get all pending item IDs
@@ -125,6 +126,20 @@ class ParseSourceTask(BaseTask):
         for item in items:
             item.last_successful_stage = STAGE_PARSED
         self.database.db.commit()
+
+        # Stage-transition audit (irrd-2): emit a "parsed/ok" row per item so
+        # GetImportItemTelemetry can surface the timeline without re-deriving
+        # from job shape. Preview = raw OCR/text payload when present (photo
+        # imports); null for URL/spreadsheet imports where there is no
+        # human-readable parser stage.
+        for item in items:
+            raw_preview = (item.raw_data or {}).get("text") or None
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_PARSED,
+                status="ok",
+                raw_output_preview=raw_preview,
+            )
 
         # Dispatch in batches
         batch_size = 10

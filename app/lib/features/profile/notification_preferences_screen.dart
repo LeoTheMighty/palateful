@@ -101,7 +101,9 @@ class _NotificationPreferencesScreenState
 
     // Turning on: make sure the OS permission is granted and the device's
     // FCM token is registered with the backend before we flip the pref.
-    final status = await _pushService.ensureRegistered();
+    // autoPrompt=true because this is a user-initiated action — they just
+    // tapped the toggle and expect the OS prompt immediately (push-diag-2).
+    final status = await _pushService.ensureRegistered(autoPrompt: true);
     if (!mounted) return;
 
     final granted = status == AuthorizationStatus.authorized ||

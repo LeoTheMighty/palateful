@@ -11,7 +11,9 @@ from utils.constants import (
     BATCH_JOB_QUEUE,
     PARSER_INPUTS_BUCKET,
     PARSER_OUTPUTS_BUCKET,
+    STAGE_CREATED,
 )
+from utils.logging import log_stage_transition
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.recipe import Recipe
@@ -83,6 +85,13 @@ class CreateRecipeTask(BaseTask):
         if not job:
             return success({"error": "Import job not found", "item_id": item_id})
 
+        # Stage-transition audit (irrd-2): entering the create stage.
+        log_stage_transition(
+            import_item_id=item.id,
+            stage=STAGE_CREATED,
+            status="started",
+        )
+
         try:
             # Get recipe data (use user_edits if present, otherwise parsed_recipe)
             recipe_data = item.user_edits or item.parsed_recipe
@@ -153,6 +162,14 @@ class CreateRecipeTask(BaseTask):
             # Update job counts
             self._update_job_counts(job)
 
+            # Stage-transition audit (irrd-2): recipe row persisted — the
+            # terminal stage of the import pipeline.
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_CREATED,
+                status="ok",
+            )
+
             return success({
                 "item_id": item_id,
                 "recipe_id": str(recipe.id),
@@ -165,6 +182,12 @@ class CreateRecipeTask(BaseTask):
             item.error_message = str(e)
             item.error_code = "CREATE_RECIPE_ERROR"
             self.database.db.commit()
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_CREATED,
+                status="failed",
+                error_message=str(e),
+            )
             return success({"error": str(e), "item_id": item_id})
 
     def _maybe_promote_source_photo(

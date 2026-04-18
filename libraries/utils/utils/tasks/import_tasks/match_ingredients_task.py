@@ -6,6 +6,7 @@ from sqlalchemy import func, text
 
 from utils.api.endpoint import success
 from utils.constants import STAGE_MATCHED
+from utils.logging import log_stage_transition
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
@@ -46,11 +47,24 @@ class MatchIngredientsTask(BaseTask):
         if not item:
             return success({"error": "Item not found", "item_id": item_id})
 
+        # Stage-transition audit (irrd-2): entering the match stage.
+        log_stage_transition(
+            import_item_id=item.id,
+            stage=STAGE_MATCHED,
+            status="started",
+        )
+
         if not item.parsed_recipe:
             item.status = "failed"
             item.error_message = "No parsed recipe data"
             item.error_code = "NO_PARSED_RECIPE"
             self.database.db.commit()
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_MATCHED,
+                status="failed",
+                error_message="No parsed recipe data",
+            )
             return success({"error": "No parsed recipe", "item_id": item_id})
 
         try:
@@ -168,6 +182,16 @@ class MatchIngredientsTask(BaseTask):
                     logger.warning("Failed to create auto-approve activity", exc_info=True)
                 self._dispatch_create_task(item)
 
+            # Stage-transition audit (irrd-2): match stage completed (either
+            # auto-approved or routed into awaiting_review — both are "ok"
+            # at the stage-transition level; the routing reason is carried
+            # separately on item.awaiting_review_reason).
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_MATCHED,
+                status="ok",
+            )
+
             return success({
                 "item_id": item_id,
                 "status": item.status,
@@ -181,6 +205,14 @@ class MatchIngredientsTask(BaseTask):
             item.error_message = str(e)
             item.error_code = "MATCHING_ERROR"
             self.database.db.commit()
+
+            # Stage-transition audit (irrd-2): match stage failed.
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_MATCHED,
+                status="failed",
+                error_message=str(e),
+            )
 
             # Create failure activity
             recipe_name = (item.parsed_recipe or {}).get("name", "Recipe")

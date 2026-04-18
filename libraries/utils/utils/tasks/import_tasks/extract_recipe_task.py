@@ -1,10 +1,12 @@
 """Extract recipe task - extracts recipe data from import items."""
 
 import asyncio
+import json
 import logging
 
 from utils.api.endpoint import success
 from utils.constants import STAGE_EXTRACTED
+from utils.logging import log_stage_transition
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.services.celery import celery_app
@@ -116,6 +118,13 @@ class ExtractRecipeTask(BaseTask):
         item.status = "extracting"
         self.database.db.commit()
 
+        # Stage-transition audit (irrd-2): entering the extract stage.
+        log_stage_transition(
+            import_item_id=item.id,
+            stage=STAGE_EXTRACTED,
+            status="started",
+        )
+
         try:
             if item.source_type == "photo":
                 # Extract from OCR text using AI
@@ -143,6 +152,24 @@ class ExtractRecipeTask(BaseTask):
             if item.status == "matching" or item.status == "awaiting_review":
                 self._dispatch_matching_task(item)
 
+            # Stage-transition audit (irrd-2): extraction produced a
+            # parsed_recipe. Preview is the pretty-printed JSON (truncation
+            # happens inside the helper).
+            preview = None
+            if item.parsed_recipe:
+                try:
+                    preview = json.dumps(
+                        item.parsed_recipe, indent=2, default=str, sort_keys=True
+                    )
+                except Exception:
+                    preview = None
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_EXTRACTED,
+                status="ok",
+                raw_output_preview=preview,
+            )
+
             return {
                 "item_id": item_id,
                 "status": item.status,
@@ -156,6 +183,14 @@ class ExtractRecipeTask(BaseTask):
             item.error_code = "EXTRACTION_ERROR"
             item.retry_count += 1
             self.database.db.commit()
+
+            # Stage-transition audit (irrd-2): extract stage failed.
+            log_stage_transition(
+                import_item_id=item.id,
+                stage=STAGE_EXTRACTED,
+                status="failed",
+                error_message=str(e),
+            )
 
             self._update_job_counts(item.import_job_id)
 

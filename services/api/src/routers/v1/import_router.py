@@ -7,6 +7,7 @@ from api.v1.import_job import (
     DismissAllFailedImports,
     DismissImportItem,
     GetImportItem,
+    GetImportItemTelemetry,
     GetImportJob,
     GetImportUploadUrl,
     ListImportItems,
@@ -145,6 +146,20 @@ async def get_import_item(
 ):
     """Get import item details."""
     return GetImportItem.call(
+        item_id=item_id,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.get("/import-items/{item_id}/telemetry")
+async def get_import_item_telemetry(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Per-stage telemetry for the Flutter caret expansion (irrd-2)."""
+    return GetImportItemTelemetry.call(
         item_id=item_id,
         user=user,
         database=database,
