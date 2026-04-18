@@ -18,6 +18,7 @@ import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import '../../core/services/error_reporter.dart';
+import 'widgets/meals_using_this_recipe.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
@@ -890,6 +891,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           });
                           }(),
                           const SizedBox(height: 24),
+
+                          // md-6: "Used in these Meals" cross-lookup row.
+                          // Hides entirely on empty / error — zero-regression.
+                          MealsUsingThisRecipe(recipeId: widget.recipeId),
 
                           // Steps section (structured) or legacy instructions fallback
                           if ((_recipe?['steps'] as List?)?.isNotEmpty == true) ...[
