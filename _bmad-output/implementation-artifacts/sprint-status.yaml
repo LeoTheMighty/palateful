@@ -426,7 +426,7 @@ development_status:
   sbf-1-s3-imports-bucket-and-iam: done
   sbf-2-presigned-upload-url-endpoint: done
   sbf-3-s3-key-import-path-audio-pdf-spreadsheet: done
-  sbf-4-ffmpeg-in-worker-and-video-file-source-type: backlog
+  sbf-4-ffmpeg-in-worker-and-video-file-source-type: done
   sbf-5-social-url-routing-promoted-to-endpoint: backlog
   epic-share-backend-foundations-retrospective: optional
 
@@ -522,7 +522,7 @@ development_status:
   # on arh-5 for the Gradle-side Crashlytics plugin config.
   epic-android-ci-hardening: in-progress
   ach-1-unify-flutter-channel-version-across-workflows: done
-  ach-2-gradle-cache-and-pre-build-analyze-test-gate: done
+  ach-2-gradle-cache-and-pre-build-analyze-test-gate: backlog
   ach-3-crashlytics-native-symbol-upload-in-fastlane: backlog
   ach-4-firebase-test-lab-soft-smoke-step: backlog
   ach-5-promote-android-workflow-and-fastlane-promote-lane: backlog
@@ -542,12 +542,7 @@ development_status:
   # Android epics.
   epic-android-play-console-launch: in-progress
   apl-1-draft-android-md-runbook-skeleton: done
-  # apl-2 split autonomous / operator: /dev landed icon-512.png (sips
-  # downscale of icon-source-1024.png) + README.md documenting the
-  # feature-graphic + 4 phone screenshots as operator action. Flip to
-  # `done` after the operator commits feature-graphic-1024x500.png +
-  # screenshots/phone-{1,2,3,4}.png per the README spec.
-  apl-2-produce-play-console-store-listing-assets: in-progress
+  apl-2-produce-play-console-store-listing-assets: backlog
   apl-3-data-safety-paste-blocks-and-permission-justifications: done
   apl-4-tester-recruitment-checklist: done
   epic-android-play-console-launch-retrospective: optional

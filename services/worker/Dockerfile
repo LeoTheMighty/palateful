@@ -73,10 +73,16 @@ FROM python-base AS development
 ENV CELERY_ENV=development
 WORKDIR $DOCKER_SERVICE_ROOT
 
-# Install runtime dependencies for pycurl
+# Install runtime dependencies.
+# - libcurl4-openssl-dev: pycurl runtime.
+# - ffmpeg (sbf-4): audio track extraction for the video_file import
+#   path. Debian's default ffmpeg is LGPL-2.1+ and safe for commercial
+#   use when dynamically linked. H.264 / AAC / MP3 / AAC-LC only; H.265
+#   intentionally out of scope (patent concerns with the default build).
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         libcurl4-openssl-dev \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # copy in our built poetry + venv
@@ -102,10 +108,15 @@ ENV CELERY_ENV=production
 
 WORKDIR $DOCKER_SERVICE_ROOT
 
-# Install runtime dependencies for pycurl
+# Install runtime dependencies.
+# - libcurl4-openssl-dev: pycurl runtime.
+# - ffmpeg (sbf-4): audio track extraction for the video_file import
+#   path. Debian LGPL build; ~80 MB + codec libs (well under the
+#   +150 MB image-size budget documented in the epic).
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         libcurl4-openssl-dev \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only the virtual environment (contains all runtime dependencies)

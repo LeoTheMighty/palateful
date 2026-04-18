@@ -174,3 +174,164 @@ class TestParseS3KeyedPdf:
         assert item.source_type == "text"
         assert item.raw_data["text"] == "OCRed scan body"
         assert item.raw_data["is_scanned_pdf"] is True
+
+
+class TestParseS3KeyedVideoFile:
+    """sbf-4: video_file → ffmpeg → Whisper → text rewrite."""
+
+    @patch("utils.services.recipe_extractors.audio_extractor.transcribe_audio")
+    @patch("utils.services.recipe_extractors.video_file_extractor.extract_audio_to_file")
+    def test_happy_path_rewrites_item_as_text(
+        self, mock_extract, mock_transcribe, mock_db, mock_user,
+    ):
+        from utils.services.recipe_extractors.video_file_extractor import (
+            ExtractedAudio,
+        )
+
+        mock_extract.return_value = ExtractedAudio(
+            path="/tmp/x.mp3", size_bytes=1234, stderr_tail="",
+        )
+        mock_transcribe.return_value = ("a pinch of salt", 9)
+
+        job = MockImportJob(
+            id="job-vf",
+            source_type="video_file",
+            user_id=str(mock_user.id),
+            total_items=1,
+            total_ai_cost_cents=0,
+        )
+        item = MockImportItem(
+            import_job_id="job-vf",
+            source_type="video_file",
+            s3_key=f"imports/{mock_user.id}/clip.mp4",
+            raw_data={
+                "s3_key": f"imports/{mock_user.id}/clip.mp4",
+                "original_filename": "clip.mp4",
+            },
+            status="pending",
+            ai_cost_cents=0,
+        )
+        query = MagicMock()
+        query.filter.return_value.all.return_value = [item]
+        mock_db.db.query.return_value = query
+
+        task = _build_task(mock_db)
+        with patch.object(
+            task, "_aws_service",
+            return_value=SimpleNamespace(read_object=lambda *_, **__: b"video bytes"),
+        ):
+            count = task._parse_s3_keyed_files(job)
+
+        assert count == 1
+        assert item.source_type == "text"
+        assert item.raw_data["text"] == "a pinch of salt"
+        assert item.raw_data["is_video_file_import"] is True
+        assert item.ai_cost_cents == 9
+        assert job.total_ai_cost_cents == 9
+        mock_extract.assert_called_once()
+        mock_transcribe.assert_called_once()
+
+    @patch("utils.services.recipe_extractors.audio_extractor.transcribe_audio")
+    @patch("utils.services.recipe_extractors.video_file_extractor.extract_audio_to_file")
+    def test_ffmpeg_failure_marks_item_failed(
+        self, mock_extract, mock_transcribe, mock_db, mock_user,
+    ):
+        from utils.services.recipe_extractors.video_file_extractor import (
+            VideoDecodeError,
+        )
+
+        mock_extract.side_effect = VideoDecodeError(
+            "Invalid data found when processing input"
+        )
+
+        job = MockImportJob(
+            id="job-vf-bad",
+            source_type="video_file",
+            user_id=str(mock_user.id),
+            total_items=1,
+        )
+        item = MockImportItem(
+            import_job_id="job-vf-bad",
+            source_type="video_file",
+            s3_key=f"imports/{mock_user.id}/broken.mp4",
+            raw_data={
+                "s3_key": f"imports/{mock_user.id}/broken.mp4",
+            },
+            status="pending",
+        )
+        query = MagicMock()
+        query.filter.return_value.all.return_value = [item]
+        mock_db.db.query.return_value = query
+
+        task = _build_task(mock_db)
+        with patch.object(
+            task, "_aws_service",
+            return_value=SimpleNamespace(read_object=lambda *_, **__: b"not a video"),
+        ):
+            count = task._parse_s3_keyed_files(job)
+
+        assert count == 1
+        assert item.status == "failed"
+        assert item.error_code == "video_decode_failed"
+        assert "ffmpeg failed" in item.error_message
+        assert job.status == "failed"
+        # Transcription must NOT run when ffmpeg fails — Whisper spend
+        # is the whole reason ffmpeg runs first.
+        mock_transcribe.assert_not_called()
+
+
+class TestVideoFileExtractor:
+    """sbf-4: ffmpeg subprocess wrapper unit tests."""
+
+    @patch("utils.services.recipe_extractors.video_file_extractor.subprocess.Popen")
+    @patch("utils.services.recipe_extractors.video_file_extractor.os.path.getsize")
+    def test_happy_path_returns_extracted_audio(self, mock_size, mock_popen, tmp_path):
+        from utils.services.recipe_extractors.video_file_extractor import (
+            extract_audio_to_file,
+        )
+
+        proc = MagicMock()
+        proc.communicate.return_value = (b"", b"")
+        proc.returncode = 0
+        proc.pid = 12345
+        mock_popen.return_value = proc
+        mock_size.return_value = 4096
+
+        result = extract_audio_to_file(
+            str(tmp_path / "in.mp4"), str(tmp_path / "out.mp3"),
+        )
+        assert result.size_bytes == 4096
+        assert result.path.endswith("out.mp3")
+
+        # Process-group signalling: preexec_fn must set our own group so
+        # Celery's soft-time-limit can reap the whole tree.
+        _args, kwargs = mock_popen.call_args
+        assert "preexec_fn" in kwargs
+        assert kwargs["preexec_fn"] is __import__("os").setsid
+
+        # Duration cap is hard-coded; verify it shows up in the argv.
+        cmd = mock_popen.call_args[0][0]
+        assert "-t" in cmd
+        assert cmd[cmd.index("-t") + 1] == "1200"
+
+    @patch("utils.services.recipe_extractors.video_file_extractor.subprocess.Popen")
+    def test_non_zero_exit_raises_video_decode_error(self, mock_popen, tmp_path):
+        from utils.services.recipe_extractors.video_file_extractor import (
+            VideoDecodeError,
+            extract_audio_to_file,
+        )
+
+        proc = MagicMock()
+        proc.communicate.return_value = (b"", b"Invalid data found")
+        proc.returncode = 1
+        proc.pid = 12345
+        mock_popen.return_value = proc
+
+        try:
+            extract_audio_to_file(
+                str(tmp_path / "in.mp4"), str(tmp_path / "out.mp3"),
+            )
+        except VideoDecodeError as exc:
+            assert "Invalid data found" in exc.stderr_tail
+        else:  # pragma: no cover
+            raise AssertionError("expected VideoDecodeError")

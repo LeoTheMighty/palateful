@@ -17,7 +17,7 @@ from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
 
-_S3_KEYED_SOURCE_TYPES = ("audio", "pdf", "spreadsheet")
+_S3_KEYED_SOURCE_TYPES = ("audio", "pdf", "spreadsheet", "video_file")
 
 
 class ParseSourceTask(BaseTask):
@@ -69,7 +69,7 @@ class ParseSourceTask(BaseTask):
                 # spreadsheets so the existing extractor pipeline runs
                 # unchanged.
                 items_created = self._parse_s3_keyed_files(job)
-            elif job.source_type in ("photo", "text", "spreadsheet", "audio", "pdf"):
+            elif job.source_type in ("photo", "text", "spreadsheet", "audio", "pdf", "video_file"):
                 # Items are already created by StartImport with text in raw_data.
                 # total_items is already set by StartImport, so just read the count.
                 items_created = job.total_items
@@ -158,6 +158,8 @@ class ParseSourceTask(BaseTask):
             return self._parse_pdf_bytes(job, seed, file_bytes)
         if source_type == "spreadsheet":
             return self._parse_spreadsheet_bytes(job, seed, file_bytes)
+        if source_type == "video_file":
+            return self._parse_video_file(job, seed, file_bytes)
         return 0  # pragma: no cover — guarded by caller
 
     def _parse_audio_bytes(
@@ -235,6 +237,70 @@ class ParseSourceTask(BaseTask):
             "text": text,
             "is_scanned_pdf": True,
         }
+        self.database.db.commit()
+        return 1
+
+    def _parse_video_file(
+        self, job: ImportJob, item: ImportItem, file_bytes: bytes,
+    ) -> int:
+        """sbf-4: ffmpeg → audio track → Whisper → text rewrite.
+
+        video_file imports collapse to the same final shape as the audio
+        path (one text item with the transcript). The only extra step is
+        the ffmpeg decode, which is isolated to its own process group so
+        a Celery soft-time-limit signals the whole tree.
+        """
+        from utils.classes.error_code import ErrorCode
+        from utils.services.recipe_extractors.audio_extractor import (
+            transcribe_audio,
+        )
+        from utils.services.recipe_extractors.video_file_extractor import (
+            VideoDecodeError,
+            extract_audio_to_file,
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".video", delete=False) as in_fh:
+            in_fh.write(file_bytes)
+            video_path = in_fh.name
+        out_fd, audio_path = tempfile.mkstemp(suffix=".mp3")
+        os.close(out_fd)
+
+        try:
+            try:
+                extract_audio_to_file(video_path, audio_path)
+            except VideoDecodeError as exc:
+                item.status = "failed"
+                item.error_code = "video_decode_failed"
+                item.error_message = f"ffmpeg failed: {exc.stderr_tail[-500:]}"
+                item.raw_data = {
+                    **(item.raw_data or {}),
+                    "ffmpeg_stderr_tail": exc.stderr_tail[-500:],
+                }
+                self.database.db.commit()
+                job.status = "failed"
+                self.database.db.commit()
+                logger.warning(
+                    "video_file ffmpeg failed job=%s item=%s code=%s",
+                    job.id, item.id, ErrorCode.IMPORT_EXTRACTION_FAILED.value,
+                )
+                return 1
+
+            transcript, cost_cents = transcribe_audio(audio_path)
+        finally:
+            for path in (video_path, audio_path):
+                with contextlib.suppress(OSError):
+                    os.unlink(path)
+
+        item.source_type = "text"
+        item.raw_data = {
+            **(item.raw_data or {}),
+            "text": transcript,
+            "is_audio_import": True,
+            "is_video_file_import": True,
+            "transcription_cost_cents": cost_cents,
+        }
+        item.ai_cost_cents = (item.ai_cost_cents or 0) + cost_cents
+        job.total_ai_cost_cents = (job.total_ai_cost_cents or 0) + cost_cents
         self.database.db.commit()
         return 1
 

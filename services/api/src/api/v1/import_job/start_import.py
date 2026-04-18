@@ -46,7 +46,7 @@ def _reset_rate_limit_for_test() -> None:
     _rate_limit_events.clear()
 
 
-_S3_KEY_SOURCE_TYPES = {"audio", "pdf", "spreadsheet"}
+_S3_KEY_SOURCE_TYPES = {"audio", "pdf", "spreadsheet", "video_file"}
 
 _aws_service: AWSService | None = None
 
@@ -202,6 +202,17 @@ class StartImport(Endpoint):
                 )
             else:
                 source_filename = params.file_name
+        elif params.source_type == "video_file":
+            # sbf-4: video_file is s3_key-only. Presigned PUT is the only
+            # way a client sends a 100 MB clip to the backend.
+            if not params.s3_key:
+                raise APIException(
+                    status_code=400,
+                    detail="s3_key is required for video_file import",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            self._validate_s3_key_inputs(params, user)
+            source_filename = params.file_name or params.s3_key
         else:
             raise APIException(
                 status_code=400,
