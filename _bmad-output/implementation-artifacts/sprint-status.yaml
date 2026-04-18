@@ -362,7 +362,7 @@ development_status:
   # promote_admin.py. Parallelizable with epic-observability-latency.
   epic-user-feedback: in-progress
   feedback-1-backend-model-and-submit-endpoint: done
-  feedback-2-admin-endpoints-notification-fanout-and-stats: backlog
+  feedback-2-admin-endpoints-notification-fanout-and-stats: done
   feedback-3-flutter-send-feedback-sheet: backlog
   feedback-4-flutter-admin-inbox-and-dashboard-card: backlog
   feedback-5-prod-fetch-script: backlog

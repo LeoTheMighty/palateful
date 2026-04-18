@@ -9,6 +9,7 @@ from utils.models.error_log import ErrorLog
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
+from utils.models.user_feedback import UserFeedback
 
 
 class GetStats(Endpoint):
@@ -50,6 +51,15 @@ class GetStats(Endpoint):
             or 0
         )
 
+        unread_feedback = (
+            self.db.execute(
+                select(func.count())
+                .select_from(UserFeedback)
+                .where(UserFeedback.status == "unread")
+            ).scalar()
+            or 0
+        )
+
         return success(
             data=GetStats.Response(
                 total_users=total_users,
@@ -57,6 +67,7 @@ class GetStats(Endpoint):
                 total_recipe_books=total_recipe_books,
                 errors_24h=errors_24h,
                 active_users_7d=active_users_7d,
+                unread_feedback=unread_feedback,
             )
         )
 
@@ -68,3 +79,4 @@ class GetStats(Endpoint):
         total_recipe_books: int
         errors_24h: int
         active_users_7d: int
+        unread_feedback: int

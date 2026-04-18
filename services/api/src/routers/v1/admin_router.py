@@ -5,8 +5,10 @@ from api.v1.admin import (
     GetErrors,
     GetLogs,
     GetStats,
+    ListFeedback,
     ListUsers,
     SendTestPush,
+    UpdateFeedbackStatus,
     UpdateUserAdmin,
 )
 from dependencies import get_database, require_admin
@@ -128,6 +130,45 @@ async def send_test_push(
     return SendTestPush.call(
         params=params,
         force=force,
+        user=user,
+        database=database,
+    )
+
+
+# ============================================================
+# Feedback Inbox
+# ============================================================
+
+
+@admin_router.get("/feedback")
+async def list_feedback(
+    status: str = Query("unread", description="Filter by status: unread | read | archived | all"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(25, ge=1, le=100, description="Max items per page"),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """List feedback entries for the admin inbox."""
+    return ListFeedback.call(
+        status=status,
+        offset=offset,
+        limit=limit,
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.put("/feedback/{feedback_id}/status")
+async def update_feedback_status(
+    feedback_id: str,
+    params: UpdateFeedbackStatus.Params,
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Flip the status of a single feedback row (unread/read/archived)."""
+    return UpdateFeedbackStatus.call(
+        feedback_id=feedback_id,
+        params=params,
         user=user,
         database=database,
     )
