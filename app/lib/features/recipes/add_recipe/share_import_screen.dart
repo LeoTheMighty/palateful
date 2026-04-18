@@ -213,7 +213,7 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Recipe saved to $bookName')),
         );
-        context.go('/');
+        _closeOrReturn();
       }
     } catch (e) {
       if (mounted) {
@@ -234,7 +234,18 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
         } catch (_) {}
       }
     }
-    if (mounted) context.go('/');
+    if (mounted) _closeOrReturn();
+  }
+
+  // Warm-launch users pop back to their prior screen; cold-launch users
+  // (no nav stack under the share-import route) land on home. Uses
+  // GoRouter.canPop — raw Navigator.canPop would be fooled by shell routes.
+  void _closeOrReturn() {
+    if (GoRouter.of(context).canPop()) {
+      context.pop();
+    } else {
+      context.go('/');
+    }
   }
 
   @override
@@ -247,7 +258,7 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
         title: const Text('Save Recipe'),
         leading: IconButton(
           icon: const Icon(Icons.close),
-          onPressed: () => context.go('/'),
+          onPressed: _closeOrReturn,
         ),
       ),
       body: _isImporting
@@ -324,7 +335,7 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 OutlinedButton(
-                  onPressed: () => context.go('/'),
+                  onPressed: _closeOrReturn,
                   child: const Text('Close'),
                 ),
                 const SizedBox(width: 12),

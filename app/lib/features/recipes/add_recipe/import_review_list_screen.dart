@@ -8,7 +8,10 @@ import '../../../shared/widgets/error_banner.dart';
 class ImportReviewListScreen extends StatefulWidget {
   final String jobId;
 
-  const ImportReviewListScreen({super.key, required this.jobId});
+  const ImportReviewListScreen({
+    super.key,
+    required this.jobId,
+  });
 
   @override
   State<ImportReviewListScreen> createState() => _ImportReviewListScreenState();
@@ -26,6 +29,17 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  // GoRouter.canPop (not Navigator.canPop) — raw Navigator sees only
+  // the root navigator and misses GoRouter's internal history, so a
+  // warm launch would falsely register as cold.
+  void _popOrHome() {
+    if (GoRouter.of(context).canPop()) {
+      context.pop();
+    } else {
+      context.go('/');
+    }
   }
 
   Future<void> _loadData() async {
@@ -63,12 +77,18 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
     final failedItems = _items.where((i) => i['status'] == 'failed').toList();
     final skippedItems = _items.where((i) => i['status'] == 'skipped').toList();
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _popOrHome();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('Review Imports'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: _popOrHome,
         ),
       ),
       body: _isLoading
@@ -222,6 +242,7 @@ class _ImportReviewListScreenState extends State<ImportReviewListScreen> {
                     ],
                   ),
                 ),
+      ),
     );
   }
 
