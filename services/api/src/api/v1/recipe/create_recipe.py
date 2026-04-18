@@ -16,6 +16,7 @@ from utils.services.ingredient_resolver import (
     IngredientResolutionError,
     resolve_ingredient,
 )
+from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 
 
@@ -120,7 +121,12 @@ class CreateRecipe(Endpoint):
                 ) from exc
 
             quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
-            unit = ing_input.unit or ""
+            # Coerce LLM/user freeform unit to canonical (riip-2).
+            unit = normalize_unit_display(
+                ing_input.unit or "",
+                self.database.db,
+                context={"path": "create_recipe"},
+            ) or ""
 
             # Normalize quantity
             try:

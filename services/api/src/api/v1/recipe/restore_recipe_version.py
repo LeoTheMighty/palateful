@@ -17,6 +17,7 @@ from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
+from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 
 
@@ -104,7 +105,14 @@ class RestoreRecipeVersion(Endpoint):
 
         for ing_data in snapshot.get("ingredients", []):
             qty_str = ing_data.get("quantity_display", "1")
-            unit = ing_data.get("unit_display", "")
+            # Snapshots preserve history (un-normalized), but restoring a
+            # row to live state runs the unit through the canonical
+            # normalizer (riip-2 design principle 5).
+            unit = normalize_unit_display(
+                ing_data.get("unit_display", ""),
+                self.database.db,
+                context={"path": "restore_recipe_version"},
+            ) or ""
             try:
                 qty_decimal = _parse_quantity_display(str(qty_str))
             except Exception:

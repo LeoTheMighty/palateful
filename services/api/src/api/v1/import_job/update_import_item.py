@@ -9,6 +9,22 @@ from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
+from utils.services.units import normalize_unit_display
+
+
+def _normalize_user_edits_units(user_edits: dict, session) -> dict:
+    """Walk ingredients in user_edits and coerce each unit to canonical."""
+    ingredients = user_edits.get("ingredients")
+    if not isinstance(ingredients, list):
+        return user_edits
+    for ing in ingredients:
+        if isinstance(ing, dict) and "unit" in ing:
+            ing["unit"] = normalize_unit_display(
+                ing.get("unit"),
+                session,
+                context={"path": "update_import_item"},
+            )
+    return user_edits
 
 
 class UpdateImportItem(Endpoint):
@@ -66,8 +82,12 @@ class UpdateImportItem(Endpoint):
                 code=ErrorCode.IMPORT_ITEM_INVALID_STATUS,
             )
 
-        # Update user edits
-        item.user_edits = params.user_edits
+        # Update user edits — normalize each ingredient unit to the
+        # canonical token before persist (riip-2). Operates on a copy so
+        # the input dict isn't mutated under the caller.
+        item.user_edits = _normalize_user_edits_units(
+            dict(params.user_edits), self.database.db
+        )
         self.database.db.commit()
 
         return success(

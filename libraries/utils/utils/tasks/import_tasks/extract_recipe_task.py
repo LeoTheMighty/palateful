@@ -14,13 +14,14 @@ from utils.services.recipe_extractors import (
     extract_recipe_from_url,
 )
 from utils.services.recipe_extractors.video_extractor import extract_recipe_from_video
+from utils.services.units import normalize_unit_display
 from utils.services.url_classifier import is_social_media_url
 from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_recipe(recipe, extractor_used: str | None) -> dict:
+def _serialize_recipe(recipe, extractor_used: str | None, session) -> dict:
     """Serialize an ExtractedRecipe into the `parsed_recipe` JSONB shape.
 
     Structured `steps`, when available, are the preferred format
@@ -29,6 +30,10 @@ def _serialize_recipe(recipe, extractor_used: str | None) -> dict:
     produce structured steps (or the LLM returned malformed data) we
     fall through to the legacy `instructions` string, which
     `create_recipe_task` splits with a regex.
+
+    `unit` on each ingredient is run through `normalize_unit_display`
+    (riip-2) so freeform LLM output ("tablespoon") gets coerced to the
+    canonical token ("tbsp") before the parsed_recipe JSON ever lands.
     """
     steps_dict = (
         [{"order": s.order, "instruction": s.instruction} for s in recipe.steps]
@@ -42,7 +47,9 @@ def _serialize_recipe(recipe, extractor_used: str | None) -> dict:
             {
                 "text": ing.text,
                 "quantity": ing.quantity,
-                "unit": ing.unit,
+                "unit": normalize_unit_display(
+                    ing.unit, session, context={"path": "extract_recipe_task"}
+                ),
                 "name": ing.name,
                 "notes": ing.notes,
                 "is_optional": ing.is_optional,
@@ -207,7 +214,7 @@ class ExtractRecipeTask(BaseTask):
         extractor_used = result.extractor_used
 
         # Write the first recipe into the existing item.
-        item.parsed_recipe = _serialize_recipe(recipes[0], extractor_used)
+        item.parsed_recipe = _serialize_recipe(recipes[0], extractor_used, self.database.db)
         item.raw_data = {**(item.raw_data or {}), "recipe_index": 0}
         item.status = "matching"
         item.last_successful_stage = STAGE_EXTRACTED
@@ -286,7 +293,9 @@ class ExtractRecipeTask(BaseTask):
                 source_url=original.source_url,
                 status="matching",
                 last_successful_stage=STAGE_EXTRACTED,
-                parsed_recipe=_serialize_recipe(recipes[idx], extractor_used),
+                parsed_recipe=_serialize_recipe(
+                    recipes[idx], extractor_used, self.database.db
+                ),
                 raw_data={**base_raw, "recipe_index": idx},
                 ai_cost_cents=0,
             )
@@ -342,7 +351,12 @@ class ExtractRecipeTask(BaseTask):
                     result.append({
                         "text": ing.get("text", ""),
                         "quantity": ing.get("quantity"),
-                        "unit": ing.get("unit"),
+                        # Coerce freeform unit input to canonical (riip-2).
+                        "unit": normalize_unit_display(
+                            ing.get("unit"),
+                            self.database.db,
+                            context={"path": "extract_recipe_task.raw_data"},
+                        ),
                         "name": ing.get("name"),
                     })
             return result

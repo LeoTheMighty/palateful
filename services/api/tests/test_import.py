@@ -1584,6 +1584,72 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 403
 
+    def test_update_import_item_normalizes_ingredient_units(
+        self, client, mock_db, mock_user, monkeypatch
+    ):
+        """riip-2: PUT writes user_edits with each ingredient unit normalized."""
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            user_edits=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        # Stub the normalizer so the test doesn't depend on the real
+        # alias cache (the mock session can't load it).
+        from api.v1.import_job import update_import_item as mod
+        monkeypatch.setattr(
+            mod,
+            "normalize_unit_display",
+            lambda raw, _session, context=None: (
+                "tbsp" if raw and raw.lower().startswith("tablespoon") else raw
+            ),
+        )
+
+        edits = {
+            "name": "Pancakes",
+            "ingredients": [
+                {"name": "butter", "quantity": 2, "unit": "tablespoon"},
+                # No "unit" key — handler must skip without error.
+                {"name": "salt", "quantity": "1/4"},
+                # Non-dict entries are tolerated and skipped.
+                "stray-string",
+            ],
+        }
+        response = client.put(
+            f"/v1/import-items/{item_id}",
+            json={"user_edits": edits},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Persisted user_edits has "tablespoon" coerced to "tbsp".
+        assert data["user_edits"]["ingredients"][0]["unit"] == "tbsp"
+        # Ingredient with no unit key is unchanged.
+        assert "unit" not in data["user_edits"]["ingredients"][1]
+
     def test_update_import_item_editor_role(self, client, mock_db, mock_user):
         """Test updating item succeeds with editor role."""
         item_id = "test-item-id"

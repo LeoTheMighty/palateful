@@ -21,6 +21,7 @@ from utils.services.aws import AWSService
 from utils.services.celery import celery_app
 from utils.services.ingredient_resolver import resolve_ingredient
 from utils.services.recipe_image_promotion import promote_source_photo
+from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 from utils.tasks.task import BaseTask
 
@@ -247,7 +248,12 @@ class CreateRecipeTask(BaseTask):
         else:
             quantity = Decimal("1")
 
-        unit = ing_data.get("unit") or ""
+        # Coerce LLM/user freeform unit to the canonical token (riip-2).
+        unit = normalize_unit_display(
+            ing_data.get("unit") or "",
+            self.database.db,
+            context={"path": "create_recipe_task"},
+        ) or ""
 
         # Normalize quantity if possible
         try:

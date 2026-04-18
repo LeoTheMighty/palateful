@@ -9,6 +9,7 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.models.user import User
+from utils.services.units import normalize_unit_display
 
 
 class ForkRecipe(Endpoint):
@@ -105,7 +106,15 @@ class ForkRecipe(Endpoint):
                 recipe_id=new_recipe.id,
                 ingredient_id=ing.ingredient_id,
                 quantity_display=ing.quantity_display,
-                unit_display=ing.unit_display,
+                # The forked row is a fresh write — coerce the source's
+                # unit_display through the canonical normalizer so any
+                # historically-freeform units get cleaned up on fork
+                # (riip-2 design principle 7).
+                unit_display=normalize_unit_display(
+                    ing.unit_display,
+                    self.database.db,
+                    context={"path": "fork_recipe"},
+                ) or ing.unit_display,
                 quantity_normalized=ing.quantity_normalized,
                 unit_normalized=ing.unit_normalized,
                 notes=ing.notes,
