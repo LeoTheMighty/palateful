@@ -14,12 +14,15 @@
 #     APP_STORE_CONNECT_API_KEY_KEY        — App Store Connect private key (.p8 file content)
 #
 #   Android:
-#     ANDROID_KEYSTORE_BASE64   — Base64-encoded release keystore .jks
-#                                 Generate: base64 -i release.jks | tr -d '\n' | pbcopy
-#     ANDROID_STORE_PASSWORD    — Keystore store password
-#     ANDROID_KEY_ALIAS         — Key alias within the keystore
-#     ANDROID_KEY_PASSWORD      — Key password
-#     PLAY_STORE_JSON_KEY       — Google Play service account JSON key (file content)
+#     ANDROID_KEYSTORE_BASE64          — Base64-encoded release keystore .jks
+#                                        Generate: base64 -i release.jks | tr -d '\n' | pbcopy
+#     ANDROID_STORE_PASSWORD           — Keystore store password
+#     ANDROID_KEY_ALIAS                — Key alias within the keystore
+#     ANDROID_KEY_PASSWORD             — Key password
+#     PLAY_STORE_JSON_KEY              — Google Play service account JSON key (file content)
+#     FIREBASE_SERVICE_ACCOUNT_JSON    — Firebase service account JSON (Crashlytics symbol
+#                                        upload + Firebase Test Lab). Also serves as the
+#                                        Play Store upload key if granted Play roles.
 
 name: Mobile App Store Builds
 
@@ -28,6 +31,12 @@ on:
   push:
     tags:
       - 'v*.*.*'
+
+# Single source of truth for Flutter across iOS + Android + ci.yml flutter-test.
+# Keep in sync with .github/workflows/ci.yml (flutter-test job).
+env:
+  FLUTTER_CHANNEL: stable
+  FLUTTER_VERSION: '3.32.0'
 
 jobs:
   ios-build:
@@ -38,8 +47,8 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0-0.3.pre'
-          channel: master
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache pub dependencies
@@ -88,6 +97,12 @@ jobs:
   android-build:
     name: Android — Build & Upload to Play Store Internal
     runs-on: ubuntu-latest
+    # Serialize duplicate tag pushes so two jobs never race for the same
+    # Play Console version-code. Do NOT cancel-in-progress — killing a
+    # half-complete upload can leave the track in a confusing state.
+    concurrency:
+      group: mobile-builds-android
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -98,8 +113,8 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0-0.3.pre'
-          channel: master
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
           cache: true
 
       - name: Cache pub dependencies
