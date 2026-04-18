@@ -1,14 +1,42 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
-import 'package:palateful/features/calendar/models/meal_event.dart';
-import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
 import 'package:palateful/features/calendar/calendar_screen.dart';
+import 'package:palateful/features/calendar/models/calendar.dart';
+import 'package:palateful/features/calendar/models/meal_event.dart';
+import 'package:palateful/features/calendar/providers/active_calendar_provider.dart';
+import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
 import 'package:palateful/features/shopping_cart/models/shopping_list.dart';
 import 'package:palateful/features/shopping_cart/services/shopping_cart_service.dart';
+
+Calendar _defaultCalendar() {
+  final now = DateTime(2026, 4, 17);
+  return Calendar(
+    id: 'cal-1',
+    name: 'My Calendar',
+    ownerId: 'u1',
+    userRole: 'owner',
+    memberCount: 1,
+    createdAt: now,
+    updatedAt: now,
+    isDefault: true,
+  );
+}
+
+Widget _wrap(Widget child, {List<Calendar>? calendars}) {
+  return ProviderScope(
+    overrides: [
+      calendarsListProvider.overrideWith(
+        (ref) async => calendars ?? [_defaultCalendar()],
+      ),
+    ],
+    child: MaterialApp(home: child),
+  );
+}
 
 Response<dynamic> _fakeResp(dynamic data) => Response(
       data: data,
@@ -32,7 +60,7 @@ class _FakeMealCalendarService implements MealCalendarService {
   _FakeMealCalendarService({this.events = const []});
 
   @override
-  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end) async => events;
+  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end, {String? calendarId}) async => events;
 
   @override
   Future<MealEvent> createMealEvent({
@@ -140,7 +168,7 @@ void main() {
   group('CalendarScreen — week view', () {
     testWidgets('displays 7 day columns for the current week', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump(); // Let async load complete
 
@@ -154,7 +182,7 @@ void main() {
 
     testWidgets('shows week range label in app bar', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -165,7 +193,7 @@ void main() {
 
     testWidgets('shows "No meals planned" for empty days', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -188,7 +216,7 @@ void main() {
       _registerFake(_FakeMealCalendarService(events: [event]));
 
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -210,7 +238,7 @@ void main() {
       _registerFake(_FakeMealCalendarService(events: [event]));
 
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -235,7 +263,7 @@ void main() {
       _registerFake(_FakeMealCalendarService(events: [event]));
 
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -264,7 +292,7 @@ void main() {
       _registerFake(_FakeMealCalendarService(events: [event]));
 
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -293,7 +321,7 @@ void main() {
       _registerFake(_FakeMealCalendarService(events: [event]));
 
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -317,7 +345,7 @@ void main() {
       _registerFake(_FakeMealCalendarService(events: [event]));
 
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -329,7 +357,7 @@ void main() {
   group('CalendarScreen — week navigation', () {
     testWidgets('tapping left arrow loads previous week', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 
@@ -345,7 +373,7 @@ void main() {
 
     testWidgets('tapping right arrow loads next week', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: CalendarScreen()),
+        _wrap(const CalendarScreen()),
       );
       await tester.pump();
 

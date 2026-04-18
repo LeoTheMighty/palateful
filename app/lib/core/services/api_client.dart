@@ -636,13 +636,33 @@ class ApiClient {
     });
   }
 
-  Future<Response> listMealEventsForRange(DateTime start, DateTime end) {
+  Future<Response> listMealEventsForRange(
+    DateTime start,
+    DateTime end, {
+    String? calendarId,
+  }) {
     return _dio.get('/v1/meal-events', queryParameters: {
       'start_date': start.toIso8601String().substring(0, 10),
       'end_date': end.toIso8601String().substring(0, 10),
       'limit': 50,
+      if (calendarId != null) 'calendar_id': calendarId,
     });
   }
+
+  // Calendars (cal-found-1 onward)
+  Future<Response> listCalendars() => _dio.get('/v1/calendars');
+
+  Future<Response> createCalendar(Map<String, dynamic> data) =>
+      _dio.post('/v1/calendars', data: data);
+
+  Future<Response> getCalendar(String id) =>
+      _dio.get('/v1/calendars/$id');
+
+  Future<Response> updateCalendar(String id, Map<String, dynamic> data) =>
+      _dio.patch('/v1/calendars/$id', data: data);
+
+  Future<Response> deleteCalendar(String id) =>
+      _dio.delete('/v1/calendars/$id');
 
   Future<Response> createMealEvent(Map<String, dynamic> data) {
     return _dio.post('/v1/meal-events', data: data);

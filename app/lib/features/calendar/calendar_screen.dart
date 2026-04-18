@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/theme/theme.dart';
@@ -8,7 +9,9 @@ import '../../shared/widgets/default_change_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
+import 'providers/active_calendar_provider.dart';
 import 'services/meal_calendar_service.dart';
+import 'widgets/calendar_switcher_header.dart';
 import 'widgets/day_detail_sheet.dart';
 import 'widgets/meal_detail_sheet.dart';
 import 'widgets/plan_meal_sheet.dart';
@@ -19,14 +22,14 @@ import '../../core/services/api_client.dart';
 import '../../core/services/recipe_cache_service.dart';
 
 /// Calendar tab — week view showing scheduled meal events.
-class CalendarScreen extends StatefulWidget {
+class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
 
   @override
-  State<CalendarScreen> createState() => _CalendarScreenState();
+  ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   final _service = getIt<MealCalendarService>();
   final _cartService = getIt<ShoppingCartService>();
 
@@ -73,7 +76,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _error = null;
     });
     try {
-      final events = await _service.listMealEvents(_weekStart, _weekEnd);
+      // Scope to the active calendar when resolved. Before the provider
+      // settles (first frame), fall back to the legacy union behavior so
+      // the grid doesn't block on calendar boot.
+      final activeId = ref.read(activeCalendarProvider).value;
+      final events = await _service.listMealEvents(
+        _weekStart,
+        _weekEnd,
+        calendarId: activeId,
+      );
       if (generation != _loadGeneration) return;
       final Map<DateTime, List<MealEvent>> byDay = {};
       for (final e in events) {
@@ -546,6 +557,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // Reload events whenever the active calendar changes.
+    ref.listen<AsyncValue<String?>>(activeCalendarProvider, (prev, next) {
+      if (prev?.value != next.value && next is AsyncData) {
+        _loadEvents();
+      }
+    });
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: _buildAppBar(),
@@ -562,7 +579,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return AppBar(
       backgroundColor: colorScheme.surface,
       elevation: 0,
-      title: _buildWeekNavigator(),
+      title: const CalendarSwitcherHeader(),
       actions: [
         IconButton(
           icon: const Icon(Icons.add_shopping_cart_outlined),
@@ -571,6 +588,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
           onPressed: _generateWeeklyShoppingList,
         ),
       ],
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(48),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildWeekNavigator(),
+        ),
+      ),
     );
   }
 

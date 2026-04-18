@@ -51,7 +51,7 @@ class _FakeMealCalendarService implements MealCalendarService {
   }
 
   @override
-  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end) async => [];
+  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end, {String? calendarId}) async => [];
 
   @override
   Future<void> deleteMealEvent(String eventId) async {}

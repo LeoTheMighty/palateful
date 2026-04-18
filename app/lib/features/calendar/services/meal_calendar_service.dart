@@ -7,8 +7,16 @@ class MealCalendarService {
 
   MealCalendarService(this._apiClient);
 
-  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end) async {
-    final response = await _apiClient.listMealEventsForRange(start, end);
+  Future<List<MealEvent>> listMealEvents(
+    DateTime start,
+    DateTime end, {
+    String? calendarId,
+  }) async {
+    final response = await _apiClient.listMealEventsForRange(
+      start,
+      end,
+      calendarId: calendarId,
+    );
     final data = response.data as Map<String, dynamic>;
     final items = (data['items'] as List).cast<Map<String, dynamic>>();
     return items.map(MealEvent.fromJson).toList();

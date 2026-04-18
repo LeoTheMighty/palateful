@@ -1,7 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:palateful/features/calendar/models/calendar.dart';
+import 'package:palateful/features/calendar/providers/active_calendar_provider.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/auth_service.dart';
@@ -10,6 +13,27 @@ import 'package:palateful/features/calendar/models/meal_event.dart';
 import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
 import 'package:palateful/features/shopping_cart/models/shopping_list.dart';
 import 'package:palateful/features/shopping_cart/services/shopping_cart_service.dart';
+
+Widget _wrapWithProvider(Widget child) {
+  final now = DateTime(2026, 4, 17);
+  final cal = Calendar(
+    id: 'cal-1',
+    name: 'My Calendar',
+    ownerId: 'u1',
+    userRole: 'owner',
+    memberCount: 1,
+    createdAt: now,
+    updatedAt: now,
+    isDefault: true,
+  );
+  return ProviderScope(
+    overrides: [
+      calendarsListProvider.overrideWith((ref) async => [cal]),
+    ],
+    child: MaterialApp(home: child),
+  );
+}
+
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -82,7 +106,7 @@ class _FakeAuthService extends AuthService {
 
 class _FakeMealCalendarService implements MealCalendarService {
   @override
-  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end) async =>
+  Future<List<MealEvent>> listMealEvents(DateTime start, DateTime end, {String? calendarId}) async =>
       [];
 
   @override
@@ -231,7 +255,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       expect(find.byIcon(Icons.add_shopping_cart_outlined), findsOneWidget);
@@ -249,7 +273,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -277,7 +301,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -301,7 +325,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -327,7 +351,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -353,7 +377,7 @@ void main() {
       gi.registerSingleton<ShoppingCartService>(
           _FailingShoppingCartService(lists: [list]));
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -372,7 +396,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -400,7 +424,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));
@@ -425,7 +449,7 @@ void main() {
         cartSvc: cartSvc,
       );
 
-      await tester.pumpWidget(const MaterialApp(home: CalendarScreen()));
+      await tester.pumpWidget(_wrapWithProvider(const CalendarScreen()));
       await tester.pump();
 
       await tester.tap(find.byIcon(Icons.add_shopping_cart_outlined));

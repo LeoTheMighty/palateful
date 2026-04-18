@@ -8,6 +8,7 @@ import '../../features/pantry/services/pantry_service.dart';
 import '../../features/shopping_cart/services/shopping_cart_service.dart';
 import '../../features/recipe_books/services/recipe_book_sync_service.dart';
 import '../../features/recipes/add_recipe/batch_parser_service.dart';
+import '../../features/calendar/services/calendar_service.dart';
 import '../../features/calendar/services/meal_calendar_service.dart';
 import '../../features/activity/providers/activity_read_provider.dart';
 
@@ -31,6 +32,9 @@ void setupDependencies() {
   getIt.registerLazySingleton<RecipeCacheService>(() => RecipeCacheService());
   getIt.registerLazySingleton<MealCalendarService>(
     () => MealCalendarService(getIt<ApiClient>()),
+  );
+  getIt.registerLazySingleton<CalendarService>(
+    () => CalendarService(getIt<ApiClient>()),
   );
   getIt.registerLazySingleton<ActivityReadProvider>(
     () => ActivityReadProvider(getIt<ApiClient>()),
