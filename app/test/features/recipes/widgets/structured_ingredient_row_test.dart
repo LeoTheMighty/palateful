@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:palateful/features/recipes/services/session_alias_map.dart';
 import 'package:palateful/features/recipes/widgets/structured_ingredient_row.dart';
+
+SessionAliasMap _newAliasMap() =>
+    SessionAliasMap.withFetcher(() async => null);
 
 Widget _wrap(Widget child, {double width = 400}) {
   return MaterialApp(
@@ -18,6 +22,12 @@ Widget _wrap(Widget child, {double width = 400}) {
 }
 
 void main() {
+  late SessionAliasMap aliasMap;
+
+  setUp(() {
+    aliasMap = _newAliasMap();
+  });
+
   group('IngredientRowData', () {
     test('copyWith distinguishes explicit null from absent', () {
       const v = IngredientRowData(
@@ -36,6 +46,30 @@ void main() {
       // Flag can be toggled.
       expect(v.copyWith(isOptional: false).isOptional, isFalse);
     });
+
+    test('expanded auto-defaults to true when notes present', () {
+      const v = IngredientRowData(name: 'butter', notes: 'melted');
+      expect(v.expanded, isTrue);
+      expect(v.hasHiddenContent, isFalse);
+    });
+
+    test('expanded auto-defaults to true when isOptional', () {
+      const v = IngredientRowData(name: 'butter', isOptional: true);
+      expect(v.expanded, isTrue);
+    });
+
+    test('expanded false by default for plain row', () {
+      const v = IngredientRowData(name: 'salt');
+      expect(v.expanded, isFalse);
+      expect(v.hasHiddenContent, isFalse);
+    });
+
+    test('manual collapse persists via copyWith(expanded: false)', () {
+      const v = IngredientRowData(name: 'butter', notes: 'melted');
+      final collapsed = v.copyWith(expanded: false);
+      expect(collapsed.expanded, isFalse);
+      expect(collapsed.hasHiddenContent, isTrue);
+    });
   });
 
   group('StructuredIngredientRow', () {
@@ -50,18 +84,22 @@ void main() {
             notes: 'melted',
           ),
           onChanged: (_) {},
+          aliasMap: aliasMap,
         ),
       ));
       expect(find.widgetWithText(TextField, '1/2'), findsOneWidget);
       expect(find.widgetWithText(TextField, 'butter'), findsOneWidget);
+      // Notes auto-expanded because notes is non-empty.
       expect(find.widgetWithText(TextField, 'melted'), findsOneWidget);
     });
 
-    testWidgets('renders empty row with placeholders', (tester) async {
+    testWidgets('renders empty row with placeholders, caret collapsed',
+        (tester) async {
       await tester.pumpWidget(_wrap(
         StructuredIngredientRow(
           value: const IngredientRowData(),
           onChanged: (_) {},
+          aliasMap: aliasMap,
         ),
       ));
       final qty = tester
@@ -70,21 +108,8 @@ void main() {
       final name = tester
           .widget<TextField>(find.byKey(const Key('ingredient_row_name')));
       expect(name.decoration?.hintText, 'Name');
-      final notes = tester
-          .widget<TextField>(find.byKey(const Key('ingredient_row_notes')));
-      expect(notes.decoration?.hintText?.startsWith('Notes'), isTrue);
-    });
-
-    testWidgets('renders legacy ingredient — name only', (tester) async {
-      await tester.pumpWidget(_wrap(
-        StructuredIngredientRow(
-          value: const IngredientRowData(name: 'all-purpose flour'),
-          onChanged: (_) {},
-        ),
-      ));
-      expect(find.widgetWithText(TextField, 'all-purpose flour'),
-          findsOneWidget);
-      expect(find.widgetWithText(TextField, ''), findsWidgets);
+      // Caret collapsed → notes field absent.
+      expect(find.byKey(const Key('ingredient_row_notes')), findsNothing);
     });
 
     testWidgets('editing name fires onChanged with new value', (tester) async {
@@ -93,6 +118,7 @@ void main() {
         StructuredIngredientRow(
           value: const IngredientRowData(name: 'butter'),
           onChanged: (v) => latest = v,
+          aliasMap: aliasMap,
         ),
       ));
       await tester.enterText(
@@ -108,6 +134,7 @@ void main() {
         StructuredIngredientRow(
           value: const IngredientRowData(),
           onChanged: (v) => latest = v,
+          aliasMap: aliasMap,
         ),
       ));
       await tester.enterText(
@@ -116,12 +143,15 @@ void main() {
       expect(latest?.quantity, 1.5);
     });
 
-    testWidgets('editing notes fires onChanged', (tester) async {
+    testWidgets('editing notes (after expanding) fires onChanged',
+        (tester) async {
       IngredientRowData? latest;
+      // Pre-expand by passing notes (auto-expand kicks in).
       await tester.pumpWidget(_wrap(
         StructuredIngredientRow(
-          value: const IngredientRowData(name: 'butter'),
+          value: const IngredientRowData(name: 'butter', notes: ' '),
           onChanged: (v) => latest = v,
+          aliasMap: aliasMap,
         ),
       ));
       await tester.enterText(
@@ -135,24 +165,29 @@ void main() {
         StructuredIngredientRow(
           value: const IngredientRowData(),
           onChanged: (_) {},
+          aliasMap: aliasMap,
         ),
       ));
       final qtyFinder = find.byKey(const Key('ingredient_row_qty'));
       await tester.tap(qtyFinder);
       await tester.pumpAndSettle();
       await tester.enterText(qtyFinder, '0.5');
-      // Simulate blur: tap somewhere else.
+      // Blur by tapping name field.
       await tester.tap(find.byKey(const Key('ingredient_row_name')));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(TextField, '1/2'), findsOneWidget);
     });
 
-    testWidgets('optional toggle emits isOptional=true', (tester) async {
+    testWidgets('optional toggle (in expanded row) emits isOptional=true',
+        (tester) async {
       IngredientRowData? latest;
       await tester.pumpWidget(_wrap(
         StructuredIngredientRow(
-          value: const IngredientRowData(name: 'butter'),
+          // Pre-expanded so optional checkbox is reachable.
+          value:
+              const IngredientRowData(name: 'butter', expanded: true),
           onChanged: (v) => latest = v,
+          aliasMap: aliasMap,
         ),
       ));
       await tester.tap(find.byKey(const Key('ingredient_row_optional')));
@@ -160,17 +195,27 @@ void main() {
       expect(latest?.isOptional, isTrue);
     });
 
-    testWidgets('optional toggle has row-specific Semantics label',
-        (tester) async {
+    testWidgets('row Semantics carries name and notes', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(_wrap(
         StructuredIngredientRow(
-          value: const IngredientRowData(name: 'butter'),
+          value: const IngredientRowData(
+            name: 'butter',
+            quantity: 2,
+            unit: 'tbsp',
+            notes: 'melted',
+            isOptional: true,
+          ),
           onChanged: (_) {},
+          aliasMap: aliasMap,
         ),
       ));
       expect(
-        find.bySemanticsLabel(RegExp(r'Mark butter as optional')),
+        find.bySemanticsLabel(RegExp(r'Ingredient 2 tbsp butter')),
+        findsAtLeastNWidgets(1),
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'optional, notes: melted')),
         findsAtLeastNWidgets(1),
       );
       handle.dispose();
@@ -183,6 +228,7 @@ void main() {
           value: const IngredientRowData(name: 'butter'),
           onChanged: (_) {},
           onDeleteRequested: () => deleted = true,
+          aliasMap: aliasMap,
         ),
       ));
       await tester.tap(find.byKey(const Key('ingredient_row_delete')));
@@ -195,6 +241,7 @@ void main() {
         StructuredIngredientRow(
           value: const IngredientRowData(name: 'butter'),
           onChanged: (_) {},
+          aliasMap: aliasMap,
         ),
       ));
       expect(find.byKey(const Key('ingredient_row_delete')), findsNothing);
@@ -207,6 +254,7 @@ void main() {
         StructuredIngredientRow(
           value: const IngredientRowData(),
           onChanged: (v) => latest = v,
+          aliasMap: aliasMap,
         ),
       ));
       await tester.enterText(
@@ -227,6 +275,7 @@ void main() {
               StructuredIngredientRow(
                 value: value,
                 onChanged: (v) => setState(() => value = v),
+                aliasMap: aliasMap,
               ),
               ElevatedButton(
                 onPressed: () => setState(() => value = const IngredientRowData(
@@ -259,12 +308,160 @@ void main() {
           ),
           onChanged: (_) {},
           onDeleteRequested: () {},
+          aliasMap: aliasMap,
         ),
         width: 320,
       ));
       // If overflow occurred, the framework would log a render exception
       // captured by tester.takeException().
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('StructuredIngredientRow caret + expansion (riip-6)', () {
+    testWidgets('caret collapsed by default for plain row', (tester) async {
+      await tester.pumpWidget(_wrap(
+        StructuredIngredientRow(
+          value: const IngredientRowData(name: 'salt'),
+          onChanged: (_) {},
+          aliasMap: aliasMap,
+        ),
+      ));
+      // Notes field hidden.
+      expect(find.byKey(const Key('ingredient_row_notes')), findsNothing);
+      // No dot when there's no hidden content.
+      expect(find.byKey(const Key('ingredient_row_caret_dot')), findsNothing);
+    });
+
+    testWidgets('initial notes auto-expands the caret', (tester) async {
+      await tester.pumpWidget(_wrap(
+        StructuredIngredientRow(
+          value: const IngredientRowData(
+            name: 'butter',
+            notes: 'melted',
+          ),
+          onChanged: (_) {},
+          aliasMap: aliasMap,
+        ),
+      ));
+      expect(find.byKey(const Key('ingredient_row_notes')), findsOneWidget);
+    });
+
+    testWidgets('initial isOptional=true auto-expands the caret',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        StructuredIngredientRow(
+          value: const IngredientRowData(
+            name: 'butter',
+            isOptional: true,
+          ),
+          onChanged: (_) {},
+          aliasMap: aliasMap,
+        ),
+      ));
+      expect(find.byKey(const Key('ingredient_row_optional')), findsOneWidget);
+    });
+
+    testWidgets('manual collapse with hidden content shows the dot',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        StructuredIngredientRow(
+          value: const IngredientRowData(
+            name: 'butter',
+            notes: 'melted',
+            expanded: false,
+          ),
+          onChanged: (_) {},
+          aliasMap: aliasMap,
+        ),
+      ));
+      expect(find.byKey(const Key('ingredient_row_caret_dot')), findsOneWidget);
+    });
+
+    testWidgets('tapping caret toggles expansion via onChanged', (tester) async {
+      IngredientRowData value = const IngredientRowData(name: 'salt');
+      await tester.pumpWidget(_wrap(
+        StatefulBuilder(
+          builder: (ctx, setState) => StructuredIngredientRow(
+            value: value,
+            onChanged: (v) => setState(() => value = v),
+            aliasMap: aliasMap,
+          ),
+        ),
+      ));
+      // Collapsed initially.
+      expect(find.byKey(const Key('ingredient_row_notes')), findsNothing);
+      await tester.tap(find.byKey(const Key('ingredient_row_caret')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('ingredient_row_notes')), findsOneWidget);
+    });
+
+    testWidgets('manual collapse survives parent rebuild', (tester) async {
+      // Parent owns the value; collapse via onChanged then trigger a
+      // parent rebuild without touching the value. State is preserved
+      // because expansion lives on IngredientRowData.
+      IngredientRowData value =
+          const IngredientRowData(name: 'butter', notes: 'melted');
+      await tester.pumpWidget(_wrap(
+        StatefulBuilder(
+          builder: (ctx, setState) => Column(
+            children: [
+              StructuredIngredientRow(
+                value: value,
+                onChanged: (v) => setState(() => value = v),
+                aliasMap: aliasMap,
+              ),
+              ElevatedButton(
+                onPressed: () => setState(() {}),
+                child: const Text('rebuild'),
+              ),
+            ],
+          ),
+        ),
+      ));
+      // Auto-expanded.
+      expect(find.byKey(const Key('ingredient_row_notes')), findsOneWidget);
+      // Collapse.
+      await tester.tap(find.byKey(const Key('ingredient_row_caret')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('ingredient_row_notes')), findsNothing);
+      // Rebuild parent — collapse must survive.
+      await tester.tap(find.text('rebuild'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('ingredient_row_notes')), findsNothing);
+      // And the dot is still there because there is hidden content.
+      expect(find.byKey(const Key('ingredient_row_caret_dot')), findsOneWidget);
+    });
+
+    testWidgets(
+        'locked widths at 320pt — qty 48, unit 72, caret 40, delete 40',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        StructuredIngredientRow(
+          value: const IngredientRowData(
+            name: 'all-purpose flour',
+            quantity: 2,
+            unit: 'cup',
+          ),
+          onChanged: (_) {},
+          onDeleteRequested: () {},
+          aliasMap: aliasMap,
+        ),
+        width: 320,
+      ));
+      final qty = tester.getSize(find.byKey(const Key('ingredient_row_qty')));
+      expect(qty.width, 48);
+      // The UnitInput hosts a TextField — the parent SizedBox locks the
+      // width via _RowLayout.unit.
+      final unit = tester.getSize(find.byKey(const Key('ingredient_row_unit')));
+      expect(unit.width, 72);
+      final caret =
+          tester.getSize(find.byKey(const Key('ingredient_row_caret')));
+      expect(caret.width, lessThanOrEqualTo(40));
+      expect(caret.height, lessThanOrEqualTo(40));
+      final delete =
+          tester.getSize(find.byKey(const Key('ingredient_row_delete')));
+      expect(delete.width, lessThanOrEqualTo(40));
     });
   });
 }
