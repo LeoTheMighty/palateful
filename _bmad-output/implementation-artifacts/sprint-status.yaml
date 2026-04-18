@@ -481,7 +481,7 @@ development_status:
   sie-1-xcode-target-skeleton-and-app-group: done
   sie-2-shared-state-bridge-flutter-to-app-group: done
   sie-3-minimal-confirmation-sheet-and-url-share-path: done
-  sie-4-presigned-upload-for-file-based-shares: backlog
+  sie-4-presigned-upload-for-file-based-shares: done
   sie-5-cold-start-ipad-and-edge-cases: backlog
   epic-share-ios-extension-retrospective: optional
 

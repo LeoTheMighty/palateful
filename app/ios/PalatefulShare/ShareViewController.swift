@@ -79,17 +79,33 @@ class ShareViewController: UIViewController {
     }
 
     Task { @MainActor in
+      // Capture fileURL before save() flips state to .saved.
+      let fileURL: URL?
+      if case .readyFile(let url, _, _) = viewModel.state {
+        fileURL = url
+      } else {
+        fileURL = nil
+      }
+
       guard let record = viewModel.save() else {
         return
       }
 
-      // Kick off the background upload BEFORE completeRequest — iOS will
-      // keep the background URLSession alive past the extension's death.
-      uploadService?.start(record: record)
+      // Hand off to the background / ephemeral sessions BEFORE dismiss —
+      // the file-upload path needs the fileURL which only lives inside
+      // the extension sandbox. For URL / text shares the record contains
+      // everything the reconciler needs, so .start(record:) is sufficient
+      // even if the extension is reaped before the /import POST lands.
+      if let fileURL {
+        uploadService?.startFileUpload(record: record, fileURL: fileURL)
+      } else {
+        uploadService?.start(record: record)
+      }
 
       // Dismiss within 100ms of save() returning. If the system kills us
-      // before the network call lands, the main app reconciles from
-      // pending_imports on next foreground (see PendingImports.all()).
+      // before the network call lands, the main-app reconciler retries
+      // URL / text shares on next foreground (file shares are lost per
+      // the v1 limitation noted in SHARE.md).
       self.dismissExtension()
     }
   }
