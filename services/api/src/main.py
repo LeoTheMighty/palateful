@@ -23,6 +23,24 @@ async def lifespan(app: FastAPI):
     from api.subscribers import register_subscribers
     register_subscribers()
 
+    # Load the unit-alias cache (riip-1) once at startup so the hot path
+    # never pays a query on the first normalize_unit_display call. Best
+    # effort — failures fall back to the lazy-init in the helper.
+    try:
+        from utils.services.database import Database
+        from utils.services.units import reload_unit_alias_cache
+
+        startup_db = Database()
+        try:
+            reload_unit_alias_cache(startup_db.db)
+        finally:
+            startup_db.close()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Failed to load unit_alias cache on FastAPI startup"
+        )
+
     # Start the MCP streamable-http session manager for the life of the process.
     # The session manager enforces a single .run() call per instance; tests that
     # enter this lifespan multiple times would trip that guard, so fall back to

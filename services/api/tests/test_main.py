@@ -144,3 +144,27 @@ class TestLifespan:
             with pytest.raises(RuntimeError, match="something totally different"):
                 async with main.lifespan(main.app):
                     pass
+
+    @pytest.mark.asyncio
+    async def test_lifespan_loads_unit_alias_cache_on_startup(self):
+        """riip-1: startup hook calls reload_unit_alias_cache through Database()."""
+        from main import lifespan, app
+
+        fake_session = MagicMock()
+        fake_db = MagicMock()
+        fake_db.db = fake_session
+
+        with (
+            patch(
+                "utils.services.database.Database",
+                return_value=fake_db,
+            ),
+            patch(
+                "utils.services.units.reload_unit_alias_cache"
+            ) as mock_reload,
+        ):
+            async with lifespan(app):
+                pass
+
+        mock_reload.assert_called_once_with(fake_session)
+        fake_db.close.assert_called_once()

@@ -7,6 +7,12 @@ from utils.services.units.conversion import (
     format_quantity,
     normalize_quantity,
 )
+from utils.services.units.normalize import (
+    is_cache_initialized,
+    normalize_unit_display,
+    reload_unit_alias_cache,
+    reset_unit_alias_cache_for_tests,
+)
 
 __all__ = [
     "UnitType",
@@ -16,4 +22,8 @@ __all__ = [
     "normalize_quantity",
     "convert_between_units",
     "format_quantity",
+    "normalize_unit_display",
+    "reload_unit_alias_cache",
+    "is_cache_initialized",
+    "reset_unit_alias_cache_for_tests",
 ]
