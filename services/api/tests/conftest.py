@@ -677,6 +677,9 @@ class MockQuery:
     def in_(self, *args, **kwargs):
         return True
 
+    def with_for_update(self, *args, **kwargs):
+        return self
+
 
 class MockExecuteResult:
     """Mock result from db.execute()."""

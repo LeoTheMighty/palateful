@@ -4,8 +4,12 @@ from api.v1.calendar import (
     CreateCalendar,
     DeleteCalendar,
     GetCalendar,
+    LeaveCalendar,
+    ListCalendarMembers,
     ListCalendars,
+    RemoveCalendarMember,
     UpdateCalendar,
+    UpdateCalendarMember,
 )
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
@@ -67,5 +71,63 @@ async def delete_calendar(
 ):
     """Archive a calendar (soft-delete)."""
     return DeleteCalendar.call(
+        calendar_id=calendar_id, user=user, database=database
+    )
+
+
+@calendar_router.get("/{calendar_id}/members")
+async def list_calendar_members(
+    calendar_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """List active members + pending invitations for a calendar."""
+    return ListCalendarMembers.call(
+        calendar_id=calendar_id, user=user, database=database
+    )
+
+
+@calendar_router.patch("/{calendar_id}/members/{target_user_id}")
+async def update_calendar_member(
+    calendar_id: str,
+    target_user_id: str,
+    params: UpdateCalendarMember.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Change a member's role — owner-only. Promote-to-owner transfers atomically."""
+    return UpdateCalendarMember.call(
+        calendar_id=calendar_id,
+        target_user_id=target_user_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@calendar_router.delete("/{calendar_id}/members/{target_user_id}")
+async def remove_calendar_member(
+    calendar_id: str,
+    target_user_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Remove a member from a calendar — owner-only."""
+    return RemoveCalendarMember.call(
+        calendar_id=calendar_id,
+        target_user_id=target_user_id,
+        user=user,
+        database=database,
+    )
+
+
+@calendar_router.post("/{calendar_id}/leave")
+async def leave_calendar(
+    calendar_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Leave a calendar (caller's own row archived). Owners cannot leave."""
+    return LeaveCalendar.call(
         calendar_id=calendar_id, user=user, database=database
     )

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +27,17 @@ class CalendarUser(JoinsBase):
         ),
         Index("ix_calendar_users_user_archived", "user_id", "archived_at"),
         Index("ix_calendar_users_calendar_id", "calendar_id"),
+        # DB-enforced: exactly one active owner per calendar. The
+        # ownership-transfer handler in update_calendar_member.py relies
+        # on this constraint as the last-line guard against the racy case
+        # where two concurrent transfers slip past the row-level
+        # SELECT ... FOR UPDATE serialization.
+        Index(
+            "uq_calendar_users_one_owner_active",
+            "calendar_id",
+            unique=True,
+            postgresql_where=text("role = 'owner' AND archived_at IS NULL"),
+        ),
     )
 
     # created_at, updated_at, archived_at inherited from JoinsBase.
