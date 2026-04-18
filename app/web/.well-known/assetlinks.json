@@ -1,0 +1,13 @@
+[
+  {
+    "_comment": "arh-4: Android App Links Digital Asset Links statement. The sha256_cert_fingerprints array is a placeholder until the first manual AAB upload enrolls Palateful in Play App Signing. Retrieval procedure: ANDROID.md steps 11-12 — Play Console > Setup > App Integrity > App signing key certificate > copy SHA-256. Paste it here, commit, and Cloudflare Pages redeploys on next merge. Until the real fingerprint lands, https://palateful.app/* links fall back to the browser chooser on Android (App Links verifier fails closed).",
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.palateful.palateful",
+      "sha256_cert_fingerprints": [
+        "FILL-IN-AFTER-PLAY-APP-SIGNING-ENROLLMENT"
+      ]
+    }
+  }
+]

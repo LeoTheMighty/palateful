@@ -38,12 +38,27 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Auth0 callback URL scheme -->
+            <!-- Auth0 callback URL scheme — preserved for backward-compat. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.palateful.app" />
+            </intent-filter>
+            <!-- arh-4: HTTPS App Links for palateful.app. autoVerify=true
+                 triggers Android's Statement List verifier, which fetches
+                 https://palateful.app/.well-known/assetlinks.json on app
+                 install. Once the Play-managed signing cert fingerprint is
+                 committed back into that file (see ANDROID.md steps 11-12),
+                 palateful.app links open Palateful directly without the
+                 "open with" chooser. Until then the link falls back to a
+                 browser chooser — acceptable for internal-track v1. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="palateful.app" />
             </intent-filter>
             <!-- Receive shared text/URLs from other apps (preserved). -->
             <intent-filter>
