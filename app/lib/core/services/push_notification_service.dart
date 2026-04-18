@@ -283,6 +283,10 @@ class PushNotificationService {
       case 'member_joined':
         return '/profile';
 
+      case 'new_feedback':
+        // Admin-only fan-out. Deep-link to the feedback inbox.
+        return '/admin/feedback';
+
       default:
         return '/';
     }

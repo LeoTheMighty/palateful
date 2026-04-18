@@ -43,7 +43,9 @@ import '../../features/invitations/invitations_screen.dart';
 import '../../features/invitations/invite_link_preview_screen.dart';
 import '../../features/recipes/public_recipe_screen.dart';
 import '../../features/admin/admin_dashboard_screen.dart';
+import '../../features/admin/admin_feedback_screen.dart';
 import '../../features/admin/admin_logs_screen.dart';
+import '../../features/admin/admin_metrics_screen.dart';
 import '../../features/admin/admin_errors_screen.dart';
 import '../../features/admin/admin_error_detail_screen.dart';
 import '../../features/admin/admin_users_screen.dart';
@@ -396,6 +398,19 @@ GoRouter get appRouter {
         path: '/admin/users',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const AdminUsersScreen(),
+      ),
+      GoRoute(
+        path: '/admin/feedback',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final status = state.uri.queryParameters['status'];
+          return AdminFeedbackScreen(initialStatus: status);
+        },
+      ),
+      GoRoute(
+        path: '/admin/metrics',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const AdminMetricsScreen(),
       ),
 
       // Recipe books routes (outside shell — navigated via push)

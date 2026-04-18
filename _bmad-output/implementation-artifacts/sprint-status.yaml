@@ -364,7 +364,7 @@ development_status:
   feedback-1-backend-model-and-submit-endpoint: done
   feedback-2-admin-endpoints-notification-fanout-and-stats: done
   feedback-3-flutter-send-feedback-sheet: done
-  feedback-4-flutter-admin-inbox-and-dashboard-card: backlog
+  feedback-4-flutter-admin-inbox-and-dashboard-card: done
   feedback-5-prod-fetch-script: backlog
   epic-user-feedback-retrospective: optional
 

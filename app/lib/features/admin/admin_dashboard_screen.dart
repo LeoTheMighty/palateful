@@ -26,6 +26,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int _totalRecipeBooks = 0;
   int _errors24h = 0;
   int _activeUsers7d = 0;
+  int _unreadFeedback = 0;
+  int? _overallP95Ms;
+  Map<String, dynamic>? _slowestEndpoint;
 
   bool _testPushSending = false;
   String? _testPushResult;
@@ -54,6 +57,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         _totalRecipeBooks = data['total_recipe_books'] as int? ?? 0;
         _errors24h = data['errors_24h'] as int? ?? 0;
         _activeUsers7d = data['active_users_7d'] as int? ?? 0;
+        _unreadFeedback = data['unread_feedback'] as int? ?? 0;
+        _overallP95Ms = data['overall_p95_ms'] as int?;
+        _slowestEndpoint = data['slowest_endpoint'] as Map<String, dynamic>?;
         _isLoading = false;
       });
     } catch (e) {
@@ -131,8 +137,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 _buildStatCard('Recipe Books', '$_totalRecipeBooks', Icons.menu_book, colorScheme.tertiary, colorScheme, textTheme),
                 _buildStatCard('Errors (24h)', '$_errors24h', Icons.error_outline, _errors24h > 0 ? colorScheme.error : colorScheme.primary, colorScheme, textTheme),
                 _buildStatCard('Active (7d)', '$_activeUsers7d', Icons.trending_up, colorScheme.primary, colorScheme, textTheme),
+                _buildStatCard(
+                  'p95 (24h)',
+                  _overallP95Ms == null ? '—' : '${_overallP95Ms}ms',
+                  Icons.speed,
+                  colorScheme.primary,
+                  colorScheme,
+                  textTheme,
+                ),
               ],
             ),
+            if (_slowestEndpoint != null) ...[
+              const SizedBox(height: 12),
+              _buildSlowestEndpointStrip(colorScheme, textTheme),
+            ],
 
             const SizedBox(height: 32),
             Text('Quick Actions', style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
@@ -164,6 +182,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               colorScheme: colorScheme,
               textTheme: textTheme,
             ),
+            const SizedBox(height: 8),
+            _buildNavTile(
+              icon: Icons.query_stats_outlined,
+              label: 'Metrics',
+              subtitle: 'Endpoint + Celery latency at p50/p95/p99',
+              onTap: () => context.push('/admin/metrics'),
+              colorScheme: colorScheme,
+              textTheme: textTheme,
+            ),
+            const SizedBox(height: 8),
+            _buildFeedbackTile(colorScheme, textTheme),
 
             const SizedBox(height: 32),
             Text(
@@ -319,6 +348,39 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  Widget _buildSlowestEndpointStrip(
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    final data = _slowestEndpoint!;
+    final method = data['method'] as String? ?? '—';
+    final path = data['normalized_path'] as String? ?? '—';
+    final p95 = data['p95_ms'] as int? ?? 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_outlined,
+              size: 18, color: colorScheme.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Slowest (24h): $method $path — ${p95}ms p95',
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onErrorContainer,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStatCard(
     String label,
     String value,
@@ -354,6 +416,70 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFeedbackTile(
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        key: const Key('admin_feedback_card'),
+        onTap: () => context.push(
+          '/admin/feedback${_unreadFeedback > 0 ? "?status=unread" : ""}',
+        ),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Icon(Icons.feedback_outlined,
+                  color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Feedback', style: textTheme.bodyLarge),
+                    Text(
+                      _unreadFeedback == 0
+                          ? 'No unread feedback'
+                          : '$_unreadFeedback unread',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_unreadFeedback > 0)
+                Container(
+                  key: const Key('admin_feedback_badge'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.error,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '$_unreadFeedback',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onError,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
