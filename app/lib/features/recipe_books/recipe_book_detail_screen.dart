@@ -10,6 +10,7 @@ import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
+import '../meals/widgets/create_meal_sheet.dart';
 import 'services/recipe_book_sync_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -151,6 +152,53 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
         _selectedRecipeIds.add(recipeId);
       }
     });
+  }
+
+  /// Build DraftMealComponent list from the currently-selected recipe
+  /// ids, preserving the order the recipes appear in `_recipes` so
+  /// the name pre-fill is deterministic.
+  List<DraftMealComponent> _selectedAsDraftComponents() {
+    final result = <DraftMealComponent>[];
+    for (final r in _recipes) {
+      final id = r['id']?.toString();
+      if (id == null || !_selectedRecipeIds.contains(id)) continue;
+      result.add(DraftMealComponent(
+        recipeId: id,
+        name: r['name'] as String? ?? 'Untitled',
+        imageUrl: r['image_url'] as String?,
+        bookName: _recipeBook?['name'] as String?,
+      ));
+    }
+    return result;
+  }
+
+  Future<void> _bulkCreateMeal() async {
+    if (_selectedRecipeIds.length < 2) return;
+    final components = _selectedAsDraftComponents();
+    await _openCreateMealSheet(initialComponents: components);
+    if (mounted) _exitSelectMode();
+  }
+
+  Future<void> _openCreateMealSheet({
+    required List<DraftMealComponent> initialComponents,
+  }) async {
+    final bookName = _recipeBook?['name'] as String? ?? 'Book';
+    await CreateMealSheet.show(
+      context,
+      bookId: widget.recipeBookId,
+      bookName: bookName,
+      initialComponents: initialComponents.isEmpty ? null : initialComponents,
+      onCreated: (meal) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Meal “${meal.name}” created')),
+        );
+        context.push('/meals/${meal.id}').then((_) {
+          if (mounted) _loadRecipeBook();
+        });
+      },
+    );
   }
 
   Future<void> _archiveRecipeBook() async {
@@ -701,6 +749,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                     onSelected: (value) {
                       if (value == 'edit') {
                         _renameRecipeBook();
+                      } else if (value == 'new_meal') {
+                        _openCreateMealSheet(
+                          initialComponents: const [],
+                        );
                       } else if (value == 'import_url') {
                         context.push('/recipes/add/url', extra: {
                           'recipeBookId': widget.recipeBookId,
@@ -725,6 +777,16 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                             Icon(Icons.edit_outlined),
                             SizedBox(width: 8),
                             Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'new_meal',
+                        child: Row(
+                          children: [
+                            Icon(Icons.set_meal_outlined),
+                            SizedBox(width: 8),
+                            Text('New Meal'),
                           ],
                         ),
                       ),
@@ -787,6 +849,14 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
+                    _BulkActionButton(
+                      icon: Icons.set_meal_outlined,
+                      label: 'Create Meal',
+                      onTap: (_selectedRecipeIds.length >= 2 &&
+                              !_isBulkOperating)
+                          ? _bulkCreateMeal
+                          : null,
+                    ),
                     _BulkActionButton(
                       icon: Icons.drive_file_move_outlined,
                       label: 'Move',
