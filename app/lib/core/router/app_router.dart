@@ -35,6 +35,7 @@ import '../../features/recipes/recipe_version_history_screen.dart';
 import '../../features/search/search_screen.dart';
 import '../../features/cart/cart_screen.dart';
 import '../../features/shopping_cart/screens/shopping_list_screen.dart';
+import '../../features/calendar/calendar_members_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/pantry/screens/pantry_editor_screen.dart';
 import '../../features/pantry/screens/pantry_list_screen.dart';
@@ -418,6 +419,20 @@ GoRouter get appRouter {
           final role = state.uri.queryParameters['role'] ?? 'viewer';
           return RecipeBookMembersScreen(
             recipeBookId: id,
+            userRole: role,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/calendar/:id/members',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          final role = state.uri.queryParameters['role'] ?? 'editor';
+          final name = state.uri.queryParameters['name'] ?? 'Calendar';
+          return CalendarMembersScreen(
+            calendarId: id,
+            calendarName: name,
             userRole: role,
           );
         },

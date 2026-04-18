@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
 import '../models/calendar.dart';
@@ -256,7 +257,25 @@ class _CalendarSettingsSheetState
               ],
             ),
             const SizedBox(height: 20),
-            Text('Members', style: theme.textTheme.titleMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Members', style: theme.textTheme.titleMedium),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Manage members',
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    context.push(
+                      '/calendar/${widget.calendar.id}/members'
+                      '?role=${widget.calendar.userRole}'
+                      '&name=${Uri.encodeQueryComponent(widget.calendar.name)}',
+                    );
+                  },
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             _buildMembersSection(theme, colorScheme),
             const SizedBox(height: 24),
