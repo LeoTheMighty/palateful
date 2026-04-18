@@ -930,4 +930,62 @@ class ApiClient {
       queryParameters: {'error_limit': errorLimit},
     );
   }
+
+  // ---------------------------------------------------------------------
+  // Meals (mcv-2, mcv-3)
+  // ---------------------------------------------------------------------
+
+  Future<Response> listMeals({
+    int limit = 20,
+    int offset = 0,
+    bool includeArchived = false,
+  }) =>
+      _dio.get('/v1/meals', queryParameters: {
+        'limit': limit,
+        'offset': offset,
+        if (includeArchived) 'include_archived': 'true',
+      });
+
+  Future<Response> getMeal(String mealId) => _dio.get('/v1/meals/$mealId');
+
+  Future<Response> updateMeal(String mealId, Map<String, dynamic> data) =>
+      _dio.patch('/v1/meals/$mealId', data: data);
+
+  Future<Response> archiveMeal(String mealId) =>
+      _dio.post('/v1/meals/$mealId/archive');
+
+  Future<Response> restoreMeal(String mealId) =>
+      _dio.post('/v1/meals/$mealId/restore');
+
+  Future<Response> addRecipeToMeal(String mealId, Map<String, dynamic> data) =>
+      _dio.post('/v1/meals/$mealId/recipes', data: data);
+
+  Future<Response> removeRecipeFromMeal(String mealId, String recipeId) =>
+      _dio.delete('/v1/meals/$mealId/recipes/$recipeId');
+
+  Future<Response> reorderMealComponents(
+          String mealId, Map<String, dynamic> data) =>
+      _dio.post('/v1/meals/$mealId/reorder', data: data);
+
+  Future<Response> favoriteMeal(String mealId) =>
+      _dio.post('/v1/meals/$mealId/favorite');
+
+  Future<Response> unfavoriteMeal(String mealId) =>
+      _dio.delete('/v1/meals/$mealId/favorite');
+
+  Future<Response> listMealsInBook(
+    String bookId, {
+    int limit = 20,
+    int offset = 0,
+    bool includeArchived = false,
+  }) =>
+      _dio.get('/v1/recipe-books/$bookId/meals', queryParameters: {
+        'limit': limit,
+        'offset': offset,
+        if (includeArchived) 'include_archived': 'true',
+      });
+
+  Future<Response> createMealInBook(
+          String bookId, Map<String, dynamic> data) =>
+      _dio.post('/v1/recipe-books/$bookId/meals', data: data);
 }

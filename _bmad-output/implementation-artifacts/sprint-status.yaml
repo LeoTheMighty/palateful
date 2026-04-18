@@ -586,7 +586,7 @@ development_status:
   mcv-1-backend-meals-and-meal-recipes-and-meal-favorites-migration-and-models: done
   mcv-2-backend-meal-crud-endpoints-and-service: done
   mcv-3-backend-component-add-remove-reorder-endpoints-and-favorite: done
-  mcv-4-flutter-meal-model-service-provider-and-router: backlog
+  mcv-4-flutter-meal-model-service-provider-and-router: done
   mcv-5-flutter-create-meal-multiselect-entry-and-standalone: backlog
   mcv-6-flutter-meal-detail-and-edit-screens: backlog
   mcv-7-flutter-meal-tile-in-book-grid-fork-path: backlog

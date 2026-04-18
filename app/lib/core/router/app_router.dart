@@ -13,6 +13,8 @@ import '../../features/recipe_books/archived_recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_members_screen.dart';
 import '../../features/recipe_books/recipe_books_screen.dart';
 import '../../features/recipe_books/recipe_book_detail_screen.dart';
+import '../../features/meals/meal_detail_screen.dart';
+import '../../features/meals/meal_edit_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
 import '../../features/recipes/archived_recipes_screen.dart';
 import '../../features/recipes/cook_mode/cook_mode_screen.dart';
@@ -211,6 +213,31 @@ GoRouter get appRouter {
             context: context,
             state: state,
             child: EditRecipeScreen(recipeId: id),
+          );
+        },
+      ),
+      // Meals (mcv-4 wires these; mcv-6 fills in the screens).
+      GoRoute(
+        path: '/meals/:mealId',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['mealId']!;
+          return buildReduceMotionPage(
+            context: context,
+            state: state,
+            child: MealDetailScreen(mealId: id),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/meals/:mealId/edit',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['mealId']!;
+          return buildReduceMotionPage(
+            context: context,
+            state: state,
+            child: MealEditScreen(mealId: id),
           );
         },
       ),
