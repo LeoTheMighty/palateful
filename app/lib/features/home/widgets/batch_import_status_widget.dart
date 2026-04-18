@@ -88,7 +88,7 @@ class _BatchImportStatusWidgetState extends State<BatchImportStatusWidget> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: GestureDetector(
-        onTap: () => context.push('/activity/import-history'),
+        onTap: () => context.push('/activity?tab=imports'),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(

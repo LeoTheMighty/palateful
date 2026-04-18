@@ -15,13 +15,17 @@ import 'providers/activity_read_provider.dart';
 /// Default view shows only actionable items (needs review, failed, processing).
 /// "Show import history" toggle reveals completed/skipped jobs.
 ///
-/// When [embedded] is true (ahr-2 shell embedding), the body renders
-/// without its own [Scaffold]/[AppBar] — the parent [ActivityScreen]
-/// owns the app bar + tab strip. ahr-4 will replace this embedded body
-/// with the color-sectioned Imports tab layout. The standalone route
-/// `/activity/import-history` is retired in ahr-7; ahr-7 also applies
-/// a `@Deprecated` marker on this class. Kept here for one release as
-/// the route-less Imports-tab body.
+/// Retired in ahr-7 (epic-activity-hub-redesign): the standalone
+/// `/activity/import-history` route now redirects to
+/// `/activity?tab=imports`, and the Imports tab renders the new
+/// color-sectioned [ImportsTab] body. This class has no callers; it
+/// survives one release as deprecated to catch any in-flight push
+/// payloads whose builders still construct it, then gets deleted in
+/// the next epic's cleanup pass.
+@Deprecated(
+  'Replaced by ImportsTab + the /activity?tab=imports deep-link (ahr-7). '
+  'Will be deleted in the follow-up epic after one release.',
+)
 class ImportHistoryScreen extends StatefulWidget {
   final bool embedded;
 

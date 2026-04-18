@@ -27,14 +27,6 @@ enum ActivityTab {
     }
   }
 
-  /// Parse the legacy `?filter=<value>` query parameter. `filter=imports`
-  /// maps to the Imports tab; `filter=all|partner|reminders` maps to
-  /// Notifications. Used by the backward-compat router shim for one
-  /// release.
-  static ActivityTab fromLegacyFilter(String? filter) {
-    if (filter == 'imports') return ActivityTab.imports;
-    return ActivityTab.notifications;
-  }
 }
 
 /// The currently-selected Activity Hub tab.

@@ -7,8 +7,9 @@ import '../state/import_batches_provider.dart';
 
 /// Slim ambient indicator for active imports, shown on the Add Recipe sheet.
 /// When no imports are active, the strip renders nothing — no empty state.
-/// Taps through to `/activity?filter=imports` so the Activity Hub owns the
-/// full pipeline-state UI (bugs-act-3).
+/// Taps through to `/activity?tab=imports` so the Activity Hub owns the
+/// full pipeline-state UI (bugs-act-3; ahr-7 migrated the deep-link from
+/// the legacy `?filter=imports`).
 class LiveImportStrip extends ConsumerWidget {
   const LiveImportStrip({super.key});
 
@@ -40,7 +41,7 @@ class LiveImportStrip extends ConsumerWidget {
           // Close the Add Recipe sheet, then route to the Activity Hub's
           // imports filter. The hub owns the full list + actions.
           Navigator.of(context).maybePop();
-          context.push('/activity?filter=imports');
+          context.push('/activity?tab=imports');
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
