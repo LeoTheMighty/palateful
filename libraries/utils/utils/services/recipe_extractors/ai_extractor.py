@@ -19,27 +19,34 @@ logger = logging.getLogger(__name__)
 GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015  # $0.00015 per 1K tokens average
 
 
-EXTRACTION_PROMPT = """Extract the recipe from the following HTML content and return it as JSON.
+EXTRACTION_PROMPT = """Extract every recipe from the following HTML content and return them as JSON.
+
+If the page contains MULTIPLE DISTINCT recipes (with separate titles and separate ingredient lists), emit each as a separate object in the "recipes" array. A "Variation" or "Notes" section is NOT a distinct recipe. If there is only one recipe, return a length-1 array.
 
 Return a JSON object with the following structure:
 {
-    "name": "Recipe name",
-    "description": "Brief description",
-    "ingredients": [
-        {"text": "all-purpose flour, sifted", "quantity": 2, "unit": "cups", "name": "all-purpose flour", "notes": "sifted", "is_optional": false}
-    ],
-    "instructions": "Step-by-step instructions as a single string",
-    "servings": 4,
-    "prep_time_minutes": 15,
-    "cook_time_minutes": 30,
-    "image_url": "https://example.com/image.jpg",
-    "author": "Author name",
-    "cuisine": "Italian",
-    "category": "Main Course"
+    "recipes": [
+        {
+            "name": "Recipe name",
+            "description": "Brief description",
+            "ingredients": [
+                {"text": "all-purpose flour, sifted", "quantity": 2, "unit": "cups", "name": "all-purpose flour", "notes": "sifted", "is_optional": false}
+            ],
+            "instructions": "Step-by-step instructions as a single string",
+            "servings": 4,
+            "prep_time_minutes": 15,
+            "cook_time_minutes": 30,
+            "image_url": "https://example.com/image.jpg",
+            "author": "Author name",
+            "cuisine": "Italian",
+            "category": "Main Course",
+            "primary_vibe": "...",
+            "secondary_vibe": "..." or null
+        }
+    ]
 }
 
-Also assign 1-2 vibes from: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
-Include in your JSON response: "primary_vibe": "...", "secondary_vibe": "..." or null
+Vibes: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
 
 Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
 
@@ -165,12 +172,19 @@ class AIExtractor(BaseExtractor):
                     ai_cost_cents=cost_cents,
                 )
 
-            # Parse into ExtractedRecipe
-            recipe = self._parse_ai_response(data, url)
+            recipes = self._parse_recipes_payload(data, url)
+            if not recipes:
+                return ExtractionResult(
+                    success=False,
+                    error_message="No recipes found in AI response",
+                    error_code="AI_NO_RECIPE_FOUND",
+                    extractor_used=self.name,
+                    ai_cost_cents=cost_cents,
+                )
 
             return ExtractionResult(
                 success=True,
-                recipe=recipe,
+                recipes=recipes,
                 extractor_used=self.name,
                 ai_cost_cents=cost_cents,
             )
@@ -213,6 +227,27 @@ class AIExtractor(BaseExtractor):
         html = re.sub(r"\s+", " ", html)
 
         return html.strip()
+
+    def _parse_recipes_payload(
+        self, data: dict, url: str | None = None
+    ) -> list[ExtractedRecipe]:
+        """Parse the AI response into a list of ExtractedRecipe.
+
+        Accepts both the multi-recipe shape (`{"recipes": [...]}`) and
+        the legacy bare-recipe shape. A bare object is wrapped in a
+        length-1 list with a warning.
+        """
+        raw_list = data.get("recipes")
+        if isinstance(raw_list, list):
+            return [
+                self._parse_ai_response(item, url)
+                for item in raw_list
+                if isinstance(item, dict)
+            ]
+        logger.warning(
+            "ai_extractor: model returned bare recipe instead of {'recipes': [...]}; wrapping"
+        )
+        return [self._parse_ai_response(data, url)]
 
     def _parse_ai_response(self, data: dict, url: str | None = None) -> ExtractedRecipe:
         """Parse AI response into ExtractedRecipe."""

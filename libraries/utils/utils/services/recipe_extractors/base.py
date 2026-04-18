@@ -64,14 +64,35 @@ class ExtractedRecipe:
 
 @dataclass
 class ExtractionResult:
-    """Result of a recipe extraction attempt."""
+    """Result of a recipe extraction attempt.
+
+    The canonical shape is `recipes: list[ExtractedRecipe]` — extractors
+    may emit multiple recipes from a single source (e.g. a cookbook page
+    with two recipes side-by-side). Single-recipe inputs produce a
+    length-1 list.
+
+    The `recipe` field is a DEPRECATED alias kept for one cycle to ease
+    migration (the eval framework still reads it). Callers should move
+    to `recipes`. `__post_init__` keeps the two in sync: setting either
+    one populates the other, and both reference the same underlying
+    object so mutations propagate.
+    """
 
     success: bool
+    recipes: list[ExtractedRecipe] = field(default_factory=list)
+    # DEPRECATED: remove in next extractor-touching epic.
     recipe: ExtractedRecipe | None = None
     error_message: str | None = None
     error_code: str | None = None
     extractor_used: str | None = None
     ai_cost_cents: int = 0
+
+    def __post_init__(self):
+        if self.recipes:
+            if self.recipe is None:
+                self.recipe = self.recipes[0]
+        elif self.recipe is not None:
+            self.recipes = [self.recipe]
 
 
 def validate_vibe(vibe: str | None) -> str | None:

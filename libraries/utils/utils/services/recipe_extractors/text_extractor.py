@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015
 
-TEXT_EXTRACTION_PROMPT = """Extract the recipe from the following OCR text and return it as JSON.
+TEXT_EXTRACTION_PROMPT = """Extract every recipe from the following OCR text and return them as JSON.
 
 The text was obtained via OCR from a photograph of a physical recipe (cookbook page, recipe card, handwritten note, etc.).
 It may contain OCR artifacts such as:
@@ -26,36 +26,46 @@ It may contain OCR artifacts such as:
 - Garbled text, repeated characters, or missing spaces
 - Headers, footers, page numbers, or watermarks mixed in
 
-Do your best to interpret and correct these OCR errors to produce a clean, accurate recipe.
+Do your best to interpret and correct these OCR errors to produce clean, accurate recipes.
+
+Multi-recipe detection:
+- If the OCR text contains MULTIPLE DISTINCT recipes (e.g. a cookbook facing-page spread, two recipe cards side-by-side, a three-panel layout), emit EACH as a separate object in the "recipes" array.
+- A recipe is "distinct" when it has its own title AND its own ingredient list. Emit them in the order they read top-to-bottom, left-to-right.
+- A "Variation", "Substitution Notes", "Make-Ahead Tips", or "Serving Suggestions" subsection is NOT a distinct recipe — it belongs to the preceding recipe (fold notes into that recipe's description or ignore).
+- If only one recipe is present, return a length-1 array.
 
 Return a JSON object with EXACTLY this structure:
 {
-    "name": "Recipe Name",
-    "description": "Brief 1-2 sentence description of the dish",
-    "ingredients": [
+    "recipes": [
         {
-            "text": "all-purpose flour, sifted",
-            "quantity": 2,
-            "unit": "cups",
-            "name": "all-purpose flour",
-            "notes": "sifted",
-            "is_optional": false
+            "name": "Recipe Name",
+            "description": "Brief 1-2 sentence description of the dish",
+            "ingredients": [
+                {
+                    "text": "all-purpose flour, sifted",
+                    "quantity": 2,
+                    "unit": "cups",
+                    "name": "all-purpose flour",
+                    "notes": "sifted",
+                    "is_optional": false
+                }
+            ],
+            "steps": [
+                {"instruction": "Preheat oven to 350F.", "order": 1},
+                {"instruction": "Mix dry ingredients in a large bowl.", "order": 2},
+                {"instruction": "Bake for 25 minutes.", "order": 3}
+            ],
+            "servings": 4,
+            "prep_time_minutes": 15,
+            "cook_time_minutes": 30,
+            "total_time_minutes": 45,
+            "author": "Author name if found",
+            "cuisine": "e.g. Italian, Mexican, American, etc.",
+            "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
+            "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
+            "secondary_vibe": "a different vibe from the same list, or null"
         }
-    ],
-    "steps": [
-        {"instruction": "Preheat oven to 350F.", "order": 1},
-        {"instruction": "Mix dry ingredients in a large bowl.", "order": 2},
-        {"instruction": "Bake for 25 minutes.", "order": 3}
-    ],
-    "servings": 4,
-    "prep_time_minutes": 15,
-    "cook_time_minutes": 30,
-    "total_time_minutes": 45,
-    "author": "Author name if found",
-    "cuisine": "e.g. Italian, Mexican, American, etc.",
-    "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
-    "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
-    "secondary_vibe": "a different vibe from the same list, or null"
+    ]
 }
 
 Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
@@ -238,11 +248,19 @@ def extract_recipe_from_text(
                 ai_cost_cents=cost_cents,
             )
 
-        recipe = _parse_response(data)
+        recipes = _parse_recipes_payload(data)
+        if not recipes:
+            return ExtractionResult(
+                success=False,
+                error_message="No recipes found in AI response",
+                error_code="AI_NO_RECIPE_FOUND",
+                extractor_used="text_ai",
+                ai_cost_cents=cost_cents,
+            )
 
         return ExtractionResult(
             success=True,
-            recipe=recipe,
+            recipes=recipes,
             extractor_used="text_ai",
             ai_cost_cents=cost_cents,
         )
@@ -263,6 +281,27 @@ def extract_recipe_from_text(
             error_code="AI_EXTRACTION_ERROR",
             extractor_used="text_ai",
         )
+
+
+def _parse_recipes_payload(data: dict) -> list[ExtractedRecipe]:
+    """Parse the AI response into a list of ExtractedRecipe.
+
+    Accepts both the new multi-recipe shape (`{"recipes": [...]}`) and
+    the legacy bare-recipe shape (a recipe object at the top level). A
+    bare object is silently wrapped in a length-1 list; this keeps the
+    pipeline working when the model ignores the new instruction.
+    """
+    raw_list = data.get("recipes")
+    if isinstance(raw_list, list):
+        return [
+            _parse_response(item)
+            for item in raw_list
+            if isinstance(item, dict)
+        ]
+    logger.warning(
+        "text_extractor: model returned bare recipe instead of {'recipes': [...]}; wrapping"
+    )
+    return [_parse_response(data)]
 
 
 def _parse_response(data: dict) -> ExtractedRecipe:

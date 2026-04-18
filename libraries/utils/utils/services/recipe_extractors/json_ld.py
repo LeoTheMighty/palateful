@@ -41,9 +41,12 @@ class JsonLdExtractor(BaseExtractor):
                 )
 
             recipe = self._parse_recipe_data(recipe_data, url)
+            # JSON-LD is single-recipe by nature (Schema.org Recipe type).
+            # Wrap in a length-1 list to satisfy the ExtractionResult.recipes
+            # contract uniformly; downstream callers no longer special-case N=1.
             return ExtractionResult(
                 success=True,
-                recipe=recipe,
+                recipes=[recipe],
                 extractor_used=self.name,
             )
         except Exception as e:

@@ -20,40 +20,50 @@ logger = logging.getLogger(__name__)
 
 GPT4O_MINI_COST_PER_1K_TOKENS = 0.00015
 
-VISION_SYSTEM_PROMPT = """Extract the recipe from this image and return it as JSON.
+VISION_SYSTEM_PROMPT = """Extract every recipe from this image and return them as JSON.
 
 The image may be a cookbook page, printed recipe card, handwritten recipe, screenshot, or phone photo.
 Handle these common challenges:
 - Handwritten text: do your best to decipher; skip truly illegible parts
 - Partial or cropped images: extract whatever is visible
 - Blurry or low-quality photos: infer from context when characters are unclear
-- Multiple recipes on a page: extract only the primary/largest recipe
+- Multiple recipes on a page: emit each as a separate object in the "recipes" array; do not merge them.
 - Decorative fonts or watermarks: ignore non-recipe content
+
+Multi-recipe detection:
+- If the image contains MULTIPLE DISTINCT recipes (e.g. a cookbook facing-page spread, two recipe cards side-by-side), emit EACH as a separate object in the "recipes" array, in the order they read top-to-bottom, left-to-right.
+- A recipe is "distinct" when it has its own title AND its own ingredient list.
+- A "Variation", "Substitution Notes", or "Serving Suggestions" subsection is NOT a distinct recipe — fold it into the preceding recipe's description or ignore.
+- If only one recipe is present, return a length-1 array.
 
 Return a JSON object with EXACTLY this structure:
 {
-    "name": "Recipe Name",
-    "description": "Brief 1-2 sentence description of the dish",
-    "ingredients": [
+    "recipes": [
         {
-            "text": "all-purpose flour, sifted",
-            "quantity": 2,
-            "unit": "cups",
-            "name": "all-purpose flour",
-            "notes": "sifted",
-            "is_optional": false
+            "name": "Recipe Name",
+            "description": "Brief 1-2 sentence description of the dish",
+            "ingredients": [
+                {
+                    "text": "all-purpose flour, sifted",
+                    "quantity": 2,
+                    "unit": "cups",
+                    "name": "all-purpose flour",
+                    "notes": "sifted",
+                    "is_optional": false
+                }
+            ],
+            "instructions": "All steps as a single string, numbered. E.g.: 1. Preheat oven to 350F. 2. Mix dry ingredients...",
+            "servings": 4,
+            "prep_time_minutes": 15,
+            "cook_time_minutes": 30,
+            "total_time_minutes": 45,
+            "author": "Author name if visible",
+            "cuisine": "e.g. Italian, Mexican, American, etc.",
+            "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
+            "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
+            "secondary_vibe": "a different vibe from the same list, or null"
         }
-    ],
-    "instructions": "All steps as a single string, numbered. E.g.: 1. Preheat oven to 350F. 2. Mix dry ingredients...",
-    "servings": 4,
-    "prep_time_minutes": 15,
-    "cook_time_minutes": 30,
-    "total_time_minutes": 45,
-    "author": "Author name if visible",
-    "cuisine": "e.g. Italian, Mexican, American, etc.",
-    "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
-    "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
-    "secondary_vibe": "a different vibe from the same list, or null"
+    ]
 }
 
 Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tablespoons 9 tablespoons butter".
@@ -188,16 +198,27 @@ def extract_recipe_from_image(
                 ai_cost_cents=cost_cents,
             )
 
-        # Validate against standard schema
-        is_valid, errors = validate_extraction_result(data)
-        if not is_valid:
-            logger.warning("Vision extraction produced invalid schema: %s", errors)
+        # Validate against standard schema — applied per-recipe below on the
+        # bare-object fallback; the multi-recipe wrapper fails this check
+        # because validate_extraction_result expects a single recipe shape.
+        if "recipes" not in data:
+            is_valid, errors = validate_extraction_result(data)
+            if not is_valid:
+                logger.warning("Vision extraction produced invalid schema: %s", errors)
 
-        recipe = _parse_response(data)
+        recipes = _parse_recipes_payload(data)
+        if not recipes:
+            return ExtractionResult(
+                success=False,
+                error_message="No recipes found in AI response",
+                error_code="AI_NO_RECIPE_FOUND",
+                extractor_used="vision_ai",
+                ai_cost_cents=cost_cents,
+            )
 
         return ExtractionResult(
             success=True,
-            recipe=recipe,
+            recipes=recipes,
             extractor_used="vision_ai",
             ai_cost_cents=cost_cents,
         )
@@ -218,6 +239,27 @@ def extract_recipe_from_image(
             error_code="AI_EXTRACTION_ERROR",
             extractor_used="vision_ai",
         )
+
+
+def _parse_recipes_payload(data: dict) -> list[ExtractedRecipe]:
+    """Parse the vision-AI response into a list of ExtractedRecipe.
+
+    Accepts both the new multi-recipe shape (`{"recipes": [...]}`) and
+    the legacy bare-recipe shape. A bare object is silently wrapped in a
+    length-1 list so the pipeline keeps working if the model ignores the
+    new instruction.
+    """
+    raw_list = data.get("recipes")
+    if isinstance(raw_list, list):
+        return [
+            _parse_response(item)
+            for item in raw_list
+            if isinstance(item, dict)
+        ]
+    logger.warning(
+        "vision_extractor: model returned bare recipe instead of {'recipes': [...]}; wrapping"
+    )
+    return [_parse_response(data)]
 
 
 def _parse_response(data: dict) -> ExtractedRecipe:
