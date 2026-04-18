@@ -11,6 +11,7 @@ import 'providers/activity_archive_provider.dart';
 import 'providers/imports_actionable_badge_provider.dart';
 import 'widgets/import_row.dart';
 import 'widgets/import_state_section.dart';
+import 'widgets/see_all_footer.dart';
 
 /// Four-section Imports tab (blue / yellow / red / green). Replaces
 /// the embedded `ImportHistoryScreen` that ahr-2 shipped as an
@@ -43,6 +44,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   List<_ItemView> _needsReview = [];
   List<_ItemView> _failed = [];
   List<_ItemView> _autoImported = [];
+  int _seeAllCount = 0;
+
+  /// Completed items older than 30 days — kept alongside live data so
+  /// the See-all footer can render them without a second fetch.
+  List<dynamic> _completedOver30d = [];
 
   bool _isLoading = true;
   String? _error;
@@ -132,20 +138,58 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           .toList()
         ..sort(_byCreatedAtDesc);
 
-      final autoImported = rawCompleted
-          .expand<_ItemView>((j) => (itemsByJobId[j['id'].toString()] ?? [])
-              .where((i) =>
-                  i['status'] == 'completed' &&
-                  i['created_recipe_id'] != null)
-              .map((i) => _ItemView.fromJson(i, j)))
-          .toList()
-        ..sort(_byCreatedAtDesc);
+      // Split completed items into "recent auto-imported" (≤30d, still
+      // in the green section) vs "older than 30d" (see-all footer).
+      final cutoff = DateTime.now().subtract(const Duration(days: 30));
+      final autoImported = <_ItemView>[];
+      final completedOver30d = <dynamic>[];
+      for (final j in rawCompleted) {
+        for (final i in itemsByJobId[j['id'].toString()] ?? []) {
+          if (i['status'] != 'completed') continue;
+          final createdIso = i['created_at']?.toString();
+          final created = createdIso != null
+              ? DateTime.tryParse(createdIso)
+              : null;
+          final isOver30d = created != null && created.isBefore(cutoff);
+          if (isOver30d) {
+            completedOver30d.add({...i, 'source_type': i['source_type'] ?? j['source_type']});
+          } else if (i['created_recipe_id'] != null) {
+            autoImported.add(_ItemView.fromJson(i, j));
+          }
+        }
+      }
+      autoImported.sort(_byCreatedAtDesc);
+
+      // Count of archived items across all statuses. Lightweight
+      // additional call — used only for the See-all N. This runs on
+      // every poll but the endpoint is cheap and server-cached.
+      var archivedCount = 0;
+      try {
+        final archivedResponse = await _apiClient.listImportJobs(
+          archivedOnly: true,
+          limit: 1,
+          includeArchived: true,
+        );
+        if (!mounted) return;
+        // The API returns jobs, not item count — but ahr-1 documents
+        // that jobs ARE the list scope here. For the footer's N we use
+        // the response's `total` if provided, else fall back to the
+        // `jobs` length. (Either number is good enough for "See all
+        // (N)" — the precise count gets authoritative on expand-fetch.)
+        final total = (archivedResponse.data['total'] as num?)?.toInt();
+        final jobs = (archivedResponse.data['jobs'] as List?)?.length ?? 0;
+        archivedCount = total ?? jobs;
+      } catch (_) {
+        // Non-fatal — footer just falls back to >30d count only.
+      }
 
       setState(() {
         _inProgress = inProgress;
         _needsReview = needsReview;
         _failed = failed;
         _autoImported = autoImported;
+        _completedOver30d = completedOver30d;
+        _seeAllCount = archivedCount + completedOver30d.length;
         _isLoading = false;
       });
 
@@ -276,6 +320,12 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                 ],
               ),
             ),
+            // See-all is still reachable even when live sections are
+            // empty — archived items + >30d history always live here.
+            SeeAllFooter(
+              count: _seeAllCount,
+              onLoad: _loadSeeAllRows,
+            ),
           ],
         ),
       );
@@ -340,8 +390,74 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                     ))
                 .toList(),
           ),
+          SeeAllFooter(
+            count: _seeAllCount,
+            onLoad: _loadSeeAllRows,
+          ),
         ],
       ),
+    );
+  }
+
+  /// Fetches archived jobs + their items and combines with the
+  /// already-loaded >30d completed items. Called lazily by the footer
+  /// on first expand; result is cached by the footer itself.
+  Future<List<SeeAllItemView>> _loadSeeAllRows() async {
+    final archivedRows = <SeeAllItemView>[];
+    try {
+      final jobsResponse = await _apiClient.listImportJobs(
+        archivedOnly: true,
+        includeArchived: true,
+        limit: 100,
+      );
+      final archivedJobs =
+          List<dynamic>.from(jobsResponse.data['jobs'] ?? []);
+      final itemResults = await Future.wait(archivedJobs.map(
+        (j) => _apiClient.listImportItems(j['id'].toString()),
+      ));
+      for (var i = 0; i < archivedJobs.length; i++) {
+        final j = archivedJobs[i];
+        final items = List<dynamic>.from(itemResults[i].data['items'] ?? []);
+        for (final item in items) {
+          archivedRows.add(_seeAllViewFromRaw(item, j));
+        }
+      }
+    } catch (_) {
+      // Swallow — we'll still surface >30d rows.
+    }
+
+    final over30dRows = _completedOver30d.map((m) {
+      return _seeAllViewFromRaw(m, const {});
+    }).toList();
+
+    final all = [...archivedRows, ...over30dRows];
+    all.sort((a, b) {
+      final ka = a.archivedAt ?? a.createdAt;
+      final kb = b.archivedAt ?? b.createdAt;
+      if (ka == null && kb == null) return 0;
+      if (ka == null) return 1;
+      if (kb == null) return -1;
+      return kb.compareTo(ka);
+    });
+    return all;
+  }
+
+  static SeeAllItemView _seeAllViewFromRaw(dynamic item, dynamic parentJob) {
+    final parent = parentJob is Map ? parentJob : const {};
+    return SeeAllItemView(
+      id: item['id'].toString(),
+      title: (item['recipe_name']?.toString().isNotEmpty ?? false)
+          ? item['recipe_name'].toString()
+          : 'Untitled',
+      sourceType:
+          (item['source_type'] ?? parent['source_type']) as String?,
+      statusLabel: item['status']?.toString(),
+      archivedAt: item['archived_at'] != null
+          ? DateTime.tryParse(item['archived_at'].toString())
+          : null,
+      createdAt: item['created_at'] != null
+          ? DateTime.tryParse(item['created_at'].toString())
+          : null,
     );
   }
 

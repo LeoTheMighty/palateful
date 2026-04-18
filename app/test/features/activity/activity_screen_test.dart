@@ -30,8 +30,13 @@ class _FakeApiClient extends ApiClient {
       _fakeResponse({'items': activities, 'total': activities.length});
 
   @override
-  Future<Response> listImportJobs(
-          {String? status, int limit = 20, int offset = 0}) async =>
+  Future<Response> listImportJobs({
+    String? status,
+    int limit = 20,
+    int offset = 0,
+    bool includeArchived = false,
+    bool archivedOnly = false,
+  }) async =>
       _fakeResponse({'jobs': []});
 
   @override
