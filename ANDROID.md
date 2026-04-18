@@ -676,12 +676,132 @@ sensitive-permission justification textarea.*
 
 ## Section 17 — Tester recruitment
 
-*Content below is owned by `apl-4` — Google Group creation, Play
-Console internal-testing wiring, opt-in URL format + capture,
-outreach email template with GitHub Issues feedback link, and
-14-day gate expectation-setting.*
+Goal: populate the Play Console Internal testing track with 12+
+active testers so the 14-day gate starts accruing the day the first
+AAB lands.
 
-*(apl-4 content appends here — placeholder until that story lands.)*
+### 17.1 — Create a Google Group for testers
+
+Play Console's Internal testing track accepts up to 100 individual
+email addresses — but managing those by hand is fragile. A single
+Google Group address is the supported way to scale tester
+recruitment without re-typing emails per invite.
+
+1. Visit [https://groups.google.com/](https://groups.google.com/).
+2. Click **Create group**.
+3. Fill:
+   - **Group name:** `Palateful Android Testers`
+   - **Group email:** `palateful-android-testers` (domain
+     auto-fills to `googlegroups.com`)
+   - **Description:** `Internal testers for the Palateful Android app. Members opt in via the Play Console internal-testing URL.`
+4. Access settings:
+   - **Who can see group:** Public (anyone can find — helps testers
+     verify the group is real).
+   - **Who can join:** Anyone can ask.
+   - **Who can post:** Group members only.
+   - **Who can view conversations:** Members only (don't leak
+     tester emails to search).
+5. → **Create group**.
+6. Final group address:
+   `palateful-android-testers@googlegroups.com`.
+
+### 17.2 — Wire the Google Group to Play Console Internal testing
+
+1. Play Console → Testing → **Internal testing** → **Testers** tab.
+2. Click **Manage testers** → **Create email list** (or use an
+   existing list).
+3. Add `palateful-android-testers@googlegroups.com` as the sole
+   tester. Save.
+4. Enable the list for this track. Save again.
+5. Under **How testers join your test**, copy the **Opt-in URL**.
+   Format (real value assigned by Google — read from Play Console,
+   do not guess):
+
+   ```
+   https://play.google.com/apps/internaltest/<app-specific-id>
+   ```
+
+   The `<app-specific-id>` is a long numeric string Play Console
+   generates per-app per-track. It's stable for the life of the
+   track; bookmark it in 1Password as
+   `Palateful / Android Internal Opt-in URL`.
+
+### 17.3 — Outreach email template
+
+Send to prospective testers individually (so testers can forward to
+their own Google account if the address they gave you is a work
+one). Paste into Gmail / Mail:
+
+```
+Subject: Palateful internal-testing — install on your Android phone
+
+Hi <name>,
+
+I'm publishing Palateful (the kitchen + recipes app I've been
+building) to the Google Play Store internal-testing track. Would
+love your help breaking it.
+
+To install:
+
+1. Join the tester group by emailing this address and waiting for
+   approval: palateful-android-testers@googlegroups.com
+   (subject/body can be empty — I just need you on the group).
+
+2. Once approved (I'll approve within a few hours), open this
+   opt-in URL on your Android phone, signed into the same Google
+   account you used to join the group:
+
+   <PASTE OPT-IN URL FROM SECTION 17.2 STEP 5>
+
+3. Accept the tester opt-in, then install from the Play Store
+   listing that opens.
+
+If anything breaks, reply to this email or file a GitHub issue at
+https://github.com/<your-user>/palateful/issues — either works.
+
+Thanks!
+Leo · leonid@ac93.org
+```
+
+Notes for the operator before sending:
+
+- Replace `<your-user>` with your actual GitHub username.
+- Paste the real opt-in URL from 17.2 into step 2.
+- Use the same Google account between the group join and the
+  phone's Play Store — Google matches them by account, not by the
+  tester's email address.
+
+### 17.4 — Expectation-setting block for testers
+
+Pasted verbatim into the outreach email above (or sent as a
+follow-up once testers confirm they've installed). Google requires
+the closed-test gate before a new developer account can publish to
+production:
+
+```
+Heads-up on Google's rules for new developer accounts: we need at
+least 12 people to install the app and keep it installed for 14
+days before Google lets us push to the production track. Please
+keep Palateful installed even if you only open it once or twice —
+every active install counts toward the gate.
+
+Thanks for testing!
+```
+
+### 17.5 — Operator-side target (internal note — not for testers)
+
+Budget: aim for **15–20 invitations** to reliably land 12 active
+testers on day 14. Empirical rule of thumb: 60–70% install-and-keep
+rate among friends/family asked cold. If day-7 headcount is below 8,
+send a second wave.
+
+Tracking:
+
+- Play Console → Testing → Internal testing → **Statistics** → shows
+  daily active install count per track.
+- Firebase Crashlytics → User segments → filters by app version.
+- Backend: `push_tokens` row count per user (proxy for "installed
+  and signed in").
 
 ## Section 18 — First CI-driven release (tag → internal track)
 
