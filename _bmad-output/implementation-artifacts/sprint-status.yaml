@@ -542,7 +542,12 @@ development_status:
   # Android epics.
   epic-android-play-console-launch: in-progress
   apl-1-draft-android-md-runbook-skeleton: done
-  apl-2-produce-play-console-store-listing-assets: backlog
+  # apl-2 split autonomous / operator: /dev landed icon-512.png (sips
+  # downscale of icon-source-1024.png) + README.md documenting the
+  # feature-graphic + 4 phone screenshots as operator action. Flip to
+  # `done` after the operator commits feature-graphic-1024x500.png +
+  # screenshots/phone-{1,2,3,4}.png per the README spec.
+  apl-2-produce-play-console-store-listing-assets: in-progress
   apl-3-data-safety-paste-blocks-and-permission-justifications: done
   apl-4-tester-recruitment-checklist: done
   epic-android-play-console-launch-retrospective: optional
