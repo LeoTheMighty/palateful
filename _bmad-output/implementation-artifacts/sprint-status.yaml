@@ -552,8 +552,8 @@ development_status:
   # Fix: route all push failures through ErrorReporter (Crashlytics), harden
   # the already-existing boot-time auto-prompt in ensureRegistered, add admin
   # per-user push health endpoint + dashboard panel + runbook docs.
-  epic-notifications-push-diagnostics-hardening: in-progress
+  epic-notifications-push-diagnostics-hardening: done
   push-diag-1-flutter-ios-errorreporter-integration: done
   push-diag-2-harden-loud-on-boot-prompt: done
-  push-diag-3-admin-push-health-endpoint-and-panel: backlog
+  push-diag-3-admin-push-health-endpoint-and-panel: done
   epic-notifications-push-diagnostics-hardening-retrospective: optional

@@ -907,4 +907,13 @@ class ApiClient {
       },
     );
   }
+
+  /// push-diag-3: per-user push-health lookup (admin-only). Path parameter
+  /// is either a UUID or an email; backend picks the right lookup strategy.
+  Future<Response> getAdminPushHealth(String idOrEmail, {int errorLimit = 10}) {
+    return _dio.get(
+      '/v1/admin/notifications/health/${Uri.encodeComponent(idOrEmail)}',
+      queryParameters: {'error_limit': errorLimit},
+    );
+  }
 }

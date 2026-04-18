@@ -134,3 +134,84 @@ If all four steps pass, the round-trip is proven. Failure localisation:
 - **Step 2 fail** → Flutter FCM-token registration path, or backend `push-tokens` endpoint. See `services/api/src/api/v1/user/push_tokens.py`.
 - **Step 3 fail** → admin endpoint, Firebase Admin SDK creds in prod, APNs `.p8` uploaded?, or user has no push tokens. See troubleshooting checklist.
 - **Step 4 fail** → audit-row insert in admin endpoint, or log-formatting regression in `push_notification.py`.
+
+## Diagnosing a user who reports no pushes (push-diag-3)
+
+When a user reports they're not receiving pushes, skip the raw SQL and
+go straight to the admin dashboard panel.
+
+1. **Admin dashboard → Notifications → Check user's health.** Paste
+   the user's UUID or email and hit Check. This calls
+   `GET /v1/admin/notifications/health/{user_id_or_email}` and returns
+   a one-shot diagnostic blob (shape below).
+
+2. **Interpret `notification_permission_status`.**
+   - `null` or `declined` → user was never asked OR declined.
+     - `null` (pre-notif-4 account / never prompted): push-diag-2's
+       boot-path auto-prompt will fire on their next launch. Tell
+       them to open the app.
+     - `declined`: they need Profile → Notifications → "Open Settings"
+       to grant at the OS level. Tell them.
+   - `granted` / `provisional` → permission is fine, continue.
+
+3. **Interpret `push_tokens_count`.**
+   - `0` → token registration is broken between permission-grant and
+     the backend POST. Open the `crashlytics_query_url` for this user
+     and look for `area: push` events. Common culprits:
+     - `apns.registrationFailed` — APNs entitlement / environment
+       mismatch (iOS only).
+     - `getToken.exception` or `getToken.nullAfterGranted` — Firebase
+       client-side misconfiguration.
+     - `registerToken.backend` — backend POST failed; check
+       `backend_status_code` in the extras.
+   - `>0` → tokens exist; send path is the culprit. Keep going.
+
+4. **Interpret `recent_errors`** (last 10 `service="push_notifications"`
+   rows for this user, newest first).
+   - `PushSendFailure` with FCM response containing `UNREGISTERED` →
+     stale token; `push_notification.py` self-heals by cleaning the
+     token on the next send cycle. The client re-registers on next
+     `onTokenRefresh`. No action needed beyond waiting for the next
+     event.
+   - `PushSendFailure` with `INVALID_ARGUMENT` → payload shape issue;
+     check the sending callsite.
+   - No errors + permission `granted` + tokens present + user still
+     reports nothing → hit the panel's "Send test push to this user".
+     If the test push succeeds but real events don't land, the
+     event-side fan-out is broken (out of scope for push-diag-3).
+
+5. **Last resort: Crashlytics.** Open the `crashlytics_query_url` from
+   the response — it's pre-filtered by the user's ID. Look at the
+   last week of `area: push` events and at any crashes.
+
+### Response shape
+
+```json
+{
+  "user_id": "<uuid>",
+  "email": "<email or null>",
+  "notification_permission_status": "granted|provisional|declined|null",
+  "push_tokens": [{"fcm_token_prefix": "abcd1234…"}],
+  "push_tokens_count": 1,
+  "recent_errors": [
+    {"timestamp": "...", "error_type": "PushSendFailure", "message": "...", "request_id": "..."}
+  ],
+  "recent_errors_count": 1,
+  "last_successful_send_at": null,
+  "last_successful_send_type": null,
+  "crashlytics_query_url": "https://console.firebase.google.com/..."
+}
+```
+
+`last_successful_send_*` ships as `null`. Populating it would require
+a CloudWatch Logs Insights scan or a new `push_send_log` table —
+deferred until diagnosis actually needs it.
+
+### Audit trail
+
+Every health check writes one `error_logs` row:
+- `service="audit"`
+- `error_type="AdminPushHealthCheck"`
+- `error_message="admin:push_health_check target=<uuid> by admin_user=<uuid>"`
+
+Read-only endpoint; no other DB writes.

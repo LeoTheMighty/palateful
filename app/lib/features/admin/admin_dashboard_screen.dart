@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
@@ -34,10 +35,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   String? _testPushResult;
   bool _testPushIsError = false;
 
+  final _healthLookupController = TextEditingController();
+  bool _healthLookupLoading = false;
+  Map<String, dynamic>? _healthResult;
+  String? _healthError;
+  bool _healthTargetTestPushSending = false;
+  String? _healthTargetTestPushResult;
+  bool _healthTargetTestPushIsError = false;
+
   @override
   void initState() {
     super.initState();
     _fetchStats();
+  }
+
+  @override
+  void dispose() {
+    _healthLookupController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchStats() async {
@@ -201,10 +216,340 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             const SizedBox(height: 12),
             _buildTestPushCard(colorScheme, textTheme),
+            const SizedBox(height: 12),
+            _buildHealthLookupCard(colorScheme, textTheme),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildHealthLookupCard(ColorScheme colorScheme, TextTheme textTheme) {
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.health_and_safety_outlined,
+                    color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Check user\'s push health',
+                    style: textTheme.bodyLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Diagnose "I\'m not getting pushes" reports. Paste a user UUID '
+              'or email. Read-only; writes a single audit row.',
+              style: textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _healthLookupController,
+                    decoration: const InputDecoration(
+                      labelText: 'User UUID or email',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _lookupHealth(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _healthLookupLoading ? null : _lookupHealth,
+                  icon: _healthLookupLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.search, size: 18),
+                  label: Text(_healthLookupLoading ? 'Checking…' : 'Check'),
+                ),
+              ],
+            ),
+            if (_healthError != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _healthError!,
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: colorScheme.onErrorContainer),
+                ),
+              ),
+            ],
+            if (_healthResult != null) ...[
+              const SizedBox(height: 12),
+              _buildHealthResult(colorScheme, textTheme),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHealthResult(ColorScheme colorScheme, TextTheme textTheme) {
+    final data = _healthResult!;
+    final status = data['notification_permission_status'] as String?;
+    final tokenCount = data['push_tokens_count'] as int? ?? 0;
+    final errorCount = data['recent_errors_count'] as int? ?? 0;
+    final errors = (data['recent_errors'] as List?) ?? const [];
+    final crashlyticsUrl = data['crashlytics_query_url'] as String?;
+    final targetUserId = data['user_id'] as String?;
+
+    Color permissionColor() {
+      switch (status) {
+        case 'granted':
+        case 'provisional':
+          return Colors.green;
+        case 'declined':
+          return colorScheme.error;
+        default:
+          return colorScheme.onSurfaceVariant;
+      }
+    }
+
+    Color tokenColor() =>
+        tokenCount > 0 ? Colors.green : colorScheme.error;
+
+    Color errorColor() =>
+        errorCount > 0 ? colorScheme.error : colorScheme.onSurfaceVariant;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _healthRow('User', data['user_id']?.toString() ?? '—', textTheme,
+            colorScheme.onSurface),
+        _healthRow('Email', data['email']?.toString() ?? '—', textTheme,
+            colorScheme.onSurface),
+        _healthRow(
+          'Permission',
+          status ?? 'null (never asked)',
+          textTheme,
+          permissionColor(),
+        ),
+        _healthRow('Tokens', '$tokenCount', textTheme, tokenColor()),
+        _healthRow('Recent errors', '$errorCount', textTheme, errorColor()),
+        _healthRow(
+          'Last send',
+          data['last_successful_send_at']?.toString() ?? 'not tracked',
+          textTheme,
+          colorScheme.onSurfaceVariant,
+        ),
+        if (errors.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('Recent push errors:',
+              style: textTheme.bodySmall
+                  ?.copyWith(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          ...errors.take(5).map((e) {
+            final row = e as Map<String, dynamic>;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '· ${row['timestamp']} — ${row['error_type']}: ${row['message']}',
+                style: textTheme.bodySmall
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+              ),
+            );
+          }),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            if (targetUserId != null)
+              FilledButton.tonalIcon(
+                onPressed: _healthTargetTestPushSending
+                    ? null
+                    : () => _sendTestPushTo(targetUserId),
+                icon: _healthTargetTestPushSending
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_outlined, size: 18),
+                label: Text(_healthTargetTestPushSending
+                    ? 'Sending…'
+                    : 'Send test push to this user'),
+              ),
+            if (crashlyticsUrl != null) ...[
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: crashlyticsUrl));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('Crashlytics link copied to clipboard'),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.open_in_new, size: 18),
+                label: const Text('Crashlytics link'),
+              ),
+            ],
+          ],
+        ),
+        if (_healthTargetTestPushResult != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: (_healthTargetTestPushIsError
+                      ? colorScheme.errorContainer
+                      : colorScheme.primaryContainer)
+                  .withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              _healthTargetTestPushResult!,
+              style: textTheme.bodySmall?.copyWith(
+                color: _healthTargetTestPushIsError
+                    ? colorScheme.onErrorContainer
+                    : colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _healthRow(
+      String label, String value, TextTheme textTheme, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: textTheme.bodySmall?.copyWith(color: valueColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _lookupHealth() async {
+    final query = _healthLookupController.text.trim();
+    if (query.isEmpty) return;
+
+    setState(() {
+      _healthLookupLoading = true;
+      _healthError = null;
+      _healthResult = null;
+      _healthTargetTestPushResult = null;
+    });
+
+    try {
+      final response = await _apiClient.getAdminPushHealth(query);
+      if (!mounted) return;
+      setState(() {
+        _healthLookupLoading = false;
+        _healthResult = (response.data as Map).cast<String, dynamic>();
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final status = e.response?.statusCode ?? 0;
+      final body = e.response?.data;
+      String message;
+      if (status == 404) {
+        message = 'No user found with that UUID or email.';
+      } else if (body is Map && body['error_message'] is String) {
+        message = 'Error ($status): ${body['error_message']}';
+      } else {
+        message = 'Error: ${ErrorReporter.detail(e)}';
+      }
+      setState(() {
+        _healthLookupLoading = false;
+        _healthError = message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthLookupLoading = false;
+        _healthError = 'Unexpected error: $e';
+      });
+    }
+  }
+
+  Future<void> _sendTestPushTo(String targetUserId) async {
+    setState(() {
+      _healthTargetTestPushSending = true;
+      _healthTargetTestPushResult = null;
+      _healthTargetTestPushIsError = false;
+    });
+
+    try {
+      final response =
+          await _apiClient.sendAdminTestPush(targetUserId: targetUserId);
+      if (!mounted) return;
+      final data = response.data as Map<String, dynamic>;
+      final outcome = data['outcome'] as String? ?? 'ok';
+      final messageId = data['message_id'] as String?;
+      String message;
+      switch (outcome) {
+        case 'ok':
+          message = '✓ Sent (msg-id: ${messageId ?? "—"}).';
+          break;
+        case 'no_tokens':
+          message =
+              'No push tokens registered for target user.';
+          break;
+        case 'log_only':
+          message = 'Sent in log-only mode.';
+          break;
+        default:
+          message = 'Sent (outcome=$outcome).';
+      }
+      setState(() {
+        _healthTargetTestPushSending = false;
+        _healthTargetTestPushResult = message;
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthTargetTestPushSending = false;
+        _healthTargetTestPushResult = 'Error: ${ErrorReporter.detail(e)}';
+        _healthTargetTestPushIsError = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _healthTargetTestPushSending = false;
+        _healthTargetTestPushResult = 'Unexpected error: $e';
+        _healthTargetTestPushIsError = true;
+      });
+    }
   }
 
   Widget _buildTestPushCard(ColorScheme colorScheme, TextTheme textTheme) {

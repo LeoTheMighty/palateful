@@ -1,6 +1,7 @@
 """Admin endpoints router."""
 
 from api.v1.admin import (
+    GetAdminPushHealth,
     GetEndpointMetrics,
     GetErrorDetail,
     GetErrors,
@@ -132,6 +133,27 @@ async def send_test_push(
     return SendTestPush.call(
         params=params,
         force=force,
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.get("/notifications/health/{user_id_or_email}")
+async def get_push_health(
+    user_id_or_email: str,
+    error_limit: int = Query(
+        10,
+        ge=1,
+        le=50,
+        description="Max recent push error rows to return (default 10, max 50)",
+    ),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Per-user push-health diagnostic panel (push-diag-3)."""
+    return GetAdminPushHealth.call(
+        user_id_or_email=user_id_or_email,
+        error_limit=error_limit,
         user=user,
         database=database,
     )
