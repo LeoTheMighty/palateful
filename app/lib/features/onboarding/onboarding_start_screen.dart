@@ -13,10 +13,12 @@ import '../recipes/add_recipe/add_recipe_sheet.dart';
 /// Start method selection for recipe book population.
 class OnboardingStartScreen extends StatefulWidget {
   final String name;
+  final String? notificationPermissionStatus;
 
   const OnboardingStartScreen({
     super.key,
     required this.name,
+    this.notificationPermissionStatus,
   });
 
   @override
@@ -47,6 +49,7 @@ class _OnboardingStartScreenState extends State<OnboardingStartScreen> {
       final response = await _apiClient.completeOnboarding(
         name: widget.name,
         startMethod: method,
+        notificationPermissionStatus: widget.notificationPermissionStatus,
       );
 
       if (!mounted) return;

@@ -6,6 +6,7 @@ import '../services/error_reporter.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
+import '../../features/onboarding/onboarding_notification_permission_screen.dart';
 import '../../features/onboarding/onboarding_start_screen.dart';
 import '../../features/activity/activity_screen.dart';
 import '../../features/activity/import_history_screen.dart';
@@ -129,12 +130,26 @@ GoRouter get appRouter {
         builder: (context, state) => const OnboardingWelcomeScreen(),
       ),
       GoRoute(
+        path: '/onboarding/notifications',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final name = extra?['name'] as String? ?? '';
+          return OnboardingNotificationPermissionScreen(name: name);
+        },
+      ),
+      GoRoute(
         path: '/onboarding/start',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) {
           final extra = state.extra as Map<String, dynamic>?;
           final name = extra?['name'] as String? ?? '';
-          return OnboardingStartScreen(name: name);
+          final notificationPermissionStatus =
+              extra?['notification_permission_status'] as String?;
+          return OnboardingStartScreen(
+            name: name,
+            notificationPermissionStatus: notificationPermissionStatus,
+          );
         },
       ),
       // Archived recipes (must be before /recipes/:id to avoid path collision)

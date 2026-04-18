@@ -312,11 +312,11 @@ development_status:
   # Cross-layer. Goal is "one push arrives on Leo's iPhone" via an
   # admin test-push button, NOT the full event firehose (follow-up).
   # notif-3 and notif-4 soft-depend on notif-1 for end-to-end verification.
-  epic-notifications-ios-proofoflife: backlog
-  notif-1-ios-appdelegate-apns-registration: backlog
-  notif-2-backend-log-only-mode-and-send-logging: backlog
-  notif-3-admin-test-push-endpoint-and-button: backlog
-  notif-4-onboarding-notification-permission-step: backlog
+  epic-notifications-ios-proofoflife: done
+  notif-1-ios-appdelegate-apns-registration: done
+  notif-2-backend-log-only-mode-and-send-logging: done
+  notif-3-admin-test-push-endpoint-and-button: done
+  notif-4-onboarding-notification-permission-step: done
   epic-notifications-ios-proofoflife-retrospective: optional
 
   # Epic Calendars — Foundation (planned 2026-04-17)
@@ -325,7 +325,7 @@ development_status:
   # plan-meal Calendar picker + move-to-calendar. Sharing lands in a follow-up epic.
   epic-calendars-foundation: in-progress
   cal-found-1-calendar-model-backfill-and-crud: done
-  cal-found-2-rewire-authorization-and-require-calendar-id: backlog
+  cal-found-2-rewire-authorization-and-require-calendar-id: ready-for-dev
   cal-found-3-flutter-switcher-and-active-calendar-provider: backlog
   cal-found-4-flutter-create-rename-delete-and-user-provisioning: backlog
   cal-found-5-plan-meal-calendar-row-and-move-to-calendar: backlog

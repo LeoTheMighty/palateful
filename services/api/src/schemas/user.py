@@ -42,6 +42,12 @@ class OnboardingRequest(BaseModel):
     """Request schema for completing onboarding."""
     name: str
     start_method: Literal["browse", "import", "scratch"]
+    # Recorded during the onboarding notification step (notif-4). Reflects
+    # the OS AuthorizationStatus, not which button the user tapped. None
+    # means the client didn't supply it (older builds / web).
+    notification_permission_status: Literal[
+        "granted", "provisional", "declined"
+    ] | None = None
 
     @field_validator("name")
     @classmethod

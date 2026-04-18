@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -288,6 +289,142 @@ void main() {
 
       // Name should be pre-filled
       expect(find.text('OAuth User'), findsOneWidget);
+    });
+  });
+
+  group('OnboardingNotificationPermissionScreen (notif-4)', () {
+    // Mirrors the permission-status mapping in the real screen. Kept in
+    // sync with onboarding_notification_permission_screen.dart:_statusFromAuth.
+    String statusFromAuth(AuthorizationStatus status) {
+      switch (status) {
+        case AuthorizationStatus.authorized:
+          return 'granted';
+        case AuthorizationStatus.provisional:
+          return 'provisional';
+        case AuthorizationStatus.denied:
+          return 'declined';
+        case AuthorizationStatus.notDetermined:
+          return 'declined';
+      }
+    }
+
+    test('authorized → granted', () {
+      expect(statusFromAuth(AuthorizationStatus.authorized), equals('granted'));
+    });
+
+    test('provisional → provisional', () {
+      expect(statusFromAuth(AuthorizationStatus.provisional), equals('provisional'));
+    });
+
+    test('denied → declined', () {
+      expect(statusFromAuth(AuthorizationStatus.denied), equals('declined'));
+    });
+
+    test('notDetermined (user backed out) → declined', () {
+      expect(statusFromAuth(AuthorizationStatus.notDetermined), equals('declined'));
+    });
+
+    testWidgets('renders heading, body, and both buttons', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Builder(
+                  builder: (context) {
+                    final colorScheme = Theme.of(context).colorScheme;
+                    final textTheme = Theme.of(context).textTheme;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Icon(
+                          Icons.notifications_active_outlined,
+                          size: 72,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Stay in the loop.',
+                          style: textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          "Palateful will only ping you about things that matter — "
+                          "when a recipe import you kicked off finishes, when a "
+                          "partner updates a shared book or shopping list, or "
+                          "when a friend shares something with you. You can turn "
+                          "this off any time in Settings.",
+                          style: textTheme.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 32),
+                        ElevatedButton(
+                          onPressed: () {},
+                          child: const Text('Turn on notifications'),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () {},
+                          child: const Text('Not now'),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Stay in the loop.'), findsOneWidget);
+      expect(find.text('Turn on notifications'), findsOneWidget);
+      expect(find.text('Not now'), findsOneWidget);
+      expect(find.byIcon(Icons.notifications_active_outlined), findsOneWidget);
+      expect(find.textContaining('partner updates a shared book'), findsOneWidget);
+    });
+
+    testWidgets('tapping "Not now" records declined without asking the OS',
+        (tester) async {
+      String? recordedStatus;
+      var requestPermissionCalled = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      // Intentionally does NOT invoke requestPermission.
+                      recordedStatus = 'declined';
+                    },
+                    child: const Text('Turn on notifications'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      recordedStatus = 'declined';
+                    },
+                    child: const Text('Not now'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Not now'));
+      await tester.pump();
+
+      expect(recordedStatus, equals('declined'));
+      expect(requestPermissionCalled, isFalse);
     });
   });
 

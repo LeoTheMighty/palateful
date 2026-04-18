@@ -846,6 +846,101 @@ class TestCompleteOnboarding:
         assert data["success"] is True
         assert mock_user.has_completed_onboarding is True
 
+    def test_notification_permission_status_persisted_when_granted(
+        self, client, mock_user, mock_db
+    ):
+        """notif-4: the OS AuthorizationStatus outcome must be persisted."""
+        from datetime import UTC, datetime
+
+        mock_user.has_completed_onboarding = False
+        mock_user.notification_permission_status = None
+        mock_db.db.refresh = MagicMock(
+            side_effect=lambda obj: (
+                setattr(obj, "id", getattr(obj, "id", None) or str(uuid.uuid4())),
+                setattr(obj, "created_at", getattr(obj, "created_at", None) or datetime.now(UTC)),
+                setattr(obj, "updated_at", getattr(obj, "updated_at", None) or datetime.now(UTC)),
+            )
+        )
+
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={
+                "name": "Leo",
+                "start_method": "browse",
+                "notification_permission_status": "granted",
+            },
+        )
+
+        assert response.status_code == 200
+        assert mock_user.notification_permission_status == "granted"
+
+    def test_notification_permission_status_persisted_when_declined(
+        self, client, mock_user, mock_db
+    ):
+        from datetime import UTC, datetime
+
+        mock_user.has_completed_onboarding = False
+        mock_user.notification_permission_status = None
+        mock_db.db.refresh = MagicMock(
+            side_effect=lambda obj: (
+                setattr(obj, "id", getattr(obj, "id", None) or str(uuid.uuid4())),
+                setattr(obj, "created_at", getattr(obj, "created_at", None) or datetime.now(UTC)),
+                setattr(obj, "updated_at", getattr(obj, "updated_at", None) or datetime.now(UTC)),
+            )
+        )
+
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={
+                "name": "Leo",
+                "start_method": "scratch",
+                "notification_permission_status": "declined",
+            },
+        )
+
+        assert response.status_code == 200
+        assert mock_user.notification_permission_status == "declined"
+
+    def test_notification_permission_status_missing_is_optional(
+        self, client, mock_user, mock_db
+    ):
+        """Older clients don't send the field — onboarding must still succeed."""
+        from datetime import UTC, datetime
+
+        mock_user.has_completed_onboarding = False
+        mock_user.notification_permission_status = None
+        mock_db.db.refresh = MagicMock(
+            side_effect=lambda obj: (
+                setattr(obj, "id", getattr(obj, "id", None) or str(uuid.uuid4())),
+                setattr(obj, "created_at", getattr(obj, "created_at", None) or datetime.now(UTC)),
+                setattr(obj, "updated_at", getattr(obj, "updated_at", None) or datetime.now(UTC)),
+            )
+        )
+
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "Leo", "start_method": "browse"},
+        )
+
+        assert response.status_code == 200
+        # Field was NOT in request body, so column stays None
+        assert mock_user.notification_permission_status is None
+
+    def test_notification_permission_status_invalid_value_rejected(
+        self, client, mock_user, mock_db
+    ):
+        """Only granted/provisional/declined accepted — guard against client bugs."""
+        mock_user.has_completed_onboarding = False
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={
+                "name": "Leo",
+                "start_method": "browse",
+                "notification_permission_status": "unknown",
+            },
+        )
+        assert response.status_code == 422
+
 
 class TestGetMeShoppingListDefaults:
     """Tests for default shopping list fields in GET /v1/users/me."""

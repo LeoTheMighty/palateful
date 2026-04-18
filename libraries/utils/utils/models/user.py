@@ -98,6 +98,14 @@ class User(Base):
     )
     push_tokens: Mapped[list | None] = mapped_column(JSONB, default=[], nullable=True)
 
+    # Recorded from the onboarding notification-permission step. Reflects
+    # the OS AuthorizationStatus outcome, not which button the user tapped:
+    # "granted" (authorized), "provisional", "declined" (denied or
+    # notDetermined), or NULL (pre-notif-4 user / web).
+    notification_permission_status: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+
     # Relationships
     default_recipe_book: Mapped["RecipeBook | None"] = relationship(
         foreign_keys=[default_recipe_book_id],

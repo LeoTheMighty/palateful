@@ -78,8 +78,10 @@ class CompleteOnboarding(Endpoint):
         # 4. Set as default recipe book
         user.default_recipe_book_id = recipe_book.id
 
-        # 5. Mark onboarding as complete
+        # 5. Mark onboarding as complete + record notification permission state
         user.has_completed_onboarding = True
+        if params.notification_permission_status is not None:
+            user.notification_permission_status = params.notification_permission_status
 
         # Commit all changes
         self.db.commit()

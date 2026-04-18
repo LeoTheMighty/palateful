@@ -101,10 +101,13 @@ class ApiClient {
   Future<Response> completeOnboarding({
     required String name,
     required String startMethod,
+    String? notificationPermissionStatus,
   }) =>
       _dio.post('/v1/users/me/complete-onboarding', data: {
         'name': name,
         'start_method': startMethod,
+        if (notificationPermissionStatus != null)
+          'notification_permission_status': notificationPermissionStatus,
       });
 
   Future<Response> updateProfile({String? name}) =>

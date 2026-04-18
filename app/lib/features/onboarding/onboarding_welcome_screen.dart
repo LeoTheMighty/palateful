@@ -76,8 +76,9 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
       return;
     }
 
-    // Navigate to start method selection, passing the name
-    context.push('/onboarding/start', extra: {'name': name});
+    // Notification-permission step runs before start-method selection;
+    // it forwards the name + recorded permission status.
+    context.push('/onboarding/notifications', extra: {'name': name});
   }
 
   /// Escape hatch for users stuck on a bad token (e.g. Auth0 issuer
