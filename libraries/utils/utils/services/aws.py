@@ -24,7 +24,15 @@ class AWSService:
         self.batch_job_queue = batch_job_queue
         self.batch_job_definition = batch_job_definition
 
-        config = Config(region_name=region, signature_version="s3v4")
+        # read_timeout + capped retries bound the NFR41 500ms budget for
+        # source-photo promotion; all existing S3 operations here move
+        # small payloads (JSON manifests, metadata) and tolerate it.
+        config = Config(
+            region_name=region,
+            signature_version="s3v4",
+            read_timeout=2.0,
+            retries={"max_attempts": 2},
+        )
         self._s3 = boto3.client("s3", config=config)
         self._batch = boto3.client("batch", config=config)
 
@@ -96,6 +104,28 @@ class AWSService:
             Key=s3_key,
         )
         return json.loads(response["Body"].read().decode("utf-8"))
+
+    def copy_object(
+        self,
+        source_key: str,
+        dest_key: str,
+        source_bucket: str | None = None,
+        dest_bucket: str | None = None,
+    ) -> None:
+        """Copy an S3 object from one key to another.
+
+        Defaults to same-bucket copy on `parser_inputs_bucket`, which is
+        where source-photo promotion (FR87) currently lives — the
+        dedicated `palateful-recipe-photos-{env}` bucket migration is
+        punted to a follow-up epic.
+        """
+        src = source_bucket or self.parser_inputs_bucket
+        dst = dest_bucket or self.parser_inputs_bucket
+        self._s3.copy_object(
+            Bucket=dst,
+            Key=dest_key,
+            CopySource={"Bucket": src, "Key": source_key},
+        )
 
     def submit_batch_job(
         self,
