@@ -59,10 +59,23 @@ class ImportItem(Base):
         String(32), nullable=True, default=None
     )
 
+    # Rule path that routed this item into awaiting_review. One of:
+    # "low_confidence" | "unmatched_ingredients" | "missing_title" |
+    # "manual" | NULL. Set by match/extract tasks at the moment of the
+    # status transition; cleared on retry. CHECK-constrained in the DB.
+    awaiting_review_reason: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default=None
+    )
+
     # Error handling
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Timestamp of the most recent retry dispatch (set by
+    # retry_import_item.py). NULL for items that never retried.
+    last_retry_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     # Cost tracking (in cents)
     ai_cost_cents: Mapped[int] = mapped_column(Integer, default=0)

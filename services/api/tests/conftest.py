@@ -574,6 +574,8 @@ class MockImportItem(MockModel):
             "recipe_name": None,
             "retry_count": 0,
             "last_successful_stage": None,
+            "last_retry_at": None,
+            "awaiting_review_reason": None,
             "dismissed_at": None,
         }
         defaults.update(kwargs)

@@ -134,6 +134,9 @@ class GetImportItem(Endpoint):
                 created_recipe_id=str(item.created_recipe_id) if item.created_recipe_id else None,
                 created_at=item.created_at,
                 updated_at=item.updated_at,
+                last_successful_stage=item.last_successful_stage,
+                last_retry_at=item.last_retry_at,
+                awaiting_review_reason=item.awaiting_review_reason,
             )
         )
 
@@ -154,3 +157,6 @@ class GetImportItem(Endpoint):
         created_recipe_id: str | None = None
         created_at: datetime
         updated_at: datetime
+        last_successful_stage: str | None = None
+        last_retry_at: datetime | None = None
+        awaiting_review_reason: str | None = None

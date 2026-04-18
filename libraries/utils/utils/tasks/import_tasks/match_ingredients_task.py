@@ -77,12 +77,40 @@ class MatchIngredientsTask(BaseTask):
             # Update parsed_recipe with matched ingredients
             item.parsed_recipe["ingredients"] = matched_ingredients
 
+            # A missing title is a bigger problem than any match issue
+            # (the recipe is literally unnamed), so this reason wins
+            # regardless of the ingredient-match outcome.
+            title = (item.parsed_recipe or {}).get("name") or (
+                item.parsed_recipe or {}
+            ).get("title")
+            missing_title = not title or not str(title).strip()
+
             # Determine status
-            if needs_review:
+            if needs_review or missing_title:
                 item.status = "awaiting_review"
+                # Tag the rule path that routed the item here so the
+                # Flutter caret expansion can render a 1-word reason chip
+                # without re-deriving the reason from the nested
+                # ingredients array. Priority: missing_title >
+                # unmatched_ingredients > low_confidence — the stronger
+                # actionable signal wins.
+                if missing_title:
+                    item.awaiting_review_reason = "missing_title"
+                else:
+                    any_unmatched = any(
+                        ing.get("needs_review")
+                        and ing.get("matched_ingredient_id") is None
+                        for ing in matched_ingredients
+                    )
+                    item.awaiting_review_reason = (
+                        "unmatched_ingredients"
+                        if any_unmatched
+                        else "low_confidence"
+                    )
             else:
                 # Auto-approve if all matches are high confidence or auto-created
                 item.status = "approved"
+                item.awaiting_review_reason = None
 
             # Matching finished successfully either way; mark the stage so the
             # retry endpoint resumes from create_recipe_task on next retry.

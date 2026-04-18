@@ -8,35 +8,39 @@
 // `MISSING-needs-backend`. Policy: no silent drops.
 //
 // Response fields (from GetImportItem.Response):
-//   id                  → annotated-not-shown: internal DB id, not user-meaningful
-//   status              → rendered: "current stage" in hierarchy (header chip)
-//   source_type         → rendered: icon in source row
-//   source_reference    → rendered: source detail (row N / page N)
-//   source_url          → rendered: tappable URL in source row
-//   raw_data            → annotated-not-shown: debug-only blob
-//     └─ recipe_index   → annotated-not-shown: server-side traceability only
-//                         (set by extract_recipe_task fan-out, bugs-imp-pho-2)
-//   parsed_recipe       → rendered: the edit form below this header IS the view
-//   user_edits          → rendered: merged over parsed_recipe in edit form
-//   error_message       → rendered: top of hierarchy when failed, collapsed to
-//                         2-line preview + Show more (default closed)
-//   error_code          → annotated-not-shown: internal triage code
-//   retry_count         → rendered: retry row at bottom of hierarchy
-//   ai_cost_cents       → annotated-not-shown: not user-facing
-//   import_job_id       → annotated-not-shown: internal linkage
-//   created_recipe_id   → annotated-not-shown: used post-approval for nav
-//   created_at          → rendered: timestamps section
-//   updated_at          → rendered: timestamps section
+//   id                      → annotated-not-shown: internal DB id, not user-meaningful
+//   status                  → rendered: "current stage" in hierarchy (header chip)
+//   source_type             → rendered: icon in source row
+//   source_reference        → rendered: source detail (row N / page N)
+//   source_url              → rendered: tappable URL in source row
+//   raw_data                → annotated-not-shown: debug-only blob
+//     └─ recipe_index       → annotated-not-shown: server-side traceability only
+//                             (set by extract_recipe_task fan-out, bugs-imp-pho-2)
+//   parsed_recipe           → rendered: the edit form below this header IS the view
+//   user_edits              → rendered: merged over parsed_recipe in edit form
+//   error_message           → rendered: top of hierarchy when failed, collapsed to
+//                             2-line preview + Show more (default closed)
+//   error_code              → annotated-not-shown: internal triage code
+//   retry_count             → rendered: retry row at bottom of hierarchy
+//   ai_cost_cents           → annotated-not-shown: not user-facing
+//   import_job_id           → annotated-not-shown: internal linkage
+//   created_recipe_id       → annotated-not-shown: used post-approval for nav
+//   created_at              → rendered: timestamps section
+//   updated_at              → rendered: timestamps section
+//   last_successful_stage   → rendered: stage timeline chips inside the caret
+//                             expansion (irrd-1 exposed, irrd-5 renders).
+//   last_retry_at           → rendered: retry row ("Retried N times · last …ago")
+//                             inside the caret expansion (irrd-1 exposed,
+//                             irrd-4 renders).
+//   awaiting_review_reason  → rendered: 1-word chip on yellow collapsed rows
+//                             AND as a label inside the caret expansion (irrd-1
+//                             exposed, irrd-6 renders).
 //
-// MISSING-needs-backend (filed as bugs-act-2a-backend-fields-addendum):
-//   last_successful_stage   → story AC #2 ("current stage + last successful
-//                             stage"). Column exists on ImportItem model but
-//                             is not exposed by GetImportItem.Response.
-//   last_retry_at           → story AC #2 ("last retry timestamp"). Neither
-//                             the model nor response has this; retry_count
-//                             alone is rendered in the interim.
-//   confidence_score        → story AC #2 (bullet 6). Not produced by the
-//                             pipeline today.
+// MISSING-needs-backend (irrd-3 will land this):
+//   confidence_score        → rendered in the caret expansion (irrd-3 produces
+//                             end-to-end, irrd-5 renders).
+//   confidence_source       → same as above, annotates the badge as
+//                             model-reported vs heuristic-estimated.
 //
 // Update policy: when this file changes, update the audit above. When the
 // backend response adds a field, add it here with its disposition. No silent

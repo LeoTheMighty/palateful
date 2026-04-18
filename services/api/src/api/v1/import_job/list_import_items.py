@@ -87,6 +87,9 @@ class ListImportItems(Endpoint):
                     ai_cost_cents=item.ai_cost_cents,
                     created_at=item.created_at,
                     archived_at=item.archived_at,
+                    last_successful_stage=item.last_successful_stage,
+                    last_retry_at=item.last_retry_at,
+                    awaiting_review_reason=item.awaiting_review_reason,
                 )
             )
 
@@ -109,6 +112,9 @@ class ListImportItems(Endpoint):
         ai_cost_cents: int = 0
         created_at: datetime
         archived_at: datetime | None = None
+        last_successful_stage: str | None = None
+        last_retry_at: datetime | None = None
+        awaiting_review_reason: str | None = None
 
     class Response(BaseModel):
         items: list["ListImportItems.ItemSummary"]

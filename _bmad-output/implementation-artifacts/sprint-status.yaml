@@ -389,8 +389,8 @@ development_status:
   # Confidence score built end-to-end (extractors -> API -> UI) with heuristic
   # fallback. Surfaces backlogged bugs-act-2a fields (last_successful_stage,
   # last_retry_at). Depends on epic-activity-hub-redesign (row shell).
-  epic-import-row-rich-detail: backlog
-  irrd-1-backend-expose-stage-and-retry-fields: backlog
+  epic-import-row-rich-detail: in-progress
+  irrd-1-backend-expose-stage-and-retry-fields: done
   irrd-2-backend-import-item-telemetry-endpoint: backlog
   irrd-3-backend-extractor-confidence-score-e2e: backlog
   irrd-4-flutter-caret-and-expansion-and-telemetry-fetch: backlog

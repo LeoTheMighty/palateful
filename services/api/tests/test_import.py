@@ -1202,6 +1202,9 @@ class TestGetImportItem:
             retry_count=0,
             ai_cost_cents=5,
             created_recipe_id=None,
+            last_successful_stage="extracted",
+            last_retry_at=None,
+            awaiting_review_reason="unmatched_ingredients",
         )
         job = MockImportJob(
             id=job_id,
@@ -1232,6 +1235,12 @@ class TestGetImportItem:
         assert data["ai_cost_cents"] == 5
         assert data["created_recipe_id"] is None
         assert data["import_job_id"] == job_id
+        # irrd-1 new fields surface on the detail endpoint so the
+        # Flutter caret expansion can render the stage timeline + retry
+        # history + 1-word reason chip without a second fetch.
+        assert data["last_successful_stage"] == "extracted"
+        assert data["last_retry_at"] is None
+        assert data["awaiting_review_reason"] == "unmatched_ingredients"
 
     def test_get_import_item_not_found(self, client, mock_db, mock_user):
         """Test getting a nonexistent import item."""
@@ -3028,6 +3037,31 @@ class TestRetryImportItem:
         assert item.status == "pending"
 
         mock_parse.delay.assert_called_once_with(str(job.id))
+
+    @patch("api.v1.import_job.retry_import_item.parse_source_task")
+    def test_retry_stamps_last_retry_at_and_clears_awaiting_review_reason(
+        self, mock_parse, client, mock_db, mock_user
+    ):
+        """irrd-1 AC3 + retry clears any prior awaiting_review_reason.
+
+        The retry reset should populate `last_retry_at` with a non-null
+        value and clear `awaiting_review_reason` so the downstream match
+        task can re-tag cleanly if it ends up back in awaiting_review.
+        """
+        item, _job, item_id = self._setup_retryable_item(
+            mock_db,
+            mock_user,
+            last_successful_stage=None,
+        )
+        # Simulate a prior awaiting_review routing before the failure.
+        item.awaiting_review_reason = "low_confidence"
+
+        response = client.post(f"/v1/import-items/{item_id}/retry")
+        assert response.status_code == 200
+
+        assert item.last_retry_at is not None  # func.now() expression set
+        assert item.awaiting_review_reason is None
+        mock_parse.delay.assert_called_once()
 
 
 class TestDismissImportItem:

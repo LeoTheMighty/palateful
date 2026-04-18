@@ -5,6 +5,7 @@ successfully, so we don't re-run OCR or extraction that already worked.
 """
 
 from pydantic import BaseModel
+from sqlalchemy import func
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.constants import STAGE_EXTRACTED, STAGE_MATCHED, STAGE_PARSED
@@ -112,10 +113,15 @@ class RetryImportItem(Endpoint):
             item.last_successful_stage
         )
 
-        # Reset error bookkeeping for the retry.
+        # Reset error bookkeeping for the retry. Clear the
+        # awaiting_review_reason too — it'll be re-populated by the
+        # matching/extract tasks if the retry lands back in
+        # awaiting_review.
         item.error_message = None
         item.error_code = None
         item.retry_count = (item.retry_count or 0) + 1
+        item.last_retry_at = func.now()
+        item.awaiting_review_reason = None
         item.status = next_status
 
         # If the parent job was marked failed (by sweeper or downstream
