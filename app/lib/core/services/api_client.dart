@@ -152,6 +152,18 @@ class ApiClient {
   Future<Response> markAllActivitiesRead() =>
       _dio.put('/v1/activities/read-all');
 
+  Future<Response> archiveActivity(String id) =>
+      _dio.post('/v1/activities/$id/archive');
+
+  Future<Response> unarchiveActivity(String id) =>
+      _dio.post('/v1/activities/$id/unarchive');
+
+  Future<Response> archiveImportItem(String id) =>
+      _dio.post('/v1/import-items/$id/archive');
+
+  Future<Response> unarchiveImportItem(String id) =>
+      _dio.post('/v1/import-items/$id/unarchive');
+
   // Recipe Book endpoints
   Future<Response> getRecipeBooks({int limit = 20, int offset = 0}) {
     return _dio.get('/v1/recipe-books', queryParameters: {

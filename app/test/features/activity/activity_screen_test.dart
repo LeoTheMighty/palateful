@@ -20,6 +20,8 @@ class _FakeApiClient extends ApiClient {
   final List<String> markReadCalls = [];
   int markAllCalls = 0;
   int unreadCountCalls = 0;
+  final List<String> archiveActivityCalls = [];
+  final List<String> unarchiveActivityCalls = [];
 
   _FakeApiClient({required this.activities});
 
@@ -48,6 +50,18 @@ class _FakeApiClient extends ApiClient {
   Future<Response> getUnreadActivityCount() async {
     unreadCountCalls++;
     return _fakeResponse({'count': 0});
+  }
+
+  @override
+  Future<Response> archiveActivity(String id) async {
+    archiveActivityCalls.add(id);
+    return _fakeResponse({'id': id, 'archived_at': '2026-04-18T12:00:00Z'});
+  }
+
+  @override
+  Future<Response> unarchiveActivity(String id) async {
+    unarchiveActivityCalls.add(id);
+    return _fakeResponse({'id': id, 'archived_at': null});
   }
 }
 
