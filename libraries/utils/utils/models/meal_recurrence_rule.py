@@ -4,13 +4,14 @@ import uuid
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, String
+from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
 
 if TYPE_CHECKING:
+    from utils.models.meal import Meal
     from utils.models.recipe import Recipe
     from utils.models.user import User
 
@@ -29,6 +30,12 @@ class MealRecurrenceRule(Base):
             "ix_meal_recurrence_rules_calendar_id",
             "calendar_id",
         ),
+        Index("ix_meal_recurrence_rules_meal_id", "meal_id"),
+        # Parallel to meal_events: at most one of recipe_id / meal_id.
+        CheckConstraint(
+            "num_nonnulls(recipe_id, meal_id) <= 1",
+            name="ck_meal_recurrence_rules_recipe_xor_meal",
+        ),
     )
 
     # Free-text title when recipe_id is null. Ignored when recipe_id is set —
@@ -38,6 +45,12 @@ class MealRecurrenceRule(Base):
     recipe_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("recipes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    meal_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("meals.id", ondelete="SET NULL"),
         nullable=True,
     )
 
@@ -79,4 +92,5 @@ class MealRecurrenceRule(Base):
 
     # Relationships
     recipe: Mapped["Recipe | None"] = relationship()
+    meal: Mapped["Meal | None"] = relationship()
     owner: Mapped["User"] = relationship()

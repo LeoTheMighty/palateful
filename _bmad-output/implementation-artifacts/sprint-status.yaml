@@ -629,8 +629,8 @@ development_status:
   # kMealComponentCountLabel canonical Flutter helper. Default toggle state
   # is Recipe except when launched from Meal detail Plan-for-Date.
   # Parallelizable with discoverability + sharing-and-ai.
-  epic-meals-calendar: backlog
-  mcal-1-backend-migration-meal-id-on-events-recurrence-cooking-logs-and-shopping-list-items: backlog
+  epic-meals-calendar: in-progress
+  mcal-1-backend-migration-meal-id-on-events-recurrence-cooking-logs-and-shopping-list-items: done
   mcal-2-backend-aggregate-meal-ingredients-service-and-dedupe-correctness: backlog
   mcal-3-backend-meal-event-and-recurrence-endpoints-accept-meal-id-xor: backlog
   mcal-4-backend-populate-from-calendar-meal-expansion-load-bearing: backlog

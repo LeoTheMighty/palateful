@@ -13,6 +13,7 @@ from utils.models.base import Base
 
 if TYPE_CHECKING:
     from utils.models.ingredient import Ingredient
+    from utils.models.meal import Meal
     from utils.models.meal_event import MealEvent
     from utils.models.pantry import Pantry
     from utils.models.recipe import Recipe
@@ -117,6 +118,17 @@ class ShoppingListItem(Base):
         nullable=True,
     )
 
+    # Source Meal provenance. Set when the item originated from a Meal
+    # expansion (either a Meal event's populate, or the "shop without
+    # scheduling" flow). Additive and nullable — no constraint with
+    # recipe_id / meal_event_id; a Meal expansion row legitimately sets
+    # all three (the item came from recipe R inside Meal M on event E).
+    source_meal_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("meals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Smart shopping - from pantry
     # "You have 1 cup, need 2 cups, buy 1 cup"
     already_have_quantity: Mapped[Decimal | None] = mapped_column(
@@ -198,6 +210,7 @@ class ShoppingListItem(Base):
     shopping_list: Mapped["ShoppingList"] = relationship(back_populates="items")
     ingredient: Mapped["Ingredient | None"] = relationship()
     recipe: Mapped["Recipe | None"] = relationship()
+    source_meal: Mapped["Meal | None"] = relationship()
     checked_by: Mapped["User | None"] = relationship(
         foreign_keys=[checked_by_user_id]
     )

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.models.base import Base
 
 if TYPE_CHECKING:
+    from utils.models.meal import Meal
     from utils.models.meal_event_participant import MealEventParticipant
     from utils.models.pantry import Pantry
     from utils.models.prep_step import PrepStep
@@ -46,6 +48,13 @@ class MealEvent(Base):
             "ix_meal_events_calendar_id_scheduled_at",
             "calendar_id",
             "scheduled_at",
+        ),
+        Index("ix_meal_events_meal_id", "meal_id"),
+        # At most one of recipe_id / meal_id may be set. Both-null is legal
+        # (free-text event). Both-set is rejected.
+        CheckConstraint(
+            "num_nonnulls(recipe_id, meal_id) <= 1",
+            name="ck_meal_events_recipe_xor_meal",
         ),
     )
 
@@ -101,6 +110,11 @@ class MealEvent(Base):
         ForeignKey("recipes.id", ondelete="SET NULL"),
         nullable=True,
     )
+    meal_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("meals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -121,6 +135,7 @@ class MealEvent(Base):
 
     # Relationships
     recipe: Mapped["Recipe | None"] = relationship()
+    meal: Mapped["Meal | None"] = relationship()
     owner: Mapped["User"] = relationship()
     pantry: Mapped["Pantry | None"] = relationship()
     parent_event: Mapped["MealEvent | None"] = relationship(
