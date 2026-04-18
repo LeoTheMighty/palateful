@@ -621,6 +621,25 @@ class ApiClient {
     return _dio.post('/v1/recipes/$recipeId/notes', data: {'body': body});
   }
 
+  // User feedback — admin inbox channel. `body` is 1..4000 chars,
+  // `category` is one of bug/idea/praise/other (or null), `context` is a
+  // small envelope of {app_version, platform, route, recipe_id} — any
+  // unknown key triggers a 422 on the server.
+  Future<Response> submitFeedback({
+    required String body,
+    String? category,
+    Map<String, dynamic>? context,
+  }) {
+    return _dio.post(
+      '/v1/users/me/feedback',
+      data: {
+        'body': body,
+        if (category != null) 'category': category,
+        if (context != null) 'context': context,
+      },
+    );
+  }
+
   Future<Response> deleteRecipeNote(String recipeId, String noteId) {
     return _dio.delete('/v1/recipes/$recipeId/notes/$noteId');
   }

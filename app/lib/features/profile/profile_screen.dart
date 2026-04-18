@@ -18,6 +18,10 @@ import '../../providers/theme_mode_provider.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../chat/chat_service.dart';
+import 'services/feedback_cache_service.dart';
+import 'widgets/feedback_sheet.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:io' show Platform;
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -26,9 +30,11 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with WidgetsBindingObserver {
   final _apiClient = getIt<ApiClient>();
   final _authService = getIt<AuthService>();
+  final _feedbackCache = FeedbackCacheService();
 
   bool _isLoading = true;
   bool _isExporting = false;
@@ -46,7 +52,135 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchProfile();
+    // Cold-start flush — AC calls for both a resume hook *and* a cold-start
+    // flush so a user who queued offline and then launched fresh has their
+    // submission go through without needing a resume event.
+    _flushFeedbackQueue();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _flushFeedbackQueue();
+    }
+  }
+
+  Future<bool> _isOffline() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      return results.contains(ConnectivityResult.none);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, String>> _captureFeedbackContext() async {
+    String? platform;
+    try {
+      if (Platform.isIOS) {
+        platform = 'ios';
+      } else if (Platform.isAndroid) {
+        platform = 'android';
+      }
+    } catch (_) {
+      platform = null;
+    }
+    return {
+      if (platform != null) 'platform': platform,
+    };
+  }
+
+  Future<void> _flushFeedbackQueue() async {
+    try {
+      final pending = await _feedbackCache.getPendingFeedback();
+      if (pending.isEmpty) return;
+      if (await _isOffline()) return;
+
+      int sent = 0;
+      final stillQueued = <Map<String, dynamic>>[];
+      for (final entry in pending) {
+        final body = entry['body'] as String?;
+        if (body == null || body.isEmpty) continue;
+        try {
+          await _apiClient.submitFeedback(
+            body: body,
+            category: entry['category'] as String?,
+            context: entry['context'] as Map<String, dynamic>?,
+          );
+          sent++;
+        } catch (_) {
+          // Network flapped mid-flush — keep remaining entries queued.
+          stillQueued.add(entry);
+        }
+      }
+
+      // Rewrite the queue with only the ones that failed to send.
+      await _feedbackCache.clearPendingFeedback();
+      for (final leftover in stillQueued) {
+        await _feedbackCache.queueFeedback(
+          body: leftover['body'] as String,
+          category: leftover['category'] as String?,
+          context: leftover['context'] as Map<String, dynamic>?,
+        );
+      }
+
+      if (sent > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              sent == 1
+                  ? 'Sent queued feedback'
+                  : 'Sent $sent queued feedback items',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      // Best-effort — swallow.
+    }
+  }
+
+  Future<void> _openFeedbackSheet() async {
+    final contextMap = await _captureFeedbackContext();
+    final offline = await _isOffline();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) => FeedbackSheet(
+        apiClient: _apiClient,
+        cache: _feedbackCache,
+        isOffline: offline,
+        platform: contextMap['platform'],
+        currentRoute: '/profile',
+        onComplete: (online) {
+          Navigator.of(sheetCtx).pop();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                online
+                    ? 'Thanks — feedback sent'
+                    : "Saved — we'll send it when you're back online.",
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _fetchProfile() async {
@@ -701,6 +835,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             label: 'Notifications',
             value: 'Push notifications & quiet hours',
             onTap: () => context.push('/profile/notifications'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+          const SizedBox(height: 8),
+          _buildProfileTile(
+            icon: Icons.feedback_outlined,
+            label: 'Send Feedback',
+            value: 'Tell us what to build or fix',
+            onTap: _openFeedbackSheet,
             colorScheme: colorScheme,
             textTheme: textTheme,
           ),
