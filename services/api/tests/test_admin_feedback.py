@@ -200,8 +200,9 @@ class TestGetStatsUnreadFeedback:
         self, client, mock_user, mock_db,
     ):
         mock_user.is_admin = True
-        # Five counts: total_users, total_recipes, total_recipe_books,
-        # errors_24h, active_users_7d, unread_feedback.
+        # Queries: total_users, total_recipes, total_recipe_books,
+        # errors_24h, active_users_7d, unread_feedback,
+        # overall_p95_ms, slowest_endpoint.
         mock_db.db.execute.side_effect = [
             MockExecuteResult([100]),
             MockExecuteResult([500]),
@@ -209,6 +210,8 @@ class TestGetStatsUnreadFeedback:
             MockExecuteResult([3]),
             MockExecuteResult([42]),
             MockExecuteResult([7]),
+            MockExecuteResult([None]),  # overall_p95_ms
+            MockExecuteResult([]),       # slowest_endpoint
         ]
         response = client.get("/v1/admin/stats")
         assert response.status_code == 200
