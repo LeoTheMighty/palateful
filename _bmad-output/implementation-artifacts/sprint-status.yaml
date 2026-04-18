@@ -522,8 +522,8 @@ development_status:
   # on arh-5 for the Gradle-side Crashlytics plugin config.
   epic-android-ci-hardening: in-progress
   ach-1-unify-flutter-channel-version-across-workflows: done
-  ach-2-gradle-cache-and-pre-build-analyze-test-gate: backlog
-  ach-3-crashlytics-native-symbol-upload-in-fastlane: backlog
+  ach-2-gradle-cache-and-pre-build-analyze-test-gate: done
+  ach-3-crashlytics-native-symbol-upload-in-fastlane: done
   ach-4-firebase-test-lab-soft-smoke-step: backlog
   ach-5-promote-android-workflow-and-fastlane-promote-lane: backlog
   ach-6-ci-yml-flutter-test-version-pin: backlog

@@ -135,6 +135,16 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      # Exports GOOGLE_APPLICATION_CREDENTIALS pointing at the service-account
+      # JSON so downstream steps can reach Google APIs. Consumed by:
+      #   - the Crashlytics Gradle plugin during `gradle bundle` — auto-uploads
+      #     mapping + native symbols when the extension flags are set (arh-5).
+      #   - the Firebase Test Lab soft-smoke step (ach-4).
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
       - name: Install Flutter dependencies
         working-directory: app
         run: |
