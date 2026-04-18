@@ -172,6 +172,7 @@ class SendInvitation(Endpoint):
                         "invitation_id": str(invitation.id),
                         "resource_type": params.resource_type,
                         "resource_id": str(params.resource_id),
+                        "resource_name": resource_name or "",
                     },
                 ),
                 db_session=self.db,

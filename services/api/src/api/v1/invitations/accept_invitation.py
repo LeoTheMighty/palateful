@@ -114,6 +114,7 @@ class AcceptInvitation(Endpoint):
                     "invitation_id": str(invitation.id),
                     "resource_type": invitation.resource_type,
                     "resource_id": str(invitation.resource_id),
+                    "resource_name": resource_name or "",
                     "user_id": str(user.id),
                 },
             ),

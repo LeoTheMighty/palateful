@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
+from utils.models.calendar import Calendar
+from utils.models.calendar_user import CalendarUser
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.pantry import Pantry
@@ -21,6 +23,7 @@ VALID_ROLES = {
     "pantry": {"editor", "viewer"},
     "shopping_list": {"editor", "viewer"},
     "meal_event": {"cohost", "guest"},
+    "calendar": {"editor"},
 }
 
 VALID_RESOURCE_TYPES = set(VALID_ROLES.keys())
@@ -135,6 +138,33 @@ def check_resource_permission(
                     detail="You don't have permission to invite to this meal event",
                     code=ErrorCode.MEAL_EVENT_ACCESS_DENIED,
                 )
+
+    elif resource_type == "calendar":
+        calendar = db.execute(
+            select(Calendar).where(
+                Calendar.id == resource_id,
+                Calendar.archived_at.is_(None),
+            )
+        ).scalar_one_or_none()
+        if not calendar:
+            raise APIException(
+                status_code=404,
+                detail="Calendar not found",
+                code=ErrorCode.CALENDAR_NOT_FOUND,
+            )
+        membership = db.execute(
+            select(CalendarUser).where(
+                CalendarUser.user_id == user_id,
+                CalendarUser.calendar_id == resource_id,
+                CalendarUser.archived_at.is_(None),
+            )
+        ).scalar_one_or_none()
+        if not membership or membership.role != "owner":
+            raise APIException(
+                status_code=403,
+                detail="Only the calendar owner can invite new members",
+                code=ErrorCode.CALENDAR_ACCESS_DENIED,
+            )
     else:  # pragma: no cover — resource_type validated before call
         pass
 
@@ -189,6 +219,15 @@ def check_existing_membership(
                 MealEventParticipant.user_id == user_id,
                 MealEventParticipant.meal_event_id == resource_id,
                 MealEventParticipant.archived_at.is_(None),
+            )
+        ).scalar_one_or_none() is not None
+
+    elif resource_type == "calendar":
+        return db.execute(
+            select(CalendarUser).where(
+                CalendarUser.user_id == user_id,
+                CalendarUser.calendar_id == resource_id,
+                CalendarUser.archived_at.is_(None),
             )
         ).scalar_one_or_none() is not None
 
@@ -296,6 +335,26 @@ def create_membership(
                 invited_by_id=invited_by_id,
                 status="accepted",
             ))
+
+    elif resource_type == "calendar":
+        existing = db.execute(
+            select(CalendarUser).where(
+                CalendarUser.user_id == user_id,
+                CalendarUser.calendar_id == resource_id,
+            )
+        ).scalar_one_or_none()
+        if existing:
+            if existing.archived_at is not None:
+                existing.archived_at = None
+                existing.role = role
+                existing.invited_by_id = invited_by_id
+        else:
+            db.add(CalendarUser(
+                user_id=user_id,
+                calendar_id=resource_id,
+                role=role,
+                invited_by_id=invited_by_id,
+            ))
     else:  # pragma: no cover — resource_type validated before call
         pass
 
@@ -331,5 +390,11 @@ def get_resource_name(
             select(MealEvent.title).where(MealEvent.id == resource_id)
         ).scalar_one_or_none()
         return me
+
+    elif resource_type == "calendar":
+        cal = db.execute(
+            select(Calendar.name).where(Calendar.id == resource_id)
+        ).scalar_one_or_none()
+        return cal
 
     return None
