@@ -8,6 +8,7 @@ from api.v1.import_job import (
     DismissImportItem,
     GetImportItem,
     GetImportJob,
+    GetImportUploadUrl,
     ListImportItems,
     ListImportJobs,
     RetryImportItem,
@@ -34,6 +35,20 @@ async def start_import(
     """Start a new recipe import job."""
     return StartImport.call(
         book_id=book_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/imports/upload-url")
+async def get_import_upload_url(
+    params: GetImportUploadUrl.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Mint a presigned S3 PUT URL for a file-based import."""
+    return GetImportUploadUrl.call(
         params=params,
         user=user,
         database=database,

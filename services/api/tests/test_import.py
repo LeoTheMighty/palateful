@@ -3662,3 +3662,244 @@ class TestListImportJobsArchiveFilters:
         )
         assert response.status_code == 400
         assert response.json()["error_message"] == "contradictory filters"
+
+
+class TestGetImportUploadUrl:
+    """Tests for POST /v1/imports/upload-url (sbf-2)."""
+
+    _S3_KEY_PATTERN = (
+        r"^imports/[0-9a-f-]{36}/[0-9a-f-]{36}\.[a-z0-9]{2,5}$"
+    )
+
+    @staticmethod
+    def _mock_aws():
+        """Build a MagicMock AWSService whose presign_put_url echoes the
+        bucket / key / required headers — lets tests assert what was
+        signed without needing real boto3."""
+        from unittest.mock import MagicMock
+
+        service = MagicMock()
+
+        def fake_presign(s3_key, bucket, content_type, content_length,
+                         tagging=None, expires_in=3600):
+            url = (
+                f"https://{bucket}.s3.us-east-1.amazonaws.com/{s3_key}"
+                f"?X-Amz-Expires={expires_in}"
+            )
+            required = {
+                "Content-Type": content_type,
+                "Content-Length": str(content_length),
+            }
+            if tagging:
+                required["x-amz-tagging"] = tagging
+            return url, required
+
+        service.presign_put_url.side_effect = fake_presign
+        return service
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_happy_path(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        import re
+        mock_get_service.return_value = self._mock_aws()
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "voice_memo.m4a",
+                "mime_type": "audio/mp4",
+                "size_bytes": 1024 * 1024,
+            },
+        )
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        assert body["upload_url"].startswith("https://")
+        assert re.match(self._S3_KEY_PATTERN, body["s3_key"])
+        assert body["s3_key"].startswith(f"imports/{mock_user.id}/")
+        assert body["s3_key"].endswith(".m4a")
+        assert body["required_headers"]["Content-Type"] == "audio/mp4"
+        assert body["required_headers"]["Content-Length"] == str(1024 * 1024)
+        assert body["required_headers"]["x-amz-tagging"] == "unclaimed=true"
+        assert "expires_at" in body
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_rejects_oversize(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        mock_get_service.return_value = self._mock_aws()
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "huge.mp4",
+                "mime_type": "video/mp4",
+                "size_bytes": 100 * 1024 * 1024 + 1,
+            },
+        )
+        assert response.status_code == 413
+        assert response.json()["error_code"] == ErrorCode.FILE_TOO_LARGE.value
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_accepts_exact_max(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        mock_get_service.return_value = self._mock_aws()
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "max.mp4",
+                "mime_type": "video/mp4",
+                "size_bytes": 100 * 1024 * 1024,
+            },
+        )
+        assert response.status_code == 200
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_rejects_zero_bytes(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        mock_get_service.return_value = self._mock_aws()
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "empty.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 0,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_rejects_negative_bytes(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        mock_get_service.return_value = self._mock_aws()
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "weird.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": -100,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_rejects_unknown_mime(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        mock_get_service.return_value = self._mock_aws()
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "weird.bin",
+                "mime_type": "application/octet-stream",
+                "size_bytes": 1024,
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == ErrorCode.UNSUPPORTED_MIME.value
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_canonical_extension_for_each_mime(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        """Every allowed mime resolves to its canonical extension in s3_key."""
+        from api.v1.import_job.get_upload_url import _MIME_EXT
+        mock_get_service.return_value = self._mock_aws()
+
+        for mime, expected_ext in _MIME_EXT.items():
+            response = client.post(
+                "/v1/imports/upload-url",
+                json={
+                    "filename": f"file.{expected_ext}",
+                    "mime_type": mime,
+                    "size_bytes": 4096,
+                },
+            )
+            assert response.status_code == 200, (mime, response.json())
+            s3_key = response.json()["s3_key"]
+            assert s3_key.endswith(f".{expected_ext}"), (mime, s3_key)
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_signs_against_imports_bucket(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        """Verify the AWSService is called with the imports bucket and
+        the exact ContentType/Length/Tagging the client declared."""
+        service = self._mock_aws()
+        mock_get_service.return_value = service
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "deck.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 2_345_678,
+            },
+        )
+        assert response.status_code == 200
+        service.presign_put_url.assert_called_once()
+        call_kwargs = service.presign_put_url.call_args.kwargs
+        assert call_kwargs["bucket"].startswith("palateful-imports-")
+        assert call_kwargs["content_type"] == "application/pdf"
+        assert call_kwargs["content_length"] == 2_345_678
+        assert call_kwargs["tagging"] == "unclaimed=true"
+        assert call_kwargs["expires_in"] == 3600
+        assert call_kwargs["s3_key"].startswith(f"imports/{mock_user.id}/")
+
+    @patch("api.v1.import_job.get_upload_url._get_aws_service")
+    def test_upload_url_required_headers_match_signed(
+        self, mock_get_service, client, mock_db, mock_user
+    ):
+        """The required_headers map mirrors what was signed — no drift."""
+        service = self._mock_aws()
+        mock_get_service.return_value = service
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "clip.mov",
+                "mime_type": "video/quicktime",
+                "size_bytes": 50 * 1024 * 1024,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        # Set of headers in the response is exactly what was signed.
+        assert set(body["required_headers"].keys()) == {
+            "Content-Type",
+            "Content-Length",
+            "x-amz-tagging",
+        }
+        assert body["required_headers"]["Content-Type"] == "video/quicktime"
+        assert body["required_headers"]["Content-Length"] == str(50 * 1024 * 1024)
+
+    def test_upload_url_requires_auth(self, unauthed_client, mock_db):
+        """No JWT → unauthorized (FastAPI security dep returns 422 when
+        Authorization header is missing; 401/403 once a token is present
+        but invalid)."""
+        response = unauthed_client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "x.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 1024,
+            },
+        )
+        assert response.status_code in (401, 403, 422)

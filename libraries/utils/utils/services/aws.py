@@ -62,6 +62,52 @@ class AWSService:
             ExpiresIn=expires_in,
         )
 
+    def presign_put_url(
+        self,
+        s3_key: str,
+        bucket: str,
+        content_type: str,
+        content_length: int,
+        tagging: str | None = None,
+        expires_in: int = 3600,
+    ) -> tuple[str, dict[str, str]]:
+        """Generate a presigned PUT URL with signed Content-Type/Length and optional tagging.
+
+        Unlike the legacy `generate_presigned_upload_url`, this helper
+        accepts an explicit `bucket` (the imports flow targets
+        `palateful-imports-{env}`, not the parser inputs bucket) and
+        signs `Content-Length` so the URL can only be used to upload
+        exactly the declared size.
+
+        Returns `(url, required_headers)` so the caller can hand the
+        client the exact header set to send. A header missing from the
+        client request will fail S3 signature validation — exposing
+        the map prevents clients from drifting out of sync with what
+        was signed.
+        """
+        params: dict[str, object] = {
+            "Bucket": bucket,
+            "Key": s3_key,
+            "ContentType": content_type,
+            "ContentLength": content_length,
+        }
+        if tagging:
+            params["Tagging"] = tagging
+
+        url = self._s3.generate_presigned_url(
+            "put_object",
+            Params=params,
+            ExpiresIn=expires_in,
+        )
+
+        required: dict[str, str] = {
+            "Content-Type": content_type,
+            "Content-Length": str(content_length),
+        }
+        if tagging:
+            required["x-amz-tagging"] = tagging
+        return url, required
+
     def generate_presigned_download_url(
         self,
         s3_key: str,

@@ -424,7 +424,7 @@ development_status:
   # Extension (sie) and Universal Receiving UX (sru). Independent.
   epic-share-backend-foundations: in-progress
   sbf-1-s3-imports-bucket-and-iam: done
-  sbf-2-presigned-upload-url-endpoint: backlog
+  sbf-2-presigned-upload-url-endpoint: done
   sbf-3-s3-key-import-path-audio-pdf-spreadsheet: backlog
   sbf-4-ffmpeg-in-worker-and-video-file-source-type: backlog
   sbf-5-social-url-routing-promoted-to-endpoint: backlog
@@ -485,3 +485,64 @@ development_status:
   # backend before the 2026-04-18 share planning loop. Remaining delta is
   # covered by the four epic-share-* epics above. No stories scheduled here.
   epic-media-import: deleted
+
+  # Epic Android Privacy Policy Page (planned 2026-04-18)
+  # Static app/web/privacy.html served by existing Flutter-web Cloudflare
+  # Pages deploy. Unblocks Play Console Store Listing + Data Safety forms
+  # which hard-require a public HTTPS privacy URL. Zero workflow changes
+  # (deploy-web already ships everything under app/web/).
+  epic-android-privacy-policy-page: backlog
+  app-1-draft-privacy-policy-html: backlog
+  app-2-wire-play-console-form-references: backlog
+  app-3-post-deploy-verification: backlog
+  epic-android-privacy-policy-page-retrospective: optional
+
+  # Epic Android Release Hardening (planned 2026-04-18)
+  # App-layer Play Store prep: POST_NOTIFICATIONS + runtime prompt + FCM
+  # channel, adaptive launcher icon XML, remove over-declared READ_MEDIA_*
+  # from manifest (amends sae-1), HTTPS App Links + .well-known/assetlinks
+  # .json, Crashlytics native symbol upload config, local release-mode
+  # smoke template. Blocks epic-android-play-console-launch; independent
+  # of privacy-policy-page.
+  epic-android-release-hardening: backlog
+  arh-1-post-notifications-runtime-prompt-fcm-channel: backlog
+  arh-2-remove-over-declared-read-media-permissions: backlog
+  arh-3-adaptive-launcher-icon: backlog
+  arh-4-https-app-links-and-assetlinks-json: backlog
+  arh-5-crashlytics-native-symbol-upload-config: backlog
+  arh-6-local-release-mode-smoke-template: backlog
+  epic-android-release-hardening-retrospective: optional
+
+  # Epic Android CI Hardening (planned 2026-04-18)
+  # Stitch mobile-builds.yml end-to-end: unify Flutter channel/version
+  # across ci.yml + mobile-builds.yml, add Gradle cache, pre-build
+  # analyze+test gate, Crashlytics symbol upload in Fastlane, Firebase
+  # Test Lab soft-smoke, new promote-android.yml workflow for manual
+  # track promotion gated by production environment approval. Depends
+  # on arh-5 for the Gradle-side Crashlytics plugin config.
+  epic-android-ci-hardening: backlog
+  ach-1-unify-flutter-channel-version-across-workflows: backlog
+  ach-2-gradle-cache-and-pre-build-analyze-test-gate: backlog
+  ach-3-crashlytics-native-symbol-upload-in-fastlane: backlog
+  ach-4-firebase-test-lab-soft-smoke-step: backlog
+  ach-5-promote-android-workflow-and-fastlane-promote-lane: backlog
+  ach-6-ci-yml-flutter-test-version-pin: backlog
+  epic-android-ci-hardening-retrospective: optional
+
+  # Epic Android Play Console Launch (planned 2026-04-18)
+  # Human runbook: ANDROID.md at repo root + app/android/play-store-assets/
+  # (512x512 icon, 1024x500 feature graphic, 4 phone screenshots). Covers
+  # keystore gen, GitHub Secrets, Google Play Developer signup as
+  # "Palateful" Personal account, GCP service account, Play Console app
+  # create, Play App Signing enrollment, first manual AAB upload, Store
+  # Listing, Content Rating (IARC Teen 13+), Target Audience 13+, Data
+  # Safety form (paste blocks for Firebase/Auth0/S3/LLM/Play Billing),
+  # Sensitive Permissions Declaration (SCHEDULE_EXACT_ALARM justification),
+  # tester recruitment via Google Group. Depends on all three preceding
+  # Android epics.
+  epic-android-play-console-launch: backlog
+  apl-1-draft-android-md-runbook-skeleton: backlog
+  apl-2-produce-play-console-store-listing-assets: backlog
+  apl-3-data-safety-paste-blocks-and-permission-justifications: backlog
+  apl-4-tester-recruitment-checklist: backlog
+  epic-android-play-console-launch-retrospective: optional
