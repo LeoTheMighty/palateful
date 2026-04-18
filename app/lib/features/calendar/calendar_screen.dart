@@ -9,8 +9,11 @@ import '../../shared/widgets/default_change_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
+import 'models/calendar.dart';
 import 'providers/active_calendar_provider.dart';
 import 'services/meal_calendar_service.dart';
+import 'widgets/calendar_create_dialog.dart';
+import 'widgets/calendar_settings_sheet.dart';
 import 'widgets/calendar_switcher_header.dart';
 import 'widgets/day_detail_sheet.dart';
 import 'widgets/meal_detail_sheet.dart';
@@ -574,12 +577,45 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 
+  Future<void> _openCreateCalendarDialog() async {
+    await showDialog<Calendar>(
+      context: context,
+      builder: (_) => const CalendarCreateDialog(),
+    );
+    // createCalendar + setActive already fired inside the dialog. The
+    // ref.listen on activeCalendarProvider triggers _loadEvents.
+  }
+
+  Future<void> _openCalendarSettings(Calendar cal) async {
+    final calendars = ref.read(calendarsListProvider).value ?? const [];
+    final owned = calendars.where((c) => c.isOwner).length;
+    final isLast = owned <= 1;
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => CalendarSettingsSheet(
+        calendar: cal,
+        isLastCalendar: isLast,
+      ),
+    );
+    if (result == 'deleted' && mounted) {
+      // Provider already re-resolves; trigger a grid reload.
+      _loadEvents();
+    }
+  }
+
   PreferredSizeWidget _buildAppBar() {
     final colorScheme = Theme.of(context).colorScheme;
     return AppBar(
       backgroundColor: colorScheme.surface,
       elevation: 0,
-      title: const CalendarSwitcherHeader(),
+      title: CalendarSwitcherHeader(
+        onCreateCalendar: _openCreateCalendarDialog,
+        onOpenSettings: _openCalendarSettings,
+      ),
       actions: [
         IconButton(
           icon: const Icon(Icons.add_shopping_cart_outlined),

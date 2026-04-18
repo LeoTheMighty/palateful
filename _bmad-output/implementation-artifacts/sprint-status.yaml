@@ -327,7 +327,7 @@ development_status:
   cal-found-1-calendar-model-backfill-and-crud: done
   cal-found-2-rewire-authorization-and-require-calendar-id: done
   cal-found-3-flutter-switcher-and-active-calendar-provider: done
-  cal-found-4-flutter-create-rename-delete-and-user-provisioning: backlog
+  cal-found-4-flutter-create-rename-delete-and-user-provisioning: done
   cal-found-5-plan-meal-calendar-row-and-move-to-calendar: backlog
   epic-calendars-foundation-retrospective: optional
 
