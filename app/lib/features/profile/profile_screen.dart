@@ -643,6 +643,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             textTheme: textTheme,
           ),
 
+          const SizedBox(height: 8),
+          _buildProfileTile(
+            icon: Icons.calendar_today_outlined,
+            label: 'Shared Calendars',
+            value: "Calendars others invited you to",
+            onTap: () => context.push('/profile/shared-calendars'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+
           const SizedBox(height: 32),
 
           // Appearance section

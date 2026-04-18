@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import '../calendar/providers/active_calendar_provider.dart';
 import '../../shared/widgets/error_banner.dart';
 
-class InvitationsScreen extends StatefulWidget {
+class InvitationsScreen extends ConsumerStatefulWidget {
   const InvitationsScreen({super.key});
 
   @override
-  State<InvitationsScreen> createState() => _InvitationsScreenState();
+  ConsumerState<InvitationsScreen> createState() => _InvitationsScreenState();
 }
 
-class _InvitationsScreenState extends State<InvitationsScreen>
+class _InvitationsScreenState extends ConsumerState<InvitationsScreen>
     with SingleTickerProviderStateMixin {
   final _apiClient = getIt<ApiClient>();
   late final TabController _tabController;
@@ -64,12 +66,28 @@ class _InvitationsScreenState extends State<InvitationsScreen>
     }
   }
 
-  Future<void> _accept(String id) async {
+  Future<void> _accept(Map<String, dynamic> inv) async {
+    final id = inv['id'] as String? ?? '';
+    final resourceType = inv['resource_type'] as String? ?? '';
+    final resourceId = inv['resource_id'] as String? ?? '';
+    final resourceName = inv['resource_name'] as String?;
     try {
       await _apiClient.acceptInvitation(id);
+      // Calendar invites: explicitly switch the active calendar to the
+      // newly-joined one and invalidate the calendars list so the
+      // switcher renders it under "Shared with Me" on next open.
+      if (resourceType == 'calendar' && resourceId.isNotEmpty) {
+        await ref
+            .read(activeCalendarProvider.notifier)
+            .setActive(resourceId);
+        ref.invalidate(calendarsListProvider);
+      }
       if (mounted) {
+        final acceptedLabel = resourceType == 'calendar' && resourceName != null
+            ? "You joined $resourceName"
+            : 'Invitation accepted';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invitation accepted')),
+          SnackBar(content: Text(acceptedLabel)),
         );
         _loadInvitations();
       }
@@ -181,20 +199,29 @@ class _InvitationsScreenState extends State<InvitationsScreen>
         itemBuilder: (context, index) {
           final inv = _received[index] as Map<String, dynamic>;
           final id = inv['id'] as String? ?? '';
+          final resourceType = inv['resource_type'] as String? ?? '';
           final resourceName = inv['resource_name'] as String? ?? 'a book';
           final role = inv['role_offered'] as String? ?? 'viewer';
           final fromUser = inv['from_user'] as Map<String, dynamic>?;
           final senderDisplay = fromUser?['username'] != null
               ? '@${fromUser!['username']}'
               : fromUser?['name'] as String? ?? 'Someone';
+          final subtitle = resourceType == 'calendar'
+              ? "Join calendar '$resourceName' as $role"
+              : 'Join "$resourceName" as $role';
 
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: colorScheme.secondaryContainer,
-              child: Icon(Icons.mail_outline, color: colorScheme.onSecondaryContainer),
+              child: Icon(
+                resourceType == 'calendar'
+                    ? Icons.calendar_today_outlined
+                    : Icons.mail_outline,
+                color: colorScheme.onSecondaryContainer,
+              ),
             ),
             title: Text('$senderDisplay invited you'),
-            subtitle: Text('Join "$resourceName" as $role'),
+            subtitle: Text(subtitle),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -204,7 +231,7 @@ class _InvitationsScreenState extends State<InvitationsScreen>
                 ),
                 const SizedBox(width: 4),
                 ElevatedButton(
-                  onPressed: () => _accept(id),
+                  onPressed: () => _accept(inv),
                   child: const Text('Accept'),
                 ),
               ],

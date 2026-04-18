@@ -51,6 +51,7 @@ import '../../features/chat/chat_screen.dart';
 import '../../features/profile/notification_preferences_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/profile/recurring_plans/recurring_plans_screen.dart';
+import '../../features/profile/shared_calendars_screen.dart';
 import '../../shared/widgets/scaffold_with_bottom_nav.dart';
 import 'page_transitions.dart';
 
@@ -336,6 +337,11 @@ GoRouter get appRouter {
         path: '/profile/recurring-plans',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const RecurringPlansScreen(),
+      ),
+      GoRoute(
+        path: '/profile/shared-calendars',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const SharedCalendarsScreen(),
       ),
       GoRoute(
         path: '/invite/:token',
