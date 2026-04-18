@@ -6,6 +6,7 @@ from api.v1.admin import (
     GetLogs,
     GetStats,
     ListUsers,
+    SendTestPush,
     UpdateUserAdmin,
 )
 from dependencies import get_database, require_admin
@@ -111,6 +112,22 @@ async def get_stats(
 ):
     """Get dashboard statistics."""
     return GetStats.call(
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.post("/notifications/test-push")
+async def send_test_push(
+    params: SendTestPush.Params,
+    force: bool = Query(True, description="Bypass quiet hours (default true)"),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Fire a test FCM push to verify the round-trip."""
+    return SendTestPush.call(
+        params=params,
+        force=force,
         user=user,
         database=database,
     )

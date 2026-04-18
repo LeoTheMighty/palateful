@@ -771,4 +771,21 @@ class ApiClient {
   Future<Response> getAdminStats() {
     return _dio.get('/v1/admin/stats');
   }
+
+  Future<Response> sendAdminTestPush({
+    String? title,
+    String? body,
+    String? targetUserId,
+    bool force = true,
+  }) {
+    return _dio.post(
+      '/v1/admin/notifications/test-push',
+      queryParameters: {'force': force},
+      data: {
+        if (title != null) 'title': title,
+        if (body != null) 'body': body,
+        if (targetUserId != null) 'target_user_id': targetUserId,
+      },
+    );
+  }
 }

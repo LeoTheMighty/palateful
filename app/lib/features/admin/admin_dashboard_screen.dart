@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -25,6 +26,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int _totalRecipeBooks = 0;
   int _errors24h = 0;
   int _activeUsers7d = 0;
+
+  bool _testPushSending = false;
+  String? _testPushResult;
+  bool _testPushIsError = false;
 
   @override
   void initState() {
@@ -159,10 +164,159 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               colorScheme: colorScheme,
               textTheme: textTheme,
             ),
+
+            const SizedBox(height: 32),
+            Text(
+              'Notifications',
+              style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            _buildTestPushCard(colorScheme, textTheme),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildTestPushCard(ColorScheme colorScheme, TextTheme textTheme) {
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.notifications_active_outlined, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Send test push to myself',
+                    style: textTheme.bodyLarge,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Fires a FCM push with title "Palateful test push" to every device you have registered.',
+              style: textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _testPushSending ? null : _sendTestPush,
+              icon: _testPushSending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_outlined, size: 18),
+              label: Text(_testPushSending ? 'Sending…' : 'Send test push'),
+            ),
+            if (_testPushResult != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (_testPushIsError ? colorScheme.errorContainer : colorScheme.primaryContainer)
+                      .withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _testPushResult!,
+                  style: textTheme.bodySmall?.copyWith(
+                    color: _testPushIsError ? colorScheme.onErrorContainer : colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sendTestPush() async {
+    setState(() {
+      _testPushSending = true;
+      _testPushResult = null;
+      _testPushIsError = false;
+    });
+
+    try {
+      final response = await _apiClient.sendAdminTestPush();
+      if (!mounted) return;
+
+      final data = response.data as Map<String, dynamic>;
+      final outcome = data['outcome'] as String? ?? 'ok';
+      final messageId = data['message_id'] as String?;
+      final logOnly = data['log_only'] as bool? ?? false;
+      final suppressed = data['suppressed_by_quiet_hours'] as bool? ?? false;
+      final tokens = data['tokens_registered'] as int? ?? 0;
+
+      String message;
+      switch (outcome) {
+        case 'ok':
+          message = '✓ Sent (msg-id: ${messageId ?? "—"}). Check your phone.';
+          break;
+        case 'log_only':
+          message = 'Sent in log-only mode — check the API logs. Real FCM delivery '
+              'requires FIREBASE_CREDENTIALS_JSON in prod (see docs/PUSH_NOTIFICATIONS.md).';
+          break;
+        case 'suppressed_quiet_hours':
+          message = 'Suppressed by quiet hours. Use force=true (default) to bypass.';
+          break;
+        case 'no_tokens':
+          message = 'No push tokens registered for your user. '
+              'Grant notification permission on your device first.';
+          break;
+        default:
+          if (logOnly) {
+            message = 'Log-only mode (outcome: $outcome).';
+          } else if (suppressed) {
+            message = 'Suppressed by quiet hours.';
+          } else {
+            message = 'Sent but outcome=$outcome (tokens=$tokens).';
+          }
+      }
+
+      setState(() {
+        _testPushSending = false;
+        _testPushResult = message;
+        _testPushIsError = false;
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+
+      String message;
+      final status = e.response?.statusCode ?? 0;
+      final body = e.response?.data;
+
+      if (status == 429 && body is Map) {
+        final retryAfter = (body['data'] as Map?)?['retry_after_s'] as int?;
+        message = 'Rate-limited. Retry in ${retryAfter ?? "a few"} seconds.';
+      } else if (body is Map && body['error_message'] is String) {
+        message = 'Error (${status == 0 ? "?" : status}): ${body['error_message']}';
+      } else {
+        message = 'Error: ${ErrorReporter.detail(e)}';
+      }
+
+      setState(() {
+        _testPushSending = false;
+        _testPushResult = message;
+        _testPushIsError = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _testPushSending = false;
+        _testPushResult = 'Unexpected error: $e';
+        _testPushIsError = true;
+      });
+    }
   }
 
   Widget _buildStatCard(
