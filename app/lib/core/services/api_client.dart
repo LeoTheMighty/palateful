@@ -595,6 +595,13 @@ class ApiClient {
     return _dio.get('/v1/import-items/$itemId');
   }
 
+  /// irrd-2 telemetry endpoint — returns a 4-stage array plus raw-text
+  /// previews for parsed/extracted. Cheap enough to call on every
+  /// caret expansion per NFR55.
+  Future<Response> getImportItemTelemetry(String itemId) {
+    return _dio.get('/v1/import-items/$itemId/telemetry');
+  }
+
   Future<Response> updateImportItem(String itemId, Map<String, dynamic> userEdits) {
     return _dio.put('/v1/import-items/$itemId', data: {
       'user_edits': userEdits,

@@ -9,8 +9,11 @@ import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/theme/import_state_colors.dart';
 import 'providers/activity_archive_provider.dart';
+import 'providers/import_row_expansion_provider.dart';
 import 'providers/imports_actionable_badge_provider.dart';
 import 'widgets/import_row.dart';
+import 'widgets/import_row_caret.dart';
+import 'widgets/import_row_expansion.dart';
 import 'widgets/import_state_section.dart';
 import 'widgets/see_all_footer.dart';
 
@@ -465,30 +468,42 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
 
   /// In Progress rows render without any `Dismissible` wrapper — the
   /// absence of swipe affordance is the "blue is read-only" signal.
-  /// Trailing slot is a small progress glyph (non-interactive).
+  /// Trailing slot stacks a read-only progress ring under an interactive
+  /// caret (irrd-4 AC12) so blue rows also get rich-detail expansion.
   Widget _buildInProgressRow(_JobView job, ImportStateColors states) {
     final total = job.totalItems;
     final done = job.processedItems;
     final statusLabel = total > 0
         ? 'Importing $done of $total'
         : 'Importing…';
-    return ImportRow(
-      id: job.id,
-      sourceIcon: _iconForSourceType(job.sourceType),
-      title: _jobTitle(job),
-      statusLabel: statusLabel,
-      stateColor: states.inProgress,
-      stateChipLabel: 'In Progress',
-      timeLabel: _formatTime(job.createdAt),
-      trailing: SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(states.inProgress),
+    return _ExpandableRow(
+      rowId: job.id,
+      recipeName: _jobTitle(job),
+      // Blue rows have no single item_id to hang telemetry off — the
+      // expansion is job-level and skips the per-item telemetry fetch.
+      // irrd-5 renders stage-timeline off the job's aggregate status.
+      itemIdForTelemetry: null,
+      retryCount: 0,
+      lastRetryAt: null,
+      errorMessage: null,
+      sourceType: job.sourceType,
+      sourceReference: null,
+      row: ImportRow(
+        id: job.id,
+        sourceIcon: _iconForSourceType(job.sourceType),
+        title: _jobTitle(job),
+        statusLabel: statusLabel,
+        stateColor: states.inProgress,
+        stateChipLabel: 'In Progress',
+        timeLabel: _formatTime(job.createdAt),
+        trailing: ImportRowCaret(
+          rowId: job.id,
+          recipeName: _jobTitle(job),
+          showProgressRing: true,
+          progressColor: states.inProgress,
         ),
+        onTap: () => context.push('/recipes/import/review-list/${job.id}'),
       ),
-      onTap: () => context.push('/recipes/import/review-list/${job.id}'),
     );
   }
 
@@ -510,16 +525,29 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         child: const Icon(Icons.archive_outlined, color: Colors.white),
       ),
       onDismissed: (_) => _archiveItem(item),
-      child: ImportRow(
-        id: item.id,
-        sourceIcon: _iconForSourceType(item.sourceType),
-        title: item.title,
-        statusLabel: item.statusLabel,
-        stateColor: stateColor,
-        stateChipLabel: chipLabel,
-        timeLabel: _formatTime(item.createdAt),
-        trailing: const Icon(Icons.chevron_right, size: 20),
-        onTap: onTap,
+      child: _ExpandableRow(
+        rowId: item.id,
+        recipeName: item.title,
+        itemIdForTelemetry: item.id,
+        retryCount: item.retryCount,
+        lastRetryAt: item.lastRetryAt,
+        errorMessage: item.errorMessage,
+        sourceType: item.sourceType,
+        sourceReference: item.sourceReference,
+        row: ImportRow(
+          id: item.id,
+          sourceIcon: _iconForSourceType(item.sourceType),
+          title: item.title,
+          statusLabel: item.statusLabel,
+          stateColor: stateColor,
+          stateChipLabel: chipLabel,
+          timeLabel: _formatTime(item.createdAt),
+          trailing: ImportRowCaret(
+            rowId: item.id,
+            recipeName: item.title,
+          ),
+          onTap: onTap,
+        ),
       ),
     );
   }
@@ -578,6 +606,67 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   }
 }
 
+// ── row + expansion composition ────────────────────────────────────────
+
+/// Composes an `ImportRow` with an inline `ImportRowExpansion` rendered
+/// below it when the row's id lives in the `importRowExpansionProvider`
+/// set. Uses `select` to keep the rebuild scoped to this row only —
+/// expanding row A does not rebuild row B's widget tree.
+class _ExpandableRow extends ConsumerWidget {
+  final String rowId;
+  final String recipeName;
+
+  /// Separate from `rowId` because in-progress rows are keyed on the
+  /// job id (there's no single item to hang telemetry off), and the
+  /// telemetry endpoint is item-level. `null` skips the fetch and the
+  /// expansion renders its skeleton-less placeholder (irrd-5 landing).
+  final String? itemIdForTelemetry;
+
+  final int retryCount;
+  final DateTime? lastRetryAt;
+  final String? errorMessage;
+  final String? sourceType;
+  final String? sourceReference;
+  final Widget row;
+
+  const _ExpandableRow({
+    required this.rowId,
+    required this.recipeName,
+    required this.itemIdForTelemetry,
+    required this.retryCount,
+    required this.lastRetryAt,
+    required this.errorMessage,
+    required this.sourceType,
+    required this.sourceReference,
+    required this.row,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final expanded = ref.watch(
+      importRowExpansionProvider.select((s) => s.contains(rowId)),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        row,
+        if (expanded && itemIdForTelemetry != null)
+          ImportRowExpansion(
+            itemId: itemIdForTelemetry!,
+            recipeName: recipeName,
+            retryCount: retryCount,
+            lastRetryAt: lastRetryAt,
+            errorMessage: errorMessage,
+            sourceType: sourceType,
+            sourceReference: sourceReference,
+          ),
+      ],
+    );
+  }
+}
+
 // ── view models ────────────────────────────────────────────────────────
 
 class _JobView {
@@ -613,17 +702,25 @@ class _ItemView {
   final String id;
   final String title;
   final String? sourceType;
+  final String? sourceReference;
   final String? statusLabel;
+  final String? errorMessage;
   final String? createdRecipeId;
   final DateTime? createdAt;
+  final int retryCount;
+  final DateTime? lastRetryAt;
 
   _ItemView({
     required this.id,
     required this.title,
     required this.sourceType,
+    required this.sourceReference,
     required this.statusLabel,
+    required this.errorMessage,
     required this.createdRecipeId,
     required this.createdAt,
+    required this.retryCount,
+    required this.lastRetryAt,
   });
 
   factory _ItemView.fromJson(dynamic item, dynamic parentJob) {
@@ -643,10 +740,16 @@ class _ItemView {
       id: item['id'].toString(),
       title: (name != null && name.isNotEmpty) ? name : 'Untitled',
       sourceType: (item['source_type'] ?? parentJob['source_type']) as String?,
+      sourceReference: item['source_url']?.toString(),
       statusLabel: label,
+      errorMessage: errorMsg,
       createdRecipeId: item['created_recipe_id']?.toString(),
       createdAt: item['created_at'] != null
           ? DateTime.tryParse(item['created_at'].toString())
+          : null,
+      retryCount: (item['retry_count'] as num?)?.toInt() ?? 0,
+      lastRetryAt: item['last_retry_at'] != null
+          ? DateTime.tryParse(item['last_retry_at'].toString())
           : null,
     );
   }
