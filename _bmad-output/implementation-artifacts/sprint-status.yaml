@@ -373,8 +373,8 @@ development_status:
   # (blue/yellow/red/green), swipe-to-archive (except blue), "See all" footer
   # for archived + >30d history. Retires /activity/import-history route.
   # First of three epics in the Activity Hub + Imports redesign trio.
-  epic-activity-hub-redesign: backlog
-  ahr-1-backend-archive-columns-and-endpoints: backlog
+  epic-activity-hub-redesign: in-progress
+  ahr-1-backend-archive-columns-and-endpoints: done
   ahr-2-flutter-two-tab-shell-and-routing: backlog
   ahr-3-flutter-notifications-tab-swipe-archive: backlog
   ahr-4-flutter-imports-tab-four-color-sections: backlog

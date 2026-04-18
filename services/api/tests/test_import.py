@@ -922,6 +922,24 @@ class TestListImportItems:
         response = client.get("/v1/import-jobs/nonexistent/items")
         assert response.status_code == 404
 
+    def test_list_import_items_include_archived_true(self, client, mock_db, mock_user):
+        """include_archived=true flips off the archived_at IS NULL filter."""
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(f"/v1/import-jobs/{job_id}/items?include_archived=true")
+        assert response.status_code == 200
+
     def test_list_import_items_access_denied(self, client, mock_db, mock_user):
         """Test listing items when user has no access."""
         job_id = "test-job-id"
@@ -3116,3 +3134,333 @@ class TestDismissAllFailedImports:
         assert failed_item.dismissed_at is not None
         # Job NOT dismissed because sibling is still in-flight
         assert job.dismissed_at is None
+
+
+class TestArchiveImportItem:
+    """Tests for POST /v1/import-items/{item_id}/archive."""
+
+    def _setup(
+        self,
+        mock_db,
+        mock_user,
+        *,
+        item_status="awaiting_review",
+        role="owner",
+        archived_at=None,
+    ):
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status=item_status,
+            archived_at=archived_at,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role=role,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        # The FOR UPDATE re-read goes through db.query(ImportItem).filter().
+        # Return the same row so the locked status matches the initial.
+        mock_db.db.query.return_value = MockQuery([item])
+        return item, job, item_id
+
+    def test_archive_happy_path_sets_archived_at(
+        self, client, mock_db, mock_user
+    ):
+        item, _, item_id = self._setup(mock_db, mock_user)
+
+        response = client.post(f"/v1/import-items/{item_id}/archive")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == item_id
+        assert body["archived_at"] is not None
+        assert item.archived_at is not None
+
+    def test_archive_in_progress_returns_409(self, client, mock_db, mock_user):
+        item, _, item_id = self._setup(
+            mock_db, mock_user, item_status="processing"
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/archive")
+        assert response.status_code == 409
+        assert response.json()["error_message"] == "cannot archive in-progress import"
+        # archived_at unchanged
+        assert item.archived_at is None
+
+    def test_archive_already_archived_is_noop(self, client, mock_db, mock_user):
+        from datetime import UTC, datetime
+
+        fixed_ts = datetime(2026, 4, 1, tzinfo=UTC)
+        item, _, item_id = self._setup(
+            mock_db, mock_user, archived_at=fixed_ts
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/archive")
+        assert response.status_code == 200
+        assert item.archived_at == fixed_ts
+
+    def test_archive_not_owner_returns_403(self, client, mock_db, mock_user):
+        item, _, item_id = self._setup(
+            mock_db, mock_user, role="viewer"
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/archive")
+        assert response.status_code == 403
+
+    def test_archive_not_found(self, client, mock_db, mock_user):
+        response = client.post("/v1/import-items/missing/archive")
+        assert response.status_code == 404
+
+    def test_archive_job_not_found_returns_404(
+        self, client, mock_db, mock_user
+    ):
+        """If the parent ImportJob is missing, return 404 before acl/status checks."""
+        from utils.models.import_item import ImportItem
+
+        item_id = "test-item-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id="orphan-job",
+            status="awaiting_review",
+            archived_at=None,
+        )
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        # ImportJob find_by returns None — not configured.
+
+        response = client.post(f"/v1/import-items/{item_id}/archive")
+        assert response.status_code == 404
+
+    def test_archive_locked_row_missing_returns_404(
+        self, client, mock_db, mock_user
+    ):
+        """If the FOR UPDATE re-read returns None (concurrent delete),
+        the endpoint responds with 404."""
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            archived_at=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        # The FOR UPDATE re-read returns empty.
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.post(f"/v1/import-items/{item_id}/archive")
+        assert response.status_code == 404
+
+
+class TestUnarchiveImportItem:
+    """Tests for POST /v1/import-items/{item_id}/unarchive."""
+
+    def test_unarchive_happy_path(self, client, mock_db, mock_user):
+        from datetime import UTC, datetime
+
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            archived_at=datetime(2026, 4, 1, tzinfo=UTC),
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/unarchive")
+        assert response.status_code == 200
+        assert item.archived_at is None
+
+    def test_unarchive_already_active_is_noop(self, client, mock_db, mock_user):
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="completed",
+            archived_at=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/unarchive")
+        assert response.status_code == 200
+        assert item.archived_at is None
+
+    def test_unarchive_not_found(self, client, mock_db, mock_user):
+        response = client.post("/v1/import-items/missing/unarchive")
+        assert response.status_code == 404
+
+    def test_unarchive_job_not_found_returns_404(self, client, mock_db, mock_user):
+        from utils.models.import_item import ImportItem
+
+        item_id = "test-item-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id="orphan-job",
+            status="completed",
+            archived_at=None,
+        )
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+
+        response = client.post(f"/v1/import-items/{item_id}/unarchive")
+        assert response.status_code == 404
+
+    def test_unarchive_not_owner_returns_403(self, client, mock_db, mock_user):
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        item_id = "test-item-id"
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="completed",
+            archived_at=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        response = client.post(f"/v1/import-items/{item_id}/unarchive")
+        assert response.status_code == 403
+
+
+class TestListImportJobsArchiveFilters:
+    """Tests for ?include_archived and ?archived_only on list endpoints."""
+
+    def test_default_excludes_archived(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/import-jobs")
+        assert response.status_code == 200
+
+    def test_include_archived_true(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/import-jobs?include_archived=true")
+        assert response.status_code == 200
+
+    def test_archived_only_true_implicitly_includes(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(
+            "/v1/import-jobs?archived_only=true&include_archived=true"
+        )
+        assert response.status_code == 200
+
+    def test_contradictory_filters_returns_400(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(
+            "/v1/import-jobs?archived_only=true&include_archived=false"
+        )
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "contradictory filters"

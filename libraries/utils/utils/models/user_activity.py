@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String
+from sqlalchemy import Boolean, ForeignKey, Index, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,4 +38,22 @@ class UserActivity(Base):
 
     __table_args__ = (
         Index("ix_user_activities_user_created", "user_id", "created_at"),
+        # Hot-path partial index for the default feed query
+        # (`archived_at IS NULL`) — added by the activity-hub redesign
+        # epic. Scan is served by this index when the Activity tab
+        # (Notifications or Imports) requests the default feed.
+        Index(
+            "ix_user_activities_user_created_active",
+            "user_id",
+            text("created_at DESC"),
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+        # See-all partial index for the Imports-tab See-all footer
+        # (`archived_at IS NOT NULL`), ordered newest-archive-first.
+        Index(
+            "ix_user_activities_user_archived",
+            "user_id",
+            text("archived_at DESC"),
+            postgresql_where=text("archived_at IS NOT NULL"),
+        ),
     )

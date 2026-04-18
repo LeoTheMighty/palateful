@@ -2,6 +2,7 @@
 
 from api.v1.import_job import (
     ApproveImportItem,
+    ArchiveImportItem,
     CancelImportJob,
     DismissAllFailedImports,
     DismissImportItem,
@@ -12,6 +13,7 @@ from api.v1.import_job import (
     RetryImportItem,
     SkipImportItem,
     StartImport,
+    UnarchiveImportItem,
     UpdateImportItem,
 )
 from dependencies import get_current_user, get_database
@@ -43,6 +45,16 @@ async def list_import_jobs(
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_archived: bool = Query(
+        False, description="Include archived jobs"
+    ),
+    archived_only: bool = Query(
+        False,
+        description=(
+            "Return only archived jobs (implies include_archived=true; "
+            "400 if include_archived=false is also passed)"
+        ),
+    ),
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -51,6 +63,8 @@ async def list_import_jobs(
         status=status,
         limit=limit,
         offset=offset,
+        include_archived=include_archived,
+        archived_only=archived_only,
         user=user,
         database=database,
     )
@@ -90,6 +104,9 @@ async def list_import_items(
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_archived: bool = Query(
+        False, description="Include archived items"
+    ),
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -99,6 +116,7 @@ async def list_import_items(
         status=status,
         limit=limit,
         offset=offset,
+        include_archived=include_archived,
         user=user,
         database=database,
     )
@@ -197,6 +215,34 @@ async def dismiss_all_failed_imports(
 ):
     """Hide all failed import items owned by the current user."""
     return DismissAllFailedImports.call(
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/import-items/{item_id}/archive")
+async def archive_import_item(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Archive an import item. 409 if status is in-progress."""
+    return ArchiveImportItem.call(
+        item_id=item_id,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/import-items/{item_id}/unarchive")
+async def unarchive_import_item(
+    item_id: str,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Restore an archived import item to the default feed."""
+    return UnarchiveImportItem.call(
+        item_id=item_id,
         user=user,
         database=database,
     )

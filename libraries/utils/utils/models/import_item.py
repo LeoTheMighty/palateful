@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import UUID, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +19,24 @@ class ImportItem(Base):
     """Individual recipe within an import job."""
 
     __tablename__ = "import_items"
+
+    __table_args__ = (
+        # Hot-path partial index for the default feed query
+        # (`archived_at IS NULL`) used by the Imports-tab sections.
+        Index(
+            "ix_import_items_job_created_active",
+            "import_job_id",
+            text("created_at DESC"),
+            postgresql_where=text("archived_at IS NULL"),
+        ),
+        # See-all partial index for the See-all footer.
+        Index(
+            "ix_import_items_job_archived",
+            "import_job_id",
+            text("archived_at DESC"),
+            postgresql_where=text("archived_at IS NOT NULL"),
+        ),
+    )
 
     # Status: pending | extracting | matching | awaiting_review | approved | completed | failed | skipped
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)

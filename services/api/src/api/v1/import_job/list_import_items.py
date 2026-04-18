@@ -14,22 +14,21 @@ from utils.models.user import User
 class ListImportItems(Endpoint):
     """List import items for a job."""
 
-    def execute(self, job_id: str, status: str | None = None, limit: int = 50, offset: int = 0):
-        """
-        List import items for a job.
+    def execute(
+        self,
+        job_id: str,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        include_archived: bool = False,
+    ):
+        """List import items for a job.
 
-        Args:
-            job_id: The import job ID.
-            status: Optional status filter.
-            limit: Maximum items to return.
-            offset: Offset for pagination.
-
-        Returns:
-            List of import items.
+        ``include_archived`` defaults to false so the default feed hides
+        archived rows; the See-all footer flips it on.
         """
         user: User = self.user
 
-        # Load import job
         job = self.database.find_by(ImportJob, id=job_id)
         if not job:
             raise APIException(
@@ -38,7 +37,6 @@ class ListImportItems(Endpoint):
                 code=ErrorCode.IMPORT_JOB_NOT_FOUND,
             )
 
-        # Check access
         membership = self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
@@ -51,7 +49,6 @@ class ListImportItems(Endpoint):
                 code=ErrorCode.IMPORT_JOB_ACCESS_DENIED,
             )
 
-        # Build query
         query = self.database.db.query(ImportItem).filter(
             ImportItem.import_job_id == job_id
         )
@@ -59,13 +56,15 @@ class ListImportItems(Endpoint):
         if status:
             query = query.filter(ImportItem.status == status)
 
-        # Get total count
+        if not include_archived:
+            query = query.filter(ImportItem.archived_at.is_(None))
+
         total = query.count()
 
-        # Apply pagination
-        items = query.order_by(ImportItem.created_at).offset(offset).limit(limit).all()
+        items = (
+            query.order_by(ImportItem.created_at).offset(offset).limit(limit).all()
+        )
 
-        # Build response
         item_responses = []
         for item in items:
             recipe_name = None
@@ -73,7 +72,6 @@ class ListImportItems(Endpoint):
 
             if item.parsed_recipe:
                 recipe_name = item.parsed_recipe.get("name")
-                # Check if any ingredient needs review
                 ingredients = item.parsed_recipe.get("ingredients", [])
                 needs_review = any(ing.get("needs_review", False) for ing in ingredients)
 
@@ -88,6 +86,7 @@ class ListImportItems(Endpoint):
                     needs_review=needs_review or item.status == "awaiting_review",
                     ai_cost_cents=item.ai_cost_cents,
                     created_at=item.created_at,
+                    archived_at=item.archived_at,
                 )
             )
 
@@ -109,6 +108,7 @@ class ListImportItems(Endpoint):
         needs_review: bool = False
         ai_cost_cents: int = 0
         created_at: datetime
+        archived_at: datetime | None = None
 
     class Response(BaseModel):
         items: list["ListImportItems.ItemSummary"]

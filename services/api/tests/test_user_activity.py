@@ -6,6 +6,23 @@ from datetime import UTC, datetime
 from conftest import MockModel, MockQuery
 
 
+class MockUserActivityForArchive(MockModel):
+    """Mock UserActivity model with archive-friendly defaults."""
+
+    def __init__(self, **kwargs):
+        defaults = {
+            "user_id": str(uuid.uuid4()),
+            "type": "invitation",
+            "title": "Test",
+            "subtitle": None,
+            "metadata_json": None,
+            "read": False,
+            "action_url": None,
+        }
+        defaults.update(kwargs)
+        super().__init__(**defaults)
+
+
 class MockUserActivity(MockModel):
     """Mock UserActivity model."""
 
@@ -132,4 +149,113 @@ class TestMarkAllRead:
         mock_db.db.query.return_value = MockQuery([])
 
         response = client.put("/v1/activities/read-all")
+        assert response.status_code == 200
+
+
+class TestArchiveActivity:
+    """Tests for POST /v1/activities/{activity_id}/archive."""
+
+    def test_archive_active_row_sets_archived_at(self, client, mock_db, mock_user):
+        from utils.models.user_activity import UserActivity
+
+        activity_id = str(uuid.uuid4())
+        activity = MockUserActivityForArchive(
+            id=activity_id,
+            user_id=str(mock_user.id),
+            archived_at=None,
+        )
+        mock_db.set_find_by(
+            UserActivity, activity, id=activity_id, user_id=mock_user.id
+        )
+
+        response = client.post(f"/v1/activities/{activity_id}/archive")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == activity_id
+        assert body["archived_at"] is not None
+        assert activity.archived_at is not None
+
+    def test_archive_already_archived_is_noop(self, client, mock_db, mock_user):
+        from utils.models.user_activity import UserActivity
+
+        activity_id = str(uuid.uuid4())
+        fixed_ts = datetime(2026, 4, 1, tzinfo=UTC)
+        activity = MockUserActivityForArchive(
+            id=activity_id,
+            user_id=str(mock_user.id),
+            archived_at=fixed_ts,
+        )
+        mock_db.set_find_by(
+            UserActivity, activity, id=activity_id, user_id=mock_user.id
+        )
+
+        response = client.post(f"/v1/activities/{activity_id}/archive")
+        assert response.status_code == 200
+        # Unchanged — no-op.
+        assert activity.archived_at == fixed_ts
+
+    def test_archive_not_found(self, client, mock_db, mock_user):
+        response = client.post(f"/v1/activities/{uuid.uuid4()}/archive")
+        assert response.status_code == 404
+
+
+class TestUnarchiveActivity:
+    """Tests for POST /v1/activities/{activity_id}/unarchive."""
+
+    def test_unarchive_archived_row_clears_archived_at(
+        self, client, mock_db, mock_user
+    ):
+        from utils.models.user_activity import UserActivity
+
+        activity_id = str(uuid.uuid4())
+        activity = MockUserActivityForArchive(
+            id=activity_id,
+            user_id=str(mock_user.id),
+            archived_at=datetime(2026, 4, 1, tzinfo=UTC),
+        )
+        mock_db.set_find_by(
+            UserActivity, activity, id=activity_id, user_id=mock_user.id
+        )
+
+        response = client.post(f"/v1/activities/{activity_id}/unarchive")
+        assert response.status_code == 200
+        assert activity.archived_at is None
+
+    def test_unarchive_active_row_is_noop(self, client, mock_db, mock_user):
+        from utils.models.user_activity import UserActivity
+
+        activity_id = str(uuid.uuid4())
+        activity = MockUserActivityForArchive(
+            id=activity_id,
+            user_id=str(mock_user.id),
+            archived_at=None,
+        )
+        mock_db.set_find_by(
+            UserActivity, activity, id=activity_id, user_id=mock_user.id
+        )
+
+        response = client.post(f"/v1/activities/{activity_id}/unarchive")
+        assert response.status_code == 200
+        assert activity.archived_at is None
+
+    def test_unarchive_not_found(self, client, mock_db, mock_user):
+        response = client.post(f"/v1/activities/{uuid.uuid4()}/unarchive")
+        assert response.status_code == 404
+
+
+class TestListActivitiesIncludeArchived:
+    """Tests for GET /v1/activities?include_archived=<bool>."""
+
+    def test_default_excludes_archived(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+
+    def test_include_archived_true_accepts_query_param(
+        self, client, mock_db, mock_user
+    ):
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get("/v1/activities?include_archived=true")
         assert response.status_code == 200

@@ -3,7 +3,8 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import APIException, Endpoint, success
+from utils.classes.error_code import ErrorCode
 from utils.models.import_job import ImportJob
 from utils.models.user import User
 
@@ -11,21 +12,33 @@ from utils.models.user import User
 class ListImportJobs(Endpoint):
     """List all import jobs for the current user."""
 
-    def execute(self, status: str | None = None, limit: int = 20, offset: int = 0):
-        """
-        List import jobs for the authenticated user.
+    def execute(
+        self,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        include_archived: bool = False,
+        archived_only: bool = False,
+    ):
+        """List import jobs for the authenticated user.
 
-        Args:
-            status: Optional status filter.
-            limit: Maximum items to return.
-            offset: Offset for pagination.
-
-        Returns:
-            List of import jobs with total count.
+        ``include_archived`` / ``archived_only`` back the Imports-tab
+        See-all footer (ahr-5). Default list (both false) keeps the
+        existing behavior of hiding archived rows alongside dismissed
+        rows. ``archived_only=true`` returns only archived rows and
+        implies ``include_archived=true`` — the combination
+        ``archived_only=true & include_archived=false`` is a contradiction
+        that returns 400.
         """
         user: User = self.user
 
-        # Build query
+        if archived_only and not include_archived:
+            raise APIException(
+                status_code=400,
+                detail="contradictory filters",
+                code=ErrorCode.VALIDATION_ERROR,
+            )
+
         query = self.database.db.query(ImportJob).filter(
             ImportJob.user_id == user.id
         )
@@ -33,13 +46,20 @@ class ListImportJobs(Endpoint):
         if status:
             query = query.filter(ImportJob.status == status)
 
-        # Get total count
+        if archived_only:
+            query = query.filter(ImportJob.archived_at.isnot(None))
+        elif not include_archived:
+            query = query.filter(ImportJob.archived_at.is_(None))
+
         total = query.count()
 
-        # Apply pagination
-        jobs = query.order_by(ImportJob.created_at.desc()).offset(offset).limit(limit).all()
+        jobs = (
+            query.order_by(ImportJob.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
 
-        # Build response
         job_responses = []
         for job in jobs:
             job_responses.append(
@@ -54,6 +74,7 @@ class ListImportJobs(Endpoint):
                     recipe_book_id=str(job.recipe_book_id),
                     created_at=job.created_at,
                     completed_at=job.completed_at,
+                    archived_at=job.archived_at,
                 )
             )
 
@@ -76,6 +97,7 @@ class ListImportJobs(Endpoint):
         recipe_book_id: str
         created_at: datetime
         completed_at: datetime | None = None
+        archived_at: datetime | None = None
 
     class Response(BaseModel):
         jobs: list["ListImportJobs.JobSummary"]
