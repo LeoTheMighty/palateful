@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/theme/import_state_colors.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/imports_actionable_badge_provider.dart';
 import 'widgets/import_row.dart';
@@ -276,6 +277,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     super.build(context);
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final stateColors = context.importStates;
     final locallyArchived = ref.watch(importItemArchiveProvider);
 
     if (_isLoading) return const Center(child: CircularProgressIndicator());
@@ -339,19 +341,19 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           ImportStateSection(
             label: 'In Progress',
             count: visibleInProgress.length,
-            color: colorScheme.primary,
+            color: stateColors.inProgress,
             children: visibleInProgress
-                .map((j) => _buildInProgressRow(j, colorScheme))
+                .map((j) => _buildInProgressRow(j, stateColors))
                 .toList(),
           ),
           ImportStateSection(
             label: 'Needs Review',
             count: visibleReview.length,
-            color: colorScheme.tertiary,
+            color: stateColors.needsReview,
             children: visibleReview
                 .map((i) => _buildSwipeableItemRow(
                       item: i,
-                      stateColor: colorScheme.tertiary,
+                      stateColor: stateColors.needsReview,
                       chipLabel: 'Needs Review',
                       onTap: () => context
                           .push('/recipes/import/review/${i.id}'),
@@ -361,11 +363,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           ImportStateSection(
             label: 'Failed',
             count: visibleFailed.length,
-            color: colorScheme.error,
+            color: stateColors.failed,
             children: visibleFailed
                 .map((i) => _buildSwipeableItemRow(
                       item: i,
-                      stateColor: colorScheme.error,
+                      stateColor: stateColors.failed,
                       chipLabel: 'Failed',
                       onTap: () => context
                           .push('/recipes/import/review/${i.id}'),
@@ -375,11 +377,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           ImportStateSection(
             label: 'Auto-Imported',
             count: visibleAutoImported.length,
-            color: colorScheme.secondary,
+            color: stateColors.autoImported,
             children: visibleAutoImported
                 .map((i) => _buildSwipeableItemRow(
                       item: i,
-                      stateColor: colorScheme.secondary,
+                      stateColor: stateColors.autoImported,
                       chipLabel: 'Auto-Imported',
                       onTap: () {
                         final recipeId = i.createdRecipeId;
@@ -464,7 +466,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   /// In Progress rows render without any `Dismissible` wrapper — the
   /// absence of swipe affordance is the "blue is read-only" signal.
   /// Trailing slot is a small progress glyph (non-interactive).
-  Widget _buildInProgressRow(_JobView job, ColorScheme colorScheme) {
+  Widget _buildInProgressRow(_JobView job, ImportStateColors states) {
     final total = job.totalItems;
     final done = job.processedItems;
     final statusLabel = total > 0
@@ -475,7 +477,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       sourceIcon: _iconForSourceType(job.sourceType),
       title: _jobTitle(job),
       statusLabel: statusLabel,
-      stateColor: colorScheme.primary,
+      stateColor: states.inProgress,
       stateChipLabel: 'In Progress',
       timeLabel: _formatTime(job.createdAt),
       trailing: SizedBox(
@@ -483,7 +485,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         height: 16,
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+          valueColor: AlwaysStoppedAnimation<Color>(states.inProgress),
         ),
       ),
       onTap: () => context.push('/recipes/import/review-list/${job.id}'),

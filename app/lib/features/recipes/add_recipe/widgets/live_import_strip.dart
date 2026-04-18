@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/theme/import_state_colors.dart';
 import '../state/import_batches_provider.dart';
 
 /// Slim ambient indicator for active imports, shown on the Add Recipe sheet.
@@ -25,6 +26,7 @@ class LiveImportStrip extends ConsumerWidget {
 
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final inProgressColor = context.importStates.inProgress;
 
     final label = activeCount == 1
         ? '1 import in progress'
@@ -57,7 +59,7 @@ class LiveImportStrip extends ConsumerWidget {
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   valueColor:
-                      AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                      AlwaysStoppedAnimation<Color>(inProgressColor),
                 ),
               ),
               const SizedBox(width: 12),
@@ -73,7 +75,7 @@ class LiveImportStrip extends ConsumerWidget {
               Icon(
                 Icons.chevron_right,
                 size: 20,
-                color: colorScheme.primary,
+                color: inProgressColor,
               ),
             ],
           ),

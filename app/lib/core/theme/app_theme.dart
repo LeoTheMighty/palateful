@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
+import 'import_state_colors.dart';
 import 'palateful_colors_extension.dart';
 import '../../providers/theme_mode_provider.dart' show FontStyle;
 
@@ -645,6 +646,7 @@ class AppTheme {
       // Extensions
       extensions: const <ThemeExtension>[
         PalatefulColors.light,
+        ImportStateColors.light,
       ],
 
       // Text Theme — driven by font style preference
@@ -1153,6 +1155,7 @@ class AppTheme {
       // Extensions
       extensions: const <ThemeExtension>[
         PalatefulColors.dark,
+        ImportStateColors.dark,
       ],
 
       // Text Theme — driven by font style preference

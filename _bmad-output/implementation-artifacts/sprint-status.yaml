@@ -379,7 +379,7 @@ development_status:
   ahr-3-flutter-notifications-tab-swipe-archive: done
   ahr-4-flutter-imports-tab-four-color-sections: done
   ahr-5-flutter-see-all-footer: done
-  ahr-6-flutter-import-state-colors-theme-extension: backlog
+  ahr-6-flutter-import-state-colors-theme-extension: done
   ahr-7-retire-import-history-route-and-regression: backlog
   epic-activity-hub-redesign-retrospective: optional
 
@@ -422,8 +422,8 @@ development_status:
   # source_type with ffmpeg audio extraction + social URL routing moved to
   # endpoint + new palateful-imports-{env} S3 bucket. Unblocks iOS Share
   # Extension (sie) and Universal Receiving UX (sru). Independent.
-  epic-share-backend-foundations: backlog
-  sbf-1-s3-imports-bucket-and-iam: backlog
+  epic-share-backend-foundations: in-progress
+  sbf-1-s3-imports-bucket-and-iam: in-progress
   sbf-2-presigned-upload-url-endpoint: backlog
   sbf-3-s3-key-import-path-audio-pdf-spreadsheet: backlog
   sbf-4-ffmpeg-in-worker-and-video-file-source-type: backlog

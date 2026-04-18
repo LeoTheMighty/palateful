@@ -46,6 +46,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/theme/import_state_colors.dart';
+
 /// Header card rendering every user-meaningful import-item field in a
 /// hierarchical order:
 ///   1. error message (when status is failed/errored)
@@ -203,7 +205,7 @@ class _ImportActivityDetailState extends State<ImportActivityDetail> {
   Widget _buildStageRow(
       String status, ColorScheme colorScheme, TextTheme textTheme) {
     final label = _statusLabel(status);
-    final color = _statusColor(status, colorScheme);
+    final color = _statusColor(status, colorScheme, context.importStates);
     return Row(
       children: [
         Icon(Icons.timeline, size: 16, color: colorScheme.onSurfaceVariant),
@@ -381,19 +383,20 @@ class _ImportActivityDetailState extends State<ImportActivityDetail> {
     }
   }
 
-  Color _statusColor(String status, ColorScheme colorScheme) {
+  Color _statusColor(String status, ColorScheme colorScheme,
+      ImportStateColors states) {
     switch (status) {
       case 'failed':
-        return colorScheme.error;
+        return states.failed;
       case 'awaiting_review':
-        return colorScheme.tertiary;
+        return states.needsReview;
       case 'completed':
       case 'approved':
-        return colorScheme.primary;
+        return states.autoImported;
       case 'skipped':
         return colorScheme.outline;
       default:
-        return colorScheme.secondary;
+        return states.inProgress;
     }
   }
 
