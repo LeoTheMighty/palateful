@@ -19,11 +19,14 @@ recurrence_rule_router = APIRouter(tags=["recurrence-rules"])
 
 @recurrence_rule_router.get("/recurrence-rules")
 async def list_recurrence_rules(
+    calendar_id: str | None = None,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
     """List recurrence rules visible to the current user."""
-    return ListRecurrenceRules.call(user=user, database=database)
+    return ListRecurrenceRules.call(
+        calendar_id=calendar_id, user=user, database=database
+    )
 
 
 @recurrence_rule_router.post("/recurrence-rules")

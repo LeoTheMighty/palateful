@@ -1,54 +1,36 @@
 """List recurrence rules endpoint."""
 
+from api.v1.calendar.dependencies import (
+    get_user_calendar_ids,
+    require_calendar_access,
+)
 from pydantic import BaseModel
-from sqlalchemy import or_
 from utils.api.endpoint import Endpoint, success
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
-from utils.models.pantry_user import PantryUser
 from utils.models.user import User
 
 from .create_recurrence_rule import RecurrenceRuleResponse, _rule_to_response
 
 
 class ListRecurrenceRules(Endpoint):
-    """List active rules visible to the current user."""
+    """List active rules the user can access via calendar membership."""
 
-    def execute(self):
+    def execute(self, calendar_id: str | None = None):
         user: User = self.user
 
-        my_pantry_ids = [
-            row.pantry_id
-            for row in self.database.db.query(PantryUser)
-            .filter(PantryUser.user_id == user.id)
-            .all()
-        ]
-        if my_pantry_ids:
-            pantry_mate_ids = [
-                row.user_id
-                for row in self.database.db.query(PantryUser)
-                .filter(PantryUser.pantry_id.in_(my_pantry_ids))
-                .filter(PantryUser.user_id != user.id)
-                .all()
-            ]
+        if calendar_id is not None:
+            require_calendar_access(calendar_id, user, self.database)
+            scoped_calendar_ids = [calendar_id]
         else:
-            pantry_mate_ids = []
+            scoped_calendar_ids = get_user_calendar_ids(user, self.database)
 
-        query = (
+        rules = (
             self.database.db.query(MealRecurrenceRule)
             .filter(MealRecurrenceRule.archived_at.is_(None))
+            .filter(MealRecurrenceRule.calendar_id.in_(scoped_calendar_ids))
+            .order_by(MealRecurrenceRule.created_at.desc())
+            .all()
         )
-        if pantry_mate_ids:
-            query = query.filter(
-                or_(
-                    MealRecurrenceRule.owner_id == user.id,
-                    (MealRecurrenceRule.is_shared.is_(True))
-                    & (MealRecurrenceRule.owner_id.in_(pantry_mate_ids)),
-                )
-            )
-        else:
-            query = query.filter(MealRecurrenceRule.owner_id == user.id)
-
-        rules = query.order_by(MealRecurrenceRule.created_at.desc()).all()
 
         return success(
             data=ListRecurrenceRules.Response(

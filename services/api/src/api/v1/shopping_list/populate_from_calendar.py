@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta
 
+from api.v1.calendar.dependencies import get_user_calendar_ids
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -79,6 +80,11 @@ class PopulateFromCalendar(Endpoint):
         from sqlalchemy.orm import selectinload
         from utils.models.recipe import Recipe
 
+        # Scope meal events to every calendar the user is an active
+        # member of. Replaces the old `MealEvent.owner_id == user.id`
+        # filter — the calendar is now the unit of authorization.
+        calendar_ids = get_user_calendar_ids(user, self.database)
+
         # Query meal events in range — eager load recipe + ingredients to avoid N+1
         query = (
             self.db.query(MealEvent)
@@ -86,7 +92,7 @@ class PopulateFromCalendar(Endpoint):
                 selectinload(MealEvent.recipe)
                 .selectinload(Recipe.ingredients)
             )
-            .filter(MealEvent.owner_id == user.id)
+            .filter(MealEvent.calendar_id.in_(calendar_ids))
             .filter(MealEvent.archived_at.is_(None))
             .filter(MealEvent.scheduled_at >= start_datetime)
             .filter(MealEvent.scheduled_at <= end_datetime)

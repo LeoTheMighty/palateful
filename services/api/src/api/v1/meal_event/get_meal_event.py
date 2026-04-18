@@ -3,11 +3,11 @@
 from datetime import date, datetime
 from typing import Optional
 
+from api.v1.calendar.dependencies import require_calendar_access
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
-from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.user import User
 
 
@@ -35,17 +35,21 @@ class GetMealEvent(Endpoint):
                 code=ErrorCode.MEAL_EVENT_NOT_FOUND,
             )
 
-        # Check access - must be owner or participant
-        is_owner = meal_event.owner_id == user.id
-        participant = self.database.find_by(
-            MealEventParticipant, meal_event_id=event_id, user_id=user.id
-        )
-        if not is_owner and not participant:
-            raise APIException(
-                status_code=403,
-                detail="You don't have access to this meal event",
-                code=ErrorCode.MEAL_EVENT_ACCESS_DENIED,
+        # Calendar membership is the sole gate. Host/cohost/guest
+        # participant rows no longer grant read access — a guest who
+        # isn't a calendar member sees a 404 (no existence leak).
+        try:
+            require_calendar_access(
+                str(meal_event.calendar_id), user, self.database
             )
+        except APIException as exc:
+            if exc.status_code == 403:
+                raise APIException(
+                    status_code=404,
+                    detail=f"Meal event with ID '{event_id}' not found",
+                    code=ErrorCode.MEAL_EVENT_NOT_FOUND,
+                ) from exc
+            raise
 
         # Build recipe summary if present
         recipe_summary = None
@@ -98,6 +102,7 @@ class GetMealEvent(Endpoint):
                 recipe=recipe_summary,
                 pantry_id=str(meal_event.pantry_id) if meal_event.pantry_id else None,
                 owner_id=str(meal_event.owner_id),
+                calendar_id=str(meal_event.calendar_id),
                 participants=participants,
                 created_at=meal_event.created_at,
                 updated_at=meal_event.updated_at,
@@ -140,6 +145,7 @@ class GetMealEvent(Endpoint):
         recipe: Optional["GetMealEvent.RecipeSummary"] = None
         pantry_id: str | None = None
         owner_id: str
+        calendar_id: str
         participants: list["GetMealEvent.ParticipantResponse"] = []
         created_at: datetime
         updated_at: datetime

@@ -28,6 +28,7 @@ async def list_meal_events(
     end_date: date | None = None,
     meal_type: str | None = None,
     status: str | None = None,
+    calendar_id: str | None = None,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -39,6 +40,7 @@ async def list_meal_events(
         end_date=end_date,
         meal_type=meal_type,
         status=status,
+        calendar_id=calendar_id,
         user=user,
         database=database,
     )

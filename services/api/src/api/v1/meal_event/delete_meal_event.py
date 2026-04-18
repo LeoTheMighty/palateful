@@ -1,7 +1,8 @@
 """Delete meal event endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
+from api.v1.calendar.dependencies import require_calendar_access
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
@@ -9,21 +10,15 @@ from utils.models.user import User
 
 
 class DeleteMealEvent(Endpoint):
-    """Delete (archive) a meal event."""
+    """Delete (archive) a meal event.
+
+    Calendar editor role (owner or editor) required. Non-members see a
+    404 instead of 403 so we don't leak existence.
+    """
 
     def execute(self, event_id: str):
-        """
-        Delete (archive) a meal event.
-
-        Args:
-            event_id: The meal event's ID
-
-        Returns:
-            Success acknowledgment
-        """
         user: User = self.user
 
-        # Find meal event
         meal_event = self.database.find_by(MealEvent, id=event_id)
         if not meal_event:
             raise APIException(
@@ -32,16 +27,21 @@ class DeleteMealEvent(Endpoint):
                 code=ErrorCode.MEAL_EVENT_NOT_FOUND,
             )
 
-        # Check access - only owner can delete
-        if meal_event.owner_id != user.id:
-            raise APIException(
-                status_code=403,
-                detail="Only the owner can delete this meal event",
-                code=ErrorCode.MEAL_EVENT_ACCESS_DENIED,
+        try:
+            require_calendar_access(
+                str(meal_event.calendar_id), user, self.database
             )
+        except APIException as exc:
+            if exc.status_code == 403:
+                raise APIException(
+                    status_code=404,
+                    detail=f"Meal event with ID '{event_id}' not found",
+                    code=ErrorCode.MEAL_EVENT_NOT_FOUND,
+                ) from exc
+            raise
 
-        # Soft delete by setting archived_at
-        meal_event.archived_at = datetime.utcnow()
+        # Soft delete.
+        meal_event.archived_at = datetime.now(UTC)
         self.database.db.commit()
 
         return success(data={"deleted": True, "id": str(event_id)})

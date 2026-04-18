@@ -13,11 +13,13 @@ scope="this_and_following"  — end the old rule the day before the chosen
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
+from api.v1.calendar.dependencies import require_calendar_access
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.meal_event import MealEvent
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.recipe import Recipe
 from utils.models.user import User
@@ -27,7 +29,6 @@ from utils.recurrence.materializer import (
 )
 
 from ._access import (
-    user_can_write_rule,
     validate_recurrence_fields,
     validate_tz_name,
 )
@@ -48,12 +49,8 @@ class UpdateRecurrenceRule(Endpoint):
                 detail=f"Recurrence rule with ID '{rule_id}' not found",
                 code=ErrorCode.NOT_FOUND,
             )
-        if not user_can_write_rule(self.database, rule, user):
-            raise APIException(
-                status_code=403,
-                detail="You do not have permission to update this rule",
-                code=ErrorCode.FORBIDDEN,
-            )
+        # Calendar membership is the sole edit-authorization gate.
+        require_calendar_access(str(rule.calendar_id), user, self.database)
 
         if params.scope == "all":
             return self._apply_all(rule, params)
@@ -127,6 +124,33 @@ class UpdateRecurrenceRule(Endpoint):
         rule.end_date = end_date
         rule.tz_name = tz_name
         rule.is_shared = is_shared
+
+        # Move-to-calendar: optional calendar_id move on scope=all.
+        # Cascades to future materialized meal_events joined on the rule.
+        # Past materialized rows stay on the old calendar to preserve
+        # historical attribution.
+        #
+        # Known gap: detached per-occurrence overrides (meal_events where
+        # `recurrence_rule_id = NULL` from `_delete_single_occurrence`)
+        # are orphaned from the cascade and remain on the old calendar.
+        # Leo can move them individually via Move-to-calendar on the
+        # detail sheet (cal-found-5). A dedicated "move all detached
+        # children" sweep is deferred — the expected cardinality is low.
+        if (
+            params.calendar_id is not None
+            and str(params.calendar_id) != str(rule.calendar_id)
+        ):
+            require_calendar_access(
+                str(params.calendar_id), self.user, self.database
+            )
+            rule.calendar_id = params.calendar_id
+            self.database.db.query(MealEvent).filter(
+                MealEvent.recurrence_rule_id == rule.id,
+                MealEvent.scheduled_at >= datetime.now(UTC),
+            ).update(
+                {MealEvent.calendar_id: params.calendar_id},
+                synchronize_session=False,
+            )
 
         from utils.recurrence.materializer import materialize
 
@@ -258,9 +282,14 @@ class UpdateRecurrenceRule(Endpoint):
         )
         materialize(rule, old_through, self.database.db)
 
-        # Create the new rule and materialize forward.
+        # Create the new rule and materialize forward. The new rule
+        # inherits the source rule's calendar_id — move-to-calendar on a
+        # split is not supported in this story (would require two
+        # require_calendar_access checks and an explicit UX choice; defer
+        # to if/when a user requests it).
         new_rule = MealRecurrenceRule(
             owner_id=rule.owner_id,
+            calendar_id=rule.calendar_id,
             title=title_to_store,
             recipe_id=recipe_id,
             meal_type=meal_type,
@@ -295,6 +324,11 @@ class UpdateRecurrenceRule(Endpoint):
         # Patch fields — None means "leave alone" on scope=all.
         title: str | None = None
         recipe_id: str | None = None
+        # Move-to-calendar (scope=all only). Must be a calendar where
+        # the user has editor access. Cascades to future materialized
+        # meal_events. On scope=this_and_following, the new rule
+        # inherits the source rule's calendar_id.
+        calendar_id: str | None = None
         meal_type: str | None = None
         weekdays: list[str] | None = None
         interval: str | None = None

@@ -1,68 +1,23 @@
-"""Shared access-control and validation helpers for recurrence rules."""
+"""Shared validation helpers for recurrence rules.
+
+Authorization used to live here (user_can_read_rule, user_can_write_rule,
+shares_pantry) but was replaced by calendar-membership gating via
+`api.v1.calendar.dependencies.require_calendar_access` in cal-found-2.
+Only the stateless field validators remain.
+"""
 
 from __future__ import annotations
 
-import uuid
 from datetime import date
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
-from utils.models.meal_recurrence_rule import MealRecurrenceRule
-from utils.models.pantry_user import PantryUser
-from utils.models.user import User
 
 VALID_INTERVALS = {"weekly", "biweekly", "monthly"}
 VALID_WEEKDAYS = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
 VALID_MEAL_TYPES = {"breakfast", "lunch", "dinner", "snack"}
 VALID_MONTHLY_NTH = {"first", "second", "third", "fourth", "last"}
-
-
-def shares_pantry(database, user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> bool:
-    """Return True if users share at least one pantry membership.
-
-    Pantry membership is the app's proxy for household — meal-plan sharing
-    already flows through it, so co-edit on shared rules symmetrically
-    follows pantry co-membership.
-    """
-    if user_a_id == user_b_id:  # pragma: no cover - defensive short-circuit
-        return True
-    b_pantry_ids = [
-        r.pantry_id
-        for r in database.db.query(PantryUser)
-        .filter(PantryUser.user_id == user_b_id)
-        .all()
-    ]
-    if not b_pantry_ids:
-        return False
-    row = (
-        database.db.query(PantryUser)
-        .filter(PantryUser.user_id == user_a_id)
-        .filter(PantryUser.pantry_id.in_(b_pantry_ids))
-        .first()
-    )
-    return row is not None
-
-
-def user_can_read_rule(
-    database, rule: MealRecurrenceRule, user: User
-) -> bool:
-    if rule.owner_id == user.id:
-        return True
-    return bool(
-        rule.is_shared and shares_pantry(database, user.id, rule.owner_id)
-    )
-
-
-def user_can_write_rule(
-    database, rule: MealRecurrenceRule, user: User
-) -> bool:
-    """Co-edit: shared rules are writable by any pantry-mate of the owner."""
-    if rule.owner_id == user.id:
-        return True
-    return bool(
-        rule.is_shared and shares_pantry(database, user.id, rule.owner_id)
-    )
 
 
 def validate_tz_name(tz_name: str | None) -> ZoneInfo:

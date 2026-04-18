@@ -1,16 +1,16 @@
 """Get recurrence rule endpoint."""
 
+from api.v1.calendar.dependencies import require_calendar_access
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
 
-from ._access import user_can_read_rule
 from .create_recurrence_rule import _rule_to_response
 
 
 class GetRecurrenceRule(Endpoint):
-    """Return a single rule if the user can see it."""
+    """Return a single rule if the user can see it via calendar membership."""
 
     def execute(self, rule_id: str):
         user: User = self.user
@@ -22,11 +22,17 @@ class GetRecurrenceRule(Endpoint):
                 detail=f"Recurrence rule with ID '{rule_id}' not found",
                 code=ErrorCode.NOT_FOUND,
             )
-        if not user_can_read_rule(self.database, rule, user):
-            raise APIException(
-                status_code=404,
-                detail=f"Recurrence rule with ID '{rule_id}' not found",
-                code=ErrorCode.NOT_FOUND,
-            )
+
+        # Mask non-members as 404 — no existence leak for reads.
+        try:
+            require_calendar_access(str(rule.calendar_id), user, self.database)
+        except APIException as exc:
+            if exc.status_code == 403:
+                raise APIException(
+                    status_code=404,
+                    detail=f"Recurrence rule with ID '{rule_id}' not found",
+                    code=ErrorCode.NOT_FOUND,
+                ) from exc
+            raise
 
         return success(data=_rule_to_response(rule))

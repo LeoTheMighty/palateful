@@ -4,12 +4,12 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
+from api.v1.calendar.dependencies import require_calendar_access
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.events import MealEventCompleted, dispatch
 from utils.models.meal_event import MealEvent
-from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.recipe import Recipe
 from utils.models.user import User
 
@@ -44,18 +44,32 @@ class UpdateMealEvent(Endpoint):
                 code=ErrorCode.MEAL_EVENT_NOT_FOUND,
             )
 
-        # Check access - must be owner or cohost
-        is_owner = meal_event.owner_id == user.id
-        participant = self.database.find_by(
-            MealEventParticipant, meal_event_id=event_id, user_id=user.id
+        # Calendar membership gates edit authorization; host/cohost/guest
+        # participants are NOT consulted. Non-member → 403 (PATCH is a
+        # write — existence leak is less concerning than GET, and 403
+        # signals "you can't do this" more usefully here).
+        require_calendar_access(
+            str(meal_event.calendar_id), user, self.database
         )
-        is_cohost = participant and participant.role in ("host", "cohost")
-        if not is_owner and not is_cohost:
+
+        # Move-to-calendar: optional field on PATCH. Different calendar →
+        # verify editor on destination, then flip calendar_id. Same
+        # calendar is a silent no-op. Empty string is treated as "no
+        # calendar_id supplied" via the calendar-required error so older
+        # clients that send "" don't land in a membership query with an
+        # empty UUID.
+        if params.calendar_id == "":
             raise APIException(
-                status_code=403,
-                detail="You don't have permission to update this meal event",
-                code=ErrorCode.MEAL_EVENT_ACCESS_DENIED,
+                status_code=400,
+                detail="calendar_id must not be empty",
+                code=ErrorCode.MEAL_EVENT_CALENDAR_REQUIRED,
             )
+        if (
+            params.calendar_id is not None
+            and params.calendar_id != str(meal_event.calendar_id)
+        ):
+            require_calendar_access(params.calendar_id, user, self.database)
+            meal_event.calendar_id = params.calendar_id
 
         # Validate status if provided
         if params.status and params.status not in VALID_STATUSES:
@@ -198,6 +212,7 @@ class UpdateMealEvent(Endpoint):
                 recipe=recipe_summary,
                 pantry_id=str(meal_event.pantry_id) if meal_event.pantry_id else None,
                 owner_id=str(meal_event.owner_id),
+                calendar_id=str(meal_event.calendar_id),
                 participants=participants,
                 created_at=meal_event.created_at,
                 updated_at=meal_event.updated_at,
@@ -212,6 +227,9 @@ class UpdateMealEvent(Endpoint):
         status: str | None = None
         recipe_id: str | None = None
         pantry_id: str | None = None
+        # Move-to-calendar: set to a different calendar to move the meal.
+        # Must be a calendar the user has editor access on.
+        calendar_id: str | None = None
         notify_prep_start: bool | None = None
         prep_start_offset_minutes: int | None = None
         notify_cook_start: bool | None = None
@@ -257,6 +275,7 @@ class UpdateMealEvent(Endpoint):
         recipe: Optional["UpdateMealEvent.RecipeSummary"] = None
         pantry_id: str | None = None
         owner_id: str
+        calendar_id: str
         participants: list["UpdateMealEvent.ParticipantResponse"] = []
         created_at: datetime
         updated_at: datetime

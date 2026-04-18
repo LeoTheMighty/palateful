@@ -34,6 +34,7 @@ class TestCreateMealEventWithRecipe:
                 "title": "Pasta Night",
                 "meal_type": "dinner",
                 "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
                 "recipe_id": recipe_id,
                 "is_shared": True,
             },
@@ -60,6 +61,7 @@ class TestCreateMealEventWithRecipe:
                 "title": "Mystery Dinner",
                 "meal_type": "dinner",
                 "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
                 "recipe_id": invalid_id,
             },
         )
@@ -76,6 +78,7 @@ class TestCreateMealEventWithRecipe:
                 "title": "Freeform Lunch",
                 "meal_type": "lunch",
                 "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
             },
         )
 
@@ -142,19 +145,26 @@ class TestDeleteMealEvent:
         data = response.json()
         assert data["deleted"] is True
 
-    def test_non_owner_cannot_delete_meal_event(self, client, mock_db, mock_user):
-        """Non-owner gets 403 when trying to delete."""
+    def test_non_calendar_member_cannot_delete_meal_event(
+        self, client, mock_db, mock_user
+    ):
+        """Non-member of the event's calendar → 404 (no existence leak)."""
         event_id = str(uuid.uuid4())
         other_owner_id = str(uuid.uuid4())
         event = MockMealEvent(id=event_id, owner_id=other_owner_id)
 
+        from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            CalendarUser, None,
+            user_id=mock_user.id, calendar_id=event.calendar_id,
+        )
 
         response = client.delete(f"/v1/meal-events/{event_id}")
 
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_delete_nonexistent_event_returns_404(self, client, mock_db, mock_user):
         """Returns 404 when the event does not exist."""
@@ -202,21 +212,19 @@ class TestUpdateMealEventReschedule:
         assert data["meal_type"] == "lunch"
         assert "2026-03-20" in data["scheduled_at"]
 
-    def test_non_owner_non_cohost_cannot_update(self, client, mock_db, mock_user):
-        """Non-owner with no role gets 403."""
+    def test_non_calendar_member_cannot_update(self, client, mock_db, mock_user):
+        """Non-member of the event's calendar → 403 on PATCH."""
         event_id = str(uuid.uuid4())
         other_owner_id = str(uuid.uuid4())
         event = MockMealEvent(id=event_id, owner_id=other_owner_id)
 
+        from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
-        from utils.models.meal_event_participant import MealEventParticipant
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
         mock_db.set_find_by(
-            MealEventParticipant,
-            None,
-            meal_event_id=event_id,
-            user_id=str(mock_user.id),
+            CalendarUser, None,
+            user_id=mock_user.id, calendar_id=event.calendar_id,
         )
 
         response = client.put(

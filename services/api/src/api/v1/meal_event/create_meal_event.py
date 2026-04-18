@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from typing import Optional
 
+from api.v1.calendar.dependencies import require_calendar_access
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -27,6 +28,20 @@ class CreateMealEvent(Endpoint):
         """
         user: User = self.user
 
+        # Explicit empty-string / null check maps to the calendar-required
+        # error code. FastAPI already 422s on a totally missing key, but
+        # older clients that send calendar_id="" get a clear 400 instead
+        # of a 500 later.
+        if not params.calendar_id:
+            raise APIException(
+                status_code=400,
+                detail="calendar_id is required",
+                code=ErrorCode.MEAL_EVENT_CALENDAR_REQUIRED,
+            )
+
+        # Verify membership + write role on the target calendar.
+        require_calendar_access(params.calendar_id, user, self.database)
+
         # Verify recipe exists if provided
         recipe = None
         if params.recipe_id:
@@ -47,6 +62,7 @@ class CreateMealEvent(Endpoint):
             recipe_id=params.recipe_id,
             pantry_id=params.pantry_id,
             owner_id=user.id,
+            calendar_id=params.calendar_id,
             notify_prep_start=params.notify_prep_start,
             prep_start_offset_minutes=params.prep_start_offset_minutes,
             notify_cook_start=params.notify_cook_start,
@@ -99,6 +115,7 @@ class CreateMealEvent(Endpoint):
                 recipe=recipe_summary,
                 pantry_id=str(meal_event.pantry_id) if meal_event.pantry_id else None,
                 owner_id=str(meal_event.owner_id),
+                calendar_id=str(meal_event.calendar_id),
                 participants=[
                     CreateMealEvent.ParticipantResponse(
                         user_id=str(user.id),
@@ -121,6 +138,9 @@ class CreateMealEvent(Endpoint):
         description: str | None = None
         scheduled_at: datetime
         meal_type: str  # breakfast | lunch | dinner | snack
+        # Optional at Pydantic level so missing key returns 400+264
+        # instead of the generic 422. Runtime check in execute().
+        calendar_id: str | None = None
         recipe_id: str | None = None
         pantry_id: str | None = None
         notify_prep_start: bool = True
@@ -167,6 +187,7 @@ class CreateMealEvent(Endpoint):
         recipe: Optional["CreateMealEvent.RecipeSummary"] = None
         pantry_id: str | None = None
         owner_id: str
+        calendar_id: str
         participants: list["CreateMealEvent.ParticipantResponse"] = []
         created_at: datetime
         updated_at: datetime

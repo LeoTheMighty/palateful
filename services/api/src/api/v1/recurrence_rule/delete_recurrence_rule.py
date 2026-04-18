@@ -3,13 +3,12 @@
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from api.v1.calendar.dependencies import require_calendar_access
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
-
-from ._access import user_can_write_rule
 
 
 class DeleteRecurrenceRule(Endpoint):
@@ -44,12 +43,19 @@ class DeleteRecurrenceRule(Endpoint):
                 detail=f"Recurrence rule with ID '{rule_id}' not found",
                 code=ErrorCode.NOT_FOUND,
             )
-        if not user_can_write_rule(self.database, rule, user):
-            raise APIException(
-                status_code=403,
-                detail="You do not have permission to delete this rule",
-                code=ErrorCode.FORBIDDEN,
-            )
+        # Calendar membership is the sole edit gate. Mask 403 → 404 so
+        # non-members can't enumerate rule ids (matches the existence-leak
+        # policy used on get_recurrence_rule / delete_meal_event).
+        try:
+            require_calendar_access(str(rule.calendar_id), user, self.database)
+        except APIException as exc:
+            if exc.status_code == 403:
+                raise APIException(
+                    status_code=404,
+                    detail=f"Recurrence rule with ID '{rule_id}' not found",
+                    code=ErrorCode.NOT_FOUND,
+                ) from exc
+            raise
 
         if scope == "series":
             return self._delete_series(rule)

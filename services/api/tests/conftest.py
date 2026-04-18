@@ -265,6 +265,7 @@ class MockMealEvent(MockModel):
             "recipe_id": None,
             "recipe": None,
             "owner_id": str(uuid.uuid4()),
+            "calendar_id": str(uuid.uuid4()),
             "pantry_id": None,
             "notify_prep_start": True,
             "prep_start_offset_minutes": 60,
@@ -758,7 +759,16 @@ class MockDatabase:
         self.db.delete = MagicMock()
 
     def find_by(self, model_class, **kwargs):
-        """Mock find_by - returns configured result or None."""
+        """Mock find_by - returns configured result or None.
+
+        Special case: CalendarUser defaults to an owner membership for
+        the queried (user_id, calendar_id) when no explicit mapping is
+        set. Post-cal-found-2 most tests that exercise meal_event /
+        recurrence_rule handlers depend on calendar membership — having
+        the default be "allowed" keeps the patch surface tiny. Tests
+        that need access denied override via
+        `set_find_by(CalendarUser, None, user_id=..., calendar_id=...)`.
+        """
         key = (model_class.__name__, tuple(sorted(kwargs.items())))
         if key in self._find_by_results:
             return self._find_by_results[key]
@@ -766,6 +776,13 @@ class MockDatabase:
         simple_key = model_class.__name__
         if simple_key in self._find_by_results:
             return self._find_by_results[simple_key]
+        if model_class.__name__ == "CalendarUser":
+            user_id = kwargs.get("user_id")
+            calendar_id = kwargs.get("calendar_id")
+            if user_id is not None and calendar_id is not None:
+                return MockCalendarUser(
+                    user_id=user_id, calendar_id=calendar_id, role="owner"
+                )
         return None
 
     def set_find_by(self, model_class, result, **kwargs):

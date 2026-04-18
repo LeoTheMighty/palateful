@@ -55,6 +55,7 @@ class TestCreateMealEvent:
                 "title": "Sunday Dinner",
                 "meal_type": "dinner",
                 "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
             }
         )
         assert response.status_code == 201
@@ -69,9 +70,23 @@ class TestCreateMealEvent:
             json={
                 "meal_type": "dinner",
                 "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
             }
         )
         assert response.status_code == 422
+
+    def test_create_meal_event_missing_calendar_id(self, client, mock_db, mock_user):
+        """Missing calendar_id → 400 with MEAL_EVENT_CALENDAR_REQUIRED."""
+        response = client.post(
+            "/v1/meal-events",
+            json={
+                "title": "Sunday Dinner",
+                "meal_type": "dinner",
+                "scheduled_at": datetime.now(UTC).isoformat(),
+            }
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == 264
 
 
 class TestGetMealEvent:
@@ -117,17 +132,24 @@ class TestDeleteMealEvent:
         response = client.delete(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200
 
-    def test_delete_meal_event_not_owner(self, client, mock_db, mock_user):
-        """Test deleting a meal event you don't own."""
+    def test_delete_meal_event_not_calendar_member(self, client, mock_db, mock_user):
+        """Non-member of the event's calendar → 404 (no existence leak)."""
         event_id = "test-event-id"
         event = MockMealEvent(id=event_id, owner_id="other-user-id")
 
+        from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
+        # Explicitly deny calendar membership — overrides the default
+        # auto-grant in MockDatabase.find_by.
+        mock_db.set_find_by(
+            CalendarUser, None,
+            user_id=mock_user.id, calendar_id=event.calendar_id,
+        )
 
         response = client.delete(f"/v1/meal-events/{event_id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
 
 # =========================================================================
@@ -817,21 +839,22 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 404
 
-    def test_update_access_denied(self, client, mock_db, mock_user):
-        """Test updating when user is not owner and not cohost."""
+    def test_update_access_denied_guest_not_calendar_member(
+        self, client, mock_db, mock_user
+    ):
+        """Guest-participant who is NOT a calendar member → 403. Host/cohost/guest
+        no longer grants edit authorization; calendar membership does. This is the
+        semantic-narrowing regression test."""
         event_id = "evt-upd-3"
         event = MockMealEvent(id=event_id, owner_id="other-owner")
-        guest = MockMealEventParticipant(
-            meal_event_id=event_id, user_id=str(mock_user.id), role="guest",
-        )
 
+        from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
-        from utils.models.meal_event_participant import MealEventParticipant
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
         mock_db.set_find_by(
-            MealEventParticipant, guest,
-            meal_event_id=event_id, user_id=str(mock_user.id),
+            CalendarUser, None,
+            user_id=mock_user.id, calendar_id=event.calendar_id,
         )
 
         response = client.put(
@@ -840,18 +863,20 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 403
 
-    def test_update_access_denied_no_participant(self, client, mock_db, mock_user):
-        """Test updating when user has no participant record and not owner."""
+    def test_update_access_denied_no_calendar_membership(
+        self, client, mock_db, mock_user
+    ):
+        """No calendar membership → 403 on PATCH."""
         event_id = "evt-upd-noacc"
         event = MockMealEvent(id=event_id, owner_id="other-owner")
 
+        from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
-        from utils.models.meal_event_participant import MealEventParticipant
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
         mock_db.set_find_by(
-            MealEventParticipant, None,
-            meal_event_id=event_id, user_id=str(mock_user.id),
+            CalendarUser, None,
+            user_id=mock_user.id, calendar_id=event.calendar_id,
         )
 
         response = client.put(

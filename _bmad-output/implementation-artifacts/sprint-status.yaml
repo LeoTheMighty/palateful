@@ -325,7 +325,7 @@ development_status:
   # plan-meal Calendar picker + move-to-calendar. Sharing lands in a follow-up epic.
   epic-calendars-foundation: in-progress
   cal-found-1-calendar-model-backfill-and-crud: done
-  cal-found-2-rewire-authorization-and-require-calendar-id: ready-for-dev
+  cal-found-2-rewire-authorization-and-require-calendar-id: done
   cal-found-3-flutter-switcher-and-active-calendar-provider: backlog
   cal-found-4-flutter-create-rename-delete-and-user-provisioning: backlog
   cal-found-5-plan-meal-calendar-row-and-move-to-calendar: backlog

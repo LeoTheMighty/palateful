@@ -3,11 +3,13 @@
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from api.v1.calendar.dependencies import (
+    get_user_calendar_ids,
+    require_calendar_access,
+)
 from pydantic import BaseModel
-from sqlalchemy import or_
 from utils.api.endpoint import Endpoint, success
 from utils.models.meal_event import MealEvent
-from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
 from utils.recurrence.materializer import materialize
@@ -24,6 +26,7 @@ class ListMealEvents(Endpoint):
         end_date: date | None = None,
         meal_type: str | None = None,
         status: str | None = None,
+        calendar_id: str | None = None,
     ):
         """
         List meal events for the current user.
@@ -41,15 +44,28 @@ class ListMealEvents(Endpoint):
         """
         user: User = self.user
 
-        # Ensure rule-materialized occurrences exist for the requested window
-        # before the main query. Bounded work: only the user's own rules and
-        # only when the rule's watermark is behind the request.
+        # Resolve the calendar scope once. When a single calendar is
+        # specified, verify membership; otherwise union across every
+        # calendar the user is an active member of.
+        if calendar_id is not None:
+            require_calendar_access(
+                calendar_id, user, self.database, roles={"owner", "editor"}
+            )
+            scoped_calendar_ids = [calendar_id]
+        else:
+            scoped_calendar_ids = get_user_calendar_ids(user, self.database)
+
+        # Ensure rule-materialized occurrences exist for the requested
+        # window before the main query. Scope to the rules on the
+        # calendars we're reading — matches the sharing epic's model
+        # where any calendar member can see materialized occurrences for
+        # that calendar's rules, not just the rule's owner.
         if end_date is not None:
             through_date = end_date + timedelta(days=1)
             try:
                 active_rules = (
                     self.db.query(MealRecurrenceRule)
-                    .filter(MealRecurrenceRule.owner_id == user.id)
+                    .filter(MealRecurrenceRule.calendar_id.in_(scoped_calendar_ids))
                     .filter(MealRecurrenceRule.archived_at.is_(None))
                     .all()
                 )
@@ -62,19 +78,9 @@ class ListMealEvents(Endpoint):
                 # the nightly worker is the authoritative fallback.
                 pass
 
-        # Build query - include events user owns OR is a participant of
         query = (
             self.db.query(MealEvent)
-            .outerjoin(
-                MealEventParticipant,
-                MealEvent.id == MealEventParticipant.meal_event_id,
-            )
-            .filter(
-                or_(
-                    MealEvent.owner_id == user.id,
-                    MealEventParticipant.user_id == user.id,
-                )
-            )
+            .filter(MealEvent.calendar_id.in_(scoped_calendar_ids))
             .filter(MealEvent.archived_at.is_(None))
         )
 
@@ -94,17 +100,15 @@ class ListMealEvents(Endpoint):
         if status:
             query = query.filter(MealEvent.status == status)
 
-        # Get distinct results (avoid duplicates from join)
-        query = query.distinct(MealEvent.id)
-
         # Get total count
         total = query.count()
 
-        # Apply ordering and pagination
-        # PostgreSQL DISTINCT ON requires the ORDER BY to start with the
-        # DISTINCT ON column, so include MealEvent.id first.
+        # Apply ordering + pagination.
         meal_events = (
-            query.order_by(MealEvent.id, MealEvent.scheduled_at).offset(offset).limit(limit).all()
+            query.order_by(MealEvent.scheduled_at, MealEvent.id)
+            .offset(offset)
+            .limit(limit)
+            .all()
         )
 
         items = []
@@ -134,6 +138,7 @@ class ListMealEvents(Endpoint):
                     participant_count=len(event.participants),
                     created_at=event.created_at,
                     owner_id=str(event.owner_id),
+                    calendar_id=str(event.calendar_id),
                     recurrence_rule_id=(
                         str(event.recurrence_rule_id)
                         if event.recurrence_rule_id
@@ -172,6 +177,7 @@ class ListMealEvents(Endpoint):
         # response — omitting it here made the Flutter parser throw on
         # the 200 payload and surface as "Failed to load calendar".
         owner_id: str
+        calendar_id: str
         recurrence_rule_id: str | None = None
 
     class Response(BaseModel):

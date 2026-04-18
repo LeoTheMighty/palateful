@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta
 
+from api.v1.calendar.dependencies import require_calendar_access
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -19,6 +20,15 @@ class CreateRecurrenceRule(Endpoint):
 
     def execute(self, params: "CreateRecurrenceRule.Params"):
         user: User = self.user
+
+        if not params.calendar_id:
+            raise APIException(
+                status_code=400,
+                detail="calendar_id is required",
+                code=ErrorCode.RECURRENCE_RULE_CALENDAR_REQUIRED,
+            )
+
+        require_calendar_access(params.calendar_id, user, self.database)
 
         validate_tz_name(params.tz_name)
         validate_recurrence_fields(
@@ -47,6 +57,7 @@ class CreateRecurrenceRule(Endpoint):
 
         rule = MealRecurrenceRule(
             owner_id=user.id,
+            calendar_id=params.calendar_id,
             title=title,
             recipe_id=params.recipe_id,
             meal_type=params.meal_type,
@@ -78,6 +89,9 @@ class CreateRecurrenceRule(Endpoint):
     class Params(BaseModel):
         title: str | None = None
         recipe_id: str | None = None
+        # Optional at Pydantic level so missing key returns 400+265
+        # instead of the generic 422. Runtime check in execute().
+        calendar_id: str | None = None
         meal_type: str
         weekdays: list[str]
         interval: str
@@ -93,6 +107,7 @@ class RecurrenceRuleResponse(BaseModel):
     title: str | None = None
     recipe_id: str | None = None
     owner_id: str
+    calendar_id: str
     meal_type: str
     weekdays: list[str]
     interval: str
@@ -113,6 +128,7 @@ def _rule_to_response(rule: MealRecurrenceRule) -> RecurrenceRuleResponse:
         title=rule.title,
         recipe_id=str(rule.recipe_id) if rule.recipe_id else None,
         owner_id=str(rule.owner_id),
+        calendar_id=str(rule.calendar_id),
         meal_type=rule.meal_type,
         weekdays=list(rule.weekdays or []),
         interval=rule.interval,

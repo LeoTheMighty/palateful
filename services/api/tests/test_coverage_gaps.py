@@ -281,8 +281,10 @@ class TestPopulateFromCalendarExtended:
         from utils.models.shopping_list import ShoppingList
 
         mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        # First query: pantry ingredients, second: meal events
-        mock_db.db.query.side_effect = [MockQuery([]), MockQuery([])]
+        # Queries in order: user's calendar memberships, pantry
+        # ingredients, meal events. Using return_value (not side_effect)
+        # so each call returns an empty MockQuery regardless of count.
+        mock_db.db.query.return_value = MockQuery([])
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-calendar",
@@ -415,8 +417,13 @@ class TestPopulateFromCalendarExtended:
         from utils.models.shopping_list import ShoppingList
 
         mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        # Meal event query runs FIRST (line 80), then pantry query (line 104)
-        mock_db.db.query.side_effect = [MockQuery([event]), MockQuery([pantry_item])]
+        # Queries in order: (1) get_user_calendar_ids CalendarUser query,
+        # (2) the MealEvent query, (3) the PantryIngredient query.
+        mock_db.db.query.side_effect = [
+            MockQuery([]),              # calendar_ids
+            MockQuery([event]),         # meal events
+            MockQuery([pantry_item]),   # pantry items
+        ]
 
         with patch("api.v1.shopping_list.populate_from_calendar.calculate_item_due_date",
                     return_value=(None, None)):
@@ -468,8 +475,12 @@ class TestPopulateFromCalendarExtended:
         from utils.models.shopping_list import ShoppingList
 
         mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        # Meal event query runs FIRST, then pantry query
-        mock_db.db.query.side_effect = [MockQuery([event]), MockQuery([pantry_item])]
+        # Queries in order: calendar_ids, meal events, pantry items.
+        mock_db.db.query.side_effect = [
+            MockQuery([]),
+            MockQuery([event]),
+            MockQuery([pantry_item]),
+        ]
 
         with patch("api.v1.shopping_list.populate_from_calendar.calculate_item_due_date",
                     return_value=(None, None)):
@@ -1280,20 +1291,27 @@ class TestPreviewInviteLinkExtended:
 class TestGetMealEventExtended:
     """Cover missing branches in GetMealEvent."""
 
-    def test_get_meal_event_access_denied(self, client, mock_db, mock_user):
-        """Non-owner, non-participant gets 403 (line 44)."""
+    def test_get_meal_event_non_calendar_member_returns_404(
+        self, client, mock_db, mock_user
+    ):
+        """Non-member of the event's calendar → 404 (no existence leak)."""
         event_id = "evt-noaccess"
         event = MockMealEvent(
             id=event_id, owner_id=str(uuid.uuid4()),
             participants=[], recipe=None,
         )
 
+        from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
 
         mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            CalendarUser, None,
+            user_id=mock_user.id, calendar_id=event.calendar_id,
+        )
 
         response = client.get(f"/v1/meal-events/{event_id}")
-        assert response.status_code == 403
+        assert response.status_code == 404
 
     def test_get_meal_event_with_recipe(self, client, mock_db, mock_user):
         """Event with recipe returns recipe summary (line 53)."""
