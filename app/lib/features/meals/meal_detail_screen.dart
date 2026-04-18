@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/error_reporter.dart';
@@ -27,6 +28,7 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
   bool? _optimisticFavorite;
   bool _busyFavorite = false;
   bool _busyArchive = false;
+  bool _busyShare = false;
 
   Future<void> _toggleFavorite(Meal meal) async {
     if (_busyFavorite) return;
@@ -64,6 +66,40 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
           const SnackBar(content: Text('Could not update favorite')),
         );
       }
+    }
+  }
+
+  Future<void> _shareMeal(Meal meal) async {
+    if (_busyShare) return;
+    setState(() => _busyShare = true);
+    try {
+      final result = await _service.share(meal.id);
+      final shareUrl = 'https://palateful.app/meal-public/${result.token}';
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.share(
+        'Check out this meal on Palateful: $shareUrl',
+        subject: meal.name,
+        sharePositionOrigin: box == null
+            ? null
+            : box.localToGlobal(Offset.zero) & box.size,
+      );
+    } catch (e) {
+      ErrorReporter.report(
+        e,
+        StackTrace.current,
+        area: 'meals.detail',
+        operation: 'shareMeal',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Couldn't generate share link. Try again."),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyShare = false);
     }
   }
 
@@ -179,8 +215,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
                   favorite: favorite,
                   busyFavorite: _busyFavorite,
                   busyArchive: _busyArchive,
+                  busyShare: _busyShare,
                   onFavorite: () => _toggleFavorite(meal),
                   onArchive: () => _archiveMeal(meal),
+                  onShare: () => _shareMeal(meal),
                   onEdit: () async {
                     await context.push('/meals/${meal.id}/edit');
                     if (mounted) {
@@ -231,16 +269,20 @@ class _ActionBar extends StatelessWidget {
   final bool favorite;
   final bool busyFavorite;
   final bool busyArchive;
+  final bool busyShare;
   final VoidCallback onFavorite;
   final VoidCallback onArchive;
+  final VoidCallback onShare;
   final VoidCallback onEdit;
 
   const _ActionBar({
     required this.favorite,
     required this.busyFavorite,
     required this.busyArchive,
+    required this.busyShare,
     required this.onFavorite,
     required this.onArchive,
+    required this.onShare,
     required this.onEdit,
   });
 
@@ -271,8 +313,8 @@ class _ActionBar extends StatelessWidget {
         _ActionIcon(
           icon: Icons.ios_share,
           label: 'Share',
-          tooltip: 'Available when sharing ships',
-          onTap: null,
+          onTap: busyShare ? null : onShare,
+          busy: busyShare,
         ),
         _ActionIcon(
           icon: Icons.archive_outlined,
@@ -296,6 +338,7 @@ class _ActionIcon extends StatelessWidget {
   final VoidCallback? onTap;
   final Color? color;
   final String? tooltip;
+  final bool busy;
 
   const _ActionIcon({
     required this.icon,
@@ -303,6 +346,7 @@ class _ActionIcon extends StatelessWidget {
     this.onTap,
     this.color,
     this.tooltip,
+    this.busy = false,
   });
 
   @override
@@ -313,6 +357,16 @@ class _ActionIcon extends StatelessWidget {
     final iconColor = disabled
         ? effective.withValues(alpha: 0.4)
         : effective;
+    final glyph = busy
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(iconColor),
+            ),
+          )
+        : Icon(icon, color: iconColor);
     final body = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -321,7 +375,7 @@ class _ActionIcon extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: iconColor),
+            SizedBox(height: 24, child: Center(child: glyph)),
             const SizedBox(height: 4),
             Text(
               label,

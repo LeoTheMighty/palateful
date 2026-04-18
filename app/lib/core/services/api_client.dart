@@ -464,12 +464,6 @@ class ApiClient {
         data: data);
   }
 
-  Future<Response> populateShoppingListFromCalendar(
-      String listId, Map<String, dynamic> data) {
-    return _dio.post('/v1/shopping-lists/$listId/populate-from-calendar',
-        data: data);
-  }
-
   /// Get auth token for WebSocket connections
   String? get authToken => _authToken;
 
@@ -936,15 +930,23 @@ class ApiClient {
   // ---------------------------------------------------------------------
 
   Future<Response> listMeals({
-    int limit = 20,
+    int? limit,
     int offset = 0,
     bool includeArchived = false,
-  }) =>
-      _dio.get('/v1/meals', queryParameters: {
-        'limit': limit,
-        'offset': offset,
-        if (includeArchived) 'include_archived': 'true',
-      });
+    bool? archived,
+    String? scope,
+  }) {
+    final params = <String, dynamic>{'offset': offset};
+    if (limit != null) params['limit'] = limit;
+    if (includeArchived) params['include_archived'] = 'true';
+    if (archived != null) params['archived'] = archived.toString();
+    if (scope != null) params['scope'] = scope;
+    return _dio.get('/v1/meals', queryParameters: params);
+  }
+
+  /// md-2: reverse lookup — Meals referencing this recipe.
+  Future<Response> listMealsUsingRecipe(String recipeId) =>
+      _dio.get('/v1/recipes/$recipeId/meals');
 
   Future<Response> getMeal(String mealId) => _dio.get('/v1/meals/$mealId');
 
@@ -988,4 +990,13 @@ class ApiClient {
   Future<Response> createMealInBook(
           String bookId, Map<String, dynamic> data) =>
       _dio.post('/v1/recipe-books/$bookId/meals', data: data);
+
+  /// msa-1: generate / return the Meal's public share token.
+  /// Idempotent — re-POSTing returns the same token (200) as the first call (201).
+  Future<Response> shareMeal(String mealId) =>
+      _dio.post('/v1/meals/$mealId/share');
+
+  /// msa-1: unauthenticated read of a Meal by its share token.
+  Future<Response> getPublicMealByToken(String token) =>
+      _dio.get('/v1/meals/public/$token');
 }

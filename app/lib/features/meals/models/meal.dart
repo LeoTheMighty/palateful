@@ -157,3 +157,70 @@ DateTime? _parseNullableDate(dynamic raw) {
   if (raw == null) return null;
   return DateTime.parse(raw as String);
 }
+
+/// Result of POST /v1/meals/{id}/share (msa-1).
+class ShareMealResult {
+  final String token;
+  final String deepLink;
+  const ShareMealResult({required this.token, required this.deepLink});
+}
+
+/// Wire shape for GET /v1/meals/public/{token} (msa-1).
+///
+/// Intentionally omits `recipe_id`, `order_index`, `book_id` on
+/// components — the backend strips them so strangers holding the link
+/// cannot probe private recipe UUIDs. See
+/// services/api/tests/test_get_public_meal.py for the invariant.
+class PublicMealDto {
+  final String id;
+  final String name;
+  final String? description;
+  final String recipeBookName;
+  final List<PublicMealComponentDto> components;
+
+  const PublicMealDto({
+    required this.id,
+    required this.name,
+    required this.recipeBookName,
+    required this.components,
+    this.description,
+  });
+
+  factory PublicMealDto.fromJson(Map<String, dynamic> json) {
+    final raw = (json['components'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    return PublicMealDto(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      description: json['description'] as String?,
+      recipeBookName: json['recipe_book_name'] as String? ?? '',
+      components: raw.map(PublicMealComponentDto.fromJson).toList(),
+    );
+  }
+}
+
+class PublicMealComponentDto {
+  final String name;
+  final String? imageUrl;
+  final bool hasPublicToken;
+
+  /// Populated iff [hasPublicToken] is true. Tapping a public component
+  /// tile opens `/recipe-public/{publicToken}`.
+  final String? publicToken;
+
+  const PublicMealComponentDto({
+    required this.name,
+    required this.hasPublicToken,
+    this.imageUrl,
+    this.publicToken,
+  });
+
+  factory PublicMealComponentDto.fromJson(Map<String, dynamic> json) {
+    return PublicMealComponentDto(
+      name: json['name'] as String? ?? '',
+      imageUrl: json['image_url'] as String?,
+      hasPublicToken: json['has_public_token'] as bool? ?? false,
+      publicToken: json['public_token'] as String?,
+    );
+  }
+}

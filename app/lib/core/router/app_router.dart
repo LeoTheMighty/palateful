@@ -44,6 +44,7 @@ import '../../features/pantry/screens/pantry_editor_screen.dart';
 import '../../features/pantry/screens/pantry_list_screen.dart';
 import '../../features/invitations/invitations_screen.dart';
 import '../../features/invitations/invite_link_preview_screen.dart';
+import '../../features/meals/public_meal_screen.dart';
 import '../../features/recipes/public_recipe_screen.dart';
 import '../../features/admin/admin_dashboard_screen.dart';
 import '../../features/admin/admin_feedback_screen.dart';
@@ -93,17 +94,28 @@ GoRouter get appRouter {
       final currentLocation = state.matchedLocation;
       final isOnLoginPage = currentLocation == '/login';
       final isOnOnboardingPage = currentLocation.startsWith('/onboarding');
+      // Public share landing pages (recipe + meal) are reachable without
+      // auth. A stranger tapping a `https://palateful.app/meal-public/…`
+      // link must hit the screen directly, not bounce to /login.
+      final isOnPublicSharePage =
+          currentLocation.startsWith('/recipe-public/') ||
+              currentLocation.startsWith('/meal-public/');
 
       debugPrint('Router redirect: location=$currentLocation, isAuthenticated=$isAuthenticated, hasCompletedOnboarding=$hasCompletedOnboarding');
 
-      // Not authenticated - go to login (unless already there)
-      if (!isAuthenticated && !isOnLoginPage) {
+      // Not authenticated - go to login (unless already there, or on a
+      // public share page).
+      if (!isAuthenticated && !isOnLoginPage && !isOnPublicSharePage) {
         debugPrint('Redirecting to /login (not authenticated)');
         return '/login';
       }
 
-      // Authenticated but not onboarded - go to onboarding (unless already there)
-      if (isAuthenticated && !hasCompletedOnboarding && !isOnOnboardingPage) {
+      // Authenticated but not onboarded - go to onboarding (unless
+      // already there, or on a public share page).
+      if (isAuthenticated &&
+          !hasCompletedOnboarding &&
+          !isOnOnboardingPage &&
+          !isOnPublicSharePage) {
         debugPrint('Redirecting to /onboarding/welcome (not onboarded)');
         return '/onboarding/welcome';
       }
@@ -454,6 +466,14 @@ GoRouter get appRouter {
         builder: (context, state) {
           final token = state.pathParameters['token']!;
           return PublicRecipeScreen(token: token);
+        },
+      ),
+      GoRoute(
+        path: '/meal-public/:token',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return PublicMealScreen(token: token);
         },
       ),
       GoRoute(

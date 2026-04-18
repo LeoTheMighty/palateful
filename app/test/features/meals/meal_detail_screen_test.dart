@@ -19,8 +19,11 @@ class _FakeMealService extends MealService {
   int favoriteCalls = 0;
   int unfavoriteCalls = 0;
   int archiveCalls = 0;
+  int shareCalls = 0;
   Object? favoriteError;
   Object? archiveError;
+  Object? shareError;
+  String stubbedToken = 'TOKENAAAAAAAAAAAAAAA'; // 20-char URL-safe token
 
   _FakeMealService.empty()
       : stubbedMeal = Meal(
@@ -67,6 +70,16 @@ class _FakeMealService extends MealService {
   Future<void> archiveMeal(String mealId) async {
     archiveCalls++;
     if (archiveError != null) throw archiveError!;
+  }
+
+  @override
+  Future<ShareMealResult> share(String mealId) async {
+    shareCalls++;
+    if (shareError != null) throw shareError!;
+    return ShareMealResult(
+      token: stubbedToken,
+      deepLink: 'palateful://meal-public/$stubbedToken',
+    );
   }
 }
 
@@ -254,14 +267,48 @@ void main() {
     );
   });
 
-  testWidgets('plan/shop/share actions are disabled (no onTap)',
+  testWidgets('tapping Share calls MealService.share', (tester) async {
+    await tester.pumpWidget(_harness(service, 'meal-1'));
+    await tester.pumpAndSettle();
+
+    // Share.share() throws MissingPluginException in the test harness;
+    // we only assert the API call landed before the native share sheet.
+    try {
+      await tester.tap(find.text('Share'));
+      await tester.pumpAndSettle();
+    } catch (_) {
+      // Expected from the share_plus platform channel under tests.
+    }
+    expect(service.shareCalls, 1);
+  });
+
+  testWidgets('share failure shows retry snackbar', (tester) async {
+    service.shareError = DioException(
+      requestOptions: RequestOptions(path: ''),
+      type: DioExceptionType.badResponse,
+    );
+    await tester.pumpWidget(_harness(service, 'meal-1'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Share'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(
+      find.text("Couldn't generate share link. Try again."),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('plan/shop actions are disabled (no onTap); share is live',
       (tester) async {
     await tester.pumpWidget(_harness(service, 'meal-1'));
     await tester.pumpAndSettle();
 
-    // Each disabled action lives inside a Tooltip.
+    // Plan + Shop remain disabled-with-tooltip until their epics land.
     expect(find.byTooltip('Available when calendars ship'), findsOneWidget);
     expect(find.byTooltip('Schedule this meal first'), findsOneWidget);
-    expect(find.byTooltip('Available when sharing ships'), findsOneWidget);
+    // Share is live as of msa-2 — tooltip removed.
+    expect(find.byTooltip('Available when sharing ships'), findsNothing);
   });
 }

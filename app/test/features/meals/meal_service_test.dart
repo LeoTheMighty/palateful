@@ -50,9 +50,11 @@ class _FakeApi extends ApiClient {
 
   @override
   Future<Response> listMeals({
-    int limit = 20,
+    int? limit,
     int offset = 0,
     bool includeArchived = false,
+    bool? archived,
+    String? scope,
   }) async =>
       _call('listMeals') as Response;
 

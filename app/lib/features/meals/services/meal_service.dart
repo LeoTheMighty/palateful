@@ -64,16 +64,30 @@ class MealService {
   }
 
   Future<List<MealSummary>> listMeals({
-    int limit = 50,
+    int? limit,
     int offset = 0,
     bool includeArchived = false,
+    bool? archived,
+    String? scope,
   }) async {
     final response = await _apiClient.listMeals(
       limit: limit,
       offset: offset,
       includeArchived: includeArchived,
+      archived: archived,
+      scope: scope,
     );
     return _parseSummaryList(response);
+  }
+
+  /// md-2: reverse lookup — Meals that reference a given recipe.
+  /// Returns an empty list if the user cannot read any meal (or none exist).
+  Future<List<MealSummary>> listMealsUsingRecipe(String recipeId) async {
+    final response = await _apiClient.listMealsUsingRecipe(recipeId);
+    final data = response.data as Map<String, dynamic>;
+    final items = (data['items'] as List? ?? [])
+        .cast<Map<String, dynamic>>();
+    return items.map(MealSummary.fromJson).toList();
   }
 
   Future<Meal> getMeal(String mealId) async {
@@ -175,6 +189,24 @@ class MealService {
     final response = await _apiClient.unfavoriteMeal(mealId);
     final data = response.data as Map<String, dynamic>;
     return data['is_favorite'] as bool? ?? false;
+  }
+
+  /// msa-1 / msa-2: generate (or re-fetch) the public share link for a
+  /// Meal. Idempotent — the first call returns 201 + token, subsequent
+  /// calls return 200 + the same token.
+  Future<ShareMealResult> share(String mealId) async {
+    final response = await _apiClient.shareMeal(mealId);
+    final data = response.data as Map<String, dynamic>;
+    return ShareMealResult(
+      token: data['token'] as String,
+      deepLink: data['deep_link'] as String,
+    );
+  }
+
+  /// msa-1 / msa-2: unauthenticated read of a Meal by its share token.
+  Future<PublicMealDto> getPublicMealByToken(String token) async {
+    final response = await _apiClient.getPublicMealByToken(token);
+    return PublicMealDto.fromJson(response.data as Map<String, dynamic>);
   }
 
   // ---------------- helpers ----------------
