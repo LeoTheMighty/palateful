@@ -93,8 +93,11 @@ class PushNotification:
     # For iOS
     badge: int | None = None
     sound: str = "default"
-    # For Android
-    channel_id: str = "default"
+    # For Android — must match the AndroidNotificationChannel id created
+    # client-side in `app/lib/core/services/push_notification_service.dart`
+    # (see `palatefulDefaultChannelId`). Changing this without a matching
+    # client change will route pushes to the system fallback channel.
+    channel_id: str = "palateful_default"
     priority: str = "high"  # "high" or "normal"
 
 
