@@ -95,6 +95,11 @@ class ApiClient {
   // Health check
   Future<Response> health() => _dio.get('/v1/health');
 
+  /// Fetch the alias → canonical-unit map (riip-4). Cached server-side
+  /// for 24 h; the Dio client honors the Cache-Control header, so the
+  /// SessionAliasMap doesn't need an in-process TTL of its own.
+  Future<Response> getUnitAliases() => _dio.get('/v1/units/aliases');
+
   // User endpoints
   Future<Response> getMe() => _dio.get('/v1/users/me');
 
@@ -620,11 +625,19 @@ class ApiClient {
     return _dio.delete('/v1/import-jobs/$jobId');
   }
 
-  Future<Response> listImportJobs({String? status, int limit = 20, int offset = 0}) {
+  Future<Response> listImportJobs({
+    String? status,
+    int limit = 20,
+    int offset = 0,
+    bool includeArchived = false,
+    bool archivedOnly = false,
+  }) {
     return _dio.get('/v1/import-jobs', queryParameters: {
       'limit': limit,
       'offset': offset,
       if (status != null) 'status': status,
+      if (includeArchived) 'include_archived': true,
+      if (archivedOnly) 'archived_only': true,
     });
   }
 

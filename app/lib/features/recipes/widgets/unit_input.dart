@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:palateful/core/constants/ingredient_units.dart';
+import 'package:palateful/core/di/injection.dart';
+import 'package:palateful/features/recipes/services/session_alias_map.dart';
 
 /// Single-line text input that opens a dropdown of curated ingredient units
 /// on focus. Typing filters the list; a synthetic "Add custom" entry appears
@@ -15,6 +17,13 @@ import 'package:palateful/core/constants/ingredient_units.dart';
 /// Custom units set via this widget apply only to the single ingredient row;
 /// they are not persisted back into the curated catalog
 /// (`kCuratedUnits`).
+///
+/// On blur and on the space keystroke (riip-5), typed text is coerced
+/// through `SessionAliasMap.coerce` so "tablespoon" snaps to "tbsp"
+/// before the value lands in the parent state. Coercion is OFF when
+/// the widget is in custom-text mode (the user picked a freeform value
+/// not in `kCuratedUnits` AND it isn't a known alias) so power users
+/// can keep their oddball units.
 class UnitInput extends StatefulWidget {
   const UnitInput({
     super.key,
@@ -22,12 +31,16 @@ class UnitInput extends StatefulWidget {
     required this.onChanged,
     this.enabled = true,
     this.semanticLabel = 'Unit selector',
-  });
+    SessionAliasMap? aliasMap,
+  }) : _aliasMapOverride = aliasMap;
 
   final String? value;
   final ValueChanged<String?> onChanged;
   final bool enabled;
   final String semanticLabel;
+
+  /// Test seam — production reads from `getIt<SessionAliasMap>()`.
+  final SessionAliasMap? _aliasMapOverride;
 
   @override
   State<UnitInput> createState() => _UnitInputState();
@@ -39,6 +52,9 @@ class _UnitInputState extends State<UnitInput> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlay;
   List<String> _filtered = kCuratedUnits;
+
+  SessionAliasMap get _aliasMap =>
+      widget._aliasMapOverride ?? getIt<SessionAliasMap>();
 
   @override
   void initState() {
@@ -77,14 +93,45 @@ class _UnitInputState extends State<UnitInput> {
       _showOverlay();
     } else {
       _hideOverlay();
-      // Commit whatever was typed as the free-text value on blur.
-      final typed = _controller.text.trim();
-      final committed = typed.isEmpty ? null : typed;
+      // riip-5: coerce on blur. The trimmed/lowercased input gets
+      // pushed through SessionAliasMap; if the result is canonical or a
+      // known alias we replace the field text + cursor at end so the
+      // user sees the snap. Misses fall through unchanged.
+      final typed = _controller.text;
+      if (typed.trim().isEmpty) {
+        if (widget.value != null) widget.onChanged(null);
+        return;
+      }
+      final coerced = _aliasMap.coerce(typed);
+      if (coerced != null && coerced != _controller.text) {
+        _controller.value = TextEditingValue(
+          text: coerced,
+          selection: TextSelection.collapsed(offset: coerced.length),
+        );
+      }
+      final committed = coerced ?? typed.trim();
       if (committed != widget.value) widget.onChanged(committed);
     }
   }
 
   void _onTextChange() {
+    // riip-5: also coerce when the user types a trailing space.
+    // Triggers exactly once per inserted space. We avoid running the
+    // overlay rebuild path before the coercion so the dropdown closes
+    // cleanly in the same frame.
+    final text = _controller.text;
+    if (text.endsWith(' ') && text.trim().isNotEmpty) {
+      final coerced = _aliasMap.coerce(text);
+      if (coerced != null && coerced != text.trim() && coerced != text) {
+        _controller.value = TextEditingValue(
+          text: coerced,
+          selection: TextSelection.collapsed(offset: coerced.length),
+        );
+        widget.onChanged(coerced);
+        _hideOverlay();
+        return;
+      }
+    }
     final next = filterCuratedUnits(_controller.text);
     if (next.length != _filtered.length ||
         !_listsEqual(next, _filtered)) {

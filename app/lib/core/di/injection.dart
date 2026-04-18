@@ -11,6 +11,7 @@ import '../../features/recipes/add_recipe/batch_parser_service.dart';
 import '../../features/calendar/services/calendar_service.dart';
 import '../../features/calendar/services/meal_calendar_service.dart';
 import '../../features/activity/providers/activity_read_provider.dart';
+import '../../features/recipes/services/session_alias_map.dart';
 
 final getIt = GetIt.instance;
 
@@ -38,5 +39,11 @@ void setupDependencies() {
   );
   getIt.registerLazySingleton<ActivityReadProvider>(
     () => ActivityReadProvider(getIt<ApiClient>()),
+  );
+  // Session-scoped alias map for the UnitInput coerce-on-blur path
+  // (riip-5). Seeded synchronously with the hardcoded fallback; the
+  // live fetch is fired-and-forgotten at startup.
+  getIt.registerLazySingleton<SessionAliasMap>(
+    () => SessionAliasMap(getIt<ApiClient>())..init(),
   );
 }
