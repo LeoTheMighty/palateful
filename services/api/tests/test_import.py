@@ -4124,3 +4124,54 @@ class TestStartImportS3Key:
         _rate_limit_events["u"] = [1.0, 2.0]
         _reset_rate_limit_for_test()
         assert _rate_limit_events == {}
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_video_file_s3_key_accepted(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        """sbf-4: video_file must be accepted as a source_type."""
+        self._reset_rate_limit()
+        book_id = "book-vf"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+        mock_task.delay.return_value = None
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "video_file",
+                "s3_key": f"imports/{mock_user.id}/clip.mp4",
+                "mime_type": "video/mp4",
+                "file_name": "clip.mp4",
+            },
+        )
+        assert response.status_code == 201, response.json()
+        body = response.json()
+        assert body["source_type"] == "video_file"
+        mock_task.delay.assert_called_once()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_video_file_without_s3_key_rejected(
+        self, mock_get_service, mock_task, client, mock_db, mock_user,
+    ):
+        """video_file only accepts the s3_key path — no base64 fallback."""
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-vf-no-key"
+        self._setup_access(mock_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "video_file",
+                "file_base64": "Zm9v",
+                "file_name": "clip.mp4",
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
+        mock_task.delay.assert_not_called()
