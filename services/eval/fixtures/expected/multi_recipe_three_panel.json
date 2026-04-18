@@ -1,0 +1,43 @@
+{
+  "recipes": [
+    {
+      "name": "Tomato Salsa",
+      "description": "A chunky salsa that gets better after an hour of chilling.",
+      "servings": 6,
+      "ingredients": [
+        {"text": "ripe tomatoes, diced", "quantity": 4, "unit": null, "name": "tomatoes", "notes": "ripe, diced"},
+        {"text": "red onion, finely diced", "quantity": 0.5, "unit": null, "name": "red onion", "notes": "finely diced"},
+        {"text": "jalapeño, seeded and minced", "quantity": 1, "unit": null, "name": "jalapeño", "notes": "seeded and minced"},
+        {"text": "cilantro, chopped", "quantity": 0.25, "unit": "cup", "name": "cilantro", "notes": "chopped"},
+        {"text": "lime juice", "quantity": 2, "unit": "tablespoons", "name": "lime juice"},
+        {"text": "kosher salt", "quantity": 1, "unit": "teaspoon", "name": "kosher salt"}
+      ]
+    },
+    {
+      "name": "Guacamole",
+      "description": "Creamy, spicy, smashy.",
+      "servings": 4,
+      "ingredients": [
+        {"text": "ripe avocados, halved and pitted", "quantity": 3, "unit": null, "name": "avocados", "notes": "ripe, halved and pitted"},
+        {"text": "lime, juiced", "quantity": 1, "unit": null, "name": "lime", "notes": "juiced"},
+        {"text": "red onion, finely diced", "quantity": 0.25, "unit": "cup", "name": "red onion", "notes": "finely diced"},
+        {"text": "jalapeño, seeded and minced", "quantity": 1, "unit": null, "name": "jalapeño", "notes": "seeded and minced"},
+        {"text": "cilantro, chopped", "quantity": 2, "unit": "tablespoons", "name": "cilantro", "notes": "chopped"},
+        {"text": "kosher salt", "quantity": 0.5, "unit": "teaspoon", "name": "kosher salt"}
+      ]
+    },
+    {
+      "name": "Pico de Gallo",
+      "description": "Bright, raw, and just-right sharp.",
+      "servings": 4,
+      "ingredients": [
+        {"text": "plum tomatoes, finely diced", "quantity": 3, "unit": null, "name": "plum tomatoes", "notes": "finely diced"},
+        {"text": "white onion, finely diced", "quantity": 0.25, "unit": "cup", "name": "white onion", "notes": "finely diced"},
+        {"text": "jalapeño, minced", "quantity": 1, "unit": null, "name": "jalapeño", "notes": "minced"},
+        {"text": "cilantro, chopped", "quantity": 2, "unit": "tablespoons", "name": "cilantro", "notes": "chopped"},
+        {"text": "lime juice", "quantity": 2, "unit": "tablespoons", "name": "lime juice"},
+        {"text": "kosher salt", "quantity": 0.25, "unit": "teaspoon", "name": "kosher salt"}
+      ]
+    }
+  ]
+}

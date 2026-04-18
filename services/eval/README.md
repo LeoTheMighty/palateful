@@ -52,10 +52,13 @@ Tests HTML-to-recipe conversion using JSON-LD and AI extractors.
 | Metric | Description |
 |--------|-------------|
 | `field_accuracy` | Percentage of recipe fields correctly extracted |
+| `recipe_count_accuracy` | Fraction of cases where extractor returned the right *number* of recipes (FR88 multi-recipe fan-out). 1.0 per exact match / 0.0 otherwise. Gated at 0.80 on `multi_recipe`-tagged cases. |
 | `ingredient_count_accuracy` | Accuracy of ingredient list extraction |
 | `instruction_similarity` | Text similarity of instructions |
 | `cost_cents` | AI API cost tracking |
 | `latency_ms` | Response time |
+
+Multi-recipe expected files use `{"recipes": [recipe_a, recipe_b, ...]}`. Single-recipe expected files keep the legacy bare-recipe shape; the evaluator wraps both transparently, pair-wise aligns expected-vs-actual in source order, and grades accordingly.
 
 ### Ingredient Matching (`npx nx run eval:run-matching`)
 

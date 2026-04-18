@@ -269,7 +269,16 @@ class EvalRunner:
             return char_acc >= thresholds.ocr_character_accuracy
         elif suite == "recipe_extraction":
             field_acc = metrics.get("field_accuracy_avg", 0)
-            return field_acc >= thresholds.recipe_field_accuracy
+            # Multi-recipe gate (FR88): extractor must emit the right
+            # number of recipes. The metric is 1.0 per exact-match case
+            # / 0.0 otherwise, so the suite-wide avg is the fraction of
+            # cases the extractor got the count right on. Both gates
+            # must pass.
+            count_acc = metrics.get("recipe_count_accuracy_avg", 1.0)
+            return (
+                field_acc >= thresholds.recipe_field_accuracy
+                and count_acc >= thresholds.recipe_count_accuracy
+            )
         elif suite == "ingredient_matching":
             match_rate = metrics.get("exact_match_rate_avg", 0)
             return match_rate >= thresholds.ingredient_match_rate

@@ -1,0 +1,31 @@
+{
+  "recipes": [
+    {
+      "name": "Garlic Herb Butter",
+      "description": "A compound butter for steaks, bread, or roasted vegetables.",
+      "prep_time_minutes": 5,
+      "ingredients": [
+        {"text": "unsalted butter, softened", "quantity": 0.5, "unit": "cup", "name": "unsalted butter", "notes": "softened"},
+        {"text": "garlic, minced", "quantity": 2, "unit": "cloves", "name": "garlic", "notes": "minced"},
+        {"text": "fresh parsley, chopped", "quantity": 1, "unit": "tablespoon", "name": "parsley", "notes": "fresh, chopped"},
+        {"text": "fresh thyme leaves", "quantity": 1, "unit": "teaspoon", "name": "thyme leaves", "notes": "fresh"},
+        {"text": "kosher salt", "quantity": 0.5, "unit": "teaspoon", "name": "kosher salt"},
+        {"text": "black pepper", "quantity": 0.25, "unit": "teaspoon", "name": "black pepper"}
+      ]
+    },
+    {
+      "name": "Chimichurri",
+      "description": "Bright green Argentine sauce. Eat with grilled meats.",
+      "prep_time_minutes": 10,
+      "ingredients": [
+        {"text": "fresh parsley, finely chopped", "quantity": 1, "unit": "cup", "name": "parsley", "notes": "fresh, finely chopped"},
+        {"text": "garlic, minced", "quantity": 3, "unit": "cloves", "name": "garlic", "notes": "minced"},
+        {"text": "fresh oregano, chopped", "quantity": 2, "unit": "tablespoons", "name": "oregano", "notes": "fresh, chopped"},
+        {"text": "extra-virgin olive oil", "quantity": 0.5, "unit": "cup", "name": "extra-virgin olive oil"},
+        {"text": "red wine vinegar", "quantity": 2, "unit": "tablespoons", "name": "red wine vinegar"},
+        {"text": "red pepper flakes", "quantity": 0.5, "unit": "teaspoon", "name": "red pepper flakes"},
+        {"text": "kosher salt", "quantity": 0.5, "unit": "teaspoon", "name": "kosher salt"}
+      ]
+    }
+  ]
+}

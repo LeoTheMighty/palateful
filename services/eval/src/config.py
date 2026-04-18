@@ -16,6 +16,10 @@ class ThresholdConfig:
     ocr_character_accuracy: float = 0.95
     ocr_word_accuracy: float = 0.90
     recipe_field_accuracy: float = 0.90
+    # Multi-recipe fan-out accuracy (FR88). Extractors must return the
+    # right number of recipes on multi_recipe-tagged cases; aggregated
+    # as a mean across the suite (1.0 per case on exact count match).
+    recipe_count_accuracy: float = 0.80
     ingredient_match_rate: float = 0.85
     recipe_parse_pass_rate: float = 0.80
     chat_agent_pass_rate: float = 0.80
@@ -136,6 +140,7 @@ def load_config(
         ocr_character_accuracy=thresholds_yaml.get("ocr_character_accuracy", 0.95),
         ocr_word_accuracy=thresholds_yaml.get("ocr_word_accuracy", 0.90),
         recipe_field_accuracy=thresholds_yaml.get("recipe_field_accuracy", 0.90),
+        recipe_count_accuracy=thresholds_yaml.get("recipe_count_accuracy", 0.80),
         ingredient_match_rate=thresholds_yaml.get("ingredient_match_rate", 0.85),
         recipe_parse_pass_rate=thresholds_yaml.get("recipe_parse_pass_rate", 0.80),
         chat_agent_pass_rate=thresholds_yaml.get("chat_agent_pass_rate", 0.80),

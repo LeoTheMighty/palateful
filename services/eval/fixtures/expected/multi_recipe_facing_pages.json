@@ -1,0 +1,38 @@
+{
+  "recipes": [
+    {
+      "name": "Lemon Blueberry Pancakes",
+      "description": "Fluffy lemon-scented pancakes studded with fresh blueberries. Brunch, sorted.",
+      "prep_time_minutes": 10,
+      "cook_time_minutes": 15,
+      "servings": 4,
+      "ingredients": [
+        {"text": "all-purpose flour", "quantity": 2, "unit": "cups", "name": "all-purpose flour"},
+        {"text": "sugar", "quantity": 2, "unit": "tablespoons", "name": "sugar"},
+        {"text": "baking powder", "quantity": 2, "unit": "teaspoons", "name": "baking powder"},
+        {"text": "salt", "quantity": 0.5, "unit": "teaspoon", "name": "salt"},
+        {"text": "large eggs", "quantity": 2, "unit": null, "name": "eggs"},
+        {"text": "buttermilk", "quantity": 1.75, "unit": "cups", "name": "buttermilk"},
+        {"text": "unsalted butter, melted", "quantity": 0.25, "unit": "cup", "name": "unsalted butter", "notes": "melted"},
+        {"text": "lemon zest", "quantity": 1, "unit": "teaspoon", "name": "lemon zest"},
+        {"text": "fresh blueberries", "quantity": 1, "unit": "cup", "name": "blueberries", "notes": "fresh"}
+      ]
+    },
+    {
+      "name": "Cinnamon Sugar French Toast",
+      "description": "Custardy French toast with a crackly cinnamon sugar finish.",
+      "prep_time_minutes": 5,
+      "cook_time_minutes": 10,
+      "servings": 2,
+      "ingredients": [
+        {"text": "thick-cut brioche", "quantity": 4, "unit": "slices", "name": "brioche", "notes": "thick-cut"},
+        {"text": "large eggs", "quantity": 2, "unit": null, "name": "eggs"},
+        {"text": "whole milk", "quantity": 0.5, "unit": "cup", "name": "whole milk"},
+        {"text": "vanilla extract", "quantity": 1, "unit": "teaspoon", "name": "vanilla extract"},
+        {"text": "unsalted butter", "quantity": 2, "unit": "tablespoons", "name": "unsalted butter"},
+        {"text": "granulated sugar", "quantity": 0.25, "unit": "cup", "name": "granulated sugar"},
+        {"text": "ground cinnamon", "quantity": 1, "unit": "teaspoon", "name": "cinnamon", "notes": "ground"}
+      ]
+    }
+  ]
+}

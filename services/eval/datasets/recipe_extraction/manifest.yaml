@@ -1,21 +1,28 @@
 # Recipe Extraction Evaluation Test Cases
-# Add test HTML files and their expected JSON outputs here
+# Add test HTML files and their expected JSON outputs here.
+#
+# Multi-recipe cases (tagged `multi_recipe`) exercise the FR88 fan-out
+# contract: the extractor must emit a `recipes` array of the right
+# length. Threshold gate: recipe_count_accuracy_avg >= 0.8 on these.
 
-cases: []
-  # Example case (uncomment and add actual files):
-  # - id: allrecipes-chocolate-cake
-  #   html: html/allrecipes-chocolate-cake.html
-  #   expected: expected/allrecipes-chocolate-cake.json
-  #   url: https://www.allrecipes.com/recipe/17981/one-bowl-chocolate-cake-iii/
-  #   extractor: auto  # json_ld, ai, or auto
-  #   tags: [json-ld, dessert]
+cases:
+  - id: multi_recipe_facing_pages
+    text: ../../fixtures/text/multi_recipe_facing_pages.txt
+    expected: ../../fixtures/expected/multi_recipe_facing_pages.json
+    extractor: text
+    tags: [multi_recipe, text]
 
-  # - id: nytimes-pasta
-  #   html: html/nytimes-pasta.html
-  #   expected: expected/nytimes-pasta.json
-  #   url: https://cooking.nytimes.com/recipes/pasta
-  #   extractor: ai  # Force AI extraction
-  #   tags: [ai-only, main-course]
+  - id: multi_recipe_side_by_side
+    text: ../../fixtures/text/multi_recipe_side_by_side.txt
+    expected: ../../fixtures/expected/multi_recipe_side_by_side.json
+    extractor: text
+    tags: [multi_recipe, text]
+
+  - id: multi_recipe_three_panel
+    text: ../../fixtures/text/multi_recipe_three_panel.txt
+    expected: ../../fixtures/expected/multi_recipe_three_panel.json
+    extractor: text
+    tags: [multi_recipe, text]
 
 config:
   timeout_seconds: 120

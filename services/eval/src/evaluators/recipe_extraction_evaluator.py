@@ -183,33 +183,141 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         return dict(recipe) if isinstance(recipe, dict) else {}
 
     def _calculate_metrics(self, actual: dict, expected: dict) -> dict:
-        """Calculate comparison metrics between actual and expected recipes."""
-        metrics = {}
+        """Calculate comparison metrics between actual and expected recipes.
 
-        # Field-level comparison
+        Supports two input shapes transparently:
+          * Legacy single-recipe: a bare recipe dict at the top level.
+          * Multi-recipe: `{"recipes": [recipe_dict, ...]}` (FR88).
+
+        Both are normalized to a list of recipes, then pair-wise compared
+        using order-based alignment (`expected[i]` vs `actual[i]`). The
+        rationale is documented with the workshop decision: extractors
+        are instructed to emit recipes in source order, and expected
+        fixtures are authored in the same order. If the model swaps
+        order, the field_accuracy metric will drop and we'd upgrade to
+        a name-similarity heuristic in a follow-up.
+        """
+        expected_list = self._normalize_to_recipe_list(expected)
+        actual_list = self._normalize_to_recipe_list(actual)
+
+        metrics: dict = {}
+
+        # Recipe-count accuracy: binary per-case. 1.0 iff the extractor
+        # returned the expected N; otherwise 0.0. Aggregated as a mean
+        # over the suite (see runner._check_thresholds).
+        metrics["recipe_count_accuracy"] = (
+            1.0 if len(actual_list) == len(expected_list) else 0.0
+        )
+        metrics["expected_recipe_count"] = len(expected_list)
+        metrics["actual_recipe_count"] = len(actual_list)
+
+        if len(actual_list) != len(expected_list):
+            # Emit a diagnostic so eval failures point at the count gap.
+            import logging
+            logging.getLogger(__name__).info(
+                "alignment: expected N=%d actual N=%d; field metrics "
+                "computed on first min(N) pairs",
+                len(expected_list),
+                len(actual_list),
+            )
+
+        # Pair-wise field/ingredient/instruction metrics on
+        # min(N_expected, N_actual) pairs. Unpaired recipes on either
+        # side contribute 0 to field_accuracy (counted as a whole
+        # missed or hallucinated recipe). We aggregate with a weighted
+        # mean so the numbers stay comparable across single- and
+        # multi-recipe cases.
+        paired = min(len(actual_list), len(expected_list))
+        pair_metrics: list[dict] = []
+        for i in range(paired):
+            pair_metrics.append(
+                self._single_recipe_metrics(actual_list[i], expected_list[i])
+            )
+
+        # Unpaired on either side: a missed expected recipe or a
+        # hallucinated actual recipe each counts as 0 field_accuracy.
+        unpaired_penalty_count = abs(len(actual_list) - len(expected_list))
+
+        if not pair_metrics and unpaired_penalty_count == 0:
+            # Degenerate: neither side has any recipes — pass trivially.
+            metrics.update(
+                field_accuracy=1.0,
+                fields_correct=0,
+                fields_total=0,
+                missing_fields=[],
+                extra_fields=[],
+                ingredient_count_accuracy=1.0,
+                instruction_similarity=1.0,
+            )
+            return metrics
+
+        total_pairs = paired + unpaired_penalty_count
+
+        def _avg(key: str) -> float:
+            if not pair_metrics:
+                return 0.0 if unpaired_penalty_count else 0.0
+            numer = sum(p[key] for p in pair_metrics)
+            # Denominator is total_pairs so unpaired recipes pull the
+            # metric down (each contributes 0 to the numerator).
+            return numer / total_pairs if total_pairs else 0.0
+
+        metrics["field_accuracy"] = _avg("field_accuracy")
+        metrics["ingredient_count_accuracy"] = _avg("ingredient_count_accuracy")
+        metrics["instruction_similarity"] = _avg("instruction_similarity")
+
+        # Keep the first pair's structural breakdown for quick debugging.
+        if pair_metrics:
+            first = pair_metrics[0]
+            metrics["fields_correct"] = first["fields_correct"]
+            metrics["fields_total"] = first["fields_total"]
+            metrics["missing_fields"] = first["missing_fields"]
+            metrics["extra_fields"] = first["extra_fields"]
+
+        return metrics
+
+    def _normalize_to_recipe_list(self, data: dict) -> list[dict]:
+        """Normalize either a single-recipe dict or `{"recipes": [...]}`
+        into a list of recipe dicts. Non-dict list entries are dropped.
+        """
+        recipes = data.get("recipes") if isinstance(data, dict) else None
+        if isinstance(recipes, list):
+            return [r for r in recipes if isinstance(r, dict)]
+        # Fall through: treat the dict itself as a single recipe only if
+        # it has recipe-shaped fields. An empty/error dict normalizes to
+        # an empty list so len() comparisons remain meaningful.
+        if isinstance(data, dict) and any(
+            k in data for k in ("name", "ingredients", "instructions")
+        ):
+            return [data]
+        return []
+
+    def _single_recipe_metrics(self, actual: dict, expected: dict) -> dict:
+        """Compute per-recipe metrics for one paired (actual, expected)."""
+        m: dict = {}
+
         field_results = StructMetrics.compare_fields(actual, expected)
-        metrics["field_accuracy"] = field_results["accuracy"]
-        metrics["fields_correct"] = field_results["correct"]
-        metrics["fields_total"] = field_results["total"]
-        metrics["missing_fields"] = field_results["missing"]
-        metrics["extra_fields"] = field_results["extra"]
+        m["field_accuracy"] = field_results["accuracy"]
+        m["fields_correct"] = field_results["correct"]
+        m["fields_total"] = field_results["total"]
+        m["missing_fields"] = field_results["missing"]
+        m["extra_fields"] = field_results["extra"]
 
-        # Ingredient count comparison
         actual_ing_count = len(actual.get("ingredients", []))
         expected_ing_count = len(expected.get("ingredients", []))
         if expected_ing_count > 0:
-            metrics["ingredient_count_accuracy"] = min(actual_ing_count, expected_ing_count) / expected_ing_count
+            m["ingredient_count_accuracy"] = (
+                min(actual_ing_count, expected_ing_count) / expected_ing_count
+            )
         else:
-            metrics["ingredient_count_accuracy"] = 1.0 if actual_ing_count == 0 else 0.0
+            m["ingredient_count_accuracy"] = 1.0 if actual_ing_count == 0 else 0.0
 
-        # Instruction similarity (if both have instructions)
         actual_instructions = actual.get("instructions", "") or ""
         expected_instructions = expected.get("instructions", "") or ""
         if expected_instructions:
-            metrics["instruction_similarity"] = TextMetrics.normalized_levenshtein(
+            m["instruction_similarity"] = TextMetrics.normalized_levenshtein(
                 actual_instructions, expected_instructions
             )
         else:
-            metrics["instruction_similarity"] = 1.0 if not actual_instructions else 0.0
+            m["instruction_similarity"] = 1.0 if not actual_instructions else 0.0
 
-        return metrics
+        return m
