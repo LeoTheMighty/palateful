@@ -504,13 +504,13 @@ development_status:
   # .json, Crashlytics native symbol upload config, local release-mode
   # smoke template. Blocks epic-android-play-console-launch; independent
   # of privacy-policy-page.
-  epic-android-release-hardening: in-progress
+  epic-android-release-hardening: done
   arh-1-post-notifications-runtime-prompt-fcm-channel: done
   arh-2-remove-over-declared-read-media-permissions: done
   arh-3-adaptive-launcher-icon: done
   arh-4-https-app-links-and-assetlinks-json: done
   arh-5-crashlytics-native-symbol-upload-config: done
-  arh-6-local-release-mode-smoke-template: backlog
+  arh-6-local-release-mode-smoke-template: done
   epic-android-release-hardening-retrospective: optional
 
   # Epic Android CI Hardening (planned 2026-04-18)

@@ -1,0 +1,26 @@
+# arh-6: Template for `app/android/key.properties`. Copy this file to
+# `key.properties` (same directory) and fill in real values. The real
+# file is git-ignored via `app/android/.gitignore` — NEVER commit it
+# and NEVER commit the keystore itself (`*.jks` / `*.keystore` are
+# also ignored).
+#
+# Generate the keystore (one-time, for a local developer needing to run
+# `flutter build appbundle --release`):
+#
+#   keytool -genkeypair -v \
+#     -keystore palateful-upload.jks \
+#     -alias upload \
+#     -keyalg RSA -keysize 2048 -validity 9125
+#
+# Then move `palateful-upload.jks` somewhere OUTSIDE the repo (e.g.
+# `~/.android-keystores/palateful-upload.jks`) and point `storeFile`
+# at the absolute path below. The CI-managed Play App Signing upload
+# key lives in GitHub Secrets and is injected via Fastlane, so this
+# local keystore is used for dev-only release-mode smoke builds. See
+# ANDROID.md for the full runbook.
+
+# Four required fields — empty values will fail the release build.
+storePassword=REPLACE_WITH_KEYSTORE_PASSWORD
+keyPassword=REPLACE_WITH_KEY_PASSWORD
+keyAlias=upload
+storeFile=/absolute/path/to/palateful-upload.jks
