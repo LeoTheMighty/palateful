@@ -12,10 +12,13 @@ here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import Session, selectinload
 
 from utils.models.meal import Meal
 from utils.models.meal_favorite import MealFavorite
@@ -23,6 +26,9 @@ from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook  # noqa: F401 — selectinload chain
 from utils.models.recipe_book_user import RecipeBookUser
+from utils.services.units.normalize import normalize_unit_display
+
+logger = logging.getLogger(__name__)
 
 
 class MealServiceError(Exception):
@@ -51,6 +57,112 @@ class MinComponentsError(MealServiceError):
 
 class ReorderMismatchError(MealServiceError):
     """The reorder list doesn't match the current component set."""
+
+
+@dataclass
+class AggregatedIngredient:
+    """One output row of `aggregate_meal_ingredients`.
+
+    Dedupe key is `(ingredient_id, normalized_unit)` — two components
+    whose ingredient + normalized unit both match collapse into one row
+    with `summed_quantity` totaled and `contributing_recipe_ids` merged.
+    Cross-unit variants (`1 tbsp` + `15 ml` olive oil) deliberately do
+    NOT merge in v1.
+    """
+
+    ingredient_id: uuid.UUID
+    ingredient_name: str
+    category: str | None
+    summed_quantity: Decimal
+    normalized_unit: str | None
+    contributing_recipe_ids: list[uuid.UUID] = field(default_factory=list)
+
+
+def aggregate_meal_ingredients(
+    meal: Meal,
+    session: Session,
+) -> list[AggregatedIngredient]:
+    """Expand a Meal into a list of summed-and-deduped ingredients.
+
+    Walks every component recipe's non-archived ingredients, normalizes
+    each ingredient's `unit_display` via `normalize_unit_display` (the
+    `unit_aliases` cache is live as of riip-1), and sums quantities on
+    the dedupe key `(ingredient_id, normalized_unit)`.
+
+    Components whose recipe is archived or whose book is archived are
+    skipped with a warning log. Components whose `recipe` relationship
+    is unexpectedly null are skipped silently. Components with zero
+    non-archived ingredients are skipped at debug level.
+
+    Ingredients with no unit (empty string) dedupe under a distinct key
+    from unit-specified variants — `(ingredient_id, "")` is separate
+    from `(ingredient_id, "tbsp")`, consistent with how the recipe path
+    handles raw string units today.
+
+    Output preserves first-seen order so UI rendering is stable. Inside
+    each bucket, `contributing_recipe_ids` preserves insertion order.
+    """
+    aggregates: dict[tuple[uuid.UUID, str | None], AggregatedIngredient] = {}
+    key_order: list[tuple[uuid.UUID, str | None]] = []
+
+    for component in meal.components:
+        recipe = component.recipe
+        if recipe is None:
+            continue
+        if recipe.archived_at is not None:
+            logger.warning(
+                "aggregate_meal_ingredients: component recipe %s archived, skipping",
+                recipe.id,
+            )
+            continue
+        book = recipe.recipe_book
+        if book is not None and book.archived_at is not None:
+            logger.warning(
+                "aggregate_meal_ingredients: component recipe %s in archived book %s, skipping",
+                recipe.id,
+                book.id,
+            )
+            continue
+
+        live_ingredients = [
+            ri for ri in recipe.ingredients if ri.archived_at is None
+        ]
+        if not live_ingredients:
+            logger.debug(
+                "aggregate_meal_ingredients: component recipe %s has no live ingredients",
+                recipe.id,
+            )
+            continue
+
+        for recipe_ingredient in live_ingredients:
+            ingredient = recipe_ingredient.ingredient
+            if ingredient is None:
+                continue
+
+            normalized_unit = normalize_unit_display(
+                recipe_ingredient.unit_display, session
+            )
+            key = (ingredient.id, normalized_unit)
+            raw_quantity = recipe_ingredient.quantity_display
+            quantity = Decimal(raw_quantity) if raw_quantity is not None else Decimal("0")
+
+            if key in aggregates:
+                existing = aggregates[key]
+                existing.summed_quantity = existing.summed_quantity + quantity
+                if recipe.id not in existing.contributing_recipe_ids:
+                    existing.contributing_recipe_ids.append(recipe.id)
+            else:
+                aggregates[key] = AggregatedIngredient(
+                    ingredient_id=ingredient.id,
+                    ingredient_name=ingredient.canonical_name,
+                    category=ingredient.category,
+                    summed_quantity=quantity,
+                    normalized_unit=normalized_unit,
+                    contributing_recipe_ids=[recipe.id],
+                )
+                key_order.append(key)
+
+    return [aggregates[k] for k in key_order]
 
 
 @dataclass

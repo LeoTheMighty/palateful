@@ -631,7 +631,7 @@ development_status:
   # Parallelizable with discoverability + sharing-and-ai.
   epic-meals-calendar: in-progress
   mcal-1-backend-migration-meal-id-on-events-recurrence-cooking-logs-and-shopping-list-items: done
-  mcal-2-backend-aggregate-meal-ingredients-service-and-dedupe-correctness: backlog
+  mcal-2-backend-aggregate-meal-ingredients-service-and-dedupe-correctness: done
   mcal-3-backend-meal-event-and-recurrence-endpoints-accept-meal-id-xor: backlog
   mcal-4-backend-populate-from-calendar-meal-expansion-load-bearing: deleted  # 2026-04-18: endpoint removed via epic-calendar-per-meal-shopping-add; Meal-event "add to shopping list" will route through a new per-event endpoint at implementation time (see FR-CPMS-7)
   mcal-5-backend-meal-autocomplete-list-param-and-add-meal-to-shopping-list-endpoint: backlog
