@@ -10,6 +10,7 @@ carries both `/recipes` and `/recipe-books/{id}/recipes/...`).
 """
 
 from api.v1.meal import (
+    AddMealToShoppingList,
     AddRecipeToMeal,
     ArchiveMeal,
     CreateMeal,
@@ -52,12 +53,17 @@ async def list_meals(
     include_archived: bool = False,
     archived: bool | None = None,
     scope: str | None = None,
+    q: str | None = None,
 ):
     """List Meals across every readable book.
 
     md-3 filter knobs: `archived=true` returns only archived (archive
     view); `scope=home` raises the default limit to 30 and pins the sort
     to `updated_at DESC` for the home grid.
+
+    mcal-5 `q`: ILIKE match against `name` or `description`. Returns a
+    flat list scoped to readable books (archived excluded by default).
+    Callers typically pair `q=...&limit=8` for the plan-meal autocomplete.
     """
     return ListMeals.call(
         limit=limit,
@@ -65,6 +71,7 @@ async def list_meals(
         include_archived=include_archived,
         archived=archived,
         scope=scope,
+        q=q,
         user=user,
         database=database,
     )
@@ -183,6 +190,25 @@ async def share_meal(
     rotating it. Matches the ShareRecipe contract.
     """
     return ShareMeal.call(meal_id=meal_id, user=user, database=database)
+
+
+@meal_router.post("/{meal_id}/add-to-shopping-list")
+async def add_meal_to_shopping_list(
+    meal_id: str,
+    params: AddMealToShoppingList.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Expand a Meal into a target shopping list (mcal-5).
+
+    Aggregates components via `aggregate_meal_ingredients` (sum-within-
+    meal dedupe) and inserts items with `meal_event_id=NULL` and
+    `source_meal_id=meal.id` for descriptive provenance. The "shop
+    without scheduling" path from the Meal detail screen.
+    """
+    return AddMealToShoppingList.call(
+        meal_id=meal_id, params=params, user=user, database=database
+    )
 
 
 @meal_router.post("/{meal_id}/archive")

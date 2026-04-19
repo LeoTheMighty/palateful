@@ -1,5 +1,6 @@
 """Meal endpoint implementations (mcv-2 + mcv-3)."""
 
+from api.v1.meal.add_meal_to_shopping_list import AddMealToShoppingList
 from api.v1.meal.add_recipe_to_meal import AddRecipeToMeal
 from api.v1.meal.archive_meal import ArchiveMeal
 from api.v1.meal.create_meal import CreateMeal
@@ -15,6 +16,7 @@ from api.v1.meal.share_meal import ShareMeal
 from api.v1.meal.update_meal import UpdateMeal
 
 __all__ = [
+    "AddMealToShoppingList",
     "AddRecipeToMeal",
     "ArchiveMeal",
     "CreateMeal",

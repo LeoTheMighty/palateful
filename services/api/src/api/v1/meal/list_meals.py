@@ -2,6 +2,7 @@
 
 from api.v1.meal._response import build_meal_summary
 from schemas.meal import MealListResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import Endpoint, success
 from utils.models.meal import Meal
@@ -34,6 +35,7 @@ class ListMeals(Endpoint):
         include_archived: bool = False,
         archived: bool | None = None,
         scope: str | None = None,
+        q: str | None = None,
     ):
         user: User = self.user
         db = self.db
@@ -45,6 +47,10 @@ class ListMeals(Endpoint):
         effective_limit = limit
         if effective_limit is None:
             effective_limit = 30 if scope_home else 20
+        # mcal-5: hard ceiling so an autocomplete caller can't accidentally
+        # request a giant page. Keeps the per-request selectinload fan-out
+        # bounded even when a misbehaving client passes limit=10000.
+        effective_limit = min(effective_limit, 50)
 
         # md-3: archived=true returns only-archived; archived=false returns
         # only-active. include_archived=true (pre-md-3) is preserved.
@@ -80,6 +86,14 @@ class ListMeals(Endpoint):
             query = query.filter(Meal.archived_at.is_not(None))
         elif not include_archived:
             query = query.filter(Meal.archived_at.is_(None))
+
+        # mcal-5: text autocomplete. Ignore blank-after-strip to avoid
+        # filtering on `%%` which would match every row.
+        if q is not None and q.strip():
+            needle = f"%{q.strip()}%"
+            query = query.filter(
+                or_(Meal.name.ilike(needle), Meal.description.ilike(needle))
+            )
 
         total = query.count()
         order_clause = (

@@ -3,6 +3,7 @@
 from datetime import date
 
 from api.v1.meal_event import (
+    AddMealEventToShoppingList,
     CreateMealEvent,
     DeleteMealEvent,
     GetMealEvent,
@@ -143,6 +144,28 @@ async def respond_to_invite(
 ):
     """Respond to a meal event invitation."""
     return RespondToInvite.call(
+        event_id=event_id,
+        params=params,
+        user=user,
+        database=database,
+    )
+
+
+@meal_event_router.post("/meal-events/{event_id}/add-to-shopping-list")
+async def add_meal_event_to_shopping_list(
+    event_id: str,
+    params: AddMealEventToShoppingList.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Append a single calendar event's ingredients to a shopping list (mcal-5).
+
+    Replaces the now-deleted PopulateFromCalendar's per-event behavior.
+    Recipe-linked events expand via the recipe's ingredient rows; Meal-
+    linked events expand via `aggregate_meal_ingredients` with sum-
+    within-meal dedupe.
+    """
+    return AddMealEventToShoppingList.call(
         event_id=event_id,
         params=params,
         user=user,

@@ -1,5 +1,6 @@
 """Meal event endpoints."""
 
+from .add_to_shopping_list import AddMealEventToShoppingList
 from .create_meal_event import CreateMealEvent
 from .delete_meal_event import DeleteMealEvent
 from .get_meal_event import GetMealEvent
@@ -10,6 +11,7 @@ from .skip_meal_event import SkipMealEvent
 from .update_meal_event import UpdateMealEvent
 
 __all__ = [
+    "AddMealEventToShoppingList",
     "CreateMealEvent",
     "GetMealEvent",
     "ListMealEvents",
