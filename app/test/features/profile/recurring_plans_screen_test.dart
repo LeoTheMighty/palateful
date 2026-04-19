@@ -36,6 +36,7 @@ class _FakeService implements MealCalendarService {
     required MealType mealType,
     required String calendarId,
     String? recipeId,
+    String? mealId,
     bool isShared = true,
   }) async =>
       throw UnimplementedError();
@@ -71,6 +72,7 @@ class _FakeService implements MealCalendarService {
     required String calendarId,
     String? title,
     String? recipeId,
+    String? mealId,
     DateTime? endDate,
     String? monthlyNth,
     bool isShared = true,
@@ -233,5 +235,32 @@ void main() {
 
     expect(find.text("Couldn't load your recurring plans."), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
+  });
+
+  testWidgets('Meal-rule row renders meal name + "N recipes" suffix (mcal-9)',
+      (tester) async {
+    fake.rules = [
+      RecurrenceRule(
+        id: 'rm-1',
+        ownerId: 'u-1',
+        mealType: 'dinner',
+        weekdays: const ['mon'],
+        interval: 'weekly',
+        startDate: DateTime(2026, 4, 13),
+        tzName: 'America/Los_Angeles',
+        isShared: false,
+        mealId: 'meal-kale',
+        mealSummary: const MealSummary(
+          id: 'meal-kale',
+          name: 'Kale Salad Meal',
+          componentCount: 2,
+        ),
+      ),
+    ];
+    await tester.pumpWidget(_host());
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Kale Salad Meal'), findsOneWidget);
+    expect(find.textContaining('2 recipes'), findsOneWidget);
   });
 }

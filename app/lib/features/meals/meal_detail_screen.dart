@@ -4,8 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/injection.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../calendar/widgets/plan_meal_sheet.dart';
+import '../shopping_cart/models/shopping_list.dart';
+import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal.dart';
 import 'providers/meals_provider.dart';
 import 'services/meal_service.dart';
@@ -29,6 +33,7 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
   bool _busyFavorite = false;
   bool _busyArchive = false;
   bool _busyShare = false;
+  bool _busyShop = false;
 
   Future<void> _toggleFavorite(Meal meal) async {
     if (_busyFavorite) return;
@@ -100,6 +105,123 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _busyShare = false);
+    }
+  }
+
+  /// Launch the plan-meal sheet in Meal mode with this meal pre-filled.
+  /// Epic principle 3: "Plan for Date" is the one context where the
+  /// toggle flips to Meal by default.
+  Future<void> _planForDate(Meal meal) async {
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => PlanMealSheet(
+        initialPlanMealType: PlanMealType.meal,
+        initialMealId: meal.id,
+        initialMealName: meal.name,
+      ),
+    );
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${meal.name} added to calendar')),
+      );
+    }
+  }
+
+  /// Append this Meal's aggregated ingredients to a shopping list without
+  /// scheduling an event. Reuses the default-list resolution pattern from
+  /// the calendar tile so the user picks a list on first use and sees a
+  /// list picker only when multiple lists are active.
+  Future<void> _addToShoppingList(Meal meal) async {
+    if (_busyShop) return;
+    setState(() => _busyShop = true);
+    try {
+      final cartService = getIt<ShoppingCartService>();
+      final authService = getIt<AuthService>();
+      List<ShoppingList> lists;
+      try {
+        lists = await cartService.getShoppingLists();
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load shopping lists')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      if (lists.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No shopping lists — tap + to create one'),
+          ),
+        );
+        return;
+      }
+
+      ShoppingList? target;
+      final defaultId = authService.defaultShoppingListId;
+      if (defaultId != null) {
+        final match = lists.where((l) => l.id == defaultId);
+        if (match.isNotEmpty) target = match.first;
+      }
+      if (target == null && lists.length == 1) {
+        target = lists.first;
+      } else if (target == null) {
+        if (!mounted) return;
+        target = await showModalBottomSheet<ShoppingList>(
+          context: context,
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Choose a shopping list',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
+                ),
+                ...lists.map((list) => ListTile(
+                      title: Text(list.name),
+                      subtitle: Text('${list.items.length} item(s)'),
+                      onTap: () => Navigator.pop(ctx, list),
+                    )),
+              ],
+            ),
+          ),
+        );
+        if (target == null || !mounted) return;
+        cartService.setDefaultShoppingList(target.id);
+      }
+
+      final result =
+          await _service.addToShoppingList(meal.id, target.id);
+      if (!mounted) return;
+      final n = result.itemsAdded;
+      final noun = n == 1 ? '1 item' : '$n items';
+      final message = result.itemsSkipped > 0
+          ? 'Added $noun (some components unavailable)'
+          : 'Added $noun from ${meal.name}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      ErrorReporter.report(
+        e,
+        StackTrace.current,
+        area: 'meals.detail',
+        operation: 'addToShoppingList',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to add meal to shopping list'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyShop = false);
     }
   }
 
@@ -216,7 +338,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
                   busyFavorite: _busyFavorite,
                   busyArchive: _busyArchive,
                   busyShare: _busyShare,
+                  busyShop: _busyShop,
                   onFavorite: () => _toggleFavorite(meal),
+                  onPlan: () => _planForDate(meal),
+                  onShop: () => _addToShoppingList(meal),
                   onArchive: () => _archiveMeal(meal),
                   onShare: () => _shareMeal(meal),
                   onEdit: () async {
@@ -270,7 +395,10 @@ class _ActionBar extends StatelessWidget {
   final bool busyFavorite;
   final bool busyArchive;
   final bool busyShare;
+  final bool busyShop;
   final VoidCallback onFavorite;
+  final VoidCallback onPlan;
+  final VoidCallback onShop;
   final VoidCallback onArchive;
   final VoidCallback onShare;
   final VoidCallback onEdit;
@@ -280,7 +408,10 @@ class _ActionBar extends StatelessWidget {
     required this.busyFavorite,
     required this.busyArchive,
     required this.busyShare,
+    required this.busyShop,
     required this.onFavorite,
+    required this.onPlan,
+    required this.onShop,
     required this.onArchive,
     required this.onShare,
     required this.onEdit,
@@ -301,14 +432,13 @@ class _ActionBar extends StatelessWidget {
         _ActionIcon(
           icon: Icons.calendar_today_outlined,
           label: 'Plan',
-          tooltip: 'Available when calendars ship',
-          onTap: null,
+          onTap: onPlan,
         ),
         _ActionIcon(
           icon: Icons.shopping_cart_outlined,
           label: 'Shop',
-          tooltip: 'Schedule this meal first',
-          onTap: null,
+          onTap: busyShop ? null : onShop,
+          busy: busyShop,
         ),
         _ActionIcon(
           icon: Icons.ios_share,
@@ -337,7 +467,6 @@ class _ActionIcon extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
   final Color? color;
-  final String? tooltip;
   final bool busy;
 
   const _ActionIcon({
@@ -345,7 +474,6 @@ class _ActionIcon extends StatelessWidget {
     required this.label,
     this.onTap,
     this.color,
-    this.tooltip,
     this.busy = false,
   });
 
@@ -385,9 +513,6 @@ class _ActionIcon extends StatelessWidget {
         ),
       ),
     );
-    if (tooltip != null) {
-      return Tooltip(message: tooltip!, child: body);
-    }
     return body;
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../calendar/models/meal_event.dart';
 import '../../../calendar/widgets/recurrence_field.dart';
+import '../../../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
 
 /// Single row on the Recurring Plans list. Shows meal-type icon (or recipe
 /// thumbnail when available), the rule title, a summary line, and an
@@ -23,14 +24,20 @@ class RuleRow extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final title = rule.title ??
-        (rule.recipeId != null ? 'Recipe meal' : 'Recurring meal');
+    final title = rule.mealSummary?.name ??
+        rule.title ??
+        (rule.recipeId != null
+            ? 'Recipe meal'
+            : (rule.mealId != null ? 'Meal plan' : 'Recurring meal'));
     final summary = describeRecurrence(RecurrenceValue(
       interval: rule.interval,
       weekdays: rule.weekdays,
       monthlyNth: rule.monthlyNth,
       endDate: rule.endDate,
     ));
+    final componentSuffix = rule.mealSummary != null
+        ? ' (${kMealComponentCountLabel(rule.mealSummary!.componentCount)})'
+        : '';
 
     final contentColor =
         isEnded ? colorScheme.onSurface.withValues(alpha: 0.5) : null;
@@ -62,7 +69,7 @@ class RuleRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    title,
+                    '$title$componentSuffix',
                     style: textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                       color: contentColor,

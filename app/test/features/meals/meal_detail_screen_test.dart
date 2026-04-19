@@ -300,15 +300,39 @@ void main() {
     );
   });
 
-  testWidgets('plan/shop actions are disabled (no onTap); share is live',
+  testWidgets('plan/shop actions are live as of mcal-9; share is live',
       (tester) async {
     await tester.pumpWidget(_harness(service, 'meal-1'));
     await tester.pumpAndSettle();
 
-    // Plan + Shop remain disabled-with-tooltip until their epics land.
-    expect(find.byTooltip('Available when calendars ship'), findsOneWidget);
-    expect(find.byTooltip('Schedule this meal first'), findsOneWidget);
-    // Share is live as of msa-2 — tooltip removed.
+    // Tooltips were removed once Plan-for-Date + Add-to-Shopping-List
+    // became live (mcal-9).
+    expect(find.byTooltip('Available when calendars ship'), findsNothing);
+    expect(find.byTooltip('Schedule this meal first'), findsNothing);
     expect(find.byTooltip('Available when sharing ships'), findsNothing);
+
+    // Both action labels render and each hosts an enabled InkWell (the
+    // icon widget wraps label + glyph in one tap target).
+    expect(find.text('Plan'), findsOneWidget);
+    expect(find.text('Shop'), findsOneWidget);
+
+    // Tapping Plan should not throw (it tries to open a modal; we don't
+    // fully settle because the modal depends on MealCalendarService /
+    // active-calendar wiring which aren't needed for the enablement
+    // check).
+    final planAncestor = find.ancestor(
+      of: find.text('Plan'),
+      matching: find.byType(InkWell),
+    );
+    expect(planAncestor, findsWidgets);
+    final inkWell = tester.widget<InkWell>(planAncestor.first);
+    expect(inkWell.onTap, isNotNull);
+
+    final shopAncestor = find.ancestor(
+      of: find.text('Shop'),
+      matching: find.byType(InkWell),
+    );
+    final shopInk = tester.widget<InkWell>(shopAncestor.first);
+    expect(shopInk.onTap, isNotNull);
   });
 }

@@ -629,7 +629,7 @@ development_status:
   # kMealComponentCountLabel canonical Flutter helper. Default toggle state
   # is Recipe except when launched from Meal detail Plan-for-Date.
   # Parallelizable with discoverability + sharing-and-ai.
-  epic-meals-calendar: in-progress
+  epic-meals-calendar: done
   mcal-1-backend-migration-meal-id-on-events-recurrence-cooking-logs-and-shopping-list-items: done
   mcal-2-backend-aggregate-meal-ingredients-service-and-dedupe-correctness: done
   mcal-3-backend-meal-event-and-recurrence-endpoints-accept-meal-id-xor: done
@@ -638,7 +638,7 @@ development_status:
   mcal-6-backend-rolling-window-materializer-meal-rules-and-cooking-log-fanout: done
   mcal-7-flutter-plan-meal-sheet-segmented-button-and-meal-autocomplete: done
   mcal-8-flutter-calendar-grid-day-sheet-detail-sheet-and-chooser: done
-  mcal-9-flutter-meal-detail-action-bar-wiring-and-recurring-plans-screen: backlog
+  mcal-9-flutter-meal-detail-action-bar-wiring-and-recurring-plans-screen: done
   epic-meals-calendar-retrospective: optional
 
   # Epic Meals — Sharing & AI Tools (planned 2026-04-18, refined via party-mode)
