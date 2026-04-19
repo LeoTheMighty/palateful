@@ -80,6 +80,34 @@ class MealService {
     return _parseSummaryList(response);
   }
 
+  /// mcal-5: autocomplete for the plan-meal Meal picker. Returns meals
+  /// matching the query across readable books (excludes archived), up to
+  /// [limit] hits (server capped at 50; default 8 matches the call site).
+  Future<List<MealSummary>> searchMeals(
+    String query, {
+    int limit = 8,
+  }) async {
+    final response = await _apiClient.listMeals(q: query, limit: limit);
+    return _parseSummaryList(response);
+  }
+
+  /// mcal-5: append a Meal's aggregated ingredients to a shopping list
+  /// without scheduling the Meal on the calendar. Returns the raw
+  /// response payload so callers can surface `items_added` /
+  /// `items_skipped` counts and the `meal_summary` block.
+  Future<MealAddToShoppingListResult> addToShoppingList(
+    String mealId,
+    String shoppingListId,
+  ) async {
+    final response = await _apiClient.addMealToShoppingList(
+      mealId,
+      {'shopping_list_id': shoppingListId},
+    );
+    return MealAddToShoppingListResult.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+  }
+
   /// md-2: reverse lookup — Meals that reference a given recipe.
   /// Returns an empty list if the user cannot read any meal (or none exist).
   Future<List<MealSummary>> listMealsUsingRecipe(String recipeId) async {

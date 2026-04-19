@@ -1,4 +1,4 @@
-/// Meal event models for the calendar feature.
+// Meal event models for the calendar feature.
 
 enum MealType {
   breakfast,
@@ -59,6 +59,36 @@ class RecipeSummary {
   }
 }
 
+/// Summary of the Meal linked to a meal_event / recurrence_rule. Backend
+/// populates it when `meal_id` is set; null on recipe-only and free-text
+/// events. Old clients ignore the field cleanly — the backend additively
+/// layered it onto the existing response shape.
+class MealSummary {
+  final String id;
+  final String name;
+  final int componentCount;
+  final List<String> componentImageUrls;
+
+  const MealSummary({
+    required this.id,
+    required this.name,
+    required this.componentCount,
+    this.componentImageUrls = const [],
+  });
+
+  factory MealSummary.fromJson(Map<String, dynamic> json) {
+    final imgs = (json['component_image_urls'] as List? ?? [])
+        .map((e) => e as String)
+        .toList();
+    return MealSummary(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      componentCount: (json['component_count'] as num?)?.toInt() ?? 0,
+      componentImageUrls: imgs,
+    );
+  }
+}
+
 class MealEvent {
   final String id;
   final String title;
@@ -67,6 +97,12 @@ class MealEvent {
   final String status;
   final bool isShared;
   final RecipeSummary? recipe;
+
+  /// Meal linkage — populated when the event was created in Meal mode.
+  /// Mutually exclusive with [recipe] at the server (check constraint);
+  /// both null means a free-text event.
+  final String? mealId;
+  final MealSummary? mealSummary;
 
   /// Null on older server responses (list endpoint used to omit it).
   final String? ownerId;
@@ -82,6 +118,8 @@ class MealEvent {
     required this.status,
     required this.isShared,
     this.recipe,
+    this.mealId,
+    this.mealSummary,
     this.ownerId,
     this.recurrenceRuleId,
   });
@@ -96,6 +134,12 @@ class MealEvent {
       isShared: json['is_shared'] as bool,
       recipe: json['recipe'] != null
           ? RecipeSummary.fromJson(json['recipe'] as Map<String, dynamic>)
+          : null,
+      mealId: json['meal_id'] as String?,
+      mealSummary: json['meal_summary'] != null
+          ? MealSummary.fromJson(
+              json['meal_summary'] as Map<String, dynamic>,
+            )
           : null,
       ownerId: json['owner_id'] as String?,
       recurrenceRuleId: json['recurrence_rule_id'] as String?,
@@ -148,6 +192,12 @@ class RecurrenceRule {
   final String id;
   final String? title;
   final String? recipeId;
+
+  /// Meal linkage — populated when the rule was created in Meal mode.
+  /// Mutually exclusive with [recipeId] at the server.
+  final String? mealId;
+  final MealSummary? mealSummary;
+
   final String ownerId;
   final String mealType;
   final List<String> weekdays;
@@ -169,6 +219,8 @@ class RecurrenceRule {
     required this.isShared,
     this.title,
     this.recipeId,
+    this.mealId,
+    this.mealSummary,
     this.monthlyNth,
     this.endDate,
   });
@@ -178,6 +230,12 @@ class RecurrenceRule {
       id: json['id'] as String,
       title: json['title'] as String?,
       recipeId: json['recipe_id'] as String?,
+      mealId: json['meal_id'] as String?,
+      mealSummary: json['meal_summary'] != null
+          ? MealSummary.fromJson(
+              json['meal_summary'] as Map<String, dynamic>,
+            )
+          : null,
       ownerId: json['owner_id'] as String,
       mealType: json['meal_type'] as String,
       weekdays: (json['weekdays'] as List).cast<String>(),

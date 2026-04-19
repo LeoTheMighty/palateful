@@ -935,14 +935,35 @@ class ApiClient {
     bool includeArchived = false,
     bool? archived,
     String? scope,
+    String? q,
   }) {
     final params = <String, dynamic>{'offset': offset};
     if (limit != null) params['limit'] = limit;
     if (includeArchived) params['include_archived'] = 'true';
     if (archived != null) params['archived'] = archived.toString();
     if (scope != null) params['scope'] = scope;
+    if (q != null && q.isNotEmpty) params['q'] = q;
     return _dio.get('/v1/meals', queryParameters: params);
   }
+
+  /// mcal-5: append a Meal's aggregated ingredients to a shopping list
+  /// without scheduling it on the calendar.
+  Future<Response> addMealToShoppingList(
+    String mealId,
+    Map<String, dynamic> data,
+  ) =>
+      _dio.post('/v1/meals/$mealId/add-to-shopping-list', data: data);
+
+  /// mcal-5: per-event "Add to Shopping List" — handles both recipe-only
+  /// and Meal events (Meal events fan-out + dedupe server-side).
+  Future<Response> addMealEventToShoppingList(
+    String eventId,
+    Map<String, dynamic> data,
+  ) =>
+      _dio.post(
+        '/v1/meal-events/$eventId/add-to-shopping-list',
+        data: data,
+      );
 
   /// md-2: reverse lookup — Meals referencing this recipe.
   Future<Response> listMealsUsingRecipe(String recipeId) =>

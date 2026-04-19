@@ -165,6 +165,38 @@ class ShareMealResult {
   const ShareMealResult({required this.token, required this.deepLink});
 }
 
+/// Result of POST /v1/meals/{id}/add-to-shopping-list (mcal-5).
+///
+/// Mirrors the backend response shape verbatim — `items_added` +
+/// `items_skipped` are the counts the UI surfaces in the snackbar;
+/// `mealSummary` carries the `{id, name, component_count}` block that
+/// lets the snackbar render "Added N items from `MealName`" without a
+/// second round-trip.
+class MealAddToShoppingListResult {
+  final int itemsAdded;
+  final int itemsSkipped;
+  final String mealName;
+  final int componentCount;
+
+  const MealAddToShoppingListResult({
+    required this.itemsAdded,
+    required this.itemsSkipped,
+    required this.mealName,
+    required this.componentCount,
+  });
+
+  factory MealAddToShoppingListResult.fromJson(Map<String, dynamic> json) {
+    final summary = json['meal_summary'] as Map<String, dynamic>? ?? const {};
+    return MealAddToShoppingListResult(
+      itemsAdded: (json['items_added'] as num?)?.toInt() ?? 0,
+      itemsSkipped: (json['items_skipped'] as num?)?.toInt() ?? 0,
+      mealName: summary['name'] as String? ?? '',
+      componentCount:
+          (summary['component_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 /// Wire shape for GET /v1/meals/public/{token} (msa-1).
 ///
 /// Intentionally omits `recipe_id`, `order_index`, `book_id` on

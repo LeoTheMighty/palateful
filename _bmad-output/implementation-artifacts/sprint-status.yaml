@@ -636,7 +636,7 @@ development_status:
   mcal-4-backend-populate-from-calendar-meal-expansion-load-bearing: deleted  # 2026-04-18: endpoint removed via epic-calendar-per-meal-shopping-add; Meal-event "add to shopping list" will route through a new per-event endpoint at implementation time (see FR-CPMS-7)
   mcal-5-backend-meal-autocomplete-list-param-and-add-meal-to-shopping-list-endpoint: done
   mcal-6-backend-rolling-window-materializer-meal-rules-and-cooking-log-fanout: done
-  mcal-7-flutter-plan-meal-sheet-segmented-button-and-meal-autocomplete: backlog
+  mcal-7-flutter-plan-meal-sheet-segmented-button-and-meal-autocomplete: done
   mcal-8-flutter-calendar-grid-day-sheet-detail-sheet-and-chooser: backlog
   mcal-9-flutter-meal-detail-action-bar-wiring-and-recurring-plans-screen: backlog
   epic-meals-calendar-retrospective: optional

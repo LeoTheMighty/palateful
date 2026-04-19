@@ -69,6 +69,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required MealType mealType,
     required String calendarId,
     String? recipeId,
+    String? mealId,
     bool isShared = true,
   }) async => throw UnimplementedError();
 
@@ -106,6 +107,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required String calendarId,
     String? title,
     String? recipeId,
+    String? mealId,
     DateTime? endDate,
     String? monthlyNth,
     bool isShared = true,

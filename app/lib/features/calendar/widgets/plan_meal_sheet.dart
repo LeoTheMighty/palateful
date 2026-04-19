@@ -8,6 +8,7 @@ import '../models/meal_event.dart';
 import '../providers/active_calendar_provider.dart';
 import '../services/meal_calendar_service.dart';
 import 'calendar_picker_sheet.dart';
+import 'meal_autocomplete_field.dart';
 import 'recipe_autocomplete_field.dart';
 import 'recurrence_field.dart';
 
@@ -20,13 +21,23 @@ MealType inferMealType() {
   return MealType.snack;
 }
 
+/// Which entity the plan-meal sheet is currently binding to. Toggled by
+/// the Recipe / Meal `SegmentedButton` at the top of the picker row.
+enum PlanMealType { recipe, meal }
+
 /// Bottom sheet for planning a meal on the calendar.
 ///
-/// Supports two modes:
-/// - **Recipe mode**: launched from recipe detail with recipeId/recipeName.
-/// - **Quick add mode**: launched from calendar FAB / day "+" with no recipe.
+/// Supports three picker modes via the Recipe / Meal SegmentedButton:
+/// - **Recipe pre-filled** (launched from recipe detail): `recipeId` +
+///   `recipeName` lock the autocomplete to a single recipe.
+/// - **Recipe quick add** (calendar FAB / day "+"): empty autocomplete,
+///   free-text + recent-meals + recipe-search supported.
+/// - **Meal mode** (Meal detail "Plan for Date"): launches with
+///   `initialPlanMealType: PlanMealType.meal` and optionally a
+///   pre-filled `initialMealId` + `initialMealName`.
 ///
-/// Also supports edit mode (reschedule) when `eventId` is provided.
+/// Edit mode (reschedule) is triggered by `eventId` and shows a subtitle
+/// instead of the picker row.
 class PlanMealSheet extends ConsumerStatefulWidget {
   final String? recipeId;
   final String? recipeName;
@@ -40,6 +51,16 @@ class PlanMealSheet extends ConsumerStatefulWidget {
   /// [activeCalendarProvider]'s current value at open time.
   final String? initialCalendarId;
 
+  /// Default picker mode. Recipe everywhere except "Plan for Date" from
+  /// Meal detail, which flips to Meal with a pre-filled linked chip.
+  final PlanMealType initialPlanMealType;
+
+  /// Optional pre-filled Meal id for Meal-mode launches.
+  final String? initialMealId;
+
+  /// Optional pre-filled Meal name for Meal-mode launches.
+  final String? initialMealName;
+
   const PlanMealSheet({
     super.key,
     this.recipeId,
@@ -48,6 +69,9 @@ class PlanMealSheet extends ConsumerStatefulWidget {
     this.initialDate,
     this.initialMealType,
     this.initialCalendarId,
+    this.initialPlanMealType = PlanMealType.recipe,
+    this.initialMealId,
+    this.initialMealName,
   });
 
   @override
@@ -60,6 +84,7 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
 
   late DateTime _selectedDate;
   late MealType _selectedMealType;
+  late PlanMealType _planMealType;
   bool _isSaving = false;
   List<String> _recentMeals = [];
 
@@ -75,18 +100,24 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
   /// [widget.recipeId] is non-null), that wins.
   String? _pickedRecipeId;
 
+  /// Picked Meal when [_planMealType] is `PlanMealType.meal`. Save is
+  /// disabled until this is non-null.
+  MealPick? _pickedMeal;
+
   /// Non-null when the user has configured the meal to repeat.
   RecurrenceValue? _recurrence;
 
   bool get _isEditMode => widget.eventId != null;
   bool get _hasRecipe => widget.recipeId != null;
   String? get _effectiveRecipeId => widget.recipeId ?? _pickedRecipeId;
+  bool get _isMealMode => _planMealType == PlanMealType.meal;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = widget.initialDate ?? DateTime.now();
     _selectedMealType = widget.initialMealType ?? inferMealType();
+    _planMealType = widget.initialPlanMealType;
     if (widget.recipeName != null) {
       _nameController.text = widget.recipeName!;
     }
@@ -94,6 +125,17 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
     // else snapshot the active calendar at open.
     _targetCalendarId = widget.initialCalendarId ??
         ref.read(activeCalendarProvider).value;
+    // Meal-mode pre-fill: surface the linked chip + name immediately so
+    // the user only has to pick date/time/repeats.
+    if (_isMealMode &&
+        widget.initialMealId != null &&
+        widget.initialMealName != null) {
+      _pickedMeal = MealPick(
+        mealId: widget.initialMealId!,
+        name: widget.initialMealName!,
+        componentCount: 0,
+      );
+    }
     _loadRecentMeals();
   }
 
@@ -235,10 +277,30 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
     }
   }
 
+  /// Whether Save can be dispatched for the current mode. In Meal mode,
+  /// the user must have picked a meal from the autocomplete (free-text
+  /// is not permitted — foundation's uniqueness guarantee on `meals`
+  /// means a meal identity must be resolved upfront).
+  ///
+  /// Recipe mode keeps the legacy "always enabled, validate on tap"
+  /// behavior so the text controller doesn't need to drive rebuilds.
+  bool get _canSave {
+    if (_isSaving) return false;
+    if (_isMealMode) {
+      return _pickedMeal != null;
+    }
+    return true;
+  }
+
   Future<void> _save() async {
     if (_isSaving) return;
-    final name = _nameController.text.trim();
-    if (name.isEmpty) {
+    if (_isMealMode && _pickedMeal == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a meal to plan')),
+      );
+      return;
+    }
+    if (!_isMealMode && _nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a meal name')),
       );
@@ -255,6 +317,10 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
       mealTime.$1,
       mealTime.$2,
     );
+
+    final title = _isMealMode
+        ? _pickedMeal!.name
+        : _nameController.text.trim();
 
     try {
       if (_isEditMode) {
@@ -273,24 +339,28 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
           endDate: _recurrence!.endDate,
           tzName: _deviceTzName(),
           calendarId: _targetCalendarId ?? '',
-          title: _effectiveRecipeId == null ? name : null,
-          recipeId: _effectiveRecipeId,
+          title: _isMealMode
+              ? null
+              : (_effectiveRecipeId == null ? title : null),
+          recipeId: _isMealMode ? null : _effectiveRecipeId,
+          mealId: _isMealMode ? _pickedMeal!.mealId : null,
           isShared: true,
         );
       } else {
         await _service.createMealEvent(
-          title: name,
+          title: title,
           scheduledAt: scheduledAt,
           mealType: _selectedMealType,
           calendarId: _targetCalendarId ?? '',
-          recipeId: _effectiveRecipeId,
+          recipeId: _isMealMode ? null : _effectiveRecipeId,
+          mealId: _isMealMode ? _pickedMeal!.mealId : null,
           isShared: true,
         );
         // Only save to the free-text recent list when the meal isn't
-        // linked to a real recipe; otherwise the chip row starts polluting
-        // with duplicates of real recipe titles.
-        if (_effectiveRecipeId == null) {
-          await _saveRecentMeal(name);
+        // linked to a real recipe OR a Meal; otherwise the chip row
+        // starts polluting with duplicates of real titles.
+        if (!_isMealMode && _effectiveRecipeId == null) {
+          await _saveRecentMeal(title);
         }
       }
 
@@ -300,7 +370,7 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
             ? 'Meal rescheduled'
             : _recurrence != null
                 ? 'Repeating ${_selectedMealType.displayName.toLowerCase()}s added.'
-                : '$name added to calendar';
+                : '$title added to calendar';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
@@ -356,181 +426,136 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
         top: 24,
         bottom: 24 + MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _isEditMode
-                    ? 'Reschedule Meal'
-                    : _hasRecipe
-                        ? 'Plan for...'
-                        : 'Add a Meal',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () => Navigator.pop(context),
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 4),
-
-          // Meal name field
-          if (!_isEditMode) ...[
-            if (_hasRecipe)
-              // Launched from a recipe detail page — recipe is already
-              // pinned; keep the read-only field shape.
-              TextField(
-                controller: _nameController,
-                decoration: InputDecoration(
-                  hintText: widget.recipeName,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _isEditMode
+                      ? 'Reschedule Meal'
+                      : _hasRecipe
+                          ? 'Plan for...'
+                          : 'Add a Meal',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
-                textCapitalization: TextCapitalization.sentences,
-                readOnly: true,
-              )
-            else
-              // Quick-add mode: autocomplete against the user's recipes +
-              // fall back to free-text. Recent chips live inside the
-              // autocomplete's empty-state results area.
-              RecipeAutocompleteField(
-                controller: _nameController,
-                recentMeals: _recentMeals,
-                onPicked: (picked) {
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 4),
+
+            // SegmentedButton: Recipe | Meal. Hidden in edit mode (the
+            // event's mode is immutable post-create) and when the sheet
+            // is pinned to a specific recipe from the recipe detail
+            // screen.
+            if (!_isEditMode && !_hasRecipe) ...[
+              const SizedBox(height: 8),
+              SegmentedButton<PlanMealType>(
+                segments: const [
+                  ButtonSegment(
+                    value: PlanMealType.recipe,
+                    label: Text('Recipe'),
+                    icon: Icon(Icons.menu_book_outlined),
+                  ),
+                  ButtonSegment(
+                    value: PlanMealType.meal,
+                    label: Text('Meal'),
+                    icon: Icon(Icons.layers),
+                  ),
+                ],
+                selected: {_planMealType},
+                onSelectionChanged: (s) {
                   setState(() {
-                    _pickedRecipeId = picked.recipeId;
+                    _planMealType = s.first;
+                    // Clear the other side's linkage so a stale pick can't
+                    // leak across modes.
+                    if (_planMealType == PlanMealType.meal) {
+                      _pickedRecipeId = null;
+                      _nameController.clear();
+                    } else {
+                      _pickedMeal = null;
+                    }
                   });
                 },
               ),
-            const SizedBox(height: 16),
-          ] else ...[
-            // Edit mode: show recipe name as subtitle
-            Text(
-              _nameController.text,
-              style: TextStyle(
-                fontSize: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
+              const SizedBox(height: 16),
+            ],
 
-          // Calendar row — hidden entirely when the user has only one
-          // writable calendar (principle #11: no dead UI for the solo
-          // case). Seeded from the active calendar on open; changing
-          // here mutates form state only.
-          _buildCalendarRow(colorScheme),
-
-          // Date picker row
-          Text(
-            'Date',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: _pickDate,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.calendar_today_outlined,
-                    size: 18,
-                    color: colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _formatDate(_selectedDate),
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: colorScheme.onSurface,
+            // Picker row — layout depends on (edit, hasRecipe, mode).
+            if (!_isEditMode) ...[
+              if (_hasRecipe)
+                // Launched from a recipe detail page — recipe is already
+                // pinned; keep the read-only field shape.
+                TextField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    hintText: widget.recipeName,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
                     ),
                   ),
-                  const Spacer(),
-                  Icon(
-                    Icons.chevron_right,
-                    color: appColors.textTertiary,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // Meal type selector
-          Text(
-            'Meal Type',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: MealType.values.map((type) {
-              final isSelected = type == _selectedMealType;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedMealType = type),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? colorScheme.primary
-                            : colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        type.displayName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: isSelected
-                              ? colorScheme.onPrimary
-                              : colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
+                  textCapitalization: TextCapitalization.sentences,
+                  readOnly: true,
+                )
+              else if (_isMealMode)
+                MealAutocompleteField(
+                  initialMeal: _pickedMeal,
+                  onPicked: (picked) {
+                    setState(() => _pickedMeal = picked);
+                  },
+                )
+              else
+                // Quick-add recipe mode: autocomplete against the user's
+                // recipes + fall back to free-text. Recent chips live
+                // inside the autocomplete's empty-state results area.
+                RecipeAutocompleteField(
+                  controller: _nameController,
+                  recentMeals: _recentMeals,
+                  onPicked: (picked) {
+                    setState(() {
+                      _pickedRecipeId = picked.recipeId;
+                    });
+                  },
                 ),
-              );
-            }).toList(),
-          ),
+              const SizedBox(height: 16),
+            ] else ...[
+              // Edit mode: show recipe name as subtitle
+              Text(
+                _nameController.text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
-          // Repeats section — hidden in edit mode (series-level edits
-          // happen from the manage screen, not the reschedule flow).
-          if (!_isEditMode) ...[
-            const SizedBox(height: 20),
+            // Calendar row — hidden entirely when the user has only one
+            // writable calendar (principle #11: no dead UI for the solo
+            // case). Seeded from the active calendar on open; changing
+            // here mutates form state only.
+            _buildCalendarRow(colorScheme),
+
+            // Date picker row
             Text(
-              'Repeats',
+              'Date',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -538,51 +563,145 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            RecurrenceField(
-              value: _recurrence,
-              anchorDate: _selectedDate,
-              onChanged: (v) => setState(() => _recurrence = v),
-            ),
-          ],
-
-          const SizedBox(height: 28),
-
-          // Save button
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isSaving ? null : _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colorScheme.primary,
-                foregroundColor: colorScheme.onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
+            GestureDetector(
+              onTap: _pickDate,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-              child: _isSaving
-                  ? SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.onPrimary,
-                      ),
-                    )
-                  : Text(
-                      _isEditMode
-                          ? 'Reschedule'
-                          : _recurrence != null
-                              ? 'Add Recurring Meal'
-                              : 'Add to Calendar',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_today_outlined,
+                      size: 18,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _formatDate(_selectedDate),
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: colorScheme.onSurface,
                       ),
                     ),
+                    const Spacer(),
+                    Icon(
+                      Icons.chevron_right,
+                      color: appColors.textTertiary,
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ],
+
+            const SizedBox(height: 20),
+
+            // Meal type selector
+            Text(
+              'Meal Type',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: MealType.values.map((type) {
+                final isSelected = type == _selectedMealType;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedMealType = type),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? colorScheme.primary
+                              : colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          type.displayName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: isSelected
+                                ? colorScheme.onPrimary
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
+            // Repeats section — hidden in edit mode (series-level edits
+            // happen from the manage screen, not the reschedule flow).
+            if (!_isEditMode) ...[
+              const SizedBox(height: 20),
+              Text(
+                'Repeats',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              RecurrenceField(
+                value: _recurrence,
+                anchorDate: _selectedDate,
+                onChanged: (v) => setState(() => _recurrence = v),
+              ),
+            ],
+
+            const SizedBox(height: 28),
+
+            // Save button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: (_canSave) ? _save : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isSaving
+                    ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colorScheme.onPrimary,
+                        ),
+                      )
+                    : Text(
+                        _isEditMode
+                            ? 'Reschedule'
+                            : _recurrence != null
+                                ? 'Add Recurring Meal'
+                                : 'Add to Calendar',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

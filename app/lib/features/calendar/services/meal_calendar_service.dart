@@ -28,14 +28,20 @@ class MealCalendarService {
     required MealType mealType,
     required String calendarId,
     String? recipeId,
+    String? mealId,
     bool isShared = true,
   }) async {
+    assert(
+      recipeId == null || mealId == null,
+      'createMealEvent: recipeId and mealId are mutually exclusive',
+    );
     final response = await _apiClient.createMealEvent({
       'title': title,
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'meal_type': mealType.name,
       'calendar_id': calendarId,
       if (recipeId != null) 'recipe_id': recipeId,
+      if (mealId != null) 'meal_id': mealId,
       'is_shared': isShared,
     });
     return MealEvent.fromJson(response.data as Map<String, dynamic>);
@@ -98,10 +104,15 @@ class MealCalendarService {
     required String calendarId,
     String? title,
     String? recipeId,
+    String? mealId,
     DateTime? endDate,
     String? monthlyNth,
     bool isShared = true,
   }) async {
+    assert(
+      recipeId == null || mealId == null,
+      'createRecurrenceRule: recipeId and mealId are mutually exclusive',
+    );
     final data = <String, dynamic>{
       'meal_type': mealType.name,
       'weekdays': weekdays,
@@ -113,6 +124,7 @@ class MealCalendarService {
     };
     if (title != null && title.isNotEmpty) data['title'] = title;
     if (recipeId != null) data['recipe_id'] = recipeId;
+    if (mealId != null) data['meal_id'] = mealId;
     if (endDate != null) {
       data['end_date'] = endDate.toIso8601String().substring(0, 10);
     }

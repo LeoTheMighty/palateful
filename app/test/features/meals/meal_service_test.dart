@@ -55,6 +55,7 @@ class _FakeApi extends ApiClient {
     bool includeArchived = false,
     bool? archived,
     String? scope,
+    String? q,
   }) async =>
       _call('listMeals') as Response;
 

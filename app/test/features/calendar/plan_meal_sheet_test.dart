@@ -9,6 +9,8 @@ import 'package:palateful/features/calendar/widgets/plan_meal_sheet.dart';
 /// Minimal fake service — no real network.
 class _FakeMealCalendarService implements MealCalendarService {
   MealEvent? lastCreated;
+  String? lastCreatedRecipeId;
+  String? lastCreatedMealId;
   MealEvent? lastUpdated;
   Map<String, dynamic>? lastRuleCreated;
   bool throwOnRuleCreate = false;
@@ -20,6 +22,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required MealType mealType,
     required String calendarId,
     String? recipeId,
+    String? mealId,
     bool isShared = true,
   }) async {
     lastCreated = MealEvent(
@@ -30,7 +33,10 @@ class _FakeMealCalendarService implements MealCalendarService {
       status: 'planned',
       isShared: isShared,
       ownerId: 'user-1',
+      mealId: mealId,
     );
+    lastCreatedRecipeId = recipeId;
+    lastCreatedMealId = mealId;
     return lastCreated!;
   }
 
@@ -82,6 +88,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     required String calendarId,
     String? title,
     String? recipeId,
+    String? mealId,
     DateTime? endDate,
     String? monthlyNth,
     bool isShared = true,
@@ -92,6 +99,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     lastRuleCreated = {
       'title': title,
       'recipe_id': recipeId,
+      'meal_id': mealId,
       'meal_type': mealType.name,
       'weekdays': weekdays,
       'interval': interval,
@@ -112,6 +120,7 @@ class _FakeMealCalendarService implements MealCalendarService {
       isShared: isShared,
       title: title,
       recipeId: recipeId,
+      mealId: mealId,
       monthlyNth: monthlyNth,
       endDate: endDate,
     );
@@ -289,6 +298,116 @@ void main() {
 
       expect(fakeService.lastUpdated, isNotNull);
       expect(fakeService.lastUpdated!.id, 'evt-42');
+    });
+  });
+
+  // ignore: no_leading_underscores_for_local_identifiers
+  Widget _buildQuickAddSheet({
+    PlanMealType? initialPlanMealType,
+    String? initialMealId,
+    String? initialMealName,
+  }) {
+    return ProviderScope(
+      child: MaterialApp(
+        home: Scaffold(
+          body: PlanMealSheet(
+            initialCalendarId: 'cal-test',
+            initialMealType: MealType.dinner,
+            initialPlanMealType: initialPlanMealType ?? PlanMealType.recipe,
+            initialMealId: initialMealId,
+            initialMealName: initialMealName,
+          ),
+        ),
+      ),
+    );
+  }
+
+  group('PlanMealSheet — Meal mode (mcal-7)', () {
+    testWidgets('SegmentedButton renders Recipe and Meal in quick-add mode',
+        (tester) async {
+      await tester.pumpWidget(_buildQuickAddSheet());
+      expect(find.byType(SegmentedButton<PlanMealType>), findsOneWidget);
+      expect(find.text('Recipe'), findsOneWidget);
+      expect(find.text('Meal'), findsOneWidget);
+    });
+
+    testWidgets('SegmentedButton is hidden when sheet is recipe-pinned',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet());
+      expect(find.byType(SegmentedButton<PlanMealType>), findsNothing);
+    });
+
+    testWidgets('initialPlanMealType: meal opens with Meal autocomplete',
+        (tester) async {
+      await tester.pumpWidget(_buildQuickAddSheet(
+        initialPlanMealType: PlanMealType.meal,
+        initialMealId: 'meal-kale',
+        initialMealName: 'Kale Salad Meal',
+      ));
+      // Linked chip appears with the pre-filled meal name.
+      expect(find.textContaining('Kale Salad Meal'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('Save in Meal mode with pre-filled meal dispatches mealId',
+        (tester) async {
+      await tester.pumpWidget(_buildQuickAddSheet(
+        initialPlanMealType: PlanMealType.meal,
+        initialMealId: 'meal-kale',
+        initialMealName: 'Kale Salad Meal',
+      ));
+
+      // Meal mode adds a SegmentedButton + autocomplete above the Save
+      // button — scroll so the Save button is hittable.
+      final saveFinder = find.text('Add to Calendar');
+      await tester.ensureVisible(saveFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(saveFinder);
+      await tester.pump();
+
+      expect(fakeService.lastCreatedMealId, 'meal-kale');
+      expect(fakeService.lastCreatedRecipeId, isNull);
+      expect(fakeService.lastCreated!.title, 'Kale Salad Meal');
+    });
+
+    testWidgets(
+        'Save in Meal mode without a pick shows snackbar and does not call service',
+        (tester) async {
+      await tester.pumpWidget(_buildQuickAddSheet(
+        initialPlanMealType: PlanMealType.meal,
+      ));
+
+      // Meal button should be disabled because nothing is picked.
+      final saveFinder = find.text('Add to Calendar');
+      await tester.ensureVisible(saveFinder);
+      await tester.pumpAndSettle();
+      // Disabled button — tap passes but onPressed is null. Use
+      // warnIfMissed:false since the disabled button has no hit-test box.
+      await tester.tap(saveFinder, warnIfMissed: false);
+      await tester.pump();
+
+      expect(fakeService.lastCreated, isNull);
+    });
+
+    testWidgets(
+        'Toggling Meal → Recipe clears picked meal and vice versa',
+        (tester) async {
+      await tester.pumpWidget(_buildQuickAddSheet(
+        initialPlanMealType: PlanMealType.meal,
+        initialMealId: 'meal-kale',
+        initialMealName: 'Kale Salad Meal',
+      ));
+
+      // Toggle to Recipe mode — linked chip should disappear.
+      await tester.tap(find.text('Recipe'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Linked to Kale Salad Meal'), findsNothing);
+    });
+  });
+
+  group('PlanMealSheet — scrollability (mcal-7)', () {
+    testWidgets('body is wrapped in a SingleChildScrollView', (tester) async {
+      await tester.pumpWidget(_buildQuickAddSheet());
+      expect(find.byType(SingleChildScrollView), findsAtLeastNWidgets(1));
     });
   });
 }

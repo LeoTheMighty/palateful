@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/meal.dart';
 import 'component_collage_hero.dart';
 
+/// Canonical "N recipes" label for any surface that shows a meal's
+/// component count (meal_tile, calendar event tiles, recurring plans
+/// rows, detail sheets). Single source of truth — do not inline the
+/// format string.
+String kMealComponentCountLabel(int n) => '$n recipes';
+
 /// Meal grid tile. Fork of `_RecipeCard` (not an extension) — see the
 /// epic's Frontend Changes § Decision: RecipeCard.
 ///
@@ -113,7 +119,7 @@ class _RecipeCountBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        '$count recipes',
+        kMealComponentCountLabel(count),
         style: textTheme.labelSmall?.copyWith(
           color: colorScheme.onSecondaryContainer,
           fontWeight: FontWeight.w600,
