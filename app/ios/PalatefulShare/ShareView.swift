@@ -41,7 +41,7 @@ struct ShareView: View {
         .accessibilityHidden(true)
       Text("Save to Palateful")
         .font(.headline)
-        .dynamicTypeSize(.medium ... .accessibility2)
+        .clampedDynamicType()
         .accessibilityAddTraits(.isHeader)
       Spacer()
     }
@@ -54,7 +54,7 @@ struct ShareView: View {
     switch state {
     case .detecting:
       ProgressView("Reading content…")
-        .dynamicTypeSize(.medium ... .accessibility2)
+        .clampedDynamicType()
     case .needsSignIn:
       infoBlock(
         title: "Sign in to save shared recipes",
@@ -109,7 +109,7 @@ struct ShareView: View {
       HStack {
         Spacer()
         Button("Close", action: onClose)
-          .buttonStyle(.borderedProminent)
+          .primaryButtonStyle()
       }
       .padding()
     case .readyUrl, .readyText, .readyFile:
@@ -117,7 +117,7 @@ struct ShareView: View {
         Button("Cancel", action: onCancel)
         Spacer()
         Button("Save", action: onSave)
-          .buttonStyle(.borderedProminent)
+          .primaryButtonStyle()
           .disabled(viewModel.selectedBookId == nil)
       }
       .padding()
@@ -199,5 +199,25 @@ struct ShareView: View {
     if mime.hasPrefix("video/") { return "Recipe video" }
     if mime.hasPrefix("audio/") { return "Recipe audio" }
     return "Recipe file"
+  }
+}
+
+private extension View {
+  @ViewBuilder
+  func clampedDynamicType() -> some View {
+    if #available(iOS 15.0, *) {
+      self.dynamicTypeSize(.medium ... .accessibility2)
+    } else {
+      self
+    }
+  }
+
+  @ViewBuilder
+  func primaryButtonStyle() -> some View {
+    if #available(iOS 15.0, *) {
+      self.buttonStyle(.borderedProminent)
+    } else {
+      self
+    }
   }
 }
