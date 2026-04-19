@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
 import '../models/meal_event.dart';
 
 /// Bottom-sheet surfaced on calendar empty-day tap (bugs-cal-1). Renders
@@ -144,6 +145,11 @@ class _DayMealRow extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final recipe = event.recipe;
+    final isMealEvent = event.mealId != null;
+    final mealThumbUrl =
+        (event.mealSummary?.componentImageUrls.isNotEmpty ?? false)
+            ? event.mealSummary!.componentImageUrls.first
+            : null;
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -160,31 +166,62 @@ class _DayMealRow extends StatelessWidget {
                 color: colorScheme.surfaceContainerHighest,
               ),
               clipBehavior: Clip.antiAlias,
-              child: recipe?.imageUrl != null
-                  ? Image.network(
-                      recipe!.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          Icon(Icons.restaurant, color: colorScheme.secondary),
-                    )
-                  : Icon(Icons.restaurant, color: colorScheme.secondary),
+              child: isMealEvent
+                  ? (mealThumbUrl != null
+                      ? Image.network(
+                          mealThumbUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Icon(
+                            Icons.layers,
+                            color: colorScheme.secondary,
+                          ),
+                        )
+                      : Icon(Icons.layers, color: colorScheme.secondary))
+                  : (recipe?.imageUrl != null
+                      ? Image.network(
+                          recipe!.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Icon(
+                            Icons.restaurant,
+                            color: colorScheme.secondary,
+                          ),
+                        )
+                      : Icon(Icons.restaurant, color: colorScheme.secondary)),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    event.title,
-                    style: textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      if (isMealEvent) ...[
+                        Icon(
+                          Icons.layers,
+                          size: 12,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          event.title,
+                          style: textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${event.mealType.displayName} · ${_time(event.scheduledAt)}',
+                    isMealEvent && event.mealSummary != null
+                        ? '${event.mealType.displayName} · '
+                            '${_time(event.scheduledAt)} · '
+                            '${kMealComponentCountLabel(event.mealSummary!.componentCount)}'
+                        : '${event.mealType.displayName} · ${_time(event.scheduledAt)}',
                     style: textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),

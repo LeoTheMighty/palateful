@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
+import '../../meals/services/meal_service.dart';
+import '../../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
 import '../models/calendar.dart';
 import '../models/meal_event.dart';
 import '../providers/active_calendar_provider.dart';
 import '../services/meal_calendar_service.dart';
 import 'calendar_picker_sheet.dart';
+import 'calendar_recipe_chooser_sheet.dart';
 import 'edit_scope_prompt.dart';
 import 'recurrence_field.dart';
 
@@ -88,6 +91,53 @@ class _MealDetailSheetState extends ConsumerState<MealDetailSheet> {
     }
   }
 
+  /// Open-Recipe handler. Handles the three cases:
+  ///   - Recipe event: push /recipes/:id directly.
+  ///   - Meal event with exactly 1 available component: push directly
+  ///     (no chooser — nothing to choose).
+  ///   - Meal event with 2+ available components: open the
+  ///     [CalendarRecipeChooserSheet].
+  Future<void> _handleOpenRecipe(BuildContext context) async {
+    final event = widget.event;
+    // Recipe-only event: preserve the current direct-push behavior.
+    if (event.mealId == null) {
+      final recipe = event.recipe;
+      if (recipe == null) return;
+      Navigator.pop(context);
+      context.push('/recipes/${recipe.id}');
+      return;
+    }
+
+    // Meal event — fetch full Meal (components aren't in meal_summary).
+    try {
+      final meal = await getIt<MealService>().getMeal(event.mealId!);
+      if (!context.mounted) return;
+      final available = meal.components.where((c) => c.available).toList();
+      if (available.length == 1) {
+        Navigator.pop(context);
+        context.push('/recipes/${available.first.recipeId}');
+        return;
+      }
+      Navigator.pop(context);
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => CalendarRecipeChooserSheet(
+          components: meal.components,
+          mealName: meal.name,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't open this meal. Try again.")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -95,6 +145,8 @@ class _MealDetailSheetState extends ConsumerState<MealDetailSheet> {
     final event = widget.event;
     final recipe = event.recipe;
     final isRecurring = event.recurrenceRuleId != null;
+    final isMealEvent = event.mealId != null;
+    final openRecipeEnabled = recipe != null || isMealEvent;
 
     return SafeArea(
       child: Padding(
@@ -201,20 +253,40 @@ class _MealDetailSheetState extends ConsumerState<MealDetailSheet> {
             ),
             const SizedBox(height: 20),
 
-            // Primary action: Open Recipe (full-width)
+            // Primary action: Open Recipe (full-width). For Meal events
+            // with 2+ components, this opens the CalendarRecipeChooserSheet
+            // instead of navigating directly.
             FilledButton.icon(
               icon: const Icon(Icons.menu_book_outlined),
               label: const Text('Open Recipe'),
-              onPressed: recipe == null
+              onPressed: !openRecipeEnabled
                   ? null
-                  : () {
-                      Navigator.pop(context);
-                      context.push('/recipes/${recipe.id}');
-                    },
+                  : () => _handleOpenRecipe(context),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(48),
               ),
             ),
+            if (isMealEvent) ...[
+              const SizedBox(height: 8),
+              // "Open Meal" row — only visible when the event is linked
+              // to a Meal (epic AC): pushes /meals/:id.
+              OutlinedButton.icon(
+                icon: const Icon(Icons.layers),
+                label: Text(
+                  event.mealSummary != null
+                      ? 'Open Meal · '
+                          '${kMealComponentCountLabel(event.mealSummary!.componentCount)}'
+                      : 'Open Meal',
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  context.push('/meals/${event.mealId}');
+                },
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(44),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
 
             // Secondary icon row: Reschedule, Unschedule, Mark as Cooked

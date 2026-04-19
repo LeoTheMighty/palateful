@@ -16,6 +16,27 @@ MealEvent _makeEvent({RecipeSummary? recipe}) {
   );
 }
 
+MealEvent _makeMealEvent({
+  String mealId = 'meal-kale',
+  String mealName = 'Kale Salad Meal',
+  int componentCount = 2,
+}) {
+  return MealEvent(
+    id: 'e-meal',
+    title: mealName,
+    scheduledAt: DateTime(2026, 4, 16, 19, 0),
+    mealType: MealType.dinner,
+    status: 'planned',
+    isShared: false,
+    mealId: mealId,
+    mealSummary: MealSummary(
+      id: mealId,
+      name: mealName,
+      componentCount: componentCount,
+    ),
+  );
+}
+
 Widget _host(Widget child) => ProviderScope(
       child: MaterialApp(
         home: Scaffold(body: child),
@@ -89,5 +110,55 @@ void main() {
     // Can't trigger ink-well tap when onTap is null — enough to assert the
     // label is present and rendered as the disabled variant (callback null).
     expect(find.text('Mark Cooked'), findsOneWidget);
+  });
+
+  group('MealDetailSheet — Meal event (mcal-8)', () {
+    testWidgets('Open Meal row is visible when event.mealId is set',
+        (tester) async {
+      await tester.pumpWidget(_host(MealDetailSheet(
+        event: _makeMealEvent(),
+        onReschedule: (_) async {},
+        onUnschedule: () {},
+        onMarkCooked: null,
+      )));
+      await tester.pump();
+
+      expect(find.textContaining('Open Meal'), findsOneWidget);
+      expect(find.textContaining('2 recipes'), findsOneWidget);
+    });
+
+    testWidgets('Open Meal row is absent for recipe-only events',
+        (tester) async {
+      await tester.pumpWidget(_host(MealDetailSheet(
+        event: _makeEvent(),
+        onReschedule: (_) async {},
+        onUnschedule: () {},
+        onMarkCooked: null,
+      )));
+      await tester.pump();
+
+      expect(find.textContaining('Open Meal'), findsNothing);
+    });
+
+    testWidgets('Open Recipe stays enabled for Meal events', (tester) async {
+      await tester.pumpWidget(_host(MealDetailSheet(
+        event: _makeMealEvent(),
+        onReschedule: (_) async {},
+        onUnschedule: () {},
+        onMarkCooked: null,
+      )));
+      await tester.pump();
+
+      // Find the Open Recipe button by predicate — `FilledButton.icon`
+      // is not a FilledButton subtype in current Flutter, so we match
+      // any ButtonStyleButton whose child renders the text.
+      final buttonFinder = find.ancestor(
+        of: find.text('Open Recipe'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+      expect(buttonFinder, findsWidgets);
+      final button = tester.widget<ButtonStyleButton>(buttonFinder.first);
+      expect(button.onPressed, isNotNull);
+    });
   });
 }

@@ -23,6 +23,7 @@ import '../../shared/widgets/error_banner.dart';
 import '../recipes/cook_mode/widgets/post_cook_feedback_sheet.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/recipe_cache_service.dart';
+import '../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
 
 /// Calendar tab — week view showing scheduled meal events.
 class CalendarScreen extends ConsumerStatefulWidget {
@@ -280,7 +281,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   Future<void> _addIngredientsFromEvent(MealEvent event) async {
-    assert(event.recipe != null, '_addIngredientsFromEvent requires a linked recipe');
+    assert(
+      event.recipe != null || event.mealId != null,
+      '_addIngredientsFromEvent requires a linked recipe or meal',
+    );
     // Capture the load generation before any await so a mid-flight
     // `_loadEvents()` can't leave us writing a stale "added" indicator on a
     // new grid. If the generation drifts by the time we resolve, silently
@@ -351,20 +355,34 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     }
 
     try {
-      final result =
-          await _cartService.populateFromRecipe(targetList.id, event.recipe!.id);
+      int itemsAdded;
+      if (event.mealId != null) {
+        // Meal event — route through the per-event endpoint that fan-outs
+        // + dedupes via `aggregate_meal_ingredients` server-side.
+        final response = await getIt<ApiClient>().addMealEventToShoppingList(
+          event.id,
+          {'shopping_list_id': targetList.id},
+        );
+        final data = response.data as Map<String, dynamic>;
+        itemsAdded = (data['items_added'] as num?)?.toInt() ?? 0;
+      } else {
+        final result = await _cartService.populateFromRecipe(
+            targetList.id, event.recipe!.id);
+        itemsAdded = result.itemsAdded;
+      }
       if (mounted) {
         // Only flip the per-card "added" indicator when the add landed on
         // the current load's grid AND at least one ingredient was actually
         // added. items_added == 0 still fires the snackbar (with the
         // existing zero-count wording), but a check mark on a no-op would
         // be a lie.
-        if (generation == _loadGeneration && result.itemsAdded > 0) {
+        if (generation == _loadGeneration && itemsAdded > 0) {
           setState(() => _addedEventIds.add(event.id));
         }
-        final n = result.itemsAdded;
+        final n = itemsAdded;
         final label = n == 1 ? '1 ingredient' : '$n ingredients';
-        final listName = targetList.name.isEmpty ? 'Shopping List' : targetList.name;
+        final listName =
+            targetList.name.isEmpty ? 'Shopping List' : targetList.name;
         final hasOtherLists = lists.length > 1;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -702,6 +720,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget _buildEventTile(MealEvent event) {
     final colorScheme = Theme.of(context).colorScheme;
     final appColors = context.appColors;
+    final isMealEvent = event.mealId != null;
+    final mealThumbUrl =
+        (event.mealSummary?.componentImageUrls.isNotEmpty ?? false)
+            ? event.mealSummary!.componentImageUrls.first
+            : null;
 
     return InkWell(
       // Every tap now opens the meal detail sheet (bugs-cal-1 AC #7 —
@@ -726,13 +749,30 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     color: colorScheme.surfaceContainerHighest,
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: event.recipe?.imageUrl != null
-                      ? Image.network(
-                          event.recipe!.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _mealTypeIcon(event.mealType, colorScheme),
-                        )
-                      : _mealTypeIcon(event.mealType, colorScheme),
+                  child: isMealEvent
+                      ? (mealThumbUrl != null
+                          ? Image.network(
+                              mealThumbUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Icon(
+                                Icons.layers,
+                                color: colorScheme.secondary,
+                                size: 22,
+                              ),
+                            )
+                          : Icon(
+                              Icons.layers,
+                              color: colorScheme.secondary,
+                              size: 22,
+                            ))
+                      : (event.recipe?.imageUrl != null
+                          ? Image.network(
+                              event.recipe!.imageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  _mealTypeIcon(event.mealType, colorScheme),
+                            )
+                          : _mealTypeIcon(event.mealType, colorScheme)),
                 ),
                 if (event.recurrenceRuleId != null)
                   Positioned(
@@ -763,15 +803,29 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    event.title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: colorScheme.onSurface,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      if (isMealEvent) ...[
+                        Icon(
+                          Icons.layers,
+                          size: 12,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          event.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: colorScheme.onSurface,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Container(
@@ -789,7 +843,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                       ),
                     ),
                   ),
-                  if (event.recipe?.totalMinutes != null) ...[
+                  if (isMealEvent && event.mealSummary != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      kMealComponentCountLabel(
+                          event.mealSummary!.componentCount),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: appColors.textDisabled,
+                      ),
+                    ),
+                  ] else if (event.recipe?.totalMinutes != null) ...[
                     const SizedBox(height: 2),
                     Text(
                       '${event.recipe!.totalMinutes} min',
@@ -803,18 +867,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               ),
             ),
 
-            // Per-card shopping-cart / added-check icon. Only rendered when
-            // the event has a linked recipe — no placeholder SizedBox in the
-            // null-recipe case, matching the chevron's visibility rule. The
-            // IconButton swallows its own tap so the row-level onTap (meal
-            // detail sheet) does NOT fire when the user aims for the icon.
+            // Per-card shopping-cart / added-check icon. Rendered when
+            // the event has a linked recipe OR Meal — no placeholder
+            // SizedBox in the free-text case, matching the chevron's
+            // visibility rule. The IconButton swallows its own tap so the
+            // row-level onTap (meal detail sheet) does NOT fire when the
+            // user aims for the icon.
             //
             // The outer `Semantics(excludeSemantics: true)` replaces the
             // IconButton's own semantics with a richer label. The tooltip is
             // kept for visual long-press discoverability, but is excluded
             // from the a11y tree so screen-reader users hear our "double-tap
             // to add again" hint in the checked state.
-            if (event.recipe != null)
+            if (event.recipe != null || isMealEvent)
               Semantics(
                 button: true,
                 label: _addedEventIds.contains(event.id)
@@ -845,7 +910,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               ),
 
             // Chevron if navigable
-            if (event.recipe != null)
+            if (event.recipe != null || isMealEvent)
               Icon(
                 Icons.chevron_right,
                 size: 16,
