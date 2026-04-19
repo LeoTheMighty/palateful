@@ -66,6 +66,7 @@ class _FakeApiClient extends ApiClient {
     bool includeArchived = false,
     bool? archived,
     String? scope,
+    String? q,
   }) async =>
       _fakeResponse({'items': meals, 'total': meals.length});
 

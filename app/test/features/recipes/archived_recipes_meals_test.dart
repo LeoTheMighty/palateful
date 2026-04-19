@@ -43,6 +43,7 @@ class _FakeApiClient extends ApiClient {
     bool includeArchived = false,
     bool? archived,
     String? scope,
+    String? q,
   }) async {
     // Foundation passes includeArchived:true; md-3 accepts archived:true too.
     return _fakeResponse(
