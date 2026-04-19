@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.recipe import Recipe
@@ -135,6 +136,13 @@ def _scheduled_at_utc(d: date, rule: MealRecurrenceRule) -> datetime:
 
 
 def _resolve_title(rule: MealRecurrenceRule, db: Session) -> str:
+    # Meal-linked rules win over recipe-linked rules — XOR is enforced at
+    # the schema layer but `meal_id` is checked first so the materializer
+    # is unambiguous when both are somehow present (defense in depth).
+    if rule.meal_id is not None:
+        meal = db.query(Meal).filter(Meal.id == rule.meal_id).first()
+        if meal is not None:
+            return meal.name
     if rule.recipe_id is not None:
         recipe = db.query(Recipe).filter(Recipe.id == rule.recipe_id).first()
         if recipe is not None:
@@ -206,6 +214,12 @@ def materialize(
                 "meal_type": rule.meal_type,
                 "owner_id": rule.owner_id,
                 "recipe_id": rule.recipe_id,
+                "meal_id": rule.meal_id,
+                # The XOR check constraint permits at most one of
+                # recipe_id / meal_id non-null; since rule itself is
+                # XOR-validated upstream, propagating both fields is
+                # safe (one will always be NULL).
+                "calendar_id": rule.calendar_id,
                 "is_shared": rule.is_shared,
                 "recurrence_rule_id": rule.id,
                 "status": "planned",

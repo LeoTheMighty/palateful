@@ -11,6 +11,7 @@ def _make_rule(**overrides):
         "owner_id": uuid.uuid4(),
         "title": "Pizza",
         "recipe_id": None,
+        "meal_id": None,
         "meal_type": "dinner",
         "weekdays": ["fri"],
         "interval": "weekly",
@@ -220,3 +221,74 @@ class TestExpectedDatesEmpty:
         rule = _make_rule(weekdays=["xyz"])
         result = _expected_dates(rule, date(2026, 1, 1), date(2026, 3, 1))
         assert result == []
+
+
+class TestResolveTitleMealBranch:
+    """mcal-6: `_resolve_title` prefers `rule.meal_id` when both FKs set,
+    and falls back through recipe then rule.title."""
+
+    def _fake_db(self, *, meal_match=None, recipe_match=None):
+        """A minimal mock that honors Session.query(Meal).filter(...).first()."""
+
+        class _Result:
+            def __init__(self, value):
+                self._value = value
+
+            def filter(self, *a, **kw):
+                return self
+
+            def first(self):
+                return self._value
+
+        class _DB:
+            def __init__(self, meal, recipe):
+                self._meal = meal
+                self._recipe = recipe
+
+            def query(self, model):
+                # Model import lives inside materializer — check by class name.
+                if model.__name__ == "Meal":
+                    return _Result(self._meal)
+                if model.__name__ == "Recipe":
+                    return _Result(self._recipe)
+                return _Result(None)
+
+        return _DB(meal_match, recipe_match)
+
+    def test_meal_linked_rule_resolves_title_to_meal_name(self):
+        from types import SimpleNamespace
+        from utils.recurrence.materializer import _resolve_title
+
+        meal = SimpleNamespace(id=uuid.uuid4(), name="Kale Salad Meal")
+        rule = _make_rule(recipe_id=None, meal_id=meal.id)
+        db = self._fake_db(meal_match=meal)
+        assert _resolve_title(rule, db) == "Kale Salad Meal"
+
+    def test_meal_id_wins_over_recipe_id_when_both_unexpectedly_set(self):
+        """XOR is schema-enforced so both-set shouldn't happen in prod;
+        defense-in-depth: the materializer picks Meal over Recipe."""
+        from types import SimpleNamespace
+        from utils.recurrence.materializer import _resolve_title
+
+        meal = SimpleNamespace(id=uuid.uuid4(), name="The Meal")
+        recipe = SimpleNamespace(id=uuid.uuid4(), name="The Recipe")
+        rule = _make_rule(recipe_id=recipe.id, meal_id=meal.id)
+        db = self._fake_db(meal_match=meal, recipe_match=recipe)
+        assert _resolve_title(rule, db) == "The Meal"
+
+    def test_meal_id_set_but_meal_missing_falls_through(self):
+        from utils.recurrence.materializer import _resolve_title
+
+        rule = _make_rule(
+            recipe_id=None, meal_id=uuid.uuid4(), title="fallback",
+        )
+        db = self._fake_db(meal_match=None)
+        # Falls to recipe (None) → falls to title.
+        assert _resolve_title(rule, db) == "fallback"
+
+    def test_meal_and_recipe_both_missing_falls_to_default(self):
+        from utils.recurrence.materializer import _resolve_title
+
+        rule = _make_rule(recipe_id=None, meal_id=None, title=None)
+        db = self._fake_db()
+        assert _resolve_title(rule, db) == "Meal"
