@@ -7,9 +7,13 @@ from api.v1.calendar.dependencies import (
     get_user_calendar_ids,
     require_calendar_access,
 )
+from api.v1.meal_event._meal_binding import MealSummary, build_meal_summary
 from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
 from utils.api.endpoint import Endpoint, success
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
+from utils.models.meal_recipe import MealRecipe
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
 from utils.recurrence.materializer import materialize
@@ -80,6 +84,11 @@ class ListMealEvents(Endpoint):
 
         query = (
             self.db.query(MealEvent)
+            .options(
+                selectinload(MealEvent.meal)
+                .selectinload(Meal.components)
+                .selectinload(MealRecipe.recipe)
+            )
             .filter(MealEvent.calendar_id.in_(scoped_calendar_ids))
             .filter(MealEvent.archived_at.is_(None))
         )
@@ -124,6 +133,8 @@ class ListMealEvents(Endpoint):
                     image_url=event.recipe.image_url,
                 )
 
+            meal_summary = build_meal_summary(event.meal) if event.meal else None
+
             items.append(
                 ListMealEvents.MealEventItem(
                     id=str(event.id),
@@ -135,6 +146,8 @@ class ListMealEvents(Endpoint):
                     is_shared=event.is_shared,
                     is_recurring=event.is_recurring,
                     recipe=recipe_summary,
+                    meal_id=str(event.meal_id) if event.meal_id else None,
+                    meal_summary=meal_summary,
                     participant_count=len(event.participants),
                     created_at=event.created_at,
                     owner_id=str(event.owner_id),
@@ -171,6 +184,8 @@ class ListMealEvents(Endpoint):
         is_shared: bool
         is_recurring: bool
         recipe: Optional["ListMealEvents.RecipeSummary"] = None
+        meal_id: str | None = None
+        meal_summary: MealSummary | None = None
         participant_count: int = 0
         created_at: datetime
         # Flutter's MealEvent.fromJson required owner_id on the list

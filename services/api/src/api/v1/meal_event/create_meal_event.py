@@ -4,6 +4,12 @@ from datetime import date, datetime
 from typing import Optional
 
 from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.meal_event._meal_binding import (
+    MealSummary,
+    build_meal_summary,
+    require_meal_available,
+    validate_recipe_meal_xor,
+)
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -42,6 +48,9 @@ class CreateMealEvent(Endpoint):
         # Verify membership + write role on the target calendar.
         require_calendar_access(params.calendar_id, user, self.database)
 
+        # XOR gate before any DB write.
+        validate_recipe_meal_xor(params.recipe_id, params.meal_id)
+
         # Verify recipe exists if provided
         recipe = None
         if params.recipe_id:
@@ -53,6 +62,11 @@ class CreateMealEvent(Endpoint):
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
 
+        # Verify meal exists + user can read its book + it isn't archived.
+        meal = None
+        if params.meal_id:
+            meal = require_meal_available(self.database.db, params.meal_id, user)
+
         # Create meal event
         meal_event = MealEvent(
             title=params.title,
@@ -60,6 +74,7 @@ class CreateMealEvent(Endpoint):
             scheduled_at=params.scheduled_at,
             meal_type=params.meal_type,
             recipe_id=params.recipe_id,
+            meal_id=params.meal_id,
             pantry_id=params.pantry_id,
             owner_id=user.id,
             calendar_id=params.calendar_id,
@@ -96,6 +111,8 @@ class CreateMealEvent(Endpoint):
                 image_url=recipe.image_url,
             )
 
+        meal_summary = build_meal_summary(meal) if meal else None
+
         return success(
             data=CreateMealEvent.Response(
                 id=str(meal_event.id),
@@ -113,6 +130,8 @@ class CreateMealEvent(Endpoint):
                 recurrence_rule=meal_event.recurrence_rule,
                 recurrence_end_date=meal_event.recurrence_end_date,
                 recipe=recipe_summary,
+                meal_id=str(meal_event.meal_id) if meal_event.meal_id else None,
+                meal_summary=meal_summary,
                 pantry_id=str(meal_event.pantry_id) if meal_event.pantry_id else None,
                 owner_id=str(meal_event.owner_id),
                 calendar_id=str(meal_event.calendar_id),
@@ -142,6 +161,7 @@ class CreateMealEvent(Endpoint):
         # instead of the generic 422. Runtime check in execute().
         calendar_id: str | None = None
         recipe_id: str | None = None
+        meal_id: str | None = None
         pantry_id: str | None = None
         notify_prep_start: bool = True
         prep_start_offset_minutes: int = 60
@@ -185,6 +205,8 @@ class CreateMealEvent(Endpoint):
         recurrence_rule: str | None = None
         recurrence_end_date: date | None = None
         recipe: Optional["CreateMealEvent.RecipeSummary"] = None
+        meal_id: str | None = None
+        meal_summary: MealSummary | None = None
         pantry_id: str | None = None
         owner_id: str
         calendar_id: str

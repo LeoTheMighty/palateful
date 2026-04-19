@@ -16,10 +16,17 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 
 from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.meal_event._meal_binding import (
+    require_meal_available,
+    validate_recipe_meal_xor,
+)
 from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.meal import Meal as MealModel
 from utils.models.meal_event import MealEvent
+from utils.models.meal_recipe import MealRecipe
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.recipe import Recipe
 from utils.models.user import User
@@ -36,6 +43,20 @@ from .create_recurrence_rule import (
     MATERIALIZATION_WINDOW_WEEKS,
     _rule_to_response,
 )
+
+
+def _load_meal_for_hydration(db, meal_id):
+    """Load a Meal with components eager-loaded for response hydration."""
+    if meal_id is None:
+        return None
+    return (
+        db.query(MealModel)
+        .options(
+            selectinload(MealModel.components).selectinload(MealRecipe.recipe)
+        )
+        .filter(MealModel.id == meal_id)
+        .first()
+    )
 
 
 class UpdateRecurrenceRule(Endpoint):
@@ -71,7 +92,24 @@ class UpdateRecurrenceRule(Endpoint):
     ):
         # Resolve effective fields (patch semantics: None means "leave alone").
         title = params.title if params.title is not None else rule.title
-        recipe_id = params.recipe_id if params.recipe_id is not None else rule.recipe_id
+        # Mode-switch semantics match update_meal_event: supplying only
+        # one side implicitly clears the other so the XOR invariant
+        # holds post-patch.
+        if params.recipe_id is not None and params.meal_id is None:
+            recipe_id = params.recipe_id
+            meal_id = None
+        elif params.meal_id is not None and params.recipe_id is None:
+            recipe_id = None
+            meal_id = params.meal_id
+        else:
+            recipe_id = (
+                params.recipe_id
+                if params.recipe_id is not None
+                else rule.recipe_id
+            )
+            meal_id = (
+                params.meal_id if params.meal_id is not None else rule.meal_id
+            )
         meal_type = params.meal_type or rule.meal_type
         weekdays = params.weekdays if params.weekdays is not None else list(rule.weekdays or [])
         interval = params.interval or rule.interval
@@ -90,10 +128,16 @@ class UpdateRecurrenceRule(Endpoint):
         if interval != "monthly":
             monthly_nth = None
 
+        validate_recipe_meal_xor(
+            str(recipe_id) if recipe_id else None,
+            str(meal_id) if meal_id else None,
+        )
+
         validate_tz_name(tz_name)
         validate_recurrence_fields(
             title=title,
             recipe_id=str(recipe_id) if recipe_id else None,
+            meal_id=str(meal_id) if meal_id else None,
             meal_type=meal_type,
             weekdays=weekdays,
             interval=interval,
@@ -111,12 +155,17 @@ class UpdateRecurrenceRule(Endpoint):
                     detail=f"Recipe with ID '{recipe_id}' not found",
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
+        if meal_id is not None and params.meal_id is not None:
+            # Only re-check access when the caller is actively setting meal_id.
+            require_meal_available(self.database.db, str(meal_id), self.user)
+        if recipe_id is not None or meal_id is not None:
             title_to_store = None
         else:
             title_to_store = (title or "").strip() or None
 
         rule.title = title_to_store
         rule.recipe_id = recipe_id
+        rule.meal_id = meal_id
         rule.meal_type = meal_type
         rule.weekdays = weekdays
         rule.interval = interval
@@ -161,7 +210,10 @@ class UpdateRecurrenceRule(Endpoint):
 
         self.database.db.commit()
         self.database.db.refresh(rule)
-        return success(data={"rule": _rule_to_response(rule).model_dump(mode="json")})
+        meal = _load_meal_for_hydration(self.database.db, rule.meal_id)
+        return success(
+            data={"rule": _rule_to_response(rule, meal=meal).model_dump(mode="json")}
+        )
 
     # ------------------------------------------------------------------
     # scope == "this_and_following"
@@ -205,12 +257,20 @@ class UpdateRecurrenceRule(Endpoint):
                 .first()
             )
             if existing_new is not None:
+                old_meal = _load_meal_for_hydration(
+                    self.database.db, rule.meal_id
+                )
+                new_meal = _load_meal_for_hydration(
+                    self.database.db, existing_new.meal_id
+                )
                 return success(
                     data={
-                        "rule": _rule_to_response(rule).model_dump(mode="json"),
-                        "new_rule": _rule_to_response(existing_new).model_dump(
+                        "rule": _rule_to_response(rule, meal=old_meal).model_dump(
                             mode="json"
                         ),
+                        "new_rule": _rule_to_response(
+                            existing_new, meal=new_meal
+                        ).model_dump(mode="json"),
                     }
                 )
 
@@ -230,7 +290,21 @@ class UpdateRecurrenceRule(Endpoint):
 
         # Build the new rule's fields (patch from old + overrides).
         title = params.title if params.title is not None else rule.title
-        recipe_id = params.recipe_id if params.recipe_id is not None else rule.recipe_id
+        if params.recipe_id is not None and params.meal_id is None:
+            recipe_id = params.recipe_id
+            meal_id = None
+        elif params.meal_id is not None and params.recipe_id is None:
+            recipe_id = None
+            meal_id = params.meal_id
+        else:
+            recipe_id = (
+                params.recipe_id
+                if params.recipe_id is not None
+                else rule.recipe_id
+            )
+            meal_id = (
+                params.meal_id if params.meal_id is not None else rule.meal_id
+            )
         meal_type = params.meal_type or rule.meal_type
         weekdays = params.weekdays if params.weekdays is not None else list(rule.weekdays or [])
         interval = params.interval or rule.interval
@@ -248,10 +322,16 @@ class UpdateRecurrenceRule(Endpoint):
         if interval != "monthly":
             monthly_nth = None
 
+        validate_recipe_meal_xor(
+            str(recipe_id) if recipe_id else None,
+            str(meal_id) if meal_id else None,
+        )
+
         validate_tz_name(tz_name)
         validate_recurrence_fields(
             title=title,
             recipe_id=str(recipe_id) if recipe_id else None,
+            meal_id=str(meal_id) if meal_id else None,
             meal_type=meal_type,
             weekdays=weekdays,
             interval=interval,
@@ -269,6 +349,9 @@ class UpdateRecurrenceRule(Endpoint):
                     detail=f"Recipe with ID '{recipe_id}' not found",
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
+        if meal_id is not None and params.meal_id is not None:
+            require_meal_available(self.database.db, str(meal_id), self.user)
+        if recipe_id is not None or meal_id is not None:
             title_to_store = None
         else:
             title_to_store = (title or "").strip() or None
@@ -292,6 +375,7 @@ class UpdateRecurrenceRule(Endpoint):
             calendar_id=rule.calendar_id,
             title=title_to_store,
             recipe_id=recipe_id,
+            meal_id=meal_id,
             meal_type=meal_type,
             weekdays=weekdays,
             interval=interval,
@@ -310,10 +394,16 @@ class UpdateRecurrenceRule(Endpoint):
         self.database.db.commit()
         self.database.db.refresh(rule)
         self.database.db.refresh(new_rule)
+        old_meal = _load_meal_for_hydration(self.database.db, rule.meal_id)
+        new_meal = _load_meal_for_hydration(self.database.db, new_rule.meal_id)
         return success(
             data={
-                "rule": _rule_to_response(rule).model_dump(mode="json"),
-                "new_rule": _rule_to_response(new_rule).model_dump(mode="json"),
+                "rule": _rule_to_response(rule, meal=old_meal).model_dump(
+                    mode="json"
+                ),
+                "new_rule": _rule_to_response(new_rule, meal=new_meal).model_dump(
+                    mode="json"
+                ),
             }
         )
 
@@ -324,6 +414,7 @@ class UpdateRecurrenceRule(Endpoint):
         # Patch fields — None means "leave alone" on scope=all.
         title: str | None = None
         recipe_id: str | None = None
+        meal_id: str | None = None
         # Move-to-calendar (scope=all only). Must be a calendar where
         # the user has editor access. Cascades to future materialized
         # meal_events. On scope=this_and_following, the new rule

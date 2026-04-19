@@ -3,6 +3,12 @@
 from datetime import date, datetime, timedelta
 
 from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.meal_event._meal_binding import (
+    MealSummary,
+    build_meal_summary,
+    require_meal_available,
+    validate_recipe_meal_xor,
+)
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -30,10 +36,13 @@ class CreateRecurrenceRule(Endpoint):
 
         require_calendar_access(params.calendar_id, user, self.database)
 
+        validate_recipe_meal_xor(params.recipe_id, params.meal_id)
+
         validate_tz_name(params.tz_name)
         validate_recurrence_fields(
             title=params.title,
             recipe_id=params.recipe_id,
+            meal_id=params.meal_id,
             meal_type=params.meal_type,
             weekdays=params.weekdays,
             interval=params.interval,
@@ -53,13 +62,25 @@ class CreateRecurrenceRule(Endpoint):
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
 
-        title = None if params.recipe_id else (params.title or "").strip() or None
+        meal = None
+        if params.meal_id:
+            meal = require_meal_available(self.database.db, params.meal_id, user)
+
+        # When recipe_id or meal_id is set, title is derived at read time
+        # from the linked entity's name (materializer `_resolve_title`).
+        # Only free-text rules store their own title.
+        title = (
+            None
+            if (params.recipe_id or params.meal_id)
+            else (params.title or "").strip() or None
+        )
 
         rule = MealRecurrenceRule(
             owner_id=user.id,
             calendar_id=params.calendar_id,
             title=title,
             recipe_id=params.recipe_id,
+            meal_id=params.meal_id,
             meal_type=params.meal_type,
             weekdays=[d.lower() for d in params.weekdays],
             interval=params.interval,
@@ -82,13 +103,14 @@ class CreateRecurrenceRule(Endpoint):
         self.database.db.refresh(rule)
 
         return success(
-            data=_rule_to_response(rule),
+            data=_rule_to_response(rule, meal=meal),
             status=201,
         )
 
     class Params(BaseModel):
         title: str | None = None
         recipe_id: str | None = None
+        meal_id: str | None = None
         # Optional at Pydantic level so missing key returns 400+265
         # instead of the generic 422. Runtime check in execute().
         calendar_id: str | None = None
@@ -106,6 +128,8 @@ class RecurrenceRuleResponse(BaseModel):
     id: str
     title: str | None = None
     recipe_id: str | None = None
+    meal_id: str | None = None
+    meal_summary: MealSummary | None = None
     owner_id: str
     calendar_id: str
     meal_type: str
@@ -122,11 +146,16 @@ class RecurrenceRuleResponse(BaseModel):
     archived_at: datetime | None = None
 
 
-def _rule_to_response(rule: MealRecurrenceRule) -> RecurrenceRuleResponse:
+def _rule_to_response(
+    rule: MealRecurrenceRule, *, meal=None
+) -> RecurrenceRuleResponse:
+    meal_summary = build_meal_summary(meal) if meal is not None else None
     return RecurrenceRuleResponse(
         id=str(rule.id),
         title=rule.title,
         recipe_id=str(rule.recipe_id) if rule.recipe_id else None,
+        meal_id=str(rule.meal_id) if rule.meal_id else None,
+        meal_summary=meal_summary,
         owner_id=str(rule.owner_id),
         calendar_id=str(rule.calendar_id),
         meal_type=rule.meal_type,

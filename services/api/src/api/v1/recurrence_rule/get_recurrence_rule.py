@@ -1,8 +1,11 @@
 """Get recurrence rule endpoint."""
 
 from api.v1.calendar.dependencies import require_calendar_access
+from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.meal import Meal
+from utils.models.meal_recipe import MealRecipe
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
 
@@ -35,4 +38,14 @@ class GetRecurrenceRule(Endpoint):
                 ) from exc
             raise  # pragma: no cover — require_calendar_access only raises 403
 
-        return success(data=_rule_to_response(rule))
+        meal = None
+        if rule.meal_id is not None:
+            meal = (
+                self.database.db.query(Meal)
+                .options(
+                    selectinload(Meal.components).selectinload(MealRecipe.recipe)
+                )
+                .filter(Meal.id == rule.meal_id)
+                .first()
+            )
+        return success(data=_rule_to_response(rule, meal=meal))

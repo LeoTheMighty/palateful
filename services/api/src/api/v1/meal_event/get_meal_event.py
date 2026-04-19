@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.meal_event._meal_binding import MealSummary, build_meal_summary
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -26,7 +27,10 @@ class GetMealEvent(Endpoint):
         """
         user: User = self.user
 
-        # Find meal event
+        # Find meal event. Meal hydration is lazy-loaded via the
+        # SQLAlchemy relationship — for a single-row GET the N+1 cost is
+        # bounded (one Meal row + one components fetch) and the
+        # request-scoped session caches both.
         meal_event = self.database.find_by(MealEvent, id=event_id)
         if not meal_event:
             raise APIException(
@@ -62,6 +66,10 @@ class GetMealEvent(Endpoint):
                 cook_time=meal_event.recipe.cook_time,
                 image_url=meal_event.recipe.image_url,
             )
+
+        meal_summary = (
+            build_meal_summary(meal_event.meal) if meal_event.meal else None
+        )
 
         # Build participants list
         participants = []
@@ -100,6 +108,8 @@ class GetMealEvent(Endpoint):
                     else None
                 ),
                 recipe=recipe_summary,
+                meal_id=str(meal_event.meal_id) if meal_event.meal_id else None,
+                meal_summary=meal_summary,
                 pantry_id=str(meal_event.pantry_id) if meal_event.pantry_id else None,
                 owner_id=str(meal_event.owner_id),
                 calendar_id=str(meal_event.calendar_id),
@@ -143,6 +153,8 @@ class GetMealEvent(Endpoint):
         recurrence_end_date: date | None = None
         parent_event_id: str | None = None
         recipe: Optional["GetMealEvent.RecipeSummary"] = None
+        meal_id: str | None = None
+        meal_summary: MealSummary | None = None
         pantry_id: str | None = None
         owner_id: str
         calendar_id: str

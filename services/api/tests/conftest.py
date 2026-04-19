@@ -264,6 +264,8 @@ class MockMealEvent(MockModel):
             "status": "planned",
             "recipe_id": None,
             "recipe": None,
+            "meal_id": None,
+            "meal": None,
             "owner_id": str(uuid.uuid4()),
             "calendar_id": str(uuid.uuid4()),
             "pantry_id": None,

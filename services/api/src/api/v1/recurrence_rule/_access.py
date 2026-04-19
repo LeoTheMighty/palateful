@@ -41,6 +41,7 @@ def validate_recurrence_fields(
     *,
     title: str | None,
     recipe_id: str | None,
+    meal_id: str | None = None,
     meal_type: str,
     weekdays: list[str],
     interval: str,
@@ -108,9 +109,13 @@ def validate_recurrence_fields(
             code=ErrorCode.VALIDATION_ERROR,
         )
 
-    if recipe_id is None and (title is None or not title.strip()):
+    if (
+        recipe_id is None
+        and meal_id is None
+        and (title is None or not title.strip())
+    ):
         raise APIException(
             status_code=400,
-            detail="title is required when recipe_id is not set",
+            detail="title is required when neither recipe_id nor meal_id is set",
             code=ErrorCode.VALIDATION_ERROR,
         )

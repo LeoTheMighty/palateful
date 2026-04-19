@@ -5,6 +5,12 @@ from datetime import date, datetime
 from typing import Optional
 
 from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.meal_event._meal_binding import (
+    MealSummary,
+    build_meal_summary,
+    require_meal_available,
+    validate_recipe_meal_xor,
+)
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
@@ -87,6 +93,30 @@ class UpdateMealEvent(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
+        # Mode-switch gate: callers supplying both ids get rejected. The
+        # effective post-patch state must honor the XOR invariant too —
+        # if the client only supplies `meal_id`, clear the prior
+        # `recipe_id` to avoid a both-set row; same for the reverse.
+        resolved_recipe_id = (
+            params.recipe_id
+            if params.recipe_id is not None
+            else (str(meal_event.recipe_id) if meal_event.recipe_id else None)
+        )
+        resolved_meal_id = (
+            params.meal_id
+            if params.meal_id is not None
+            else (str(meal_event.meal_id) if meal_event.meal_id else None)
+        )
+        # Client may set one FK and clear the other implicitly by supplying
+        # only the one they want. We reject cases where the client explicitly
+        # sets both; but if they set only meal_id and the row already has a
+        # recipe_id, we interpret that as a mode switch and clear the recipe.
+        if params.recipe_id is not None and params.meal_id is None:
+            resolved_meal_id = None
+        if params.meal_id is not None and params.recipe_id is None:
+            resolved_recipe_id = None
+        validate_recipe_meal_xor(resolved_recipe_id, resolved_meal_id)
+
         # Verify recipe exists if updating
         if params.recipe_id:
             recipe = self.database.find_by(Recipe, id=params.recipe_id)
@@ -96,6 +126,10 @@ class UpdateMealEvent(Endpoint):
                     detail=f"Recipe with ID '{params.recipe_id}' not found",
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
+
+        # Verify meal exists + readable + not archived if switching modes.
+        if params.meal_id:
+            require_meal_available(self.database.db, params.meal_id, user)
 
         # Capture pre-update state for pantry-4 event dispatch.
         previous_status = meal_event.status
@@ -113,6 +147,12 @@ class UpdateMealEvent(Endpoint):
             meal_event.status = params.status
         if params.recipe_id is not None:
             meal_event.recipe_id = params.recipe_id
+            # Mode-switch: setting recipe_id clears meal_id.
+            meal_event.meal_id = None
+        if params.meal_id is not None:
+            meal_event.meal_id = params.meal_id
+            # Mode-switch: setting meal_id clears recipe_id.
+            meal_event.recipe_id = None
         if params.pantry_id is not None:
             meal_event.pantry_id = params.pantry_id
         if params.notify_prep_start is not None:
@@ -173,6 +213,10 @@ class UpdateMealEvent(Endpoint):
                 image_url=meal_event.recipe.image_url,
             )
 
+        meal_summary = (
+            build_meal_summary(meal_event.meal) if meal_event.meal else None
+        )
+
         # Build participants list
         participants = []
         for p in meal_event.participants:
@@ -210,6 +254,8 @@ class UpdateMealEvent(Endpoint):
                     else None
                 ),
                 recipe=recipe_summary,
+                meal_id=str(meal_event.meal_id) if meal_event.meal_id else None,
+                meal_summary=meal_summary,
                 pantry_id=str(meal_event.pantry_id) if meal_event.pantry_id else None,
                 owner_id=str(meal_event.owner_id),
                 calendar_id=str(meal_event.calendar_id),
@@ -226,6 +272,7 @@ class UpdateMealEvent(Endpoint):
         meal_type: str | None = None
         status: str | None = None
         recipe_id: str | None = None
+        meal_id: str | None = None
         pantry_id: str | None = None
         # Move-to-calendar: set to a different calendar to move the meal.
         # Must be a calendar the user has editor access on.
@@ -273,6 +320,8 @@ class UpdateMealEvent(Endpoint):
         recurrence_end_date: date | None = None
         parent_event_id: str | None = None
         recipe: Optional["UpdateMealEvent.RecipeSummary"] = None
+        meal_id: str | None = None
+        meal_summary: MealSummary | None = None
         pantry_id: str | None = None
         owner_id: str
         calendar_id: str

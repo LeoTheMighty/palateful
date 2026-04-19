@@ -13,6 +13,7 @@ class MockMealRecurrenceRule(MockModel):
         defaults = {
             "title": "Pizza Friday",
             "recipe_id": None,
+            "meal_id": None,
             "owner_id": str(uuid.uuid4()),
             "calendar_id": str(uuid.uuid4()),
             "meal_type": "dinner",
