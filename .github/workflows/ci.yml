@@ -442,12 +442,13 @@ jobs:
         run: |
           URL="https://palateful.app/privacy"
           for attempt in 1 2 3; do
-            echo "Attempt $attempt: curl -sSfI $URL"
-            if curl -sSfI "$URL" | grep -Eq '^HTTP/.* 200'; then
+            echo "Attempt $attempt: curl -sSfLI $URL"
+            FINAL=$(curl -sSfLI -o /dev/null -w '%{http_code}' "$URL" || true)
+            if [ "$FINAL" = "200" ]; then
               echo "✓ Privacy page returned 200 on attempt $attempt"
               exit 0
             fi
-            echo "Propagation not ready, sleeping 10s..."
+            echo "Got $FINAL, sleeping 10s..."
             sleep 10
           done
           echo "✗ Privacy page failed to return 200 after 3 attempts"
