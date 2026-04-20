@@ -34,7 +34,13 @@ class _FakeApiClient extends ApiClient {
     String? cursor,
   }) async {
     if (archivedOnly) return _fakeResponse({'jobs': []});
-    return _fakeResponse({'jobs': jobsByStatus[status ?? ''] ?? const []});
+    if (status == null) {
+      final all = <dynamic>[
+        for (final entry in jobsByStatus.entries) ...entry.value,
+      ];
+      return _fakeResponse({'jobs': all});
+    }
+    return _fakeResponse({'jobs': jobsByStatus[status] ?? const []});
   }
 
   @override

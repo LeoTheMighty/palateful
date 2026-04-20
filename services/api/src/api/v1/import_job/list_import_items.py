@@ -230,6 +230,11 @@ class ListImportItems(Endpoint):
                     confidence_score=confidence_score,
                     confidence_source=confidence_source,
                     inferred_fields=_extract_inferred_fields(item.parsed_recipe),
+                    created_recipe_id=(
+                        str(item.created_recipe_id)
+                        if item.created_recipe_id
+                        else None
+                    ),
                 )
             )
 
@@ -278,6 +283,7 @@ class ListImportItems(Endpoint):
         confidence_score: float | None = None
         confidence_source: str | None = None
         inferred_fields: list[str] = []
+        created_recipe_id: str | None = None
 
     class Response(BaseModel):
         items: list["ListImportItems.ItemSummary"]

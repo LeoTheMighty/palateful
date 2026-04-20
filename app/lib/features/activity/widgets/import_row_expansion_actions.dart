@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 /// - `needsReview` → **Review →** + **Archive**
 /// - `failed`      → **Retry** + **Archive**
 /// - `autoImported`→ **View Recipe** + **Archive**
+/// - `skipped`     → **Archive** only (no recipe to view, no retry path)
 /// - `inProgress`  → (nothing — cancel stays out-of-scope this epic)
 ///
 /// All callbacks are nullable; a null callback disables the button. On
@@ -15,6 +16,7 @@ enum ImportRowState {
   needsReview,
   failed,
   autoImported,
+  skipped,
   inProgress,
 }
 
@@ -87,6 +89,8 @@ class ImportRowExpansionActions extends StatelessWidget {
           ),
           _archiveButton(),
         ];
+      case ImportRowState.skipped:
+        return [_archiveButton()];
       case ImportRowState.inProgress:
         return const [];
     }

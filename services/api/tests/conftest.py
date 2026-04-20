@@ -576,6 +576,7 @@ class MockImportItem(MockModel):
             "awaiting_review_reason": None,
             "dismissed_at": None,
             "s3_key": None,
+            "created_recipe_id": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

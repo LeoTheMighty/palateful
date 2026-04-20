@@ -37,9 +37,8 @@ class ImportsTab extends ConsumerStatefulWidget {
 }
 
 /// In-progress job statuses: a job in any of these lands in the Blue
-/// section. Item-level statuses `pending`/`extracting`/`matching`/
-/// `awaiting_parser` are covered by their parent job's status — items
-/// of awaiting-review/failed/completed jobs are handled per-item.
+/// section (job-granularity — we show "Importing 3 of 10" rather than
+/// one row per pending item).
 const _inProgressJobStatuses = {
   'pending',
   'processing',
@@ -47,6 +46,12 @@ const _inProgressJobStatuses = {
   'matching',
   'awaiting_parser',
 };
+
+/// Bucketing is driven by `item.status`, not `job.status`. A completed
+/// job can still hold failed / awaiting_review / skipped items, and the
+/// opposite is also true — so relying on the parent job's status to
+/// decide where an item lands made most items disappear (see bug
+/// diagnosis 2026-04-20). Items land in exactly one section.
 
 class _ImportsTabState extends ConsumerState<ImportsTab>
     with AutomaticKeepAliveClientMixin {
@@ -56,6 +61,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   List<_ItemView> _needsReview = [];
   List<_ItemView> _failed = [];
   List<_ItemView> _autoImported = [];
+  List<_ItemView> _skipped = [];
 
   bool _isLoading = true;
   String? _error;
@@ -92,85 +98,86 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     }
 
     try {
-      // Fetch jobs by status in parallel — the four buckets mirror
-      // the four sections, though items are the row granularity for
-      // three of the four.
-      final results = await Future.wait([
-        _apiClient.listImportJobs(status: 'processing', limit: 50),
-        _apiClient.listImportJobs(status: 'awaiting_review', limit: 50),
-        _apiClient.listImportJobs(status: 'failed', limit: 50),
-        _apiClient.listImportJobs(status: 'completed', limit: 50),
-      ]);
+      // One fetch of every non-archived job, then items for each. We
+      // deliberately do NOT pre-filter by job.status: items in a
+      // `completed` job can be `failed` / `awaiting_review` / `skipped`,
+      // and the inverse is also true (an `awaiting_review` job can hold
+      // a `failed` item). Bucketing happens by ``item.status`` below.
+      final jobsResponse =
+          await _apiClient.listImportJobs(limit: 100);
       if (!mounted) return;
+      final rawJobs =
+          List<dynamic>.from(jobsResponse.data['jobs'] ?? []);
 
-      final rawInProgress = List<dynamic>.from(results[0].data['jobs'] ?? []);
-      final rawReview = List<dynamic>.from(results[1].data['jobs'] ?? []);
-      final rawFailed = List<dynamic>.from(results[2].data['jobs'] ?? []);
-      final rawCompleted = List<dynamic>.from(results[3].data['jobs'] ?? []);
-
-      // Items: fetch per-job for awaiting_review / failed / completed —
-      // per-job payloads are small (<=50 items), and no batched endpoint
-      // exists. In-progress stays job-level — no item fetch needed.
-      final itemJobs = [...rawReview, ...rawFailed, ...rawCompleted];
-      final itemFutures = itemJobs
-          .map((j) => _apiClient.listImportItems(j['id'].toString()));
-      final itemResults = await Future.wait(itemFutures);
+      final itemResults = await Future.wait(
+        rawJobs.map((j) => _apiClient.listImportItems(j['id'].toString())),
+      );
       if (!mounted) return;
 
       final itemsByJobId = <String, List<dynamic>>{};
-      for (var i = 0; i < itemJobs.length; i++) {
-        final jobId = itemJobs[i]['id'].toString();
+      for (var i = 0; i < rawJobs.length; i++) {
+        final jobId = rawJobs[i]['id'].toString();
         itemsByJobId[jobId] =
             List<dynamic>.from(itemResults[i].data['items'] ?? []);
       }
 
-      // Build per-section view-model lists.
-      final inProgress = rawInProgress
+      // Blue — job-granularity. Items in pending/extracting/matching
+      // states are represented by their parent job (e.g. "Importing 3
+      // of 10") rather than one row per in-flight item.
+      final inProgress = rawJobs
           .where((j) =>
               _inProgressJobStatuses.contains(j['status']?.toString()))
           .map<_JobView>(_JobView.fromJson)
           .toList();
 
-      final needsReview = rawReview
-          .expand<_ItemView>((j) => (itemsByJobId[j['id'].toString()] ?? [])
-              .where((i) => i['status'] == 'awaiting_review')
-              .map((i) => _ItemView.fromJson(i, j)))
-          .toList()
-        ..sort(_byCreatedAtDesc);
-
-      final failed = rawFailed
-          .expand<_ItemView>((j) => (itemsByJobId[j['id'].toString()] ?? [])
-              .where((i) => i['status'] == 'failed')
-              .map((i) => _ItemView.fromJson(i, j)))
-          .toList()
-        ..sort(_byCreatedAtDesc);
-
-      // Split completed items into "recent auto-imported" (≤30d, still
-      // in the green section) — anything older than 30d lives in the
-      // See-all footer now, which pulls directly from the server via
-      // `importsSeeAllProvider` (afh-4). No tab-level >30d cache.
+      // Auto-Imported + Skipped cut off at 30 days — older entries are
+      // reachable via See-all. Needs Review + Failed are actionable, so
+      // they show regardless of age.
       final cutoff = DateTime.now().subtract(const Duration(days: 30));
+      final needsReview = <_ItemView>[];
+      final failed = <_ItemView>[];
       final autoImported = <_ItemView>[];
-      for (final j in rawCompleted) {
-        for (final i in itemsByJobId[j['id'].toString()] ?? []) {
-          if (i['status'] != 'completed') continue;
-          final createdIso = i['created_at']?.toString();
-          final created = createdIso != null
-              ? DateTime.tryParse(createdIso)
-              : null;
-          final isOver30d = created != null && created.isBefore(cutoff);
-          if (!isOver30d && i['created_recipe_id'] != null) {
-            autoImported.add(_ItemView.fromJson(i, j));
+      final skipped = <_ItemView>[];
+
+      for (final j in rawJobs) {
+        for (final i in itemsByJobId[j['id'].toString()] ?? const []) {
+          final itemStatus = i['status']?.toString();
+          final view = _ItemView.fromJson(i, j);
+          switch (itemStatus) {
+            case 'awaiting_review':
+              needsReview.add(view);
+            case 'failed':
+              failed.add(view);
+            case 'completed':
+              if (i['created_recipe_id'] == null) break;
+              if (view.createdAt != null &&
+                  view.createdAt!.isBefore(cutoff)) {
+                break;
+              }
+              autoImported.add(view);
+            case 'skipped':
+              if (view.createdAt != null &&
+                  view.createdAt!.isBefore(cutoff)) {
+                break;
+              }
+              skipped.add(view);
+            default:
+              break;
           }
         }
       }
+
+      needsReview.sort(_byCreatedAtDesc);
+      failed.sort(_byCreatedAtDesc);
       autoImported.sort(_byCreatedAtDesc);
+      skipped.sort(_byCreatedAtDesc);
 
       setState(() {
         _inProgress = inProgress;
         _needsReview = needsReview;
         _failed = failed;
         _autoImported = autoImported;
+        _skipped = skipped;
         _isLoading = false;
       });
 
@@ -328,12 +335,16 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     final visibleAutoImported = _autoImported
         .where((i) => !locallyArchived.contains(i.id))
         .toList();
+    final visibleSkipped = _skipped
+        .where((i) => !locallyArchived.contains(i.id))
+        .toList();
     final visibleInProgress = _inProgress;
 
     final allEmpty = visibleInProgress.isEmpty &&
         visibleReview.isEmpty &&
         visibleFailed.isEmpty &&
-        visibleAutoImported.isEmpty;
+        visibleAutoImported.isEmpty &&
+        visibleSkipped.isEmpty;
 
     if (allEmpty) {
       final countAsync = ref.watch(importsSeeAllCountProvider);
@@ -440,6 +451,26 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                           context.push('/recipes/$recipeId');
                         }
                       },
+                    ))
+                .toList(),
+          ),
+          // Skipped lands in a neutral/muted section — the parser ran
+          // to completion but produced no recipe (duplicate, low-
+          // confidence photo, etc.). Not actionable; rendering it
+          // tells the user "yes your photo was processed, just nothing
+          // came out" instead of silently dropping the activity.
+          ImportStateSection(
+            label: 'Skipped',
+            count: visibleSkipped.length,
+            color: colorScheme.outline,
+            children: visibleSkipped
+                .map((i) => _buildSwipeableItemRow(
+                      item: i,
+                      stateColor: colorScheme.outline,
+                      chipLabel: 'Skipped',
+                      rowState: ImportRowState.skipped,
+                      onTap: () => context
+                          .push('/recipes/import/review/${i.id}'),
                     ))
                 .toList(),
           ),
@@ -591,6 +622,8 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         if (recipeId != null) {
           onViewRecipe = () => context.push('/recipes/$recipeId');
         }
+      case ImportRowState.skipped:
+        break;
       case ImportRowState.inProgress:
         break;
     }

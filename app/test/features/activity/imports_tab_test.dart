@@ -47,7 +47,17 @@ class _FakeApiClient extends ApiClient {
         'next_cursor': null,
       });
     }
-    final jobs = jobsByStatus[status ?? ''] ?? const [];
+    if (status == null) {
+      // Union of every non-archived bucket. The production tab fetches
+      // all non-archived jobs in one call and buckets items client-side
+      // by item.status.
+      final all = <dynamic>[
+        for (final entry in jobsByStatus.entries)
+          if (entry.key != '__archived__') ...entry.value,
+      ];
+      return _fakeResponse({'jobs': all});
+    }
+    final jobs = jobsByStatus[status] ?? const [];
     return _fakeResponse({'jobs': jobs});
   }
 
@@ -417,6 +427,94 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_lastNavLog, contains('/recipes/recipe-42'));
+  });
+
+  testWidgets(
+      'buckets by item.status — items still render when parent job.status '
+      'differs',
+      (tester) async {
+    // Regression for the 2026-04-20 bug: the tab used to require
+    // (job.status == section_status && item.status == section_status).
+    // A `completed` job containing a `failed` item made that item
+    // invisible; same for every other mismatch. Bucketing by item.status
+    // is now the contract.
+    final api = _FakeApiClient(
+      jobsByStatus: {
+        // Job.status=awaiting_review, but the only item inside is
+        // actually failed — must land in the Failed section.
+        'awaiting_review': [
+          {
+            'id': 'job-ar-holding-failed',
+            'status': 'awaiting_review',
+            'source_type': 'photo',
+            'created_at': '2026-04-18T10:10:00Z',
+          },
+        ],
+        // Job.status=completed, but items inside have mixed statuses.
+        'completed': [
+          {
+            'id': 'job-c-mixed',
+            'status': 'completed',
+            'source_type': 'url',
+            'created_at': '2026-04-18T10:30:00Z',
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-ar-holding-failed': [
+          {
+            'id': 'item-buried-failed',
+            'status': 'failed',
+            'recipe_name': 'Buried failure',
+            'source_type': 'photo',
+            'error_message': 'boom',
+            'created_at': '2026-04-18T10:15:00Z',
+          },
+        ],
+        'job-c-mixed': [
+          {
+            'id': 'item-buried-review',
+            'status': 'awaiting_review',
+            'recipe_name': 'Buried review',
+            'source_type': 'url',
+            'created_at': '2026-04-18T10:31:00Z',
+          },
+          {
+            'id': 'item-done',
+            'status': 'completed',
+            'recipe_name': 'Done',
+            'source_type': 'url',
+            'created_recipe_id': 'recipe-42',
+            'created_at': '2026-04-18T10:32:00Z',
+          },
+          {
+            'id': 'item-skip',
+            'status': 'skipped',
+            'recipe_name': 'Skipped photo',
+            'source_type': 'photo',
+            'created_at': '2026-04-18T10:33:00Z',
+          },
+        ],
+      },
+    );
+    _register(api);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Every item surfaces even though the parent job.status doesn't
+    // match the section. This is the exact pattern that went invisible
+    // in prod.
+    expect(find.text('Buried failure'), findsOneWidget);
+    expect(find.text('Buried review'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.text('Skipped photo'), findsOneWidget);
+    expect(find.textContaining('Skipped · 1'), findsOneWidget);
+    expect(find.textContaining('Failed · 1'), findsOneWidget);
+    expect(find.textContaining('Needs Review · 1'), findsOneWidget);
+    expect(find.textContaining('Auto-Imported · 1'), findsOneWidget);
   });
 
   testWidgets('yellow row taps navigate to review screen', (tester) async {

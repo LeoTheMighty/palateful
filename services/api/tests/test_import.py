@@ -1,5 +1,6 @@
 """Tests for import job endpoints."""
 
+import uuid
 from unittest.mock import patch
 
 from conftest import (
@@ -1065,6 +1066,43 @@ class TestListImportItems:
         data = response.json()
         assert data["items"][0]["confidence_score"] == 0.42
         assert data["items"][0]["confidence_source"] == "heuristic"
+
+    def test_list_import_items_surfaces_created_recipe_id(
+        self, client, mock_db, mock_user
+    ):
+        """created_recipe_id is emitted on list rows so the app can link
+        Auto-Imported rows to their recipe. Without this, every completed
+        item with a recipe looks unlinked and the green section renders
+        empty."""
+        job_id = "test-job-id"
+        book_id = "test-book-id"
+        recipe_id = str(uuid.uuid4())
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        with_recipe = MockImportItem(
+            import_job_id=job_id,
+            status="completed",
+            created_recipe_id=recipe_id,
+        )
+        without_recipe = MockImportItem(
+            import_job_id=job_id,
+            status="skipped",
+            created_recipe_id=None,
+        )
+
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.db.query.return_value = MockQuery([with_recipe, without_recipe])
+
+        response = client.get(f"/v1/import-jobs/{job_id}/items")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"][0]["created_recipe_id"] == recipe_id
+        assert data["items"][1]["created_recipe_id"] is None
 
     def test_list_import_items_no_needs_review(self, client, mock_db, mock_user):
         """Test listing items where no ingredient needs review and status is not awaiting_review."""
