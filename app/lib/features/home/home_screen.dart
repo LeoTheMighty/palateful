@@ -10,8 +10,13 @@ import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
 import '../recipes/add_recipe/add_recipe_sheet.dart';
 import '../meals/models/meal.dart';
+import '../meals/providers/meals_provider.dart';
+import '../meals/services/meal_service.dart';
+import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
 import 'widgets/batch_import_status_widget.dart';
+import 'widgets/bulk_dispatcher.dart';
+import 'widgets/bulk_partial_failure_dialog.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
 import 'widgets/home_bulk_action_bar.dart';
@@ -44,6 +49,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Set<String> _favoriteMealIds = {};
   final Set<String> _togglingFavoriteIds = {};
   bool _isLoading = true;
+  bool _isBulkOperating = false;
   String? _error;
   String? _errorDetail;
 
@@ -510,9 +516,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       bottomNavigationBar: selection.isActive
           ? HomeBulkActionBar(
               selectedMealName: selectedMealName,
-              onCreateMeal: _handleCreateMealStub,
-              onAddToMeal: _handleAddToMealStub,
-              onArchive: _handleArchiveStub,
+              isWorking: _isBulkOperating,
+              onCreateMeal: _handleCreateMeal,
+              onAddToMeal: _handleAddToMeal,
+              onArchive: _handleArchive,
             )
           : null,
     );
@@ -564,33 +571,283 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   // ---------------------------------------------------------------------
-  // Stub bulk-action handlers — hmp-3 wires these to real dispatches.
-  // Kept here so hmp-2 presents the fully-shaped bulk bar and hmp-3's
-  // change is a body swap, not a wiring refactor.
+  // Bulk-action handlers. hmp-3 wires the three real dispatches:
+  //   • Create Meal  → opens CreateMealSheet pre-filled with the
+  //     selection's recipes + the first-selected recipe's book.
+  //   • Add to Meal  → client-side dedup against the target Meal's
+  //     component ids, parallel addRecipeToMeal, partial-failure
+  //     snackbar + dialog.
+  //   • Archive      → confirmation dialog, parallel bulkArchiveRecipes
+  //     + per-Meal archiveMeal, same partial-failure surface.
   // ---------------------------------------------------------------------
 
-  void _handleCreateMealStub() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Create Meal: coming in next story (hmp-3)'),
-      ),
+  dynamic _findRecipe(String recipeId) {
+    for (final r in _recipes) {
+      if (r is Map &&
+          r['kind'] == 'recipe' &&
+          r['id']?.toString() == recipeId) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  dynamic _findMealItem(String mealId) {
+    for (final r in _recipes) {
+      if (r is Map &&
+          r['kind'] == 'meal' &&
+          r['id']?.toString() == mealId) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _handleCreateMeal() async {
+    if (_isBulkOperating) return;
+    final selection = ref.read(homeSelectionProvider);
+    final recipeIds = selection.selectedRecipeIds.toList();
+    if (recipeIds.length < 2) return;
+
+    final components = <DraftMealComponent>[];
+    String? bookId;
+    String? bookName;
+    for (final id in recipeIds) {
+      final match = _findRecipe(id);
+      if (match is! Map) continue;
+      bookId ??= match['recipe_book_id']?.toString();
+      bookName ??= match['recipe_book_name']?.toString();
+      components.add(DraftMealComponent(
+        recipeId: id,
+        name: match['name']?.toString() ?? '',
+        imageUrl: match['image_url']?.toString(),
+        bookName: match['recipe_book_name']?.toString(),
+      ));
+    }
+    if (bookId == null || bookName == null || components.length < 2) return;
+
+    await CreateMealSheet.show(
+      context,
+      bookId: bookId,
+      bookName: bookName,
+      initialComponents: components,
+      onCreated: (meal) {
+        invalidateMeal(ref, meal.id, bookId: meal.recipeBookId);
+        ref.read(homeSelectionProvider.notifier).exit();
+        _loadRecipes();
+      },
     );
   }
 
-  void _handleAddToMealStub() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Add to Meal: coming in next story (hmp-3)'),
-      ),
-    );
+  Future<void> _handleAddToMeal() async {
+    if (_isBulkOperating) return;
+    final selection = ref.read(homeSelectionProvider);
+    if (selection.selectedMealIds.length != 1) return;
+    final mealId = selection.selectedMealIds.first;
+    final recipeIds = selection.selectedRecipeIds.toList();
+    if (recipeIds.isEmpty) return;
+
+    final mealItem = _findMealItem(mealId);
+    if (mealItem is! Map) return;
+    final meal = _mealSummaryFrom(mealItem);
+    final mealName = meal.name;
+
+    final existing = meal.componentRecipeIds.toSet();
+    final toAdd = recipeIds.where((id) => !existing.contains(id)).toList();
+    if (toAdd.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All selected recipes are already in this Meal'),
+        ),
+      );
+      ref.read(homeSelectionProvider.notifier).exit();
+      return;
+    }
+
+    final mealService = getIt<MealService>();
+    final targets = toAdd.map((rid) {
+      final match = _findRecipe(rid);
+      final name = (match is Map) ? (match['name']?.toString() ?? rid) : rid;
+      return _AddToMealTarget(rid, name);
+    }).toList();
+
+    setState(() => _isBulkOperating = true);
+    try {
+      final results = await runBulkOperations<_AddToMealTarget>(
+        items: targets,
+        operation: (t) async {
+          await mealService.addRecipeToMeal(mealId, recipeId: t.recipeId);
+        },
+        nameOf: (t) => t.name,
+        bulkOp: BulkOperation.addToMeal,
+      );
+      if (!mounted) return;
+      final successes = results.where((r) => r.success).length;
+      final total = results.length;
+      _surfaceBulkResult(
+        results: results,
+        operation: BulkOperation.addToMeal,
+        total: total,
+        successes: successes,
+        allSuccessMessage:
+            'Added $successes ${successes == 1 ? 'recipe' : 'recipes'} '
+            'to $mealName',
+        partialMessage: 'Added $successes of $total — see details',
+        allFailMessage: 'Could not add recipes — see details',
+      );
+      invalidateMeal(ref, mealId, bookId: meal.recipeBookId);
+      ref.read(homeSelectionProvider.notifier).exit();
+      _loadRecipes();
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
   }
 
-  void _handleArchiveStub() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Archive: coming in next story (hmp-3)'),
+  Future<void> _handleArchive() async {
+    if (_isBulkOperating) return;
+    final selection = ref.read(homeSelectionProvider);
+    final recipeIds = selection.selectedRecipeIds.toList();
+    final mealIds = selection.selectedMealIds.toList();
+    final totalCount = recipeIds.length + mealIds.length;
+    if (totalCount == 0) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Archive selected?'),
+        content: Text(_archivePromptBody(
+          recipeCount: recipeIds.length,
+          mealCount: mealIds.length,
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Archive'),
+          ),
+        ],
       ),
     );
+    if (confirm != true) return;
+    if (!mounted) return;
+
+    setState(() => _isBulkOperating = true);
+    try {
+      final futures = <Future<List<BulkOperationResult>>>[];
+      if (recipeIds.isNotEmpty) {
+        futures.add(_runRecipeBulkArchive(recipeIds));
+      }
+      if (mealIds.isNotEmpty) {
+        final mealTargets = mealIds.map((id) {
+          final item = _findMealItem(id);
+          final name = (item is Map) ? (item['name']?.toString() ?? id) : id;
+          return _ArchiveMealTarget(id, name);
+        }).toList();
+        final mealService = getIt<MealService>();
+        futures.add(runBulkOperations<_ArchiveMealTarget>(
+          items: mealTargets,
+          operation: (t) => mealService.archiveMeal(t.mealId),
+          nameOf: (t) => t.name,
+          bulkOp: BulkOperation.archive,
+        ));
+      }
+      final nested = await Future.wait(futures);
+      final allResults = <BulkOperationResult>[
+        for (final list in nested) ...list,
+      ];
+      if (!mounted) return;
+      final successes = allResults.where((r) => r.success).length;
+      final total = allResults.length;
+      _surfaceBulkResult(
+        results: allResults,
+        operation: BulkOperation.archive,
+        total: total,
+        successes: successes,
+        allSuccessMessage:
+            'Archived $successes ${successes == 1 ? 'item' : 'items'}',
+        partialMessage: 'Archived $successes of $total — see details',
+        allFailMessage: 'Could not archive — see details',
+      );
+      ref.read(homeSelectionProvider.notifier).exit();
+      _loadRecipes();
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
+  }
+
+  String _archivePromptBody({
+    required int recipeCount,
+    required int mealCount,
+  }) {
+    String recipeLabel() =>
+        recipeCount == 1 ? '1 recipe' : '$recipeCount recipes';
+    String mealLabel() => mealCount == 1 ? '1 Meal' : '$mealCount Meals';
+    const tail = 'You can restore them later from Archive.';
+    if (recipeCount == 0) return 'Archive ${mealLabel()}? $tail';
+    if (mealCount == 0) return 'Archive ${recipeLabel()}? $tail';
+    return 'Archive ${recipeLabel()} and ${mealLabel()}? $tail';
+  }
+
+  /// Recipe bulk archive is a single atomic API call; the dialog still
+  /// needs per-recipe rows so this synthesises one BulkOperationResult
+  /// per recipe with the same outcome.
+  Future<List<BulkOperationResult>> _runRecipeBulkArchive(
+    List<String> recipeIds,
+  ) async {
+    final names = <String, String>{};
+    for (final id in recipeIds) {
+      final item = _findRecipe(id);
+      names[id] = (item is Map) ? (item['name']?.toString() ?? id) : id;
+    }
+    try {
+      await _apiClient.bulkArchiveRecipes(recipeIds);
+      return [
+        for (final id in recipeIds)
+          BulkOperationResult(targetName: names[id]!, success: true),
+      ];
+    } catch (e) {
+      final reason = explainBulkError(e, BulkOperation.archive);
+      return [
+        for (final id in recipeIds)
+          BulkOperationResult(
+            targetName: names[id]!,
+            success: false,
+            errorReason: reason,
+          ),
+      ];
+    }
+  }
+
+  void _surfaceBulkResult({
+    required List<BulkOperationResult> results,
+    required BulkOperation operation,
+    required int total,
+    required int successes,
+    required String allSuccessMessage,
+    required String partialMessage,
+    required String allFailMessage,
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    if (successes == total) {
+      messenger.showSnackBar(SnackBar(content: Text(allSuccessMessage)));
+      return;
+    }
+    final body = successes > 0 ? partialMessage : allFailMessage;
+    messenger.showSnackBar(SnackBar(
+      content: Text(body),
+      action: SnackBarAction(
+        label: 'View',
+        onPressed: () => BulkPartialFailureDialog.show(
+          context,
+          operation: operation,
+          results: results,
+        ),
+      ),
+    ));
   }
 
   Widget _buildSearchHeader() {
@@ -1084,4 +1341,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
+}
+
+class _AddToMealTarget {
+  final String recipeId;
+  final String name;
+  const _AddToMealTarget(this.recipeId, this.name);
+}
+
+class _ArchiveMealTarget {
+  final String mealId;
+  final String name;
+  const _ArchiveMealTarget(this.mealId, this.name);
 }
