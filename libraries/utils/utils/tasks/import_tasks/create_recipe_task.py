@@ -29,6 +29,92 @@ from utils.tasks.task import BaseTask
 
 logger = logging.getLogger(__name__)
 
+# cmt-2 — timer clamp bounds. Mirrored in the Flutter manual-timer
+# sheet and the step-timer regex helper so extractor, manual-entry, and
+# regex-derived timers all obey the same contract.
+_TIMER_MIN_MINUTES = 1
+_TIMER_MAX_MINUTES = 360
+_TIMER_MAX_PER_STEP = 10
+_TIMER_LABEL_MAX_LEN = 40
+
+
+def _clamp_timers(raw_timers) -> tuple[list[dict], int]:
+    """Validate + clamp a list of timer dicts.
+
+    Returns (clean_timers, dropped_count). Rules:
+      * Non-list inputs -> ([], 0). (Schema allows absent/null.)
+      * Cap at _TIMER_MAX_PER_STEP entries; overflow counted as dropped.
+      * Each entry must be a dict with `duration_minutes` that is an
+        `int` in [_TIMER_MIN_MINUTES, _TIMER_MAX_MINUTES] -- booleans
+        don't count as ints.
+      * `label` coerced to `str`, `.strip()`, truncated to
+        _TIMER_LABEL_MAX_LEN. Empty/missing -> "timer".
+      * Anything else increments `dropped`.
+    """
+    if not isinstance(raw_timers, list):
+        return [], 0
+
+    clean: list[dict] = []
+    dropped = 0
+    for entry in raw_timers[:_TIMER_MAX_PER_STEP]:
+        if not isinstance(entry, dict):
+            dropped += 1
+            continue
+        dur = entry.get("duration_minutes")
+        # isinstance(True, int) is True in Python -- reject booleans
+        # explicitly to avoid "True min" timers leaking through.
+        if isinstance(dur, bool) or not isinstance(dur, int):
+            dropped += 1
+            continue
+        if dur < _TIMER_MIN_MINUTES or dur > _TIMER_MAX_MINUTES:
+            dropped += 1
+            continue
+        label_raw = entry.get("label", "")
+        label = label_raw if isinstance(label_raw, str) else ""
+        label = label.strip()[:_TIMER_LABEL_MAX_LEN]
+        if not label:
+            label = "timer"
+        clean.append({"duration_minutes": dur, "label": label})
+
+    if len(raw_timers) > _TIMER_MAX_PER_STEP:
+        dropped += len(raw_timers) - _TIMER_MAX_PER_STEP
+
+    return clean, dropped
+
+
+def _log_timer_clamp(
+    db,
+    *,
+    recipe_name: str,
+    step_order,
+    dropped_count: int,
+    raw_input,
+) -> None:
+    """cmt-2 — independent audit row for every dropped timer.
+
+    Uses its own try/except + `db.commit()` so the audit row survives
+    even if the main import transaction rolls back. Pattern copied from
+    `advance_recurrence_windows._log_audit`.
+    """
+    try:
+        from utils.models.error_log import ErrorLog  # local import — avoid cycles
+
+        sample = repr(raw_input)[:200] if raw_input is not None else ""
+        message = (
+            f"TimerClamp dropped={dropped_count} "
+            f"recipe={recipe_name!r} step={step_order} sample={sample}"
+        )
+        entry = ErrorLog(
+            service="worker",
+            error_type="TimerClamp",
+            error_message=message,
+        )
+        db.add(entry)
+        db.commit()
+    except Exception:
+        logger.exception("Failed to write TimerClamp audit row")
+
+
 _aws_service: AWSService | None = None
 
 
@@ -134,10 +220,22 @@ class CreateRecipeTask(BaseTask):
             steps_data = recipe_data.get("steps", [])
             if steps_data:
                 for step_data in steps_data:
+                    clean_timers, dropped = _clamp_timers(
+                        step_data.get("timers")
+                    )
+                    if dropped > 0:
+                        _log_timer_clamp(
+                            self.database.db,
+                            recipe_name=recipe.name,
+                            step_order=step_data.get("order", 1),
+                            dropped_count=dropped,
+                            raw_input=step_data.get("timers"),
+                        )
                     step = RecipeStep(
                         recipe_id=recipe.id,
                         step_number=step_data.get("order", 1),
                         instruction=step_data.get("instruction", ""),
+                        timers=clean_timers,
                     )
                     self.database.create(step)
             elif recipe_data.get("instructions"):
