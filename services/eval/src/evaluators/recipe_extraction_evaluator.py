@@ -2,12 +2,26 @@
 
 import json
 from dataclasses import asdict
+from difflib import SequenceMatcher
 
 from src.config import EvalConfig
 from src.evaluators.base import BaseEvaluator, EvalCase, EvalResult
 from src.metrics.struct_metrics import StructMetrics
 from src.metrics.text_metrics import TextMetrics
 from src.metrics.unit_enum_compliance import compute_unit_enum_compliance
+
+# cmt-3 — recipe-level timer extraction F1.
+#
+# Match rule: predicted vs expected timer pair if duration is exact OR
+# within ±20% AND label SequenceMatcher ratio ≥ 0.6. Greedy 1-1.
+#
+# Gate: SOFT — this metric is reported but not enforced. A TODO hard
+# gate at `max(0.7, baseline + 0.1)` is tracked for a future hardening
+# epic once the first post-merge baseline is recorded.
+# TODO(cmt-3): record post-merge baseline number here once the first
+# full eval run lands.
+_TIMER_DURATION_SLACK = 0.20
+_TIMER_LABEL_SIM_MIN = 0.60
 
 
 class RecipeExtractionEvaluator(BaseEvaluator):
@@ -270,6 +284,8 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         metrics["field_accuracy"] = _avg("field_accuracy")
         metrics["ingredient_count_accuracy"] = _avg("ingredient_count_accuracy")
         metrics["instruction_similarity"] = _avg("instruction_similarity")
+        # cmt-3 — soft-gated; reported alongside existing metrics.
+        metrics["timer_extraction_f1"] = _avg("timer_extraction_f1")
 
         # Keep the first pair's structural breakdown for quick debugging.
         if pair_metrics:
@@ -326,4 +342,86 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         else:
             m["instruction_similarity"] = 1.0 if not actual_instructions else 0.0
 
+        # cmt-3 — timer extraction F1 (soft gate).
+        m["timer_extraction_f1"] = compute_timer_f1(actual, expected)
+
         return m
+
+
+def _gather_predicted_timers(actual: dict) -> list[dict]:
+    """Walk actual["steps"][*]["timers"] and return a flat list.
+
+    If only `instructions` is populated (no structured steps), the
+    predicted set is empty — v1 does NOT re-run the Dart regex in
+    Python. That bakes in a conservative bias: models that only emit
+    the joined string will score 0 recall here, which is the correct
+    signal for the epic's own "prefer structured" design goal.
+    """
+    steps = actual.get("steps") if isinstance(actual, dict) else None
+    if not isinstance(steps, list):
+        return []
+    out: list[dict] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        timers = step.get("timers")
+        if not isinstance(timers, list):
+            continue
+        for t in timers:
+            if isinstance(t, dict):
+                out.append(t)
+    return out
+
+
+def _timer_pair_matches(pred: dict, exp: dict) -> bool:
+    """Duration-within-slack AND label-similarity-≥-min."""
+    p_dur = pred.get("duration_minutes")
+    e_dur = exp.get("duration_minutes")
+    if not isinstance(p_dur, (int, float)) or not isinstance(e_dur, (int, float)):
+        return False
+    if e_dur <= 0:
+        return False
+    if p_dur != e_dur:
+        if abs(p_dur - e_dur) / e_dur > _TIMER_DURATION_SLACK:
+            return False
+    p_lab = str(pred.get("label") or "").lower()
+    e_lab = str(exp.get("label") or "").lower()
+    sim = SequenceMatcher(None, p_lab, e_lab).ratio()
+    return sim >= _TIMER_LABEL_SIM_MIN
+
+
+def compute_timer_f1(actual: dict, expected: dict) -> float:
+    """Greedy 1-1 F1 between predicted and expected timer multisets.
+
+    Returns 1.0 when both sides are empty (degenerate pass-through).
+    Returns 0.0 when predicted is empty but expected is non-empty
+    (or vice-versa).
+    """
+    predicted = _gather_predicted_timers(actual)
+    expected_timers = (
+        expected.get("expected_timers") if isinstance(expected, dict) else None
+    )
+    if not isinstance(expected_timers, list):
+        expected_timers = []
+
+    if not predicted and not expected_timers:
+        return 1.0
+    if not predicted or not expected_timers:
+        return 0.0
+
+    matched = 0
+    used_expected: set[int] = set()
+    for pred in predicted:
+        for idx, exp in enumerate(expected_timers):
+            if idx in used_expected:
+                continue
+            if isinstance(exp, dict) and _timer_pair_matches(pred, exp):
+                matched += 1
+                used_expected.add(idx)
+                break
+
+    precision = matched / len(predicted)
+    recall = matched / len(expected_timers)
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)

@@ -120,5 +120,13 @@
       "name": "fresh cilantro"
     }
   ],
-  "instructions": "1. Combine the chicken pieces with yogurt, lemon juice, cumin, paprika, turmeric, garam masala, cayenne, and salt in a large bowl. Cover and refrigerate for at least 1 hour or overnight. 2. Preheat the oven to 450 degrees F. Thread the marinated chicken onto skewers and place on a lined baking sheet. Bake for 15 minutes until lightly charred. 3. While the chicken bakes, heat the vegetable oil in a large skillet over medium heat. Add the diced onion and cook until softened, about 5 minutes. 4. Add the garlic and ginger and cook for 1 minute until fragrant. 5. Stir in the crushed tomatoes, garam masala, cumin, and coriander. Simmer for 15 minutes, stirring occasionally. 6. Pour in the heavy cream and stir until the sauce turns a rich orange color. Simmer for 5 more minutes. 7. Add the baked chicken pieces to the sauce and stir to coat. Simmer together for 5 minutes. 8. Garnish with fresh cilantro and serve over basmati rice or with warm naan bread."
+  "instructions": "1. Combine the chicken pieces with yogurt, lemon juice, cumin, paprika, turmeric, garam masala, cayenne, and salt in a large bowl. Cover and refrigerate for at least 1 hour or overnight. 2. Preheat the oven to 450 degrees F. Thread the marinated chicken onto skewers and place on a lined baking sheet. Bake for 15 minutes until lightly charred. 3. While the chicken bakes, heat the vegetable oil in a large skillet over medium heat. Add the diced onion and cook until softened, about 5 minutes. 4. Add the garlic and ginger and cook for 1 minute until fragrant. 5. Stir in the crushed tomatoes, garam masala, cumin, and coriander. Simmer for 15 minutes, stirring occasionally. 6. Pour in the heavy cream and stir until the sauce turns a rich orange color. Simmer for 5 more minutes. 7. Add the baked chicken pieces to the sauce and stir to coat. Simmer together for 5 minutes. 8. Garnish with fresh cilantro and serve over basmati rice or with warm naan bread.",
+  "expected_timers": [
+    { "duration_minutes": 15, "label": "bake" },
+    { "duration_minutes": 5, "label": "cook onion" },
+    { "duration_minutes": 1, "label": "cook garlic and ginger" },
+    { "duration_minutes": 15, "label": "simmer" },
+    { "duration_minutes": 5, "label": "simmer" },
+    { "duration_minutes": 5, "label": "simmer" }
+  ]
 }
