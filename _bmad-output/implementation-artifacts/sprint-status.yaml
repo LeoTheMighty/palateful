@@ -776,7 +776,7 @@ development_status:
   afh-3-flutter-notifications-see-all-footer-paginated-retry-pagekey-muted-token: done
   afh-4-flutter-imports-see-all-pagination-swap-drop-itemextent-pagekey: done
   afh-5-flutter-empty-state-gateway-links-chevron-down-and-pull-to-refresh: done
-  afh-6-regression-full-history-10k-virtualization-cursor-race-deploy-guard: backlog
+  afh-6-regression-full-history-10k-virtualization-cursor-race-deploy-guard: done
   epic-activity-full-history-retrospective: optional
 
   # Epic Ingredients String Simplification (planned 2026-04-20, refined via party-mode)
