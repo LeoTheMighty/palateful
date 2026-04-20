@@ -13,6 +13,7 @@ import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
 import 'widgets/cook_mode_chat_sheet.dart';
 import 'widgets/ingredient_strip.dart';
+import 'widgets/manual_timer_sheet.dart';
 import 'widgets/post_cook_feedback_sheet.dart';
 import 'widgets/step_navigator.dart';
 import 'widgets/step_timers_row.dart';
@@ -222,6 +223,14 @@ class _CookModeScreenState extends State<CookModeScreen>
     if (step >= 0 && step < _steps.length) {
       HapticFeedback.selectionClick();
       setState(() {
+        // When the user navigates backward we untoggle the destination
+        // step's "completed" state so returning to a prior step renders
+        // it as in-progress, not crossed out. Forward nav keeps adding
+        // via _nextStep. Covers swipe, tap-zone, and pill-tap routes
+        // (cmp-4 AC8).
+        if (step < _currentStep) {
+          _completedSteps.remove(step);
+        }
         _currentStep = step;
       });
     }
@@ -375,6 +384,22 @@ class _CookModeScreenState extends State<CookModeScreen>
         recipeContext: _buildRecipeContext(),
       ),
     );
+  }
+
+  Future<void> _showManualTimerSheet() async {
+    final result = await showModalBottomSheet<(int, String)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (_) => const ManualTimerSheet(),
+    );
+    if (result == null || !mounted) return;
+    final (minutes, rawLabel) = result;
+    final uniqueLabel = disambiguateTimerLabel(
+      rawLabel,
+      _activeTimers.map((t) => t.label),
+    );
+    _startTimer(Duration(minutes: minutes), uniqueLabel);
   }
 
   void _exitCookMode() {
@@ -600,6 +625,18 @@ class _CookModeScreenState extends State<CookModeScreen>
               padding: EdgeInsets.zero,
               tooltip: 'Ask AI',
             ),
+
+          // cmt-5: manual timer entry is ALWAYS visible — online, offline,
+          // and regardless of whether step.timers or the regex surfaced
+          // anything for the current step. 48x48 tap target (AA minimum)
+          // keeps the 360dp header from crushing the recipe title.
+          IconButton(
+            icon: Icon(Icons.timer_outlined, color: cook.cookOnSurface),
+            onPressed: _showManualTimerSheet,
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            padding: EdgeInsets.zero,
+            tooltip: 'Add a timer',
+          ),
 
           // Offline indicator (subtle — not alarming)
           if (_isOffline) ...[
