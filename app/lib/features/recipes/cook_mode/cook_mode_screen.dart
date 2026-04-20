@@ -321,10 +321,11 @@ class _CookModeScreenState extends State<CookModeScreen>
     // Cancel the OS notification in case the timer fired in-app
     _timerNotifService.cancelTimerNotification(timer.notifId);
     if (!mounted) return;
+    final cook = context.cookModeTheme;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Timer done: ${timer.label}'),
-        backgroundColor: context.appColors.success,
+        backgroundColor: cook.cookCompleted,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -394,7 +395,7 @@ class _CookModeScreenState extends State<CookModeScreen>
       isDismissible: false,
       enableDrag: false,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      backgroundColor: context.cookModeTheme.cookSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -419,7 +420,7 @@ class _CookModeScreenState extends State<CookModeScreen>
   void _showTimerDetailSheet(_ActiveTimer timer) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+      backgroundColor: context.cookModeTheme.cookSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -442,141 +443,133 @@ class _CookModeScreenState extends State<CookModeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final darkTheme = AppTheme.dark();
-    return Theme(
-      data: darkTheme,
-      child: Builder(
-        builder: (context) {
-          final colorScheme = Theme.of(context).colorScheme;
+    final cook = context.cookModeTheme;
 
-          if (_isLoading) {
-            return Scaffold(
-              backgroundColor: colorScheme.primary,
-              body: Center(
-                child: CircularProgressIndicator(color: colorScheme.onSurface),
-              ),
-            );
-          }
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: cook.cookSurface,
+        body: Center(
+          child: CircularProgressIndicator(color: cook.cookAccent),
+        ),
+      );
+    }
 
-          if (_error != null) {
-            return Scaffold(
-              backgroundColor: colorScheme.primary,
-              appBar: AppBar(
-                backgroundColor: colorScheme.primary,
-                iconTheme: IconThemeData(color: colorScheme.onSurface),
-              ),
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.error.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: colorScheme.onSurface),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadRecipe,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: colorScheme.onSurface,
-                          foregroundColor: colorScheme.primary,
-                        ),
-                        child: const Text('Retry'),
-                      ),
-                    ],
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: cook.cookSurface,
+        appBar: AppBar(
+          backgroundColor: cook.cookSurface,
+          iconTheme: IconThemeData(color: cook.cookOnSurface),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cook.cookError.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(color: cook.cookOnSurface),
+                    textAlign: TextAlign.center,
                   ),
                 ),
-              ),
-            );
-          }
-
-          return Scaffold(
-            backgroundColor: colorScheme.primary,
-            body: SafeArea(
-              child: Column(
-                children: [
-                  // Header
-                  _buildHeader(context, colorScheme),
-
-                  // Active timers (if any)
-                  if (_activeTimers.isNotEmpty) _buildActiveTimers(colorScheme),
-
-                  // Ingredient strip
-                  IngredientStrip(
-                    ingredients: _ingredients,
-                    checkedIndices: _checkedIngredients,
-                    onToggle: _toggleIngredient,
-                    scaleFactor: widget.scaleFactor,
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadRecipe,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cook.cookError,
+                    foregroundColor: cook.cookOnAccent,
                   ),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
-                  // Divider
-                  Divider(height: 1, color: colorScheme.primaryContainer),
+    return Scaffold(
+      backgroundColor: cook.cookSurface,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            _buildHeader(context, cook),
 
-                  // Step content
-                  Expanded(
-                    child: GestureDetector(
-                      onHorizontalDragEnd: (details) {
-                        if (details.primaryVelocity != null) {
-                          if (details.primaryVelocity! < -500) {
-                            _nextStep();
-                          } else if (details.primaryVelocity! > 500) {
-                            _previousStep();
-                          }
-                        }
-                      },
-                      // Left 25% = go back, right 25% = go next, middle 50% = no-op
-                      // Invisible tap zones for messy-hands navigation (AC: Story 6.2)
-                      onTapUp: (details) {
-                        final screenWidth = MediaQuery.of(context).size.width;
-                        final tapX = details.localPosition.dx;
-                        if (tapX < screenWidth * 0.25) {
-                          if (_currentStep > 0) _previousStep();
-                        } else if (tapX > screenWidth * 0.75) {
-                          if (_currentStep < _steps.length - 1) _nextStep();
-                        }
-                      },
-                      child: _buildStepContent(context, colorScheme),
-                    ),
-                  ),
+            // Active timers (if any)
+            if (_activeTimers.isNotEmpty) _buildActiveTimers(cook),
 
-                  // Step navigator
-                  StepNavigator(
-                    currentStep: _currentStep,
-                    totalSteps: _steps.length,
-                    completedSteps: _completedSteps,
-                    onPrevious: _currentStep > 0 ? _previousStep : null,
-                    onNext: _currentStep < _steps.length - 1 ? _nextStep : null,
-                    onDone: _finishCooking,
-                    onStepTap: _goToStep,
-                    onLongPressStep: _markAllUpToHere,
-                  ),
-                ],
+            // Ingredient strip
+            IngredientStrip(
+              ingredients: _ingredients,
+              checkedIndices: _checkedIngredients,
+              onToggle: _toggleIngredient,
+              scaleFactor: widget.scaleFactor,
+            ),
+
+            // Divider
+            Divider(height: 1, color: cook.cookDivider),
+
+            // Step content
+            Expanded(
+              child: GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity != null) {
+                    if (details.primaryVelocity! < -500) {
+                      _nextStep();
+                    } else if (details.primaryVelocity! > 500) {
+                      _previousStep();
+                    }
+                  }
+                },
+                // Left 25% = go back, right 25% = go next, middle 50% = no-op
+                // Invisible tap zones for messy-hands navigation (AC: Story 6.2)
+                onTapUp: (details) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final tapX = details.localPosition.dx;
+                  if (tapX < screenWidth * 0.25) {
+                    if (_currentStep > 0) _previousStep();
+                  } else if (tapX > screenWidth * 0.75) {
+                    if (_currentStep < _steps.length - 1) _nextStep();
+                  }
+                },
+                child: _buildStepContent(context, cook),
               ),
             ),
-          );
-        },
+
+            // Step navigator
+            StepNavigator(
+              currentStep: _currentStep,
+              totalSteps: _steps.length,
+              completedSteps: _completedSteps,
+              onPrevious: _currentStep > 0 ? _previousStep : null,
+              onNext: _currentStep < _steps.length - 1 ? _nextStep : null,
+              onDone: _finishCooking,
+              onStepTap: _goToStep,
+              onLongPressStep: _markAllUpToHere,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, ColorScheme colorScheme) {
+  Widget _buildHeader(BuildContext context, CookModeTheme cook) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      color: colorScheme.primary,
+      color: cook.cookSurface,
       child: Row(
         children: [
           // Back button
           IconButton(
-            icon: Icon(Icons.arrow_back, color: colorScheme.onSurface),
+            icon: Icon(Icons.arrow_back, color: cook.cookOnSurface),
             onPressed: _exitCookMode,
             constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
             padding: EdgeInsets.zero,
@@ -589,7 +582,7 @@ class _CookModeScreenState extends State<CookModeScreen>
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
+                color: cook.cookOnSurface,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -599,7 +592,7 @@ class _CookModeScreenState extends State<CookModeScreen>
           if (!_isOffline)
             IconButton(
               icon: Icon(Icons.chat_bubble_outline,
-                  color: colorScheme.onSurface),
+                  color: cook.cookOnSurface),
               onPressed: _showAIChatSheet,
               constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
               padding: EdgeInsets.zero,
@@ -612,11 +605,11 @@ class _CookModeScreenState extends State<CookModeScreen>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.wifi_off, size: 14, color: colorScheme.tertiary),
+                Icon(Icons.wifi_off, size: 14, color: cook.cookOffline),
                 const SizedBox(width: 2),
                 Text(
                   'Offline',
-                  style: TextStyle(fontSize: 11, color: colorScheme.tertiary),
+                  style: TextStyle(fontSize: 11, color: cook.cookOffline),
                 ),
               ],
             ),
@@ -626,20 +619,20 @@ class _CookModeScreenState extends State<CookModeScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerLow,
+              color: cook.cookSurfaceDim,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.schedule, size: 16, color: colorScheme.onSurface),
+                Icon(Icons.schedule, size: 16, color: cook.cookOnSurface),
                 const SizedBox(width: 4),
                 Text(
                   _formatDuration(_cookingStopwatch.elapsed),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
+                    color: cook.cookOnSurface,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -649,7 +642,7 @@ class _CookModeScreenState extends State<CookModeScreen>
 
           // Close button
           IconButton(
-            icon: Icon(Icons.close, color: colorScheme.onSurface),
+            icon: Icon(Icons.close, color: cook.cookOnSurface),
             onPressed: _exitCookMode,
             constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
             padding: EdgeInsets.zero,
@@ -659,7 +652,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     );
   }
 
-  Widget _buildActiveTimers(ColorScheme colorScheme) {
+  Widget _buildActiveTimers(CookModeTheme cook) {
     return Container(
       height: 44,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -677,9 +670,9 @@ class _CookModeScreenState extends State<CookModeScreen>
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: colorScheme.tertiary.withValues(alpha: 0.15),
+                color: cook.cookTimer.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: colorScheme.tertiary),
+                border: Border.all(color: cook.cookTimer),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -690,9 +683,9 @@ class _CookModeScreenState extends State<CookModeScreen>
                     child: CircularProgressIndicator(
                       value: progress,
                       strokeWidth: 2,
-                      color: colorScheme.tertiary,
+                      color: cook.cookTimer,
                       backgroundColor:
-                          colorScheme.tertiary.withValues(alpha: 0.2),
+                          cook.cookTimer.withValues(alpha: 0.2),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -701,7 +694,7 @@ class _CookModeScreenState extends State<CookModeScreen>
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: colorScheme.tertiary,
+                      color: cook.cookTimer,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -709,7 +702,7 @@ class _CookModeScreenState extends State<CookModeScreen>
                   GestureDetector(
                     onTap: () => _cancelTimer(timer),
                     child: Icon(Icons.close,
-                        size: 16, color: colorScheme.tertiary),
+                        size: 16, color: cook.cookTimer),
                   ),
                 ],
               ),
@@ -720,14 +713,14 @@ class _CookModeScreenState extends State<CookModeScreen>
     );
   }
 
-  Widget _buildStepContent(BuildContext context, ColorScheme colorScheme) {
+  Widget _buildStepContent(BuildContext context, CookModeTheme cook) {
     if (_steps.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
             'No instructions available for this recipe.',
-            style: TextStyle(color: colorScheme.onSurface),
+            style: TextStyle(color: cook.cookOnSurface),
             textAlign: TextAlign.center,
           ),
         ),
@@ -735,8 +728,6 @@ class _CookModeScreenState extends State<CookModeScreen>
     }
 
     final step = _steps[_currentStep];
-    final isCompleted = _completedSteps.contains(_currentStep);
-    final appColors = context.appColors;
 
     // Detect time mentions for inline timers
     final timePattern = RegExp(
@@ -759,7 +750,7 @@ class _CookModeScreenState extends State<CookModeScreen>
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurface,
+                  color: cook.cookOnSurface,
                 ),
               ),
               const SizedBox(width: 6),
@@ -768,7 +759,7 @@ class _CookModeScreenState extends State<CookModeScreen>
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: colorScheme.surface,
+                  color: cook.cookOnSurface.withValues(alpha: 0.6),
                 ),
               ),
             ],
@@ -783,55 +774,38 @@ class _CookModeScreenState extends State<CookModeScreen>
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(
                 value: (_currentStep + 1) / _steps.length,
-                backgroundColor: colorScheme.surfaceContainerLow,
-                color: colorScheme.onSurface,
+                backgroundColor: cook.cookSurfaceDim,
+                color: cook.cookProgress,
               ),
             ),
           ),
           const SizedBox(height: 32),
 
-          // Step text
+          // Step text — current step never renders with completed visuals.
+          // Completed styling lives in StepNavigator pills for non-current
+          // indices; see cmp-2 AC3 + cmp-4 AC5.
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: isCompleted
-                  ? appColors.success.withValues(alpha: 0.15)
-                  : colorScheme.surfaceContainerLow,
+              color: cook.cookSurfaceDim,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isCompleted ? appColors.success : colorScheme.primaryContainer,
-              ),
+              border: Border.all(color: cook.cookDivider),
             ),
-            child: Column(
-              children: [
-                // Completed checkmark
-                if (isCompleted) ...[
-                  Icon(Icons.check_circle,
-                      color: appColors.success, size: 32),
-                  const SizedBox(height: 16),
-                ],
-
-                // Instruction text
-                Text(
-                  step,
-                  style: TextStyle(
-                    fontSize: 24,
-                    height: 1.5,
-                    color: isCompleted
-                        ? colorScheme.onSurface.withValues(alpha: 0.6)
-                        : colorScheme.onSurface,
-                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+            child: Text(
+              step,
+              style: TextStyle(
+                fontSize: 24,
+                height: 1.5,
+                color: cook.cookOnSurface,
+              ),
+              textAlign: TextAlign.center,
             ),
           ),
 
           // Inline timer button (if time detected)
-          if (timeMatch != null && !isCompleted) ...[
+          if (timeMatch != null) ...[
             const SizedBox(height: 24),
-            _buildInlineTimer(timeMatch, colorScheme),
+            _buildInlineTimer(timeMatch, cook),
           ],
 
           // Swipe hint
@@ -840,13 +814,13 @@ class _CookModeScreenState extends State<CookModeScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.swipe, size: 16,
-                  color: colorScheme.onSurface.withValues(alpha: 0.4)),
+                  color: cook.cookOnSurface.withValues(alpha: 0.4)),
               const SizedBox(width: 8),
               Text(
                 'Swipe left/right to navigate',
                 style: TextStyle(
                   fontSize: 12,
-                  color: colorScheme.onSurface.withValues(alpha: 0.4),
+                  color: cook.cookOnSurface.withValues(alpha: 0.4),
                 ),
               ),
             ],
@@ -856,7 +830,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     );
   }
 
-  Widget _buildInlineTimer(RegExpMatch match, ColorScheme colorScheme) {
+  Widget _buildInlineTimer(RegExpMatch match, CookModeTheme cook) {
     final value = int.parse(match.group(1)!);
     final unit = match.group(2)!.toLowerCase();
 
@@ -874,8 +848,8 @@ class _CookModeScreenState extends State<CookModeScreen>
       icon: const Icon(Icons.timer),
       label: Text('Set $value $unit timer'),
       style: OutlinedButton.styleFrom(
-        foregroundColor: colorScheme.tertiary,
-        side: BorderSide(color: colorScheme.tertiary),
+        foregroundColor: cook.cookTimer,
+        side: BorderSide(color: cook.cookTimer),
       ),
     );
   }
@@ -918,7 +892,7 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cook = context.cookModeTheme;
     final elapsed =
         DateTime.now().difference(widget.timer.startTime);
     final remaining = widget.timer.duration - elapsed;
@@ -935,7 +909,7 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: colorScheme.onSurface.withValues(alpha: 0.3),
+              color: cook.cookOnSurface.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -947,7 +921,7 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
+              color: cook.cookOnSurface,
             ),
           ),
           const SizedBox(height: 16),
@@ -958,7 +932,7 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
             style: TextStyle(
               fontSize: 72,
               fontWeight: FontWeight.w700,
-              color: colorScheme.tertiary,
+              color: cook.cookTimer,
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
@@ -973,10 +947,10 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
                   icon: const Icon(Icons.close),
                   label: const Text('Cancel Timer'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: colorScheme.onSurface,
+                    foregroundColor: cook.cookOnSurface,
                     side: BorderSide(
                         color:
-                            colorScheme.onSurface.withValues(alpha: 0.5)),
+                            cook.cookOnSurface.withValues(alpha: 0.5)),
                     minimumSize: const Size.fromHeight(48),
                   ),
                 ),
@@ -988,8 +962,8 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
                   icon: const Icon(Icons.replay),
                   label: const Text('Restart'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: colorScheme.tertiary,
-                    foregroundColor: colorScheme.onSurface,
+                    backgroundColor: cook.cookTimer,
+                    foregroundColor: cook.cookOnAccent,
                     minimumSize: const Size.fromHeight(48),
                   ),
                 ),
