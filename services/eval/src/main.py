@@ -13,7 +13,7 @@ from src.runner import EvalRunner
 
 console = Console()
 
-ALL_SUITES = ["ocr", "recipe_extraction", "ingredient_matching", "recipe_parse", "chat_agent"]
+ALL_SUITES = ["ocr", "recipe_extraction", "recipe_parse", "chat_agent"]
 
 
 @click.group()
@@ -296,7 +296,7 @@ def report(
 
 
 @cli.command("add-case")
-@click.option("--suite", "-s", type=click.Choice(["ocr", "recipe_extraction", "ingredient_matching"]), required=True, help="Suite to add case to")
+@click.option("--suite", "-s", type=click.Choice(["ocr", "recipe_extraction"]), required=True, help="Suite to add case to")
 @click.option("--id", "case_id", help="Case ID (auto-generated if not provided)")
 @click.option("--input", "-i", "input_path", required=True, help="Path to input file (image/HTML)")
 @click.option("--expected", "-x", help="Path to expected output file")
@@ -333,12 +333,9 @@ def add_case(
     if suite == "ocr":
         input_dest = suite_dir / "images" / input_file.name
         expected_dest = suite_dir / "expected" / f"{case_id}.md" if expected else None
-    elif suite == "recipe_extraction":
+    else:  # recipe_extraction
         input_dest = suite_dir / "html" / input_file.name
         expected_dest = suite_dir / "expected" / f"{case_id}.json" if expected else None
-    else:  # ingredient_matching
-        console.print("[yellow]For ingredient_matching, edit cases.yaml directly[/yellow]")
-        sys.exit(0)
 
     # Copy input file
     input_dest.parent.mkdir(parents=True, exist_ok=True)

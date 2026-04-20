@@ -102,9 +102,6 @@ class EvalRunner:
             elif suite == "recipe_extraction":
                 from src.evaluators.recipe_extraction_evaluator import RecipeExtractionEvaluator
                 self._evaluators[suite] = RecipeExtractionEvaluator(self.config)
-            elif suite == "ingredient_matching":
-                from src.evaluators.ingredient_matching_evaluator import IngredientMatchingEvaluator
-                self._evaluators[suite] = IngredientMatchingEvaluator(self.config)
             elif suite == "recipe_parse":
                 from src.evaluators.recipe_parse_evaluator import RecipeParseEvaluator
                 self._evaluators[suite] = RecipeParseEvaluator(self.config)
@@ -279,9 +276,6 @@ class EvalRunner:
                 field_acc >= thresholds.recipe_field_accuracy
                 and count_acc >= thresholds.recipe_count_accuracy
             )
-        elif suite == "ingredient_matching":
-            match_rate = metrics.get("exact_match_rate_avg", 0)
-            return match_rate >= thresholds.ingredient_match_rate
         elif suite == "recipe_parse":
             field_acc = metrics.get("field_accuracy_avg", 0)
             return field_acc >= thresholds.recipe_parse_pass_rate

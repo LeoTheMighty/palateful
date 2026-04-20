@@ -105,6 +105,12 @@ class ShoppingListListResponse(BaseModel):
 
 
 class GenerateShoppingListRequest(BaseModel):
-    """Request to generate a shopping list from a meal event."""
+    """Request to generate a shopping list from a meal event.
 
-    check_pantry: bool = True  # Whether to check pantry for existing items
+    Pantry cross-check was retired in
+    epic-ingredients-string-simplification; the schema carries no fields
+    and the endpoint rejects unknown fields (`extra="forbid"`) so stale
+    clients sending `check_pantry` see a 422 rather than a silent 201.
+    """
+
+    model_config = {"extra": "forbid"}

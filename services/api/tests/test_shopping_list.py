@@ -1620,8 +1620,8 @@ class TestGenerateFromMealEvent:
         )
         assert response.status_code == 400
 
-    def test_generate_success_no_pantry_check(self, client, mock_db, mock_user):
-        """Generates shopping list from recipe ingredients (no pantry check)."""
+    def test_generate_success(self, client, mock_db, mock_user):
+        """Generates shopping list from recipe ingredients."""
         ingredient = MockModel(
             id="ing-1", canonical_name="Flour", category="baking",
         )
@@ -1646,13 +1646,15 @@ class TestGenerateFromMealEvent:
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
-            json={"check_pantry": False},
+            json={},
         )
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Shopping for Sunday Brunch"
         assert len(data["items"]) == 1
         assert data["items"][0]["name"] == "Flour"
+        # Post-epic-ingredients-string-simplification: category is always None.
+        assert data["items"][0]["category"] is None
 
     def test_generate_skips_archived_ingredients(self, client, mock_db, mock_user):
         """Archived recipe ingredients are skipped."""
@@ -1679,91 +1681,76 @@ class TestGenerateFromMealEvent:
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
-            json={"check_pantry": False},
+            json={},
         )
         assert response.status_code == 201
         data = response.json()
         assert len(data["items"]) == 0
 
-    def test_generate_with_pantry_check(self, client, mock_db, mock_user):
-        """Items already in pantry with enough quantity are skipped."""
+    def test_generate_rejects_check_pantry_field(
+        self, client, mock_db, mock_user
+    ):
+        """Stale `check_pantry` field is rejected by Pydantic extra='forbid'
+        (epic-ingredients-string-simplification). Old clients that still
+        send it get a 422, not a silent 201 that ignores the flag."""
+        recipe = MockModel(
+            id="recipe-1", name="X",
+            ingredients=[],
+        )
+        event = MockMealEvent(
+            id="event-1", owner_id=str(mock_user.id),
+            recipe=recipe, shopping_list=None, pantry_id=None,
+            title="X",
+        )
+
+        from utils.models.meal_event import MealEvent
+
+        mock_db.set_find_by(MealEvent, event, id="event-1")
+
+        response = client.post(
+            "/v1/meal-events/event-1/shopping-list/generate",
+            json={"check_pantry": True},
+        )
+        assert response.status_code == 422
+
+    def test_generate_from_meal_event_ignores_pantry_stock(
+        self, client, mock_db, mock_user
+    ):
+        """Positive test that pantry cross-check is truly gone, not just
+        tests deleted. Pantry stocked with flour; meal event needs flour;
+        shopping list still gains a flour line item."""
         ingredient = MockModel(
-            id="ing-1", canonical_name="Flour", category="baking",
+            id="ing-flour", canonical_name="flour", category="baking",
         )
         recipe_ingredient = MockModel(
-            id="ri-1", ingredient_id="ing-1", ingredient=ingredient,
+            id="ri-1", ingredient_id="ing-flour", ingredient=ingredient,
             quantity_display=Decimal("2"), unit_display="cups",
             archived_at=None,
         )
         recipe = MockModel(
-            id="recipe-1", name="Cake",
+            id="recipe-1", name="Bread",
             ingredients=[recipe_ingredient],
-        )
-        pantry_ingredient = MockModel(
-            ingredient_id="ing-1",
-            quantity_display=Decimal("5"),
-            unit_display="cups",
         )
         event = MockMealEvent(
             id="event-1", owner_id=str(mock_user.id),
             recipe=recipe, shopping_list=None,
-            pantry_id="pantry-1", title="Birthday Cake",
+            pantry_id="pantry-1", title="Bread Night",
         )
 
         from utils.models.meal_event import MealEvent
 
         mock_db.set_find_by(MealEvent, event, id="event-1")
-        # Mock the pantry query
-        mock_db.db.query.return_value = MockQuery([pantry_ingredient])
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
-            json={"check_pantry": True},
+            json={},
         )
         assert response.status_code == 201
         data = response.json()
-        # Pantry has 5 cups, recipe needs 2 -> skip (enough in pantry)
-        assert len(data["items"]) == 0
-
-    def test_generate_pantry_partial_quantity(self, client, mock_db, mock_user):
-        """Partial pantry quantity results in reduced needed amount."""
-        ingredient = MockModel(
-            id="ing-1", canonical_name="Sugar", category="baking",
-        )
-        recipe_ingredient = MockModel(
-            id="ri-1", ingredient_id="ing-1", ingredient=ingredient,
-            quantity_display=Decimal("3"), unit_display="cups",
-            archived_at=None,
-        )
-        recipe = MockModel(
-            id="recipe-1", name="Cookies",
-            ingredients=[recipe_ingredient],
-        )
-        pantry_ingredient = MockModel(
-            ingredient_id="ing-1",
-            quantity_display=Decimal("1"),
-            unit_display="cups",
-        )
-        event = MockMealEvent(
-            id="event-1", owner_id=str(mock_user.id),
-            recipe=recipe, shopping_list=None,
-            pantry_id="pantry-1", title="Cookie Party",
-        )
-
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, event, id="event-1")
-        mock_db.db.query.return_value = MockQuery([pantry_ingredient])
-
-        response = client.post(
-            "/v1/meal-events/event-1/shopping-list/generate",
-            json={"check_pantry": True},
-        )
-        assert response.status_code == 201
-        data = response.json()
+        # Pantry flour is ignored — flour is still on the list.
         assert len(data["items"]) == 1
-        # 3 needed - 1 in pantry = 2 remaining
-        assert float(data["items"][0]["quantity"]) == 2.0
+        assert data["items"][0]["name"] == "flour"
+        assert data["items"][0]["already_have_quantity"] is None
 
     def test_generate_as_participant(self, client, mock_db, mock_user):
         """Participant can generate shopping list."""
@@ -1795,7 +1782,7 @@ class TestGenerateFromMealEvent:
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
-            json={"check_pantry": False},
+            json={},
         )
         assert response.status_code == 201
 

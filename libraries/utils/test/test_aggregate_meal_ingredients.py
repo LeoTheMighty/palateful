@@ -1,7 +1,10 @@
 """Unit tests for `aggregate_meal_ingredients`.
 
-The normalization layer is tested separately in test_unit_normalize.py —
-here we stub `normalize_unit_display` to isolate the dedupe/sum logic.
+Post-epic-ingredients-string-simplification: no dedup, one output row
+per input `recipe_ingredients` row, preserving component × ingredient
+order. The normalization layer is tested separately in
+test_unit_normalize.py — here we stub `normalize_unit_display` to
+isolate the flat-emission logic.
 """
 
 from __future__ import annotations
@@ -33,12 +36,7 @@ def session():
 
 @pytest.fixture(autouse=True)
 def stub_normalize(monkeypatch):
-    """Case-fold + trim as a stand-in for the real normalizer.
-
-    The real normalize path is exercised in test_unit_normalize.py. Here
-    we only care that `aggregate_meal_ingredients` uses whatever key the
-    normalizer returns, so a deterministic lowercase/trim is enough.
-    """
+    """Case-fold + trim as a stand-in for the real normalizer."""
 
     def _fake(raw, session, **_kwargs):
         if raw is None:
@@ -53,12 +51,10 @@ def _make_ingredient(
     *,
     ingredient_id=None,
     canonical_name="ingredient",
-    category="produce",
 ):
     return SimpleNamespace(
         id=ingredient_id or uuid.uuid4(),
         canonical_name=canonical_name,
-        category=category,
     )
 
 
@@ -106,109 +102,99 @@ def _make_meal(components):
 
 
 # ---------------------------------------------------------------------------
-# Happy path: same-unit merge
+# Positive: one row per recipe_ingredient, no dedup
 # ---------------------------------------------------------------------------
 
 
-def test_same_unit_merges_quantities(session):
-    olive = _make_ingredient(canonical_name="olive oil", category="oils")
+def test_aggregate_emits_one_row_per_recipe_ingredient_even_on_overlap(session):
+    """Two recipes each using olive oil → two rows, not one merged row."""
+    olive_a = _make_ingredient(canonical_name="olive oil")
+    olive_b = _make_ingredient(canonical_name="olive oil")
     r1 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("1"), unit="tbsp")]
+        ingredients=[_make_recipe_ingredient(ingredient=olive_a, quantity=Decimal("1"), unit="tbsp")]
     )
     r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("1"), unit="Tbsp")]
+        ingredients=[_make_recipe_ingredient(ingredient=olive_b, quantity=Decimal("1"), unit="tbsp")]
     )
 
     out = aggregate_meal_ingredients(_make_meal([r1, r2]), session)
 
-    assert len(out) == 1
-    row = out[0]
-    assert row.ingredient_id == olive.id
-    assert row.ingredient_name == "olive oil"
-    assert row.category == "oils"
-    assert row.summed_quantity == Decimal("2")
-    assert row.normalized_unit == "tbsp"
-    assert row.contributing_recipe_ids == [r1.id, r2.id]
+    assert len(out) == 2
+    assert [row.ingredient_name for row in out] == ["olive oil", "olive oil"]
+    assert [row.summed_quantity for row in out] == [Decimal("1"), Decimal("1")]
+    # Each row's `category` is always None post-epic — the column is
+    # being dropped and no handler reads it anymore.
+    assert all(row.category is None for row in out)
 
 
-def test_summed_quantity_preserves_decimal_precision(session):
-    salt = _make_ingredient(canonical_name="salt")
+def test_aggregate_preserves_component_then_ingredient_order(session):
+    """Fixture with 3 components × 2 ingredients each; order matches concat."""
+    c1_salt = _make_ingredient(canonical_name="salt")
+    c1_pepper = _make_ingredient(canonical_name="pepper")
+    c2_sugar = _make_ingredient(canonical_name="sugar")
+    c2_flour = _make_ingredient(canonical_name="flour")
+    c3_oil = _make_ingredient(canonical_name="olive oil")
+    c3_garlic = _make_ingredient(canonical_name="garlic")
+
     r1 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=salt, quantity=Decimal("0.25"), unit="tsp")]
+        ingredients=[
+            _make_recipe_ingredient(ingredient=c1_salt, unit="tsp"),
+            _make_recipe_ingredient(ingredient=c1_pepper, unit="tsp"),
+        ]
     )
     r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=salt, quantity=Decimal("0.5"), unit="tsp")]
+        ingredients=[
+            _make_recipe_ingredient(ingredient=c2_sugar, unit="tbsp"),
+            _make_recipe_ingredient(ingredient=c2_flour, unit="cup"),
+        ]
     )
     r3 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=salt, quantity=Decimal("0.125"), unit="tsp")]
+        ingredients=[
+            _make_recipe_ingredient(ingredient=c3_oil, unit="tbsp"),
+            _make_recipe_ingredient(ingredient=c3_garlic, unit="clove"),
+        ]
     )
 
     out = aggregate_meal_ingredients(_make_meal([r1, r2, r3]), session)
 
-    assert out[0].summed_quantity == Decimal("0.875")
+    assert [row.ingredient_name for row in out] == [
+        "salt", "pepper", "sugar", "flour", "olive oil", "garlic",
+    ]
 
 
-# ---------------------------------------------------------------------------
-# Cross-unit NOT merged
-# ---------------------------------------------------------------------------
+def test_len_equals_sum_of_live_ingredients(session):
+    """len(result) == sum(len(r.ingredients) for r in components)."""
+    ingredient = _make_ingredient(canonical_name="thing")
+    r1 = _make_recipe(
+        ingredients=[_make_recipe_ingredient(ingredient=ingredient) for _ in range(3)]
+    )
+    r2 = _make_recipe(
+        ingredients=[_make_recipe_ingredient(ingredient=ingredient) for _ in range(5)]
+    )
+
+    out = aggregate_meal_ingredients(_make_meal([r1, r2]), session)
+
+    assert len(out) == 8
 
 
-def test_cross_unit_keeps_separate_rows(session):
+def test_contributing_recipe_ids_has_exactly_one_element_per_row(session):
+    """Back-compat: downstream consumers still iterate contributing_recipe_ids."""
     olive = _make_ingredient(canonical_name="olive oil")
-    r1 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("1"), unit="tbsp")]
-    )
-    r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("15"), unit="ml")]
+    r = _make_recipe(
+        ingredients=[
+            _make_recipe_ingredient(ingredient=olive, quantity=Decimal("1"), unit="tbsp"),
+            _make_recipe_ingredient(ingredient=olive, quantity=Decimal("2"), unit="tbsp"),
+        ]
     )
 
-    out = aggregate_meal_ingredients(_make_meal([r1, r2]), session)
+    out = aggregate_meal_ingredients(_make_meal([r]), session)
 
     assert len(out) == 2
-    units = {row.normalized_unit for row in out}
-    assert units == {"tbsp", "ml"}
-    for row in out:
-        assert row.summed_quantity == (Decimal("1") if row.normalized_unit == "tbsp" else Decimal("15"))
+    assert [row.contributing_recipe_ids for row in out] == [[r.id], [r.id]]
 
 
 # ---------------------------------------------------------------------------
-# Null / empty unit
-# ---------------------------------------------------------------------------
-
-
-def test_null_unit_dedupes_on_empty_key(session):
-    eggs = _make_ingredient(canonical_name="eggs", category="dairy")
-    r1 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=eggs, quantity=Decimal("2"), unit="")]
-    )
-    r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=eggs, quantity=Decimal("2"), unit="")]
-    )
-
-    out = aggregate_meal_ingredients(_make_meal([r1, r2]), session)
-
-    assert len(out) == 1
-    assert out[0].summed_quantity == Decimal("4")
-    assert out[0].normalized_unit == ""
-
-
-def test_null_unit_distinct_from_specified_unit(session):
-    eggs = _make_ingredient(canonical_name="eggs")
-    # Unit-specified eggs and unit-less eggs should NOT merge — different keys.
-    r1 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=eggs, quantity=Decimal("2"), unit="")]
-    )
-    r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=eggs, quantity=Decimal("1"), unit="cup")]
-    )
-
-    out = aggregate_meal_ingredients(_make_meal([r1, r2]), session)
-
-    assert len(out) == 2
-
-
-# ---------------------------------------------------------------------------
-# Zero-ingredient components
+# Edge: empty / archived / missing recipes
 # ---------------------------------------------------------------------------
 
 
@@ -226,7 +212,6 @@ def test_zero_ingredient_component_skipped_cleanly(session, caplog):
 
     assert len(out) == 1
     assert out[0].ingredient_id == olive.id
-    # Not an error/warning — just a debug trace.
     assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
 
@@ -245,14 +230,9 @@ def test_component_with_only_archived_ingredients_treated_as_empty(session):
     assert out == []
 
 
-# ---------------------------------------------------------------------------
-# Archived components (skip + warn)
-# ---------------------------------------------------------------------------
-
-
 def test_archived_component_skipped_with_warning(session, caplog):
     live_salt = _make_ingredient(canonical_name="salt")
-    archived_salt = _make_ingredient(canonical_name="salt")  # different id so we can assert exclusion
+    archived_salt = _make_ingredient(canonical_name="salt")
     archived_recipe = _make_recipe(
         archived=True,
         ingredients=[
@@ -272,7 +252,6 @@ def test_archived_component_skipped_with_warning(session, caplog):
 
     assert len(out) == 1
     assert out[0].ingredient_id == live_salt.id
-    assert out[0].summed_quantity == Decimal("1")
     assert any(
         "archived" in record.getMessage().lower()
         and "skipping" in record.getMessage().lower()
@@ -306,58 +285,12 @@ def test_null_recipe_relationship_skipped_silently(session, caplog):
         ]
     )
     meal = _make_meal([live_recipe])
-    # Insert a component whose recipe relationship is unexpectedly null.
     meal.components.insert(0, SimpleNamespace(recipe=None, recipe_id=uuid.uuid4()))
 
     with caplog.at_level(logging.DEBUG, logger="utils.services.meal_service"):
         out = aggregate_meal_ingredients(meal, session)
 
     assert len(out) == 1
-
-
-# ---------------------------------------------------------------------------
-# Contributing recipe ids ordering
-# ---------------------------------------------------------------------------
-
-
-def test_contributing_recipe_ids_preserve_insertion_order(session):
-    olive = _make_ingredient(canonical_name="olive oil")
-    r1 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("1"), unit="tbsp")]
-    )
-    r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("2"), unit="tbsp")]
-    )
-    r3 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("3"), unit="tbsp")]
-    )
-
-    out = aggregate_meal_ingredients(_make_meal([r1, r2, r3]), session)
-
-    assert out[0].contributing_recipe_ids == [r1.id, r2.id, r3.id]
-
-
-def test_contributing_recipe_ids_deduped(session):
-    """A single recipe with the same ingredient listed twice at the same
-    unit still counts as one contributing recipe."""
-    olive = _make_ingredient(canonical_name="olive oil")
-    r = _make_recipe(
-        ingredients=[
-            _make_recipe_ingredient(ingredient=olive, quantity=Decimal("1"), unit="tbsp"),
-            _make_recipe_ingredient(ingredient=olive, quantity=Decimal("2"), unit="tbsp"),
-        ]
-    )
-
-    out = aggregate_meal_ingredients(_make_meal([r]), session)
-
-    assert len(out) == 1
-    assert out[0].contributing_recipe_ids == [r.id]
-    assert out[0].summed_quantity == Decimal("3")
-
-
-# ---------------------------------------------------------------------------
-# Null ingredient relationship
-# ---------------------------------------------------------------------------
 
 
 def test_null_ingredient_relationship_skipped(session):
@@ -383,22 +316,19 @@ def test_null_ingredient_relationship_skipped(session):
 
 
 # ---------------------------------------------------------------------------
-# None quantity tolerated (defensive)
+# Null quantity tolerated (defensive)
 # ---------------------------------------------------------------------------
 
 
 def test_none_quantity_treated_as_zero(session):
     olive = _make_ingredient(canonical_name="olive oil")
-    r1 = _make_recipe(
+    r = _make_recipe(
         ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=None, unit="tbsp")]
     )
-    r2 = _make_recipe(
-        ingredients=[_make_recipe_ingredient(ingredient=olive, quantity=Decimal("2"), unit="tbsp")]
-    )
 
-    out = aggregate_meal_ingredients(_make_meal([r1, r2]), session)
+    out = aggregate_meal_ingredients(_make_meal([r]), session)
 
-    assert out[0].summed_quantity == Decimal("2")
+    assert out[0].summed_quantity == Decimal("0")
 
 
 # ---------------------------------------------------------------------------

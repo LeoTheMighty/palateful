@@ -15,7 +15,6 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.tasks.import_tasks.create_recipe_task import create_recipe_task
 from utils.tasks.import_tasks.extract_recipe_task import extract_task
-from utils.tasks.import_tasks.match_ingredients_task import match_ingredients_task
 from utils.tasks.import_tasks.parse_source_task import parse_source_task
 
 
@@ -27,10 +26,6 @@ def _dispatch_extract(item: ImportItem, job: ImportJob, user_id: str) -> None:
     extract_task.delay(item_ids=[str(item.id)], user_id=user_id)
 
 
-def _dispatch_match(item: ImportItem, job: ImportJob, user_id: str) -> None:
-    match_ingredients_task.delay(item_id=str(item.id), user_id=user_id)
-
-
 def _dispatch_create(item: ImportItem, job: ImportJob, user_id: str) -> None:
     create_recipe_task.delay(item_id=str(item.id), user_id=user_id)
 
@@ -38,10 +33,12 @@ def _dispatch_create(item: ImportItem, job: ImportJob, user_id: str) -> None:
 # Stage marker → (task_name, next_item_status, dispatcher)
 #
 # None and unknown values fall through to the full-restart entry at the end
-# (see _lookup_stage below).
+# (see _lookup_stage below). STAGE_MATCHED is retained for backward compat
+# with pre-epic-ingredients-string-simplification rows whose
+# `last_successful_stage` still reads "matched" — those resume at create.
 _STAGE_PLAN: dict[str | None, tuple[str, str, callable]] = {
     STAGE_PARSED: ("extract_recipe_task", "extracting", _dispatch_extract),
-    STAGE_EXTRACTED: ("match_ingredients_task", "matching", _dispatch_match),
+    STAGE_EXTRACTED: ("create_recipe_task", "approved", _dispatch_create),
     STAGE_MATCHED: ("create_recipe_task", "approved", _dispatch_create),
 }
 

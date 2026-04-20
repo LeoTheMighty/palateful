@@ -1451,18 +1451,14 @@ class TestGetImportItem:
         assert data["created_recipe_id"] == recipe_id
         assert data["user_edits"] == {"name": "My Recipe"}
 
-    def test_get_import_item_annotates_pending_review_ingredients(
+    def test_get_import_item_does_not_emit_pending_review_ingredient(
         self, client, mock_db, mock_user
     ):
-        """riip-4: parsed_recipe ingredients with NULL match or pending canonical
-        gain pending_review_ingredient=true on the response."""
-        import uuid
+        """epic-ingredients-string-simplification: the pending_review_ingredient
+        annotation (riip-4) is retired. Responses must never include the key."""
         item_id = "test-item-id"
         job_id = "test-job-id"
         book_id = "test-book-id"
-        # Two matched ingredients (one pending, one not) + one with no match.
-        pending_id = str(uuid.uuid4())
-        clean_id = str(uuid.uuid4())
         item = MockImportItem(
             id=item_id,
             import_job_id=job_id,
@@ -1472,59 +1468,9 @@ class TestGetImportItem:
             parsed_recipe={
                 "name": "Pancakes",
                 "ingredients": [
-                    {"name": "butter", "matched_ingredient_id": pending_id},
-                    {"name": "flour", "matched_ingredient_id": clean_id},
-                    {"name": "newthing"},  # no matched_ingredient_id at all
-                ],
-            },
-            user_edits=None,
-            created_recipe_id=None,
-        )
-        job = MockImportJob(
-            id=job_id,
-            user_id=str(mock_user.id),
-            recipe_book_id=book_id,
-        )
-
-        from utils.models.import_item import ImportItem
-        from utils.models.import_job import ImportJob
-
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-
-        # Stub the batched ingredient query to return only the pending row.
-        mock_db.db.execute.return_value = MockExecuteResult(
-            [uuid.UUID(pending_id)]
-        )
-
-        response = client.get(f"/v1/import-items/{item_id}")
-        assert response.status_code == 200
-        ings = response.json()["parsed_recipe"]["ingredients"]
-        # Pending canonical → flag set.
-        assert ings[0].get("pending_review_ingredient") is True
-        # Already-reviewed canonical → flag omitted (Flutter treats null = false).
-        assert "pending_review_ingredient" not in ings[1]
-        # No matched_ingredient_id → flag set.
-        assert ings[2].get("pending_review_ingredient") is True
-
-    def test_get_import_item_skips_query_when_no_matched_ingredient_ids(
-        self, client, mock_db, mock_user
-    ):
-        """All ingredients with no match → skip the canonical query, all flagged."""
-        item_id = "test-item-id"
-        job_id = "test-job-id"
-        book_id = "test-book-id"
-        item = MockImportItem(
-            id=item_id,
-            import_job_id=job_id,
-            status="awaiting_review",
-            source_type="photo",
-            raw_data=None,
-            parsed_recipe={
-                "name": "X",
-                "ingredients": [
-                    {"name": "salt"},
-                    {"name": "pepper"},
+                    {"name": "butter"},
+                    {"name": "flour"},
+                    {"name": "newthing"},
                 ],
             },
             user_edits=None,
@@ -1545,8 +1491,8 @@ class TestGetImportItem:
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
         ings = response.json()["parsed_recipe"]["ingredients"]
-        assert ings[0].get("pending_review_ingredient") is True
-        assert ings[1].get("pending_review_ingredient") is True
+        for ing in ings:
+            assert "pending_review_ingredient" not in ing
 
     def test_get_import_item_surfaces_confidence_fields(
         self, client, mock_db, mock_user
@@ -3058,10 +3004,13 @@ class TestRetryImportItem:
             item_ids=[item_id], user_id=str(mock_user.id)
         )
 
-    @patch("api.v1.import_job.retry_import_item.match_ingredients_task")
-    def test_retry_extracted_stage_dispatches_match_task(
-        self, mock_match, client, mock_db, mock_user
+    @patch("api.v1.import_job.retry_import_item.create_recipe_task")
+    def test_retry_extracted_stage_dispatches_create_recipe_task(
+        self, mock_create, client, mock_db, mock_user
     ):
+        """Post-epic-ingredients-string-simplification: STAGE_EXTRACTED
+        routes straight to create_recipe_task (the former match stage is
+        retired)."""
         item, _job, item_id = self._setup_retryable_item(
             mock_db, mock_user, last_successful_stage="extracted"
         )
@@ -3069,11 +3018,11 @@ class TestRetryImportItem:
         response = client.post(f"/v1/import-items/{item_id}/retry")
         assert response.status_code == 200
         data = response.json()
-        assert data["dispatched_task"] == "match_ingredients_task"
+        assert data["dispatched_task"] == "create_recipe_task"
         assert data["resumed_from_stage"] == "extracted"
-        assert data["status"] == "matching"
-        assert item.status == "matching"
-        mock_match.delay.assert_called_once_with(
+        assert data["status"] == "approved"
+        assert item.status == "approved"
+        mock_create.delay.assert_called_once_with(
             item_id=item_id, user_id=str(mock_user.id)
         )
 

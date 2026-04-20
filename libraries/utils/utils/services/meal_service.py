@@ -63,11 +63,13 @@ class ReorderMismatchError(MealServiceError):
 class AggregatedIngredient:
     """One output row of `aggregate_meal_ingredients`.
 
-    Dedupe key is `(ingredient_id, normalized_unit)` — two components
-    whose ingredient + normalized unit both match collapse into one row
-    with `summed_quantity` totaled and `contributing_recipe_ids` merged.
-    Cross-unit variants (`1 tbsp` + `15 ml` olive oil) deliberately do
-    NOT merge in v1.
+    Post-`epic-ingredients-string-simplification`: one row per
+    `recipe_ingredients` row across all components, no dedup, no summing.
+    Duplicate (ingredient_name, unit) pairs from overlapping recipes
+    appear as adjacent distinct entries — the shopping-list UX accepts
+    "olive oil × 2" as a first-class outcome. `contributing_recipe_ids`
+    therefore always has exactly one element, retained for back-compat
+    with downstream consumers (`AddMealEventToShoppingList`, etc.).
     """
 
     ingredient_id: uuid.UUID
@@ -82,28 +84,23 @@ def aggregate_meal_ingredients(
     meal: Meal,
     session: Session,
 ) -> list[AggregatedIngredient]:
-    """Expand a Meal into a list of summed-and-deduped ingredients.
+    """Expand a Meal into a flat list of per-component ingredients.
 
-    Walks every component recipe's non-archived ingredients, normalizes
-    each ingredient's `unit_display` via `normalize_unit_display` (the
-    `unit_aliases` cache is live as of riip-1), and sums quantities on
-    the dedupe key `(ingredient_id, normalized_unit)`.
+    Walks every component recipe's non-archived ingredients in stable
+    `meal.components` × `recipe.ingredients` order and emits one
+    `AggregatedIngredient` per row. No dedup, no summing — duplicates
+    across recipes stay adjacent. `unit_display` is still run through
+    `normalize_unit_display` so downstream consumers see canonical unit
+    tokens; `category` is always None (the `ingredients.category` column
+    is being dropped in str-ing-4 and never served through this path
+    again — see `epic-ingredients-string-simplification`).
 
     Components whose recipe is archived or whose book is archived are
     skipped with a warning log. Components whose `recipe` relationship
     is unexpectedly null are skipped silently. Components with zero
     non-archived ingredients are skipped at debug level.
-
-    Ingredients with no unit (empty string) dedupe under a distinct key
-    from unit-specified variants — `(ingredient_id, "")` is separate
-    from `(ingredient_id, "tbsp")`, consistent with how the recipe path
-    handles raw string units today.
-
-    Output preserves first-seen order so UI rendering is stable. Inside
-    each bucket, `contributing_recipe_ids` preserves insertion order.
     """
-    aggregates: dict[tuple[uuid.UUID, str | None], AggregatedIngredient] = {}
-    key_order: list[tuple[uuid.UUID, str | None]] = []
+    rows: list[AggregatedIngredient] = []
 
     for component in meal.components:
         recipe = component.recipe
@@ -142,27 +139,21 @@ def aggregate_meal_ingredients(
             normalized_unit = normalize_unit_display(
                 recipe_ingredient.unit_display, session
             )
-            key = (ingredient.id, normalized_unit)
             raw_quantity = recipe_ingredient.quantity_display
             quantity = Decimal(raw_quantity) if raw_quantity is not None else Decimal("0")
 
-            if key in aggregates:
-                existing = aggregates[key]
-                existing.summed_quantity = existing.summed_quantity + quantity
-                if recipe.id not in existing.contributing_recipe_ids:
-                    existing.contributing_recipe_ids.append(recipe.id)
-            else:
-                aggregates[key] = AggregatedIngredient(
+            rows.append(
+                AggregatedIngredient(
                     ingredient_id=ingredient.id,
                     ingredient_name=ingredient.canonical_name,
-                    category=ingredient.category,
+                    category=None,
                     summed_quantity=quantity,
                     normalized_unit=normalized_unit,
                     contributing_recipe_ids=[recipe.id],
                 )
-                key_order.append(key)
+            )
 
-    return [aggregates[k] for k in key_order]
+    return rows
 
 
 @dataclass

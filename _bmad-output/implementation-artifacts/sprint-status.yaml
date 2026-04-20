@@ -798,7 +798,7 @@ development_status:
   # formal rescope note on epic-review-import-ingredient-polish).
   epic-ingredients-string-simplification: in-progress
   str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: done
-  str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: backlog
+  str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: in-progress
   str-ing-3-backend-delete-ingredients-endpoints-and-router: backlog
   str-ing-4-backend-schema-migration-and-model-cleanup: backlog
   str-ing-5-planning-artifacts-and-rescope-review-import-ingredient-polish: backlog

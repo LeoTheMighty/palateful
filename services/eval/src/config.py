@@ -20,7 +20,6 @@ class ThresholdConfig:
     # right number of recipes on multi_recipe-tagged cases; aggregated
     # as a mean across the suite (1.0 per case on exact count match).
     recipe_count_accuracy: float = 0.80
-    ingredient_match_rate: float = 0.85
     recipe_parse_pass_rate: float = 0.80
     chat_agent_pass_rate: float = 0.80
 
@@ -41,12 +40,6 @@ class MetricsConfig:
         "instruction_similarity",
         "cost_cents",
         "latency_ms",
-    ])
-    ingredient_matching: list[str] = field(default_factory=lambda: [
-        "exact_match_rate",
-        "fuzzy_match_rate",
-        "false_positive_rate",
-        "confidence_calibration",
     ])
 
 
@@ -131,7 +124,6 @@ def load_config(
     metrics = MetricsConfig(
         ocr=metrics_yaml.get("ocr", default_metrics.ocr),
         recipe_extraction=metrics_yaml.get("recipe_extraction", default_metrics.recipe_extraction),
-        ingredient_matching=metrics_yaml.get("ingredient_matching", default_metrics.ingredient_matching),
     )
 
     # Build thresholds config
@@ -141,7 +133,6 @@ def load_config(
         ocr_word_accuracy=thresholds_yaml.get("ocr_word_accuracy", 0.90),
         recipe_field_accuracy=thresholds_yaml.get("recipe_field_accuracy", 0.90),
         recipe_count_accuracy=thresholds_yaml.get("recipe_count_accuracy", 0.80),
-        ingredient_match_rate=thresholds_yaml.get("ingredient_match_rate", 0.85),
         recipe_parse_pass_rate=thresholds_yaml.get("recipe_parse_pass_rate", 0.80),
         chat_agent_pass_rate=thresholds_yaml.get("chat_agent_pass_rate", 0.80),
     )

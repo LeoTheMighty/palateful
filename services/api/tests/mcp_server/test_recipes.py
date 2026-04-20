@@ -1,8 +1,12 @@
-"""Tests for MCP recipe tools (MCP.3)."""
+"""Tests for MCP recipe tools (MCP.3).
 
-import json
+Post-`epic-ingredients-string-simplification`: MCP recipe create/update
+tools no longer consult a pg_trgm matcher. Every ingredient name inserts
+a fresh `ingredients` row via `_create_ingredient_for_name`. These tests
+assert that contract directly.
+"""
+
 from decimal import Decimal
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,247 +30,30 @@ def mcp_context():
         current_database.reset(dtok)
 
 
-class _FakeSearchEndpointHit:
-    """Replaces SearchIngredients when we want a strong match."""
+class TestCreateIngredientForName:
+    """`_create_ingredient_for_name` stages a fresh row, no matching."""
 
-    def __init__(self, database=None, user=None):
-        pass
-
-    def run(self, *, q, limit):
-        return {
-            "success": True,
-            "data": {
-                "items": [
-                    SimpleNamespace(
-                        id="existing-ing",
-                        canonical_name=q,
-                        category=None,
-                        similarity=0.95,
-                    )
-                ]
-            },
-            "status": 200,
-        }
-
-
-class _FakeSearchEndpointWeak:
-    def __init__(self, database=None, user=None):
-        pass
-
-    def run(self, *, q, limit):
-        return {
-            "success": True,
-            "data": {
-                "items": [
-                    SimpleNamespace(
-                        id="existing-ing",
-                        canonical_name=q,
-                        category=None,
-                        similarity=0.4,
-                    )
-                ]
-            },
-            "status": 200,
-        }
-
-
-class _FakeCreateIngredient:
-    """Replaces CreateIngredient — returns a fabricated ingredient id."""
-
-    # Mirror the real nested Params so `CreateIngredient.Params(...)` keeps working
-    # after the class is monkeypatched.
-    class Params:
-        def __init__(self, canonical_name, **kwargs):
-            self.canonical_name = canonical_name
-
-    def __init__(self, database=None, user=None):
-        pass
-
-    def run(self, *, params):
-        return {
-            "success": True,
-            "data": SimpleNamespace(
-                id="new-ing",
-                canonical_name=params.canonical_name,
-                category=None,
-                default_unit=None,
-                pending_review=True,
-                created_at=None,
-            ),
-            "status": 201,
-        }
-
-
-class TestResolveIngredient:
-    def test_strong_match_returns_existing_id(self, mcp_context):
+    def test_strips_whitespace_and_lowercases(self, mcp_context):
         _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
+        from mcp_server.tools.recipes import _create_ingredient_for_name
 
-        with patch("mcp_server.tools.recipes.SearchIngredients", _FakeSearchEndpointHit):
-            result = _resolve_ingredient("tomato", database, user=MagicMock())
-        assert result == "existing-ing"
+        with patch("mcp_server.tools.recipes.Ingredient") as MockIngredient:
+            inst = MagicMock()
+            inst.id = "new-ing-id"
+            MockIngredient.return_value = inst
+            result = _create_ingredient_for_name("  OLIVE Oil  ", database)
 
-    def test_weak_match_creates_new_ingredient(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        with patch(
-            "mcp_server.tools.recipes.SearchIngredients", _FakeSearchEndpointWeak
-        ), patch(
-            "mcp_server.tools.recipes.CreateIngredient", _FakeCreateIngredient
-        ):
-            result = _resolve_ingredient("exotic thing", database, user=MagicMock())
-        assert result == "new-ing"
-
-    def test_no_results_creates_new(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        class _EmptySearch:
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, q, limit):
-                return {"success": True, "data": {"items": []}, "status": 200}
-
-        with patch("mcp_server.tools.recipes.SearchIngredients", _EmptySearch), patch(
-            "mcp_server.tools.recipes.CreateIngredient", _FakeCreateIngredient
-        ):
-            result = _resolve_ingredient("brand new", database, user=MagicMock())
-        assert result == "new-ing"
+        MockIngredient.assert_called_once_with(canonical_name="olive oil")
+        database.db.add.assert_called_once_with(inst)
+        database.db.flush.assert_called_once()
+        assert result == "new-ing-id"
 
     def test_empty_name_raises(self, mcp_context):
         _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
+        from mcp_server.tools.recipes import _create_ingredient_for_name
 
-        with pytest.raises(ValueError):
-            _resolve_ingredient("   ", database, user=MagicMock())
-
-    def test_search_failure_falls_back_to_create(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        class _FailingSearch:
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, q, limit):
-                return {"success": False, "error_message": "db down", "status": 500}
-
-        with patch("mcp_server.tools.recipes.SearchIngredients", _FailingSearch), patch(
-            "mcp_server.tools.recipes.CreateIngredient", _FakeCreateIngredient
-        ):
-            result = _resolve_ingredient("x", database, user=MagicMock())
-        assert result == "new-ing"
-
-    def test_dict_style_search_result_is_supported(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        class _DictSearch:
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, q, limit):
-                return {
-                    "success": True,
-                    "data": {
-                        "items": [{"id": "dict-ing", "similarity": 0.9}]
-                    },
-                    "status": 200,
-                }
-
-        with patch("mcp_server.tools.recipes.SearchIngredients", _DictSearch):
-            result = _resolve_ingredient("x", database, user=MagicMock())
-        assert result == "dict-ing"
-
-    def test_dict_style_create_result_is_supported(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        class _EmptySearch:
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, q, limit):
-                return {"success": True, "data": {"items": []}, "status": 200}
-
-        class _DictCreate:
-            class Params:
-                def __init__(self, canonical_name, **kwargs):
-                    self.canonical_name = canonical_name
-
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, params):
-                return {
-                    "success": True,
-                    "data": {"id": "created-dict"},
-                    "status": 201,
-                }
-
-        with patch("mcp_server.tools.recipes.SearchIngredients", _EmptySearch), patch(
-            "mcp_server.tools.recipes.CreateIngredient", _DictCreate
-        ):
-            result = _resolve_ingredient("x", database, user=MagicMock())
-        assert result == "created-dict"
-
-    def test_create_returns_no_id_raises(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        class _EmptySearch:
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, q, limit):
-                return {"success": True, "data": {"items": []}, "status": 200}
-
-        class _NoIdCreate:
-            class Params:
-                def __init__(self, canonical_name, **kwargs):
-                    self.canonical_name = canonical_name
-
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, params):
-                return {"success": True, "data": {}, "status": 201}
-
-        with patch("mcp_server.tools.recipes.SearchIngredients", _EmptySearch), patch(
-            "mcp_server.tools.recipes.CreateIngredient", _NoIdCreate
-        ):
-            with pytest.raises(RuntimeError, match="no id"):
-                _resolve_ingredient("x", database, user=MagicMock())
-
-    def test_create_failure_raises(self, mcp_context):
-        _, database = mcp_context
-        from mcp_server.tools.recipes import _resolve_ingredient
-
-        class _EmptySearch:
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, q, limit):
-                return {"success": True, "data": {"items": []}, "status": 200}
-
-        class _FailCreate:
-            class Params:
-                def __init__(self, canonical_name, **kwargs):
-                    self.canonical_name = canonical_name
-
-            def __init__(self, database=None, user=None):
-                pass
-
-            def run(self, *, params):
-                return {"success": False, "error_message": "nope", "status": 500}
-
-        with patch("mcp_server.tools.recipes.SearchIngredients", _EmptySearch), patch(
-            "mcp_server.tools.recipes.CreateIngredient", _FailCreate
-        ):
-            with pytest.raises(RuntimeError, match="nope"):
-                _resolve_ingredient("x", database, user=MagicMock())
+        with pytest.raises(ValueError, match="cannot be empty"):
+            _create_ingredient_for_name("   ", database)
 
 
 class TestSimpleRecipeTools:
@@ -358,18 +145,25 @@ class TestSimpleRecipeTools:
 
 
 class TestCreateRecipe:
-    def test_creates_with_ingredient_name_resolution(self, mcp_context):
+    def test_mcp_create_recipe_always_creates_new_ingredient_rows(
+        self, mcp_context
+    ):
+        """Every MCP `create_recipe` call stages a fresh row per name —
+        no find-or-create, no cross-recipe identity (str-ing-2)."""
         from mcp_server.tools.recipes import create_recipe
 
         with patch(
-            "mcp_server.tools.recipes._resolve_ingredient",
-            return_value="resolved-ing-id",
-        ), patch("mcp_server.tools.recipes.call_endpoint") as mock_call:
+            "mcp_server.tools.recipes._create_ingredient_for_name",
+            side_effect=["fresh-ing-1", "fresh-ing-2"],
+        ) as mock_create, patch(
+            "mcp_server.tools.recipes.call_endpoint"
+        ) as mock_call:
             mock_call.return_value = '{"id":"new-recipe"}'
             result = create_recipe(
                 name="Pasta",
                 ingredients=[
                     {"name": "tomato", "quantity": "2", "unit": "cup"},
+                    {"name": "tomato", "quantity": "1", "unit": "cup"},
                 ],
                 steps=[{"instruction": "Boil water"}],
                 prep_time=5,
@@ -379,13 +173,12 @@ class TestCreateRecipe:
             )
 
         assert result == '{"id":"new-recipe"}'
-        kwargs = mock_call.call_args.kwargs
-        assert kwargs["book_id"] == "default-book"
-        params = kwargs["params"]
-        assert params.name == "Pasta"
-        assert params.ingredients[0].ingredient_id == "resolved-ing-id"
+        # Both entries even though they share a name — no dedup.
+        assert mock_create.call_count == 2
+        params = mock_call.call_args.kwargs["params"]
+        assert params.ingredients[0].ingredient_id == "fresh-ing-1"
+        assert params.ingredients[1].ingredient_id == "fresh-ing-2"
         assert params.ingredients[0].quantity == Decimal("2")
-        assert params.ingredients[0].unit == "cup"
         assert params.steps[0].instruction == "Boil water"
 
     def test_invalid_ingredient_missing_name(self, mcp_context):
@@ -437,7 +230,8 @@ class TestCreateRecipe:
         from mcp_server.tools.recipes import create_recipe
 
         with patch(
-            "mcp_server.tools.recipes._resolve_ingredient", return_value="i1"
+            "mcp_server.tools.recipes._create_ingredient_for_name",
+            return_value="i1",
         ), pytest.raises(ValueError, match="Invalid quantity"):
             create_recipe(
                 name="X",
@@ -468,11 +262,14 @@ class TestUpdateRecipe:
         assert params.servings is None
         assert params.ingredients is None
 
-    def test_update_with_ingredient_resolution(self, mcp_context):
+    def test_mcp_update_recipe_always_creates_new_ingredient_rows(
+        self, mcp_context
+    ):
         from mcp_server.tools.recipes import update_recipe
 
         with patch(
-            "mcp_server.tools.recipes._resolve_ingredient", return_value="ing-1"
+            "mcp_server.tools.recipes._create_ingredient_for_name",
+            return_value="ing-1",
         ), patch("mcp_server.tools.recipes.call_endpoint") as mock_call:
             mock_call.return_value = "{}"
             update_recipe(

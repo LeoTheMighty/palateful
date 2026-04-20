@@ -147,11 +147,14 @@ def test_create_recipe_task_normalizes_unit_display(monkeypatch):
 
     calls = _stub_normalizer(monkeypatch, cr_mod)
 
-    # Stub the ingredient resolver so the test doesn't touch resolve_ingredient.
-    def _fake_resolve(_database, **kwargs):
-        return SimpleNamespace(id="ing-id-1")
+    # Stub the Ingredient constructor so the test doesn't need a real DB
+    # session. Post-epic-ingredients-string-simplification the task
+    # instantiates a fresh Ingredient row per name and flushes it.
+    def _fake_ingredient(**kwargs):
+        inst = SimpleNamespace(id="ing-id-1", **kwargs)
+        return inst
 
-    monkeypatch.setattr(cr_mod, "resolve_ingredient", _fake_resolve)
+    monkeypatch.setattr(cr_mod, "Ingredient", _fake_ingredient)
 
     captured: list = []
 
@@ -171,7 +174,6 @@ def test_create_recipe_task_normalizes_unit_display(monkeypatch):
 
     fake_recipe = SimpleNamespace(id="recipe-id-1")
     ing_data = {
-        "matched_ingredient_id": "ing-id-1",
         "quantity": 2,
         "unit": "tablespoon",
         "notes": None,

@@ -1,12 +1,11 @@
 """Tests for bugs-imp-ing-5 — recipe create/update accept name or id.
 
-Verifies that `CreateRecipe.IngredientInput` / `UpdateRecipe.IngredientInput`
-round-trip through the shared `utils.services.ingredient_resolver.resolve_ingredient`
-helper:
+Post-`epic-ingredients-string-simplification` the shared `resolve_ingredient`
+helper is retired; each endpoint handles the branch inline:
 * `ingredient_id` alone → existing canonical lookup path (unchanged).
-* `name` alone → find-or-create by lowercased/stripped canonical_name.
-* both present → `ingredient_id` wins (no silent name drift).
+* `name` alone → insert a fresh `ingredients` row (no find-or-create).
 * neither present → 400 / INGREDIENT_INPUT_REQUIRED.
+`ingredient_id` wins when both are supplied.
 """
 
 import uuid
@@ -46,10 +45,10 @@ def book_and_membership(mock_db, mock_user):
 
 
 class TestCreateRecipeNameOrId:
-    def test_name_only_creates_pending_review_ingredient(
+    def test_name_only_creates_fresh_ingredient_row(
         self, client, mock_db, book_and_membership
     ):
-        """Name-only input takes the find-or-create path."""
+        """Name-only input inserts a fresh `ingredients` row — no matching."""
         response = client.post(
             f"/v1/recipe-books/{book_and_membership}/recipes",
             json={
@@ -70,29 +69,27 @@ class TestCreateRecipeNameOrId:
         # canonical_name lowercased + stripped.
         assert data["ingredients"][0]["ingredient"]["canonical_name"] == "butter"
 
-    def test_name_reuses_existing_ingredient(
+    def test_repeated_names_create_distinct_rows(
         self, client, mock_db, book_and_membership
     ):
-        """A name that already has a canonical row uses that row — no duplicate."""
-        existing_id = str(uuid.uuid4())
-        existing = MockIngredient(
-            id=existing_id, canonical_name="salt", is_canonical=True
-        )
-        mock_db.set_find_by(Ingredient, existing, canonical_name="salt")
-
+        """Post-epic-ingredients-string-simplification: repeating the same
+        name across ingredients always stages a new row — no find-or-create,
+        no cross-recipe identity."""
         response = client.post(
             f"/v1/recipe-books/{book_and_membership}/recipes",
             json={
-                "name": "Reuses Ingredient",
+                "name": "Olive Oil × 2",
                 "ingredients": [
-                    {"name": "Salt", "quantity": 1, "unit": "tsp"}
+                    {"name": "olive oil", "quantity": 1, "unit": "tbsp"},
+                    {"name": "olive oil", "quantity": 2, "unit": "tbsp"},
                 ],
             },
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["ingredients"][0]["ingredient"]["id"] == existing_id
-        assert data["ingredients"][0]["ingredient"]["canonical_name"] == "salt"
+        ids = [ing["ingredient"]["id"] for ing in data["ingredients"]]
+        assert len(ids) == 2
+        assert ids[0] != ids[1]
 
     def test_blank_name_rejected(self, client, book_and_membership):
         """Whitespace-only name is not a valid handle."""
@@ -188,12 +185,8 @@ class TestCreateRecipeNameOrId:
     def test_name_lowercased_and_stripped(
         self, client, mock_db, book_and_membership
     ):
-        """`  BUTTER  ` and `butter` should resolve to the same canonical row."""
-        existing = MockIngredient(
-            id=str(uuid.uuid4()), canonical_name="butter", is_canonical=True
-        )
-        mock_db.set_find_by(Ingredient, existing, canonical_name="butter")
-
+        """`  BUTTER  ` gets stored as `butter` (lowercased + stripped),
+        even though a separate fresh row is created per the epic."""
         response = client.post(
             f"/v1/recipe-books/{book_and_membership}/recipes",
             json={

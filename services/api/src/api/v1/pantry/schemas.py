@@ -37,9 +37,16 @@ class PantryRead(BaseModel):
 
 
 class PantryIngredientCreate(BaseModel):
-    """Input body for creating/upserting a pantry ingredient."""
+    """Input body for creating/upserting a pantry ingredient.
 
-    ingredient_id: str
+    Exactly one of `ingredient_id` or `name` must be supplied. `name`
+    creates a fresh `ingredients` row inline (no find-or-create — see
+    `epic-ingredients-string-simplification`); `ingredient_id` preserves
+    the FK of an existing row.
+    """
+
+    ingredient_id: str | None = None
+    name: str | None = None
     quantity_display: Decimal
     unit_display: str
     quantity_normalized: Decimal

@@ -1,9 +1,10 @@
-"""Recipe CRUD tools with ingredient-name auto-resolution.
+"""Recipe CRUD tools.
 
-All tools wrap an existing `Endpoint` — no business logic lives here. The
-one pattern that's MCP-specific is resolving ingredient names to IDs before
-calling `CreateRecipe` / `UpdateRecipe`, so the user never has to know about
-ingredient UUIDs.
+All tools wrap an existing `Endpoint` — no business logic lives here.
+Ingredient names are inlined as fresh `ingredients` rows per call (no
+matching, no cross-recipe identity — see
+`epic-ingredients-string-simplification`), so the user never has to know
+about ingredient UUIDs.
 """
 
 from __future__ import annotations
@@ -12,8 +13,6 @@ import json
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from api.v1.ingredient.create_ingredient import CreateIngredient
-from api.v1.ingredient.search_ingredients import SearchIngredients
 from api.v1.recipe.create_recipe import CreateRecipe
 from api.v1.recipe.delete_recipe import DeleteRecipe
 from api.v1.recipe.fork_recipe import ForkRecipe
@@ -25,47 +24,23 @@ from api.v1.recipe.update_recipe import UpdateRecipe
 from fastapi.encoders import jsonable_encoder
 from mcp_server.auth import get_current_database, get_current_user
 from mcp_server.server import call_endpoint, mcp
+from utils.models.ingredient import Ingredient
 from utils.services.database import Database
 
-INGREDIENT_MATCH_THRESHOLD = 0.85
 
+def _create_ingredient_for_name(name: str, database: Database) -> str:
+    """Insert a fresh `ingredients` row and return its UUID.
 
-def _resolve_ingredient(name: str, database: Database, user) -> str:
-    """Resolve an ingredient name to a canonical Ingredient UUID.
-
-    Fuzzy-search existing ingredients via pg_trgm similarity; if the top match
-    is strong (>= 0.85) return its ID. Otherwise create a new Ingredient so
-    the user never has to pick from a list.
+    Every MCP-driven recipe create/update lands a new ingredient row per
+    name. No matching, no dedup — same contract as the Flutter/import path.
     """
     cleaned = (name or "").strip()
     if not cleaned:
         raise ValueError("Ingredient name cannot be empty")
-
-    search = SearchIngredients(database=database, user=user).run(q=cleaned, limit=1)
-    if search["success"]:
-        items = (search.get("data") or {}).get("items") or []
-        if items:
-            top = items[0]
-            similarity = getattr(top, "similarity", None)
-            if similarity is None and isinstance(top, dict):
-                similarity = top.get("similarity")
-            ingredient_id = getattr(top, "id", None)
-            if ingredient_id is None and isinstance(top, dict):
-                ingredient_id = top.get("id")
-            if similarity is not None and float(similarity) >= INGREDIENT_MATCH_THRESHOLD:
-                return str(ingredient_id)
-
-    create = CreateIngredient(database=database, user=user).run(
-        params=CreateIngredient.Params(canonical_name=cleaned)
-    )
-    if not create["success"]:
-        raise RuntimeError(create.get("error_message") or "Failed to create ingredient")
-    new_id = (create.get("data") or {}).id if hasattr(create.get("data") or {}, "id") else None
-    if new_id is None and isinstance(create.get("data"), dict):
-        new_id = create["data"].get("id")
-    if new_id is None:
-        raise RuntimeError("CreateIngredient returned no id")
-    return str(new_id)
+    ingredient = Ingredient(canonical_name=cleaned.lower())
+    database.db.add(ingredient)
+    database.db.flush()
+    return str(ingredient.id)
 
 
 def _to_decimal(value: Any) -> Decimal:
@@ -156,7 +131,7 @@ def create_recipe(
         unit = entry.get("unit")
         if not unit:
             raise ValueError(f"Ingredient '{ing_name}' is missing a unit")
-        ingredient_id = _resolve_ingredient(ing_name, database, user)
+        ingredient_id = _create_ingredient_for_name(ing_name, database)
         ingredient_inputs.append(
             CreateRecipe.IngredientInput(
                 ingredient_id=ingredient_id,
@@ -250,7 +225,7 @@ def update_recipe(
             unit = entry.get("unit")
             if not unit:
                 raise ValueError(f"Ingredient '{ing_name}' is missing a unit")
-            ingredient_id = _resolve_ingredient(ing_name, database, user)
+            ingredient_id = _create_ingredient_for_name(ing_name, database)
             resolved.append(
                 UpdateRecipe.IngredientInput(
                     ingredient_id=ingredient_id,
@@ -324,10 +299,8 @@ def fork_recipe(recipe_id: str, destination_book_id: str | None = None) -> str:
     return call_endpoint(ForkRecipe, recipe_id=recipe_id, params=params)
 
 
-# Used by the resolver's unit tests — exposed so tests can monkeypatch.
 __all__ = [
-    "INGREDIENT_MATCH_THRESHOLD",
-    "_resolve_ingredient",
+    "_create_ingredient_for_name",
     "create_recipe",
     "delete_recipe",
     "fork_recipe",

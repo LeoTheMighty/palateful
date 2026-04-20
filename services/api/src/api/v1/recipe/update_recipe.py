@@ -16,10 +16,6 @@ from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
-from utils.services.ingredient_resolver import (
-    IngredientResolutionError,
-    resolve_ingredient,
-)
 from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 
@@ -140,30 +136,30 @@ class UpdateRecipe(Endpoint):
                 self.database.delete(ri)
 
             # Create new ingredients. Input accepts either `ingredient_id`
-            # (canonical UUID, preserved when editing existing rows) or
-            # `name` (find-or-create via resolve_ingredient).
+            # (look up existing row, preserved when editing) or `name`
+            # (create a fresh row). No find-or-create.
             for idx, ing_input in enumerate(params.ingredients):
-                if not ing_input.ingredient_id and not (
-                    ing_input.name and ing_input.name.strip()
-                ):
+                if ing_input.ingredient_id:
+                    ingredient = self.database.find_by(
+                        Ingredient, id=ing_input.ingredient_id
+                    )
+                    if not ingredient:
+                        raise APIException(
+                            status_code=400,
+                            detail=f"Ingredient with ID '{ing_input.ingredient_id}' not found",
+                            code=ErrorCode.INGREDIENT_NOT_FOUND,
+                        )
+                elif ing_input.name and ing_input.name.strip():
+                    canonical = ing_input.name.strip().lower()
+                    ingredient = Ingredient(canonical_name=canonical)
+                    self.database.db.add(ingredient)
+                    self.database.db.flush()
+                else:
                     raise APIException(
                         status_code=400,
                         detail="Each ingredient must include either ingredient_id or a non-empty name",
                         code=ErrorCode.INGREDIENT_INPUT_REQUIRED,
                     )
-                try:
-                    ingredient = resolve_ingredient(
-                        self.database,
-                        ingredient_id=ing_input.ingredient_id,
-                        name=ing_input.name,
-                        submitted_by_id=user.id,
-                    )
-                except IngredientResolutionError as exc:
-                    raise APIException(
-                        status_code=400,
-                        detail=str(exc),
-                        code=ErrorCode.INGREDIENT_NOT_FOUND,
-                    ) from exc
 
                 quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
                 # Coerce LLM/user freeform unit to canonical (riip-2).
@@ -256,7 +252,7 @@ class UpdateRecipe(Endpoint):
                 ingredient=UpdateRecipe.IngredientSummary(
                     id=ing.id,
                     canonical_name=ing.canonical_name,
-                    category=ing.category
+                    category=None,
                 ),
                 quantity_display=ri.quantity_display,
                 unit_display=ri.unit_display,
@@ -379,9 +375,10 @@ class UpdateRecipe(Endpoint):
 
     class IngredientInput(BaseModel):
         # Either `ingredient_id` (canonical UUID, preserved when editing
-        # an existing row) OR a free-text `name` (find-or-create via
-        # resolve_ingredient). At least one is required — enforced in
-        # `execute()` so the error carries a structured `ErrorCode`.
+        # an existing row) OR a free-text `name` (inserts a fresh
+        # `ingredients` row inline per epic-ingredients-string-simplification).
+        # At least one is required — enforced in `execute()` so the error
+        # carries a structured `ErrorCode`.
         ingredient_id: str | None = None
         name: str | None = None
         quantity: Decimal | None = None

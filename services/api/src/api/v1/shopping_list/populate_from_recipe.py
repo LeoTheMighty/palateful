@@ -108,7 +108,7 @@ class PopulateFromRecipe(Endpoint):
                 name=ingredient.canonical_name,
                 quantity=raw_qty,
                 unit=recipe_ingredient.unit_display,
-                category=ingredient.category,
+                category=None,
                 ingredient_id=ingredient.id,
                 recipe_id=recipe.id,
                 added_by_user_id=user.id,

@@ -138,7 +138,7 @@ def test_extract_task_marks_extracted_on_success():
 
     task._update_item_from_result(item, result)
 
-    assert item.status == "matching"
+    assert item.status == "awaiting_review"
     assert item.last_successful_stage == STAGE_EXTRACTED
 
 
@@ -165,76 +165,7 @@ def test_extract_task_failure_does_not_mark_stage():
     assert item.last_successful_stage is None
 
 
-# ------------------------------------------------------------------
-# match_ingredients_task: marks "matched" on both approved + awaiting_review
-# ------------------------------------------------------------------
-
-
-def _run_match_task_on_item(item):
-    from utils.tasks.import_tasks.match_ingredients_task import (
-        MatchIngredientsTask,
-    )
-
-    task = MatchIngredientsTask()
-    task.database = _make_database(item)
-    # Stub out the matching internals so we exercise only the stage logic.
-    task._match_ingredient = MagicMock(  # type: ignore[method-assign]
-        return_value={
-            "ingredient_id": str(uuid.uuid4()),
-            "confidence": 1.0,
-            "match_type": "exact",
-            "needs_review": False,
-        }
-    )
-    task._dispatch_create_task = MagicMock()  # type: ignore[method-assign]
-
-    with patch("utils.services.activity_service.create_activity"):
-        task.execute(str(item.id))
-
-    return task
-
-
-def test_match_task_marks_matched_on_approved_path():
-    from utils.constants import STAGE_MATCHED
-
-    item = _make_item(
-        parsed_recipe={
-            "ingredients": [{"text": "2 cups flour"}],
-            "name": "Bread",
-        }
-    )
-    _run_match_task_on_item(item)
-
-    assert item.status == "approved"
-    assert item.last_successful_stage == STAGE_MATCHED
-
-
-def test_match_task_marks_matched_on_needs_review_path():
-    from utils.constants import STAGE_MATCHED
-    from utils.tasks.import_tasks.match_ingredients_task import (
-        MatchIngredientsTask,
-    )
-
-    task = MatchIngredientsTask()
-    item = _make_item(
-        parsed_recipe={
-            "ingredients": [{"text": "mystery spice"}],
-            "name": "Mystery",
-        }
-    )
-    task.database = _make_database(item)
-    task._match_ingredient = MagicMock(  # type: ignore[method-assign]
-        return_value={
-            "ingredient_id": None,
-            "confidence": 0.6,
-            "match_type": "fuzzy",
-            "needs_review": True,
-        }
-    )
-    task._dispatch_create_task = MagicMock()  # type: ignore[method-assign]
-
-    with patch("utils.services.activity_service.create_activity"):
-        task.execute(str(item.id))
-
-    assert item.status == "awaiting_review"
-    assert item.last_successful_stage == STAGE_MATCHED
+# match_ingredients_task was retired in epic-ingredients-string-simplification.
+# The former STAGE_MATCHED transition is now unused at runtime but remains
+# in the STAGE_PLAN for back-compat with legacy `last_successful_stage='matched'`
+# rows on retry — no new stage-marker test needed.

@@ -1,15 +1,12 @@
 """Get import item endpoint."""
 
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
-from utils.models.ingredient import Ingredient
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
@@ -40,55 +37,6 @@ def _extract_confidence_fields(
         source = raw_source
 
     return (score, source)
-
-
-def _annotate_pending_review_ingredients(
-    parsed_recipe: dict | None,
-    session,
-) -> dict | None:
-    """Add `pending_review_ingredient: true` to ingredients that point at a
-    pending-review canonical, or that haven't been matched yet.
-
-    Returns a NEW dict (does not mutate the input) so the persisted
-    `parsed_recipe` JSONB stays untouched. Batches the canonical-row
-    lookup into a single `WHERE id IN (…)` query — no N+1.
-    """
-    if not parsed_recipe:
-        return parsed_recipe
-    ingredients = parsed_recipe.get("ingredients")
-    if not ingredients:
-        return parsed_recipe
-
-    matched_ids = [
-        UUID(str(ing["matched_ingredient_id"]))
-        for ing in ingredients
-        if ing.get("matched_ingredient_id") is not None
-    ]
-
-    pending_set: set[UUID] = set()
-    if matched_ids:
-        rows = session.execute(
-            select(Ingredient.id).where(
-                Ingredient.id.in_(matched_ids),
-                Ingredient.pending_review.is_(True),
-            )
-        ).scalars().all()
-        pending_set = set(rows)
-
-    annotated_ingredients = []
-    for ing in ingredients:
-        new_ing = dict(ing)
-        raw_id = ing.get("matched_ingredient_id")
-        is_pending = (
-            raw_id is None or UUID(str(raw_id)) in pending_set
-        )
-        if is_pending:
-            new_ing["pending_review_ingredient"] = True
-        annotated_ingredients.append(new_ing)
-
-    annotated = dict(parsed_recipe)
-    annotated["ingredients"] = annotated_ingredients
-    return annotated
 
 
 class GetImportItem(Endpoint):
@@ -137,13 +85,6 @@ class GetImportItem(Endpoint):
                 code=ErrorCode.IMPORT_JOB_ACCESS_DENIED,
             )
 
-        # riip-4: annotate ingredients in parsed_recipe with
-        # pending_review_ingredient so the Flutter ✨ badge knows when a
-        # canonical was auto-created. Batched query — no N+1.
-        annotated_parsed_recipe = _annotate_pending_review_ingredients(
-            item.parsed_recipe, self.database.db
-        )
-
         # irrd-3 — convenience hoist so the caret expansion doesn't have
         # to drill into nested parsed_recipe JSON. Null when extraction
         # hasn't run yet.
@@ -159,7 +100,7 @@ class GetImportItem(Endpoint):
                 source_reference=item.source_reference,
                 source_url=item.source_url,
                 raw_data=item.raw_data or {},
-                parsed_recipe=annotated_parsed_recipe,
+                parsed_recipe=item.parsed_recipe,
                 user_edits=item.user_edits,
                 error_message=item.error_message,
                 error_code=item.error_code,

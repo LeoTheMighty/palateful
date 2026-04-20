@@ -162,10 +162,6 @@ class ExtractRecipeTask(BaseTask):
                 # Extract from raw_data (spreadsheet row)
                 self._extract_from_raw_data(item)
 
-            # Dispatch ingredient matching if extraction succeeded
-            if item.status == "matching" or item.status == "awaiting_review":
-                self._dispatch_matching_task(item)
-
             # Stage-transition audit (irrd-2): extraction produced a
             # parsed_recipe. Preview is the pretty-printed JSON (truncation
             # happens inside the helper).
@@ -245,8 +241,9 @@ class ExtractRecipeTask(BaseTask):
         recipe. The first recipe lands in the original item; the rest
         are new rows with copies of `raw_data` (same s3_keys) plus a
         `recipe_index` ordinal for dedupe/traceability. `total_items` is
-        bumped atomically. Dispatches `match_ingredients_task` for each
-        new sibling.
+        bumped atomically. Post-extraction, items rest in `awaiting_review`
+        until the user approves (or the item is dismissed); approval
+        dispatches `create_recipe_task`.
         """
         item.ai_cost_cents = result.ai_cost_cents
 
@@ -265,7 +262,7 @@ class ExtractRecipeTask(BaseTask):
         # Write the first recipe into the existing item.
         item.parsed_recipe = _serialize_recipe(recipes[0], extractor_used, self.database.db)
         item.raw_data = {**(item.raw_data or {}), "recipe_index": 0}
-        item.status = "matching"
+        item.status = "awaiting_review"
         item.last_successful_stage = STAGE_EXTRACTED
 
         # Fan out siblings for recipes[1..N-1].
@@ -285,11 +282,6 @@ class ExtractRecipeTask(BaseTask):
                 job.total_items = (job.total_items or 0) + len(siblings)
             self.database.db.commit()
 
-        # Dispatch matching for each sibling now that the row is
-        # committed and visible to the worker.
-        for sibling in siblings:
-            self._dispatch_matching_task(sibling)
-
         self._update_job_counts(item.import_job_id)
 
     def _create_fanout_siblings(
@@ -302,8 +294,7 @@ class ExtractRecipeTask(BaseTask):
 
         Idempotent: if a sibling for `(import_job_id, s3_keys, recipe_index)`
         already exists (e.g. this task was retried by Celery), skip it.
-        Returns the list of newly-created siblings so the caller can
-        dispatch matching tasks for them.
+        Returns the list of newly-created siblings for downstream bookkeeping.
         """
         from sqlalchemy import select
 
@@ -340,7 +331,7 @@ class ExtractRecipeTask(BaseTask):
                 source_type=original.source_type,
                 source_reference=original.source_reference,
                 source_url=original.source_url,
-                status="matching",
+                status="awaiting_review",
                 last_successful_stage=STAGE_EXTRACTED,
                 parsed_recipe=_serialize_recipe(
                     recipes[idx], extractor_used, self.database.db
@@ -378,7 +369,8 @@ class ExtractRecipeTask(BaseTask):
             "image_url": raw.get("image_url") or raw.get("image"),
             "source_url": raw.get("source_url") or raw.get("url"),
         }
-        item.status = "matching"
+        item.status = "awaiting_review"
+        item.last_successful_stage = STAGE_EXTRACTED
         self.database.db.commit()
 
     def _parse_raw_ingredients(self, ingredients) -> list[dict]:
@@ -411,15 +403,6 @@ class ExtractRecipeTask(BaseTask):
             return result
 
         return []
-
-    def _dispatch_matching_task(self, item: ImportItem):
-        """Dispatch ingredient matching task for the item."""
-        from utils.tasks.import_tasks.match_ingredients_task import match_ingredients_task
-
-        match_ingredients_task.delay(
-            item_id=str(item.id),
-            user_id=str(self.user_id) if self.user_id else None,
-        )
 
     def _update_job_counts(self, import_job_id):
         """Update import job processed/failed counts."""

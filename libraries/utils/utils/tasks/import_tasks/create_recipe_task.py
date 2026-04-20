@@ -16,12 +16,12 @@ from utils.constants import (
 from utils.logging import log_stage_transition
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
+from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.services.aws import AWSService
 from utils.services.celery import celery_app
-from utils.services.ingredient_resolver import resolve_ingredient
 from utils.services.recipe_image_promotion import promote_source_photo
 from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
@@ -335,28 +335,21 @@ class CreateRecipeTask(BaseTask):
             )
 
     def _create_recipe_ingredient(self, recipe: Recipe, ing_data: dict, order_index: int):
-        """Create a RecipeIngredient record."""
-        ingredient_id = ing_data.get("matched_ingredient_id")
-        if ingredient_id:
-            ingredient = resolve_ingredient(
-                self.database, ingredient_id=ingredient_id
-            )
-        else:
-            # Prefer the extractor's canonical `name` field; fall back to `text`
-            # only when the extractor didn't populate `name`. Using `text` as the
-            # canonical name caused duplicated output downstream because `text`
-            # used to include the quantity+unit prefix.
-            raw_name = (
-                ing_data.get("name")
-                or ing_data.get("text")
-                or "Unknown ingredient"
-            )
-            logger.warning("Auto-creating ingredient inline for: %s", raw_name)
-            ingredient = resolve_ingredient(
-                self.database,
-                name=raw_name,
-                submitted_by_id=self.user_id,
-            )
+        """Create a RecipeIngredient record.
+
+        Every parsed ingredient yields a fresh `ingredients` row — no
+        find-or-create, no cross-recipe identity (see
+        `epic-ingredients-string-simplification`).
+        """
+        raw_name = (
+            ing_data.get("name")
+            or ing_data.get("text")
+            or "Unknown ingredient"
+        )
+        canonical = raw_name.strip().lower() or "unknown ingredient"
+        ingredient = Ingredient(canonical_name=canonical)
+        self.database.db.add(ingredient)
+        self.database.db.flush()
         ingredient_id = str(ingredient.id)
 
         # Parse quantity

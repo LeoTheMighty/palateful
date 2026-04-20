@@ -9,9 +9,10 @@ from pydantic import BaseModel
 class RecipeIngredientInput(BaseModel):
     """Input schema for a recipe ingredient.
 
-    Either `ingredient_id` (canonical UUID) or `name` (find-or-create via
-    `utils.services.ingredient_resolver.resolve_ingredient`) must be
-    supplied. The concrete endpoints
+    Either `ingredient_id` (canonical UUID — existing row reused) or
+    `name` (inline create of a fresh `ingredients` row per
+    epic-ingredients-string-simplification) must be supplied. The
+    concrete endpoints
     (`services/api/src/api/v1/recipe/{create,update}_recipe.py`) enforce
     this at runtime so the validation error can carry a structured
     `ErrorCode.INGREDIENT_INPUT_REQUIRED`.

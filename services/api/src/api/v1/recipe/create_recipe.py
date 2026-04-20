@@ -6,16 +6,13 @@ from decimal import Decimal
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.models.user import User
-from utils.services.ingredient_resolver import (
-    IngredientResolutionError,
-    resolve_ingredient,
-)
 from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 
@@ -93,32 +90,32 @@ class CreateRecipe(Endpoint):
         self.database.db.commit()
 
         # Create recipe ingredients. Input accepts either `ingredient_id`
-        # (canonical UUID) or `name` (find-or-create) — the shared
-        # `resolve_ingredient` helper decides which path to take.
+        # (look up existing row) or `name` (create a fresh row). No
+        # find-or-create: per epic-ingredients-string-simplification the
+        # ingredients table is a bag of rows with no cross-recipe identity.
         ingredient_responses = []
         for idx, ing_input in enumerate(params.ingredients):
-            if not ing_input.ingredient_id and not (ing_input.name and ing_input.name.strip()):
+            if ing_input.ingredient_id:
+                ingredient = self.database.find_by(
+                    Ingredient, id=ing_input.ingredient_id
+                )
+                if not ingredient:
+                    raise APIException(
+                        status_code=400,
+                        detail=f"Ingredient with ID '{ing_input.ingredient_id}' not found",
+                        code=ErrorCode.INGREDIENT_NOT_FOUND,
+                    )
+            elif ing_input.name and ing_input.name.strip():
+                canonical = ing_input.name.strip().lower()
+                ingredient = Ingredient(canonical_name=canonical)
+                self.database.db.add(ingredient)
+                self.database.db.flush()
+            else:
                 raise APIException(
                     status_code=400,
                     detail="Each ingredient must include either ingredient_id or a non-empty name",
                     code=ErrorCode.INGREDIENT_INPUT_REQUIRED,
                 )
-            try:
-                ingredient = resolve_ingredient(
-                    self.database,
-                    ingredient_id=ing_input.ingredient_id,
-                    name=ing_input.name,
-                    submitted_by_id=user.id,
-                )
-            except IngredientResolutionError as exc:
-                # `ingredient_id` was provided but didn't match an existing
-                # row — preserve the classic 400/INGREDIENT_NOT_FOUND shape
-                # so existing clients see no behavioral change.
-                raise APIException(
-                    status_code=400,
-                    detail=str(exc),
-                    code=ErrorCode.INGREDIENT_NOT_FOUND,
-                ) from exc
 
             quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
             # Coerce LLM/user freeform unit to canonical (riip-2).
@@ -158,7 +155,7 @@ class CreateRecipe(Endpoint):
                     ingredient=CreateRecipe.IngredientSummary(
                         id=str(ingredient.id),
                         canonical_name=ingredient.canonical_name,
-                        category=ingredient.category
+                        category=None,
                     ),
                     quantity_display=recipe_ingredient.quantity_display,
                     unit_display=recipe_ingredient.unit_display,
