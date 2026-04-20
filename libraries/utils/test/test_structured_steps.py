@@ -254,8 +254,8 @@ def test_update_item_from_result_serializes_steps_to_parsed_recipe():
     parsed = item.parsed_recipe
     assert parsed is not None
     assert parsed["steps"] == [
-        {"order": 1, "instruction": "Preheat to 400F."},
-        {"order": 2, "instruction": "Roast for 1 hour."},
+        {"order": 1, "instruction": "Preheat to 400F.", "timers": []},
+        {"order": 2, "instruction": "Roast for 1 hour.", "timers": []},
     ]
     # Legacy instructions string is still stored as a fallback.
     assert parsed["instructions"] == "1. Preheat to 400F.\n2. Roast for 1 hour."

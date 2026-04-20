@@ -35,6 +35,19 @@ RECIPE_EXTRACTION_SCHEMA: dict = {
                 "properties": {
                     "instruction": {"type": "string"},
                     "order": {"type": "integer"},
+                    # cmt-1 — actively-tended durations the cook will time in
+                    # cook-mode. Validation is deliberately permissive here;
+                    # `create_recipe_task` clamps/filters at persist time.
+                    "timers": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "duration_minutes": {"type": "integer"},
+                                "label": {"type": "string"},
+                            },
+                        },
+                    },
                 },
             },
         },

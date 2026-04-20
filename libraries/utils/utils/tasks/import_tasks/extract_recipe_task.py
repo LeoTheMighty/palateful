@@ -38,7 +38,16 @@ def _serialize_recipe(recipe, extractor_used: str | None, session) -> dict:
     canonical token ("tbsp") before the parsed_recipe JSON ever lands.
     """
     steps_dict = (
-        [{"order": s.order, "instruction": s.instruction} for s in recipe.steps]
+        [
+            {
+                "order": s.order,
+                "instruction": s.instruction,
+                # cmt-1 — pass through the raw `timers` list. Clamp +
+                # filter happens at persist time in create_recipe_task.
+                "timers": list(getattr(s, "timers", []) or []),
+            }
+            for s in recipe.steps
+        ]
         if recipe.steps
         else None
     )

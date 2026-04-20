@@ -25,10 +25,17 @@ class ExtractedStep:
     user would read it. Additional fields (duration_seconds,
     ingredient_refs, etc.) may be added later without breaking existing
     extractors — all downstream consumers default-handle missing keys.
+
+    `timers` (cmt-1) is a list of `{duration_minutes: int, label: str}`
+    dicts representing actively-tended durations the user will want to
+    time in cook-mode. Extractors that can't produce structured timers
+    leave it as an empty list; downstream `create_recipe_task` clamps +
+    filters before persist.
     """
 
     order: int
     instruction: str
+    timers: list[dict] = field(default_factory=list)
 
 
 @dataclass

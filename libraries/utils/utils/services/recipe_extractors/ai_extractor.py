@@ -9,6 +9,7 @@ from utils.services.recipe_extractors.base import (
     BaseExtractor,
     ExtractedIngredient,
     ExtractedRecipe,
+    ExtractedStep,
     ExtractionResult,
     validate_vibe,
 )
@@ -48,6 +49,9 @@ Return a JSON object with the following structure:
                 {{"text": "all-purpose flour, sifted", "quantity": 2, "unit": "cup", "name": "all-purpose flour", "notes": "sifted", "is_optional": false}}
             ],
             "instructions": "Step-by-step instructions as a single string",
+            "steps": [
+                {{"order": 1, "instruction": "Simmer for 10 minutes, stirring.", "timers": [{{"duration_minutes": 10, "label": "simmer"}}]}}
+            ],
             "servings": 4,
             "prep_time_minutes": 15,
             "cook_time_minutes": 30,
@@ -85,6 +89,14 @@ BAD examples — do NOT produce these:
 - {{"text": "tbsp butter", "quantity": 9, "unit": "tbsp", ...}}     # text repeats unit
 - {{"quantity": "9 tbsp", ...}}                                     # quantity must be a number
 
+Step rules (cmt-1) — if you can identify discrete steps, prefer emitting `steps` over a joined `instructions` string. When you emit `steps`, it supersedes `instructions` downstream.
+- `order`: 1-indexed.
+- `instruction`: the step text as the user would read it.
+- `timers`: actively-tended durations (simmer N min, bake N min, fry N min, boil N min). Do NOT include passive waits (rest overnight, marinate 4+ hours, cool completely, rise until doubled) — those are NOT timers.
+  - POSITIVE: "Simmer for 10 minutes, stirring." -> timers: [{{"duration_minutes": 10, "label": "simmer"}}]
+  - NEGATIVE: "Let dough rise overnight." -> timers: []
+  - NEGATIVE: "Refrigerate for at least 4 hours." -> timers: []
+
 General rules:
 - Only include fields you can find in the content
 - If you cannot find recipe content, return {{"error": "No recipe found"}}
@@ -98,6 +110,48 @@ HTML Content:
 # Backward-compat alias — `EXTRACTION_PROMPT` was a string before riip-3.
 # Kept for any test that imports it directly.
 EXTRACTION_PROMPT = _extraction_prompt()
+
+
+def _parse_steps_with_timers(raw_steps: Any) -> list[ExtractedStep] | None:
+    """cmt-1: parse the LLM's `steps` array into `ExtractedStep` instances.
+
+    Returns ``None`` when the model omitted `steps` (absent key, empty
+    list, wrong type, or every entry malformed). That lets downstream
+    fall back to the legacy joined `instructions` string.
+
+    Per-entry rules:
+      * non-dict entries are dropped silently.
+      * blank or missing `instruction` drops the entry.
+      * missing `order` is backfilled by 1-indexed position.
+      * non-integer `order` is backfilled by position.
+      * `timers` must be a list; anything else coerces to `[]`. Invalid
+        per-timer entries pass through verbatim — `create_recipe_task`
+        does the strict clamp + filter at persist time (cmt-2).
+    """
+    if not raw_steps or not isinstance(raw_steps, list):
+        return None
+    parsed: list[ExtractedStep] = []
+    for idx, raw in enumerate(raw_steps, start=1):
+        if not isinstance(raw, dict):
+            continue
+        instruction = raw.get("instruction")
+        if not isinstance(instruction, str) or not instruction.strip():
+            continue
+        order_raw = raw.get("order", idx)
+        try:
+            order = int(order_raw)
+        except (TypeError, ValueError):
+            order = idx
+        raw_timers = raw.get("timers")
+        timers = list(raw_timers) if isinstance(raw_timers, list) else []
+        parsed.append(
+            ExtractedStep(
+                order=order,
+                instruction=instruction.strip(),
+                timers=timers,
+            )
+        )
+    return parsed or None
 
 
 class AIExtractor(BaseExtractor):
@@ -296,6 +350,7 @@ class AIExtractor(BaseExtractor):
             description=data.get("description"),
             ingredients=ingredients,
             instructions=data.get("instructions"),
+            steps=_parse_steps_with_timers(data.get("steps")),
             servings=data.get("servings"),
             prep_time_minutes=data.get("prep_time_minutes"),
             cook_time_minutes=data.get("cook_time_minutes"),
