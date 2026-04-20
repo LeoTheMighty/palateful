@@ -12,7 +12,9 @@ import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/import_item_telemetry_provider.dart';
 import 'providers/import_row_expansion_provider.dart';
+import 'providers/imports_see_all_provider.dart';
 import 'providers/see_all_count_provider.dart';
+import 'widgets/empty_state_gateway_link.dart';
 import 'widgets/awaiting_review_reason_chip.dart';
 import 'widgets/compact_stage_pill.dart';
 import 'widgets/confidence_badge.dart';
@@ -272,6 +274,38 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     }
   }
 
+  /// Pull-to-refresh: re-fetch active jobs/items + see-all count; if
+  /// See-all is expanded, reset its cursor and re-fetch page 1.
+  Future<void> _refreshAll() async {
+    await _load();
+    if (!mounted) return;
+    await ref.read(importsSeeAllCountProvider.notifier).refresh();
+    if (!mounted) return;
+    if (ref.read(importsSeeAllExpandedProvider)) {
+      await ref.read(importsSeeAllProvider.notifier).refreshFromTop();
+    }
+  }
+
+  /// afh-5 — tap-handler for the empty-state gateway link. Expands
+  /// the See-all footer AND animates scroll to bring it into view.
+  Future<void> _expandAndScrollToSeeAll() async {
+    ref.read(importsSeeAllExpandedProvider.notifier).setExpanded(true);
+    final state = ref.read(importsSeeAllProvider);
+    if (!state.hasLoadedFirstPage && !state.isLoading) {
+      unawaited(ref.read(importsSeeAllProvider.notifier).loadNextPage());
+    }
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pos = Scrollable.maybeOf(context)?.position;
+      if (pos == null || !pos.hasContentDimensions) return;
+      pos.animateTo(
+        pos.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -302,8 +336,13 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         visibleAutoImported.isEmpty;
 
     if (allEmpty) {
+      final countAsync = ref.watch(importsSeeAllCountProvider);
+      final historyCount = countAsync.maybeWhen(
+        data: (t) => t.total,
+        orElse: () => 0,
+      );
       return RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _refreshAll,
         child: ListView(
           // afh-4 AC6 — scroll offset persists across tab switches.
           key: const PageStorageKey<String>('imports-tab-empty-list'),
@@ -321,6 +360,14 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                   Text('All clear — no imports yet',
                       style: textTheme.titleMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant)),
+                  // afh-5 — inline "See past imports (N)" gateway
+                  // when lifetime history exists. Tapping expands the
+                  // See-all footer below AND auto-scrolls to it.
+                  EmptyStateGatewayLink(
+                    count: historyCount,
+                    label: 'See past imports',
+                    onTap: _expandAndScrollToSeeAll,
+                  ),
                 ],
               ),
             ),
@@ -333,7 +380,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refreshAll,
       child: ListView(
         // afh-4 AC6 — scroll offset persists across tab switches.
         key: const PageStorageKey<String>('imports-tab-list'),

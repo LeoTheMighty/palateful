@@ -7,7 +7,9 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/activity_read_provider.dart';
+import 'providers/notifications_see_all_provider.dart';
 import 'providers/see_all_count_provider.dart';
+import 'widgets/empty_state_gateway_link.dart';
 import 'widgets/notifications_see_all_footer.dart';
 
 /// Chronological feed of non-import `user_activity` rows with swipe-to-
@@ -192,6 +194,48 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
     }
   }
 
+  /// Pull-to-refresh: re-fetch active list + see-all count; if See-all
+  /// is expanded, reset its cursor and re-fetch page 1 so the footer
+  /// shows up-to-date rows.
+  Future<void> _refreshAll() async {
+    await _load();
+    if (!mounted) return;
+    await ref.read(notificationsSeeAllCountProvider.notifier).refresh();
+    if (!mounted) return;
+    if (ref.read(notificationsSeeAllExpandedProvider)) {
+      await ref.read(notificationsSeeAllProvider.notifier).refreshFromTop();
+    }
+  }
+
+  /// afh-5 — tap-handler for the empty-state gateway link. Expands
+  /// the See-all footer (which triggers its first-page fetch) AND
+  /// scrolls the outer ListView so the footer is visible — the user
+  /// shouldn't have to scroll down manually after tapping a link that
+  /// promises to open something.
+  Future<void> _expandAndScrollToSeeAll() async {
+    ref
+        .read(notificationsSeeAllExpandedProvider.notifier)
+        .setExpanded(true);
+    final state = ref.read(notificationsSeeAllProvider);
+    if (!state.hasLoadedFirstPage && !state.isLoading) {
+      unawaited(
+        ref.read(notificationsSeeAllProvider.notifier).loadNextPage(),
+      );
+    }
+    if (!mounted) return;
+    // Wait a frame so the expanded rows have a chance to lay out,
+    // then animate the outer scroll view to the bottom.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pos = Scrollable.maybeOf(context)?.position;
+      if (pos == null || !pos.hasContentDimensions) return;
+      pos.animateTo(
+        pos.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   Future<void> _undoArchive(String id) async {
     if (!mounted) return;
     setState(() {
@@ -230,9 +274,15 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
         .toList();
 
     if (visible.isEmpty) {
+      final countAsync = ref.watch(notificationsSeeAllCountProvider);
+      final historyCount = countAsync.maybeWhen(
+        data: (t) => t.total,
+        orElse: () => 0,
+      );
       return RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _refreshAll,
         child: ListView(
+          key: const PageStorageKey<String>('notifications-tab-empty-list'),
           children: [
             Padding(
               padding: const EdgeInsets.only(top: 120),
@@ -247,6 +297,15 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
                   Text("You're all caught up",
                       style: textTheme.titleMedium
                           ?.copyWith(color: colorScheme.onSurfaceVariant)),
+                  // afh-5 — inline "See past notifications (N)" gateway
+                  // whenever lifetime history exists. Tapping expands
+                  // the See-all footer below AND auto-scrolls it into
+                  // view.
+                  EmptyStateGatewayLink(
+                    count: historyCount,
+                    label: 'See past notifications',
+                    onTap: _expandAndScrollToSeeAll,
+                  ),
                 ],
               ),
             ),
@@ -259,7 +318,7 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refreshAll,
       child: ListView.builder(
         // afh-3 AC10.b — scroll offset persists across tab switches
         // (PageStorageBucket lookup key). `AutomaticKeepAliveClientMixin`
