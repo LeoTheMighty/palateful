@@ -2,13 +2,26 @@
 
 from datetime import UTC, datetime, timedelta
 
+from pagination import (
+    InvalidCursorError,
+    datetime_to_ms,
+    decode_cursor,
+    encode_cursor,
+)
 from pydantic import BaseModel
+from sqlalchemy import text, tuple_
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_activity import NOTIFICATION_TAB_TYPES, UserActivity
 
-_ACTIVITY_RETENTION_DAYS = 30
+_DEFAULT_ACTIVITY_RETENTION_DAYS = 30
+_MAX_LIMIT = 100
+# Sentinel value for row-value comparisons on nullable archived_at.
+# Postgres accepts ``'-infinity'`` as a timestamp literal that compares
+# less than every real timestamp, giving "NULLS LAST" semantics under
+# DESC ordering once we wrap the column in COALESCE.
+_NEG_INF = text("'-infinity'::timestamptz")
 
 
 class ListActivities(Endpoint):
@@ -20,6 +33,9 @@ class ListActivities(Endpoint):
         offset: int = 0,
         include_archived: bool = False,
         include_system_types: bool = False,
+        include_read: bool = False,
+        since_days: int | None = _DEFAULT_ACTIVITY_RETENTION_DAYS,
+        cursor: str | None = None,
     ):
         user: User = self.user
         # abi-1: admin-gate the debug flag. The default path (no flag)
@@ -31,12 +47,28 @@ class ListActivities(Endpoint):
                 detail="Admin access required",
                 code=ErrorCode.FORBIDDEN,
             )
-        cutoff = datetime.now(UTC) - timedelta(days=_ACTIVITY_RETENTION_DAYS)
+
+        if cursor is not None and offset:
+            raise APIException(
+                status_code=400,
+                detail="cursor_and_offset_mutually_exclusive",
+                code=ErrorCode.VALIDATION_ERROR,
+            )
+
+        limit = max(1, min(limit, _MAX_LIMIT))
+
+        # See-all mode: caller wants archived + read + unbounded window.
+        # ``since_days is None`` is the explicit opt-in to no retention
+        # cutoff. Ordering flips to ``archived_at DESC NULLS LAST, …``
+        # so recently-archived rows land at the top.
+        see_all_mode = include_archived and include_read and since_days is None
 
         query = self.db.query(UserActivity).filter(
             UserActivity.user_id == user.id,
-            UserActivity.created_at >= cutoff,
         )
+        if since_days is not None:
+            cutoff = datetime.now(UTC) - timedelta(days=since_days)
+            query = query.filter(UserActivity.created_at >= cutoff)
         if not include_archived:
             query = query.filter(UserActivity.archived_at.is_(None))
         if not include_system_types:
@@ -45,10 +77,84 @@ class ListActivities(Endpoint):
             # true for debug (router enforces the admin gate).
             query = query.filter(UserActivity.type.in_(NOTIFICATION_TAB_TYPES))
 
-        query = query.order_by(UserActivity.created_at.desc())
+        if cursor is not None:
+            try:
+                cur_arch_ms, cur_created_ms, cur_id = decode_cursor(cursor)
+            except InvalidCursorError as exc:
+                raise APIException(
+                    status_code=400,
+                    detail="invalid_cursor",
+                    code=ErrorCode.VALIDATION_ERROR,
+                ) from exc
+            cur_created = datetime.fromtimestamp(cur_created_ms / 1000, tz=UTC)
+            if see_all_mode:
+                cur_arch_ts = (
+                    _NEG_INF
+                    if cur_arch_ms is None
+                    else datetime.fromtimestamp(cur_arch_ms / 1000, tz=UTC)
+                )
+                query = query.filter(
+                    tuple_(
+                        text(
+                            "COALESCE(user_activities.archived_at, "
+                            "'-infinity'::timestamptz)"
+                        ),
+                        UserActivity.created_at,
+                        UserActivity.id,
+                    )
+                    < tuple_(cur_arch_ts, cur_created, cur_id)
+                )
+            else:
+                query = query.filter(
+                    tuple_(UserActivity.created_at, UserActivity.id)
+                    < tuple_(cur_created, cur_id)
+                )
 
-        total = query.count()
-        results = query.offset(offset).limit(limit).all()
+        if see_all_mode:
+            query = query.order_by(
+                text(
+                    "COALESCE(user_activities.archived_at, '-infinity'::timestamptz) "
+                    "DESC"
+                ),
+                UserActivity.created_at.desc(),
+                UserActivity.id.desc(),
+            )
+        else:
+            query = query.order_by(
+                UserActivity.created_at.desc(),
+                UserActivity.id.desc(),
+            )
+
+        # Fetch limit + 1 to detect a next page without a second count.
+        rows = query.limit(limit + 1).all()
+        has_more = len(rows) > limit
+        results = rows[:limit]
+
+        # ``total`` on the response stays useful for the initial render,
+        # but the cursor request path skips it — it's a heavy COUNT and
+        # cursor-paginated lists don't rely on it for next-page hints.
+        if cursor is None:
+            total_query = self.db.query(UserActivity).filter(
+                UserActivity.user_id == user.id,
+            )
+            if since_days is not None:
+                total_query = total_query.filter(
+                    UserActivity.created_at
+                    >= datetime.now(UTC) - timedelta(days=since_days)
+                )
+            if not include_archived:
+                total_query = total_query.filter(UserActivity.archived_at.is_(None))
+            if not include_system_types:
+                total_query = total_query.filter(
+                    UserActivity.type.in_(NOTIFICATION_TAB_TYPES)
+                )
+            total = total_query.count()
+            if offset:
+                # Legacy offset path, preserved for one release.
+                results = rows[offset : offset + limit] if len(rows) > offset else []
+                has_more = len(rows) > offset + limit
+        else:
+            total = 0
 
         items = [
             ListActivities.ActivityItem(
@@ -65,13 +171,32 @@ class ListActivities(Endpoint):
             for a in results
         ]
 
+        next_cursor: str | None = None
+        if has_more and results:
+            last = results[-1]
+            next_cursor = encode_cursor(
+                datetime_to_ms(last.archived_at) if see_all_mode else None,
+                datetime_to_ms(last.created_at),
+                str(last.id),
+            )
+
+        headers = None
+        if next_cursor:
+            # Router prefix is /v1/activities; build a rel="next" link
+            # for well-behaved HTTP clients that follow Link headers.
+            headers = {
+                "Link": f'</v1/activities?cursor={next_cursor}>; rel="next"'
+            }
+
         return success(
             data=ListActivities.Response(
                 items=items,
                 total=total,
                 limit=limit,
                 offset=offset,
-            )
+                next_cursor=next_cursor,
+            ),
+            headers=headers,
         )
 
     class ActivityItem(BaseModel):
@@ -90,3 +215,4 @@ class ListActivities(Endpoint):
         total: int
         limit: int
         offset: int
+        next_cursor: str | None = None

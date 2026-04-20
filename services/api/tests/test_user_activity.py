@@ -574,3 +574,176 @@ class TestListActivitiesIncludeArchived:
 
         response = client.get("/v1/activities?include_archived=true")
         assert response.status_code == 200
+
+
+class TestListActivitiesCursor:
+    """afh-1a: cursor pagination + include_read + since_days See-all mode."""
+
+    def test_cursor_and_offset_both_present_returns_400(
+        self, client, mock_db, mock_user
+    ):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities?cursor=abc&offset=5")
+        assert response.status_code == 400
+        assert (
+            response.json()["error_message"]
+            == "cursor_and_offset_mutually_exclusive"
+        )
+
+    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities?cursor=%21%21%21%21%21%21")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
+    def test_cursor_default_mode_decodes_and_returns_items(
+        self, client, mock_db, mock_user
+    ):
+        """A valid cursor in default (non-See-all) mode builds the
+        two-key ``(created_at, id) < (cursor_ts, cursor_id)`` WHERE
+        clause and returns items.
+        """
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
+        activity = MockUserActivity(type="partner_action", title="X")
+        mock_db.db.query.return_value = MockQuery([activity])
+
+        response = client.get(f"/v1/activities?cursor={cursor}")
+        assert response.status_code == 200
+        body = response.json()
+        # Cursor path skips the COUNT — total stays 0.
+        assert body["total"] == 0
+        assert len(body["items"]) == 1
+
+    def test_cursor_see_all_mode_decodes_with_archived_at_value(
+        self, client, mock_db, mock_user
+    ):
+        """See-all mode with an archived_at value exercises the
+        three-key row-value WHERE clause and ordering.
+        """
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(
+            1_700_000_000_000, 1_699_000_000_000, str(uuid.uuid4())
+        )
+        activity = MockUserActivity(
+            type="partner_action",
+            title="X",
+            archived_at=datetime(2025, 6, 1, tzinfo=UTC),
+        )
+        mock_db.db.query.return_value = MockQuery([activity])
+
+        response = client.get(
+            "/v1/activities?include_archived=true&include_read=true"
+            f"&since_days=&cursor={cursor}"
+        )
+        assert response.status_code == 200
+
+    def test_cursor_see_all_mode_with_null_archived_at_cursor(
+        self, client, mock_db, mock_user
+    ):
+        """See-all mode with ``archived_at_ms=None`` in the cursor
+        builds the row-value comparison with the ``'-infinity'`` sentinel.
+        """
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_699_000_000_000, str(uuid.uuid4()))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(
+            "/v1/activities?include_archived=true&include_read=true"
+            f"&since_days=&cursor={cursor}"
+        )
+        assert response.status_code == 200
+
+    def test_response_includes_next_cursor_when_more_results(
+        self, client, mock_db, mock_user
+    ):
+        """MockQuery ignores the LIMIT, so seeding > limit items surfaces
+        the has_more → next_cursor path and the Link header.
+        """
+        items = [
+            MockUserActivity(type="partner_action", title=f"row{i}")
+            for i in range(60)
+        ]
+        mock_db.db.query.return_value = MockQuery(items)
+
+        response = client.get("/v1/activities?limit=50")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["next_cursor"] is not None
+        link = response.headers.get("link") or response.headers.get("Link")
+        assert link is not None
+        assert 'rel="next"' in link
+
+    def test_see_all_mode_next_cursor_encodes_archived_at(
+        self, client, mock_db, mock_user
+    ):
+        """See-all mode encodes ``archived_at`` in the cursor so the
+        client can resume at the archived/non-archived boundary.
+        """
+        items = [
+            MockUserActivity(
+                type="partner_action",
+                title=f"r{i}",
+                archived_at=datetime(2025, 6, (i % 28) + 1, tzinfo=UTC),
+            )
+            for i in range(60)
+        ]
+        mock_db.db.query.return_value = MockQuery(items)
+
+        response = client.get(
+            "/v1/activities?include_archived=true&include_read=true"
+            "&since_days=&limit=50"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["next_cursor"] is not None
+
+    def test_legacy_offset_path_still_returns_items(
+        self, client, mock_db, mock_user
+    ):
+        """AC9: ``offset=`` still works for one release alongside cursor."""
+        items = [
+            MockUserActivity(type="partner_action", title=f"r{i}")
+            for i in range(20)
+        ]
+        mock_db.db.query.return_value = MockQuery(items)
+        response = client.get("/v1/activities?limit=5&offset=5")
+        assert response.status_code == 200
+        body = response.json()
+        # Total comes from MockQuery.count() = len(items).
+        assert body["total"] == 20
+        # Legacy path slices rows[5:10]; MockQuery returns all rows.
+        assert len(body["items"]) == 5
+
+    def test_limit_is_clamped_to_100(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities?limit=9999")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["limit"] == 100
+
+    def test_since_days_null_sentinel_empty_value(
+        self, client, mock_db, mock_user
+    ):
+        """``?since_days=`` with no value opts out of the retention window."""
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities?since_days=")
+        assert response.status_code == 200
+
+    def test_since_days_non_numeric_returns_400(
+        self, client, mock_db, mock_user
+    ):
+        """Non-empty non-integer ``since_days`` is a client error."""
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities?since_days=yesterday")
+        assert response.status_code == 400
+
+    def test_since_days_numeric_overrides_default(
+        self, client, mock_db, mock_user
+    ):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities?since_days=7")
+        assert response.status_code == 200

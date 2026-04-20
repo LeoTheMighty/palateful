@@ -113,6 +113,7 @@ class Endpoint:
             return CustomJSONResponse(
                 content=jsonable_encoder(result['data']),
                 status_code=result['status'],
+                headers=result.get('headers') or None,
             )
         # Log error
         if result.get('error'):
@@ -230,19 +231,27 @@ def ack():
     return {"success": True}
 
 
-def success(data: typing.Any = None, status: int = 200):
+def success(
+    data: typing.Any = None,
+    status: int = 200,
+    headers: dict | None = None,
+):
     """
     A successful response to the service worker.
 
     :param data: The data to handle the successful response with.
     :param status: The status code of the response.
+    :param headers: Optional HTTP response headers to attach.
     :return: A successful response to send to the service worker.
     """
-    return {
+    result = {
         "success": True,
         "data": data if data is not None else ack(),
         "status": status,
     }
+    if headers:
+        result["headers"] = headers
+    return result
 
 
 def failure(
