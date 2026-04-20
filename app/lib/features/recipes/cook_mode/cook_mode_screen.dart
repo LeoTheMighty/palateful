@@ -15,6 +15,8 @@ import 'widgets/cook_mode_chat_sheet.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/post_cook_feedback_sheet.dart';
 import 'widgets/step_navigator.dart';
+import 'widgets/step_timers_row.dart';
+import 'util/timer_regex.dart';
 import '../../../core/services/error_reporter.dart';
 import '../../../shared/widgets/error_banner.dart';
 
@@ -36,7 +38,7 @@ class _CookModeScreenState extends State<CookModeScreen>
 
   Map<String, dynamic>? _recipe;
   List<dynamic> _ingredients = [];
-  List<String> _steps = [];
+  List<_StepData> _steps = [];
   bool _isLoading = true;
   bool _isOffline = false;
   String? _error;
@@ -209,8 +211,8 @@ class _CookModeScreenState extends State<CookModeScreen>
       _recipe = recipe;
       _ingredients = recipe['ingredients'] ?? [];
       _steps = stepsData
-          .map((s) => s['instruction'] as String? ?? '')
-          .where((s) => s.isNotEmpty)
+          .map((s) => _StepData.fromJson(s))
+          .where((s) => s.instruction.isNotEmpty)
           .toList();
       _isLoading = false;
     });
@@ -353,7 +355,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     buf.writeln();
     buf.writeln('Steps:');
     for (var i = 0; i < _steps.length; i++) {
-      buf.writeln('${i + 1}. ${_steps[i]}');
+      buf.writeln('${i + 1}. ${_steps[i].instruction}');
     }
     if (_steps.isNotEmpty) {
       buf.writeln();
@@ -728,12 +730,11 @@ class _CookModeScreenState extends State<CookModeScreen>
     }
 
     final step = _steps[_currentStep];
-
-    // Detect time mentions for inline timers
-    final timePattern = RegExp(
-        r'(\d+)\s*(min(?:ute)?s?|sec(?:ond)?s?|hour?s?)',
-        caseSensitive: false);
-    final timeMatch = timePattern.firstMatch(step);
+    // cmt-4: hybrid is FALLBACK, not merge. Structured timers suppress
+    // the regex even when the instruction mentions more durations.
+    final timers = step.timers.isNotEmpty
+        ? step.timers
+        : extractTimers(step.instruction);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -792,7 +793,7 @@ class _CookModeScreenState extends State<CookModeScreen>
               border: Border.all(color: cook.cookDivider),
             ),
             child: Text(
-              step,
+              step.instruction,
               style: TextStyle(
                 fontSize: 24,
                 height: 1.5,
@@ -802,10 +803,14 @@ class _CookModeScreenState extends State<CookModeScreen>
             ),
           ),
 
-          // Inline timer button (if time detected)
-          if (timeMatch != null) ...[
+          // Inline timer buttons (extractor-supplied OR regex fallback;
+          // hybrid is fallback not merge — see cmt-4 AC2).
+          if (timers.isNotEmpty) ...[
             const SizedBox(height: 24),
-            _buildInlineTimer(timeMatch, cook),
+            StepTimersRow(
+              timers: timers,
+              onStart: (duration, label) => _startTimer(duration, label),
+            ),
           ],
 
           // Swipe hint
@@ -830,29 +835,6 @@ class _CookModeScreenState extends State<CookModeScreen>
     );
   }
 
-  Widget _buildInlineTimer(RegExpMatch match, CookModeTheme cook) {
-    final value = int.parse(match.group(1)!);
-    final unit = match.group(2)!.toLowerCase();
-
-    Duration duration;
-    if (unit.startsWith('sec')) {
-      duration = Duration(seconds: value);
-    } else if (unit.startsWith('hour')) {
-      duration = Duration(hours: value);
-    } else {
-      duration = Duration(minutes: value);
-    }
-
-    return OutlinedButton.icon(
-      onPressed: () => _startTimer(duration, 'Step ${_currentStep + 1}'),
-      icon: const Icon(Icons.timer),
-      label: Text('Set $value $unit timer'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: cook.cookTimer,
-        side: BorderSide(color: cook.cookTimer),
-      ),
-    );
-  }
 }
 
 /// Bottom sheet showing timer detail: label, live countdown, cancel and restart.
@@ -973,6 +955,32 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
         ],
       ),
     );
+  }
+}
+
+/// cmt-4 — per-step record kept on `_steps`.
+///
+/// Prior to cmt-4, `_steps` was `List<String>`; the upgrade pulls
+/// structured `timers` out of the backend payload at load time so the
+/// render path doesn't re-parse the JSON on every build.
+class _StepData {
+  final String instruction;
+  final List<StepTimer> timers;
+
+  const _StepData({required this.instruction, required this.timers});
+
+  factory _StepData.fromJson(dynamic raw) {
+    if (raw is! Map) return const _StepData(instruction: '', timers: []);
+    final instruction = raw['instruction'] as String? ?? '';
+    final rawTimers = raw['timers'];
+    final parsed = <StepTimer>[];
+    if (rawTimers is List) {
+      for (final t in rawTimers) {
+        final parsedTimer = StepTimer.fromJson(t);
+        if (parsedTimer != null) parsed.add(parsedTimer);
+      }
+    }
+    return _StepData(instruction: instruction, timers: parsed);
   }
 }
 
