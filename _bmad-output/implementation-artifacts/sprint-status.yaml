@@ -796,8 +796,8 @@ development_status:
   # then str-ing-4 (schema migration, one-deploy lag so app stops reading
   # dropped columns first); then str-ing-5 (planning-artifact updates +
   # formal rescope note on epic-review-import-ingredient-polish).
-  epic-ingredients-string-simplification: backlog
-  str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: backlog
+  epic-ingredients-string-simplification: in-progress
+  str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: done
   str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: backlog
   str-ing-3-backend-delete-ingredients-endpoints-and-router: backlog
   str-ing-4-backend-schema-migration-and-model-cleanup: backlog
@@ -831,3 +831,36 @@ development_status:
   hmp-4-filter-show-type-and-hide-components-of-meals: backlog
   hmp-5-regression-zero-meal-parity-selection-filter-interaction-and-a11y: backlog
   epic-meals-home-promotion-retrospective: optional
+
+  # Epic Extractor Field-Level Inference (planned 2026-04-20, refined via party-mode)
+  # Full-stack. Teaches ai/vision/text extractors to best-guess recipe-level
+  # fields (prep_time, cook_time, total_time, servings, description, cuisine,
+  # category, primary_vibe, secondary_vibe) when missing from source, marks
+  # each guess in a top-level inferred_fields[] array, clamps/truncates via a
+  # new guardrails module with audit logging (log_inferred_field_clamp + AST-
+  # lint), penalizes confidence 0.05 × min(inferred_count, 5) (cap 0.25), and
+  # surfaces the provenance end-to-end via a new recipes.inferred_fields JSONB
+  # column + UpdateRecipe shrink-only validation. Flutter InferredFieldBadge
+  # (Icons.auto_awesome, 14pt, tertiary tint) renders next to each inferable
+  # field label on Review Import + Recipe Edit; badge dismisses on first edit;
+  # Review Import dispatches POST /v1/import-items/{id}/corrections (writes
+  # error_logs row service="audit" error_type="InferredFieldCorrected"). Recipe
+  # Edit dispatch deferred to future consolidated dashboard; UpdateRecipe round-
+  # trip carries shrunken inferred_fields. New eval metrics field_inference_
+  # accuracy + hallucination_rate (anti-metric) as soft gates. Feature flag
+  # EXTRACTOR_INFER_MISSING_FIELDS (default on, ECS flippable) mirrors existing
+  # EXTRACTOR_EMIT_CONFIDENCE / EXTRACTOR_EMIT_CANONICAL_UNITS pattern; flips
+  # LAST relative to those two. Per-ingredient inference explicitly deferred
+  # to a follow-up epic (epic-extractor-ingredient-inference) informed by
+  # correction-log data. Coordinate merge with cmt-1/2 + riip-3 only if those
+  # are in-flight (shared LLM-extractor prompt files). json_ld.py untouched.
+  epic-extractor-field-inference: backlog
+  efi-1-backend-inferable-fields-flag-prompt-guardrails-penalty-and-log-helper: backlog
+  efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: backlog
+  efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: backlog
+  efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: backlog
+  efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: backlog
+  efi-6-flutter-review-import-wiring-badge-dismiss-on-edit-and-debounced-dispatch: backlog
+  efi-7-flutter-recipe-edit-wiring-badge-dismiss-on-edit-and-update-recipe-round-trip: backlog
+  efi-8-eval-field-inference-accuracy-and-hallucination-rate-metrics-with-baseline: backlog
+  epic-extractor-field-inference-retrospective: optional

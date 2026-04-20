@@ -359,22 +359,6 @@ class ApiClient {
     return _dio.get('/v1/search', queryParameters: params);
   }
 
-  // Ingredient endpoints
-  Future<Response> searchIngredients(String query, {int limit = 10}) {
-    return _dio.get('/v1/ingredients/search', queryParameters: {
-      'q': query,
-      'limit': limit,
-    });
-  }
-
-  Future<Response> createIngredient(Map<String, dynamic> data) {
-    return _dio.post('/v1/ingredients', data: data);
-  }
-
-  Future<Response> getIngredient(String id) {
-    return _dio.get('/v1/ingredients/$id');
-  }
-
   // Shopping List endpoints
   Future<Response> getShoppingLists({int limit = 20, int offset = 0}) {
     return _dio.get('/v1/shopping-lists', queryParameters: {

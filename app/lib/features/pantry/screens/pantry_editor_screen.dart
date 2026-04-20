@@ -7,7 +7,6 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../models/pantry_ingredient.dart';
 import '../services/pantry_service.dart';
-import '../widgets/ingredient_search.dart';
 
 class PantryEditorScreen extends StatefulWidget {
   /// The path parameter — either an `ingredientId` to edit, or the literal
@@ -27,7 +26,7 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
   ApiClient get _api => getIt<ApiClient>();
 
   PantryIngredient? _existing;
-  IngredientMatch? _pickedIngredient;
+  final _nameController = TextEditingController();
   final _quantityController = TextEditingController();
   final _unitController = TextEditingController();
   String? _storageLocation;
@@ -45,6 +44,7 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _quantityController.dispose();
     _unitController.dispose();
     super.dispose();
@@ -79,7 +79,7 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
   bool get _isFormValid {
     final qty = double.tryParse(_quantityController.text.trim());
     if (qty == null || qty <= 0) return false;
-    if (widget.isNew && _pickedIngredient == null) return false;
+    if (widget.isNew && _nameController.text.trim().isEmpty) return false;
     return true;
   }
 
@@ -96,7 +96,7 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
     }
 
     final pantryId = _existing?.pantryId ?? _service.current?.id;
-    final ingredientId = _pickedIngredient?.id ?? _existing?.ingredientId;
+    final ingredientId = _existing?.ingredientId;
     if (pantryId == null || ingredientId == null) return;
 
     try {
@@ -160,8 +160,7 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
 
     try {
       if (widget.isNew) {
-        final picked = _pickedIngredient!;
-        payload['ingredient_id'] = picked.id;
+        payload['name'] = _nameController.text.trim();
         await _service.addPantryIngredient(pantryId, payload);
       } else {
         // PATCH via ApiClient directly (PantryService doesn't own PATCH yet).
@@ -227,36 +226,38 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
             ),
         ],
       ),
-      body: isNew && _pickedIngredient == null
-          ? _buildIngredientPicker()
-          : _buildForm(),
-    );
-  }
-
-  Widget _buildIngredientPicker() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: IngredientSearch(
-        onSelected: (match) => setState(() => _pickedIngredient = match),
-      ),
+      body: _buildForm(),
     );
   }
 
   Widget _buildForm() {
-    final ingredientName = widget.isNew
-        ? _pickedIngredient?.canonicalName ?? ''
-        : _existing?.ingredientName ?? '';
-
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        ListTile(
-          title: Text(ingredientName),
-          subtitle: Text(widget.isNew
-              ? (_pickedIngredient?.category ?? '')
-              : (_existing?.category ?? '')),
-          leading: const Icon(Icons.grass),
-        ),
+        if (widget.isNew)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Semantics(
+              label: 'Ingredient name',
+              child: TextField(
+                key: const Key('pantry_editor_name'),
+                controller: _nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Ingredient',
+                  hintText: 'e.g. olive oil',
+                ),
+                textInputAction: TextInputAction.next,
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          )
+        else
+          ListTile(
+            title: Text(_existing?.ingredientName ?? ''),
+            subtitle: Text(_existing?.category ?? ''),
+            leading: const Icon(Icons.grass),
+          ),
         const SizedBox(height: 8),
         TextField(
           controller: _quantityController,

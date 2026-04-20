@@ -44,10 +44,6 @@ IngredientRowData ingredientDataFromJson(dynamic ing) {
       : null;
 
   final isOptional = ing['is_optional'] == true;
-  // riip-7: backend annotates parsed_recipe ingredients with
-  // `pending_review_ingredient: true` when the canonical was auto-created
-  // via find-or-create. Flutter treats omitted == false.
-  final pendingReviewIngredient = ing['pending_review_ingredient'] == true;
 
   return IngredientRowData(
     name: name,
@@ -55,7 +51,6 @@ IngredientRowData ingredientDataFromJson(dynamic ing) {
     unit: unit,
     notes: notes,
     isOptional: isOptional,
-    pendingReviewIngredient: pendingReviewIngredient,
   );
 }
 

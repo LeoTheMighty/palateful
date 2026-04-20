@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import 'package:palateful/core/utils/fraction_parser.dart';
 import 'package:palateful/features/recipes/services/session_alias_map.dart';
-import 'package:palateful/features/recipes/widgets/ingredient_row_state_badge.dart';
 import 'package:palateful/features/recipes/widgets/unit_input.dart';
 
 /// Value object for one row of the structured ingredient editor.
@@ -17,10 +16,6 @@ import 'package:palateful/features/recipes/widgets/unit_input.dart';
 /// (riip-6) — kept on the value-object so manual collapse survives the
 /// auto-save rebuilds that wash through the recipe editor / Review Import
 /// screen. The parent owns this and round-trips it on every change.
-///
-/// `pendingReviewIngredient` is the riip-7 badge flag — true when the
-/// ingredient's canonical entry was auto-created via find-or-create and
-/// hasn't been reviewed yet. Wired in riip-7.
 class IngredientRowData {
   const IngredientRowData({
     this.name,
@@ -30,7 +25,6 @@ class IngredientRowData {
     this.isOptional = false,
     this.ingredientId,
     bool? expanded,
-    this.pendingReviewIngredient = false,
   }) : _explicitExpanded = expanded;
 
   final String? name;
@@ -39,7 +33,6 @@ class IngredientRowData {
   final String? notes;
   final bool isOptional;
   final String? ingredientId;
-  final bool pendingReviewIngredient;
 
   /// Internal expansion state. Use [expanded] to read; auto-expand
   /// when caller didn't set it and notes/optional are non-empty.
@@ -63,7 +56,6 @@ class IngredientRowData {
     bool? isOptional,
     Object? ingredientId = _sentinel,
     Object? expanded = _sentinel,
-    bool? pendingReviewIngredient,
   }) {
     return IngredientRowData(
       name: identical(name, _sentinel) ? this.name : name as String?,
@@ -78,8 +70,6 @@ class IngredientRowData {
       expanded: identical(expanded, _sentinel)
           ? _explicitExpanded
           : expanded as bool?,
-      pendingReviewIngredient:
-          pendingReviewIngredient ?? this.pendingReviewIngredient,
     );
   }
 
@@ -367,10 +357,6 @@ class _StructuredIngredientRowState extends State<StructuredIngredientRow> {
                   onChanged: _onNameChanged,
                 ),
               ),
-              if (widget.value.pendingReviewIngredient)
-                IngredientRowStateBadge(
-                  ingredientName: widget.value.name,
-                ),
               const SizedBox(width: 4),
               SizedBox(
                 width: _RowLayout.caret,
