@@ -829,7 +829,7 @@ development_status:
   hmp-2-home-selection-mode-long-press-app-bar-and-bulk-bar-scaffold: done
   hmp-3-bulk-actions-create-meal-add-to-meal-archive-and-partial-failure: done
   hmp-4-filter-show-type-and-hide-components-of-meals: done
-  hmp-5-regression-zero-meal-parity-selection-filter-interaction-and-a11y: backlog
+  hmp-5-regression-zero-meal-parity-selection-filter-interaction-and-a11y: done
   epic-meals-home-promotion-retrospective: optional
 
   # Epic Extractor Field-Level Inference (planned 2026-04-20, refined via party-mode)
