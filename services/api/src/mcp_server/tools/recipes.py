@@ -193,7 +193,7 @@ def update_recipe(
     the whole set you want. Ingredient names auto-resolve the same way as in
     `create_recipe`.
     """
-    user = get_current_user()
+    get_current_user()  # ensure auth; caller is not used downstream
     database = get_current_database()
 
     params_kwargs: dict[str, Any] = {}
