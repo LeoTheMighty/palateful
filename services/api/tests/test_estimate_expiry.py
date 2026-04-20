@@ -27,7 +27,7 @@ class TestEstimateExpiry:
 
         pantry = MockPantry()
         membership = MockPantryUser(user_id=str(mock_user.id), pantry_id=str(pantry.id))
-        ingredient = MockIngredient(canonical_name="eggs", category="eggs")
+        ingredient = MockIngredient(canonical_name="eggs")
 
         mock_db.set_find_by(Pantry, pantry, id=str(pantry.id))
         mock_db.set_find_by(Ingredient, ingredient, id=str(ingredient.id))

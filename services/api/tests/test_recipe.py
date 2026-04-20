@@ -2149,7 +2149,7 @@ class TestCreateRecipeMissingBranches:
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
         ingredient_id = str(uuid.uuid4())
-        ingredient = MockIngredient(id=ingredient_id, canonical_name="flour", category="baking")
+        ingredient = MockIngredient(id=ingredient_id, canonical_name="flour")
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id),
             recipe_book_id=book_id,

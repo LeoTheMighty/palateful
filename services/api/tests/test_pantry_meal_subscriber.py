@@ -87,7 +87,7 @@ def _invoke(event, db):
 class TestDecrementSubscriber:
     def test_happy_path_decrements(self):
         user = MockUser()
-        ing = MockIngredient(canonical_name="flour", category="baking")
+        ing = MockIngredient(canonical_name="flour")
         ri = MockRecipeIngredient(
             ingredient_id=str(ing.id),
             quantity_normalized=Decimal("50.000"),

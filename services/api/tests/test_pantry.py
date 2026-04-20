@@ -58,7 +58,7 @@ class TestGetDefaultPantry:
             pantry_id=str(pantry.id),
             role="owner",
         )
-        ingredient = MockIngredient(canonical_name="flour", category="baking")
+        ingredient = MockIngredient(canonical_name="flour")
         pi = MockPantryIngredient(
             pantry_id=str(pantry.id),
             ingredient_id=str(ingredient.id),
@@ -103,7 +103,7 @@ class TestAddPantryIngredient:
 
         pantry_id = str(uuid.uuid4())
         _pantry, membership, PantryUser = self._setup_access(mock_db, mock_user, pantry_id)
-        ingredient = MockIngredient(canonical_name="onion", category="produce")
+        ingredient = MockIngredient(canonical_name="onion")
         mock_db.set_find_by(Ingredient, ingredient, id=str(ingredient.id))
 
         _query_router(
@@ -131,7 +131,7 @@ class TestAddPantryIngredient:
 
         pantry_id = str(uuid.uuid4())
         _pantry, membership, PantryUser = self._setup_access(mock_db, mock_user, pantry_id)
-        ingredient = MockIngredient(canonical_name="milk", category="dairy")
+        ingredient = MockIngredient(canonical_name="milk")
         mock_db.set_find_by(Ingredient, ingredient, id=str(ingredient.id))
 
         existing = MockPantryIngredient(

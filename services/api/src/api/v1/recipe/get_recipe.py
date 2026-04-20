@@ -93,7 +93,6 @@ class GetRecipe(Endpoint):
                 ingredient=GetRecipe.IngredientSummary(
                     id=str(ing.id),
                     canonical_name=ing.canonical_name,
-                    category=ing.category
                 ),
                 quantity_display=format_quantity(ri.quantity_display, ri.unit_display),
                 unit_display=ri.unit_display,

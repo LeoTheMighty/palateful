@@ -15,12 +15,11 @@ from conftest import (
 )
 
 
-def make_recipe_ingredient(ingredient_id, recipe_id, canonical_name="Flour", category="Baking"):
+def make_recipe_ingredient(ingredient_id, recipe_id, canonical_name="Flour"):
     """Helper to create a MockRecipeIngredient with a linked MockIngredient."""
     ingredient = MockIngredient(
         id=ingredient_id,
         canonical_name=canonical_name,
-        category=category,
     )
     ri = MockRecipeIngredient(
         ingredient_id=ingredient_id,

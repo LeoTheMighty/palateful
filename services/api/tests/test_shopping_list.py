@@ -1623,7 +1623,7 @@ class TestGenerateFromMealEvent:
     def test_generate_success(self, client, mock_db, mock_user):
         """Generates shopping list from recipe ingredients."""
         ingredient = MockModel(
-            id="ing-1", canonical_name="Flour", category="baking",
+            id="ing-1", canonical_name="Flour",
         )
         recipe_ingredient = MockModel(
             id="ri-1", ingredient_id="ing-1", ingredient=ingredient,
@@ -1659,7 +1659,7 @@ class TestGenerateFromMealEvent:
     def test_generate_skips_archived_ingredients(self, client, mock_db, mock_user):
         """Archived recipe ingredients are skipped."""
         ingredient = MockModel(
-            id="ing-1", canonical_name="Salt", category="baking",
+            id="ing-1", canonical_name="Salt",
         )
         archived_ri = MockModel(
             id="ri-1", ingredient_id="ing-1", ingredient=ingredient,
@@ -1720,7 +1720,7 @@ class TestGenerateFromMealEvent:
         tests deleted. Pantry stocked with flour; meal event needs flour;
         shopping list still gains a flour line item."""
         ingredient = MockModel(
-            id="ing-flour", canonical_name="flour", category="baking",
+            id="ing-flour", canonical_name="flour",
         )
         recipe_ingredient = MockModel(
             id="ri-1", ingredient_id="ing-flour", ingredient=ingredient,

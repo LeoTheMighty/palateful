@@ -139,16 +139,10 @@ class MockIngredient(MockModel):
     def __init__(self, **kwargs):
         defaults = {
             "canonical_name": "flour",
-            "aliases": [],
-            "category": "baking",
             "flavor_profile": [],
             "default_unit": "g",
-            "is_canonical": True,
-            "pending_review": False,
             "image_url": None,
-            "embedding": None,
             "submitted_by_id": None,
-            "parent_id": None,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
