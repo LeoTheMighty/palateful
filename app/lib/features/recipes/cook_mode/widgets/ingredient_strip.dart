@@ -26,8 +26,8 @@ class _IngredientStripState extends State<IngredientStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final appColors = context.appColors;
+    final cook = context.cookModeTheme;
+    final labelColor = cook.cookOnSurface.withValues(alpha: 0.7);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -46,7 +46,7 @@ class _IngredientStripState extends State<IngredientStrip> {
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 1,
-                    color: appColors.textTertiary,
+                    color: labelColor,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -54,7 +54,8 @@ class _IngredientStripState extends State<IngredientStrip> {
                   '${widget.checkedIndices.length}/${widget.ingredients.length}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: appColors.textTertiary,
+                    color: cook.cookAccent,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const Spacer(),
@@ -72,13 +73,15 @@ class _IngredientStripState extends State<IngredientStrip> {
                           _isExpanded ? 'Collapse' : 'Expand',
                           style: TextStyle(
                             fontSize: 12,
-                            color: colorScheme.secondary,
+                            color: cook.cookOnSurface
+                                .withValues(alpha: 0.7),
                           ),
                         ),
                         Icon(
                           _isExpanded ? Icons.expand_less : Icons.expand_more,
                           size: 18,
-                          color: colorScheme.secondary,
+                          color: cook.cookOnSurface
+                              .withValues(alpha: 0.7),
                         ),
                       ],
                     ),
@@ -162,8 +165,7 @@ class _IngredientChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final appColors = context.appColors;
+    final cook = context.cookModeTheme;
     final name = ingredient['ingredient']?['canonical_name'] ?? 'Unknown';
     final quantity = scaleQuantityDisplay(
         ingredient['quantity_display'] as String?, scaleFactor);
@@ -180,14 +182,10 @@ class _IngredientChip extends StatelessWidget {
           width: 64,
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: isChecked
-                ? appColors.success
-                : colorScheme.surfaceContainerHighest,
+            color: isChecked ? cook.cookCompleted : cook.cookSurfaceDim,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isChecked
-                  ? appColors.success
-                  : colorScheme.outlineVariant,
+              color: isChecked ? cook.cookCompleted : cook.cookDivider,
             ),
           ),
           child: Column(
@@ -200,8 +198,8 @@ class _IngredientChip extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: isChecked
-                      ? colorScheme.surface
-                      : colorScheme.onSurface,
+                      ? cook.cookOnCompleted
+                      : cook.cookOnSurface,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -213,8 +211,8 @@ class _IngredientChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   color: isChecked
-                      ? colorScheme.surface
-                      : colorScheme.onSurfaceVariant,
+                      ? cook.cookOnCompleted
+                      : cook.cookOnSurface.withValues(alpha: 0.7),
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -222,7 +220,7 @@ class _IngredientChip extends StatelessWidget {
               ),
               if (isChecked) ...[
                 const SizedBox(height: 4),
-                Icon(Icons.check, size: 14, color: colorScheme.surface),
+                Icon(Icons.check, size: 14, color: cook.cookOnCompleted),
               ],
             ],
           ),
@@ -239,9 +237,7 @@ class _IngredientChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isChecked
-              ? appColors.success
-              : colorScheme.surfaceContainerHighest,
+          color: isChecked ? cook.cookCompleted : cook.cookSurfaceDim,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -250,15 +246,13 @@ class _IngredientChip extends StatelessWidget {
             if (isChecked)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
-                child: Icon(Icons.check, size: 16, color: colorScheme.surface),
+                child: Icon(Icons.check, size: 16, color: cook.cookOnCompleted),
               ),
             Text(
               '$quantity $unit $name'.trim(),
               style: TextStyle(
                 fontSize: 13,
-                color: isChecked
-                    ? colorScheme.surface
-                    : colorScheme.onSurface,
+                color: isChecked ? cook.cookOnCompleted : cook.cookOnSurface,
                 decoration: isChecked ? TextDecoration.lineThrough : null,
               ),
             ),

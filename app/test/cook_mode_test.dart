@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/theme/app_colors.dart';
+import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/cook_mode_chat_sheet.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/ingredient_strip.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/step_navigator.dart';
@@ -80,6 +81,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: IngredientStrip(
               ingredients: ingredients,
@@ -100,6 +102,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: StepNavigator(
               currentStep: 1,
@@ -124,6 +127,7 @@ void main() {
       // On last step, Done appears
       await tester.pumpWidget(
         MaterialApp(
+          theme: AppTheme.light(),
           home: Scaffold(
             body: StepNavigator(
               currentStep: 2,

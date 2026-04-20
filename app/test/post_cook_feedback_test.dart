@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:palateful/core/services/recipe_cache_service.dart';
+import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/post_cook_feedback_sheet.dart';
 
 void main() {
@@ -67,6 +68,7 @@ void main() {
     // Uses isOffline: true so no real API calls are made.
     Widget buildSheet({required VoidCallback onComplete}) {
       return MaterialApp(
+        theme: AppTheme.light(),
         home: Scaffold(
           backgroundColor: const Color(0xFF3A2A1E),
           body: Builder(

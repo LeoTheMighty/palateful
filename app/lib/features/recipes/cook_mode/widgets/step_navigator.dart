@@ -27,17 +27,17 @@ class StepNavigator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLastStep = currentStep == totalSteps - 1;
-    final colorScheme = Theme.of(context).colorScheme;
+    final cook = context.cookModeTheme;
     final appColors = context.appColors;
 
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: colorScheme.surface,
+          color: cook.cookSurface,
           boxShadow: [
             BoxShadow(
-              color: colorScheme.shadow,
+              color: cook.cookShadow,
               blurRadius: 8,
               offset: const Offset(0, -2),
             ),
@@ -87,46 +87,62 @@ class StepNavigator extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(totalSteps, (index) {
                     final isCurrent = index == currentStep;
-                    final isCompleted = completedSteps.contains(index);
+                    // A pill only renders "completed" for non-current
+                    // indices. The current pill never shows a check,
+                    // regardless of set membership. See cmp-4 AC4.
+                    final isCompleted =
+                        !isCurrent && completedSteps.contains(index);
 
-                    return GestureDetector(
-                      onTap: () => onStepTap(index),
-                      child: Container(
-                        width: isCurrent ? 28 : 24,
-                        height: 28,
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: isCurrent
-                              ? colorScheme.primary
-                              : isCompleted
-                                  ? appColors.success
-                                  : colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(14),
-                          border: isCurrent
-                              ? null
-                              : Border.all(
-                                  color: isCompleted
-                                      ? appColors.success
-                                      : colorScheme.outlineVariant,
-                                ),
-                        ),
-                        child: Center(
-                          child: isCompleted && !isCurrent
-                              ? Icon(
-                                  Icons.check,
-                                  size: 14,
-                                  color: colorScheme.surface,
-                                )
-                              : Text(
-                                  '${index + 1}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: isCurrent
-                                        ? colorScheme.surface
-                                        : colorScheme.onSurfaceVariant,
+                    final semanticLabel = isCurrent
+                        ? 'Step ${index + 1}, current'
+                        : isCompleted
+                            ? 'Step ${index + 1}, completed'
+                            : 'Step ${index + 1}, upcoming';
+
+                    return Semantics(
+                      label: semanticLabel,
+                      button: true,
+                      selected: isCurrent,
+                      child: GestureDetector(
+                        onTap: () => onStepTap(index),
+                        child: Container(
+                          width: isCurrent ? 28 : 24,
+                          height: 28,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            color: isCurrent
+                                ? cook.cookAccent
+                                : isCompleted
+                                    ? cook.cookCompleted
+                                    : cook.cookSurfaceDim,
+                            borderRadius: BorderRadius.circular(14),
+                            border: isCurrent
+                                ? null
+                                : Border.all(
+                                    color: isCompleted
+                                        ? cook.cookCompleted
+                                        : cook.cookDivider,
                                   ),
-                                ),
+                          ),
+                          child: Center(
+                            child: isCompleted
+                                ? Icon(
+                                    Icons.check,
+                                    size: 14,
+                                    color: cook.cookOnCompleted,
+                                  )
+                                : Text(
+                                    '${index + 1}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: isCurrent
+                                          ? cook.cookOnAccent
+                                          : cook.cookOnSurface
+                                              .withValues(alpha: 0.7),
+                                    ),
+                                  ),
+                          ),
                         ),
                       ),
                     );
@@ -169,15 +185,15 @@ class _NavButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEnabled = onPressed != null;
-    final colorScheme = Theme.of(context).colorScheme;
+    final cook = context.cookModeTheme;
     final appColors = context.appColors;
 
     return Material(
       color: isPrimary && isEnabled
-          ? colorScheme.primary
+          ? cook.cookAccent
           : isEnabled
-              ? colorScheme.surfaceContainerHighest
-              : colorScheme.outlineVariant,
+              ? cook.cookSurfaceDim
+              : cook.cookDivider,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: isEnabled
@@ -197,7 +213,7 @@ class _NavButton extends StatelessWidget {
                       icon,
                       size: 20,
                       color: isEnabled
-                          ? colorScheme.onSurface
+                          ? cook.cookOnSurface
                           : appColors.textDisabled,
                     ),
                     const SizedBox(width: 8),
@@ -207,7 +223,7 @@ class _NavButton extends StatelessWidget {
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: isEnabled
-                            ? colorScheme.onSurface
+                            ? cook.cookOnSurface
                             : appColors.textDisabled,
                       ),
                     ),
@@ -219,9 +235,9 @@ class _NavButton extends StatelessWidget {
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: isPrimary && isEnabled
-                            ? colorScheme.surface
+                            ? cook.cookOnAccent
                             : isEnabled
-                                ? colorScheme.onSurface
+                                ? cook.cookOnSurface
                                 : appColors.textDisabled,
                       ),
                     ),
@@ -230,9 +246,9 @@ class _NavButton extends StatelessWidget {
                       icon,
                       size: 20,
                       color: isPrimary && isEnabled
-                          ? colorScheme.surface
+                          ? cook.cookOnAccent
                           : isEnabled
-                              ? colorScheme.onSurface
+                              ? cook.cookOnSurface
                               : appColors.textDisabled,
                     ),
                   ],

@@ -4,6 +4,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/services/api_client.dart';
+import '../../../../core/theme/theme.dart';
 import '../../../chat/chat_service.dart';
 
 class CookModeChatSheet extends StatefulWidget {
@@ -192,13 +193,13 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cook = context.cookModeTheme;
 
     return FractionallySizedBox(
       heightFactor: 0.7,
       child: Container(
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
+          color: cook.cookSurface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
@@ -210,7 +211,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withValues(alpha: 0.3),
+                  color: cook.cookOnSurface.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -224,13 +225,13 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface,
+                  color: cook.cookOnSurface,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
 
-            Divider(height: 1, color: colorScheme.primaryContainer),
+            Divider(height: 1, color: cook.cookDivider),
 
             // Messages
             Expanded(
@@ -244,7 +245,8 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                           '"What temperature should the oven be?"\n'
                           '"What was step 3 again?"',
                           style: TextStyle(
-                            color: colorScheme.onSurface.withValues(alpha: 0.5),
+                            color:
+                                cook.cookOnSurface.withValues(alpha: 0.5),
                             fontSize: 14,
                           ),
                           textAlign: TextAlign.center,
@@ -257,7 +259,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                       itemCount: _messages.length,
                       itemBuilder: (context, index) {
                         final msg = _messages[index];
-                        return _buildMessage(msg, colorScheme);
+                        return _buildMessage(msg, cook);
                       },
                     ),
             ),
@@ -266,11 +268,9 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
               decoration: BoxDecoration(
-                color: colorScheme.primary,
+                color: cook.cookSurface,
                 border: Border(
-                  top: BorderSide(
-                    color: colorScheme.onSurface.withValues(alpha: 0.1),
-                  ),
+                  top: BorderSide(color: cook.cookDivider),
                 ),
               ),
               child: SafeArea(
@@ -280,19 +280,25 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                     Expanded(
                       child: TextField(
                         controller: _controller,
-                        style: TextStyle(color: colorScheme.onSurface),
+                        style: TextStyle(color: cook.cookOnSurface),
                         decoration: InputDecoration(
                           hintText: _isListening
                               ? 'Listening...'
                               : 'Ask a question...',
                           hintStyle: TextStyle(
-                            color: colorScheme.onSurface.withValues(alpha: 0.4),
+                            color:
+                                cook.cookOnSurface.withValues(alpha: 0.4),
                           ),
                           filled: true,
-                          fillColor: colorScheme.surfaceContainerLow,
+                          fillColor: cook.cookSurfaceDim,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
                             borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide(
+                                color: cook.cookAccent, width: 2),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -308,8 +314,8 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                         icon: Icon(
                           _isListening ? Icons.mic : Icons.mic_none,
                           color: _isListening
-                              ? colorScheme.tertiary
-                              : colorScheme.onSurface,
+                              ? cook.cookAccent
+                              : cook.cookOnSurface,
                         ),
                         onPressed: _isSending
                             ? null
@@ -318,7 +324,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                                 : _startListening),
                         style: _isListening
                             ? IconButton.styleFrom(
-                                backgroundColor: colorScheme.tertiary
+                                backgroundColor: cook.cookAccent
                                     .withValues(alpha: 0.2),
                               )
                             : null,
@@ -327,7 +333,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
                     ],
                     const SizedBox(width: 4),
                     IconButton(
-                      icon: Icon(Icons.send, color: colorScheme.tertiary),
+                      icon: Icon(Icons.send, color: cook.cookAccent),
                       onPressed: _isSending ? null : _sendMessage,
                     ),
                   ],
@@ -340,7 +346,7 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
     );
   }
 
-  Widget _buildMessage(_SheetMessage msg, ColorScheme colorScheme) {
+  Widget _buildMessage(_SheetMessage msg, CookModeTheme cook) {
     final isUser = msg.role == 'user';
 
     if (msg.isToolActivity) {
@@ -353,14 +359,14 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: colorScheme.tertiary,
+                color: cook.cookAccent,
               ),
             ),
             const SizedBox(width: 8),
             Text(
               msg.content,
               style: TextStyle(
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
+                color: cook.cookOnSurface.withValues(alpha: 0.6),
                 fontSize: 13,
                 fontStyle: FontStyle.italic,
               ),
@@ -380,14 +386,14 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: colorScheme.tertiary,
+                color: cook.cookAccent,
               ),
             ),
             const SizedBox(width: 8),
             Text(
               'Thinking...',
               style: TextStyle(
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
+                color: cook.cookOnSurface.withValues(alpha: 0.6),
                 fontSize: 13,
                 fontStyle: FontStyle.italic,
               ),
@@ -406,13 +412,15 @@ class _CookModeChatSheetState extends State<CookModeChatSheet> {
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
         decoration: BoxDecoration(
-          color: isUser ? colorScheme.tertiary : colorScheme.primary,
+          color: isUser
+              ? cook.cookAccent
+              : cook.cookAccent.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Text(
           msg.content,
           style: TextStyle(
-            color: colorScheme.onSurface,
+            color: isUser ? cook.cookOnAccent : cook.cookOnSurface,
             fontSize: 15,
             height: 1.4,
           ),
