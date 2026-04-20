@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../providers/activity_archive_provider.dart';
 import 'import_row.dart';
 
@@ -159,7 +160,7 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
 
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final mutedColor = colorScheme.onSurface.withValues(alpha: 0.65);
+    final mutedColor = AppColors.mutedOnSurface(colorScheme);
 
     final toggle = InkWell(
       onTap: _toggle,

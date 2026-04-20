@@ -7,6 +7,8 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/activity_read_provider.dart';
+import 'providers/see_all_count_provider.dart';
+import 'widgets/notifications_see_all_footer.dart';
 
 /// Chronological feed of non-import `user_activity` rows with swipe-to-
 /// archive + 3s undo. Replaces the inline Notifications body that
@@ -167,6 +169,12 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
 
     try {
       await _apiClient.archiveActivity(id);
+      // See-all count bumps by 1 — refresh the footer label.
+      if (mounted) {
+        await ref
+            .read(notificationsSeeAllCountProvider.notifier)
+            .refresh();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -195,6 +203,11 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
     // archive again.
     try {
       await _apiClient.unarchiveActivity(id);
+      if (mounted) {
+        await ref
+            .read(notificationsSeeAllCountProvider.notifier)
+            .refresh();
+      }
     } catch (_) {
       // Silent — matches the shopping-list undo pattern.
     }
@@ -217,21 +230,30 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
         .toList();
 
     if (visible.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 120),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.check_circle_outline,
-                  size: 64,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
-              const SizedBox(height: 16),
-              Text("You're all caught up",
-                  style: textTheme.titleMedium
-                      ?.copyWith(color: colorScheme.onSurfaceVariant)),
-            ],
-          ),
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 120),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle_outline,
+                      size: 64,
+                      color: colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.5)),
+                  const SizedBox(height: 16),
+                  Text("You're all caught up",
+                      style: textTheme.titleMedium
+                          ?.copyWith(color: colorScheme.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            // See-all is still reachable even when the active list is
+            // empty — archived + >30d-read history lives here.
+            const NotificationsSeeAllFooter(),
+          ],
         ),
       );
     }
@@ -239,9 +261,20 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
+        // afh-3 AC10.b — scroll offset persists across tab switches
+        // (PageStorageBucket lookup key). `AutomaticKeepAliveClientMixin`
+        // holds the widget tree alive; the PageStorageKey keeps the
+        // scroll offset even if the widget tree briefly rebuilds.
+        key: const PageStorageKey<String>('notifications-tab-list'),
         padding: const EdgeInsets.only(bottom: 16),
-        itemCount: visible.length,
+        // `+ 1` for the trailing See-all footer. The footer renders as
+        // `SizedBox.shrink()` when total == 0 so zero-history users
+        // still see a clean list bottom.
+        itemCount: visible.length + 1,
         itemBuilder: (context, i) {
+          if (i == visible.length) {
+            return const NotificationsSeeAllFooter();
+          }
           final a = visible[i];
           final id = a['id']?.toString() ?? 'idx-$i';
           final isUnread = a['read'] != true;

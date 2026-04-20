@@ -168,6 +168,13 @@ class AppColors {
     return color.withValues(alpha: opacity);
   }
 
+  /// Shared "muted on surface" token — `onSurface` at 0.65 alpha. Used by
+  /// See-all history surfaces, "read-and-old" rows, and any muted-text
+  /// element in the Activity Hub. Centralised so every consumer reads the
+  /// same alpha and a single tweak updates the whole hub.
+  static Color mutedOnSurface(ColorScheme scheme) =>
+      scheme.onSurface.withValues(alpha: 0.65);
+
   /// Lighten a color by a percentage (0.0 - 1.0)
   static Color lighten(Color color, double amount) {
     final hsl = HSLColor.fromColor(color);

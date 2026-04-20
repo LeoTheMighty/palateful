@@ -28,6 +28,14 @@ class _FakeApiClient extends ApiClient {
       _fakeResponse({'items': activities, 'total': activities.length});
 
   @override
+  Future<Response> getActivitiesSeeAllCount() async =>
+      _fakeResponse({'archived': 0, 'read_and_older': 0, 'total': 0});
+
+  @override
+  Future<Response> listActivitiesSeeAll({String? cursor, int limit = 50}) async =>
+      _fakeResponse({'items': <dynamic>[], 'next_cursor': null, 'total': 0});
+
+  @override
   Future<Response> markActivityRead(String id) async {
     markReadCalls.add(id);
     return _fakeResponse({'success': true});

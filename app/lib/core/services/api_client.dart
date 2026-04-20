@@ -148,6 +148,46 @@ class ApiClient {
     });
   }
 
+  /// afh-3 — See-all history fetch. Sends `since_days=` as the empty-
+  /// string null sentinel (afh-1a AC3) so the backend disables the 30d
+  /// retention window; client-side we cannot just omit the key because
+  /// "absent" means "use default = 30".
+  Future<Response> listActivitiesSeeAll({
+    String? cursor,
+    int limit = 50,
+  }) {
+    return _dio.get('/v1/activities', queryParameters: {
+      'include_archived': true,
+      'include_read': true,
+      'since_days': '',
+      'limit': limit,
+      if (cursor != null) 'cursor': cursor,
+    });
+  }
+
+  /// afh-3 — See-all triple for the Notifications tab.
+  Future<Response> getActivitiesSeeAllCount() =>
+      _dio.get('/v1/activities/see-all-count');
+
+  /// afh-4 — See-all triple for the Imports tab.
+  Future<Response> getImportItemsSeeAllCount() =>
+      _dio.get('/v1/import-items/see-all-count');
+
+  /// afh-4 — cursor-paginated import-items list (See-all mode).
+  /// `jobId` scopes to a single import job; the Imports See-all uses
+  /// the job-level endpoint to walk archived + old-completed items.
+  Future<Response> listImportItemsSeeAll(
+    String jobId, {
+    String? cursor,
+    int limit = 50,
+  }) {
+    return _dio.get('/v1/import-jobs/$jobId/items', queryParameters: {
+      'include_archived': true,
+      'limit': limit,
+      if (cursor != null) 'cursor': cursor,
+    });
+  }
+
   Future<Response> getUnreadActivityCount() =>
       _dio.get('/v1/activities/unread-count');
 
