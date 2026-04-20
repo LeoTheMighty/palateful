@@ -854,8 +854,8 @@ development_status:
   # to a follow-up epic (epic-extractor-ingredient-inference) informed by
   # correction-log data. Coordinate merge with cmt-1/2 + riip-3 only if those
   # are in-flight (shared LLM-extractor prompt files). json_ld.py untouched.
-  epic-extractor-field-inference: backlog
-  efi-1-backend-inferable-fields-flag-prompt-guardrails-penalty-and-log-helper: backlog
+  epic-extractor-field-inference: in-progress
+  efi-1-backend-inferable-fields-flag-prompt-guardrails-penalty-and-log-helper: done
   efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: backlog
   efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: backlog
   efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: backlog

@@ -162,3 +162,32 @@ def resolve_confidence(
             return (model_score, "model")
 
     return (compute_heuristic_confidence(recipe), "heuristic")
+
+
+# efi-1 — field-level inference penalty. Applied AFTER `resolve_confidence`
+# regardless of whether the score came from the model or the heuristic.
+# Flat 0.05 per inferred field, capped at 5 fields (=0.25 max penalty).
+# Weighting per-field is premature until correction-log data exists; the
+# rule is deliberately simple and tuneable via two constants.
+_INFERENCE_PENALTY_PER_FIELD = 0.05
+_INFERENCE_PENALTY_CAP_COUNT = 5
+
+
+def apply_inference_penalty(score: float, inferred_count: int) -> float:
+    """Subtract a flat inference penalty from ``score`` and clamp to [0, 1].
+
+    ``0.05 × min(inferred_count, 5)``. No-op when ``inferred_count`` is
+    zero or negative. NaN / infinite inputs are coerced to ``0.0`` up
+    front so the clamp can't leak a non-finite value downstream — a NaN
+    confidence score would break JSON serialization + Postgres numeric
+    checks.
+    """
+    # NaN != NaN; catch NaN and non-finite values before arithmetic.
+    if score != score or score in (float("inf"), float("-inf")):
+        score = 0.0
+    if inferred_count <= 0:
+        return max(0.0, min(1.0, score))
+    penalty = _INFERENCE_PENALTY_PER_FIELD * min(
+        inferred_count, _INFERENCE_PENALTY_CAP_COUNT
+    )
+    return max(0.0, min(1.0, score - penalty))
