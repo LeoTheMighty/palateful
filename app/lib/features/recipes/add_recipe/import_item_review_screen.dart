@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/inferable_fields.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/error_reporter.dart';
@@ -11,6 +12,7 @@ import '../../../shared/widgets/error_banner.dart';
 import '../../activity/widgets/import_activity_detail.dart';
 import '../widgets/structured_ingredient_row.dart';
 import 'ingredient_edits_mapping.dart';
+import 'widgets/inferred_field_badge.dart';
 
 class ImportItemReviewScreen extends StatefulWidget {
   final String itemId;
@@ -49,6 +51,21 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   bool _hasEdits = false;
   Timer? _saveTimer;
 
+  // efi-6 — local mutable set of field names the extractor best-guessed.
+  // Rendered sparkles next to the 4 inferable field labels Review Import
+  // actually edits (description, prep, cook, servings). A field leaves
+  // the set on first value change; a 1500ms-debounced correction
+  // dispatches to the audit endpoint on focus-loss. Network errors are
+  // silent per design principle 14.
+  Set<String> _inferredFields = <String>{};
+  // Original extracted values, captured at load time, so `_onFieldEdited`
+  // can tell a real edit ("value != original") from no-op setState cycles.
+  final Map<String, Object?> _originalValues = {};
+  // Per-field debounce timers for correction dispatch. Keyed by the
+  // backend field name so the dispatch always sends the LATEST edit for
+  // that field.
+  final Map<String, Timer> _correctionTimers = {};
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +84,9 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
       c.dispose();
     }
     _saveTimer?.cancel();
+    for (final t in _correctionTimers.values) {
+      t.cancel();
+    }
     super.dispose();
   }
 
@@ -85,6 +105,17 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
       if (edits != null) recipe.addAll(edits);
 
       _populateControllers(recipe);
+
+      // efi-6 — decode extractor-flagged inferred fields. The set is
+      // mutable so edits can shrink it. The original values map lets
+      // `_onFieldEdited` distinguish real edits from identity re-sets.
+      _inferredFields = decodeInferredFields(item['inferred_fields']);
+      _originalValues
+        ..clear()
+        ..['description'] = recipe['description']
+        ..['prep_time_minutes'] = recipe['prep_time_minutes']
+        ..['cook_time_minutes'] = recipe['cook_time_minutes']
+        ..['servings'] = recipe['servings'];
 
       setState(() {
         _item = item;
@@ -154,6 +185,60 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
       setState(() => _hasEdits = true);
     }
     _debounceSave();
+  }
+
+  /// efi-6 — inferable-field edit handler. If the field was badged,
+  /// drop the sparkle immediately (design principle 4: badge is derived
+  /// state) and schedule a 1500ms-debounced correction dispatch with
+  /// the latest value. `corrected` is the post-edit value (int for
+  /// times / servings; string for description / cuisine / category /
+  /// vibes). Reverting a field to its original value still counts as
+  /// dismissal — the badge stays gone, and the correction dispatch
+  /// just sends the original back (harmless side-channel write).
+  void _onInferredFieldEdited(String field, Object? corrected) {
+    if (_inferredFields.contains(field)) {
+      setState(() => _inferredFields.remove(field));
+    }
+    _correctionTimers[field]?.cancel();
+    _correctionTimers[field] = Timer(
+      const Duration(milliseconds: 1500),
+      () => _dispatchCorrection(field, corrected),
+    );
+  }
+
+  Future<void> _dispatchCorrection(String field, Object? corrected) async {
+    try {
+      await _apiClient.submitImportCorrection(
+        itemId: widget.itemId,
+        field: field,
+        corrected: corrected,
+      );
+    } catch (_) {
+      // Silent side-channel write — design principle 14.
+    }
+  }
+
+  /// efi-6 — wrap a label string in a row with a sparkle badge when the
+  /// extractor inferred that field. Returns the raw string when the
+  /// field isn't badged so `InputDecoration.labelText` stays idiomatic.
+  InputDecoration _decorateInferable(String label, String field) {
+    if (!_inferredFields.contains(field)) {
+      return InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      );
+    }
+    return InputDecoration(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          const SizedBox(width: 4),
+          const InferredFieldBadge(),
+        ],
+      ),
+      border: const OutlineInputBorder(),
+    );
   }
 
   void _debounceSave() {
@@ -505,12 +590,12 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
               // Description
               TextField(
                 controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: _decorateInferable('Description', 'description'),
                 maxLines: 3,
-                onChanged: (_) => _onFieldChanged(),
+                onChanged: (v) {
+                  _onFieldChanged();
+                  _onInferredFieldEdited('description', v);
+                },
               ),
               const SizedBox(height: 16),
 
@@ -520,36 +605,48 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
                   Expanded(
                     child: TextField(
                       controller: _prepTimeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Prep (min)',
-                        border: OutlineInputBorder(),
+                      decoration: _decorateInferable(
+                        'Prep (min)',
+                        'prep_time_minutes',
                       ),
                       keyboardType: TextInputType.number,
-                      onChanged: (_) => _onFieldChanged(),
+                      onChanged: (v) {
+                        _onFieldChanged();
+                        _onInferredFieldEdited(
+                          'prep_time_minutes',
+                          int.tryParse(v),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
                       controller: _cookTimeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Cook (min)',
-                        border: OutlineInputBorder(),
+                      decoration: _decorateInferable(
+                        'Cook (min)',
+                        'cook_time_minutes',
                       ),
                       keyboardType: TextInputType.number,
-                      onChanged: (_) => _onFieldChanged(),
+                      onChanged: (v) {
+                        _onFieldChanged();
+                        _onInferredFieldEdited(
+                          'cook_time_minutes',
+                          int.tryParse(v),
+                        );
+                      },
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
                       controller: _servingsController,
-                      decoration: const InputDecoration(
-                        labelText: 'Servings',
-                        border: OutlineInputBorder(),
-                      ),
+                      decoration: _decorateInferable('Servings', 'servings'),
                       keyboardType: TextInputType.number,
-                      onChanged: (_) => _onFieldChanged(),
+                      onChanged: (v) {
+                        _onFieldChanged();
+                        _onInferredFieldEdited('servings', int.tryParse(v));
+                      },
                     ),
                   ),
                 ],
