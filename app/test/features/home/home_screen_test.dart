@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
@@ -100,7 +101,9 @@ void main() {
         },
       ));
 
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpWidget(const ProviderScope(
+        child: MaterialApp(home: HomeScreen()),
+      ));
       await tester.pump(); // Let async load complete
 
       expect(find.text('35 min'), findsOneWidget);
@@ -131,7 +134,9 @@ void main() {
         },
       ));
 
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpWidget(const ProviderScope(
+        child: MaterialApp(home: HomeScreen()),
+      ));
       await tester.pump();
 
       expect(find.textContaining(RegExp(r'^\d+ min$')), findsNothing);
@@ -147,7 +152,9 @@ void main() {
 
       _registerFakes(_FakeApiClient());
 
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpWidget(const ProviderScope(
+        child: MaterialApp(home: HomeScreen()),
+      ));
       await tester.pump();
 
       // Identified via tooltip (more stable than tree position).
@@ -186,7 +193,9 @@ void main() {
         ],
       ));
 
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpWidget(const ProviderScope(
+        child: MaterialApp(home: HomeScreen()),
+      ));
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }

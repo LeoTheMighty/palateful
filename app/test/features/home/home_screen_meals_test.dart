@@ -6,6 +6,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
@@ -144,7 +145,9 @@ Future<void> _pumpHome(WidgetTester tester) async {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
   });
-  await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+  await tester.pumpWidget(const ProviderScope(
+    child: MaterialApp(home: HomeScreen()),
+  ));
   // Let in-flight async work settle. pumpAndSettle drains every future +
   // animation frame; the trailing 300ms pump covers the 250ms debounce
   // on SharedStateService.syncRecipeBooks so the test doesn't leak a

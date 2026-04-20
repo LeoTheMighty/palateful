@@ -826,7 +826,7 @@ development_status:
   # epic-cook-mode-*; soft overlap with epic-bugs-home-polish on home_screen.dart.
   epic-meals-home-promotion: in-progress
   hmp-1-meal-tile-v2-chips-chrome-favorite-and-selected-state: done
-  hmp-2-home-selection-mode-long-press-app-bar-and-bulk-bar-scaffold: backlog
+  hmp-2-home-selection-mode-long-press-app-bar-and-bulk-bar-scaffold: done
   hmp-3-bulk-actions-create-meal-add-to-meal-archive-and-partial-failure: backlog
   hmp-4-filter-show-type-and-hide-components-of-meals: backlog
   hmp-5-regression-zero-meal-parity-selection-filter-interaction-and-a11y: backlog

@@ -10,12 +10,17 @@ class RecipeCard extends StatelessWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onFavoriteToggle;
 
+  /// When true the card renders a selection checkmark + dim overlay.
+  /// Wired by home's selection mode (hmp-2).
+  final bool selected;
+
   const RecipeCard({
     super.key,
     required this.recipe,
     required this.onTap,
     this.onLongPress,
     this.onFavoriteToggle,
+    this.selected = false,
   });
 
   @override
@@ -38,6 +43,12 @@ class RecipeCard extends StatelessWidget {
 
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: selected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: colorScheme.primary, width: 2),
+            )
+          : null,
       child: InkWell(
         onTap: () {
           HapticFeedback.selectionClick();
@@ -85,6 +96,27 @@ class RecipeCard extends StatelessWidget {
                           isFavorite ? Icons.favorite : Icons.favorite_border,
                           size: 18,
                           color: isFavorite ? AppColors.favorite : colorScheme.surface,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (selected)
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: Container(
+                        color: colorScheme.primary.withValues(alpha: 0.35),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.check_circle,
+                            color: colorScheme.onPrimary,
+                            size: 32,
+                          ),
                         ),
                       ),
                     ),

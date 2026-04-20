@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -13,21 +14,24 @@ import '../meals/widgets/meal_tile.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
+import 'widgets/home_bulk_action_bar.dart';
+import 'widgets/home_selection_controller.dart';
 import 'widgets/meal_filter_bar.dart';
+import 'widgets/selection_app_bar.dart';
 import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/services/shared_state_service.dart';
 import '../../shared/widgets/error_banner.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _apiClient = getIt<ApiClient>();
 
   List<dynamic> _recipes = [];
@@ -440,96 +444,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showRecipeActions(dynamic recipe) {
-    final colorScheme = Theme.of(context).colorScheme;
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.restaurant),
-              title: const Text('Start Cooking'),
-              onTap: () {
-                Navigator.pop(context);
-                _quickStartCooking(recipe);
-              },
-            ),
-            if (recipe['can_edit'] != false)
-              ListTile(
-                leading: Icon(Icons.archive_outlined, color: colorScheme.error),
-                title: Text('Archive', style: TextStyle(color: colorScheme.error)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _archiveRecipe(recipe);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   void _quickStartCooking(dynamic recipe) {
     context.push('/recipes/${recipe['id']}/cook');
   }
 
-  Future<void> _archiveRecipe(dynamic recipe) async {
-    final recipeId = recipe['id']?.toString();
-    if (recipeId == null) return;
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Archive Recipe?'),
-        content: const Text(
-          'This recipe will be moved to your archive. You can restore it anytime.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Archive'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    try {
-      HapticFeedback.selectionClick();
-      await _apiClient.deleteRecipe(recipeId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recipe archived')),
-        );
-        _loadRecipes();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not archive recipe. Please try again.')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final selection = ref.watch(homeSelectionProvider);
+    // Keep the selection set in sync with the loaded recipe/meal ids —
+    // anything that vanished mid-session (archived elsewhere, unshared
+    // book) is dropped silently. If the whole selection goes away, surf
+    // a brief "content changed" note.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reconcileSelection());
+
+    final selectedMealName = _selectedMealName(selection);
+
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            // Search Header
-            _buildSearchHeader(),
+            if (selection.isActive)
+              const SelectionAppBar()
+            else
+              _buildSearchHeader(),
 
             // Contextual sections — capped to ensure recipe grid always gets space
-            if (_todayMealEvent != null || _recentlyCooked.isNotEmpty)
+            if (!selection.isActive &&
+                (_todayMealEvent != null || _recentlyCooked.isNotEmpty))
               ConstrainedBox(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(context).size.height * 0.42,
@@ -547,10 +488,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
             // Batch Import Status
-            const BatchImportStatusWidget(),
+            if (!selection.isActive) const BatchImportStatusWidget(),
 
             // Favorites Section
-            if (_favorites.isNotEmpty) _buildFavoritesSection(),
+            if (!selection.isActive && _favorites.isNotEmpty)
+              _buildFavoritesSection(),
 
             // Recipe Grid
             Expanded(
@@ -559,9 +501,94 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddRecipeSheet,
-        child: const Icon(Icons.add),
+      floatingActionButton: selection.isActive
+          ? null
+          : FloatingActionButton(
+              onPressed: _showAddRecipeSheet,
+              child: const Icon(Icons.add),
+            ),
+      bottomNavigationBar: selection.isActive
+          ? HomeBulkActionBar(
+              selectedMealName: selectedMealName,
+              onCreateMeal: _handleCreateMealStub,
+              onAddToMeal: _handleAddToMealStub,
+              onArchive: _handleArchiveStub,
+            )
+          : null,
+    );
+  }
+
+  /// Look up the display name of the selection's single Meal (if the
+  /// selection holds exactly one). Home owns the meal list, so this is
+  /// the cleanest place to resolve the name for the bulk bar.
+  String? _selectedMealName(HomeSelectionState selection) {
+    if (selection.selectedMealIds.length != 1) return null;
+    final id = selection.selectedMealIds.first;
+    for (final item in _recipes) {
+      if (item is Map &&
+          item['kind'] == 'meal' &&
+          item['id']?.toString() == id) {
+        return item['name']?.toString();
+      }
+    }
+    return null;
+  }
+
+  void _reconcileSelection() {
+    if (!mounted) return;
+    final controller = ref.read(homeSelectionProvider.notifier);
+    final knownRecipes = <String>{};
+    final knownMeals = <String>{};
+    for (final item in _recipes) {
+      if (item is Map) {
+        final id = item['id']?.toString();
+        if (id == null) continue;
+        if (item['kind'] == 'meal') {
+          knownMeals.add(id);
+        } else {
+          knownRecipes.add(id);
+        }
+      }
+    }
+    final emptied = controller.reconcile(
+      knownRecipeIds: knownRecipes,
+      knownMealIds: knownMeals,
+    );
+    if (emptied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selection cleared — content changed'),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Stub bulk-action handlers — hmp-3 wires these to real dispatches.
+  // Kept here so hmp-2 presents the fully-shaped bulk bar and hmp-3's
+  // change is a body swap, not a wiring refactor.
+  // ---------------------------------------------------------------------
+
+  void _handleCreateMealStub() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Create Meal: coming in next story (hmp-3)'),
+      ),
+    );
+  }
+
+  void _handleAddToMealStub() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Add to Meal: coming in next story (hmp-3)'),
+      ),
+    );
+  }
+
+  void _handleArchiveStub() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Archive: coming in next story (hmp-3)'),
       ),
     );
   }
@@ -973,23 +1000,54 @@ class _HomeScreenState extends State<HomeScreen> {
         itemCount: _recipes.length,
         itemBuilder: (context, index) {
           final item = _recipes[index];
+          final selection = ref.watch(homeSelectionProvider);
           if (item is Map && item['kind'] == 'meal') {
             final meal = _mealSummaryFrom(item);
+            final isSelected = selection.isMealSelected(meal.id);
             return MealTile(
               meal: meal,
-              onTap: () => context.push('/meals/${meal.id}'),
+              onTap: selection.isActive
+                  ? () => ref
+                      .read(homeSelectionProvider.notifier)
+                      .toggleMeal(meal.id)
+                  : () => context.push('/meals/${meal.id}'),
+              onLongPress: () {
+                HapticFeedback.selectionClick();
+                ref
+                    .read(homeSelectionProvider.notifier)
+                    .enterWith(kind: 'meal', id: meal.id);
+              },
               componentNameResolver: _resolveComponentName,
               isFavorited: _favoriteMealIds.contains(meal.id),
-              onFavoriteToggle: () => _toggleMealFavorite(meal),
+              onFavoriteToggle: selection.isActive
+                  ? null
+                  : () => _toggleMealFavorite(meal),
+              selected: isSelected,
             );
           }
+          final recipeId = item['id']?.toString();
+          final isSelected =
+              recipeId != null && selection.isRecipeSelected(recipeId);
           return RecipeCard(
             recipe: item,
-            onTap: () {
-              context.push('/recipes/${item['id']}');
-            },
-            onLongPress: () => _showRecipeActions(item),
-            onFavoriteToggle: () => _toggleFavorite(item),
+            selected: isSelected,
+            onTap: selection.isActive && recipeId != null
+                ? () => ref
+                    .read(homeSelectionProvider.notifier)
+                    .toggleRecipe(recipeId)
+                : () => context.push('/recipes/${item['id']}'),
+            onLongPress: recipeId == null
+                ? null
+                : () {
+                    HapticFeedback.selectionClick();
+                    ref.read(homeSelectionProvider.notifier).enterWith(
+                          kind: 'recipe',
+                          id: recipeId,
+                        );
+                  },
+            onFavoriteToggle: selection.isActive
+                ? null
+                : () => _toggleFavorite(item),
           );
         },
       ),
