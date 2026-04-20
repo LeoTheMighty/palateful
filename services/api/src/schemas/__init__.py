@@ -1,11 +1,5 @@
 """Pydantic schemas for API request/response models."""
 
-from schemas.ingredient import (
-    IngredientCreate,
-    IngredientResponse,
-    IngredientSearchItem,
-    IngredientSearchResponse,
-)
 from schemas.recipe import (
     RecipeCreate,
     RecipeIngredientInput,
@@ -42,9 +36,4 @@ __all__ = [
     "RecipeUpdate",
     "RecipeResponse",
     "RecipeListResponse",
-    # Ingredient
-    "IngredientCreate",
-    "IngredientSearchItem",
-    "IngredientSearchResponse",
-    "IngredientResponse",
 ]

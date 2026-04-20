@@ -13,8 +13,6 @@ from utils.models.friendship import Friendship
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.ingredient import Ingredient
-from utils.models.ingredient_match import IngredientMatch
-from utils.models.ingredient_substitution import IngredientSubstitution
 from utils.models.invitation import Invitation
 from utils.models.invite_link import InviteLink
 from utils.models.joins_base import JoinsBase
@@ -78,8 +76,6 @@ __all__ = [
     "RecipeStep",
     "RecipeVersion",
     "Ingredient",
-    "IngredientSubstitution",
-    "IngredientMatch",
     "Unit",
     "UnitAlias",
     "CookingLog",

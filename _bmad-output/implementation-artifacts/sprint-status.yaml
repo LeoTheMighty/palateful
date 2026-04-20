@@ -800,7 +800,7 @@ development_status:
   str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: done
   str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: done
   str-ing-3-backend-delete-ingredients-endpoints-and-router: done
-  str-ing-4-backend-schema-migration-and-model-cleanup: backlog
+  str-ing-4-backend-schema-migration-and-model-cleanup: done
   str-ing-5-planning-artifacts-and-rescope-review-import-ingredient-polish: backlog
   epic-ingredients-string-simplification-retrospective: optional
 

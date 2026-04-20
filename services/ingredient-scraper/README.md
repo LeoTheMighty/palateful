@@ -1,5 +1,14 @@
 # Ingredient Scraper
 
+> **Frozen 2026-04-20 — no live consumer.** As of epic-ingredients-string-simplification,
+> this service's CSV output has no downstream destination: `services/migrator/seeds/ingredients.py`
+> has been deleted, the matcher has been retired, and the ingredients table is modelled
+> as a bag of per-recipe display names without cross-row identity. The scraper source
+> is retained here in case a future epic re-invokes canonical ingredient data — that epic
+> must first re-evaluate the retirement rationale in
+> `_bmad-output/planning-artifacts/epic-ingredients-string-simplification.md` before
+> re-wiring any consumer.
+
 A CLI tool for building a comprehensive ingredient database by scraping from multiple food data sources, normalizing, deduplicating, and enriching the data.
 
 ## Features

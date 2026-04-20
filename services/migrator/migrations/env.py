@@ -21,8 +21,6 @@ from utils.db.models import (  # noqa: F401
     ImportItem,
     ImportJob,
     Ingredient,
-    IngredientMatch,
-    IngredientSubstitution,
     Invitation,
     InviteLink,
     MealEvent,

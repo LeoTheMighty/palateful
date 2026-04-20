@@ -129,8 +129,10 @@ class ShoppingListItem(Base):
         nullable=True,
     )
 
-    # Smart shopping - from pantry
-    # "You have 1 cup, need 2 cups, buy 1 cup"
+    # Smart shopping — retained as always-NULL placeholder for a possible
+    # future pantry-check revival. Per epic-ingredients-string-simplification
+    # (2026-04-20) the pantry-stock cross-reference is retired; this column is
+    # kept so a follow-up epic can rewire the logic without a new migration.
     already_have_quantity: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 2), nullable=True
     )
