@@ -25,12 +25,22 @@ async def list_activities(
     include_archived: bool = Query(
         False, description="Include archived activities"
     ),
+    include_system_types: bool = Query(
+        False,
+        description=(
+            "Admin-only debug flag. When true, returns all user_activity "
+            "types (including import_* rows) instead of the default "
+            "Notifications-tab allow-list. Non-admin callers passing this "
+            "flag get 403."
+        ),
+    ),
 ):
     """List user's activity feed items."""
     return ListActivities.call(
         limit=limit,
         offset=offset,
         include_archived=include_archived,
+        include_system_types=include_system_types,
         user=user,
         database=database,
     )

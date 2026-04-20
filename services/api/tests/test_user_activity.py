@@ -6,6 +6,32 @@ from datetime import UTC, datetime
 from conftest import MockModel, MockQuery
 
 
+class FilterSpyQuery(MockQuery):
+    """MockQuery that records every `.filter()` call so tests can assert
+    specific filter expressions were applied.
+
+    The base `MockQuery.filter` swallows its args, so tests that rely on
+    a filter predicate being present (e.g. user_id isolation or the
+    NOTIFICATION_TAB_TYPES allow-list) silently pass when the predicate
+    is deleted. `FilterSpyQuery` exposes the raw args so behavioural
+    assertions become load-bearing.
+    """
+
+    def __init__(self, items=None):
+        super().__init__(items)
+        self.filter_args: list[tuple] = []
+
+    def filter(self, *args, **kwargs):
+        self.filter_args.append(args)
+        return self
+
+    def join(self, *args, **kwargs):
+        # Record joins as well so the imports_actionable join-to-jobs can
+        # be asserted.
+        self.filter_args.append(("__join__", args))
+        return self
+
+
 class MockUserActivityForArchive(MockModel):
     """Mock UserActivity model with archive-friendly defaults."""
 
@@ -29,7 +55,7 @@ class MockUserActivity(MockModel):
     def __init__(self, **kwargs):
         defaults = {
             "user_id": str(uuid.uuid4()),
-            "type": "import_started",
+            "type": "partner_action",
             "title": "Test Activity",
             "subtitle": None,
             "metadata_json": None,
@@ -38,6 +64,25 @@ class MockUserActivity(MockModel):
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
+
+
+def _dual_query_side_effect(notif_items, import_items):
+    """Dispatch db.query(Model) to the right MockQuery by class name.
+
+    abi-1 `unread_count` makes two queries on one session — one against
+    UserActivity, one against ImportItem. Tests that exercise the
+    endpoint set both lists and this helper routes each call to the
+    matching MockQuery so argument order is irrelevant.
+    """
+
+    def _side_effect(model):
+        if getattr(model, "__name__", None) == "UserActivity":
+            return MockQuery(notif_items)
+        if getattr(model, "__name__", None) == "ImportItem":
+            return MockQuery(import_items)
+        return MockQuery([])
+
+    return _side_effect
 
 
 class TestListActivities:
@@ -59,11 +104,11 @@ class TestListActivities:
         """Test listing activities with results."""
         activity = MockUserActivity(
             user_id=str(mock_user.id),
-            type="import_started",
-            title="Importing from URL",
-            subtitle="Into My Recipes",
-            metadata_json={"import_job_id": "job-1"},
-            action_url="/recipes/import/review-list/job-1",
+            type="partner_action",
+            title="Alice edited your shopping list",
+            subtitle="Groceries",
+            metadata_json={"actor_user_id": "alice"},
+            action_url="/shopping-lists/abc",
         )
         mock_db.db.query.return_value = MockQuery([activity])
 
@@ -72,11 +117,11 @@ class TestListActivities:
         data = response.json()
         assert len(data["items"]) == 1
         assert data["total"] == 1
-        assert data["items"][0]["type"] == "import_started"
-        assert data["items"][0]["title"] == "Importing from URL"
-        assert data["items"][0]["subtitle"] == "Into My Recipes"
-        assert data["items"][0]["metadata"] == {"import_job_id": "job-1"}
-        assert data["items"][0]["action_url"] == "/recipes/import/review-list/job-1"
+        assert data["items"][0]["type"] == "partner_action"
+        assert data["items"][0]["title"] == "Alice edited your shopping list"
+        assert data["items"][0]["subtitle"] == "Groceries"
+        assert data["items"][0]["metadata"] == {"actor_user_id": "alice"}
+        assert data["items"][0]["action_url"] == "/shopping-lists/abc"
         assert data["items"][0]["read"] is False
 
     def test_list_activities_with_pagination(self, client, mock_db, mock_user):
@@ -90,27 +135,297 @@ class TestListActivities:
         assert data["offset"] == 5
 
 
-class TestUnreadCount:
-    """Tests for GET /v1/activities/unread-count."""
+class TestListActivitiesAllowList:
+    """Tests for abi-1 NOTIFICATION_TAB_TYPES allow-list on GET /v1/activities."""
 
-    def test_unread_count_zero(self, client, mock_db, mock_user):
-        """Test unread count returns zero when no unread activities."""
+    def test_default_returns_only_allow_listed_types(
+        self, client, mock_db, mock_user
+    ):
+        """Default call returns rows (filter enforced server-side).
+
+        MockQuery doesn't actually evaluate the type filter — we assert
+        the endpoint returns 200 and the items it was given. Server-side
+        filter construction is the real surface; combined with the
+        include-system-types branch below, this covers both paths.
+        """
+        allowed = MockUserActivity(type="partner_action", title="OK")
+        mock_db.db.query.return_value = MockQuery([allowed])
+
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 1
+        assert body["items"][0]["type"] == "partner_action"
+
+    def test_include_system_types_requires_admin(
+        self, client, mock_db, mock_user
+    ):
+        """Non-admin passing ?include_system_types=true gets 403."""
+        mock_user.is_admin = False
+
+        response = client.get("/v1/activities?include_system_types=true")
+        assert response.status_code == 403
+        assert response.json()["error_message"] == "Admin access required"
+
+    def test_include_system_types_admin_succeeds(
+        self, client, mock_db, mock_user
+    ):
+        """Admin passing the flag gets the unfiltered list back."""
+        mock_user.is_admin = True
+        import_started = MockUserActivity(type="import_started", title="Importing")
+        mock_db.db.query.return_value = MockQuery([import_started])
+
+        response = client.get("/v1/activities?include_system_types=true")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 1
+        assert body["items"][0]["type"] == "import_started"
+
+    def test_default_without_flag_does_not_require_admin(
+        self, client, mock_db, mock_user
+    ):
+        """Non-admin can still hit the default (allow-listed) path."""
+        mock_user.is_admin = False
         mock_db.db.query.return_value = MockQuery([])
 
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+
+    def test_default_applies_allow_list_filter_behaviourally(
+        self, client, mock_db, mock_user
+    ):
+        """Filter spy verifies the UserActivity.type IN (...) filter lands.
+
+        MockQuery.filter is a no-op, so a regression that dropped the
+        allow-list branch in `list_activities.py` would silently keep
+        tests green. This spy asserts the type-column filter is in the
+        chain on the default path AND is absent when admin passes
+        ?include_system_types=true.
+        """
+        from utils.models.user_activity import UserActivity
+
+        spy = FilterSpyQuery([])
+        mock_db.db.query.return_value = spy
+        mock_user.is_admin = False
+
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+
+        exprs = []
+        for args in spy.filter_args:
+            if args and args[0] == "__join__":
+                continue
+            exprs.extend(args)
+
+        def expr_uses_type(e) -> bool:
+            return f"{UserActivity.__tablename__}.type" in str(e)
+
+        assert any(
+            expr_uses_type(e) for e in exprs
+        ), "default list_activities must filter UserActivity.type to the allow-list"
+
+    def test_admin_with_include_system_types_skips_allow_list(
+        self, client, mock_db, mock_user
+    ):
+        """Admin escape hatch: the type allow-list filter is NOT applied."""
+        from utils.models.user_activity import UserActivity
+
+        spy = FilterSpyQuery([])
+        mock_db.db.query.return_value = spy
+        mock_user.is_admin = True
+
+        response = client.get("/v1/activities?include_system_types=true")
+        assert response.status_code == 200
+
+        exprs = []
+        for args in spy.filter_args:
+            if args and args[0] == "__join__":
+                continue
+            exprs.extend(args)
+
+        def expr_uses_type(e) -> bool:
+            return f"{UserActivity.__tablename__}.type" in str(e)
+
+        assert not any(
+            expr_uses_type(e) for e in exprs
+        ), (
+            "admin include_system_types path must NOT apply the type "
+            "allow-list filter"
+        )
+
+
+class TestUnreadCount:
+    """Tests for GET /v1/activities/unread-count — abi-1 structured payload."""
+
+    def test_unread_count_zero(self, client, mock_db, mock_user):
+        """Test unread count returns zero when nothing is pending."""
+        mock_db.db.query.side_effect = _dual_query_side_effect([], [])
+
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
         data = response.json()
-        assert data["count"] == 0
+        assert data == {
+            "notifications": 0,
+            "imports_actionable": 0,
+            "count": 0,
+        }
 
-    def test_unread_count_with_activities(self, client, mock_db, mock_user):
-        """Test unread count returns correct count."""
-        # MockQuery.count() returns len of items, so pass 3 items
-        mock_db.db.query.return_value = MockQuery([1, 2, 3])
+    def test_unread_count_sums_notifications_and_imports(
+        self, client, mock_db, mock_user
+    ):
+        """Combined payload: 3 partner_action + 2 actionable imports = 5."""
+        notifications = [
+            MockUserActivity(type="partner_action") for _ in range(3)
+        ]
+        imports_actionable = [object(), object()]  # MockQuery.count = len
+        mock_db.db.query.side_effect = _dual_query_side_effect(
+            notifications, imports_actionable
+        )
 
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
         data = response.json()
-        assert data["count"] == 3
+        assert data == {
+            "notifications": 3,
+            "imports_actionable": 2,
+            "count": 5,
+        }
+
+    def test_unread_count_backward_compat_wrapper(
+        self, client, mock_db, mock_user
+    ):
+        """count = notifications + imports_actionable, always."""
+        mock_db.db.query.side_effect = _dual_query_side_effect(
+            [MockUserActivity()] * 4, [object()]
+        )
+
+        response = client.get("/v1/activities/unread-count")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["count"] == data["notifications"] + data["imports_actionable"]
+        assert data["count"] == 5
+
+    def test_unread_count_imports_only(self, client, mock_db, mock_user):
+        """Notifications empty; imports_actionable populated."""
+        mock_db.db.query.side_effect = _dual_query_side_effect(
+            [], [object(), object(), object()]
+        )
+
+        response = client.get("/v1/activities/unread-count")
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {
+            "notifications": 0,
+            "imports_actionable": 3,
+            "count": 3,
+        }
+
+    def test_unread_count_applies_tenant_and_window_filters(
+        self, client, mock_db, mock_user
+    ):
+        """Every critical filter (user_id, allow-list, 30d, join) lands.
+
+        MockQuery.filter is a no-op, so coverage-only tests would pass
+        even if a tenant-isolation filter were deleted. This test uses
+        FilterSpyQuery to capture .filter() / .join() args and asserts:
+          1. UserActivity query filters by user_id, read, archived_at,
+             type (allow-list), created_at (30d window).
+          2. ImportItem query joins to ImportJob and filters by
+             ImportJob.user_id (NOT import_items.user_id — the item
+             table has no such column), plus archived_at, dismissed_at,
+             status.
+        Any regression that removes a clause here fails loudly.
+        """
+        from sqlalchemy.sql.elements import BinaryExpression
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+        from utils.models.user_activity import UserActivity
+
+        notif_spy = FilterSpyQuery([])
+        imports_spy = FilterSpyQuery([])
+
+        def dispatch(model):
+            if getattr(model, "__name__", None) == "UserActivity":
+                return notif_spy
+            if getattr(model, "__name__", None) == "ImportItem":
+                return imports_spy
+            return MockQuery([])
+
+        mock_db.db.query.side_effect = dispatch
+
+        response = client.get("/v1/activities/unread-count")
+        assert response.status_code == 200
+
+        # Flatten captured filter expressions (skip the "__join__" tuples).
+        notif_exprs = []
+        for args in notif_spy.filter_args:
+            if args and args[0] == "__join__":
+                continue
+            notif_exprs.extend(args)
+
+        imports_exprs = []
+        imports_joins = []
+        for args in imports_spy.filter_args:
+            if args and args[0] == "__join__":
+                imports_joins.append(args[1])
+                continue
+            imports_exprs.extend(args)
+
+        def expr_uses(expr, column_attr) -> bool:
+            # SQLAlchemy `str()` renders the compiled SQL including
+            # `tablename.columnname` for the involved columns. `repr()`
+            # is a memory-address string, so don't use it. Matching by
+            # string fragment is brittler than `.compare()` but
+            # sufficient for "did the filter reference this column at
+            # all."
+            rendered = str(expr)
+            table = column_attr.class_.__tablename__
+            key = column_attr.key
+            return f"{table}.{key}" in rendered
+
+        # UserActivity filters — all five AC predicates present.
+        assert any(
+            expr_uses(e, UserActivity.user_id) for e in notif_exprs
+        ), "notifications query must filter by UserActivity.user_id"
+        assert any(
+            expr_uses(e, UserActivity.read) for e in notif_exprs
+        ), "notifications query must filter by UserActivity.read"
+        assert any(
+            expr_uses(e, UserActivity.archived_at) for e in notif_exprs
+        ), "notifications query must filter by UserActivity.archived_at"
+        assert any(
+            expr_uses(e, UserActivity.type) for e in notif_exprs
+        ), "notifications query must filter by UserActivity.type (allow-list)"
+        assert any(
+            expr_uses(e, UserActivity.created_at) for e in notif_exprs
+        ), "notifications query must apply the 30-day created_at cutoff"
+
+        # ImportItem filters — user_id lives on ImportJob, join must happen.
+        assert imports_joins, (
+            "imports_actionable query MUST join ImportJob (import_items "
+            "has no user_id column)"
+        )
+        assert any(
+            expr_uses(e, ImportJob.user_id) for e in imports_exprs
+        ), "imports query must filter by ImportJob.user_id (tenant isolation)"
+        assert any(
+            expr_uses(e, ImportItem.archived_at) for e in imports_exprs
+        ), "imports query must filter by ImportItem.archived_at"
+        assert any(
+            expr_uses(e, ImportItem.dismissed_at) for e in imports_exprs
+        ), "imports query must filter by ImportItem.dismissed_at"
+        assert any(
+            expr_uses(e, ImportItem.status) for e in imports_exprs
+        ), "imports query must filter by ImportItem.status (actionable set)"
+
+        # Sanity: the test harness asserts BinaryExpression came through
+        # at all — otherwise the `expr_uses` matcher would silently
+        # return False for every predicate.
+        assert any(
+            isinstance(e, BinaryExpression)
+            for e in notif_exprs + imports_exprs
+        ), "spy captured no BinaryExpression — filter() argument capture is broken"
 
 
 class TestMarkActivityRead:

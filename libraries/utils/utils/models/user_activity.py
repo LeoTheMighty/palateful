@@ -13,6 +13,20 @@ if TYPE_CHECKING:
     from utils.models.user import User
 
 
+# Single source of truth for `user_activity.type` values that surface in
+# the Notifications tab and contribute to the bell count. Adding a
+# value here is the only way to make a type user-visible. Read by both
+# `unread_count.py` (bell) and `list_activities.py` (Notifications
+# tab) so the two numbers can never disagree.
+#
+# Current membership is intentionally narrow — `partner_action` is the
+# only type push dispatch writes to `user_activities` for user-facing
+# display today. `import_*` types are NOT listed: push for imports
+# reads `import_items` directly (see abi-2a), and per-tab counts come
+# from the `imports_actionable` field of the unread-count payload.
+NOTIFICATION_TAB_TYPES: frozenset[str] = frozenset({"partner_action"})
+
+
 class UserActivity(Base):
     """User-facing activity feed item (imports, partner actions, reminders)."""
 

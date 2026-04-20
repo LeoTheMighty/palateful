@@ -3,9 +3,10 @@
 from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import APIException, Endpoint, success
+from utils.classes.error_code import ErrorCode
 from utils.models.user import User
-from utils.models.user_activity import UserActivity
+from utils.models.user_activity import NOTIFICATION_TAB_TYPES, UserActivity
 
 _ACTIVITY_RETENTION_DAYS = 30
 
@@ -18,8 +19,18 @@ class ListActivities(Endpoint):
         limit: int = 50,
         offset: int = 0,
         include_archived: bool = False,
+        include_system_types: bool = False,
     ):
         user: User = self.user
+        # abi-1: admin-gate the debug flag. The default path (no flag)
+        # stays open to every user; only the escape hatch that returns
+        # system-type rows is admin-only.
+        if include_system_types and not user.is_admin:
+            raise APIException(
+                status_code=403,
+                detail="Admin access required",
+                code=ErrorCode.FORBIDDEN,
+            )
         cutoff = datetime.now(UTC) - timedelta(days=_ACTIVITY_RETENTION_DAYS)
 
         query = self.db.query(UserActivity).filter(
@@ -28,6 +39,11 @@ class ListActivities(Endpoint):
         )
         if not include_archived:
             query = query.filter(UserActivity.archived_at.is_(None))
+        if not include_system_types:
+            # abi-1: default path returns only types on the Notifications
+            # allow-list. Admin callers opt in via ?include_system_types=
+            # true for debug (router enforces the admin gate).
+            query = query.filter(UserActivity.type.in_(NOTIFICATION_TAB_TYPES))
 
         query = query.order_by(UserActivity.created_at.desc())
 

@@ -15,6 +15,21 @@ if TYPE_CHECKING:
     from utils.models.recipe import Recipe
 
 
+# ImportItem.status values that count as "actionable" for the bottom-nav
+# badge and the Imports-tab in-badge. In-progress + needs-review +
+# failed. Green (`status='completed' AND created_recipe_id IS NOT NULL`)
+# is explicitly excluded — it's not actionable, just history. Job-level
+# statuses (`processing`, `awaiting_parser`) are ImportJob values, not
+# ImportItem values, so they never match here.
+ACTIONABLE_IMPORT_STATUSES: frozenset[str] = frozenset({
+    "pending",
+    "extracting",
+    "matching",
+    "awaiting_review",
+    "failed",
+})
+
+
 class ImportItem(Base):
     """Individual recipe within an import job."""
 
@@ -44,6 +59,21 @@ class ImportItem(Base):
             "s3_key",
             unique=True,
             postgresql_where=text("s3_key IS NOT NULL"),
+        ),
+        # abi-1 partial index for the `imports_actionable` count query
+        # on GET /v1/activities/unread-count. Indexes the join-partner
+        # column (`import_job_id`) + status, so once `import_jobs.user_id
+        # = :me` narrows to the user's jobs, the planner seeks directly
+        # into this index. Partial `WHERE archived_at IS NULL AND
+        # dismissed_at IS NULL` matches the query's visibility gates and
+        # keeps the index small.
+        Index(
+            "ix_import_items_job_status_actionable",
+            "import_job_id",
+            "status",
+            postgresql_where=text(
+                "archived_at IS NULL AND dismissed_at IS NULL"
+            ),
         ),
     )
 
