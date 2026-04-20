@@ -31,10 +31,16 @@ class _FakeApiClient extends ApiClient {
     int offset = 0,
     bool includeArchived = false,
     bool archivedOnly = false,
+    String? cursor,
   }) async {
     if (archivedOnly) return _fakeResponse({'jobs': []});
     return _fakeResponse({'jobs': jobsByStatus[status ?? ''] ?? const []});
   }
+
+  @override
+  Future<Response> getImportItemsSeeAllCount() async =>
+      _fakeResponse(
+          {'archived': 0, 'read_and_old_completed': 0, 'total': 0});
 
   @override
   Future<Response> listImportItems(String jobId, {String? status}) async {

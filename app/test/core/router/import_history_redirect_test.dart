@@ -39,8 +39,23 @@ class _StubApiClient extends ApiClient {
     int offset = 0,
     bool includeArchived = false,
     bool archivedOnly = false,
+    String? cursor,
   }) async =>
       _fakeResponse({'jobs': []});
+
+  @override
+  Future<Response> getActivitiesSeeAllCount() async =>
+      _fakeResponse({'archived': 0, 'read_and_older': 0, 'total': 0});
+
+  @override
+  Future<Response> getImportItemsSeeAllCount() async =>
+      _fakeResponse(
+          {'archived': 0, 'read_and_old_completed': 0, 'total': 0});
+
+  @override
+  Future<Response> listActivitiesSeeAll(
+          {String? cursor, int limit = 50}) async =>
+      _fakeResponse({'items': <dynamic>[], 'next_cursor': null});
 
   @override
   Future<Response> getUnreadActivityCount() async =>

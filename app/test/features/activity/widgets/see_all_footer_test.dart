@@ -13,10 +13,125 @@ Response<dynamic> _fakeResponse(dynamic data) => Response(
       statusCode: 200,
     );
 
+/// A queued page of the paginated archived-jobs fetch: each page
+/// returns a list of `{job, items}` pairs. The fake client serves
+/// them in order.
+class _Page {
+  final List<Map<String, dynamic>> jobs;
+  final Map<String, List<Map<String, dynamic>>> itemsByJobId;
+  final String? nextCursor;
+
+  _Page({
+    required this.jobs,
+    required this.itemsByJobId,
+    required this.nextCursor,
+  });
+
+  factory _Page.build({
+    required String prefix,
+    required int jobCount,
+    required int itemsPerJob,
+    String? nextCursor,
+  }) {
+    final jobs = <Map<String, dynamic>>[];
+    final items = <String, List<Map<String, dynamic>>>{};
+    for (var j = 0; j < jobCount; j++) {
+      final jobId = '$prefix-job-$j';
+      jobs.add({
+        'id': jobId,
+        'status': 'completed',
+        'source_type': 'url',
+        'total_items': itemsPerJob,
+        'succeeded_items': itemsPerJob,
+        'failed_items': 0,
+        'pending_review_items': 0,
+        'recipe_book_id': 'bk',
+        'created_at': '2026-01-01T00:00:00Z',
+        'archived_at': '2026-02-01T00:00:00Z',
+      });
+      items[jobId] = List.generate(itemsPerJob, (i) {
+        return {
+          'id': '$jobId-item-$i',
+          'status': 'completed',
+          'source_type': 'url',
+          'recipe_name': '$prefix row $j-$i',
+          'created_at': '2026-01-01T00:00:00Z',
+          'archived_at': '2026-02-01T00:00:00Z',
+        };
+      });
+    }
+    return _Page(
+      jobs: jobs,
+      itemsByJobId: items,
+      nextCursor: nextCursor,
+    );
+  }
+}
+
 class _FakeApiClient extends ApiClient {
+  final List<_Page> pagesToReturn;
+  int countArchived;
+  int countOther;
   final List<String> unarchiveCalls = [];
-  final List<String> archiveCalls = [];
   bool unarchiveThrows = false;
+  bool failPage = false;
+  final List<String?> jobCursorsSeen = [];
+
+  _FakeApiClient({
+    required this.pagesToReturn,
+    this.countArchived = 0,
+    this.countOther = 0,
+  });
+
+  @override
+  Future<Response> getImportItemsSeeAllCount() async {
+    return _fakeResponse({
+      'archived': countArchived,
+      'read_and_old_completed': countOther,
+      'total': countArchived + countOther,
+    });
+  }
+
+  @override
+  Future<Response> listImportJobs({
+    String? status,
+    int limit = 20,
+    int offset = 0,
+    bool includeArchived = false,
+    bool archivedOnly = false,
+    String? cursor,
+  }) async {
+    jobCursorsSeen.add(cursor);
+    if (failPage) {
+      throw DioException(
+        requestOptions: RequestOptions(path: '/v1/import-jobs'),
+        response: Response(
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 500,
+        ),
+      );
+    }
+    if (pagesToReturn.isEmpty) {
+      return _fakeResponse({'jobs': <dynamic>[], 'next_cursor': null});
+    }
+    final page = pagesToReturn.removeAt(0);
+    return _fakeResponse({
+      'jobs': page.jobs,
+      'next_cursor': page.nextCursor,
+    });
+  }
+
+  @override
+  Future<Response> listImportItems(String jobId, {String? status}) async {
+    // Lookup across all queued pages' items. (Even already-consumed
+    // pages keep their items referenced via the fake — simpler than
+    // tracking consumed state explicitly.)
+    // We keep a shared map built in setup.
+    final items = _itemsByJobId[jobId] ?? const <Map<String, dynamic>>[];
+    return _fakeResponse({'items': items});
+  }
+
+  final Map<String, List<Map<String, dynamic>>> _itemsByJobId = {};
 
   @override
   Future<Response> unarchiveImportItem(String id) async {
@@ -35,12 +150,16 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<Response> archiveImportItem(String id) async {
-    archiveCalls.add(id);
     return _fakeResponse({'id': id, 'archived_at': '2026-04-18T12:00:00Z'});
   }
 }
 
 void _register(_FakeApiClient client) {
+  // Build the shared items index once so listImportItems can resolve
+  // by jobId across multiple pages.
+  for (final p in client.pagesToReturn) {
+    client._itemsByJobId.addAll(p.itemsByJobId);
+  }
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   gi.registerSingleton<ApiClient>(client);
@@ -52,7 +171,9 @@ void _unregister() {
 }
 
 Widget _wrap(Widget child) => ProviderScope(
-      child: MaterialApp(home: Scaffold(body: child)),
+      child: MaterialApp(
+        home: Scaffold(body: ListView(children: [child])),
+      ),
     );
 
 void main() {
@@ -63,124 +184,123 @@ void main() {
   tearDown(_unregister);
 
   testWidgets('count=0 renders nothing', (tester) async {
-    _register(_FakeApiClient());
-    await tester.pumpWidget(_wrap(
-      SeeAllFooter(count: 0, onLoad: () async => const []),
-    ));
+    _register(_FakeApiClient(pagesToReturn: const []));
+    await tester.pumpWidget(_wrap(const SeeAllFooter()));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('See all'), findsNothing);
   });
 
-  testWidgets('collapsed shows "See all (N)" and expand loads rows',
-      (tester) async {
-    _register(_FakeApiClient());
-    var loaded = 0;
-    await tester.pumpWidget(_wrap(
-      SeeAllFooter(
-        count: 3,
-        onLoad: () async {
-          loaded++;
-          return [
-            const SeeAllItemView(
-              id: 'arc-1',
-              title: 'Old archived',
-              sourceType: 'url',
-              statusLabel: 'completed',
-              archivedAt: null,
-              createdAt: null,
-            ),
-            const SeeAllItemView(
-              id: 'arc-2',
-              title: 'Older still',
-              sourceType: 'url',
-              statusLabel: 'failed',
-              archivedAt: null,
-              createdAt: null,
-            ),
-          ];
-        },
-      ),
-    ));
+  testWidgets('expands and loads page 1 of archived jobs', (tester) async {
+    final api = _FakeApiClient(
+      countArchived: 6,
+      countOther: 0,
+      pagesToReturn: [
+        _Page.build(prefix: 'p1', jobCount: 3, itemsPerJob: 2, nextCursor: null),
+      ],
+    );
+    _register(api);
+
+    await tester.pumpWidget(_wrap(const SeeAllFooter()));
     await tester.pumpAndSettle();
 
-    expect(find.text('See all (3)'), findsOneWidget);
-    expect(find.text('Old archived'), findsNothing);
+    expect(find.text('See all (6)'), findsOneWidget);
 
-    await tester.tap(find.text('See all (3)'));
+    await tester.tap(find.text('See all (6)'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Old archived'), findsOneWidget);
-    expect(find.text('Older still'), findsOneWidget);
-    expect(loaded, 1);
+    // 6 rows across 3 jobs.
+    expect(find.text('p1 row 0-0'), findsOneWidget);
+    expect(find.text('p1 row 2-1'), findsOneWidget);
+    expect(api.jobCursorsSeen, [null]);
+    expect(find.text("That's everything. (6 total)"), findsOneWidget);
   });
 
-  testWidgets('second expand does not refetch', (tester) async {
-    _register(_FakeApiClient());
-    var loaded = 0;
-    await tester.pumpWidget(_wrap(
-      SeeAllFooter(
-        count: 1,
-        onLoad: () async {
-          loaded++;
-          return [
-            const SeeAllItemView(
-              id: 'arc-1',
-              title: 'Cached',
-              sourceType: 'url',
-              statusLabel: 'completed',
-              archivedAt: null,
-              createdAt: null,
-            ),
-          ];
-        },
-      ),
-    ));
+  testWidgets('scrolling to end triggers the next-page cursor fetch',
+      (tester) async {
+    // Oversize the first page (100 items) so the rendered content
+    // exceeds the test viewport (~600px). A scrollable with
+    // maxScrollExtent > 0 is required for the ancestor-scroll listener
+    // to fire — the widget uses `pos.pixels >= pos.maxScrollExtent-200`
+    // and scroll events don't dispatch on a non-scrolling parent.
+    final api = _FakeApiClient(
+      countArchived: 100,
+      countOther: 0,
+      pagesToReturn: [
+        _Page.build(
+            prefix: 'p1', jobCount: 20, itemsPerJob: 5, nextCursor: 'CURSOR2'),
+        _Page.build(
+            prefix: 'p2', jobCount: 2, itemsPerJob: 2, nextCursor: null),
+      ],
+    );
+    _register(api);
+
+    await tester.pumpWidget(_wrap(const SeeAllFooter()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('See all (100)'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('See all (1)'));
+    // Scroll the outer ListView to the bottom to trigger the next page.
+    await tester.drag(find.byType(ListView), const Offset(0, -8000));
     await tester.pumpAndSettle();
-    expect(loaded, 1);
 
-    // Collapse.
-    await tester.tap(find.text('See all (1)'));
-    await tester.pumpAndSettle();
-    expect(find.text('Cached'), findsNothing);
+    expect(api.jobCursorsSeen, equals([null, 'CURSOR2']));
+    expect(find.text('p2 row 0-0'), findsOneWidget);
+  });
 
-    // Re-expand.
-    await tester.tap(find.text('See all (1)'));
+  testWidgets('failed page fetch renders retry row; tap retries',
+      (tester) async {
+    // Fail the FIRST fetch — initial-load error path. Retry row should
+    // render in place of the initial spinner. Small fixture is fine
+    // because the error row renders even with zero rows loaded.
+    final api = _FakeApiClient(
+      countArchived: 6,
+      countOther: 0,
+      pagesToReturn: [],
+    );
+    _register(api);
+    api.failPage = true;
+
+    await tester.pumpWidget(_wrap(const SeeAllFooter()));
     await tester.pumpAndSettle();
-    expect(loaded, 1, reason: 'onLoad cached from first expand');
-    expect(find.text('Cached'), findsOneWidget);
+    await tester.tap(find.text('See all (6)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Couldn't load more. Tap to retry."), findsOneWidget);
+
+    // Recover: queue a successful page and clear the failure flag.
+    api.failPage = false;
+    final recoverPage = _Page.build(
+        prefix: 'r1', jobCount: 1, itemsPerJob: 1, nextCursor: null);
+    api.pagesToReturn.add(recoverPage);
+    api._itemsByJobId.addAll(recoverPage.itemsByJobId);
+
+    await tester.tap(find.text("Couldn't load more. Tap to retry."));
+    await tester.pumpAndSettle();
+
+    expect(find.text('r1 row 0-0'), findsOneWidget);
+    expect(find.text("Couldn't load more. Tap to retry."), findsNothing);
   });
 
   testWidgets('swipe-right unarchives and fires API', (tester) async {
-    final api = _FakeApiClient();
+    final api = _FakeApiClient(
+      countArchived: 1,
+      countOther: 0,
+      pagesToReturn: [
+        _Page.build(prefix: 'solo', jobCount: 1, itemsPerJob: 1, nextCursor: null),
+      ],
+    );
     _register(api);
-    await tester.pumpWidget(_wrap(
-      SeeAllFooter(
-        count: 1,
-        onLoad: () async => [
-          const SeeAllItemView(
-            id: 'arc-1',
-            title: 'Unarchive me',
-            sourceType: 'url',
-            statusLabel: 'awaiting_review',
-            archivedAt: null,
-            createdAt: null,
-          ),
-        ],
-      ),
-    ));
+
+    await tester.pumpWidget(_wrap(const SeeAllFooter()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('See all (1)'));
     await tester.pumpAndSettle();
 
-    // Swipe-right (positive dx).
     await tester.drag(find.byType(Dismissible).first, const Offset(500, 0));
     await tester.pumpAndSettle();
 
-    expect(api.unarchiveCalls, equals(['arc-1']));
+    expect(api.unarchiveCalls, equals(['solo-job-0-item-0']));
     expect(find.text('Unarchived'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
   });

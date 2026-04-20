@@ -52,6 +52,7 @@ class _FakeApiClient extends ApiClient {
     int offset = 0,
     bool includeArchived = false,
     bool archivedOnly = false,
+    String? cursor,
   }) async =>
       _fakeResponse({'jobs': []});
 

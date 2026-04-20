@@ -173,21 +173,6 @@ class ApiClient {
   Future<Response> getImportItemsSeeAllCount() =>
       _dio.get('/v1/import-items/see-all-count');
 
-  /// afh-4 — cursor-paginated import-items list (See-all mode).
-  /// `jobId` scopes to a single import job; the Imports See-all uses
-  /// the job-level endpoint to walk archived + old-completed items.
-  Future<Response> listImportItemsSeeAll(
-    String jobId, {
-    String? cursor,
-    int limit = 50,
-  }) {
-    return _dio.get('/v1/import-jobs/$jobId/items', queryParameters: {
-      'include_archived': true,
-      'limit': limit,
-      if (cursor != null) 'cursor': cursor,
-    });
-  }
-
   Future<Response> getUnreadActivityCount() =>
       _dio.get('/v1/activities/unread-count');
 
@@ -680,13 +665,15 @@ class ApiClient {
     int offset = 0,
     bool includeArchived = false,
     bool archivedOnly = false,
+    String? cursor,
   }) {
     return _dio.get('/v1/import-jobs', queryParameters: {
       'limit': limit,
-      'offset': offset,
+      if (cursor == null) 'offset': offset,
       if (status != null) 'status': status,
       if (includeArchived) 'include_archived': true,
       if (archivedOnly) 'archived_only': true,
+      if (cursor != null) 'cursor': cursor,
     });
   }
 

@@ -1,108 +1,88 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/activity_archive_provider.dart';
+import '../providers/imports_see_all_provider.dart';
+import '../providers/see_all_count_provider.dart';
 import 'import_row.dart';
 
-/// Immutable view-model for a See-all row. Built once per fetch from
-/// the raw `{jobs, items}` payload so the row widget doesn't reach
-/// back into loosely-typed maps.
-class SeeAllItemView {
-  final String id;
-  final String title;
-  final String? sourceType;
-  final String? statusLabel;
-  final DateTime? archivedAt;
-  final DateTime? createdAt;
-
-  const SeeAllItemView({
-    required this.id,
-    required this.title,
-    required this.sourceType,
-    required this.statusLabel,
-    required this.archivedAt,
-    required this.createdAt,
-  });
-}
-
-/// Collapsible footer for the bottom of the Imports tab. Surfaces
-/// archived imports + items older than 30 days in muted typography.
-/// Swipe-right on any row unarchives it (symmetric with the main
-/// sections' swipe-left to archive).
+/// Imports-tab See-all footer. afh-4 swapped the ahr-5-era one-shot
+/// `onLoad` callback for cursor-paginated fetches via
+/// [importsSeeAllProvider] + [importsSeeAllCountProvider], with retry-
+/// on-failure parity with `NotificationsSeeAllFooter` (afh-3).
+///
+/// Consumes [AppColors.mutedOnSurface] exclusively — no raw
+/// `withOpacity(0.65)` in this file (afh-4 AC7).
+///
+/// Rows render inline as Column children; the ancestor ListView in
+/// `ImportsTab` handles virtualization. Scroll position persistence
+/// (afh-4 AC6) lives on that ancestor's PageStorageKey.
 class SeeAllFooter extends ConsumerStatefulWidget {
-  /// Explicit count passed by the parent — computed from the parent's
-  /// own poll results so we don't duplicate network work. When 0, the
-  /// footer renders as `SizedBox.shrink()`.
-  final int count;
-
-  /// Resolver invoked on first expand. Returns the rows the footer
-  /// should render. The parent owns the fetch; we just ask for them
-  /// lazily.
-  final Future<List<SeeAllItemView>> Function() onLoad;
-
-  const SeeAllFooter({
-    super.key,
-    required this.count,
-    required this.onLoad,
-  });
+  const SeeAllFooter({super.key});
 
   @override
   ConsumerState<SeeAllFooter> createState() => _SeeAllFooterState();
 }
 
 class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
-  bool _expanded = false;
-  bool _loading = false;
-  List<SeeAllItemView>? _rows;
+  /// See afh-3 footer for the design rationale — we bind to the
+  /// nearest ancestor Scrollable and react to its scroll notifications
+  /// rather than owning our own ScrollController, so we don't nest
+  /// scrollables inside ImportsTab's outer ListView.
+  ScrollPosition? _ancestorScrollPosition;
 
-  /// Per-id nonce — bumped each time an unarchive is undone so a
-  /// re-inserted Dismissible gets a fresh `_dismissed = false`.
+  /// Per-id nonce for the `Dismissible` key so a re-inserted row after
+  /// an undo gets a fresh `_dismissed = false` state.
   final Map<String, int> _restoreNonce = {};
 
   late final ApiClient _apiClient = getIt<ApiClient>();
 
-  Future<void> _toggle() async {
-    if (_expanded) {
-      setState(() => _expanded = false);
-      return;
-    }
-
-    setState(() => _expanded = true);
-    if (_rows != null) return;
-
-    setState(() => _loading = true);
-    try {
-      final rows = await widget.onLoad();
-      if (!mounted) return;
-      setState(() {
-        _rows = rows;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _rows = const [];
-        _loading = false;
-      });
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final pos = Scrollable.maybeOf(context)?.position;
+    if (pos != _ancestorScrollPosition) {
+      _ancestorScrollPosition?.removeListener(_onAncestorScroll);
+      _ancestorScrollPosition = pos;
+      _ancestorScrollPosition?.addListener(_onAncestorScroll);
     }
   }
 
-  Future<void> _unarchive(SeeAllItemView row) async {
+  @override
+  void dispose() {
+    _ancestorScrollPosition?.removeListener(_onAncestorScroll);
+    super.dispose();
+  }
+
+  void _onAncestorScroll() {
+    final pos = _ancestorScrollPosition;
+    if (pos == null || !pos.hasContentDimensions) return;
+    if (pos.pixels < pos.maxScrollExtent - 200) return;
+    if (!ref.read(importsSeeAllExpandedProvider)) return;
+    final s = ref.read(importsSeeAllProvider);
+    if (s.isLoading || s.hasError || s.nextJobCursor == null) return;
+    ref.read(importsSeeAllProvider.notifier).loadNextPage();
+  }
+
+  Future<void> _toggleExpand() async {
+    final expanded = ref.read(importsSeeAllExpandedProvider);
+    ref.read(importsSeeAllExpandedProvider.notifier).setExpanded(!expanded);
+    if (!expanded) {
+      final s = ref.read(importsSeeAllProvider);
+      if (!s.hasLoadedFirstPage && !s.isLoading) {
+        await ref.read(importsSeeAllProvider.notifier).loadNextPage();
+      }
+    }
+  }
+
+  Future<void> _unarchive(SeeAllImportItemView row) async {
     if (!mounted) return;
     final id = row.id;
-    // Optimistic: drop from the local archive set so the main
-    // sections can re-claim it on the next poll, and hide from
-    // See-all immediately.
     ref.read(importItemArchiveProvider.notifier).remove(id);
-    setState(() {
-      _rows = (_rows ?? const [])
-          .where((r) => r.id != id)
-          .toList(growable: false);
-    });
+    ref.read(importsSeeAllProvider.notifier).removeRow(id);
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
@@ -119,14 +99,16 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
 
     try {
       await _apiClient.unarchiveImportItem(id);
+      if (mounted) {
+        await ref.read(importsSeeAllCountProvider.notifier).refresh();
+      }
     } catch (_) {
       if (!mounted) return;
-      // Re-add to the archive set and restore the row in See-all.
       ref.read(importItemArchiveProvider.notifier).add(id);
       setState(() {
         _restoreNonce[id] = (_restoreNonce[id] ?? 0) + 1;
-        _rows = [...(_rows ?? const []), row];
       });
+      ref.read(importsSeeAllProvider.notifier).restoreRow(row);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
@@ -138,32 +120,43 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
     }
   }
 
-  Future<void> _undoUnarchive(SeeAllItemView row) async {
+  Future<void> _undoUnarchive(SeeAllImportItemView row) async {
     if (!mounted) return;
     final id = row.id;
-    // Put it back in the session archive set + restore the row here.
-    ref.read(importItemArchiveProvider.notifier).add(id);
     setState(() {
       _restoreNonce[id] = (_restoreNonce[id] ?? 0) + 1;
-      _rows = [...(_rows ?? const []), row];
     });
+    ref.read(importsSeeAllProvider.notifier).restoreRow(row);
     try {
       await _apiClient.archiveImportItem(id);
+      if (mounted) {
+        await ref.read(importsSeeAllCountProvider.notifier).refresh();
+      }
     } catch (_) {
-      // Silent — the next poll will reconcile.
+      // Silent — the next count poll reconciles.
     }
+  }
+
+  void _retryFailedPage() {
+    ref.read(importsSeeAllProvider.notifier).loadNextPage();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.count == 0) return const SizedBox.shrink();
+    final countAsync = ref.watch(importsSeeAllCountProvider);
+    final count = countAsync.maybeWhen(
+      data: (triple) => triple.total,
+      orElse: () => 0,
+    );
+    if (count == 0) return const SizedBox.shrink();
 
+    final expanded = ref.watch(importsSeeAllExpandedProvider);
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final mutedColor = AppColors.mutedOnSurface(colorScheme);
 
     final toggle = InkWell(
-      onTap: _toggle,
+      onTap: _toggleExpand,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: Padding(
@@ -174,7 +167,7 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'See all (${widget.count})',
+                  'See all ($count)',
                   style: textTheme.bodyMedium?.copyWith(
                     color: mutedColor,
                     fontWeight: FontWeight.w500,
@@ -182,7 +175,7 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
                 ),
               ),
               Icon(
-                _expanded ? Icons.expand_less : Icons.expand_more,
+                expanded ? Icons.expand_less : Icons.expand_more,
                 size: 20,
                 color: mutedColor,
               ),
@@ -191,26 +184,6 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
         ),
       ),
     );
-
-    final children = <Widget>[toggle];
-    if (_expanded) {
-      if (_loading) {
-        children.add(const Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(
-            child: SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        ));
-      } else if (_rows != null && _rows!.isNotEmpty) {
-        for (final row in _rows!) {
-          children.add(_buildMutedSwipeRow(row, mutedColor));
-        }
-      }
-    }
 
     return Padding(
       padding: const EdgeInsets.only(top: 16),
@@ -223,14 +196,81 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
             endIndent: 48,
             height: 1,
           ),
-          ...children,
+          toggle,
+          if (expanded)
+            _buildExpandedBody(mutedColor, colorScheme, textTheme),
         ],
       ),
     );
   }
 
-  Widget _buildMutedSwipeRow(SeeAllItemView row, Color mutedColor) {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildExpandedBody(
+    Color mutedColor,
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    final state = ref.watch(importsSeeAllProvider);
+    final locallyArchived = ref.watch(importItemArchiveProvider);
+
+    if (!state.hasLoadedFirstPage && state.isLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    final visible = state.items
+        .where((r) => !locallyArchived.contains(r.id))
+        .toList(growable: false);
+
+    final trailing = <Widget>[];
+    if (state.hasError) {
+      trailing.add(_RetryRow(mutedColor: mutedColor, onRetry: _retryFailedPage));
+    } else if (state.isLoading && state.hasLoadedFirstPage) {
+      trailing.add(const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ));
+    } else if (state.isEnded) {
+      trailing.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          child: Text(
+            "That's everything. (${visible.length} total)",
+            textAlign: TextAlign.center,
+            style: textTheme.bodySmall?.copyWith(color: mutedColor),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final row in visible)
+          _buildMutedSwipeRow(row, mutedColor, colorScheme),
+        ...trailing,
+      ],
+    );
+  }
+
+  Widget _buildMutedSwipeRow(
+    SeeAllImportItemView row,
+    Color mutedColor,
+    ColorScheme colorScheme,
+  ) {
     final nonce = _restoreNonce[row.id] ?? 0;
     return Dismissible(
       key: ValueKey('see-all-${row.id}-$nonce'),
@@ -293,5 +333,36 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
     if (diff.inHours < 24) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
     return '${local.month}/${local.day}/${local.year}';
+  }
+}
+
+/// Tap-to-retry row rendered when a page fetch fails. Re-fires the
+/// same cursor so the user doesn't lose their spot.
+class _RetryRow extends StatelessWidget {
+  final Color mutedColor;
+  final VoidCallback onRetry;
+
+  const _RetryRow({required this.mutedColor, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return InkWell(
+      onTap: onRetry,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.refresh, size: 16, color: mutedColor),
+            const SizedBox(width: 8),
+            Text(
+              "Couldn't load more. Tap to retry.",
+              style: textTheme.bodySmall?.copyWith(color: mutedColor),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
