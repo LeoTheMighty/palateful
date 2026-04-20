@@ -250,7 +250,7 @@ def test_update_item_from_result_serializes_steps_to_parsed_recipe():
 
     task._update_item_from_result(item, result)
 
-    assert item.status == "matching"
+    assert item.status == "awaiting_review"
     parsed = item.parsed_recipe
     assert parsed is not None
     assert parsed["steps"] == [
@@ -288,7 +288,7 @@ def test_update_item_from_result_steps_none_when_recipe_has_no_steps():
 
     task._update_item_from_result(item, result)
 
-    assert item.status == "matching"
+    assert item.status == "awaiting_review"
     parsed = item.parsed_recipe
     assert parsed["steps"] is None
     assert parsed["instructions"] == "1. Do this. 2. Do that."

@@ -798,7 +798,7 @@ development_status:
   # formal rescope note on epic-review-import-ingredient-polish).
   epic-ingredients-string-simplification: in-progress
   str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: done
-  str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: in-progress
+  str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: done
   str-ing-3-backend-delete-ingredients-endpoints-and-router: backlog
   str-ing-4-backend-schema-migration-and-model-cleanup: backlog
   str-ing-5-planning-artifacts-and-rescope-review-import-ingredient-polish: backlog
@@ -856,7 +856,7 @@ development_status:
   # are in-flight (shared LLM-extractor prompt files). json_ld.py untouched.
   epic-extractor-field-inference: in-progress
   efi-1-backend-inferable-fields-flag-prompt-guardrails-penalty-and-log-helper: done
-  efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: backlog
+  efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: done
   efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: backlog
   efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: backlog
   efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: backlog

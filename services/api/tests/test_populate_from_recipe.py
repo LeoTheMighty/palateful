@@ -67,7 +67,8 @@ class TestPopulateFromRecipeSuccess:
         assert len(data["items"]) == 1
         assert data["items"][0]["name"] == "Flour"
         assert data["items"][0]["unit"] == "cups"
-        assert data["items"][0]["category"] == "Baking"
+        # Post-str-ing-2: populate_from_recipe passes category=None.
+        assert data["items"][0]["category"] is None
         assert data["items"][0]["recipe_id"] == recipe_id
         assert data["items"][0]["ingredient_id"] == ingredient_id
 

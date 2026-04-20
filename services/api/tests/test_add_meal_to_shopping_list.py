@@ -123,7 +123,7 @@ class TestAddMealToShoppingList:
 
         mock_db.db.query.side_effect = _router
 
-    def test_happy_path_aggregates_to_one_summed_item(
+    def test_happy_path_produces_one_row_per_component_with_no_dedup(
         self, client, mock_db, mock_user
     ):
         from utils.models.meal import Meal as MealModel
@@ -151,12 +151,16 @@ class TestAddMealToShoppingList:
         )
         assert response.status_code == 200
         data = response.json()
-        # Two components × 1 tbsp olive oil → one row, summed quantity = 2.
-        assert data["items_added"] == 1
+        # No dedup post-str-ing-2: two components × 1 tbsp olive oil → two
+        # adjacent rows, each retaining its own 1-tbsp quantity.
+        assert data["items_added"] == 2
         assert data["items_skipped"] == 0
         assert data["items"][0]["unit"] == "tbsp"
-        assert Decimal(data["items"][0]["quantity"]) == Decimal("2")
+        assert data["items"][1]["unit"] == "tbsp"
+        assert Decimal(data["items"][0]["quantity"]) == Decimal("1")
+        assert Decimal(data["items"][1]["quantity"]) == Decimal("1")
         assert data["items"][0]["source_meal_id"] == str(meal.id)
+        assert data["items"][1]["source_meal_id"] == str(meal.id)
         assert data["meal_summary"]["component_count"] == 2
 
     def test_archived_meal_returns_404(self, client, mock_db, mock_user):
@@ -284,8 +288,11 @@ class TestAddMealToShoppingList:
         )
         assert response.status_code == 200
         data = response.json()
+        # Post-str-ing-2: aggregate returns one row per component (no dedup),
+        # so both olive-oil rows collide with the existing
+        # (ingredient_id, source_meal_id) key → both skipped.
         assert data["items_added"] == 0
-        assert data["items_skipped"] == 1
+        assert data["items_skipped"] == 2
 
 
 class TestListMealsAutocomplete:

@@ -3,6 +3,8 @@
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
+import pytest
+
 
 class TestImportJobSchemas:
     """Cover schemas/import_job.py by instantiation."""
@@ -354,11 +356,18 @@ class TestShoppingListSchemas:
         assert resp.limit == 20
         assert resp.offset == 0
 
-    def test_generate_shopping_list_request(self):
+    def test_generate_shopping_list_request_rejects_check_pantry(self):
+        """Post-str-ing-2: GenerateShoppingListRequest sets extra='forbid'
+        so the retired `check_pantry` field now raises ValidationError."""
+        from pydantic import ValidationError
         from schemas.shopping_list import GenerateShoppingListRequest
 
-        req = GenerateShoppingListRequest(check_pantry=True)
-        assert req.check_pantry is True
+        # Empty body is valid (the request is parameter-less now).
+        req = GenerateShoppingListRequest()
+        assert req is not None
+
+        with pytest.raises(ValidationError):
+            GenerateShoppingListRequest(check_pantry=True)
 
 
 class TestTimerSchemas:

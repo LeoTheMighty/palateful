@@ -4,11 +4,16 @@ When the extractor returns N>1 recipes, `_update_item_from_result`
 writes the first recipe into the existing item and creates N-1 sibling
 ImportItems on the same ImportJob. `total_items` is bumped atomically.
 On retry, existing siblings are not duplicated.
+
+Post-epic-ingredients-string-simplification: the matching stage is
+gone. After extraction, items and siblings rest at
+`status="awaiting_review"` until the user approves (or the fixture-
+less happy path in integration tests dispatches `create_recipe_task`).
 """
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -37,14 +42,10 @@ class _FakeDatabase:
         # _update_job_counts uses self.database.db.query(...) — return
         # enough plausible status counts to keep it happy.
         self.db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
-            ("matching", len(items)),
+            ("awaiting_review", len(items)),
         ]
 
     def _scalars(self, _stmt):
-        # The only scalars(select(ImportItem).where(...)) call in the
-        # fan-out code queries siblings for the original's import_job_id.
-        # Returning all known items is a superset and still correct — the
-        # filter logic in _create_fanout_siblings narrows on raw_data.
         scalars_result = MagicMock()
         scalars_result.all.return_value = list(self.items)
         return scalars_result
@@ -122,15 +123,14 @@ def test_fanout_three_recipes_creates_two_siblings():
         ai_cost_cents=7,
     )
 
-    with patch.object(task, "_dispatch_matching_task") as dispatch:
-        task._update_item_from_result(item, result)
+    task._update_item_from_result(item, result)
 
     assert len(task.database.items) == 3
     # Original absorbs recipes[0] at recipe_index=0
     assert item.parsed_recipe["name"] == "A"
     assert item.raw_data["recipe_index"] == 0
     assert item.raw_data["s3_keys"] == ["uploads/photo.jpg"]
-    assert item.status == "matching"
+    assert item.status == "awaiting_review"
     assert item.last_successful_stage == "extracted"
 
     # Siblings exist for recipe_index 1 and 2
@@ -141,7 +141,7 @@ def test_fanout_three_recipes_creates_two_siblings():
     for s in siblings:
         assert s.import_job_id == job.id
         assert s.raw_data["s3_keys"] == ["uploads/photo.jpg"]
-        assert s.status == "matching"
+        assert s.status == "awaiting_review"
         assert s.last_successful_stage == "extracted"
         assert s.ai_cost_cents == 0  # no double-counting
 
@@ -149,8 +149,6 @@ def test_fanout_three_recipes_creates_two_siblings():
     assert job.total_items == 3
     # AI cost from the original extractor call only
     assert job.total_ai_cost_cents == 7
-    # match_ingredients dispatched for each new sibling
-    assert dispatch.call_count == 2
 
 
 # ------------------------------------------------------------------
@@ -170,17 +168,13 @@ def test_single_recipe_no_fanout():
         ai_cost_cents=3,
     )
 
-    with patch.object(task, "_dispatch_matching_task") as dispatch:
-        task._update_item_from_result(item, result)
+    task._update_item_from_result(item, result)
 
     assert len(task.database.items) == 1
     assert item.parsed_recipe["name"] == "Only"
     assert item.raw_data["recipe_index"] == 0
-    assert item.status == "matching"
+    assert item.status == "awaiting_review"
     assert job.total_items == 1  # unchanged
-    # dispatch is only called by the outer extractor loop for the original;
-    # our fan-out code only dispatches for NEW siblings.
-    assert dispatch.call_count == 0
 
 
 # ------------------------------------------------------------------
@@ -202,21 +196,17 @@ def test_fanout_retry_does_not_duplicate():
         ai_cost_cents=5,
     )
 
-    with patch.object(task, "_dispatch_matching_task"):
-        task._update_item_from_result(item, result)
+    task._update_item_from_result(item, result)
     first_count = len(task.database.items)
     assert first_count == 3
 
     # Simulate a Celery retry — same extractor result, same original item.
     # Reset the original's state to what it would have been at retry.
     # In reality the retry would re-run extraction and get the same array.
-    with patch.object(task, "_dispatch_matching_task") as dispatch:
-        task._update_item_from_result(item, result)
+    task._update_item_from_result(item, result)
 
     # Still 3 items — no duplicates.
     assert len(task.database.items) == 3
-    # No new dispatches
-    assert dispatch.call_count == 0
 
 
 # ------------------------------------------------------------------
@@ -236,14 +226,12 @@ def test_empty_recipes_marks_item_failed():
         extractor_used="text_ai",
     )
 
-    with patch.object(task, "_dispatch_matching_task") as dispatch:
-        task._update_item_from_result(item, result)
+    task._update_item_from_result(item, result)
 
     assert item.status == "failed"
     assert item.error_code == "AI_NO_RECIPE_FOUND"
     assert item.retry_count == 1
     assert len(task.database.items) == 1  # no siblings
-    assert dispatch.call_count == 0
     assert job.total_items == 1
 
 
@@ -267,8 +255,7 @@ def test_fanout_preserves_s3_keys_on_siblings():
         ai_cost_cents=4,
     )
 
-    with patch.object(task, "_dispatch_matching_task"):
-        task._update_item_from_result(item, result)
+    task._update_item_from_result(item, result)
 
     for row in task.database.items:
         assert row.raw_data["s3_keys"] == ["uploads/a.jpg", "uploads/b.jpg"]

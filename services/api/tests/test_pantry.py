@@ -224,6 +224,59 @@ class TestAddPantryIngredient:
         response = client.post(f"/v1/pantries/{pantry_id}/ingredients", json=body)
         assert response.status_code == 404
 
+    def test_name_only_creates_fresh_ingredient_row(
+        self, client, mock_db, mock_user
+    ):
+        """Post-str-ing-2: supplying only `name` stages a fresh Ingredient
+        row — no find-or-create. The new row ID then feeds the upsert."""
+        from utils.models.ingredient import Ingredient
+        from utils.models.pantry_ingredient import PantryIngredient
+
+        pantry_id = str(uuid.uuid4())
+        _pantry, membership, PantryUser = self._setup_access(
+            mock_db, mock_user, pantry_id
+        )
+        _query_router(mock_db, {PantryUser: [membership], PantryIngredient: []})
+
+        body = {
+            "name": "Olive Oil",
+            "quantity_display": "1",
+            "unit_display": "tbsp",
+            "quantity_normalized": "15",
+            "unit_normalized": "ml",
+        }
+        response = client.post(f"/v1/pantries/{pantry_id}/ingredients", json=body)
+        assert response.status_code == 201
+        # Confirm exactly one Ingredient instance was staged with the
+        # lowercased + stripped canonical name (find-or-create would have
+        # added zero — it hits find_by first).
+        staged = [
+            call.args[0]
+            for call in mock_db.db.add.call_args_list
+            if isinstance(call.args[0], Ingredient)
+        ]
+        assert len(staged) == 1
+        assert staged[0].canonical_name == "olive oil"
+
+    def test_neither_id_nor_name_returns_400(self, client, mock_db, mock_user):
+        """Missing both `ingredient_id` and `name` is a structured 400."""
+        from utils.models.pantry_ingredient import PantryIngredient
+
+        pantry_id = str(uuid.uuid4())
+        _pantry, membership, PantryUser = self._setup_access(
+            mock_db, mock_user, pantry_id
+        )
+        _query_router(mock_db, {PantryUser: [membership], PantryIngredient: []})
+
+        body = {
+            "quantity_display": "1",
+            "unit_display": "each",
+            "quantity_normalized": "1",
+            "unit_normalized": "each",
+        }
+        response = client.post(f"/v1/pantries/{pantry_id}/ingredients", json=body)
+        assert response.status_code == 400
+
 
 class TestUpdatePantryIngredient:
     """Tests for PATCH /v1/pantries/{pantry_id}/ingredients/{ingredient_id}."""

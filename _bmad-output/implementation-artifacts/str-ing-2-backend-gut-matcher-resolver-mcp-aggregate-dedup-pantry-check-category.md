@@ -1,7 +1,7 @@
 # Story str-ing-2 — Backend: gut matcher + resolver + MCP matcher + aggregate dedup + pantry check + category reads
 
 **Epic:** epic-ingredients-string-simplification
-**Status:** in-progress — partial commit. Backend runtime changes landed; a fraction of the test surface has been re-pointed at the new shape, but the full `npx nx run api:test` hasn't been re-validated end-to-end yet. See "Remaining work" below.
+**Status:** done — backend runtime changes landed in commit 55f70f9; test-suite + coverage completion landed in follow-up commit (api:test green at 2035 passed, 100.00% coverage; utils:test green at 273 passed).
 
 ## Scope delivered
 
@@ -48,19 +48,26 @@
 - `services/api/tests/test_shopping_list.py` — dropped the three pantry-check tests; added `test_generate_rejects_check_pantry_field` (422 assertion) and positive `test_generate_from_meal_event_ignores_pantry_stock`.
 - `services/api/tests/test_recipe_ingredient_input.py` — rewrote `test_name_only_creates_pending_review_ingredient` → `test_name_only_creates_fresh_ingredient_row`. Rewrote `test_name_reuses_existing_ingredient` → `test_repeated_names_create_distinct_rows`. Docstrings updated.
 
-## Remaining work (HANDOFF)
+## Test completion (resolved 2026-04-20 follow-up)
 
-1. **Run `DATABASE_URL=postgresql://test:test@localhost/test npx nx run api:test` end-to-end.** MCP recipe tests (29) pass locally; the rest of the suite has not been re-run since my edits. Expect findings around:
-   - `test_coverage_gaps.py` may still reference deleted modules/functions (quick grep showed zero matches at commit time, but coverage-pin may still trip because of newly-unreferenced helper code in the touched files).
-   - `test_import.py` may have other retry / pipeline tests that still expect `status="matching"` or dispatch assertions against the old path.
-   - `test_recipe_ingredient_input.py::test_name_lowercased_and_stripped` may fail — it was trimmed but may need its `mock_db.set_find_by(Ingredient, …)` shim dropped entirely.
-   - `test_stage_markers.py::test_extract_task_marks_extracted_on_success` now asserts `status="awaiting_review"` — verify that the accompanying `_make_database` mock's `query.group_by.all` stub still matches the new status.
-   - `test_extract_recipe_task_fanout.py` is in the diff (modified by a parallel agent?) — diff and verify.
-2. **`find_or_create_ingredient` / `_matched_ingredient_id`** — do a final `rg -n 'find_or_create|matched_ingredient_id' services/ libraries/` sweep to confirm nothing still points at the old pathway.
-3. **Seed data** — `services/migrator/seeds/ingredients.py` delete is part of str-ing-4, not str-ing-2.
-4. **Handler `category` reads** — audited at four call sites; all pass `None`. No remaining reads. Grep `rg '\.ingredient\.category|ingredient\.category\b' services/api/src` to double-check.
-5. **Coverage pin** — `services/api` coverage is pinned at 100%. After test runs pass, spot-check for newly uncovered lines.
-6. **Commit scope** — this commit omits the Flutter + parallel-agent churn in `_bmad-output/planning-artifacts/*.md`, `app/lib/features/home/*`, `app/lib/features/meals/*`, `libraries/utils/utils/models/import_item.py`, `libraries/utils/utils/models/user_activity.py`, `services/api/src/api/v1/user_activity/*`, etc. They belong to other in-flight epics.
+Six API test assertions still pointed at the old dedup / pantry-check / category shape after commit 55f70f9 landed. Resolved in the follow-up commit:
+
+1. `tests/test_add_meal_event_to_shopping_list.py::TestMealLinkedEvent::test_meal_event_expands_via_aggregate` — asserts 2 adjacent olive-oil rows (was 1 summed).
+2. `tests/test_add_meal_to_shopping_list.py::TestAddMealToShoppingList::test_happy_path_produces_one_row_per_component_with_no_dedup` — renamed + asserts `items_added=2` (was 1).
+3. `tests/test_add_meal_to_shopping_list.py::TestAddMealToShoppingList::test_re_tap_skips_already_added_items` — `items_skipped=2` now (aggregate returns 2 rows, both collide with existing key).
+4. `tests/test_populate_from_recipe.py::TestPopulateFromRecipeSuccess::test_populate_from_recipe_success` — `category is None` (was `"Baking"`).
+5. `tests/test_recipe_ingredient_input.py::TestCreateRecipeNameOrId::test_repeated_names_create_distinct_rows` — asserts two distinct `Ingredient` instances staged via `mock_db.db.add.call_args_list` (mock-flush doesn't assign IDs, so we verify at the `session.add` layer).
+6. `tests/test_schemas.py::test_generate_shopping_list_request_rejects_check_pantry` — asserts `ValidationError` when `check_pantry` is supplied + happy-path empty-body construction.
+
+Also added two pantry endpoint tests that exercise the new `name`-only branch + the neither-supplied 400 path — covers `services/api/src/api/v1/pantry/add_ingredient.py:33-43`, which was the only `src/` line-coverage gap after the test fixes.
+
+Test + coverage outcomes:
+- `npx nx run api:test` — **2035 passed, 41 warnings, 100.00% coverage**.
+- `npx nx run utils:test` — **273 passed**.
+- `npx nx run api:lint` / `npx nx run utils:lint` — both pass.
+
+Grep acceptance:
+- `rg '_resolve_ingredient|INGREDIENT_MATCH_THRESHOLD|find_or_create_ingredient|_annotate_pending_review_ingredients|ingredient_matching_evaluator' services/ libraries/` → zero matches in source.
 
 ## Acceptance criteria status
 
@@ -74,9 +81,9 @@
 | 6 | `GetImportItem` response strips `pending_review_ingredient` | ✅ function already removed + test rewritten |
 | 7 | MCP create/fork always fresh row | ✅ `_create_ingredient_for_name` + tests |
 | 8 | Four category readers pass `None` | ✅ |
-| 9 | `npx nx run api:test --coverage` at 100% | ⚠️ not re-run — handoff item #1 |
+| 9 | `npx nx run api:test --coverage` at 100% | ✅ 2035 tests, 100.00% coverage |
 | 10 | Eval runner cleanly imports without matcher | ✅ config + imports cleaned |
-| 11 | Grep `_resolve_ingredient|INGREDIENT_MATCH_THRESHOLD|find_or_create_ingredient|check_pantry` returns zero | ⚠️ needs a final clean sweep — see handoff #2 |
+| 11 | Grep `_resolve_ingredient\|INGREDIENT_MATCH_THRESHOLD\|find_or_create_ingredient\|check_pantry` returns zero | ✅ zero matches in `services/`/`libraries/` source |
 | 12 | `test_generate_from_meal_event_ignores_pantry_stock` passes | ✅ test authored |
 
 ## QA walkthrough

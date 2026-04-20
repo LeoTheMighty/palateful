@@ -155,12 +155,18 @@ class TestMealLinkedEvent:
         )
         assert response.status_code == 200
         data = response.json()
-        # Both components contributed 1 tbsp olive oil → one summed row.
-        assert data["items_added"] == 1
-        assert Decimal(data["items"][0]["quantity"]) == Decimal("2")
+        # No dedup post-str-ing-2: each component contributes its own row in
+        # components × ingredients order. Two adjacent "olive oil" lines, one
+        # per component, each retaining its 1-tbsp quantity.
+        assert data["items_added"] == 2
+        assert Decimal(data["items"][0]["quantity"]) == Decimal("1")
+        assert Decimal(data["items"][1]["quantity"]) == Decimal("1")
         assert data["items"][0]["meal_event_id"] == event.id
+        assert data["items"][1]["meal_event_id"] == event.id
         assert data["items"][0]["source_meal_id"] == meal.id
+        assert data["items"][1]["source_meal_id"] == meal.id
         assert data["items"][0]["recipe_id"] is None
+        assert data["items"][1]["recipe_id"] is None
 
 
 class TestEdges:

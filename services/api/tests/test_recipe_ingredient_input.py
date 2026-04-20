@@ -87,9 +87,21 @@ class TestCreateRecipeNameOrId:
         )
         assert response.status_code == 201
         data = response.json()
-        ids = [ing["ingredient"]["id"] for ing in data["ingredients"]]
-        assert len(ids) == 2
-        assert ids[0] != ids[1]
+        assert len(data["ingredients"]) == 2
+        # Both rows carry the same canonical_name — no merging, two lines.
+        assert data["ingredients"][0]["ingredient"]["canonical_name"] == "olive oil"
+        assert data["ingredients"][1]["ingredient"]["canonical_name"] == "olive oil"
+        # Confirm two distinct Ingredient instances were staged: find-or-create
+        # would have added only one. (The in-memory mock_db leaves flush as a
+        # no-op so DB-assigned IDs aren't observable via response; counting
+        # adds is the direct proof.)
+        added_ingredients = [
+            call.args[0]
+            for call in mock_db.db.add.call_args_list
+            if isinstance(call.args[0], Ingredient)
+        ]
+        assert len(added_ingredients) == 2
+        assert added_ingredients[0] is not added_ingredients[1]
 
     def test_blank_name_rejected(self, client, book_and_membership):
         """Whitespace-only name is not a valid handle."""
