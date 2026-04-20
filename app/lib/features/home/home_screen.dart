@@ -56,6 +56,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   MealFilter _mealFilter = MealFilter.all;
   String? _vibeFilter;
   SortOption _sortOption = SortOption.best;
+  ShowTypeFilter _showTypeFilter = ShowTypeFilter.all;
+  bool _hideComponentsOfMeals = false;
 
   dynamic _todayMealEvent; // null = no planned meal today
   List<dynamic> _recentlyCooked = [];
@@ -124,7 +126,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       // md-4: merge meals in. When meals is empty, the merge is a no-op
       // and the existing filter+sort ordering is preserved bit-identically.
-      final mergedGrid = _mergeRecipesAndMeals(allRecipes, mealItems);
+      // hmp-4: then apply the new kind filters (Show: Recipes only /
+      // Meals only + Hide components of Meals). Running them after the
+      // merge keeps the zero-meal code path identical to pre-epic.
+      var mergedGrid = _mergeRecipesAndMeals(allRecipes, mealItems);
+      mergedGrid = _applyKindFilters(mergedGrid, mealItems);
       final mergedFavorites = <dynamic>[...favItems, ...favMealItems];
 
       if (mounted) {
@@ -359,6 +365,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return filtered;
   }
 
+  /// hmp-4: client-side kind filters applied to the merged grid.
+  /// `showType` filters out the wrong kind; `hideComponentsOfMeals`
+  /// hides any recipe whose id is in a Meal's component list. Meals
+  /// are never hidden by the hide-components toggle.
+  List<dynamic> _applyKindFilters(
+    List<dynamic> items,
+    List<dynamic> meals,
+  ) {
+    var filtered = items;
+    if (_showTypeFilter == ShowTypeFilter.recipesOnly) {
+      filtered = filtered
+          .where((i) => !(i is Map && i['kind'] == 'meal'))
+          .toList();
+    } else if (_showTypeFilter == ShowTypeFilter.mealsOnly) {
+      filtered = filtered
+          .where((i) => i is Map && i['kind'] == 'meal')
+          .toList();
+    }
+    if (_hideComponentsOfMeals) {
+      final componentIds = <String>{};
+      for (final m in meals) {
+        if (m is! Map) continue;
+        final ids = (m['component_recipe_ids'] as List?) ?? const [];
+        for (final id in ids) {
+          componentIds.add(id.toString());
+        }
+      }
+      filtered = filtered.where((i) {
+        if (i is! Map) return true;
+        if (i['kind'] == 'meal') return true;
+        final id = i['id']?.toString();
+        return id == null || !componentIds.contains(id);
+      }).toList();
+    }
+    return filtered;
+  }
+
   List<dynamic> _applySorting(List<dynamic> recipes) {
     final sorted = List<dynamic>.from(recipes);
     switch (_sortOption) {
@@ -394,6 +437,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       meal: _mealFilter,
       vibe: _vibeFilter,
       sort: _sortOption,
+      showType: _showTypeFilter,
+      hideComponentsOfMeals: _hideComponentsOfMeals,
     );
     await FilterBottomSheet.show(
       context: context,
@@ -404,6 +449,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _mealFilter = state.meal;
           _vibeFilter = state.vibe;
           _sortOption = state.sort;
+          _showTypeFilter = state.showType;
+          _hideComponentsOfMeals = state.hideComponentsOfMeals;
           _recipes = _applySorting(List.from(_recipes));
         });
         _reapplyFilters();
@@ -427,6 +474,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _mealFilter = restoreTo.meal;
               _vibeFilter = restoreTo.vibe;
               _sortOption = restoreTo.sort;
+              _showTypeFilter = restoreTo.showType;
+              _hideComponentsOfMeals = restoreTo.hideComponentsOfMeals;
               _recipes = _applySorting(List.from(_recipes));
             });
             _reapplyFilters();
@@ -909,6 +958,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               meal: _mealFilter,
               vibe: _vibeFilter,
               sort: _sortOption,
+              showType: _showTypeFilter,
+              hideComponentsOfMeals: _hideComponentsOfMeals,
             ).isDefault,
             onTap: _openFilterSheet,
           ),

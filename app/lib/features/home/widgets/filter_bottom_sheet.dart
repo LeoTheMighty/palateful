@@ -8,6 +8,10 @@ import 'meal_filter_bar.dart';
 /// source of truth.
 enum SortOption { best, newest, popular, quickest, random }
 
+/// hmp-4: "Show" axis — filters the grid by tile kind. Radio-style;
+/// only one value at a time. Default `all` keeps pre-epic behavior.
+enum ShowTypeFilter { all, recipesOnly, mealsOnly }
+
 /// Snapshot of the sheet's applied state, used for snackbar-undo of the
 /// Clear-all action. Home screen captures pre-clear state and restores
 /// it if the user taps Undo within the snackbar window.
@@ -15,23 +19,31 @@ class HomeFilterState {
   final MealFilter meal;
   final String? vibe;
   final SortOption sort;
+  final ShowTypeFilter showType;
+  final bool hideComponentsOfMeals;
 
   const HomeFilterState({
     required this.meal,
     required this.vibe,
     required this.sort,
+    this.showType = ShowTypeFilter.all,
+    this.hideComponentsOfMeals = false,
   });
 
   static const defaults = HomeFilterState(
     meal: MealFilter.all,
     vibe: null,
     sort: SortOption.best,
+    showType: ShowTypeFilter.all,
+    hideComponentsOfMeals: false,
   );
 
   bool get isDefault =>
       meal == defaults.meal &&
       vibe == defaults.vibe &&
-      sort == defaults.sort;
+      sort == defaults.sort &&
+      showType == defaults.showType &&
+      hideComponentsOfMeals == defaults.hideComponentsOfMeals;
 }
 
 /// Combined bottom sheet for Sort + Filters. Sort is monoexclusive
@@ -73,6 +85,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   late MealFilter _draftMeal;
   late String? _draftVibe;
   late SortOption _draftSort;
+  late ShowTypeFilter _draftShowType;
+  late bool _draftHideComponents;
 
   @override
   void initState() {
@@ -80,6 +94,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
     _draftMeal = widget.initialState.meal;
     _draftVibe = widget.initialState.vibe;
     _draftSort = widget.initialState.sort;
+    _draftShowType = widget.initialState.showType;
+    _draftHideComponents = widget.initialState.hideComponentsOfMeals;
   }
 
   void _clearAll() {
@@ -87,6 +103,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
       _draftMeal = HomeFilterState.defaults.meal;
       _draftVibe = HomeFilterState.defaults.vibe;
       _draftSort = HomeFilterState.defaults.sort;
+      _draftShowType = HomeFilterState.defaults.showType;
+      _draftHideComponents = HomeFilterState.defaults.hideComponentsOfMeals;
     });
   }
 
@@ -95,6 +113,8 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
       meal: _draftMeal,
       vibe: _draftVibe,
       sort: _draftSort,
+      showType: _draftShowType,
+      hideComponentsOfMeals: _draftHideComponents,
     ));
     Navigator.of(context).pop();
   }
@@ -142,6 +162,32 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               _SortRadioList(
                 selected: _draftSort,
                 onChanged: (s) => setState(() => _draftSort = s),
+              ),
+              const SizedBox(height: 20),
+
+              Text(
+                'Show',
+                style: textTheme.titleSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _ShowTypeChipWrap(
+                selected: _draftShowType,
+                onChanged: (s) => setState(() => _draftShowType = s),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                key: const ValueKey('hide-components-of-meals-toggle'),
+                value: _draftHideComponents,
+                onChanged: (v) => setState(() => _draftHideComponents = v),
+                title: const Text('Hide components of Meals'),
+                subtitle: const Text(
+                  'Hide recipes that are part of any Meal.',
+                ),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
               ),
               const SizedBox(height: 20),
 
@@ -257,6 +303,35 @@ class _SortRadioList extends StatelessWidget {
               ],
             ),
           ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _ShowTypeChipWrap extends StatelessWidget {
+  final ShowTypeFilter selected;
+  final ValueChanged<ShowTypeFilter> onChanged;
+
+  const _ShowTypeChipWrap({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    const entries = [
+      (ShowTypeFilter.all, 'All', Icons.all_inclusive),
+      (ShowTypeFilter.recipesOnly, 'Recipes only', Icons.restaurant_menu),
+      (ShowTypeFilter.mealsOnly, 'Meals only', Icons.layers_outlined),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: entries.map((e) {
+        final (filter, label, icon) = e;
+        return _SheetFilterChip(
+          icon: icon,
+          label: label,
+          isSelected: selected == filter,
+          onTap: () => onChanged(filter),
         );
       }).toList(),
     );
