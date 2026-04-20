@@ -102,7 +102,9 @@ class StepNavigator extends StatelessWidget {
                     return Semantics(
                       label: semanticLabel,
                       button: true,
+                      container: true,
                       selected: isCurrent,
+                      excludeSemantics: true,
                       child: GestureDetector(
                         onTap: () => onStepTap(index),
                         child: Container(
