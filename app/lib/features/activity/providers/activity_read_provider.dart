@@ -13,12 +13,40 @@ import '../../../core/services/error_reporter.dart';
 /// 2. Cache the unread count as a [ValueListenable] so the bottom-nav badge
 ///    can react to writes from other surfaces (ActivityScreen, ImportHistory)
 ///    without waiting on the 30s poll.
+/// 3. abi-3: parse the new structured unread-count payload
+///    (`{notifications, imports_actionable, count}`) into separate
+///    `notificationsCount` + `importsActionableCount` fields. The existing
+///    `unreadCount` is kept as the derived sum so downstream readers that
+///    still use it don't break. When the server returns the legacy
+///    `{count}` shape, `structuredCountsAvailable` flips false and per-tab
+///    badges are expected to hide (bell still renders).
 class ActivityReadProvider {
   ActivityReadProvider(this._apiClient);
 
   final ApiClient _apiClient;
 
+  /// Combined count (notifications + imports_actionable). Kept for
+  /// backwards-compat — callers that only care about "is there anything
+  /// in the bell" keep reading this.
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
+
+  /// abi-3: Notifications-tab count from the structured payload. `0` when
+  /// the server payload is the legacy `{count}` shape.
+  final ValueNotifier<int> notificationsCount = ValueNotifier<int>(0);
+
+  /// abi-3: Imports-tab actionable count from the structured payload. `0`
+  /// when the server payload is the legacy `{count}` shape.
+  final ValueNotifier<int> importsActionableCount = ValueNotifier<int>(0);
+
+  /// abi-3: true iff the last server response included both `notifications`
+  /// and `imports_actionable` keys. Per-tab badges gate their rendering on
+  /// this so they don't attribute-misstate the split under an old-client /
+  /// rolled-back server. The bell renders regardless.
+  final ValueNotifier<bool> structuredCountsAvailable =
+      ValueNotifier<bool>(false);
+
+  /// One-time debug warning per session on old-client fallback.
+  bool _warnedOldPayloadShape = false;
 
   /// Activity types whose rows live in the user_activity table but surface
   /// inside the Import Activity screen. Kept in sync with
@@ -104,12 +132,46 @@ class ActivityReadProvider {
 
   /// Re-fetch the server-authoritative unread count and broadcast it to
   /// listeners (e.g. the bottom-nav badge). Server wins on reconciliation.
+  ///
+  /// abi-3: parses the new structured payload if present, falling back
+  /// to the legacy `{count}` shape.
   Future<void> refreshUnreadCount() async {
     try {
       final response = await _apiClient.getUnreadActivityCount();
-      final count = response.data['count'] as int? ?? 0;
-      if (unreadCount.value != count) {
-        unreadCount.value = count;
+      final data = response.data;
+      final hasNotifications = data is Map && data.containsKey('notifications');
+      final hasImportsActionable =
+          data is Map && data.containsKey('imports_actionable');
+      final structured = hasNotifications && hasImportsActionable;
+
+      if (structured) {
+        final n = (data['notifications'] as num?)?.toInt() ?? 0;
+        final i = (data['imports_actionable'] as num?)?.toInt() ?? 0;
+        if (notificationsCount.value != n) notificationsCount.value = n;
+        if (importsActionableCount.value != i) importsActionableCount.value = i;
+        if (!structuredCountsAvailable.value) {
+          structuredCountsAvailable.value = true;
+        }
+        final sum = n + i;
+        if (unreadCount.value != sum) unreadCount.value = sum;
+      } else {
+        // Legacy fallback — only `{count}`.
+        final count = (data is Map ? data['count'] as num? : null)?.toInt() ?? 0;
+        if (unreadCount.value != count) unreadCount.value = count;
+        if (structuredCountsAvailable.value) {
+          structuredCountsAvailable.value = false;
+        }
+        // Explicitly zero the per-tab counts so a stale value from a
+        // previous structured response doesn't leak under the old-client
+        // fallback (per-tab badges also hide via structuredCountsAvailable).
+        if (notificationsCount.value != 0) notificationsCount.value = 0;
+        if (importsActionableCount.value != 0) importsActionableCount.value = 0;
+        if (!_warnedOldPayloadShape) {
+          _warnedOldPayloadShape = true;
+          debugPrint(
+            'badge: old payload shape detected, per-tab badges suppressed',
+          );
+        }
       }
     } catch (_) {
       // Silent — we'll reconverge on the next poll.

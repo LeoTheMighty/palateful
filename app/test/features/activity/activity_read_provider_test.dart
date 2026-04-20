@@ -19,12 +19,21 @@ class _FakeApiClient extends ApiClient {
   final Set<String> always404Ids;
   int unreadCountCalls = 0;
   int unreadCountValue;
+  // abi-3: structured payload fields. When both are non-null, the fake
+  // returns the new `{notifications, imports_actionable, count}` shape
+  // (mirroring the abi-1 server). When either is null, it falls back to
+  // the legacy `{count: unreadCountValue}` shape so old-client tests can
+  // exercise the fallback branch.
+  int? notificationsValue;
+  int? importsActionableValue;
   List<Map<String, dynamic>> activities;
 
   _FakeApiClient({
     this.failOnceIds = const {},
     this.always404Ids = const {},
     this.unreadCountValue = 0,
+    this.notificationsValue,
+    this.importsActionableValue,
     this.activities = const [],
   });
 
@@ -56,6 +65,15 @@ class _FakeApiClient extends ApiClient {
   @override
   Future<Response> getUnreadActivityCount() async {
     unreadCountCalls++;
+    if (notificationsValue != null && importsActionableValue != null) {
+      final n = notificationsValue!;
+      final i = importsActionableValue!;
+      return _fakeResponse({
+        'notifications': n,
+        'imports_actionable': i,
+        'count': n + i,
+      });
+    }
     return _fakeResponse({'count': unreadCountValue});
   }
 
@@ -158,5 +176,80 @@ void main() {
       provider.setUnreadCount(3);
       expect(notifyCount, 1, reason: 'stable value = no notify');
     });
+
+    test(
+      'abi-3: structured payload populates notifications + imports counts',
+      () async {
+        final api = _FakeApiClient(
+          notificationsValue: 2,
+          importsActionableValue: 3,
+        );
+        final provider = ActivityReadProvider(api);
+
+        await provider.refreshUnreadCount();
+
+        expect(provider.notificationsCount.value, 2);
+        expect(provider.importsActionableCount.value, 3);
+        expect(provider.unreadCount.value, 5,
+            reason: 'unreadCount is derived sum');
+        expect(provider.structuredCountsAvailable.value, isTrue);
+      },
+    );
+
+    test(
+      'abi-3: old-client fallback keeps bell, suppresses per-tab badges',
+      () async {
+        final api = _FakeApiClient(unreadCountValue: 7);
+        final provider = ActivityReadProvider(api);
+
+        await provider.refreshUnreadCount();
+
+        expect(provider.unreadCount.value, 7);
+        expect(provider.notificationsCount.value, 0);
+        expect(provider.importsActionableCount.value, 0);
+        expect(provider.structuredCountsAvailable.value, isFalse);
+      },
+    );
+
+    test(
+      'abi-3: transition structured → legacy clears per-tab counts',
+      () async {
+        final api = _FakeApiClient(
+          notificationsValue: 4,
+          importsActionableValue: 1,
+        );
+        final provider = ActivityReadProvider(api);
+        await provider.refreshUnreadCount();
+        expect(provider.structuredCountsAvailable.value, isTrue);
+
+        // Simulate a server rollback that returns only `{count}`.
+        api.notificationsValue = null;
+        api.importsActionableValue = null;
+        api.unreadCountValue = 2;
+        await provider.refreshUnreadCount();
+
+        expect(provider.unreadCount.value, 2);
+        expect(provider.notificationsCount.value, 0,
+            reason: 'stale per-tab values must not leak under fallback');
+        expect(provider.importsActionableCount.value, 0);
+        expect(provider.structuredCountsAvailable.value, isFalse);
+      },
+    );
+
+    test(
+      'abi-3: 99+ rendering is the widget\'s job — provider keeps exact number',
+      () async {
+        final api = _FakeApiClient(
+          notificationsValue: 50,
+          importsActionableValue: 80,
+        );
+        final provider = ActivityReadProvider(api);
+        await provider.refreshUnreadCount();
+        expect(provider.unreadCount.value, 130,
+            reason:
+                'provider exposes the exact sum; badge-label truncation to "99+" '
+                'is a render-layer concern in scaffold_with_bottom_nav.dart');
+      },
+    );
   });
 }

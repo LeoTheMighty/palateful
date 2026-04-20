@@ -64,6 +64,10 @@ class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
     final unreadCount = _readProvider.unreadCount.value;
     final showBadge = unreadCount > 0;
     final badgeLabel = unreadCount > 99 ? '99+' : '$unreadCount';
+    // abi-3: Semantic label spells out the exact count so screen readers
+    // aren't truncated when the visual pill shows "99+". Only emitted
+    // when the badge is visible.
+    final semanticLabel = showBadge ? '$unreadCount unread items' : null;
 
     if (isWide) {
       return Scaffold(
@@ -85,15 +89,21 @@ class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
                   label: Text('Cart'),
                 ),
                 NavigationRailDestination(
-                  icon: Badge(
-                    label: Text(badgeLabel),
-                    isLabelVisible: showBadge,
-                    child: const Icon(Icons.notifications_outlined),
+                  icon: Semantics(
+                    label: semanticLabel,
+                    child: Badge(
+                      label: Text(badgeLabel),
+                      isLabelVisible: showBadge,
+                      child: const Icon(Icons.notifications_outlined),
+                    ),
                   ),
-                  selectedIcon: Badge(
-                    label: Text(badgeLabel),
-                    isLabelVisible: showBadge,
-                    child: const Icon(Icons.notifications),
+                  selectedIcon: Semantics(
+                    label: semanticLabel,
+                    child: Badge(
+                      label: Text(badgeLabel),
+                      isLabelVisible: showBadge,
+                      child: const Icon(Icons.notifications),
+                    ),
                   ),
                   label: const Text('Activity'),
                 ),
@@ -135,15 +145,21 @@ class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
             label: 'Cart',
           ),
           NavigationDestination(
-            icon: Badge(
-              label: Text(badgeLabel),
-              isLabelVisible: showBadge,
-              child: const Icon(Icons.notifications_outlined),
+            icon: Semantics(
+              label: semanticLabel,
+              child: Badge(
+                label: Text(badgeLabel),
+                isLabelVisible: showBadge,
+                child: const Icon(Icons.notifications_outlined),
+              ),
             ),
-            selectedIcon: Badge(
-              label: Text(badgeLabel),
-              isLabelVisible: showBadge,
-              child: const Icon(Icons.notifications),
+            selectedIcon: Semantics(
+              label: semanticLabel,
+              child: Badge(
+                label: Text(badgeLabel),
+                isLabelVisible: showBadge,
+                child: const Icon(Icons.notifications),
+              ),
             ),
             label: 'Activity',
           ),
