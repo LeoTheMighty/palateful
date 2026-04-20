@@ -609,6 +609,23 @@ class ApiClient {
     return _dio.post('/v1/import-items/$itemId/dismiss');
   }
 
+  /// efi-5 — audit one user correction of an inferred field. Dispatched
+  /// from Review Import on focus-loss after a 1500ms debounce. Best-
+  /// effort: callers swallow network errors and never block save.
+  /// `corrected` is dynamic because inferable fields vary in type —
+  /// int for times/servings, string for description / cuisine /
+  /// category / vibes.
+  Future<Response> submitImportCorrection({
+    required String itemId,
+    required String field,
+    required Object? corrected,
+  }) {
+    return _dio.post(
+      '/v1/import-items/$itemId/corrections',
+      data: {'field': field, 'corrected': corrected},
+    );
+  }
+
   Future<Response> dismissAllFailedImports() {
     return _dio.post('/v1/import-jobs/dismiss-all-failed');
   }

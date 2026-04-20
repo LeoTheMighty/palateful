@@ -859,7 +859,7 @@ development_status:
   efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: done
   efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: done
   efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: done
-  efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: backlog
+  efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: done
   efi-6-flutter-review-import-wiring-badge-dismiss-on-edit-and-debounced-dispatch: backlog
   efi-7-flutter-recipe-edit-wiring-badge-dismiss-on-edit-and-update-recipe-round-trip: backlog
   efi-8-eval-field-inference-accuracy-and-hallucination-rate-metrics-with-baseline: backlog

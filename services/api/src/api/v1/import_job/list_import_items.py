@@ -1,14 +1,24 @@
 """List import items endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
+from pagination import (
+    InvalidCursorError,
+    datetime_to_ms,
+    decode_cursor,
+    encode_cursor,
+)
 from pydantic import BaseModel
+from sqlalchemy import text, tuple_
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
+
+_MAX_LIMIT = 100
+_NEG_INF = text("'-infinity'::timestamptz")
 
 
 def _extract_confidence_fields(
@@ -73,13 +83,27 @@ class ListImportItems(Endpoint):
         limit: int = 50,
         offset: int = 0,
         include_archived: bool = False,
+        cursor: str | None = None,
     ):
         """List import items for a job.
 
         ``include_archived`` defaults to false so the default feed hides
         archived rows; the See-all footer flips it on.
+
+        ``cursor`` (afh-1b) is mutually exclusive with ``offset``. In
+        See-all mode (``include_archived=True``) the cursor + ORDER BY
+        use the 3-key row-value compare so pages stay stable under
+        concurrent archive/unarchive.
         """
         user: User = self.user
+
+        if cursor is not None and offset:
+            raise APIException(
+                status_code=400,
+                detail="cursor_and_offset_mutually_exclusive",
+                code=ErrorCode.VALIDATION_ERROR,
+            )
+        limit = max(1, min(limit, _MAX_LIMIT))
 
         job = self.database.find_by(ImportJob, id=job_id)
         if not job:
@@ -111,11 +135,68 @@ class ListImportItems(Endpoint):
         if not include_archived:
             query = query.filter(ImportItem.archived_at.is_(None))
 
-        total = query.count()
+        see_all_mode = include_archived
 
-        items = (
-            query.order_by(ImportItem.created_at).offset(offset).limit(limit).all()
-        )
+        if cursor is not None:
+            try:
+                cur_arch_ms, cur_created_ms, cur_id = decode_cursor(cursor)
+            except InvalidCursorError as exc:
+                raise APIException(
+                    status_code=400,
+                    detail="invalid_cursor",
+                    code=ErrorCode.VALIDATION_ERROR,
+                ) from exc
+            cur_created = datetime.fromtimestamp(cur_created_ms / 1000, tz=UTC)
+            if see_all_mode:
+                cur_arch_ts = (
+                    _NEG_INF
+                    if cur_arch_ms is None
+                    else datetime.fromtimestamp(cur_arch_ms / 1000, tz=UTC)
+                )
+                query = query.filter(
+                    tuple_(
+                        text(
+                            "COALESCE(import_items.archived_at, "
+                            "'-infinity'::timestamptz)"
+                        ),
+                        ImportItem.created_at,
+                        ImportItem.id,
+                    )
+                    < tuple_(cur_arch_ts, cur_created, cur_id)
+                )
+            else:
+                query = query.filter(
+                    tuple_(ImportItem.created_at, ImportItem.id)
+                    < tuple_(cur_created, cur_id)
+                )
+
+        total = query.count() if cursor is None else 0
+
+        if see_all_mode:
+            query = query.order_by(
+                text(
+                    "COALESCE(import_items.archived_at, "
+                    "'-infinity'::timestamptz) DESC"
+                ),
+                ImportItem.created_at.desc(),
+                ImportItem.id.desc(),
+            )
+        elif cursor is not None:
+            query = query.order_by(
+                ImportItem.created_at.desc(), ImportItem.id.desc()
+            )
+        else:
+            # Legacy ASC ordering preserved for one release so existing
+            # offset-paginated clients don't regress.
+            query = query.order_by(ImportItem.created_at)
+
+        if cursor is not None:
+            rows = query.limit(limit + 1).all()
+            has_more = len(rows) > limit
+            items = rows[:limit]
+        else:
+            items = query.offset(offset).limit(limit).all()
+            has_more = offset + len(items) < total
 
         item_responses = []
         for item in items:
@@ -152,12 +233,32 @@ class ListImportItems(Endpoint):
                 )
             )
 
+        next_cursor: str | None = None
+        if has_more and items:
+            last = items[-1]
+            next_cursor = encode_cursor(
+                datetime_to_ms(last.archived_at) if see_all_mode else None,
+                datetime_to_ms(last.created_at),
+                str(last.id),
+            )
+
+        headers = None
+        if next_cursor:
+            headers = {
+                "Link": (
+                    f'</v1/import-jobs/{job_id}/items'
+                    f'?cursor={next_cursor}>; rel="next"'
+                )
+            }
+
         return success(
             data=ListImportItems.Response(
                 items=item_responses,
                 total=total,
-                has_more=offset + len(items) < total,
-            )
+                has_more=has_more,
+                next_cursor=next_cursor,
+            ),
+            headers=headers,
         )
 
     class ItemSummary(BaseModel):
@@ -182,3 +283,4 @@ class ListImportItems(Endpoint):
         items: list["ListImportItems.ItemSummary"]
         total: int
         has_more: bool
+        next_cursor: str | None = None
