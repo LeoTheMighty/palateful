@@ -861,6 +861,6 @@ development_status:
   efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: done
   efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: done
   efi-6-flutter-review-import-wiring-badge-dismiss-on-edit-and-debounced-dispatch: done
-  efi-7-flutter-recipe-edit-wiring-badge-dismiss-on-edit-and-update-recipe-round-trip: backlog
+  efi-7-flutter-recipe-edit-wiring-badge-dismiss-on-edit-and-update-recipe-round-trip: done
   efi-8-eval-field-inference-accuracy-and-hallucination-rate-metrics-with-baseline: backlog
   epic-extractor-field-inference-retrospective: optional

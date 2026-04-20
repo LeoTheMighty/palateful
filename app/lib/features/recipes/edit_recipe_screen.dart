@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import '../../core/constants/inferable_fields.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/utils/fraction_parser.dart';
 import '../../shared/widgets/error_banner.dart';
 import 'add_recipe/ingredient_edits_mapping.dart';
+import 'add_recipe/widgets/inferred_field_badge.dart';
 import 'widgets/structured_ingredient_row.dart';
 
 class EditRecipeScreen extends StatefulWidget {
@@ -56,6 +58,13 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
   final List<_IngredientEntry> _ingredientRows = [];
   int _nextIngredientKey = 0;
 
+  // efi-7 — local mutable inference set. Read from `recipes.inferred_fields`
+  // via GetRecipe and shrunken on save via UpdateRecipe. Edits shrink the
+  // set locally; save sends the shrunken state. Correction dispatch is
+  // deliberately NOT wired here (design principle 9) — the side-channel
+  // endpoint is Review-Import-only in v1.
+  Set<String> _inferredFields = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -97,6 +106,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       _sourceUrlController.text = data['source_url'] ?? '';
       _imageUrl = data['image_url'] as String?;
       _tags = List<String>.from(data['tags'] ?? []);
+      _inferredFields = decodeInferredFields(data['inferred_fields']);
 
       final stepsData = data['steps'] as List? ?? [];
       _steps = stepsData.map((s) => Map<String, dynamic>.from(s)).toList();
@@ -150,6 +160,41 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
     }
   }
 
+  /// efi-7 — shrink the local inference set when the user edits a
+  /// badged field. No dispatch (design principle 9). UpdateRecipe on
+  /// save carries the shrunken list to the server, which enforces
+  /// new ⊆ stored at the endpoint level.
+  void _dismissInferred(String field) {
+    if (_inferredFields.contains(field)) {
+      setState(() => _inferredFields.remove(field));
+    }
+  }
+
+  /// efi-7 — wrap a label string in a row with a sparkle badge when the
+  /// extractor inferred the field. Preserves the caller-supplied
+  /// suffixText (e.g., 'min' on prep/cook fields) so the screen's styling
+  /// is unchanged for non-badged fields.
+  InputDecoration _decorateInferable(
+    String label,
+    String field, {
+    String? suffixText,
+  }) {
+    if (!_inferredFields.contains(field)) {
+      return InputDecoration(labelText: label, suffixText: suffixText);
+    }
+    return InputDecoration(
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          const SizedBox(width: 4),
+          const InferredFieldBadge(),
+        ],
+      ),
+      suffixText: suffixText,
+    );
+  }
+
   Future<void> _saveNow() async {
     if (_isSaving) return;
     _isSaving = true;
@@ -187,6 +232,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         'tags': _tags,
         'steps': structuredSteps,
         'ingredients': ingredientPayloads,
+        // efi-7 — shrink-only. Server enforces new ⊆ stored.
+        'inferred_fields': _inferredFields.toList(),
       };
 
       await _apiClient.updateRecipe(widget.recipeId, data);
@@ -521,12 +568,16 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                       // Description
                       TextField(
                         controller: _descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'Description (optional)',
+                        decoration: _decorateInferable(
+                          'Description (optional)',
+                          'description',
                         ),
                         maxLines: 3,
                         textCapitalization: TextCapitalization.sentences,
-                        onChanged: (_) => _scheduleSave(),
+                        onChanged: (_) {
+                          _dismissInferred('description');
+                          _scheduleSave();
+                        },
                       ),
                       const SizedBox(height: 16),
 
@@ -536,24 +587,32 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                           Expanded(
                             child: TextField(
                               controller: _prepTimeController,
-                              decoration: const InputDecoration(
-                                labelText: 'Prep time',
+                              decoration: _decorateInferable(
+                                'Prep time',
+                                'prep_time_minutes',
                                 suffixText: 'min',
                               ),
                               keyboardType: TextInputType.number,
-                              onChanged: (_) => _scheduleSave(),
+                              onChanged: (_) {
+                                _dismissInferred('prep_time_minutes');
+                                _scheduleSave();
+                              },
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: TextField(
                               controller: _cookTimeController,
-                              decoration: const InputDecoration(
-                                labelText: 'Cook time',
+                              decoration: _decorateInferable(
+                                'Cook time',
+                                'cook_time_minutes',
                                 suffixText: 'min',
                               ),
                               keyboardType: TextInputType.number,
-                              onChanged: (_) => _scheduleSave(),
+                              onChanged: (_) {
+                                _dismissInferred('cook_time_minutes');
+                                _scheduleSave();
+                              },
                             ),
                           ),
                         ],
@@ -563,11 +622,12 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
                       // Servings
                       TextField(
                         controller: _servingsController,
-                        decoration: const InputDecoration(
-                          labelText: 'Servings',
-                        ),
+                        decoration: _decorateInferable('Servings', 'servings'),
                         keyboardType: TextInputType.number,
-                        onChanged: (_) => _scheduleSave(),
+                        onChanged: (_) {
+                          _dismissInferred('servings');
+                          _scheduleSave();
+                        },
                       ),
                       const SizedBox(height: 16),
 
