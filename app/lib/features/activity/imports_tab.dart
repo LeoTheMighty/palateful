@@ -12,7 +12,6 @@ import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/import_item_telemetry_provider.dart';
 import 'providers/import_row_expansion_provider.dart';
-import 'providers/imports_actionable_badge_provider.dart';
 import 'widgets/awaiting_review_reason_chip.dart';
 import 'widgets/compact_stage_pill.dart';
 import 'widgets/confidence_badge.dart';
@@ -203,10 +202,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         _isLoading = false;
       });
 
-      // Actionable = blue + yellow + red. Green excluded.
-      final actionable =
-          inProgress.length + needsReview.length + failed.length;
-      ref.read(importsActionableBadgeProvider.notifier).set(actionable);
+      // abi-4: the orphan `importsActionableBadgeProvider` was deleted —
+      // the bell now reads `imports_actionable` straight from the
+      // server via ActivityReadProvider, which the 30s poll refreshes.
+      // Local tab state stays source of truth for this widget's own
+      // section rendering.
     } catch (e, st) {
       if (!mounted) return;
       if (!silent) {

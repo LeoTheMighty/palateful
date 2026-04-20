@@ -29,6 +29,23 @@ enum ActivityTab {
 
 }
 
+/// abi-4: pick the Activity tab to open when the route lacks an explicit
+/// `?tab=` override. Lands on whichever side has more actionable items;
+/// ties fall to Notifications (cold-start default).
+///
+/// Called from `ActivityScreen.initState` with the latest counts, and
+/// again in a post-frame callback if the counts resolve asynchronously
+/// AFTER mount (cold-start / cache-cleared session). The screen's
+/// `_userTouchedTab` latch blocks the second call if the user has
+/// already manually swiped a tab — no rug-pull.
+ActivityTab initialTabFromCounts({
+  required int notifications,
+  required int importsActionable,
+}) {
+  if (importsActionable > notifications) return ActivityTab.imports;
+  return ActivityTab.notifications;
+}
+
 /// The currently-selected Activity Hub tab.
 ///
 /// App-scoped (not `autoDispose`) so tab switches within a session are
