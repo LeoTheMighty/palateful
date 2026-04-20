@@ -16,6 +16,7 @@ from api.v1.import_job.list_import_jobs import ListImportJobs
 from api.v1.import_job.retry_import_item import RetryImportItem
 from api.v1.import_job.skip_import_item import SkipImportItem
 from api.v1.import_job.start_import import StartImport
+from api.v1.import_job.submit_correction import SubmitCorrection
 from api.v1.import_job.unarchive_import_item import UnarchiveImportItem
 from api.v1.import_job.update_import_item import UpdateImportItem
 
@@ -35,5 +36,6 @@ __all__ = [
     "ArchiveImportItem",
     "UnarchiveImportItem",
     "SkipImportItem",
+    "SubmitCorrection",
     "CancelImportJob",
 ]

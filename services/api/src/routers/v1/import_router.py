@@ -15,6 +15,7 @@ from api.v1.import_job import (
     RetryImportItem,
     SkipImportItem,
     StartImport,
+    SubmitCorrection,
     UnarchiveImportItem,
     UpdateImportItem,
 )
@@ -71,6 +72,13 @@ async def list_import_jobs(
             "400 if include_archived=false is also passed)"
         ),
     ),
+    cursor: str | None = Query(
+        None,
+        description=(
+            "Opaque cursor from a prior page's next_cursor (afh-1b). "
+            "Mutually exclusive with offset — both-present returns 400."
+        ),
+    ),
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -81,6 +89,7 @@ async def list_import_jobs(
         offset=offset,
         include_archived=include_archived,
         archived_only=archived_only,
+        cursor=cursor,
         user=user,
         database=database,
     )
@@ -123,6 +132,13 @@ async def list_import_items(
     include_archived: bool = Query(
         False, description="Include archived items"
     ),
+    cursor: str | None = Query(
+        None,
+        description=(
+            "Opaque cursor from a prior page's next_cursor (afh-1b). "
+            "Mutually exclusive with offset — both-present returns 400."
+        ),
+    ),
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -133,6 +149,7 @@ async def list_import_items(
         limit=limit,
         offset=offset,
         include_archived=include_archived,
+        cursor=cursor,
         user=user,
         database=database,
     )
@@ -233,6 +250,28 @@ async def dismiss_import_item(
     """Hide a failed import item from the UI. Hard dismiss — no undo."""
     return DismissImportItem.call(
         item_id=item_id,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.post("/import-items/{item_id}/corrections")
+async def submit_import_correction(
+    item_id: str,
+    params: SubmitCorrection.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """efi-4 — log a user override on an inferred recipe field.
+
+    Side-channel audit endpoint. Writes one ``error_logs`` row
+    (``service="audit"``, ``error_type="InferredFieldCorrected"``) and
+    returns 204. Does NOT mutate ``parsed_recipe``; the real user edits
+    flow through ``approve_import_item`` at save time.
+    """
+    return SubmitCorrection.call(
+        item_id=item_id,
+        params=params,
         user=user,
         database=database,
     )

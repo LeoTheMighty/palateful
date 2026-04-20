@@ -1210,6 +1210,241 @@ class TestListImportItems:
         assert data["items"][0]["error_message"] == "Failed to parse recipe"
 
 
+class TestListImportItemsCursor:
+    """afh-1b: cursor pagination on GET /v1/import-jobs/{job_id}/items."""
+
+    def _setup_job(self, mock_db, mock_user, job_id="job-cursor-test"):
+        from utils.models.import_job import ImportJob
+
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id="book-id",
+        )
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        return job_id
+
+    def test_cursor_and_offset_both_present_returns_400(
+        self, client, mock_db, mock_user
+    ):
+        job_id = self._setup_job(mock_db, mock_user)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items?cursor=abc&offset=5"
+        )
+        assert response.status_code == 400
+        assert (
+            response.json()["error_message"]
+            == "cursor_and_offset_mutually_exclusive"
+        )
+
+    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
+        job_id = self._setup_job(mock_db, mock_user)
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items?cursor=%21%21%21%21"
+        )
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
+    def test_cursor_default_mode_decodes(self, client, mock_db, mock_user):
+        import uuid as _uuid
+
+        from pagination import encode_cursor
+
+        job_id = self._setup_job(mock_db, mock_user)
+        cursor = encode_cursor(None, 1_700_000_000_000, str(_uuid.uuid4()))
+        item = MockImportItem(import_job_id=job_id, status="succeeded")
+        mock_db.db.query.return_value = MockQuery([item])
+
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items?cursor={cursor}"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        # Cursor path skips the COUNT.
+        assert body["total"] == 0
+
+    def test_cursor_see_all_mode_with_archived_at(
+        self, client, mock_db, mock_user
+    ):
+        import uuid as _uuid
+        from datetime import UTC, datetime
+
+        from pagination import encode_cursor
+
+        job_id = self._setup_job(mock_db, mock_user)
+        cursor = encode_cursor(
+            1_700_000_000_000, 1_699_000_000_000, str(_uuid.uuid4())
+        )
+        item = MockImportItem(
+            import_job_id=job_id,
+            status="succeeded",
+            archived_at=datetime(2025, 6, 1, tzinfo=UTC),
+        )
+        mock_db.db.query.return_value = MockQuery([item])
+
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items"
+            f"?include_archived=true&cursor={cursor}"
+        )
+        assert response.status_code == 200
+
+    def test_cursor_see_all_mode_with_null_archived_at_cursor(
+        self, client, mock_db, mock_user
+    ):
+        import uuid as _uuid
+
+        from pagination import encode_cursor
+
+        job_id = self._setup_job(mock_db, mock_user)
+        cursor = encode_cursor(None, 1_699_000_000_000, str(_uuid.uuid4()))
+        mock_db.db.query.return_value = MockQuery([])
+
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items"
+            f"?include_archived=true&cursor={cursor}"
+        )
+        assert response.status_code == 200
+
+    def test_next_cursor_present_when_more_results(
+        self, client, mock_db, mock_user
+    ):
+        job_id = self._setup_job(mock_db, mock_user)
+        items = [
+            MockImportItem(import_job_id=job_id, status="succeeded")
+            for _ in range(60)
+        ]
+        mock_db.db.query.return_value = MockQuery(items)
+
+        # Provide a cursor so the cursor-path runs with limit+1 detection.
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, "seed-id")
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items?cursor={cursor}&limit=50"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["next_cursor"] is not None
+        link = response.headers.get("link") or response.headers.get("Link")
+        assert link is not None
+        assert 'rel="next"' in link
+
+    def test_see_all_next_cursor_encodes_archived_at(
+        self, client, mock_db, mock_user
+    ):
+        from datetime import UTC, datetime
+
+        from pagination import encode_cursor
+
+        job_id = self._setup_job(mock_db, mock_user)
+        items = [
+            MockImportItem(
+                import_job_id=job_id,
+                status="succeeded",
+                archived_at=datetime(2025, 6, (i % 28) + 1, tzinfo=UTC),
+            )
+            for i in range(60)
+        ]
+        mock_db.db.query.return_value = MockQuery(items)
+        cursor = encode_cursor(
+            1_750_000_000_000, 1_700_000_000_000, "seed"
+        )
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items"
+            f"?include_archived=true&cursor={cursor}&limit=50"
+        )
+        assert response.status_code == 200
+        assert response.json()["next_cursor"] is not None
+
+
+class TestListImportJobsCursor:
+    """afh-1b: cursor pagination on GET /v1/import-jobs."""
+
+    def test_cursor_and_offset_both_present_returns_400(
+        self, client, mock_db, mock_user
+    ):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-jobs?cursor=abc&offset=5")
+        assert response.status_code == 400
+        assert (
+            response.json()["error_message"]
+            == "cursor_and_offset_mutually_exclusive"
+        )
+
+    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-jobs?cursor=%21%21%21%21")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
+    def test_cursor_default_mode_decodes(self, client, mock_db, mock_user):
+        import uuid as _uuid
+
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, str(_uuid.uuid4()))
+        job = MockImportJob(user_id=str(mock_user.id))
+        mock_db.db.query.return_value = MockQuery([job])
+
+        response = client.get(f"/v1/import-jobs?cursor={cursor}")
+        assert response.status_code == 200
+
+    def test_cursor_see_all_mode_archived_only(
+        self, client, mock_db, mock_user
+    ):
+        """archived_only=true also counts as See-all mode."""
+        import uuid as _uuid
+        from datetime import UTC, datetime
+
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(
+            1_700_000_000_000, 1_699_000_000_000, str(_uuid.uuid4())
+        )
+        job = MockImportJob(
+            user_id=str(mock_user.id),
+            archived_at=datetime(2025, 6, 1, tzinfo=UTC),
+        )
+        mock_db.db.query.return_value = MockQuery([job])
+        response = client.get(
+            "/v1/import-jobs?include_archived=true&archived_only=true"
+            f"&cursor={cursor}"
+        )
+        assert response.status_code == 200
+
+    def test_cursor_see_all_null_archived_cursor(
+        self, client, mock_db, mock_user
+    ):
+        import uuid as _uuid
+
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_699_000_000_000, str(_uuid.uuid4()))
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get(
+            f"/v1/import-jobs?include_archived=true&cursor={cursor}"
+        )
+        assert response.status_code == 200
+
+    def test_next_cursor_present_when_more_results(
+        self, client, mock_db, mock_user
+    ):
+        from pagination import encode_cursor
+
+        jobs = [MockImportJob(user_id=str(mock_user.id)) for _ in range(60)]
+        mock_db.db.query.return_value = MockQuery(jobs)
+        cursor = encode_cursor(None, 1_700_000_000_000, "seed")
+        response = client.get(f"/v1/import-jobs?cursor={cursor}&limit=50")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["next_cursor"] is not None
+        assert response.headers.get("link") is not None
+
+
 class TestGetImportItem:
     """Tests for GET /v1/import-items/{item_id}."""
 
@@ -4355,3 +4590,268 @@ class TestStartImportSocialUrlRouting:
         # Non-social URLs must NOT get a detected_platform marker — a
         # blank raw_data keeps downstream code paths unchanged.
         assert created[0].raw_data.get("detected_platform") is None
+
+
+class TestInferredFieldsHoist:
+    """efi-4 — `inferred_fields` hoisted to the item-object root on
+    GetImportItem + ListImportItems."""
+
+    def _setup_item(self, mock_db, mock_user, *, parsed_recipe):
+        item_id = "hoist-item"
+        job_id = "hoist-job"
+        book_id = "hoist-book"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            parsed_recipe=parsed_recipe,
+            retry_count=0,
+            raw_data={},
+            created_recipe_id=None,
+            user_edits=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        return item_id, job_id
+
+    def test_get_import_item_hoists_inferred_fields(
+        self, client, mock_db, mock_user
+    ):
+        item_id, _ = self._setup_item(
+            mock_db,
+            mock_user,
+            parsed_recipe={
+                "name": "X",
+                "cook_time_minutes": 30,
+                "inferred_fields": ["cook_time_minutes", "servings"],
+            },
+        )
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["inferred_fields"] == ["cook_time_minutes", "servings"]
+
+    def test_get_import_item_legacy_returns_empty(
+        self, client, mock_db, mock_user
+    ):
+        """Row with no inferred_fields key (pre-efi-3 extraction) decodes
+        to `[]` at the response root."""
+        item_id, _ = self._setup_item(
+            mock_db, mock_user, parsed_recipe={"name": "X"}
+        )
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        assert response.json()["inferred_fields"] == []
+
+    def test_get_import_item_filters_non_allowlist_in_legacy_row(
+        self, client, mock_db, mock_user
+    ):
+        """Malformed legacy row with a non-inferable field smuggled into
+        `inferred_fields` → filtered out at the response edge."""
+        item_id, _ = self._setup_item(
+            mock_db,
+            mock_user,
+            parsed_recipe={
+                "name": "X",
+                "inferred_fields": [
+                    "cook_time_minutes",
+                    "name",
+                    "ingredients",
+                    42,
+                ],
+            },
+        )
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        assert response.json()["inferred_fields"] == ["cook_time_minutes"]
+
+    def test_list_import_items_hoists_inferred_fields(
+        self, client, mock_db, mock_user
+    ):
+        job_id = "hoist-job"
+        book_id = "hoist-book"
+        item_a = MockImportItem(
+            id="a",
+            import_job_id=job_id,
+            status="awaiting_review",
+            parsed_recipe={
+                "name": "A",
+                "inferred_fields": ["cook_time_minutes"],
+            },
+        )
+        item_b = MockImportItem(
+            id="b",
+            import_job_id=job_id,
+            status="completed",
+            parsed_recipe={"name": "B"},
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.import_job import ImportJob
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            MockRecipeBookUser(
+                user_id=str(mock_user.id),
+                recipe_book_id=book_id,
+            ),
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.db.query.return_value = MockQuery([item_a, item_b])
+
+        response = client.get(f"/v1/import-jobs/{job_id}/items")
+        assert response.status_code == 200
+        data = response.json()
+        items = {i["id"]: i["inferred_fields"] for i in data["items"]}
+        assert items["a"] == ["cook_time_minutes"]
+        assert items["b"] == []
+
+
+class TestSubmitCorrection:
+    """efi-4 — POST /v1/import-items/{item_id}/corrections audit endpoint."""
+
+    def _setup(
+        self,
+        mock_db,
+        mock_user,
+        *,
+        parsed_recipe=None,
+        job_user_id=None,
+    ):
+        item_id = "corr-item"
+        job_id = "corr-job"
+        book_id = "corr-book"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            parsed_recipe=parsed_recipe
+            or {
+                "cook_time_minutes": 30,
+                "inferred_fields": ["cook_time_minutes"],
+            },
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=job_user_id or str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        return item, job, item_id
+
+    def test_happy_path_writes_audit_row(self, client, mock_db, mock_user):
+        _, _, item_id = self._setup(mock_db, mock_user)
+
+        added = []
+        mock_db.db.add.side_effect = lambda r: added.append(r)
+
+        response = client.post(
+            f"/v1/import-items/{item_id}/corrections",
+            json={"field": "cook_time_minutes", "corrected": 45},
+        )
+        assert response.status_code == 204
+        assert len(added) == 1
+        row = added[0]
+        assert row.service == "audit"
+        assert row.error_type == "InferredFieldCorrected"
+        import json as _json
+        meta = _json.loads(row.error_message)
+        assert meta["field"] == "cook_time_minutes"
+        assert meta["original"] == 30
+        assert meta["corrected"] == 45
+        assert meta["was_inferred"] is True
+
+    def test_not_inferred_still_logs(self, client, mock_db, mock_user):
+        """was_inferred=false path — correction data is valuable
+        regardless of whether the field was inferred."""
+        _, _, item_id = self._setup(
+            mock_db,
+            mock_user,
+            parsed_recipe={
+                "cook_time_minutes": 30,
+                "inferred_fields": [],
+            },
+        )
+        added = []
+        mock_db.db.add.side_effect = lambda r: added.append(r)
+
+        response = client.post(
+            f"/v1/import-items/{item_id}/corrections",
+            json={"field": "cook_time_minutes", "corrected": 45},
+        )
+        assert response.status_code == 204
+        import json as _json
+        meta = _json.loads(added[0].error_message)
+        assert meta["was_inferred"] is False
+
+    def test_field_not_inferable(self, client, mock_db, mock_user):
+        _, _, item_id = self._setup(mock_db, mock_user)
+        response = client.post(
+            f"/v1/import-items/{item_id}/corrections",
+            json={"field": "name", "corrected": "Renamed"},
+        )
+        assert response.status_code == 400
+        body = response.json()
+        assert body["error_message"] == "field not inferable"
+        # Response carries the allow-list so the client can self-correct.
+        assert "cook_time_minutes" in body["data"]["allowed"]
+
+    def test_item_not_found(self, client, mock_db, mock_user):
+        response = client.post(
+            "/v1/import-items/nonexistent/corrections",
+            json={"field": "cook_time_minutes", "corrected": 10},
+        )
+        assert response.status_code == 404
+
+    def test_wrong_user(self, client, mock_db, mock_user):
+        self._setup(mock_db, mock_user, job_user_id="someone-else")
+        response = client.post(
+            "/v1/import-items/corr-item/corrections",
+            json={"field": "cook_time_minutes", "corrected": 10},
+        )
+        assert response.status_code == 403
+
+    def test_missing_parsed_recipe_still_logs(
+        self, client, mock_db, mock_user
+    ):
+        """Item with empty parsed_recipe (extraction failed mid-flight)
+        → still logs, but original resolves to None + was_inferred=False."""
+        item, _job, item_id = self._setup(
+            mock_db, mock_user, parsed_recipe={"_": "_"},
+        )
+        # Force the actual stored value to None — `_setup`'s `or {...}`
+        # swaps None for a default, so set it explicitly afterwards.
+        item.parsed_recipe = None
+        added = []
+        mock_db.db.add.side_effect = lambda r: added.append(r)
+
+        response = client.post(
+            f"/v1/import-items/{item_id}/corrections",
+            json={"field": "cook_time_minutes", "corrected": 45},
+        )
+        assert response.status_code == 204
+        import json as _json
+        meta = _json.loads(added[0].error_message)
+        assert meta["original"] is None
+        assert meta["was_inferred"] is False

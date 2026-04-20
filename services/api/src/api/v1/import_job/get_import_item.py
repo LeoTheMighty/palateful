@@ -39,6 +39,31 @@ def _extract_confidence_fields(
     return (score, source)
 
 
+def _extract_inferred_fields(parsed_recipe: dict | None) -> list[str]:
+    """efi-4 — hoist ``inferred_fields`` from parsed_recipe to the response root.
+
+    Always returns a list. Legacy rows (no key, or null) return ``[]``.
+    Filters to the server-side allow-list so a malformed legacy row
+    can't smuggle a bogus name onto the API surface.
+    """
+    from utils.services.recipe_extractors.inference_prompt import INFERABLE_FIELDS
+
+    if not parsed_recipe:
+        return []
+    raw = parsed_recipe.get("inferred_fields")
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    clean: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        if item in INFERABLE_FIELDS and item not in seen:
+            seen.add(item)
+            clean.append(item)
+    return clean
+
+
 class GetImportItem(Endpoint):
     """Get import item details."""
 
@@ -115,6 +140,7 @@ class GetImportItem(Endpoint):
                 awaiting_review_reason=item.awaiting_review_reason,
                 confidence_score=confidence_score,
                 confidence_source=confidence_source,
+                inferred_fields=_extract_inferred_fields(item.parsed_recipe),
             )
         )
 
@@ -140,3 +166,4 @@ class GetImportItem(Endpoint):
         awaiting_review_reason: str | None = None
         confidence_score: float | None = None
         confidence_source: str | None = None
+        inferred_fields: list[str] = []
