@@ -684,3 +684,150 @@ development_status:
   cpms-1-flutter-remove-weekly-button-and-add-per-card-shopping-cart-icon: done
   cpms-2-backend-remove-populate-from-calendar-endpoint-and-tests: done
   epic-calendar-per-meal-shopping-add-retrospective: optional
+
+  # Epic Cook Mode Polish (planned 2026-04-20, refined via party-mode)
+  # Flutter-only. Drops forced AppTheme.dark() wrap; introduces CookModeTheme
+  # ThemeExtension (13 tokens incl cookError/cookOffline/cookOnAccent/
+  # cookOnCompleted/cookDivider); migrates all cook_mode/** widgets off
+  # primary-as-background incl loading + error scaffolds; fixes completed-step
+  # visual bleeding backward when user navigates to a prior step (covers all
+  # three back-nav routes: swipe, tap-zone, pill-tap). Uses colour-value
+  # widget tests rather than goldens (no existing golden infra in app/test).
+  # Parallelizable with epic-cook-mode-timers. Soft cross-epic: cookTimer
+  # token defined here, consumed by cmt-4/cmt-5 (falls back to
+  # colorScheme.tertiary if extension not registered yet).
+  epic-cook-mode-polish: backlog
+  cmp-1-cook-mode-theme-extension-scaffold: backlog
+  cmp-2-migrate-cook-mode-screen-to-cookmodetheme-and-drop-forced-dark: backlog
+  cmp-3-migrate-sub-widgets-step-nav-ingredient-strip-chat-sheet-and-post-cook: backlog
+  cmp-4-step-completion-untoggle-on-back-navigation: backlog
+  cmp-5-colour-value-widget-tests-and-epic-6-regression-sweep: backlog
+  epic-cook-mode-polish-retrospective: optional
+
+  # Epic Cook Mode Timers — Extraction + Manual Escape Hatch (planned 2026-04-20, refined via party-mode)
+  # Full-stack. Wires dormant recipe_step.timers JSONB column end-to-end:
+  # AI extractor starts emitting structured steps[] (was instructions string
+  # only — gap surfaced by party-mode); create_recipe_task persists with
+  # inline clamp (1-360 min, 40-char label, 10-per-step cap) + independent
+  # audit commit on drop (service="worker", error_type="TimerClamp").
+  # Recipe-level multiset eval (timer_extraction_f1) — fixtures NOT
+  # restructured; duration slack ±20%; label sim via SequenceMatcher ≥0.6;
+  # soft gate only. Flutter prefers step.timers, upgraded regex fallback
+  # (multi-match, ranges, decimals, aliases, 2000-char cap), horizontally-
+  # scrollable row (no fixed cap). Always-visible 48x48 manual timer
+  # IconButton in header; ManualTimerSheet with digits-only filter + 'min'
+  # suffix + label disambiguation ('Timer'/'Timer 2'). Hybrid = fallback
+  # not merge: structured timers suppress regex. No backfill, no vision
+  # support, no step-level eval, no ExtractedStep.from_dict. Parallelizable
+  # with epic-cook-mode-polish (soft dep on cookTimer token — falls back to
+  # colorScheme.tertiary).
+  epic-cook-mode-timers: done
+  cmt-1-extraction-schema-ai-prompt-and-extracted-recipe-steps-parsing: done
+  cmt-2-persist-timers-in-create-recipe-task-with-clamp-and-independent-audit: done
+  cmt-3-recipe-level-timer-eval-metric-and-fixture-extensions: done
+  cmt-4-flutter-step-timers-row-and-upgraded-regex-fallback: done
+  cmt-5-flutter-manual-timer-header-button-and-sheet: done
+  cmt-6-end-to-end-widget-regression-sweep: done
+  epic-cook-mode-timers-retrospective: optional
+
+  # Epic Activity Hub — Badge Integrity (planned 2026-04-20, refined via party-mode)
+  # Fixes bell-count drift: unread-count returns structured
+  # {notifications, imports_actionable, count} payload filtered by a single
+  # NOTIFICATION_TAB_TYPES allow-list; Flutter bottom-nav badge is the sum
+  # (99+ clamp, semantic label carries exact number); bottom-nav tap lands
+  # on whichever tab has more items (Notifications cold-start default, user-
+  # touched latch prevents rug-pull). Orphan import_* user_activity writes
+  # are removed at 5 call sites (abi-2a) + soft-archived via migration
+  # (abi-2b, 100k row safety gate) instead of hard-deleted — hard DELETE is
+  # a placeholder follow-up epic. Orphan `importsActionableBadgeProvider`
+  # is explicitly DELETED (not rewired). Admin-gated ?include_system_types
+  # debug escape on list_activities. Blocks epic-activity-full-history.
+  epic-activity-badge-integrity: backlog
+  abi-1-backend-unread-count-structured-payload-and-allow-list: backlog
+  abi-2a-backend-delete-orphan-import-activity-writes-at-source: backlog
+  abi-2b-backend-soft-archive-orphan-import-user-activity-rows: backlog
+  abi-3-flutter-activity-badge-provider-and-bottom-nav-with-99-plus-and-fallback: backlog
+  abi-4-flutter-bottom-nav-tap-destination-cold-start-safe-and-orphan-provider-delete: backlog
+  abi-5-end-to-end-badge-integrity-regression-fake-clock: backlog
+  epic-activity-badge-integrity-retrospective: optional
+
+  # Epic Activity Orphan Cleanup (placeholder — planned 2026-04-20, scheduled
+  # for one release AFTER epic-activity-full-history ships). Hard DELETE of
+  # import_* user_activity rows soft-archived by abi-2b, after a soak period
+  # with no downstream consumer surfacing. Single migration; no new schema.
+  epic-activity-orphan-cleanup: backlog
+
+  # Epic Activity Hub — Full History (planned 2026-04-20, refined via party-mode)
+  # Symmetric See-all footers (new Notifications footer mirrors Imports),
+  # cursor pagination with MULTI-KEY row-value comparison matching the See-all
+  # ORDER BY archived_at DESC NULLS LAST, created_at DESC, id DESC (single-key
+  # cursor caught as P0 bug in party-mode — would skip rows at archived/non-
+  # archived NULL transition). See-all-count endpoints p95 ≤50ms via new
+  # partial indexes. No itemExtent on Imports See-all (caret-expand breaks
+  # fixed-extent). Shared AppColors.mutedOnSurface token. Retry-on-failure
+  # row for pagination errors. PageStorageKey for scroll persistence.
+  # Pull-to-refresh wired. 10k-row virtualization test. CI guard for Epic 1
+  # dependency. Depends on epic-activity-badge-integrity (allow-list + clean
+  # user_activities table).
+  epic-activity-full-history: backlog
+  afh-1a-backend-multi-key-cursor-helper-and-list-activities-see-all-mode: backlog
+  afh-1b-backend-cursor-on-list-import-items-and-list-import-jobs: backlog
+  afh-2-backend-see-all-count-endpoints-and-partial-index-and-read-default-verify: backlog
+  afh-3-flutter-notifications-see-all-footer-paginated-retry-pagekey-muted-token: backlog
+  afh-4-flutter-imports-see-all-pagination-swap-drop-itemextent-pagekey: backlog
+  afh-5-flutter-empty-state-gateway-links-chevron-down-and-pull-to-refresh: backlog
+  afh-6-regression-full-history-10k-virtualization-cursor-race-deploy-guard: backlog
+  epic-activity-full-history-retrospective: optional
+
+  # Epic Ingredients String Simplification (planned 2026-04-20, refined via party-mode)
+  # Retires ingredient canonicalization / dedup / substitution / pantry-check
+  # infrastructure. Ingredient table stays as a bag of rows; no uniqueness,
+  # no matching, no pending-review, no embedding, no category. Every write
+  # path (Flutter import, recipe CRUD, MCP create_recipe / fork_recipe)
+  # creates a fresh ingredients row per name. Shopping-list duplicates are
+  # expected (stable components x ingredients order). Pantry check deleted.
+  # Scraper service parked (README note), seeder deleted.
+  # Cross-epic rescope applied: epic-review-import-ingredient-polish loses
+  # riip-4's pending-review-annotation half (keeps /v1/units/aliases half)
+  # and all of riip-7 (IngredientRowStateBadge). riip-1/2/3/5/6/8 unaffected.
+  # Story order is a dependency chain: str-ing-1 (Flutter) first so no client
+  # 404s during the rollout window; then str-ing-2 (backend runtime +
+  # MCP matcher + category readers); then str-ing-3 (endpoint deletion);
+  # then str-ing-4 (schema migration, one-deploy lag so app stops reading
+  # dropped columns first); then str-ing-5 (planning-artifact updates +
+  # formal rescope note on epic-review-import-ingredient-polish).
+  epic-ingredients-string-simplification: backlog
+  str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: backlog
+  str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: backlog
+  str-ing-3-backend-delete-ingredients-endpoints-and-router: backlog
+  str-ing-4-backend-schema-migration-and-model-cleanup: backlog
+  str-ing-5-planning-artifacts-and-rescope-review-import-ingredient-polish: backlog
+  epic-ingredients-string-simplification-retrospective: optional
+
+  # Cross-epic rescope applied 2026-04-20 by epic-ingredients-string-simplification:
+  # riip-7 deleted (pending_review column is going away, badge has no data source).
+  # riip-4 scope narrowed in-place (the /v1/units/aliases endpoint work stays;
+  # the pending-review-annotation bullets are retracted — see the dated rescope
+  # note at the top of epic-review-import-ingredient-polish.md).
+  riip-7-flutter-ingredient-row-state-badge: deleted
+
+  # Epic Meals — Home Promotion (planned 2026-04-20, pre-party-mode draft)
+  # Flutter-only. Promotes Meals from read-only on home grid to a first-class
+  # creation + growth + filtering surface. Long-press multi-select with a
+  # context-sensitive bulk bar (Create Meal | Add to "<meal name>" | Archive),
+  # two new client-side filters in FilterBottomSheet (Show [All/Recipes/Meals]
+  # + Hide components of Meals toggle), MealTile v2 (component-name chips,
+  # "Meal" accent pill + border, favorite star overlay parity with RecipeCard).
+  # Retires the home long-press Start Cooking/Archive sheet — both actions
+  # already live on recipe detail. Zero backend changes (every endpoint it
+  # needs already ships: add_recipe_to_meal mcv-3, bulk_archive_recipes
+  # pre-existing, archive_meal mcv-2, list_meals scope=home md-3, favorite_meal
+  # foundation). Parallelizable with epic-meals-sharing-and-ai and
+  # epic-cook-mode-*; soft overlap with epic-bugs-home-polish on home_screen.dart.
+  epic-meals-home-promotion: backlog
+  hmp-1-meal-tile-v2-chips-chrome-favorite-and-selected-state: backlog
+  hmp-2-home-selection-mode-long-press-app-bar-and-bulk-bar-scaffold: backlog
+  hmp-3-bulk-actions-create-meal-add-to-meal-archive-and-partial-failure: backlog
+  hmp-4-filter-show-type-and-hide-components-of-meals: backlog
+  hmp-5-regression-zero-meal-parity-selection-filter-interaction-and-a11y: backlog
+  epic-meals-home-promotion-retrospective: optional
