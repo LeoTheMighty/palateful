@@ -744,7 +744,7 @@ development_status:
   # debug escape on list_activities. Blocks epic-activity-full-history.
   epic-activity-badge-integrity: in-progress
   abi-1-backend-unread-count-structured-payload-and-allow-list: done
-  abi-2a-backend-delete-orphan-import-activity-writes-at-source: backlog
+  abi-2a-backend-delete-orphan-import-activity-writes-at-source: done
   abi-2b-backend-soft-archive-orphan-import-user-activity-rows: backlog
   abi-3-flutter-activity-badge-provider-and-bottom-nav-with-99-plus-and-fallback: backlog
   abi-4-flutter-bottom-nav-tap-destination-cold-start-safe-and-orphan-provider-delete: backlog

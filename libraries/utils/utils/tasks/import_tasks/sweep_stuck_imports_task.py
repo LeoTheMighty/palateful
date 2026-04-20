@@ -109,26 +109,11 @@ class SweepStuckImportsTask(BaseTask):
             item.error_message = "Stage stalled"
             item.error_code = "STUCK_IMPORT"
 
-        try:
-            from utils.services.activity_service import create_activity
-
-            create_activity(
-                self.database.db,
-                user_id=job.user_id,
-                activity_type="import_failed",
-                title="Your import got stuck",
-                subtitle="Tap to retry.",
-                metadata={"import_job_id": str(job.id)},
-                action_url=f"/recipes/import/review-list/{job.id}",
-            )
-        except Exception:
-            # Activity creation is best-effort; a failure here must not roll
-            # back the job status update.
-            logger.warning(
-                "Failed to create stuck-import activity for job %s",
-                job.id,
-                exc_info=True,
-            )
+        # abi-2a: `import_failed` user_activity row no longer written
+        # for the sweeper. Stuck imports surface as `status='failed'`
+        # in the Imports-tab Failed section; the bell (abi-1) excludes
+        # import_* types via the allow-list, and push dispatch — where
+        # still appropriate — reads import_item state directly.
 
         logger.info(
             "Marked job %s stuck (started_at=%s, items_touched=%d)",

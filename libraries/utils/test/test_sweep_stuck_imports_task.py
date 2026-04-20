@@ -184,10 +184,12 @@ def test_stale_job_with_stale_items_is_marked_failed():
     assert item_extracting.error_code == "STUCK_IMPORT"
     assert item_completed.status == "completed"
 
-    mock_create.assert_called_once()
-    _, kwargs = mock_create.call_args
-    assert kwargs["activity_type"] == "import_failed"
-    assert kwargs["user_id"] == job.user_id
+    # abi-2a: the sweeper no longer writes an `import_failed`
+    # user_activity row. Stuck imports surface via item.status ==
+    # "failed" in the Imports-tab Failed section; the bell (abi-1)
+    # excludes import_* types. The activity_service.create_activity
+    # patch therefore stays uncalled on this path.
+    mock_create.assert_not_called()
 
 
 def test_stale_job_with_no_items_is_marked_failed():

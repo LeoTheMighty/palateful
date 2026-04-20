@@ -15,7 +15,6 @@ from utils.models.import_job import ImportJob
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
-from utils.models.user_activity import UserActivity
 from utils.services.aws import AWSService
 from utils.services.url_classifier import SocialPlatform, detect_platform
 from utils.tasks.import_tasks.parse_source_task import parse_source_task
@@ -411,30 +410,11 @@ class StartImport(Endpoint):
                     error_message="This file has already been imported.",
                 )
 
-        # Create activity feed entry
-        source_label = {
-            "url": "URL",
-            "url_list": f"{job.total_items} URLs",
-            "photo": "photo",
-            "text": "pasted text",
-            "audio": "voice memo",
-            "pdf": f"PDF ({job.total_items} recipe{'s' if job.total_items != 1 else ''})",
-            "spreadsheet": f"spreadsheet ({job.total_items} rows)",
-        }.get(job.source_type, job.source_type)
-        # Enrich label for social media video URLs
-        if job.source_type == "url" and params.url:
-            platform = detect_platform(params.url)
-            if platform != SocialPlatform.WEB:
-                source_label = f"{platform.value.title()} video"
-        activity = UserActivity(
-            user_id=user.id,
-            type="import_started",
-            title=f"Importing from {source_label}",
-            subtitle=f"Into {recipe_book.name}",
-            metadata_json={"import_job_id": str(job.id), "recipe_book_id": str(book_id)},
-            action_url=f"/recipes/import/review-list/{job.id}",
-        )
-        self.database.create(activity)
+        # abi-2a: no longer writes an `import_started` user_activity
+        # row. The Imports tab reads `import_items` directly, and push
+        # dispatch for imports reads import_item state — the parallel
+        # user_activity write only existed to drive a bell count that
+        # the Notifications-tab allow-list (abi-1) now excludes.
 
         # Dispatch background processing
         parse_source_task.delay(

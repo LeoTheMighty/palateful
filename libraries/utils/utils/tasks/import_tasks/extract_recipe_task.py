@@ -204,28 +204,11 @@ class ExtractRecipeTask(BaseTask):
 
             self._update_job_counts(item.import_job_id)
 
-            # Create failure activity
-            try:
-                from utils.services.activity_service import create_activity
-
-                job = self.database.find_by(ImportJob, id=item.import_job_id)
-                if job:
-                    create_activity(
-                        self.database.db,
-                        user_id=job.user_id,
-                        activity_type="import_failed",
-                        title="Import failed",
-                        subtitle=str(e),
-                        metadata={
-                            "import_job_id": str(item.import_job_id),
-                            "import_item_id": str(item_id),
-                            "error": str(e),
-                        },
-                        action_url=f"/recipes/import/review-list/{item.import_job_id}",
-                    )
-                    self.database.db.commit()
-            except Exception:
-                logger.warning("Failed to create extraction-failure activity", exc_info=True)
+            # abi-2a: `import_failed` user_activity rows are no longer
+            # written — push dispatch reads import_item state directly,
+            # and the Notifications-tab allow-list (abi-1) excludes the
+            # `import_*` types. Failure surface is the Imports-tab
+            # Failed section, not the bell.
 
             return {
                 "item_id": item_id,
