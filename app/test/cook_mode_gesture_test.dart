@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:palateful/core/theme/app_theme.dart';
+import 'package:palateful/core/theme/cook_mode_theme.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/ingredient_strip.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/step_navigator.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
+
+  setUp(() {
+    GoogleFonts.config.allowRuntimeFetching = false;
+  });
+
   group('Gesture navigation — tap zone tests', () {
     testWidgets('tap on left 25% of step area triggers previous step',
         (tester) async {
@@ -310,6 +319,62 @@ void main() {
 
       handle.dispose();
     });
+  });
+
+  // --------------------------------------------------------------------
+  // cmp-5 AC2 — colour-value assertions on cook-mode surfaces.
+  //
+  // Pumps a StepNavigator in both light and dark themes and asserts the
+  // pill backgrounds resolve to CookModeTheme tokens (not raw
+  // colorScheme.primary). Guards against the "everything-is-orange"
+  // regression the epic was filed to fix.
+  // --------------------------------------------------------------------
+  group('Cook-mode surface colours (cmp-5)', () {
+    for (final name in ['light', 'dark']) {
+      testWidgets('$name: StepNavigator current pill paints cookAccent',
+          (tester) async {
+        final theme = name == 'light' ? AppTheme.light() : AppTheme.dark();
+        final cook = name == 'light'
+            ? CookModeTheme.light
+            : CookModeTheme.dark;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: theme,
+            home: Scaffold(
+              body: StepNavigator(
+                currentStep: 1,
+                totalSteps: 3,
+                completedSteps: const {0},
+                onPrevious: () {},
+                onNext: () {},
+                onDone: () {},
+                onStepTap: (_) {},
+                onLongPressStep: () {},
+              ),
+            ),
+          ),
+        );
+
+        // The current pill contains the text '2' (index 1 + 1). Walk
+        // up to its Container and inspect the decoration.
+        final pillContainer = tester.widget<Container>(
+          find.ancestor(
+            of: find.text('2'),
+            matching: find.byType(Container),
+          ).first,
+        );
+        final deco = pillContainer.decoration as BoxDecoration;
+        expect(deco.color, cook.cookAccent,
+            reason: 'current pill should paint cookAccent ($name)');
+
+        // Completed pill (index 0) contains a check icon, not text.
+        final checkIcons = find.byIcon(Icons.check);
+        expect(checkIcons, findsOneWidget,
+            reason: 'completed pill should have a check icon');
+        final checkWidget = tester.widget<Icon>(checkIcons);
+        expect(checkWidget.color, cook.cookOnCompleted);
+      });
+    }
   });
 }
 

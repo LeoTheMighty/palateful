@@ -170,4 +170,45 @@ void main() {
   test('lerp with null other returns self', () {
     expect(CookModeTheme.light.lerp(null, 0.5), same(CookModeTheme.light));
   });
+
+  // ------------------------------------------------------------------
+  // cmp-5 AC1 — pinned Color values. Catches accidental drift.
+  //
+  // If this test fails, someone has knowingly changed a cook-mode
+  // token. Update the pin AND the doc-comment contrast table in
+  // cook_mode_theme.dart.
+  // ------------------------------------------------------------------
+  test('light tokens match pinned Color values', () {
+    const light = CookModeTheme.light;
+    expect(light.cookSurface.toARGB32(), 0xFFFAF7F2);
+    expect(light.cookSurfaceDim.toARGB32(), 0xFFF5EFE6);
+    expect(light.cookOnSurface.toARGB32(), 0xFF2D2420);
+    expect(light.cookAccent.toARGB32(), 0xFF8F4022);
+    expect(light.cookOnAccent.toARGB32(), 0xFFFAF7F2);
+    expect(light.cookProgress.toARGB32(), 0xFF8F4022);
+    expect(light.cookCompleted.toARGB32(), 0xFF4F6E42);
+    expect(light.cookOnCompleted.toARGB32(), 0xFFFAF7F2);
+    expect(light.cookTimer.toARGB32(), 0xFF8A6F2E);
+    expect(light.cookError.toARGB32(), 0xFF944D4D);
+    expect(light.cookOffline.toARGB32(), 0xFF8B7355);
+    expect(light.cookDivider.toARGB32(), 0xFF8B7355);
+    expect(light.cookShadow.toARGB32(), 0x1A4A3728);
+  });
+
+  test('dark tokens match pinned Color values', () {
+    const dark = CookModeTheme.dark;
+    expect(dark.cookSurface.toARGB32(), 0xFF4A3728);
+    expect(dark.cookSurfaceDim.toARGB32(), 0xFF5D4A3A);
+    expect(dark.cookOnSurface.toARGB32(), 0xFFF5ECD7);
+    expect(dark.cookAccent.toARGB32(), 0xFFBE8A60);
+    expect(dark.cookOnAccent.toARGB32(), 0xFF2D2420);
+    expect(dark.cookProgress.toARGB32(), 0xFFBE8A60);
+    expect(dark.cookCompleted.toARGB32(), 0xFF8FA882);
+    expect(dark.cookOnCompleted.toARGB32(), 0xFF2D2420);
+    expect(dark.cookTimer.toARGB32(), 0xFFD4A853);
+    expect(dark.cookError.toARGB32(), 0xFFCB8B73);
+    expect(dark.cookOffline.toARGB32(), 0xFFA89076);
+    expect(dark.cookDivider.toARGB32(), 0xFFA89076);
+    expect(dark.cookShadow.toARGB32(), 0x40000000);
+  });
 }
