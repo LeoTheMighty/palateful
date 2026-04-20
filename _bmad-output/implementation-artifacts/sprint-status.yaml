@@ -742,8 +742,8 @@ development_status:
   # a placeholder follow-up epic. Orphan `importsActionableBadgeProvider`
   # is explicitly DELETED (not rewired). Admin-gated ?include_system_types
   # debug escape on list_activities. Blocks epic-activity-full-history.
-  epic-activity-badge-integrity: backlog
-  abi-1-backend-unread-count-structured-payload-and-allow-list: backlog
+  epic-activity-badge-integrity: in-progress
+  abi-1-backend-unread-count-structured-payload-and-allow-list: ready-for-dev
   abi-2a-backend-delete-orphan-import-activity-writes-at-source: backlog
   abi-2b-backend-soft-archive-orphan-import-user-activity-rows: backlog
   abi-3-flutter-activity-badge-provider-and-bottom-nav-with-99-plus-and-fallback: backlog
@@ -824,8 +824,8 @@ development_status:
   # pre-existing, archive_meal mcv-2, list_meals scope=home md-3, favorite_meal
   # foundation). Parallelizable with epic-meals-sharing-and-ai and
   # epic-cook-mode-*; soft overlap with epic-bugs-home-polish on home_screen.dart.
-  epic-meals-home-promotion: backlog
-  hmp-1-meal-tile-v2-chips-chrome-favorite-and-selected-state: backlog
+  epic-meals-home-promotion: in-progress
+  hmp-1-meal-tile-v2-chips-chrome-favorite-and-selected-state: done
   hmp-2-home-selection-mode-long-press-app-bar-and-bulk-bar-scaffold: backlog
   hmp-3-bulk-actions-create-meal-add-to-meal-archive-and-partial-failure: backlog
   hmp-4-filter-show-type-and-hide-components-of-meals: backlog

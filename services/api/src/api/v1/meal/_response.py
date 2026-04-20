@@ -41,10 +41,16 @@ def build_meal_response(meal: Meal, *, db, user_id) -> MealResponse:
 
 
 def build_meal_summary(meal: Meal, *, db, user_id) -> MealSummaryResponse:
-    """Thin grid-tile response — up to 4 component image URLs."""
+    """Thin grid-tile response — up to 4 component image URLs.
+
+    `component_recipe_ids` is emitted in order so home (hmp-1) can run
+    an in-memory join against the already-loaded recipe list to render
+    the component-name chip row without an N+1 detail fetch.
+    """
     hydrations = MealService(db).hydrate_components(meal, user_id=user_id)
     image_urls = [h.image_url for h in hydrations if h.available and h.image_url][:4]
     component_count = len(hydrations)
+    component_recipe_ids = [h.recipe_id for h in hydrations]
     return MealSummaryResponse(
         id=str(meal.id),
         name=meal.name,
@@ -52,6 +58,7 @@ def build_meal_summary(meal: Meal, *, db, user_id) -> MealSummaryResponse:
         recipe_book_id=str(meal.recipe_book_id),
         component_count=component_count,
         component_image_urls=image_urls,
+        component_recipe_ids=component_recipe_ids,
         archived_at=meal.archived_at,
         updated_at=meal.updated_at,
     )

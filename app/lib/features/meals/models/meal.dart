@@ -120,6 +120,7 @@ class MealSummary {
   final String recipeBookId;
   final int componentCount;
   final List<String> componentImageUrls;
+  final List<String> componentRecipeIds;
   final DateTime? archivedAt;
   final DateTime updatedAt;
 
@@ -131,6 +132,7 @@ class MealSummary {
     required this.updatedAt,
     this.description,
     this.componentImageUrls = const [],
+    this.componentRecipeIds = const [],
     this.archivedAt,
   });
 
@@ -140,6 +142,9 @@ class MealSummary {
     final imgs = (json['component_image_urls'] as List? ?? [])
         .map((e) => e as String)
         .toList();
+    final ids = (json['component_recipe_ids'] as List? ?? [])
+        .map((e) => e as String)
+        .toList();
     return MealSummary(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -147,6 +152,7 @@ class MealSummary {
       recipeBookId: json['recipe_book_id'] as String,
       componentCount: (json['component_count'] as num?)?.toInt() ?? 0,
       componentImageUrls: imgs,
+      componentRecipeIds: ids,
       archivedAt: _parseNullableDate(json['archived_at']),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );

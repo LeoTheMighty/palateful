@@ -33,6 +33,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _recipes = [];
   List<dynamic> _favorites = [];
   Set<String> _favoriteIds = {};
+  // Favorited-meal ids populated from /v1/favorites.favorited_meals.
+  // Separate from _favoriteIds because meal favorites hit a different
+  // endpoint (favoriteMeal / unfavoriteMeal) and are never conflated
+  // with recipe favorites.
+  Set<String> _favoriteMealIds = {};
   final Set<String> _togglingFavoriteIds = {};
   bool _isLoading = true;
   String? _error;
@@ -92,6 +97,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final favMealItems = ((favData['favorited_meals'] as List<dynamic>?) ?? [])
           .map((m) => _tagMeal(m as Map<String, dynamic>))
           .toList();
+      final favMealIds = favMealItems
+          .map((m) => (m as Map)['id']?.toString())
+          .whereType<String>()
+          .toSet();
 
       // Merge is_favorite into recipes
       for (final recipe in allRecipes) {
@@ -113,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _recipes = mergedGrid;
           _favorites = mergedFavorites;
           _favoriteIds = favIds;
+          _favoriteMealIds = favMealIds;
           _isLoading = false;
         });
       }
@@ -166,6 +176,72 @@ class _HomeScreenState extends State<HomeScreen> {
   MealSummary _mealSummaryFrom(dynamic item) {
     final map = Map<String, dynamic>.from(item as Map);
     return MealSummary.fromJson(map);
+  }
+
+  /// In-memory recipeId → name map built from the home's loaded recipe
+  /// list. Passed into `MealTile` so the component-chips row resolves
+  /// names client-side without an N+1 detail fetch (hmp-1 / escape
+  /// hatch for the missing `component_recipe_ids` field — shipped
+  /// here additively).
+  String? _resolveComponentName(String recipeId) {
+    for (final r in _recipes) {
+      if (r is Map && r['kind'] == 'recipe') {
+        if (r['id']?.toString() == recipeId) {
+          final name = r['name']?.toString();
+          return (name == null || name.isEmpty) ? null : name;
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _toggleMealFavorite(MealSummary meal) async {
+    final mealId = meal.id;
+    if (_togglingFavoriteIds.contains(mealId)) return;
+    _togglingFavoriteIds.add(mealId);
+    final wasFav = _favoriteMealIds.contains(mealId);
+
+    // Optimistic update — flip the id set and sync the favorites
+    // carousel so the heart icon + carousel chip both update in one
+    // frame.
+    setState(() {
+      if (wasFav) {
+        _favoriteMealIds.remove(mealId);
+        _favorites.removeWhere((f) =>
+            f is Map && f['kind'] == 'meal' && f['id']?.toString() == mealId);
+      } else {
+        _favoriteMealIds.add(mealId);
+        final existing = _recipes.firstWhere(
+          (r) =>
+              r is Map && r['kind'] == 'meal' && r['id']?.toString() == mealId,
+          orElse: () => null,
+        );
+        if (existing is Map) {
+          _favorites.insert(0, Map<String, dynamic>.from(existing));
+        }
+      }
+    });
+
+    try {
+      if (wasFav) {
+        await _apiClient.unfavoriteMeal(mealId);
+      } else {
+        await _apiClient.favoriteMeal(mealId);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (wasFav) {
+          _favoriteMealIds.add(mealId);
+        } else {
+          _favoriteMealIds.remove(mealId);
+          _favorites.removeWhere((f) =>
+              f is Map && f['kind'] == 'meal' && f['id']?.toString() == mealId);
+        }
+      });
+    } finally {
+      _togglingFavoriteIds.remove(mealId);
+    }
   }
 
   Future<List<dynamic>> _loadAllRecipesFromBooks(List<dynamic> books) async {
@@ -902,6 +978,9 @@ class _HomeScreenState extends State<HomeScreen> {
             return MealTile(
               meal: meal,
               onTap: () => context.push('/meals/${meal.id}'),
+              componentNameResolver: _resolveComponentName,
+              isFavorited: _favoriteMealIds.contains(meal.id),
+              onFavoriteToggle: () => _toggleMealFavorite(meal),
             );
           }
           return RecipeCard(

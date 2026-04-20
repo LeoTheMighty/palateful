@@ -94,6 +94,7 @@ class MealSummaryResponse(BaseModel):
     recipe_book_id: str
     component_count: int
     component_image_urls: list[str] = []
+    component_recipe_ids: list[str] = []
     archived_at: datetime | None = None
     updated_at: datetime
 

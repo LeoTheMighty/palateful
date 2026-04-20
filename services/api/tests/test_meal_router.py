@@ -281,6 +281,9 @@ class TestListMealsInBook:
         data = response.json()
         assert data["total"] == 1
         assert data["items"][0]["component_count"] == 2
+        # hmp-1: component_recipe_ids emitted in hydration order so
+        # home can run the client-side join against loaded recipes.
+        assert data["items"][0]["component_recipe_ids"] == ["r1", "r2"]
 
     def test_non_member_403(self, client, mock_db, mock_user):
         mock_db.db.query.return_value = MockQuery([])
