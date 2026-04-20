@@ -94,7 +94,33 @@ thresholds:
   ocr_character_accuracy: 0.95  # Pass/fail threshold
   recipe_field_accuracy: 0.90
   ingredient_match_rate: 0.85
+  field_inference_accuracy_min: 0.60  # efi-8 soft gate
+  hallucination_rate_max: 0.15        # efi-8 soft gate
 ```
+
+### Field inference metrics (efi-8, soft gate)
+
+Two post-ship calibration metrics for the
+`EXTRACTOR_INFER_MISSING_FIELDS` pipeline:
+
+- `field_inference_accuracy` — for every (fixture × inferable-field)
+  pair where the extractor marked the field in `inferred_fields` AND
+  ground truth has a value, score how close the inferred value landed
+  to truth. Numeric fields use ±20% tolerance (servings also has a ±1
+  floor). Enum-ish fields (cuisine, category, vibes) require exact
+  case-insensitive match. Description uses Levenshtein similarity on
+  the first 200 chars (pass ≥ 0.6, raw ratio otherwise).
+- `hallucination_rate` — anti-metric. For every (fixture ×
+  inferable-field) pair where GT has a value AND the extractor marked
+  it as inferred, count a hallucination (the model guessed when the
+  source had the answer). Lower is better. Rate =
+  `hallucinations / extractable_pairs`.
+
+Both metrics are **soft-gate in v1** — reported in the results payload,
+never CI-blocking. Baseline at `baselines/field_inference_baseline.json`.
+Gate tightening is a follow-up story once real traffic accumulates in
+`error_logs(service="audit", error_type="InferredFieldCorrected")` and
+we can tune from correction data.
 
 ## Adding Test Cases
 

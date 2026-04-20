@@ -4721,6 +4721,19 @@ class TestInferredFieldsHoist:
             status="completed",
             parsed_recipe={"name": "B"},
         )
+        # Malformed legacy row: inferred_fields contains a non-string
+        # (42) + a string outside the allow-list ("not_a_real_field")
+        # alongside a valid entry. Both bad entries must be silently
+        # dropped by the allow-list filter.
+        item_c = MockImportItem(
+            id="c",
+            import_job_id=job_id,
+            status="awaiting_review",
+            parsed_recipe={
+                "name": "C",
+                "inferred_fields": ["servings", 42, "not_a_real_field"],
+            },
+        )
         job = MockImportJob(
             id=job_id,
             user_id=str(mock_user.id),
@@ -4740,7 +4753,7 @@ class TestInferredFieldsHoist:
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.db.query.return_value = MockQuery([item_a, item_b])
+        mock_db.db.query.return_value = MockQuery([item_a, item_b, item_c])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -4748,6 +4761,7 @@ class TestInferredFieldsHoist:
         items = {i["id"]: i["inferred_fields"] for i in data["items"]}
         assert items["a"] == ["cook_time_minutes"]
         assert items["b"] == []
+        assert items["c"] == ["servings"]
 
 
 class TestSubmitCorrection:

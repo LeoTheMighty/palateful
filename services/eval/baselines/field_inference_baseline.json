@@ -1,0 +1,39 @@
+{
+  "_comment": "efi-8 baseline for field_inference_accuracy and hallucination_rate. Populated with NULL placeholders until the first real eval run against EXTRACTOR_INFER_MISSING_FIELDS=true produces numbers. Re-generate by running `pytest services/eval/tests/test_field_inference_metrics.py -s --update-baseline` or by eyeballing `services/eval/results/latest.json` and copying the per-field + overall values here.",
+  "_generated_at": null,
+  "_generated_commit": null,
+  "_extractor_flag": "EXTRACTOR_INFER_MISSING_FIELDS=true",
+  "field_inference_accuracy": {
+    "overall": null,
+    "per_field": {
+      "prep_time_minutes": {"score": null, "sample_count": 0},
+      "cook_time_minutes": {"score": null, "sample_count": 0},
+      "total_time_minutes": {"score": null, "sample_count": 0},
+      "servings": {"score": null, "sample_count": 0},
+      "description": {"score": null, "sample_count": 0},
+      "cuisine": {"score": null, "sample_count": 0},
+      "category": {"score": null, "sample_count": 0},
+      "primary_vibe": {"score": null, "sample_count": 0},
+      "secondary_vibe": {"score": null, "sample_count": 0}
+    }
+  },
+  "hallucination_rate": {
+    "overall_rate": null,
+    "per_field": {
+      "prep_time_minutes": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "cook_time_minutes": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "total_time_minutes": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "servings": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "description": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "cuisine": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "category": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "primary_vibe": {"rate": null, "hallucinations": 0, "extractable": 0},
+      "secondary_vibe": {"rate": null, "hallucinations": 0, "extractable": 0}
+    }
+  },
+  "thresholds": {
+    "field_inference_accuracy_overall_min": 0.6,
+    "hallucination_rate_overall_max": 0.15,
+    "_enforcement": "soft"
+  }
+}

@@ -15,6 +15,15 @@ metrics:
     - cost_cents           # AI cost tracking
     - latency_ms           # Response time
 
+  field_inference:
+    # efi-8 — post-ship calibration metrics for the
+    # EXTRACTOR_INFER_MISSING_FIELDS flow. Both are soft-gate in v1
+    # (reported, never CI-blocking) — thresholds get tightened once
+    # real traffic accumulates in `error_logs(service="audit",
+    # error_type="InferredFieldCorrected")` and we can tune from data.
+    - field_inference_accuracy  # How close inferred values land to GT
+    - hallucination_rate        # Anti-metric: guessed when source had the answer
+
   recipe_parse:
     - field_accuracy       # Per-field match rate (deterministic)
     - judge_correctness    # LLM-as-judge pass rate
@@ -33,3 +42,5 @@ thresholds:
   recipe_field_accuracy: 0.90   # 90% field accuracy to pass
   recipe_parse_pass_rate: 0.80  # 80% LLM-as-judge pass rate
   chat_agent_pass_rate: 0.80    # 80% LLM-as-judge pass rate
+  field_inference_accuracy_min: 0.60   # efi-8, soft gate only in v1
+  hallucination_rate_max: 0.15          # efi-8 anti-metric, soft gate only in v1
