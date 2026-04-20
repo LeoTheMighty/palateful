@@ -3,6 +3,15 @@
 > **Last Updated:** 2025-01-10
 > **Status:** Planning Complete - Ready for Implementation
 
+> **2026-04-20 — Retirement note.** Every reference below to ingredient
+> canonicalization / auto-matching / substitutions / pending-review flags / a
+> shared ingredient catalog is **retired** by
+> `_bmad-output/planning-artifacts/epic-ingredients-string-simplification.md`.
+> The ingredients table is now a bag of per-recipe display-name rows with no
+> cross-row identity. Recipe-level semantic search is unaffected; only
+> ingredient-level matching / catalog / substitution language in this doc is
+> frozen-in-time. Re-read the retirement epic before re-planning any of it.
+
 ## Table of Contents
 
 1. [MVP Overview](#mvp-overview)

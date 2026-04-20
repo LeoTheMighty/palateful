@@ -1,5 +1,15 @@
 # Recipe Import System - Design Document
 
+> **2026-04-20 — Matcher retirement note.** The tiered ingredient matcher
+> (exact → pg_trgm → embedding → auto-create) described below has been
+> **retired in full** by
+> `_bmad-output/planning-artifacts/epic-ingredients-string-simplification.md`.
+> Every recipe write path (Flutter import, URL/photo extractors, MCP tools)
+> now stages a fresh `ingredients` row per parsed name — no dedup, no cache,
+> no pending-review flag. References below to match-ingredients task,
+> match cache, or pending-review-on-auto-create should be read as
+> historical context, not current policy.
+
 ## Overview
 
 A comprehensive, worker-based import system that handles multiple source types (spreadsheets with URLs, PDFs, web links) with asynchronous processing, cost-effective AI usage, and user notification for review/assistance.

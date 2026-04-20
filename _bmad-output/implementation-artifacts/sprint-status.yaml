@@ -796,12 +796,12 @@ development_status:
   # then str-ing-4 (schema migration, one-deploy lag so app stops reading
   # dropped columns first); then str-ing-5 (planning-artifact updates +
   # formal rescope note on epic-review-import-ingredient-polish).
-  epic-ingredients-string-simplification: in-progress
+  epic-ingredients-string-simplification: done
   str-ing-1-flutter-stop-calling-ingredients-endpoints-and-drop-pending-review-ui: done
   str-ing-2-backend-gut-matcher-resolver-mcp-aggregate-dedup-pantry-check-category: done
   str-ing-3-backend-delete-ingredients-endpoints-and-router: done
   str-ing-4-backend-schema-migration-and-model-cleanup: done
-  str-ing-5-planning-artifacts-and-rescope-review-import-ingredient-polish: backlog
+  str-ing-5-planning-artifacts-and-rescope-review-import-ingredient-polish: done
   epic-ingredients-string-simplification-retrospective: optional
 
   # Cross-epic rescope applied 2026-04-20 by epic-ingredients-string-simplification:
@@ -858,7 +858,7 @@ development_status:
   efi-1-backend-inferable-fields-flag-prompt-guardrails-penalty-and-log-helper: done
   efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: done
   efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: done
-  efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: backlog
+  efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: done
   efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: backlog
   efi-6-flutter-review-import-wiring-badge-dismiss-on-edit-and-debounced-dispatch: backlog
   efi-7-flutter-recipe-edit-wiring-badge-dismiss-on-edit-and-update-recipe-round-trip: backlog
