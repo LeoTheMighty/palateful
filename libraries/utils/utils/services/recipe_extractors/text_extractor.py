@@ -13,6 +13,11 @@ from utils.services.recipe_extractors.base import (
 )
 from utils.services.recipe_extractors.confidence_heuristic import resolve_confidence
 from utils.services.recipe_extractors.confidence_prompt import confidence_rule
+from utils.services.recipe_extractors.inference_prompt import (
+    infer_missing_fields,
+    inference_rule,
+    parse_inferred_fields,
+)
 from utils.services.recipe_extractors.unit_prompt import unit_rule
 
 logger = logging.getLogger(__name__)
@@ -31,7 +36,33 @@ _FREEFORM_UNIT_RULE = (
 
 
 def _text_extraction_prompt() -> str:
-    """riip-3: build the prompt with the canonical-or-freeform unit rule."""
+    """riip-3 + efi-2: build the prompt with the canonical-or-freeform unit rule.
+
+    efi-2 splices the field-inference rule in after the confidence rule.
+    The top-level ``inferred_fields`` array lands in the JSON skeleton.
+    Both ``Only include fields you can actually find or reasonably infer``
+    and ``Set missing fields to null rather than guessing`` are scoped to
+    non-inferable fields when the flag is on; kept verbatim when off.
+    """
+    inference_active = infer_missing_fields()
+    include_rule = (
+        "Only include non-inferable fields you can find in the content "
+        "(the Inference Rule above covers inferable fields)"
+        if inference_active
+        else "Only include fields you can actually find or reasonably infer from the text"
+    )
+    null_rule = (
+        "Set missing NON-inferable fields to null rather than guessing "
+        "(inferable fields follow the Inference Rule above)"
+        if inference_active
+        else "Set missing fields to null rather than guessing"
+    )
+    # Skip the `inferred_fields` JSON skeleton line entirely when the
+    # flag is off — AC7 requires the flag-off prompt to not mention
+    # the key at all.
+    inferred_skeleton = (
+        ',\n            "inferred_fields": []' if inference_active else ""
+    )
     return f"""Extract every recipe from the following OCR text and return them as JSON.
 
 The text was obtained via OCR from a photograph of a physical recipe (cookbook page, recipe card, handwritten note, etc.).
@@ -79,7 +110,7 @@ Return a JSON object with EXACTLY this structure:
             "cuisine": "e.g. Italian, Mexican, American, etc.",
             "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
             "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
-            "secondary_vibe": "a different vibe from the same list, or null"
+            "secondary_vibe": "a different vibe from the same list, or null"{inferred_skeleton}
         }}
     ]
 }}
@@ -124,12 +155,14 @@ Vibe assignment:
 - Valid vibes: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming
 
 General rules:
-- Only include fields you can actually find or reasonably infer from the text
-- Set missing fields to null rather than guessing
+- {include_rule}
+- {null_rule}
 - If you cannot find recipe content at all, return {{"error": "No recipe found"}}
 - Return ONLY valid JSON. No markdown fences, no explanation text.
 
 {confidence_rule()}
+
+{inference_rule()}
 
 OCR Text:
 """
@@ -365,6 +398,7 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         keywords=data.get("keywords", []),
         primary_vibe=validate_vibe(data.get("primary_vibe")),
         secondary_vibe=validate_vibe(data.get("secondary_vibe")),
+        inferred_fields=parse_inferred_fields(data.get("inferred_fields")),
         raw_data=data,
     )
     score, source = resolve_confidence(data, recipe)

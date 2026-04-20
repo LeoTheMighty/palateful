@@ -66,6 +66,16 @@ RECIPE_EXTRACTION_SCHEMA: dict = {
         # carries a numeric score paired with a source label.
         "confidence_score": {"type": ["number", "null"]},
         "confidence_source": {"type": ["string", "null"]},
+        # efi-2 — names of inferable recipe-root fields the extractor
+        # best-guessed rather than pulled from the source. Permissive:
+        # no ``items.enum`` restriction here (the INFERABLE_FIELDS
+        # allow-list is enforced in extractor parsing + server-side
+        # guardrails, not the schema). Always-present array contract
+        # lives in the prompt; the schema just documents the shape.
+        "inferred_fields": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
     },
 }
 

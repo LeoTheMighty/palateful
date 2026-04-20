@@ -19,6 +19,7 @@ submit-correction endpoint, and the Flutter contract test all import
 from __future__ import annotations
 
 import os
+from typing import Any
 
 INFERABLE_FIELDS: tuple[str, ...] = (
     "prep_time_minutes",
@@ -71,3 +72,29 @@ def inference_rule() -> str:
     if infer_missing_fields():
         return _INFERENCE_RULE
     return ""
+
+
+def parse_inferred_fields(raw: Any) -> list[str]:
+    """Filter + dedupe the LLM's ``inferred_fields`` array.
+
+    Accepts anything (None, non-list, dicts of nonsense, stringly-typed
+    None) and always returns a clean ``list[str]`` of unique names from
+    :data:`INFERABLE_FIELDS`, preserving first-seen order.
+
+    This helper is the single parse path used by every LLM extractor
+    (ai, vision, text). Keeping the filter here means extractor code
+    can't silently drift — if the allow-list changes, every extractor
+    picks it up with no edits.
+    """
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    clean: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        name = item.strip()
+        if name in INFERABLE_FIELDS and name not in seen:
+            seen.add(name)
+            clean.append(name)
+    return clean

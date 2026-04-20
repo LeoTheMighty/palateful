@@ -15,6 +15,11 @@ from utils.services.recipe_extractors.base import (
 )
 from utils.services.recipe_extractors.confidence_heuristic import resolve_confidence
 from utils.services.recipe_extractors.confidence_prompt import confidence_rule
+from utils.services.recipe_extractors.inference_prompt import (
+    infer_missing_fields,
+    inference_rule,
+    parse_inferred_fields,
+)
 from utils.services.recipe_extractors.unit_prompt import unit_rule
 
 logger = logging.getLogger(__name__)
@@ -34,7 +39,28 @@ _FREEFORM_UNIT_RULE = (
 
 
 def _extraction_prompt() -> str:
-    """riip-3: build the prompt with the canonical-or-freeform unit rule."""
+    """riip-3 + efi-2: build the prompt with the canonical-or-freeform unit rule.
+
+    efi-2 splices the field-inference rule in after the confidence rule.
+    The top-level ``inferred_fields`` array is added to the JSON skeleton
+    always (empty when nothing was inferred), and the "Only include
+    fields you can find" rule is scoped to non-inferable fields when the
+    flag is on.
+    """
+    inference_active = infer_missing_fields()
+    general_rule = (
+        "Only include non-inferable fields you can find in the content "
+        "(the Inference Rule above covers handling of inferable fields)"
+        if inference_active
+        else "Only include fields you can find in the content"
+    )
+    # Keep the `inferred_fields` JSON skeleton line OUT of the prompt
+    # entirely when the flag is off. AC7 specifies that a flag-off
+    # prompt must not mention `inferred_fields` at all — otherwise the
+    # model is still primed to emit the key even when we told it not to.
+    inferred_skeleton = (
+        ',\n            "inferred_fields": []' if inference_active else ""
+    )
     return f"""Extract every recipe from the following HTML content and return them as JSON.
 
 If the page contains MULTIPLE DISTINCT recipes (with separate titles and separate ingredient lists), emit each as a separate object in the "recipes" array. A "Variation" or "Notes" section is NOT a distinct recipe. If there is only one recipe, return a length-1 array.
@@ -60,7 +86,7 @@ Return a JSON object with the following structure:
             "cuisine": "Italian",
             "category": "Main Course",
             "primary_vibe": "...",
-            "secondary_vibe": "..." or null
+            "secondary_vibe": "..." or null{inferred_skeleton}
         }}
     ]
 }}
@@ -98,10 +124,12 @@ Step rules (cmt-1) — if you can identify discrete steps, prefer emitting `step
   - NEGATIVE: "Refrigerate for at least 4 hours." -> timers: []
 
 General rules:
-- Only include fields you can find in the content
+- {general_rule}
 - If you cannot find recipe content, return {{"error": "No recipe found"}}
 
 {confidence_rule()}
+
+{inference_rule()}
 
 HTML Content:
 """
@@ -363,6 +391,7 @@ class AIExtractor(BaseExtractor):
             keywords=data.get("keywords", []),
             primary_vibe=validate_vibe(data.get("primary_vibe")),
             secondary_vibe=validate_vibe(data.get("secondary_vibe")),
+            inferred_fields=parse_inferred_fields(data.get("inferred_fields")),
             raw_data=data,
         )
         score, source = resolve_confidence(data, recipe)

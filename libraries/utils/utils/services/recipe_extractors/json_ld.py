@@ -161,6 +161,11 @@ class JsonLdExtractor(BaseExtractor):
         # Parse keywords
         keywords = self._parse_keywords(data.get("keywords"))
 
+        # efi-2 — JSON-LD is Schema.org-authoritative; nothing is ever
+        # inferred here. ExtractedRecipe.inferred_fields defaults to [],
+        # which is exactly what downstream consumers should see for the
+        # clean path. The EXTRACTOR_INFER_MISSING_FIELDS flag has no
+        # effect on this extractor.
         recipe = ExtractedRecipe(
             name=self._clean_text(data.get("name")) or "Untitled Recipe",
             description=self._clean_text(data.get("description")),

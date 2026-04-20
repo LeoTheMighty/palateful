@@ -17,6 +17,11 @@ from utils.services.recipe_extractors.base import (
 )
 from utils.services.recipe_extractors.confidence_heuristic import resolve_confidence
 from utils.services.recipe_extractors.confidence_prompt import confidence_rule
+from utils.services.recipe_extractors.inference_prompt import (
+    infer_missing_fields,
+    inference_rule,
+    parse_inferred_fields,
+)
 from utils.services.recipe_extractors.unit_prompt import unit_rule
 
 logger = logging.getLogger(__name__)
@@ -34,7 +39,34 @@ _FREEFORM_UNIT_RULE = (
 
 
 def _vision_system_prompt() -> str:
-    """riip-3: build the prompt with the canonical-or-freeform unit rule."""
+    """riip-3 + efi-2: build the prompt with the canonical-or-freeform unit rule.
+
+    efi-2 splices the field-inference rule in after the confidence rule.
+    The top-level ``inferred_fields`` array is added to the JSON skeleton.
+    Note: the existing "infer from context when characters are unclear"
+    bullet for OCR disambiguation is unrelated to field-level inference
+    and stays verbatim.
+    """
+    inference_active = infer_missing_fields()
+    include_rule = (
+        "Only include non-inferable fields you can find in the image "
+        "(the Inference Rule below covers handling of inferable "
+        "recipe-root fields)"
+        if inference_active
+        else "Only include fields you can find in the image"
+    )
+    null_rule = (
+        "Set missing NON-inferable fields to null rather than guessing "
+        "(inferable fields follow the Inference Rule below)"
+        if inference_active
+        else "Set missing fields to null rather than guessing"
+    )
+    # Skip the `inferred_fields` JSON skeleton line entirely when the
+    # flag is off — AC7 requires the flag-off prompt to not mention
+    # the key at all.
+    inferred_skeleton = (
+        ',\n            "inferred_fields": []' if inference_active else ""
+    )
     return f"""Extract every recipe from this image and return them as JSON.
 
 The image may be a cookbook page, printed recipe card, handwritten recipe, screenshot, or phone photo.
@@ -76,7 +108,7 @@ Return a JSON object with EXACTLY this structure:
             "cuisine": "e.g. Italian, Mexican, American, etc.",
             "category": "e.g. Main Course, Dessert, Appetizer, Side Dish, Breakfast, Soup, Salad, Bread, Beverage, Snack",
             "primary_vibe": "one of: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming",
-            "secondary_vibe": "a different vibe from the same list, or null"
+            "secondary_vibe": "a different vibe from the same list, or null"{inferred_skeleton}
         }}
     ]
 }}
@@ -115,12 +147,14 @@ Vibe assignment:
 - Valid vibes: light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming
 
 General rules:
-- Only include fields you can find or reasonably infer from the image
-- Set missing fields to null rather than guessing
+- {include_rule}
+- {null_rule}
 - If you cannot find recipe content, return {{"error": "No recipe found"}}
 - Return ONLY valid JSON. No markdown fences, no explanation text.
 
-{confidence_rule()}"""
+{confidence_rule()}
+
+{inference_rule()}"""
 
 
 # Backward-compat alias — `VISION_SYSTEM_PROMPT` was a string before riip-3.
@@ -316,6 +350,7 @@ def _parse_response(data: dict) -> ExtractedRecipe:
         keywords=data.get("keywords", []),
         primary_vibe=validate_vibe(data.get("primary_vibe")),
         secondary_vibe=validate_vibe(data.get("secondary_vibe")),
+        inferred_fields=parse_inferred_fields(data.get("inferred_fields")),
         raw_data=data,
     )
     score, source = resolve_confidence(data, recipe)

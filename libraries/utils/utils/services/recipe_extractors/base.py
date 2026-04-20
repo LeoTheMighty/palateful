@@ -73,6 +73,12 @@ class ExtractedRecipe:
     # null unless both paths failed.
     confidence_score: float | None = None
     confidence_source: str | None = None  # "model" | "heuristic"
+    # efi-2 — names of recipe-root fields the LLM best-guessed rather
+    # than extracted. Populated from the model's top-level
+    # ``inferred_fields`` array, filtered to the INFERABLE_FIELDS
+    # allow-list and deduped. Downstream consumers (guardrails, penalty,
+    # persist, Flutter badge) read this list verbatim.
+    inferred_fields: list[str] = field(default_factory=list)
     raw_data: dict = field(default_factory=dict)  # Original structured data
 
 
