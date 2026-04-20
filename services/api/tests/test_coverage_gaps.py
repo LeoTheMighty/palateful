@@ -1098,34 +1098,10 @@ class TestListMealEventsExtended:
 
 
 # ===========================================================================
-# 16. search_ingredients.py — lines 38-40 (fallback ILIKE)
+# 16. (retired) search_ingredients.py — deleted in str-ing-3 of
+# epic-ingredients-string-simplification. The /v1/ingredients/* endpoints are
+# gone entirely; there is no fallback path left to cover.
 # ===========================================================================
-
-
-class TestSearchIngredientsFallback:
-    """Cover the pg_trgm exception fallback (lines 38-40)."""
-
-    def test_search_ingredients_fallback(self, client, mock_db):
-        """When pg_trgm fails, ILIKE fallback is used."""
-        class Row:
-            def __init__(self):
-                self.id = "ing-fb"
-                self.canonical_name = "sugar"
-                self.category = "baking"
-                self.similarity = 1.0
-
-        call_count = [0]
-
-        def execute_side(*args, **kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                raise Exception("pg_trgm not available")
-            return [Row()]
-
-        mock_db.db.execute.side_effect = execute_side
-
-        response = client.get("/v1/ingredients/search?q=sugar")
-        assert response.status_code == 200
 
 
 # ===========================================================================

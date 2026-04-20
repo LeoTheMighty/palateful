@@ -50,28 +50,13 @@ class TestUnifiedSearch:
         assert kwargs["max_cook_time"] == 30
 
 
-class TestSearchIngredients:
-    def test_default_limit(self, mcp_context):
-        from mcp_server.tools.search import search_ingredients
-
-        with patch("mcp_server.tools.search.call_endpoint") as mock_call:
-            mock_call.return_value = "{}"
-            search_ingredients(q="tomato")
-        assert mock_call.call_args.kwargs == {"q": "tomato", "limit": 10}
-
-    def test_explicit_limit(self, mcp_context):
-        from mcp_server.tools.search import search_ingredients
-
-        with patch("mcp_server.tools.search.call_endpoint") as mock_call:
-            mock_call.return_value = "{}"
-            search_ingredients(q="basil", limit=5)
-        assert mock_call.call_args.kwargs["limit"] == 5
-
-
 class TestRegistration:
     def test_search_tools_registered(self):
         from mcp_server import build_mcp_app, mcp
 
         build_mcp_app()
         names = {t.name for t in mcp._tool_manager.list_tools()}
-        assert {"unified_search", "search_ingredients"}.issubset(names)
+        # search_ingredients tool was retired with
+        # epic-ingredients-string-simplification (str-ing-3).
+        assert "unified_search" in names
+        assert "search_ingredients" not in names

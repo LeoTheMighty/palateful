@@ -1,8 +1,7 @@
-"""MCP search tools — cross-entity search and ingredient lookup."""
+"""MCP search tools — cross-entity search."""
 
 from __future__ import annotations
 
-from api.v1.ingredient.search_ingredients import SearchIngredients
 from api.v1.search.unified_search import UnifiedSearch
 from mcp_server.server import call_endpoint, mcp
 
@@ -34,13 +33,3 @@ def unified_search(
     if max_cook_time is not None:
         kwargs["max_cook_time"] = max_cook_time
     return call_endpoint(UnifiedSearch, **kwargs)
-
-
-@mcp.tool()
-def search_ingredients(q: str, limit: int = 10) -> str:
-    """Find ingredients by name — fuzzy + semantic match. Useful for "do I
-    have X in my pantry?" when paired with `get_pantry`, or to disambiguate
-    names before creating a recipe manually. Returns matches with a
-    similarity score.
-    """
-    return call_endpoint(SearchIngredients, q=q, limit=limit)

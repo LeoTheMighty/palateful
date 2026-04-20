@@ -9,7 +9,6 @@ from routers.v1.cooking_log_router import cooking_log_router
 from routers.v1.friends_router import friends_router
 from routers.v1.health_router import health_router
 from routers.v1.import_router import import_router
-from routers.v1.ingredient_router import ingredient_router
 from routers.v1.invitations_router import invitations_router
 from routers.v1.invite_links_router import invite_links_router
 from routers.v1.meal_event_router import meal_event_router
@@ -35,7 +34,6 @@ v1_router.include_router(cooking_log_router)
 v1_router.include_router(health_router)
 v1_router.include_router(user_router)
 v1_router.include_router(friends_router)
-v1_router.include_router(ingredient_router)
 v1_router.include_router(recipe_book_router)
 v1_router.include_router(recipe_router)
 v1_router.include_router(search_router)

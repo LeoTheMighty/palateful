@@ -1,6 +1,6 @@
 """Integration-level MCP tests.
 
-These tests verify the MCP surface as a whole: all 28 tools are registered,
+These tests verify the MCP surface as a whole: all 27 tools are registered,
 every tool has a description, the auth middleware behaves at the ASGI edge,
 and errors surface as readable strings rather than tracebacks.
 """
@@ -48,9 +48,9 @@ ALL_EXPECTED_TOOLS = {
     "list_meal_events",
     "create_meal_event",
     "get_meal_event",
-    # Search (2)
+    # Search (1) — search_ingredients retired in str-ing-3 of
+    # epic-ingredients-string-simplification.
     "unified_search",
-    "search_ingredients",
 }
 
 
