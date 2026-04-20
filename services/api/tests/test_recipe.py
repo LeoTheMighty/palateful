@@ -136,7 +136,6 @@ class TestGetRecipe:
         """Admin + debug=true returns the admin-only debug payload when an
         ImportItem is attached to the recipe."""
         from conftest import MockImportItem
-
         from utils.models.import_item import ImportItem
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
@@ -317,8 +316,8 @@ class TestCreateRecipe:
             role="owner"
         )
 
-        from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
 
         mock_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
@@ -433,7 +432,7 @@ class TestRestoreRecipe:
 
     def test_restore_recipe_success(self, client, mock_db, mock_user):
         """Test restoring an archived recipe."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -483,7 +482,7 @@ class TestRestoreRecipe:
 
     def test_restore_recipe_no_permission(self, client, mock_db, mock_user):
         """Test restoring without owner/editor role fails."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -527,7 +526,8 @@ class TestListArchivedRecipes:
 
     def test_list_archived_with_results(self, client, mock_db, mock_user):
         """Test listing archived recipes returns archived recipe data."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
+
         from utils.models.recipe_book_user import RecipeBookUser
 
         book_id = "test-book-id"
@@ -2156,9 +2156,9 @@ class TestCreateRecipeMissingBranches:
             role="owner"
         )
 
+        from utils.models.ingredient import Ingredient
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
-        from utils.models.ingredient import Ingredient
 
         mock_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
@@ -2230,9 +2230,9 @@ class TestCreateRecipeMissingBranches:
             role="owner"
         )
 
+        from utils.models.ingredient import Ingredient
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
-        from utils.models.ingredient import Ingredient
 
         mock_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
@@ -2427,8 +2427,8 @@ class TestUpdateRecipeMissingBranches:
 
         from utils.models.ingredient import Ingredient
         from utils.models.recipe_ingredient import RecipeIngredient
-        from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
 
         mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
         mock_db.set_where(RecipeIngredient, [])
@@ -2464,8 +2464,8 @@ class TestUpdateRecipeMissingBranches:
         self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
 
         from utils.models.recipe_ingredient import RecipeIngredient
-        from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
 
         mock_db.set_where(RecipeIngredient, [])
         mock_db.set_where(RecipeStep, [])
@@ -2497,8 +2497,8 @@ class TestUpdateRecipeMissingBranches:
 
         from utils.models.ingredient import Ingredient
         from utils.models.recipe_ingredient import RecipeIngredient
-        from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
 
         mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
         mock_db.set_where(RecipeIngredient, [])
@@ -2737,10 +2737,10 @@ class TestRestoreRecipeVersionMissingBranches:
 
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
-        from utils.models.recipe_version import RecipeVersion
         from utils.models.recipe_ingredient import RecipeIngredient
-        from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
+        from utils.models.recipe_version import RecipeVersion
 
         mock_db.set_find_by(Recipe, recipe, id=recipe_id)
         mock_db.set_find_by(RecipeBookUser, membership,
@@ -2837,7 +2837,7 @@ class TestDeleteRecipeNoteMissingBranches:
 
     def test_delete_note_already_archived(self, client, mock_db, mock_user):
         """Test deleting a note that is already archived (line 47)."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2920,48 +2920,223 @@ class TestParseQuantityDisplay:
 
     def test_parse_integer(self):
         """Test parsing integer string."""
-        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
         from decimal import Decimal
+
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
 
         result = _parse_quantity_display("2")
         assert result == Decimal("2.0")
 
     def test_parse_decimal(self):
         """Test parsing decimal string."""
-        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
         from decimal import Decimal
+
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
 
         result = _parse_quantity_display("0.5")
         assert result == Decimal("0.5")
 
     def test_parse_fraction(self):
         """Test parsing fraction string."""
-        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
         from decimal import Decimal
+
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
 
         result = _parse_quantity_display("1/2")
         assert result == Decimal("0.5")
 
     def test_parse_mixed_number(self):
         """Test parsing mixed number string (line 33-37)."""
-        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
         from decimal import Decimal
+
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
 
         result = _parse_quantity_display("1 1/2")
         assert result == Decimal("1.5")
 
     def test_parse_mixed_number_with_quarter(self):
         """Test parsing mixed number with quarter fraction."""
-        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
         from decimal import Decimal
+
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
 
         result = _parse_quantity_display("1 1/4")
         assert result == Decimal("1.25")
 
     def test_parse_invalid_falls_back(self):
         """Test parsing unparsable string falls back to Decimal(s) (line 41-42)."""
-        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
         from decimal import Decimal
+
+        from api.v1.recipe.restore_recipe_version import _parse_quantity_display
 
         result = _parse_quantity_display("3.5")
         assert result == Decimal("3.5")
+
+
+class TestRecipeInferredFields:
+    """efi-3 — GetRecipe surfaces + UpdateRecipe shrink-only for
+    ``recipes.inferred_fields``."""
+
+    def _setup(self, mock_db, mock_user, *, stored):
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        recipe_id = "infer-recipe"
+        book_id = "infer-book"
+        recipe = MockRecipe(
+            id=recipe_id, recipe_book_id=book_id, inferred_fields=stored
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.db.query.return_value = MockQuery([])
+        return recipe_id, recipe
+
+    def test_get_recipe_surfaces_inferred_fields(
+        self, client, mock_db, mock_user
+    ):
+        recipe_id, _ = self._setup(
+            mock_db,
+            mock_user,
+            stored=["cook_time_minutes", "servings"],
+        )
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["inferred_fields"] == ["cook_time_minutes", "servings"]
+
+    def test_get_recipe_empty_list_when_not_inferred(
+        self, client, mock_db, mock_user
+    ):
+        recipe_id, _ = self._setup(mock_db, mock_user, stored=[])
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        assert response.json()["inferred_fields"] == []
+
+    def test_get_recipe_tolerates_null_column(
+        self, client, mock_db, mock_user
+    ):
+        """Legacy rows with a null column decode to `[]` defensively."""
+        recipe_id, recipe = self._setup(mock_db, mock_user, stored=[])
+        recipe.inferred_fields = None  # simulate a pre-migration row
+        response = client.get(f"/v1/recipes/{recipe_id}")
+        assert response.status_code == 200
+        assert response.json()["inferred_fields"] == []
+
+    def test_update_recipe_shrinks_inferred_fields(
+        self, client, mock_db, mock_user
+    ):
+        recipe_id, _ = self._setup(
+            mock_db,
+            mock_user,
+            stored=["cook_time_minutes", "servings", "cuisine"],
+        )
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"inferred_fields": ["servings", "cuisine"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["inferred_fields"] == ["servings", "cuisine"]
+
+    def test_update_recipe_empty_list_shrinks_to_none(
+        self, client, mock_db, mock_user
+    ):
+        """Sending `[]` is a valid shrink — user has edited every
+        inferred field, nothing left to sparkle."""
+        recipe_id, _ = self._setup(
+            mock_db, mock_user, stored=["cook_time_minutes"]
+        )
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"inferred_fields": []},
+        )
+        assert response.status_code == 200
+        assert response.json()["inferred_fields"] == []
+
+    def test_update_recipe_rejects_expansion(
+        self, client, mock_db, mock_user
+    ):
+        """Adding a field not in the stored set → 400 with the current
+        stored set in `data.allowed`."""
+        recipe_id, _ = self._setup(
+            mock_db, mock_user, stored=["cook_time_minutes"]
+        )
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={
+                "inferred_fields": ["cook_time_minutes", "servings"],
+            },
+        )
+        assert response.status_code == 400
+        body = response.json()
+        assert (
+            body["error_message"]
+            == "inferred_fields can only be reduced, not expanded"
+        )
+        assert body["data"]["allowed"] == ["cook_time_minutes"]
+
+    def test_update_recipe_rejects_non_inferable_field(
+        self, client, mock_db, mock_user
+    ):
+        """A name not in INFERABLE_FIELDS → 400, even if it happens to
+        be a subset of the stored set (can't happen legitimately; the
+        stored set is bounded by the allow-list)."""
+        recipe_id, _ = self._setup(mock_db, mock_user, stored=[])
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"inferred_fields": ["name"]},
+        )
+        assert response.status_code == 400
+        body = response.json()
+        assert body["data"]["allowed"] == []
+
+    def test_update_recipe_rejects_non_string_entry(
+        self, client, mock_db, mock_user
+    ):
+        """FastAPI rejects non-string entries at the pydantic layer
+        with a 422 — exercise the branch so the full Params schema is
+        validated end-to-end."""
+        recipe_id, _ = self._setup(
+            mock_db, mock_user, stored=["cook_time_minutes"]
+        )
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"inferred_fields": [123]},
+        )
+        # Pydantic coercion is strict on list[str], so a 422 is the
+        # expected outer error.
+        assert response.status_code in (400, 422)
+
+    def test_update_recipe_dedupes_shrink(self, client, mock_db, mock_user):
+        """Client-sent duplicates are deduped server-side before
+        persistence (order preserved from first-seen)."""
+        recipe_id, _ = self._setup(
+            mock_db,
+            mock_user,
+            stored=["cook_time_minutes", "servings"],
+        )
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={
+                "inferred_fields": [
+                    "servings",
+                    "cook_time_minutes",
+                    "servings",
+                ]
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["inferred_fields"] == [
+            "servings",
+            "cook_time_minutes",
+        ]

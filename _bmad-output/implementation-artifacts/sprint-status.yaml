@@ -857,7 +857,7 @@ development_status:
   epic-extractor-field-inference: in-progress
   efi-1-backend-inferable-fields-flag-prompt-guardrails-penalty-and-log-helper: done
   efi-2-backend-extractor-prompt-rewrites-extracted-recipe-inferred-fields-and-schema: done
-  efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: backlog
+  efi-3-backend-extract-recipe-task-wiring-recipes-migration-create-recipe-copy-and-update-shrink-only: done
   efi-4-backend-hoist-inferred-fields-on-import-responses-and-submit-correction-endpoint: backlog
   efi-5-flutter-inferred-field-badge-constants-client-method-and-model-decoders: backlog
   efi-6-flutter-review-import-wiring-badge-dismiss-on-edit-and-debounced-dispatch: backlog

@@ -127,6 +127,7 @@ class MockRecipe(MockModel):
             "forked_from_book_name": None,
             "primary_vibe": None,
             "secondary_vibe": None,
+            "inferred_fields": [],
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

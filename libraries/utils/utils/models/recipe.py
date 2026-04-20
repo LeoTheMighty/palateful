@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ARRAY, UUID, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -44,6 +45,13 @@ class Recipe(Base):
 
     # Public sharing token (set when user generates a public link)
     share_token: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # efi-3 — names of recipe-root fields that were best-guessed by the
+    # extractor rather than read from source. Filtered to
+    # `INFERABLE_FIELDS`; only shrinks over time via UpdateRecipe.
+    inferred_fields: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list
+    )
 
     # Embedding for semantic search (384 dimensions from all-MiniLM-L6-v2)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)

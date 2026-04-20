@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, Endpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
@@ -16,6 +16,7 @@ from utils.models.recipe_note import RecipeNote
 from utils.models.recipe_step import RecipeStep
 from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
+from utils.services.recipe_extractors.inference_prompt import INFERABLE_FIELDS
 from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 
@@ -76,6 +77,36 @@ class UpdateRecipe(Endpoint):
         if changed_fields:
             self._create_version_snapshot(recipe, recipe_id, changed_fields, user)
 
+        # efi-3 — inferred_fields can only SHRINK. Validated before any
+        # other write so a rejected expansion doesn't partially persist
+        # other fields. Subset-of-allow-list + subset-of-current-stored
+        # are enforced together; the error response carries the current
+        # stored set in `data.allowed` so the client can self-correct
+        # without a refetch.
+        if params.inferred_fields is not None:
+            stored = set(recipe.inferred_fields or [])
+            requested: set[str] = set()
+            for name in params.inferred_fields:
+                if not isinstance(name, str) or name not in INFERABLE_FIELDS:
+                    return failure(
+                        status=400,
+                        error_code=ErrorCode.VALIDATION_ERROR.value,
+                        error_message=(
+                            "inferred_fields can only be reduced, not expanded"
+                        ),
+                        data={"allowed": sorted(stored)},
+                    )
+                requested.add(name)
+            if not requested.issubset(stored):
+                return failure(
+                    status=400,
+                    error_code=ErrorCode.VALIDATION_ERROR.value,
+                    error_message=(
+                        "inferred_fields can only be reduced, not expanded"
+                    ),
+                    data={"allowed": sorted(stored)},
+                )
+
         # Build update dict
         updates = {}
         if params.name is not None:
@@ -102,6 +133,16 @@ class UpdateRecipe(Endpoint):
                 updates["primary_vibe"] = params.primary_vibe if params.primary_vibe in VALID_VIBES else None
             if params.secondary_vibe is not None:
                 updates["secondary_vibe"] = params.secondary_vibe if params.secondary_vibe in VALID_VIBES else None
+        if params.inferred_fields is not None:
+            # Preserve insertion order from the client (mirrors the
+            # extractor's first-seen ordering used everywhere else).
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for name in params.inferred_fields:
+                if name not in seen:
+                    seen.add(name)
+                    ordered.append(name)
+            updates["inferred_fields"] = ordered
 
         # Capture old values for embedding diff check
         old_name, old_desc, old_tags = recipe.name, recipe.description, recipe.tags
@@ -285,6 +326,7 @@ class UpdateRecipe(Endpoint):
                 secondary_vibe=recipe.secondary_vibe,
                 ingredients=ingredient_responses,
                 steps=step_responses,
+                inferred_fields=list(recipe.inferred_fields or []),
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at,
                 version_count=version_count,
@@ -410,6 +452,8 @@ class UpdateRecipe(Endpoint):
         secondary_vibe: str | None = None
         ingredients: list["UpdateRecipe.IngredientInput"] | None = None
         steps: list["UpdateRecipe.StepInput"] | None = None
+        # efi-3 — shrink-only; server enforces `new ⊆ stored`.
+        inferred_fields: list[str] | None = None
 
     class IngredientSummary(BaseModel):
         id: str
@@ -451,6 +495,7 @@ class UpdateRecipe(Endpoint):
         secondary_vibe: str | None = None
         ingredients: list["UpdateRecipe.IngredientResponse"] = []
         steps: list["UpdateRecipe.StepResponse"] = []
+        inferred_fields: list[str] = []
         created_at: datetime
         updated_at: datetime
         version_count: int = 0

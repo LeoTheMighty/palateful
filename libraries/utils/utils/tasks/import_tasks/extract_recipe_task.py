@@ -15,6 +15,8 @@ from utils.services.recipe_extractors import (
     extract_recipe_from_text,
     extract_recipe_from_url,
 )
+from utils.services.recipe_extractors.confidence_heuristic import apply_inference_penalty
+from utils.services.recipe_extractors.inference_guardrails import apply_guardrails
 from utils.services.recipe_extractors.video_extractor import extract_recipe_from_video
 from utils.services.units import normalize_unit_display
 from utils.services.url_classifier import is_social_media_url
@@ -86,8 +88,38 @@ def _serialize_recipe(recipe, extractor_used: str | None, session) -> dict:
         # `getattr` guards against mock callers that don't set these.
         "confidence_score": getattr(recipe, "confidence_score", None),
         "confidence_source": getattr(recipe, "confidence_source", None),
+        # efi-3 — persisted at the top level of parsed_recipe so
+        # `GetImportItem` / `list_import_items` / `list_import_jobs`
+        # can hoist the list to their response root (efi-4). Defensive
+        # list() copy so later mutations to `recipe` don't leak through
+        # the stored JSONB.
+        "inferred_fields": list(getattr(recipe, "inferred_fields", []) or []),
         "extractor_used": extractor_used,
     }
+
+
+def _apply_inference_post_processing(recipe, import_item_id: str | None) -> None:
+    """efi-3 — guardrails + penalty for one ``ExtractedRecipe``.
+
+    Mutates ``recipe`` in place:
+      1. ``apply_guardrails`` clamps / truncates out-of-range numeric
+         values, truncates over-long strings, and drops bogus vibes from
+         ``inferred_fields`` entirely.
+      2. ``apply_inference_penalty`` subtracts a flat 0.05 per remaining
+         inferred field (capped at 5 = 0.25) from the already-resolved
+         confidence score. No-op when the count is zero. When the
+         extractor didn't run ``resolve_confidence`` (legacy / mock
+         paths) and ``confidence_score`` is ``None``, skip the penalty
+         rather than crashing — the score can stay null for downstream
+         resolution.
+    """
+    apply_guardrails(recipe, import_item_id)
+    score = getattr(recipe, "confidence_score", None)
+    if score is None:
+        return
+    recipe.confidence_score = apply_inference_penalty(
+        score, len(getattr(recipe, "inferred_fields", []) or [])
+    )
 
 
 class ExtractRecipeTask(BaseTask):
@@ -241,6 +273,15 @@ class ExtractRecipeTask(BaseTask):
 
         recipes = result.recipes
         extractor_used = result.extractor_used
+
+        # efi-3 — clamp / truncate / drop inferred values, then apply
+        # the confidence penalty based on the POST-guardrail inferred
+        # count. The first recipe has a real item_id; sibling recipes
+        # get ``None`` because their ImportItem rows don't exist yet
+        # (audit rows still land, just without the id linkage).
+        _apply_inference_post_processing(recipes[0], str(item.id))
+        for extra in recipes[1:]:
+            _apply_inference_post_processing(extra, None)
 
         # Write the first recipe into the existing item.
         item.parsed_recipe = _serialize_recipe(recipes[0], extractor_used, self.database.db)

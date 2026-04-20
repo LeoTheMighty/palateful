@@ -22,6 +22,7 @@ from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 from utils.services.aws import AWSService
 from utils.services.celery import celery_app
+from utils.services.recipe_extractors.inference_prompt import INFERABLE_FIELDS
 from utils.services.recipe_image_promotion import promote_source_photo
 from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
@@ -115,6 +116,32 @@ def _log_timer_clamp(
         logger.exception("Failed to write TimerClamp audit row")
 
 
+def _filter_inferred_fields(raw) -> list[str]:
+    """efi-3 — allow-list filter + dedupe for ``inferred_fields``.
+
+    Defense in depth: the extractor's ``parse_inferred_fields`` already
+    filters to ``INFERABLE_FIELDS``, but ``user_edits`` is a
+    client-supplied payload that could re-introduce bogus names. We
+    re-check here so a malformed edit can't smuggle a non-inferable
+    field onto the Recipe row.
+
+    Accepts anything (None, non-list, dicts, stringly-typed garbage)
+    and always returns a clean ``list[str]`` preserving first-seen
+    order.
+    """
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    clean: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        if item in INFERABLE_FIELDS and item not in seen:
+            seen.add(item)
+            clean.append(item)
+    return clean
+
+
 _aws_service: AWSService | None = None
 
 
@@ -187,6 +214,16 @@ class CreateRecipeTask(BaseTask):
                 self.database.db.commit()
                 return success({"error": "No recipe data", "item_id": item_id})
 
+            # efi-3 — carry the extractor's inferred_fields list onto
+            # the new Recipe via the allow-list-and-dedupe helper.
+            # user_edits (when present) is the user's post-Review
+            # payload; Review Import mutates its local copy of the list
+            # on edit, so reading the field off recipe_data gives the
+            # already-shrunk state.
+            deduped_inferred = _filter_inferred_fields(
+                recipe_data.get("inferred_fields")
+            )
+
             # Create the Recipe
             recipe = Recipe(
                 name=recipe_data.get("name", "Imported Recipe"),
@@ -199,6 +236,7 @@ class CreateRecipeTask(BaseTask):
                 source_url=recipe_data.get("source_url") or item.source_url,
                 primary_vibe=recipe_data.get("primary_vibe"),
                 secondary_vibe=recipe_data.get("secondary_vibe"),
+                inferred_fields=deduped_inferred,
                 recipe_book_id=job.recipe_book_id,
             )
             self.database.create(recipe)

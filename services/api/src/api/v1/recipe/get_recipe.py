@@ -184,6 +184,7 @@ class GetRecipe(Endpoint):
                 forked_from_book_id=str(recipe.forked_from_book_id) if recipe.forked_from_book_id else None,
                 forked_from_recipe_name=recipe.forked_from_recipe_name,
                 forked_from_book_name=recipe.forked_from_book_name,
+                inferred_fields=list(recipe.inferred_fields or []),
                 debug=debug_payload,
             )
         )
@@ -259,4 +260,5 @@ class GetRecipe(Endpoint):
         forked_from_book_id: str | None = None
         forked_from_recipe_name: str | None = None
         forked_from_book_name: str | None = None
+        inferred_fields: list[str] = []
         debug: "GetRecipe.DebugPayload | None" = None
