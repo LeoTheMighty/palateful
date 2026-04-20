@@ -771,8 +771,8 @@ development_status:
   # user_activities table).
   epic-activity-full-history: in-progress
   afh-1a-backend-multi-key-cursor-helper-and-list-activities-see-all-mode: done
-  afh-1b-backend-cursor-on-list-import-items-and-list-import-jobs: backlog
-  afh-2-backend-see-all-count-endpoints-and-partial-index-and-read-default-verify: backlog
+  afh-1b-backend-cursor-on-list-import-items-and-list-import-jobs: done
+  afh-2-backend-see-all-count-endpoints-and-partial-index-and-read-default-verify: done
   afh-3-flutter-notifications-see-all-footer-paginated-retry-pagekey-muted-token: backlog
   afh-4-flutter-imports-see-all-pagination-swap-drop-itemextent-pagekey: backlog
   afh-5-flutter-empty-state-gateway-links-chevron-down-and-pull-to-refresh: backlog

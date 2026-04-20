@@ -747,3 +747,37 @@ class TestListActivitiesCursor:
         mock_db.db.query.return_value = MockQuery([])
         response = client.get("/v1/activities?since_days=7")
         assert response.status_code == 200
+
+
+class TestSeeAllCount:
+    """afh-2: GET /v1/activities/see-all-count."""
+
+    def test_zero_when_no_rows(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities/see-all-count")
+        assert response.status_code == 200
+        assert response.json() == {
+            "archived": 0,
+            "read_and_older": 0,
+            "total": 0,
+        }
+
+    def test_sums_archived_and_read_and_older(
+        self, client, mock_db, mock_user
+    ):
+        """MockQuery.count = len(items). First call returns archived
+        rows, second returns read-and-older rows, and ``total`` is
+        their sum.
+        """
+        # Both .count() calls hit the same MockQuery; in MockQuery,
+        # .filter chains return self and .count returns len(items).
+        # So if we seed 5 items, both counts read 5 → total = 10.
+        mock_db.db.query.return_value = MockQuery(
+            [MockUserActivity() for _ in range(5)]
+        )
+        response = client.get("/v1/activities/see-all-count")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["archived"] == 5
+        assert body["read_and_older"] == 5
+        assert body["total"] == 10

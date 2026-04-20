@@ -5,6 +5,7 @@ from api.v1.user_activity import (
     ListActivities,
     MarkActivityRead,
     MarkAllRead,
+    SeeAllCount,
     UnarchiveActivity,
     UnreadCount,
 )
@@ -92,6 +93,15 @@ async def unread_count(
 ):
     """Get count of unread activities for badge display."""
     return UnreadCount.call(user=user, database=database)
+
+
+@activity_router.get("/see-all-count")
+async def see_all_count(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Notifications See-all triple (archived, read_and_older, total)."""
+    return SeeAllCount.call(user=user, database=database)
 
 
 @activity_router.put("/{activity_id}/read")

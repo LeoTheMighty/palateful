@@ -75,6 +75,16 @@ class ImportItem(Base):
                 "archived_at IS NULL AND dismissed_at IS NULL"
             ),
         ),
+        # afh-2 See-all count: keeps the "completed-and-older" bucket
+        # fast. The 30-day cutoff is applied at query time.
+        Index(
+            "ix_import_items_job_completed_old",
+            "import_job_id",
+            text("created_at DESC"),
+            postgresql_where=text(
+                "archived_at IS NULL AND status = 'completed'"
+            ),
+        ),
     )
 
     # Status: pending | extracting | matching | awaiting_review | approved | completed | failed | skipped

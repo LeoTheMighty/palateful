@@ -70,4 +70,14 @@ class UserActivity(Base):
             text("archived_at DESC"),
             postgresql_where=text("archived_at IS NOT NULL"),
         ),
+        # afh-2 See-all count: keeps the "read-and-older" bucket fast.
+        # The `created_at < NOW() - INTERVAL '30 days'` predicate runs
+        # at query time (NOW() isn't immutable) — the planner uses this
+        # index as a seek on the stable prefix.
+        Index(
+            "ix_user_activities_user_read_old",
+            "user_id",
+            text("created_at DESC"),
+            postgresql_where=text("read = true AND archived_at IS NULL"),
+        ),
     )

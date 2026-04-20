@@ -1445,6 +1445,33 @@ class TestListImportJobsCursor:
         assert response.headers.get("link") is not None
 
 
+class TestImportSeeAllCount:
+    """afh-2: GET /v1/import-items/see-all-count."""
+
+    def test_zero_when_no_rows(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-items/see-all-count")
+        assert response.status_code == 200
+        assert response.json() == {
+            "archived": 0,
+            "read_and_old_completed": 0,
+            "total": 0,
+        }
+
+    def test_sums_archived_and_read_and_old_completed(
+        self, client, mock_db, mock_user
+    ):
+        mock_db.db.query.return_value = MockQuery(
+            [MockImportItem() for _ in range(3)]
+        )
+        response = client.get("/v1/import-items/see-all-count")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["archived"] == 3
+        assert body["read_and_old_completed"] == 3
+        assert body["total"] == 6
+
+
 class TestGetImportItem:
     """Tests for GET /v1/import-items/{item_id}."""
 

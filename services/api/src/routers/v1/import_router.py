@@ -10,6 +10,7 @@ from api.v1.import_job import (
     GetImportItemTelemetry,
     GetImportJob,
     GetImportUploadUrl,
+    ImportSeeAllCount,
     ListImportItems,
     ListImportJobs,
     RetryImportItem,
@@ -153,6 +154,20 @@ async def list_import_items(
         user=user,
         database=database,
     )
+
+
+@import_router.get("/import-items/see-all-count")
+async def import_see_all_count(
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Imports See-all triple (archived, read_and_old_completed, total).
+
+    Registered BEFORE ``/import-items/{item_id}`` so FastAPI's
+    literal-path-first matcher doesn't route ``see-all-count`` into the
+    ``item_id`` path param.
+    """
+    return ImportSeeAllCount.call(user=user, database=database)
 
 
 @import_router.get("/import-items/{item_id}")
