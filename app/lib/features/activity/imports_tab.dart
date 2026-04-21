@@ -226,7 +226,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: const Text('Archived'),
+        content: const Text('Dismissed'),
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
           label: 'Undo',
@@ -247,10 +247,10 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       }
     } on DioException catch (e) {
       errorMessage = e.response?.statusCode == 409
-          ? "Can't archive while importing"
-          : "Couldn't archive, try again";
+          ? "Can't dismiss while importing"
+          : "Couldn't dismiss, try again";
     } catch (_) {
-      errorMessage = "Couldn't archive, try again";
+      errorMessage = "Couldn't dismiss, try again";
     }
 
     if (errorMessage == null || !mounted) return;

@@ -167,7 +167,7 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: const Text('Archived'),
+        content: const Text('Dismissed'),
         duration: const Duration(seconds: 3),
         action: SnackBarAction(
           label: 'Undo',
@@ -193,7 +193,7 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
-          content: const Text("Couldn't archive, try again"),
+          content: const Text("Couldn't dismiss, try again"),
           backgroundColor: Theme.of(context).colorScheme.error,
           duration: const Duration(seconds: 3),
         ),

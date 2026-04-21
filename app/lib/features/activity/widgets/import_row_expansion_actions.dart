@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 /// Row of action buttons rendered at the bottom of [ImportRowExpansion].
 ///
 /// Button set varies by [state]:
-/// - `needsReview` → **Review →** + **Archive**
-/// - `failed`      → **Retry** + **Archive**
-/// - `autoImported`→ **View Recipe** + **Archive**
-/// - `skipped`     → **Archive** only (no recipe to view, no retry path)
+/// - `needsReview` → **Review →** + **Dismiss**
+/// - `failed`      → **Retry** + **Dismiss**
+/// - `autoImported`→ **View Recipe** + **Dismiss**
+/// - `skipped`     → **Dismiss** only (no recipe to view, no retry path)
 /// - `inProgress`  → (nothing — cancel stays out-of-scope this epic)
 ///
 /// All callbacks are nullable; a null callback disables the button. On
@@ -100,7 +100,7 @@ class ImportRowExpansionActions extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: onArchive,
       icon: const Icon(Icons.archive_outlined, size: 18),
-      label: const Text('Archive'),
+      label: const Text('Dismiss'),
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(0, 44),
       ),
