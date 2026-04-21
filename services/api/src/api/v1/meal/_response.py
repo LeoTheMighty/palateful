@@ -9,10 +9,24 @@ from utils.models.meal import Meal
 from utils.services.meal_service import MealService
 
 
-def build_meal_response(meal: Meal, *, db, user_id) -> MealResponse:
-    """Hydrate a Meal into the full response shape."""
+def build_meal_response(
+    meal: Meal,
+    *,
+    db,
+    user_id,
+    readable_book_ids: set | None = None,
+) -> MealResponse:
+    """Hydrate a Meal into the full response shape.
+
+    `readable_book_ids` threads through to `MealService.hydrate_components`
+    so callers paging over many meals can hoist the lookup once —
+    single-meal callers keep the `None` default and pay one extra
+    round-trip, same as before.
+    """
     service = MealService(db)
-    hydrations = service.hydrate_components(meal, user_id=user_id)
+    hydrations = service.hydrate_components(
+        meal, user_id=user_id, readable_book_ids=readable_book_ids
+    )
     components = [
         MealComponentResponse(
             recipe_id=h.recipe_id,
@@ -40,14 +54,26 @@ def build_meal_response(meal: Meal, *, db, user_id) -> MealResponse:
     )
 
 
-def build_meal_summary(meal: Meal, *, db, user_id) -> MealSummaryResponse:
+def build_meal_summary(
+    meal: Meal,
+    *,
+    db,
+    user_id,
+    readable_book_ids: set | None = None,
+) -> MealSummaryResponse:
     """Thin grid-tile response — up to 4 component image URLs.
 
     `component_recipe_ids` is emitted in order so home (hmp-1) can run
     an in-memory join against the already-loaded recipe list to render
     the component-name chip row without an N+1 detail fetch.
+
+    `readable_book_ids` threads through to `hydrate_components` — list
+    callers (`list_meals`) compute this set once per request instead of
+    re-fetching per meal. Single-meal callers keep the `None` default.
     """
-    hydrations = MealService(db).hydrate_components(meal, user_id=user_id)
+    hydrations = MealService(db).hydrate_components(
+        meal, user_id=user_id, readable_book_ids=readable_book_ids
+    )
     image_urls = [h.image_url for h in hydrations if h.available and h.image_url][:4]
     component_count = len(hydrations)
     component_recipe_ids = [h.recipe_id for h in hydrations]

@@ -64,14 +64,19 @@ class ListMeals(Endpoint):
             include_archived = False
             archived_only = False
 
-        readable_books = (
-            db.query(RecipeBookUser.recipe_book_id)
+        # pbq-2: fetch the readable-books set once and reuse it both to
+        # scope the Meal list and to hydrate component availability.
+        # Before: 1 subquery here + 1 per meal (30 for a home page).
+        # After: 1 query total, regardless of page size.
+        readable_book_ids = {
+            str(row[0])
+            for row in db.query(RecipeBookUser.recipe_book_id)
             .filter(
                 RecipeBookUser.user_id == user.id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .subquery()
-        )
+            .all()
+        }
 
         query = (
             db.query(Meal)
@@ -80,7 +85,7 @@ class ListMeals(Endpoint):
                 .selectinload(MealRecipe.recipe)
                 .selectinload(Recipe.recipe_book)
             )
-            .filter(Meal.recipe_book_id.in_(readable_books))
+            .filter(Meal.recipe_book_id.in_(readable_book_ids))
         )
         if archived_only:
             query = query.filter(Meal.archived_at.is_not(None))
@@ -109,6 +114,9 @@ class ListMeals(Endpoint):
         )
 
         items = [
-            build_meal_summary(m, db=db, user_id=user.id) for m in meals
+            build_meal_summary(
+                m, db=db, user_id=user.id, readable_book_ids=readable_book_ids
+            )
+            for m in meals
         ]
         return success(data=MealListResponse(items=items, total=total))

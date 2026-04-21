@@ -102,6 +102,42 @@ class TestListMealsFilters:
         resp = client.get("/v1/meals?scope=home&limit=5")
         assert resp.status_code == 200
 
+    def test_list_meals_hoists_readable_book_ids_to_single_query(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-2 — a 30-meal page triggers ONE RecipeBookUser query, not 30.
+
+        Pre-fix, `MealService.hydrate_components` self-fetched the
+        readable-books set per meal, i.e. 30 `recipe_book_users`
+        SELECTs for `/v1/meals?scope=home`. Post-fix, `list_meals`
+        hoists the fetch once and threads it via `readable_book_ids`
+        through `build_meal_summary` → `hydrate_components`.
+        """
+        from conftest import count_queries
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        meals = [
+            _MockMeal(id=f"meal-{i}", components=[_component("r1"), _component("r2")])
+            for i in range(30)
+        ]
+        # side_effect is ordered: subquery lookup, main Meal query,
+        # hoisted readable_book_ids lookup. Remaining query calls (if
+        # any) fall back to the default empty MockQuery via
+        # return_value — the post-fix code only queries twice more.
+        mock_db.db.query.side_effect = [
+            MockQuery([]),
+            MockQuery(meals),
+            MockQuery([("book-1",)]),
+        ]
+        with count_queries(mock_db) as qc:
+            resp = client.get("/v1/meals?scope=home")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 30
+
+        # Hard AC — exactly ONE RecipeBookUser query regardless of page
+        # size (would be 30 before the fix).
+        assert qc.query_count_for(RecipeBookUser) == 1
+
 
 class TestListMealsEndpointDirect:
     """Direct tests for ListMeals.execute() to cover the branch matrix."""

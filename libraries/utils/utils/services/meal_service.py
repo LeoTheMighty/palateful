@@ -218,10 +218,26 @@ class MealService:
         return {str(row[0]) for row in rows}
 
     def hydrate_components(
-        self, meal: Meal, *, user_id
+        self,
+        meal: Meal,
+        *,
+        user_id,
+        readable_book_ids: set | None = None,
     ) -> list[ComponentHydration]:
-        """Flatten a Meal's components into response-shaped rows."""
-        readable = self._readable_book_ids(user_id)
+        """Flatten a Meal's components into response-shaped rows.
+
+        `readable_book_ids` — optional pre-computed set of book ids the
+        user can read. When the caller is already paging over many meals
+        (`list_meals`), hoisting this lookup out of the per-meal loop
+        collapses N identical `recipe_book_users` SELECTs into 1. When
+        `None`, falls back to the per-call `_readable_book_ids(user_id)`
+        lookup, preserving the original single-meal call path.
+        """
+        readable = (
+            readable_book_ids
+            if readable_book_ids is not None
+            else self._readable_book_ids(user_id)
+        )
         hydrations: list[ComponentHydration] = []
         for comp in meal.components:
             recipe = comp.recipe
