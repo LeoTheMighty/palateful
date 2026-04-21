@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 class TestApp:
@@ -44,6 +45,64 @@ class TestApp:
         """Test that the health endpoint is accessible via the app."""
         response = client.get("/v1/health")
         assert response.status_code == 200
+
+
+class TestAPIExceptionHandler:
+    """Dependency-raised APIExceptions (e.g. expired Auth0 tokens in
+    get_current_user) must surface as the declared status_code + the
+    standard failure payload, not as an unhandled 500 that pollutes
+    error_logs.
+    """
+
+    def _call_protected_endpoint(self, raising_dep) -> tuple[int, dict]:
+        from main import app
+        from dependencies import get_current_user
+
+        app.dependency_overrides[get_current_user] = raising_dep
+        try:
+            with TestClient(app) as c:
+                resp = c.get(
+                    "/v1/import-jobs",
+                    headers={"Authorization": "Bearer fake"},
+                )
+            return resp.status_code, resp.json()
+        finally:
+            app.dependency_overrides.pop(get_current_user, None)
+
+    def test_apiexception_translates_to_declared_status(self):
+        from utils.api.endpoint import APIException
+        from utils.classes.error_code import ErrorCode
+
+        async def expired():
+            raise APIException(
+                status_code=401,
+                detail="Token has expired",
+                code=ErrorCode.TOKEN_EXPIRED,
+            )
+
+        status, body = self._call_protected_endpoint(expired)
+
+        assert status == 401
+        assert body["error_code"] == ErrorCode.TOKEN_EXPIRED.value
+        assert body["error_message"] == "Token has expired"
+        assert body["data"] == {}
+
+    def test_apiexception_preserves_status_and_code_for_403(self):
+        from utils.api.endpoint import APIException
+        from utils.classes.error_code import ErrorCode
+
+        async def forbidden():
+            raise APIException(
+                status_code=403,
+                detail="Admin access required",
+                code=ErrorCode.FORBIDDEN,
+            )
+
+        status, body = self._call_protected_endpoint(forbidden)
+
+        assert status == 403
+        assert body["error_code"] == ErrorCode.FORBIDDEN.value
+        assert body["error_message"] == "Admin access required"
 
 
 class TestLifespan:

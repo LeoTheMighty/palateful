@@ -3,12 +3,14 @@
 from contextlib import asynccontextmanager
 
 from config import settings
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from mcp_server import build_mcp_app
 from middleware.error_tracking import ErrorTrackingMiddleware
 from middleware.latency_capture import LatencyCaptureMiddleware
 from routers.v1_router import v1_router
+from utils.api.endpoint import APIException
 
 mcp_app = build_mcp_app()
 
@@ -99,6 +101,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# APIException handler. APIExceptions raised inside Endpoint.run() are already
+# caught there and converted to a CustomJSONResponse; this handler covers the
+# path that bypasses the endpoint body — dependencies like get_current_user.
+# Without it, a dependency-raised APIException propagates as an unhandled
+# exception and the error-tracking middleware logs it as a 500, turning a
+# plain expired-token signal into a noisy 500 in error_logs.
+@app.exception_handler(APIException)
+async def api_exception_handler(request: Request, exc: APIException) -> JSONResponse:
+    return JSONResponse(
+        content={
+            "error_code": exc.code,
+            "error_message": exc.detail,
+            "data": {},
+        },
+        status_code=exc.status_code,
+    )
+
 
 # Include routers
 app.include_router(v1_router)

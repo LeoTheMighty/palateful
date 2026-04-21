@@ -127,13 +127,13 @@ class TestAdminPushHealth404:
 
 class TestAdminPushHealthAuthz:
     def test_non_admin_raises_403(self, client, mock_user, mock_db):
-        from utils.api.endpoint import APIException
+        from utils.classes.error_code import ErrorCode
         mock_user.is_admin = False
-        with pytest.raises(APIException) as exc_info:
-            client.get(
-                f"/v1/admin/notifications/health/{uuid.uuid4()}"
-            )
-        assert exc_info.value.status_code == 403
+        response = client.get(
+            f"/v1/admin/notifications/health/{uuid.uuid4()}"
+        )
+        assert response.status_code == 403
+        assert response.json()["error_code"] == ErrorCode.FORBIDDEN.value
 
 
 class TestAdminPushHealthAudit:
