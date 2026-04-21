@@ -25,7 +25,7 @@ resource "aws_elasticache_subnet_group" "main" {
 
 resource "aws_security_group" "cache" {
   name        = "${var.project}-cache-sg-${var.environment}"
-  description = "ElastiCache Redis — allow ingress from API + worker SGs on 6379"
+  description = "ElastiCache Redis - allow ingress from API + worker SGs on 6379"
   vpc_id      = var.vpc_id
 
   # Each allowed SG gets its own ingress rule so adding/removing is
