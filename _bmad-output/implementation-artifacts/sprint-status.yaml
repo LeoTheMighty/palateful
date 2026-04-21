@@ -864,3 +864,91 @@ development_status:
   efi-7-flutter-recipe-edit-wiring-badge-dismiss-on-edit-and-update-recipe-round-trip: done
   efi-8-eval-field-inference-accuracy-and-hallucination-rate-metrics-with-baseline: done
   epic-extractor-field-inference-retrospective: optional
+
+  # === Performance Health Initiative (3 epics) — added 2026-04-21 ===
+  # Motivation: single-user prod "feels slow" after obs-latency + perf-1/-2
+  # landed. Phase-2 research converged on four contributors: infra floor
+  # (t4g.micro burst exhaustion, untuned PG params, 256 CPU API task, cold
+  # JWKS), backend N+1 / redundant queries on ~8 list endpoints, redundant
+  # Flutter activity double-poll (shell + tabs), and Auth0 JWKS cold-starts.
+  # User answers (2026-04-21): all infra changes in scope (+$15/mo, under
+  # NFR29 $50 cap); retune only redundant polls (imports 2s + admin logs 5s
+  # preserved). No API contract changes; no breaking changes; every story
+  # captures p50/p95 before/after from analyze_latency.py in its QA walkthrough.
+
+  # epic-perf-infra-and-measurement — infra floor + measurement foundation.
+  # Ships analyze_latency.py ops script (with regression-hunt CTE), enables
+  # RDS Performance Insights + slow-query log + tuned parameter group
+  # (shared_buffers=256MB, work_mem=8MB, effective_cache_size=1500MB,
+  # log_min_duration_statement=100, max_connections=60), upgrades RDS
+  # t4g.micro → t4g.small (~+$10/mo), bumps API ECS task 256/512 → 512/1024
+  # (~+$5/mo), tunes ALB health check (30s/5s → 60s/3s), adds
+  # cache.t4g.micro ElastiCache for Auth0 JWKS cache (~+$1/mo, fail-open
+  # to in-memory on Redis unreachable), bumps DB_POOL_SIZE/MAX_OVERFLOW
+  # 10/20 → 20/40, audits pre-20260420 migrations for non-CONCURRENTLY
+  # CREATE INDEX and backports as forward migrations. No API shape changes.
+  # Blocks nothing hard; pim-1 (script) unblocks QA walkthroughs for the
+  # other two perf epics.
+  epic-perf-infra-and-measurement: in-progress
+  pim-1-analyze-latency-script: done
+  pim-2-rds-parameter-group-and-performance-insights: backlog
+  pim-3-rds-instance-upgrade: backlog
+  # pim-4 split in party-mode (2026-04-21) into 4a (task sizing, rolling
+  # deploy) + 4b (pool + ALB, config-only, gated on pim-2 reboot).
+  pim-4a-ecs-api-task-sizing: backlog
+  pim-4b-pool-and-alb-health-check: backlog
+  pim-5-redis-and-jwks-cache: backlog
+  pim-6-concurrently-migration-backport-audit: backlog
+
+  # epic-perf-backend-query-tuning — close verified N+1 / redundant-query
+  # patterns on list endpoints. list_shopping_lists eager-loads items +
+  # members (N × 2 lazy loads → bounded); list_meals hoists
+  # MealService._readable_book_ids out of the per-meal loop (30× redundant
+  # → 1); list_recipes bulk-fetches UserFavorite; unified_search memoizes
+  # _get_my_book_ids + adds semantic-tier selectinload(Recipe.ingredients);
+  # list_activities drops/gates the heavy cursor-less COUNT after a grep-
+  # confirmed no Flutter consumer; list_calendars scopes member_count
+  # subquery to user's calendars; list_meal_events eager-loads participants;
+  # dependencies caches _ensure_default_calendar per-request. Every story
+  # adds an asyncpg query-count integration test. No response-shape changes
+  # except the documented list_activities total gating. Blocked soft by
+  # pim-1 (validation via analyze_latency.py).
+  # Party-mode (2026-04-21) cut pbq-3 (phantom win — already implemented at
+  # list_recipes.py:82-94), split pbq-4 into 4a (memoize) + 4b (semantic
+  # selectinload), renamed pbq-5 to reflect honest "drop total" behavior,
+  # added pbq-0 (query-count test helper as prereq), and reframed pbq-8 as
+  # spike-first (may close as no-op if FastAPI dep-cache already dedupes).
+  epic-perf-backend-query-tuning: backlog
+  pbq-0-query-count-test-helper: backlog
+  pbq-1-list-shopping-lists-eager-load: backlog
+  pbq-2-list-meals-readable-book-ids-hoisted: backlog
+  pbq-3-list-recipes-bulk-favorite-fetch: deleted  # already implemented at list_recipes.py:82-94
+  pbq-4a-unified-search-memoize-book-ids: backlog
+  pbq-4b-unified-search-semantic-tier-selectinload: backlog
+  pbq-5-list-activities-drop-total-on-cursor-path: backlog
+  pbq-6-list-calendars-scoped-member-count: backlog
+  pbq-7-list-meal-events-eager-load-participants: backlog
+  pbq-8-dependencies-ensure-default-calendar-spike-first: backlog
+
+  # epic-perf-flutter-client-polish — merge shell + notifications-tab +
+  # imports-tab 30s pollers into a single activityHubProvider (user's
+  # "retune only redundant" choice; base cadences preserved); sweep
+  # Image.network → CachedNetworkImage on hot tiles (meal_search_tile,
+  # component_collage_hero, public_meal_screen); add family-keyed
+  # recipeProvider with keep-alive + mutation invalidation; close
+  # perf-2 AC-3 regression where home filter change retriggers
+  # _loadRecipes. No backend changes; uses existing endpoints. Blocked
+  # soft by pim-1 (pfc-5 final sweep cites the ops script numbers).
+  # Party-mode (2026-04-21): renamed pfc-1 (consolidation, not provider),
+  # CUT pfc-2 pending user decision (all hot tiles already use
+  # CachedNetworkImage; only features/calendar/ has 7 Image.network sites
+  # left — rescope to calendar-only sweep or drop entirely); CUT pfc-5
+  # (regression-sweep ACs folded into pfc-1 walkthrough). Default
+  # architecture choice: extend existing ActivityReadProvider (getIt),
+  # do not introduce Riverpod in the shell — subject to user confirmation.
+  epic-perf-flutter-client-polish: backlog
+  pfc-1-activity-hub-consolidation: backlog
+  pfc-2-cached-network-image-sweep: deleted  # phantom win — hot tiles already use CachedNetworkImage; see epic Open Questions for potential calendar-only rescope
+  pfc-3-recipe-detail-keep-alive: backlog
+  pfc-4-home-filter-no-refetch: backlog
+  pfc-5-regression-sweep: deleted  # folded into pfc-1 walkthrough
