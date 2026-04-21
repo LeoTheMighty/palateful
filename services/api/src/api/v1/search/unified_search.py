@@ -169,8 +169,19 @@ class UnifiedSearch(Endpoint):
         return (True, True, True)
 
     def _get_my_book_ids(self, user: User) -> list:
-        """Return recipe book IDs the user is a member of."""
-        return (
+        """Return recipe book IDs the user is a member of.
+
+        pbq-4a: memoized on the request-scoped endpoint instance so
+        repeat calls across the exact / fuzzy / semantic / meal tiers
+        collapse to a single `recipe_book_users` SELECT per request.
+        The instance is created fresh per request (FastAPI dep
+        injection of `database` + `user`), so there's no cross-request
+        bleed.
+        """
+        cached = getattr(self, "_my_book_ids", None)
+        if cached is not None:
+            return cached
+        rows = (
             self.db.execute(
                 select(RecipeBookUser.recipe_book_id)
                 .where(RecipeBookUser.user_id == user.id)
@@ -178,6 +189,8 @@ class UnifiedSearch(Endpoint):
             .scalars()
             .all()
         )
+        self._my_book_ids = rows
+        return rows
 
     def _recipe_matches(self, query: str):
         """Build OR condition matching name, description, ingredients, and tags."""

@@ -924,7 +924,7 @@ development_status:
   pbq-1-list-shopping-lists-eager-load: done
   pbq-2-list-meals-readable-book-ids-hoisted: done
   pbq-3-list-recipes-bulk-favorite-fetch: deleted  # already implemented at list_recipes.py:82-94
-  pbq-4a-unified-search-memoize-book-ids: backlog
+  pbq-4a-unified-search-memoize-book-ids: done
   pbq-4b-unified-search-semantic-tier-selectinload: backlog
   pbq-5-list-activities-drop-total-on-cursor-path: backlog
   pbq-6-list-calendars-scoped-member-count: backlog

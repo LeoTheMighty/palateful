@@ -11,6 +11,7 @@ from conftest import (
     MockRecipe,
     MockRecipeIngredient,
     MockUser,
+    count_queries,
 )
 
 
@@ -63,6 +64,31 @@ class TestUnifiedSearch:
         """Test search without query parameter."""
         response = client.get("/v1/search")
         assert response.status_code == 422
+
+    def test_get_my_book_ids_memoized_across_tiers(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-4a — `_get_my_book_ids` caches on the endpoint instance.
+
+        Direct service-level test: the endpoint class is
+        request-scoped, so calling `_get_my_book_ids` multiple times
+        within one request must trigger a single
+        `recipe_book_users`-shaped `db.execute` SELECT. Memoization
+        lives on `self._my_book_ids` — disposed when the instance is
+        garbage-collected at request end.
+        """
+        from api.v1.search.unified_search import UnifiedSearch
+
+        mock_db.db.execute.return_value = MockExecuteResult([("book-1",)])
+        ep = UnifiedSearch(user=mock_user, database=mock_db)
+
+        with count_queries(mock_db) as qc:
+            first = ep._get_my_book_ids(mock_user)
+            second = ep._get_my_book_ids(mock_user)
+            third = ep._get_my_book_ids(mock_user)
+
+        assert first == second == third  # same cached result
+        assert qc.select == 1  # exactly one round-trip across 3 calls
 
     def test_search_by_tag(self, client, mock_db, mock_user):
         """Test searching by tag term returns 200 with expected response shape.
