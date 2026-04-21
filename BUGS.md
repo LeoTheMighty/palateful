@@ -1,5 +1,11 @@
 Bugs/Improvements:
 
+* Still experiencing bug on the current shopping cart after trying to import all ingredients from the calendar.
+* **Calendar reminder — 2026-10-08 (day 170 of PI free tier)**: Performance Insights on `palateful-db-prod` switches off free tier around this date. Either keep it (~$2/mo, stays under NFR29's $50 cap) or toggle `performance_insights_enabled=false` in `terraform/modules/rds/main.tf`. Decide before the date so we don't get a surprise bill.
+* 
+
+======= OLD =========
+
 * Latency data now lands at `/admin/metrics` (endpoint + task p50/p95/p99 + sparklines). Use this as the first stop before filing a "feels slow" bug.
 
 ========== OLD ==============

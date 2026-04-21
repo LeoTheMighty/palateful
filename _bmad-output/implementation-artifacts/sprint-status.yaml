@@ -891,7 +891,7 @@ development_status:
   # other two perf epics.
   epic-perf-infra-and-measurement: in-progress
   pim-1-analyze-latency-script: done
-  pim-2-rds-parameter-group-and-performance-insights: backlog
+  pim-2-rds-parameter-group-and-performance-insights: done
   pim-3-rds-instance-upgrade: backlog
   # pim-4 split in party-mode (2026-04-21) into 4a (task sizing, rolling
   # deploy) + 4b (pool + ALB, config-only, gated on pim-2 reboot).
