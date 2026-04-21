@@ -40,6 +40,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _apiClient = getIt<ApiClient>();
 
   List<dynamic> _recipes = [];
+  /// pfc-4: pristine recipe list (post is_favorite merge, pre filters /
+  /// sort / kind-filters). Filter sheet mutates selection state and calls
+  /// [_reapplyFilters], which rebuilds `_recipes` from this + `_allMeals`
+  /// in-memory — no network fetch. Refilled on every `_loadRecipes()`.
+  List<dynamic> _allRecipes = [];
+  /// pfc-4: pristine meal list for the same reason. See `_allRecipes`.
+  List<dynamic> _allMeals = [];
   List<dynamic> _favorites = [];
   Set<String> _favoriteIds = {};
   // Favorited-meal ids populated from /v1/favorites.favorited_meals.
@@ -120,21 +127,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         recipe['kind'] = 'recipe';
       }
 
-      // Apply filters and sorting
-      allRecipes = _applyFilters(allRecipes);
-      allRecipes = _applySorting(allRecipes);
-
-      // md-4: merge meals in. When meals is empty, the merge is a no-op
-      // and the existing filter+sort ordering is preserved bit-identically.
-      // hmp-4: then apply the new kind filters (Show: Recipes only /
-      // Meals only + Hide components of Meals). Running them after the
-      // merge keeps the zero-meal code path identical to pre-epic.
-      var mergedGrid = _mergeRecipesAndMeals(allRecipes, mealItems);
-      mergedGrid = _applyKindFilters(mergedGrid, mealItems);
+      final mergedGrid = _buildFilteredGrid(allRecipes, mealItems);
       final mergedFavorites = <dynamic>[...favItems, ...favMealItems];
 
       if (mounted) {
         setState(() {
+          _allRecipes = allRecipes;
+          _allMeals = mealItems;
           _recipes = mergedGrid;
           _favorites = mergedFavorites;
           _favoriteIds = favIds;
@@ -485,9 +484,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  /// pfc-4: rebuild `_recipes` from the pristine `_allRecipes` +
+  /// `_allMeals` in-memory. No network. Filters + sort + merge +
+  /// kind-filters run top-to-bottom so a flip of any filter state is
+  /// zero-network regardless of which dial the user touched.
+  List<dynamic> _buildFilteredGrid(
+    List<dynamic> sourceRecipes,
+    List<dynamic> sourceMeals,
+  ) {
+    var recipes = _applyFilters(sourceRecipes);
+    recipes = _applySorting(recipes);
+    var merged = _mergeRecipesAndMeals(recipes, sourceMeals);
+    merged = _applyKindFilters(merged, sourceMeals);
+    return merged;
+  }
+
+  /// pfc-4: in-memory rebuild. Previously this called `_loadRecipes()`
+  /// which refetched the whole backing list on every filter flip — a
+  /// regression against perf-2 AC 3. Now `_loadRecipes` runs only on
+  /// initState, pull-to-refresh, and mutations (save/archive/etc.).
   void _reapplyFilters() {
-    // Reload recipes to re-apply filters
-    _loadRecipes();
+    if (!mounted) return;
+    setState(() {
+      _recipes = _buildFilteredGrid(_allRecipes, _allMeals);
+    });
   }
 
   void _showAddRecipeSheet() {

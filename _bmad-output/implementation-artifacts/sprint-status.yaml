@@ -951,5 +951,5 @@ development_status:
   pfc-1-activity-hub-consolidation: done
   pfc-2-cached-network-image-sweep: deleted  # phantom win — hot tiles already use CachedNetworkImage; see epic Open Questions for potential calendar-only rescope
   pfc-3-recipe-detail-keep-alive: backlog
-  pfc-4-home-filter-no-refetch: backlog
+  pfc-4-home-filter-no-refetch: done
   pfc-5-regression-sweep: deleted  # folded into pfc-1 walkthrough
