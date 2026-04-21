@@ -50,6 +50,55 @@ class TestListShoppingLists:
         data = response.json()
         assert data["items"] == []
 
+    def test_list_shopping_lists_eager_loads_items_and_members(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-1 — the handler attaches selectinload(items, members) and
+        the mock-layer query count stays bounded regardless of page size.
+
+        The lazy-load N+1 can't be reproduced under MockDatabase (mocks
+        pre-populate `sl.items` / `sl.members`), so this test pairs a
+        `selectinload` spy with `count_queries`: the spy proves the
+        eager-load is wired; the counter proves the handler isn't
+        redundantly re-querying `ShoppingList` per row.
+        """
+        from utils.models.shopping_list import ShoppingList
+        from utils.models.shopping_list_user import ShoppingListUser
+
+        lists = [
+            MockShoppingList(
+                owner_id=str(mock_user.id), items=[], members=[], is_shared=False
+            )
+            for _ in range(20)
+        ]
+        mock_db.db.query.return_value = MockQuery(lists)
+
+        import api.v1.shopping_list.list_shopping_lists as handler_module
+        with patch.object(
+            handler_module,
+            "selectinload",
+            wraps=handler_module.selectinload,
+        ) as spy:
+            with count_queries(mock_db) as qc:
+                response = client.get("/v1/shopping-lists")
+
+        assert response.status_code == 200
+
+        # Eager-load wired to both relationships. Compare by attribute
+        # key — `InstrumentedAttribute` equality triggers SQL compile.
+        wrapped_keys = {
+            getattr(call.args[0], "key", None) for call in spy.call_args_list
+        }
+        assert "items" in wrapped_keys
+        assert "members" in wrapped_keys
+
+        # Round-trip ceiling: main ShoppingList query + member-list
+        # subquery + user-activity / default_shopping_list lookups.
+        # Bounded regardless of page size.
+        assert qc.query_count_for(ShoppingList) == 1
+        assert qc.query_count_for(ShoppingListUser) >= 1
+        assert qc.select <= 6
+
     def test_count_queries_helper_tracks_mock_invocations(
         self, client, mock_db, mock_user
     ):

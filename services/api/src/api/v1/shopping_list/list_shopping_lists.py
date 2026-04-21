@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import or_
+from sqlalchemy.orm import selectinload
 from utils.api.endpoint import Endpoint, success
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
@@ -44,9 +45,16 @@ class ListShoppingLists(Endpoint):
             .subquery()
         )
 
-        # Build query: owned OR member
+        # Build query: owned OR member. selectinload items + members so
+        # the response loop below (`sl.items`, `sl.members`) doesn't
+        # trigger 2N lazy loads — bounded to two `IN`-batched queries
+        # regardless of page size.
         query = (
             self.db.query(ShoppingList)
+            .options(
+                selectinload(ShoppingList.items),
+                selectinload(ShoppingList.members),
+            )
             .filter(
                 or_(
                     ShoppingList.owner_id == user.id,
