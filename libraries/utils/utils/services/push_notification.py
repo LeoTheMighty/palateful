@@ -492,12 +492,16 @@ class PushNotificationService:
         self,
         notification: PushNotification,
     ) -> messaging.APNSConfig:
+        # content-available is intentionally NOT set: it marks the push as a
+        # silent background wake, which makes iOS suppress the banner and
+        # apply background-push throttling even when an alert payload is
+        # present. All notifications we send are user-visible alerts.
         return messaging.APNSConfig(
+            headers={"apns-priority": "10"},
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
                     sound=notification.sound,
                     badge=notification.badge,
-                    content_available=True,
                 ),
             ),
         )
