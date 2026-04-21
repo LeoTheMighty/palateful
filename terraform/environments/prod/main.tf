@@ -125,8 +125,15 @@ module "rds" {
   vpc_id             = module.vpc.vpc_id
   subnet_ids         = module.vpc.public_subnet_ids
   security_group_ids = [module.vpc.rds_security_group_id]
-  instance_class     = "db.t4g.micro"
-  allocated_storage  = 20
+  # pim-3 (2026-04-21): db.t4g.micro → db.t4g.small. Removes
+  # burst-credit exhaustion as a failure mode under sustained query
+  # load; gains a second vCPU so Auth0 JWT verify doesn't compete
+  # with DB work on a single core. +~$10/mo (within NFR29's $50 cap).
+  # Rollback: flip back to db.t4g.micro with apply_immediately=true,
+  # ~5 min reboot; no snapshot restore needed. deletion_protection
+  # stays true throughout.
+  instance_class    = "db.t4g.small"
+  allocated_storage = 20
 }
 
 # ─── Queues ───
