@@ -3,14 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/features/activity/widgets/import_row_expansion_actions.dart';
 
 // irrd-6: ImportRowExpansionActions renders a state-specific button set.
-// Yellow → Review + Archive; red → Retry + Archive; green → View Recipe
-// + Archive; blue → nothing. Each button honors ≥44dp height.
+// Yellow → Review + Dismiss; red → Retry + Dismiss; green → View Recipe
+// + Dismiss; blue → nothing. Each button honors ≥44dp height.
 
 Widget _wrap(Widget child) =>
     MaterialApp(home: Scaffold(body: child));
 
 void main() {
-  testWidgets('needsReview renders Review + Archive', (tester) async {
+  testWidgets('needsReview renders Review + Dismiss', (tester) async {
     await tester.pumpWidget(_wrap(
       ImportRowExpansionActions(
         state: ImportRowState.needsReview,
@@ -21,12 +21,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('Review'), findsOneWidget);
-    expect(find.text('Archive'), findsOneWidget);
+    expect(find.text('Dismiss'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
     expect(find.text('View Recipe'), findsNothing);
   });
 
-  testWidgets('failed renders Retry + Archive', (tester) async {
+  testWidgets('failed renders Retry + Dismiss', (tester) async {
     await tester.pumpWidget(_wrap(
       ImportRowExpansionActions(
         state: ImportRowState.failed,
@@ -37,11 +37,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('Retry'), findsOneWidget);
-    expect(find.text('Archive'), findsOneWidget);
+    expect(find.text('Dismiss'), findsOneWidget);
     expect(find.text('Review'), findsNothing);
   });
 
-  testWidgets('autoImported renders View Recipe + Archive',
+  testWidgets('autoImported renders View Recipe + Dismiss',
       (tester) async {
     await tester.pumpWidget(_wrap(
       ImportRowExpansionActions(
@@ -53,7 +53,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('View Recipe'), findsOneWidget);
-    expect(find.text('Archive'), findsOneWidget);
+    expect(find.text('Dismiss'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
   });
 
@@ -66,7 +66,7 @@ void main() {
     expect(find.text('Retry'), findsNothing);
     expect(find.text('Review'), findsNothing);
     expect(find.text('View Recipe'), findsNothing);
-    expect(find.text('Archive'), findsNothing);
+    expect(find.text('Dismiss'), findsNothing);
   });
 
   testWidgets('tap fires the correct callback', (tester) async {
@@ -86,7 +86,7 @@ void main() {
     await tester.pump();
     expect(reviewed, isTrue);
 
-    await tester.tap(find.text('Archive'));
+    await tester.tap(find.text('Dismiss'));
     await tester.pump();
     expect(archived, isTrue);
   });

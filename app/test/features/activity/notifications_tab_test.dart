@@ -174,7 +174,7 @@ void main() {
     // API fired with the right id.
     expect(api.archiveCalls, equals(['a-1']));
     // 3s undo snackbar is present.
-    expect(find.text('Archived'), findsOneWidget);
+    expect(find.text('Dismissed'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
   });
 
@@ -231,7 +231,7 @@ void main() {
 
     expect(api.archiveCalls, equals(['a-1']),
         reason: 'archive API is called even on failure');
-    expect(find.text("Couldn't archive, try again"), findsOneWidget);
+    expect(find.text("Couldn't dismiss, try again"), findsOneWidget);
     expect(find.text('Row to archive'), findsOneWidget);
   });
 

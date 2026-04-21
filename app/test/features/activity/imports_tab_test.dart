@@ -350,7 +350,7 @@ void main() {
 
     expect(api.archiveCalls, equals(['item-review']));
     expect(find.text('Swipe me'), findsNothing);
-    expect(find.text('Archived'), findsOneWidget);
+    expect(find.text('Dismissed'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
   });
 
@@ -398,7 +398,7 @@ void main() {
     }
 
     expect(api.archiveCalls, equals(['item-review']));
-    expect(find.text("Can't archive while importing"), findsOneWidget);
+    expect(find.text("Can't dismiss while importing"), findsOneWidget);
     expect(find.text('Flipped mid-swipe'), findsOneWidget);
   });
 
