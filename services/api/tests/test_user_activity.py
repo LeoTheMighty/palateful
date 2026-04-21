@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from conftest import MockModel, MockQuery
+from conftest import MockModel, MockQuery, count_queries
 
 
 class FilterSpyQuery(MockQuery):
@@ -116,7 +116,8 @@ class TestListActivities:
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 1
-        assert data["total"] == 1
+        # pbq-5: total is always 0 — COUNT removed.
+        assert data["total"] == 0
         assert data["items"][0]["type"] == "partner_action"
         assert data["items"][0]["title"] == "Alice edited your shopping list"
         assert data["items"][0]["subtitle"] == "Groceries"
@@ -133,6 +134,35 @@ class TestListActivities:
         data = response.json()
         assert data["limit"] == 10
         assert data["offset"] == 5
+
+    def test_list_activities_skips_count_query_on_cursor_less_path(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-5 — the initial (cursor-less) render no longer fires the
+        heavy `COUNT(*)` on `user_activities`.
+
+        Pre-fix: cursor-less requests ran a separate `total_query` with
+        `.count()` — on a 10k-row seed this was the dominant cost.
+        Post-fix: `total=0` is returned unconditionally; the main query
+        fires once to fetch `limit + 1` rows for the next-page flag.
+        """
+        from utils.models.user_activity import UserActivity
+
+        activities = [
+            MockUserActivity(type="partner_action", title=f"r{i}")
+            for i in range(3)
+        ]
+        mock_db.db.query.return_value = MockQuery(activities)
+
+        with count_queries(mock_db) as qc:
+            response = client.get("/v1/activities")
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+
+        # Only one `db.query(UserActivity)`: the main LIST query. The
+        # COUNT-shaped follow-up (a second `db.query(UserActivity)` with
+        # `.count()`) is gone.
+        assert qc.query_count_for(UserActivity) == 1
 
 
 class TestListActivitiesAllowList:
@@ -154,7 +184,8 @@ class TestListActivitiesAllowList:
         response = client.get("/v1/activities")
         assert response.status_code == 200
         body = response.json()
-        assert body["total"] == 1
+        # pbq-5: total is always 0 — COUNT removed.
+        assert body["total"] == 0
         assert body["items"][0]["type"] == "partner_action"
 
     def test_include_system_types_requires_admin(
@@ -178,7 +209,8 @@ class TestListActivitiesAllowList:
         response = client.get("/v1/activities?include_system_types=true")
         assert response.status_code == 200
         body = response.json()
-        assert body["total"] == 1
+        # pbq-5: total is always 0 — COUNT removed.
+        assert body["total"] == 0
         assert body["items"][0]["type"] == "import_started"
 
     def test_default_without_flag_does_not_require_admin(
@@ -713,8 +745,9 @@ class TestListActivitiesCursor:
         response = client.get("/v1/activities?limit=5&offset=5")
         assert response.status_code == 200
         body = response.json()
-        # Total comes from MockQuery.count() = len(items).
-        assert body["total"] == 20
+        # pbq-5: total is always 0 — COUNT removed, even on legacy
+        # offset path.
+        assert body["total"] == 0
         # Legacy path slices rows[5:10]; MockQuery returns all rows.
         assert len(body["items"]) == 5
 

@@ -926,7 +926,7 @@ development_status:
   pbq-3-list-recipes-bulk-favorite-fetch: deleted  # already implemented at list_recipes.py:82-94
   pbq-4a-unified-search-memoize-book-ids: done
   pbq-4b-unified-search-semantic-tier-selectinload: done
-  pbq-5-list-activities-drop-total-on-cursor-path: backlog
+  pbq-5-list-activities-drop-total-on-cursor-path: done
   pbq-6-list-calendars-scoped-member-count: backlog
   pbq-7-list-meal-events-eager-load-participants: backlog
   pbq-8-dependencies-ensure-default-calendar-spike-first: backlog

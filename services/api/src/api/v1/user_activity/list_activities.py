@@ -130,31 +130,17 @@ class ListActivities(Endpoint):
         has_more = len(rows) > limit
         results = rows[:limit]
 
-        # ``total`` on the response stays useful for the initial render,
-        # but the cursor request path skips it — it's a heavy COUNT and
-        # cursor-paginated lists don't rely on it for next-page hints.
-        if cursor is None:
-            total_query = self.db.query(UserActivity).filter(
-                UserActivity.user_id == user.id,
-            )
-            if since_days is not None:
-                total_query = total_query.filter(
-                    UserActivity.created_at
-                    >= datetime.now(UTC) - timedelta(days=since_days)
-                )
-            if not include_archived:
-                total_query = total_query.filter(UserActivity.archived_at.is_(None))
-            if not include_system_types:
-                total_query = total_query.filter(
-                    UserActivity.type.in_(NOTIFICATION_TAB_TYPES)
-                )
-            total = total_query.count()
-            if offset:
-                # Legacy offset path, preserved for one release.
-                results = rows[offset : offset + limit] if len(rows) > offset else []
-                has_more = len(rows) > offset + limit
-        else:
-            total = 0
+        # pbq-5: `total` is always 0 on cursor-paginated responses. The
+        # heavy COUNT(*) is gone — no Flutter consumer reads this field
+        # from `/v1/activities` (the see-all footer uses the dedicated
+        # `/v1/activities/see-all-count` endpoint). Clients that need a
+        # count should call that endpoint; clients that page should use
+        # `items.length` and `next_cursor`. Legacy `offset` path still
+        # supported for one release.
+        total = 0
+        if cursor is None and offset:
+            results = rows[offset : offset + limit] if len(rows) > offset else []
+            has_more = len(rows) > offset + limit
 
         items = [
             ListActivities.ActivityItem(
@@ -211,6 +197,10 @@ class ListActivities(Endpoint):
         archived_at: datetime | None = None
 
     class Response(BaseModel):
+        """`total` is always 0 (pbq-5 dropped the heavy COUNT). Clients
+        that need a count should call `/v1/activities/see-all-count`;
+        cursor pagination uses `items.length` + `next_cursor`."""
+
         items: list["ListActivities.ActivityItem"]
         total: int
         limit: int
