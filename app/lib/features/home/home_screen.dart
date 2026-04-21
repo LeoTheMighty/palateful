@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../recipes/providers/recipe_provider.dart';
 import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
@@ -324,6 +325,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     try {
       await _apiClient.toggleFavorite(recipeId);
+      // pfc-3: bust cached recipe payload so detail reopen sees new flag.
+      invalidateRecipe(ref, recipeId);
     } catch (e) {
       // Revert on failure
       if (mounted) {
@@ -873,6 +876,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     try {
       await _apiClient.bulkArchiveRecipes(recipeIds);
+      // pfc-3: drop each archived recipe's cached detail payload.
+      for (final id in recipeIds) {
+        invalidateRecipe(ref, id);
+      }
       return [
         for (final id in recipeIds)
           BulkOperationResult(targetName: names[id]!, success: true),

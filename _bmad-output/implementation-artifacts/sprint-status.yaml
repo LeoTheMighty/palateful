@@ -947,9 +947,9 @@ development_status:
   # (regression-sweep ACs folded into pfc-1 walkthrough). Default
   # architecture choice: extend existing ActivityReadProvider (getIt),
   # do not introduce Riverpod in the shell — subject to user confirmation.
-  epic-perf-flutter-client-polish: in-progress
+  epic-perf-flutter-client-polish: done
   pfc-1-activity-hub-consolidation: done
   pfc-2-cached-network-image-sweep: deleted  # phantom win — hot tiles already use CachedNetworkImage; see epic Open Questions for potential calendar-only rescope
-  pfc-3-recipe-detail-keep-alive: backlog
+  pfc-3-recipe-detail-keep-alive: done
   pfc-4-home-filter-no-refetch: done
   pfc-5-regression-sweep: deleted  # folded into pfc-1 walkthrough

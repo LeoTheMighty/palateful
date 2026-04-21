@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/services/api_client.dart';
 import '../../../../core/services/recipe_cache_service.dart';
 import '../../../../core/theme/theme.dart';
+import '../../providers/recipe_provider.dart';
 
 /// Bottom sheet shown after the user taps "Done cooking".
 ///
@@ -59,6 +60,9 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
         // Falls through to queue if apiClient is null (prevents silent data loss).
         if (!widget.isOffline && widget.apiClient != null) {
           await widget.apiClient!.addRecipeNote(widget.recipeId, notes);
+          // pfc-3: drop cached recipe payload so reopening detail
+          // reflects the freshly-appended note.
+          if (mounted) invalidateRecipe(context, widget.recipeId);
         } else {
           await widget.recipeCache.queueNoteAdd(widget.recipeId, notes);
         }

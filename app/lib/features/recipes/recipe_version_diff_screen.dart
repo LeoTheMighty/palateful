@@ -5,6 +5,7 @@ import '../../core/services/api_client.dart';
 import '../../core/theme/theme.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'providers/recipe_provider.dart';
 
 
 /// Diff change type for an ingredient or step.
@@ -368,6 +369,7 @@ class _RecipeVersionDiffScreenState extends State<RecipeVersionDiffScreen> {
     setState(() => _isRestoring = true);
     try {
       await _apiClient.restoreRecipeVersion(widget.recipeId, widget.versionId);
+      if (mounted) invalidateRecipe(context, widget.recipeId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Restored to Version $versionNum')),

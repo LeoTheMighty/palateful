@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
@@ -18,21 +19,21 @@ import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import '../../core/services/error_reporter.dart';
+import 'providers/recipe_provider.dart';
 import 'widgets/meals_using_this_recipe.dart';
 import '../../shared/widgets/error_banner.dart';
 
-class RecipeDetailScreen extends StatefulWidget {
+class RecipeDetailScreen extends ConsumerStatefulWidget {
   final String recipeId;
 
   const RecipeDetailScreen({super.key, required this.recipeId});
 
   @override
-  State<RecipeDetailScreen> createState() => _RecipeDetailScreenState();
+  ConsumerState<RecipeDetailScreen> createState() => _RecipeDetailScreenState();
 }
 
-class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
+class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
   final _apiClient = getIt<ApiClient>();
-  final _authService = getIt<AuthService>();
   Map<String, dynamic>? _recipe;
   Map<String, dynamic>? _debug;
   List<dynamic> _ingredients = [];
@@ -68,18 +69,18 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     });
 
     try {
-      final response = await _apiClient.getRecipe(
-        widget.recipeId,
-        debug: _authService.isAdmin,
-      );
+      // pfc-3: fetch through recipeProvider so reopening the same
+      // recipe within ~5 minutes is served from cache (zero-network).
+      // Mutations invalidate the provider via `invalidateRecipe`.
+      final data = await ref.read(recipeProvider(widget.recipeId).future);
       if (mounted) {
         setState(() {
-          _recipe = response.data;
-          _ingredients = response.data['ingredients'] ?? [];
-          _notes = (response.data['notes'] as List?) ?? [];
-          _debug = response.data['debug'] as Map<String, dynamic>?;
-          _isFavorite = response.data['is_favorite'] == true;
-          _originalServings = (response.data['servings'] as int?) ?? 0;
+          _recipe = data;
+          _ingredients = data['ingredients'] ?? [];
+          _notes = (data['notes'] as List?) ?? [];
+          _debug = data['debug'] as Map<String, dynamic>?;
+          _isFavorite = data['is_favorite'] == true;
+          _originalServings = (data['servings'] as int?) ?? 0;
           _currentServings = _originalServings;
           _isLoading = false;
         });
@@ -120,6 +121,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         'primary_vibe': primary ?? '',
         'secondary_vibe': secondary ?? '',
       });
+      invalidateRecipe(ref, widget.recipeId);
     } catch (e) {
       // Revert on failure
       if (mounted) {
@@ -141,6 +143,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
     try {
       await _apiClient.toggleFavorite(widget.recipeId);
+      invalidateRecipe(ref, widget.recipeId);
     } catch (e) {
       if (mounted) {
         setState(() => _isFavorite = wasFavorite);
@@ -299,6 +302,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     try {
       HapticFeedback.selectionClick();
       await _apiClient.deleteRecipe(widget.recipeId);
+      invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -385,6 +389,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     try {
       HapticFeedback.selectionClick();
       await _apiClient.moveRecipe(widget.recipeId, book['id']);
+      invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         context.pop();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1193,6 +1198,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     setState(() => _isAddingNote = true);
     try {
       final response = await _apiClient.addRecipeNote(widget.recipeId, body);
+      invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         final newNote = response.data as Map<String, dynamic>;
         setState(() {
@@ -1214,6 +1220,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   Future<void> _deleteNote(String noteId) async {
     try {
       await _apiClient.deleteRecipeNote(widget.recipeId, noteId);
+      invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         setState(() {
           _notes = _notes.where((n) => (n as Map)['id'] != noteId).toList();

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../providers/recipe_provider.dart';
 import '../../../core/services/cook_timer_notification_service.dart';
 import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
@@ -126,10 +127,14 @@ class _CookModeScreenState extends State<CookModeScreen>
       // All-or-nothing sync: if any note fails, the whole batch stays queued
       // and retries on next resume. Known trade-off: no partial-success clearing.
       for (final note in pending) {
+        final recipeId = note['recipe_id'] as String;
         await _apiClient.addRecipeNote(
-          note['recipe_id'] as String,
+          recipeId,
           note['body'] as String,
         );
+        // pfc-3: drop the cached recipe payload so the detail screen
+        // refetches with the newly-appended note.
+        if (mounted) invalidateRecipe(context, recipeId);
       }
       await _recipeCache.clearPendingNotes();
     } catch (_) {

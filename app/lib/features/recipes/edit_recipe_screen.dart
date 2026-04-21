@@ -13,6 +13,7 @@ import '../../core/utils/fraction_parser.dart';
 import '../../shared/widgets/error_banner.dart';
 import 'add_recipe/ingredient_edits_mapping.dart';
 import 'add_recipe/widgets/inferred_field_badge.dart';
+import 'providers/recipe_provider.dart';
 import 'widgets/structured_ingredient_row.dart';
 
 class EditRecipeScreen extends StatefulWidget {
@@ -237,6 +238,9 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       };
 
       await _apiClient.updateRecipe(widget.recipeId, data);
+      // pfc-3: bust the recipe_provider cache so the detail screen
+      // re-fetches fresh data when the user navigates back.
+      if (mounted) invalidateRecipe(context, widget.recipeId);
 
       if (mounted) {
         setState(() {
@@ -389,6 +393,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
 
       if (uploadResponse.statusCode == 200) {
         await _apiClient.updateRecipe(widget.recipeId, {'image_url': imageUrl});
+        if (mounted) invalidateRecipe(context, widget.recipeId);
         if (mounted) {
           setState(() {
             _imageUrl = imageUrl;

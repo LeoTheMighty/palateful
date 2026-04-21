@@ -8,6 +8,7 @@ import '../../shared/widgets/empty_state.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../meals/models/meal.dart';
+import 'providers/recipe_provider.dart';
 import '../meals/services/meal_service.dart';
 
 class ArchivedRecipesScreen extends StatefulWidget {
@@ -130,6 +131,7 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
     try {
       HapticFeedback.selectionClick();
       await _apiClient.restoreRecipe(recipeId);
+      if (mounted) invalidateRecipe(context, recipeId);
       if (mounted) {
         setState(() {
           _archivedRecipes.removeWhere((r) => r['id']?.toString() == recipeId);

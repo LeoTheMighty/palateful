@@ -14,6 +14,7 @@ import '../meals/models/meal.dart';
 import '../meals/services/meal_service.dart';
 import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
+import '../recipes/providers/recipe_provider.dart';
 import 'services/recipe_book_sync_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
@@ -482,7 +483,15 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     try {
       HapticFeedback.selectionClick();
       final count = _selectedRecipeIds.length;
-      await _apiClient.bulkMoveRecipes(_selectedRecipeIds.toList(), book['id']);
+      final movedIds = _selectedRecipeIds.toList();
+      await _apiClient.bulkMoveRecipes(movedIds, book['id']);
+      // pfc-3: drop each moved recipe's cached detail payload
+      // (recipe_book_id changed).
+      if (mounted) {
+        for (final id in movedIds) {
+          invalidateRecipe(context, id);
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$count recipes moved to ${book['name']}')),
@@ -530,7 +539,13 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     setState(() => _isBulkOperating = true);
     try {
       HapticFeedback.selectionClick();
-      await _apiClient.bulkArchiveRecipes(_selectedRecipeIds.toList());
+      final archivedIds = _selectedRecipeIds.toList();
+      await _apiClient.bulkArchiveRecipes(archivedIds);
+      if (mounted) {
+        for (final id in archivedIds) {
+          invalidateRecipe(context, id);
+        }
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$count recipes archived')),
