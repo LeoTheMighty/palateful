@@ -268,3 +268,101 @@ class TestFinalizeAuth:
 
         _finalize_auth(mock_database, user, claims)
         mock_database.update.assert_not_called()
+
+
+class TestEnsureDefaultCalendarDepCaching:
+    """pbq-8 spike — verify FastAPI's `Depends` cache dedupes
+    `_ensure_default_calendar` invocations within a single request.
+
+    The concern: `_ensure_default_calendar` is called inside
+    `get_current_user`, which is a FastAPI dependency used by every
+    authed route. Routes typically depend on `get_current_user` via
+    multiple parameters (handler arg + sub-dependencies). If those
+    referenced the function separately, the `SELECT FROM calendars`
+    inside `_ensure_default_calendar` would fire N times.
+
+    FastAPI caches dependencies by callable identity within one
+    request (the `use_cache=True` default on `Depends`), so the
+    function runs exactly once regardless of how many parameters
+    reference it. The spike's conclusion: no per-request cache is
+    needed; this test is regression coverage only.
+    """
+
+    def test_dep_cache_dedupes_ensure_default_calendar(self):
+        """Build a minimal FastAPI app whose route depends on
+        `get_current_user` through TWO Depends entries. Spy the
+        `_ensure_default_calendar` import and assert exactly **one**
+        invocation per request.
+        """
+        from fastapi import Depends, FastAPI
+        from fastapi.testclient import TestClient
+
+        import dependencies as deps_module
+        from dependencies import get_current_user, get_database
+
+        call_count = {"n": 0}
+
+        def spy_ensure(database, user):
+            call_count["n"] += 1
+            return None
+
+        app = FastAPI()
+
+        async def inner_dep(user=Depends(get_current_user)):
+            return user
+
+        @app.get("/spike")
+        async def spike_route(
+            primary=Depends(get_current_user),
+            aliased=Depends(inner_dep),
+        ):
+            # Two Depends(get_current_user) references — one direct,
+            # one via inner_dep. FastAPI's dep cache ensures both
+            # resolve to the same cached `User` instance.
+            assert primary is aliased
+            return {"ok": True}
+
+        # Stub Auth0 + DB so the real `get_current_user` can run to
+        # completion. Return a fixed user for both "find_or_create_by"
+        # and subsequent `_finalize_auth` calls.
+        mock_database = MagicMock()
+        fixed_user = MagicMock()
+        fixed_user.id = uuid.uuid4()
+        fixed_user.email = "spike@example.test"
+        fixed_user.name = "Spike"
+        fixed_user.picture = None
+        fixed_user.email_verified = True
+        fixed_user.auth0_profile = {}
+        mock_database.find_or_create_by.return_value = fixed_user
+
+        async def verify_token_stub(_token):
+            return {"sub": "auth0|spike", "iat": 1}
+
+        verifier = MagicMock()
+        verifier.verify_token = AsyncMock(side_effect=verify_token_stub)
+
+        def override_get_database():
+            yield mock_database
+
+        app.dependency_overrides[get_database] = override_get_database
+
+        with patch.object(deps_module, "_ensure_default_calendar", spy_ensure):
+            with patch(
+                "utils.services.auth0.get_auth0_verifier", return_value=verifier
+            ):
+                client = TestClient(app)
+                response = client.get(
+                    "/spike",
+                    headers={"Authorization": "Bearer stub-token"},
+                )
+                assert response.status_code == 200
+
+        # HARD AC — FastAPI's Depends cache dedupes. Exactly one call
+        # despite the route pulling `get_current_user` twice.
+        assert call_count["n"] == 1, (
+            f"Expected 1 invocation of `_ensure_default_calendar` per "
+            f"request (FastAPI Depends cache dedupes), got "
+            f"{call_count['n']}. If >1, the spike's assumption no "
+            f"longer holds and an explicit request.state cache is "
+            f"needed (see pbq-8 story)."
+        )

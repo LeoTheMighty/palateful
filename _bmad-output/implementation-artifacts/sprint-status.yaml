@@ -919,7 +919,7 @@ development_status:
   # selectinload), renamed pbq-5 to reflect honest "drop total" behavior,
   # added pbq-0 (query-count test helper as prereq), and reframed pbq-8 as
   # spike-first (may close as no-op if FastAPI dep-cache already dedupes).
-  epic-perf-backend-query-tuning: in-progress
+  epic-perf-backend-query-tuning: done
   pbq-0-query-count-test-helper: done
   pbq-1-list-shopping-lists-eager-load: done
   pbq-2-list-meals-readable-book-ids-hoisted: done
@@ -929,7 +929,7 @@ development_status:
   pbq-5-list-activities-drop-total-on-cursor-path: done
   pbq-6-list-calendars-scoped-member-count: done
   pbq-7-list-meal-events-eager-load-participants: done
-  pbq-8-dependencies-ensure-default-calendar-spike-first: backlog
+  pbq-8-dependencies-ensure-default-calendar-spike-first: done
 
   # epic-perf-flutter-client-polish — merge shell + notifications-tab +
   # imports-tab 30s pollers into a single activityHubProvider (user's
