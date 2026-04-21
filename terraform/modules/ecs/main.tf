@@ -158,6 +158,28 @@ variable "firebase_secret_arn" {
   description = "Secrets Manager ARN for Firebase credentials JSON"
 }
 
+# ─── pim-4a (2026-04-21) — API task sizing ───
+
+variable "api_task_cpu" {
+  type        = number
+  default     = 512
+  description = <<-EOT
+    API task CPU units. pim-4a bumped 256 → 512. Fargate valid pairs:
+    256/512, 512/1024, 1024/2048, 2048/4096. Rollback for a regression
+    is `terraform apply` with this set to 256 (and memory=512).
+  EOT
+}
+
+variable "api_task_memory" {
+  type        = number
+  default     = 1024
+  description = <<-EOT
+    API task memory in MB. Must be a valid Fargate pair with the CPU
+    value. 512 MB at cpu=256 was starving JWT verify + concurrent
+    queries; 1024 gives headroom.
+  EOT
+}
+
 # ─── Cluster ───
 
 resource "aws_ecs_cluster" "main" {
@@ -213,10 +235,15 @@ resource "aws_ecs_task_definition" "api" {
   family                   = "${var.project}-api-${var.environment}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 256
-  memory                   = 512
-  execution_role_arn       = var.execution_role_arn
-  task_role_arn            = var.api_task_role_arn
+  # pim-4a (2026-04-21): 256/512 → 512/1024. Removes CPU starvation
+  # during Auth0 JWT verify + concurrent DB queries; cuts GC pauses
+  # on task startup. Rolling deploy; no task churn beyond a normal
+  # service update. +~$5/mo (within NFR29's $50 cap). Rollback: revert
+  # cpu/memory to 256/512 and one terraform apply.
+  cpu                = var.api_task_cpu
+  memory             = var.api_task_memory
+  execution_role_arn = var.execution_role_arn
+  task_role_arn      = var.api_task_role_arn
 
   runtime_platform {
     operating_system_family = "LINUX"

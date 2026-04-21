@@ -895,7 +895,7 @@ development_status:
   pim-3-rds-instance-upgrade: done
   # pim-4 split in party-mode (2026-04-21) into 4a (task sizing, rolling
   # deploy) + 4b (pool + ALB, config-only, gated on pim-2 reboot).
-  pim-4a-ecs-api-task-sizing: backlog
+  pim-4a-ecs-api-task-sizing: done
   pim-4b-pool-and-alb-health-check: backlog
   pim-5-redis-and-jwks-cache: backlog
   pim-6-concurrently-migration-backport-audit: backlog
