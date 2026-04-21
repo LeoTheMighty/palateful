@@ -87,7 +87,13 @@ class ListMealEvents(Endpoint):
             .options(
                 selectinload(MealEvent.meal)
                 .selectinload(Meal.components)
-                .selectinload(MealRecipe.recipe)
+                .selectinload(MealRecipe.recipe),
+                # pbq-7: SIBLING selectinload — participants is a
+                # relationship on MealEvent itself, NOT nested under
+                # .meal. The response loop reads `event.participants`
+                # for `participant_count`; without this option every
+                # row fires a lazy-load IN query.
+                selectinload(MealEvent.participants),
             )
             .filter(MealEvent.calendar_id.in_(scoped_calendar_ids))
             .filter(MealEvent.archived_at.is_(None))

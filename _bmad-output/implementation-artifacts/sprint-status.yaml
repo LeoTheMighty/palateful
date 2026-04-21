@@ -928,7 +928,7 @@ development_status:
   pbq-4b-unified-search-semantic-tier-selectinload: done
   pbq-5-list-activities-drop-total-on-cursor-path: done
   pbq-6-list-calendars-scoped-member-count: done
-  pbq-7-list-meal-events-eager-load-participants: backlog
+  pbq-7-list-meal-events-eager-load-participants: done
   pbq-8-dependencies-ensure-default-calendar-spike-first: backlog
 
   # epic-perf-flutter-client-polish — merge shell + notifications-tab +

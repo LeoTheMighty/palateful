@@ -10,6 +10,7 @@ from conftest import (
     MockQuery,
     MockRecipe,
     MockUser,
+    count_queries,
 )
 
 
@@ -42,6 +43,52 @@ class TestListMealEvents:
         data = response.json()
         assert data["items"] == []
         assert data["total"] == 0
+
+    def test_list_meal_events_eager_loads_participants_as_sibling_option(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-7 — `selectinload(MealEvent.participants)` lands as a
+        SIBLING `.options()` entry alongside the existing
+        `meal.components.recipe` chain (NOT nested under `.meal`).
+
+        MockDatabase pre-populates `event.participants` so the lazy-
+        load can't be reproduced; the test proves the option is wired
+        by spying on the handler's `selectinload` import and asserting
+        `MealEvent.participants` appears in the wrapped attribute set
+        with at least one outer (non-nested) call — a regression that
+        moved it under `.meal` or dropped it entirely would trip.
+        """
+        import api.v1.meal_event.list_meal_events as handler_module
+        from utils.models.meal_event import MealEvent
+
+        events = [
+            MockMealEvent(owner_id=str(mock_user.id), participants=[], recipe=None)
+            for _ in range(10)
+        ]
+        mock_db.db.query.return_value = MockQuery(events)
+
+        with patch.object(
+            handler_module,
+            "selectinload",
+            wraps=handler_module.selectinload,
+        ) as spy:
+            with count_queries(mock_db) as qc:
+                response = client.get("/v1/meal-events")
+        assert response.status_code == 200
+
+        # Outer `selectinload(...)` was called for BOTH `MealEvent.meal`
+        # (head of the chain) and `MealEvent.participants` (sibling).
+        # Any nested `.selectinload(Meal.components)` call on the Load
+        # object does NOT go through this spy, which is fine — we only
+        # need to assert the sibling is wired.
+        outer_keys = [
+            getattr(call.args[0], "key", None) for call in spy.call_args_list
+        ]
+        assert "participants" in outer_keys
+        assert "meal" in outer_keys
+
+        # Query count on MealEvent is bounded — one LIST + one count.
+        assert qc.query_count_for(MealEvent) <= 2
 
 
 class TestCreateMealEvent:
