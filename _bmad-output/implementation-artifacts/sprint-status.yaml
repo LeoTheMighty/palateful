@@ -919,8 +919,8 @@ development_status:
   # selectinload), renamed pbq-5 to reflect honest "drop total" behavior,
   # added pbq-0 (query-count test helper as prereq), and reframed pbq-8 as
   # spike-first (may close as no-op if FastAPI dep-cache already dedupes).
-  epic-perf-backend-query-tuning: backlog
-  pbq-0-query-count-test-helper: backlog
+  epic-perf-backend-query-tuning: in-progress
+  pbq-0-query-count-test-helper: done
   pbq-1-list-shopping-lists-eager-load: backlog
   pbq-2-list-meals-readable-book-ids-hoisted: backlog
   pbq-3-list-recipes-bulk-favorite-fetch: deleted  # already implemented at list_recipes.py:82-94

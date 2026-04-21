@@ -17,6 +17,7 @@ from conftest import (
     MockShoppingListItem,
     MockShoppingListUser,
     MockUser,
+    count_queries,
 )
 
 
@@ -48,6 +49,29 @@ class TestListShoppingLists:
         assert response.status_code == 200
         data = response.json()
         assert data["items"] == []
+
+    def test_count_queries_helper_tracks_mock_invocations(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-0 smoke test — `count_queries` tallies mock-layer calls.
+
+        Demonstrates the helper captures `db.query` deltas and per-
+        model counts across an end-to-end request. Acts as a contract
+        for the rest of the pbq-* stories.
+        """
+        sl = MockShoppingList(
+            owner_id=str(mock_user.id), items=[], members=[], is_shared=False
+        )
+        mock_db.db.query.return_value = MockQuery([sl])
+
+        with count_queries(mock_db) as qc:
+            response = client.get("/v1/shopping-lists")
+        assert response.status_code == 200
+
+        assert qc.select > 0
+        assert qc.total >= qc.select
+        from utils.models.shopping_list import ShoppingList
+        assert qc.query_count_for(ShoppingList) >= 1
 
 
 class TestCreateShoppingList:

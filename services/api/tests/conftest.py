@@ -3,7 +3,10 @@
 import os
 import sys
 import uuid
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any, Iterator
 from unittest.mock import MagicMock
 
 import pytest
@@ -740,6 +743,144 @@ def _apply_column_defaults(obj):
                             pass
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Query-count test helper (pbq-0)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class QueryCounter:
+    """Tallies DB-interaction calls observed on a `MockDatabase` inside a
+    `count_queries()` block.
+
+    Because the API test suite mocks the session, these counts measure
+    invocations of mock methods rather than real SQL round-trips — good
+    enough for regressioning N+1 patterns whose extra hits show up as
+    explicit `db.query(...)` / `db.execute(...)` repetitions inside a
+    handler (e.g. `_readable_book_ids` called per meal). Relationship-
+    attribute lazy loads do NOT surface here; pair the count with a
+    `selectinload` spy when the fix is an eager-load.
+
+    `query_args` captures the positional args passed to every
+    `db.query(...)` call during the block, so tests can assert how many
+    times a particular model was queried (e.g. `RecipeBookUser`).
+    """
+
+    select: int = 0
+    insert: int = 0
+    update: int = 0
+    delete: int = 0
+    query_args: list[tuple[Any, ...]] = field(default_factory=list)
+
+    @property
+    def total(self) -> int:
+        return self.select + self.insert + self.update + self.delete
+
+    def query_count_for(self, model) -> int:
+        """Number of `db.query(...)` calls whose first arg is `model`.
+
+        Matches either the model class itself or a column attribute of
+        it (`RecipeBookUser.recipe_book_id` maps to `RecipeBookUser`).
+        """
+        target = getattr(model, "__name__", None) or repr(model)
+        count = 0
+        for args in self.query_args:
+            if not args:
+                continue
+            first = args[0]
+            first_name = getattr(first, "__name__", None)
+            if first_name == target:
+                count += 1
+                continue
+            owner = getattr(first, "class_", None) or getattr(first, "parent", None)
+            owner_name = getattr(owner, "__name__", None)
+            if owner_name == target:
+                count += 1
+        return count
+
+
+@contextmanager
+def count_queries(mock_db: "MockDatabase") -> Iterator[QueryCounter]:
+    """Measure DB-interaction calls on a `MockDatabase` within the block.
+
+    Typical usage::
+
+        with count_queries(mock_db) as qc:
+            response = client.get("/v1/meals?scope=home")
+        assert qc.select <= 3
+        assert qc.query_count_for(RecipeBookUser) == 1
+    """
+    counter = QueryCounter()
+
+    before_query = mock_db.db.query.call_count
+    before_execute = mock_db.db.execute.call_count
+    before_add = mock_db.db.add.call_count
+    before_sess_delete = mock_db.db.delete.call_count
+
+    # Intentionally NOT wrapping `save` — `MockDatabase.save` delegates
+    # to `self.create`, which is already instrumented. Wrapping both
+    # would double-count an insert whenever a test calls `save()`.
+    orig_find_by = mock_db.find_by
+    orig_where = mock_db.where
+    orig_create = mock_db.create
+    orig_create_all = mock_db.create_all
+    orig_update = mock_db.update
+    orig_delete = mock_db.delete
+
+    helper = {
+        "find_by": 0,
+        "where": 0,
+        "create": 0,
+        "create_all": 0,
+        "update": 0,
+        "delete": 0,
+    }
+
+    def _wrap(name, orig):
+        def wrapped(*args, **kwargs):
+            helper[name] += 1
+            return orig(*args, **kwargs)
+        return wrapped
+
+    mock_db.find_by = _wrap("find_by", orig_find_by)
+    mock_db.where = _wrap("where", orig_where)
+    mock_db.create = _wrap("create", orig_create)
+    mock_db.create_all = _wrap("create_all", orig_create_all)
+    mock_db.update = _wrap("update", orig_update)
+    mock_db.delete = _wrap("delete", orig_delete)
+
+    try:
+        yield counter
+    finally:
+        counter.select = (
+            (mock_db.db.query.call_count - before_query)
+            + (mock_db.db.execute.call_count - before_execute)
+            + helper["find_by"]
+            + helper["where"]
+        )
+        counter.insert = (
+            (mock_db.db.add.call_count - before_add)
+            + helper["create"]
+            + helper["create_all"]
+        )
+        counter.update = helper["update"]
+        counter.delete = (
+            (mock_db.db.delete.call_count - before_sess_delete)
+            + helper["delete"]
+        )
+        counter.query_args = [
+            tuple(call.args)
+            for call in mock_db.db.query.call_args_list[before_query:]
+        ]
+
+        mock_db.find_by = orig_find_by
+        mock_db.where = orig_where
+        mock_db.create = orig_create
+        mock_db.create_all = orig_create_all
+        mock_db.update = orig_update
+        mock_db.delete = orig_delete
 
 
 # ---------------------------------------------------------------------------
