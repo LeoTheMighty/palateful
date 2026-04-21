@@ -56,11 +56,15 @@ resource "aws_lb_target_group" "api" {
   vpc_id      = var.vpc_id
 
   health_check {
-    path                = "/v1/health"
-    port                = "8000"
-    protocol            = "HTTP"
-    interval            = 30
-    timeout             = 5
+    path = "/v1/health"
+    port = "8000"
+    protocol = "HTTP"
+    # pim-4b (2026-04-21): 30/5 → 60/3. Halves health-check volume on
+    # the hot path; hung-task detection still fires within 2 min.
+    # ECS deployment circuit breaker still gates failed deploys, so
+    # the 1-minute longer window is safe.
+    interval = 60
+    timeout  = 3
     healthy_threshold   = 2
     unhealthy_threshold = 3
     matcher             = "200"

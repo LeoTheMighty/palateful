@@ -39,8 +39,13 @@ def _build_database_url() -> str | None:
 
 
 DATABASE_URL = _build_database_url()
-DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "10"))
-DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "20"))
+# pim-4b (2026-04-21): defaults bumped 10→20 / 20→40. Gated on pim-2's
+# static param reboot setting max_connections=80 (20 reserved for
+# beat/worker/migrator/psql). Env-overridable so local dev can stay on
+# 10/20 without the bump (set DB_POOL_SIZE=10 in docker-compose.yml or
+# a dev .env).
+DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))
+DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "40"))
 
 # AWS Parser / Batch settings (used by worker tasks)
 PARSER_INPUTS_BUCKET = os.environ.get("PARSER_INPUTS_BUCKET", "")
