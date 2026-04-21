@@ -889,7 +889,7 @@ development_status:
   # CREATE INDEX and backports as forward migrations. No API shape changes.
   # Blocks nothing hard; pim-1 (script) unblocks QA walkthroughs for the
   # other two perf epics.
-  epic-perf-infra-and-measurement: in-progress
+  epic-perf-infra-and-measurement: done
   pim-1-analyze-latency-script: done
   pim-2-rds-parameter-group-and-performance-insights: done
   pim-3-rds-instance-upgrade: done
@@ -898,7 +898,8 @@ development_status:
   pim-4a-ecs-api-task-sizing: done
   pim-4b-pool-and-alb-health-check: done
   pim-5-redis-and-jwks-cache: done
-  pim-6-concurrently-migration-backport-audit: backlog
+  pim-6-concurrently-migration-backport-audit: done
+  epic-perf-infra-and-measurement-retrospective: optional
 
   # epic-perf-backend-query-tuning — close verified N+1 / redundant-query
   # patterns on list endpoints. list_shopping_lists eager-loads items +
