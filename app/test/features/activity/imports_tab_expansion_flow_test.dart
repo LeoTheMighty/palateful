@@ -7,6 +7,7 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/imports_tab.dart';
+import 'package:palateful/features/activity/providers/activity_read_provider.dart';
 
 // irrd-7 integration test: yellow row → tap caret → expansion opens →
 // tap Review → assert GoRouter navigated to /recipes/import/review/:id.
@@ -101,11 +102,20 @@ void _register(_FakeApiClient client) {
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   gi.registerSingleton<ApiClient>(client);
+  if (gi.isRegistered<ActivityReadProvider>()) {
+    gi.unregister<ActivityReadProvider>();
+  }
+  gi.registerLazySingleton<ActivityReadProvider>(
+    () => ActivityReadProvider(gi<ApiClient>()),
+  );
 }
 
 void _unregister() {
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+  if (gi.isRegistered<ActivityReadProvider>()) {
+    gi.unregister<ActivityReadProvider>();
+  }
 }
 
 // Bounded pump loop — StageTimeline's pulse animation never settles.

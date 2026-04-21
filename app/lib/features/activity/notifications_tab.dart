@@ -34,7 +34,7 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
   List<dynamic> _activities = [];
   bool _isLoading = true;
   String? _error;
-  Timer? _pollTimer;
+  VoidCallback? _disposeTickListener;
 
   /// Per-id monotonic nonce — bumped every time we restore an archived
   /// row. Flutter's [Dismissible] persists its `_dismissed = true` state
@@ -50,14 +50,21 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
   void initState() {
     super.initState();
     _load();
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _load(silent: true);
-    });
+    // pfc-1: subscribe to the shared 30s tick. `contributesUnreadCount:
+    // true` tells the provider to skip its own `/unread-count` fetch
+    // while this tab is mounted — our `_load` path calls
+    // `refreshUnreadCount` downstream so the badge stays fresh without
+    // the redundant top-level request.
+    _disposeTickListener = _readProvider.registerTickListener(
+      () => _load(silent: true),
+      contributesUnreadCount: true,
+    );
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _disposeTickListener?.call();
+    _disposeTickListener = null;
     super.dispose();
   }
 

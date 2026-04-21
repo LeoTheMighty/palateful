@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -23,24 +21,20 @@ class ScaffoldWithBottomNav extends StatefulWidget {
 
 class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
   final _readProvider = getIt<ActivityReadProvider>();
-  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    // Cold-start reconciliation: server wins. We fetch immediately so the
-    // badge matches server truth instead of any stale in-memory state.
-    _readProvider.refreshUnreadCount();
     _readProvider.unreadCount.addListener(_onCountChanged);
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _readProvider.refreshUnreadCount();
-    });
+    // pfc-1: single source of cadence. startPolling fires an immediate
+    // tick for cold-start reconciliation, then installs the 30s Timer.
+    _readProvider.startPolling();
   }
 
   @override
   void dispose() {
     _readProvider.unreadCount.removeListener(_onCountChanged);
-    _pollTimer?.cancel();
+    _readProvider.stopPolling();
     super.dispose();
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -185,4 +187,106 @@ class ActivityReadProvider {
       unreadCount.value = count;
     }
   }
+
+  // ───────────────────────────────────────────────────────────────────
+  // pfc-1: single-source 30s poll. Shell owns start/stop; tabs register
+  // tick listeners. When a listener declares `contributesUnreadCount`,
+  // the provider skips its own `/unread-count` fetch on each tick — the
+  // consumer's richer fetch (e.g. notifications_tab's `/v1/activities`)
+  // carries fresh truth via its own downstream `refreshUnreadCount()`.
+  // ───────────────────────────────────────────────────────────────────
+
+  static const Duration _pollInterval = Duration(seconds: 30);
+  Timer? _pollTimer;
+  final List<_TickListenerEntry> _tickListeners = [];
+  int _activitiesFetchSubscribers = 0;
+
+  /// True iff the provider currently owns a live `Timer.periodic`.
+  @visibleForTesting
+  bool get hasActiveTimer => _pollTimer?.isActive == true;
+
+  @visibleForTesting
+  int get tickListenerCount => _tickListeners.length;
+
+  @visibleForTesting
+  int get activitiesFetchSubscriberCount => _activitiesFetchSubscribers;
+
+  /// Start the single app-wide 30s poll. Idempotent — second call is a
+  /// no-op. Fires one immediate tick for cold-start reconciliation.
+  void startPolling() {
+    if (_pollTimer?.isActive == true) return;
+    // Cold-start reconciliation: fire a tick right away so the badge
+    // matches server truth without waiting 30s.
+    _tick();
+    _pollTimer = Timer.periodic(_pollInterval, (_) => _tick());
+  }
+
+  /// Stop the poll. Shell calls this on dispose.
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// Register a per-tick refresh callback. Returns a disposer that the
+  /// caller MUST invoke on dispose. Double-invoke of the disposer is
+  /// guarded — subsequent calls are no-ops.
+  ///
+  /// When [contributesUnreadCount] is true, the provider suppresses its
+  /// own `refreshUnreadCount()` on each tick while this listener is
+  /// alive — the consumer's own fetch is expected to update
+  /// `unreadCount` downstream. Use for consumers that fetch
+  /// `/v1/activities` (which inherently carries the count). Do NOT set
+  /// for consumers whose fetch does not carry the count (e.g. imports
+  /// tab's `/v1/import-jobs`).
+  VoidCallback registerTickListener(
+    VoidCallback callback, {
+    bool contributesUnreadCount = false,
+  }) {
+    final entry = _TickListenerEntry(callback, contributesUnreadCount);
+    _tickListeners.add(entry);
+    if (contributesUnreadCount) _activitiesFetchSubscribers++;
+
+    var disposed = false;
+    return () {
+      if (disposed) return;
+      disposed = true;
+      _tickListeners.remove(entry);
+      if (contributesUnreadCount) _activitiesFetchSubscribers--;
+    };
+  }
+
+  /// Visible-for-testing hook so unit tests can drive the decision
+  /// matrix without waiting 30s. Production callers go through the
+  /// Timer.
+  @visibleForTesting
+  Future<void> debugTick() => _tick();
+
+  Future<void> _tick() async {
+    // Sentinel log for the manual walkthrough — DevTools console prints
+    // this every 30s when the poll is alive. Stripped in release builds.
+    debugPrint('[activity-read] tick');
+    // Fire tab refreshes first. Copy the list so a disposer invoked
+    // during callback dispatch doesn't mutate the iterator.
+    for (final entry in List<_TickListenerEntry>.from(_tickListeners)) {
+      try {
+        entry.callback();
+      } catch (e, st) {
+        ErrorReporter.report(
+          e,
+          st,
+          area: 'activity',
+          operation: 'activity_read_tick_listener',
+        );
+      }
+    }
+    if (_activitiesFetchSubscribers == 0) {
+      await refreshUnreadCount();
+    }
+  }
+}
+
+class _TickListenerEntry {
+  _TickListenerEntry(this.callback, this.contributesUnreadCount);
+  final VoidCallback callback;
+  final bool contributesUnreadCount;
 }

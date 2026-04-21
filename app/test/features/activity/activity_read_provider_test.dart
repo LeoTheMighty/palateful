@@ -251,5 +251,149 @@ void main() {
                 'is a render-layer concern in scaffold_with_bottom_nav.dart');
       },
     );
+
+    // ────────────────────────────────────────────────────────────────
+    // pfc-1: single 30s poll, decision matrix, disposer hygiene.
+    // ────────────────────────────────────────────────────────────────
+
+    test('pfc-1: startPolling is idempotent (exactly one Timer)', () async {
+      final api = _FakeApiClient();
+      final provider = ActivityReadProvider(api);
+
+      expect(provider.hasActiveTimer, isFalse);
+      provider.startPolling();
+      expect(provider.hasActiveTimer, isTrue);
+
+      // Second call is a no-op — the provider does NOT spawn a second
+      // Timer. There's no observable second Timer handle, but we can
+      // prove the invariant by round-tripping stop → start and by
+      // asserting the call doesn't re-fire the cold-start _tick
+      // (unreadCountCalls would jump from 1 → 2 if it did).
+      // Flush the first immediate tick's microtask-queued future:
+      await Future<void>.delayed(Duration.zero);
+      final callsAfterFirstStart = api.unreadCountCalls;
+      provider.startPolling();
+      await Future<void>.delayed(Duration.zero);
+      expect(api.unreadCountCalls, callsAfterFirstStart,
+          reason: 'second startPolling must not re-fire cold-start tick');
+      expect(provider.hasActiveTimer, isTrue);
+
+      provider.stopPolling();
+      expect(provider.hasActiveTimer, isFalse);
+    });
+
+    test(
+      'pfc-1: _tick skips unread-count when a contributesUnreadCount '
+      'subscriber is alive',
+      () async {
+        final api = _FakeApiClient();
+        final provider = ActivityReadProvider(api);
+
+        var callbackFires = 0;
+        final dispose = provider.registerTickListener(
+          () => callbackFires++,
+          contributesUnreadCount: true,
+        );
+        expect(provider.activitiesFetchSubscriberCount, 1);
+
+        await provider.debugTick();
+
+        expect(callbackFires, 1,
+            reason: 'listener fires on every tick');
+        expect(api.unreadCountCalls, 0,
+            reason:
+                'unread-count is suppressed while a contributor is alive');
+
+        dispose();
+        expect(provider.activitiesFetchSubscriberCount, 0);
+
+        await provider.debugTick();
+        expect(api.unreadCountCalls, 1,
+            reason:
+                'once the contributor is disposed, the provider resumes '
+                'its own unread-count fetch on each tick');
+      },
+    );
+
+    test(
+      'pfc-1: _tick fires unread-count when only non-contributing '
+      'subscribers are alive (imports tab case)',
+      () async {
+        final api = _FakeApiClient();
+        final provider = ActivityReadProvider(api);
+
+        var callbackFires = 0;
+        final dispose = provider.registerTickListener(
+          () => callbackFires++,
+          // Default contributesUnreadCount: false — imports tab fetches
+          // do not carry the bell count.
+        );
+        expect(provider.activitiesFetchSubscriberCount, 0);
+
+        await provider.debugTick();
+
+        expect(callbackFires, 1);
+        expect(api.unreadCountCalls, 1,
+            reason:
+                'non-contributing listeners must not suppress /unread-count');
+
+        dispose();
+      },
+    );
+
+    test(
+      'pfc-1: disposer is idempotent — double-invoke is a no-op',
+      () async {
+        final api = _FakeApiClient();
+        final provider = ActivityReadProvider(api);
+
+        final dispose = provider.registerTickListener(
+          () {},
+          contributesUnreadCount: true,
+        );
+        expect(provider.tickListenerCount, 1);
+        expect(provider.activitiesFetchSubscriberCount, 1);
+
+        dispose();
+        dispose(); // Double-invoke.
+
+        expect(provider.tickListenerCount, 0);
+        expect(provider.activitiesFetchSubscriberCount, 0,
+            reason:
+                'double-invoke must not drive the counter negative');
+      },
+    );
+
+    test(
+      'pfc-1: mixed contributor + non-contributor — contributor wins '
+      'gating behaviour',
+      () async {
+        final api = _FakeApiClient();
+        final provider = ActivityReadProvider(api);
+
+        final disposeNotif = provider.registerTickListener(
+          () {},
+          contributesUnreadCount: true,
+        );
+        final disposeImp = provider.registerTickListener(() {});
+        expect(provider.tickListenerCount, 2);
+        expect(provider.activitiesFetchSubscriberCount, 1);
+
+        await provider.debugTick();
+        expect(api.unreadCountCalls, 0,
+            reason:
+                'while notifications_tab listener is alive, unread-count '
+                'is suppressed even though imports_tab is also subscribed');
+
+        disposeNotif();
+        await provider.debugTick();
+        expect(api.unreadCountCalls, 1,
+            reason:
+                'after notifications_tab unsubscribes, imports_tab alone '
+                'does not suppress unread-count');
+
+        disposeImp();
+      },
+    );
   });
 }

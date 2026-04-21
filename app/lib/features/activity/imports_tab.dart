@@ -10,6 +10,7 @@ import '../../core/services/error_reporter.dart';
 import '../../core/theme/import_state_colors.dart';
 import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
+import 'providers/activity_read_provider.dart';
 import 'providers/import_item_telemetry_provider.dart';
 import 'providers/import_row_expansion_provider.dart';
 import 'providers/imports_see_all_provider.dart';
@@ -56,6 +57,7 @@ const _inProgressJobStatuses = {
 class _ImportsTabState extends ConsumerState<ImportsTab>
     with AutomaticKeepAliveClientMixin {
   final _apiClient = getIt<ApiClient>();
+  final _readProvider = getIt<ActivityReadProvider>();
 
   List<_JobView> _inProgress = [];
   List<_ItemView> _needsReview = [];
@@ -65,7 +67,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
 
   bool _isLoading = true;
   String? _error;
-  Timer? _pollTimer;
+  VoidCallback? _disposeTickListener;
 
   /// Per-id monotonic nonce — bumped every time we restore an archived
   /// row. See `NotificationsTab` for the Dismissible-key rationale.
@@ -78,14 +80,18 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   void initState() {
     super.initState();
     _load();
-    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _load(silent: true);
-    });
+    // pfc-1: subscribe to the shared 30s tick. `contributesUnreadCount`
+    // stays false — this tab fetches `/v1/import-jobs` + `/v1/import-
+    // items`, neither of which carries the bell count.
+    _disposeTickListener = _readProvider.registerTickListener(
+      () => _load(silent: true),
+    );
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _disposeTickListener?.call();
+    _disposeTickListener = null;
     super.dispose();
   }
 
