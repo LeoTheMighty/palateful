@@ -115,6 +115,28 @@ void main() async {
       apiClient.setAuthService(authService);
       apiClient.setAuthToken(authService.accessToken!);
 
+      // BOOT SMOKE TEST (push-diag debugging): direct client-error POST
+      // bypassing ErrorReporter. If this row lands in error_logs
+      // (service='client', error_type='BootSmokeTest') we know the
+      // mirror endpoint + auth + network are all fine, and any missing
+      // ErrorReporter rows are due to a wiring bug in error_reporter.dart.
+      // If this row is also missing, the binary doesn't have the new
+      // Dart code (stale TestFlight / caching issue).
+      unawaited(() async {
+        try {
+          await apiClient
+              .recordClientError(
+                errorType: 'BootSmokeTest',
+                errorMessage: 'main.dart boot smoke test 1.0.36+49',
+                area: 'diag',
+                operation: 'boot_smoke_test',
+              )
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {
+          // Swallow — diagnostic only.
+        }
+      }());
+
       // Fetch user data to get onboarding state
       try {
         final response = await apiClient.getMe();
