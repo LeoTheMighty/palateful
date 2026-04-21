@@ -308,6 +308,18 @@ development_status:
   home-polish-2-post-add-recipe-nav: backlog
   epic-bugs-home-polish-retrospective: optional
 
+  # Epic Bugs — Auth & Shopping Cart Batch (planned 2026-04-21)
+  # Four-story dogfood bug batch: Auth0 native-logout returnTo, Archive→Dismiss
+  # copy in imports/notifs, shopping cart open reliability + WS error reporting,
+  # Dio interceptor logout-on-refresh-failure. Flutter-only except a small
+  # backend audit of get_shopping_list.
+  epic-bugs-auth-and-shopping: backlog
+  bas-1-auth0-logout-return-to: backlog
+  bas-2-rename-archive-to-dismiss: backlog
+  bas-3-shopping-cart-open-reliability-and-ws-reporting: backlog
+  bas-4-dio-interceptor-logout-on-refresh-failure: backlog
+  epic-bugs-auth-and-shopping-retrospective: optional
+
   # Epic Notifications — iOS Proof-of-Life (planned 2026-04-17)
   # Cross-layer. Goal is "one push arrives on Leo's iPhone" via an
   # admin test-push button, NOT the full event firehose (follow-up).

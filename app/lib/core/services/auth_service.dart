@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter/foundation.dart';
 import '../config/environment.dart';
@@ -212,7 +214,17 @@ class AuthService extends ChangeNotifier {
         await _auth0!.credentialsManager.clearCredentials();
         debugPrint('AuthService: Cleared credentials from secure storage');
 
-        await _auth0!.webAuthentication(scheme: Environment.auth0Scheme).logout();
+        // Pass returnTo so Auth0 closes the in-browser page and deep-links
+        // back to the app instead of leaving a "You are logged out" page
+        // stuck on screen. Mirror the format auth0_flutter builds for the
+        // login callback (iOS bundle-id path vs. Android package path) so
+        // the same URL that's already in Auth0's Allowed Callback URLs
+        // works as an Allowed Logout URL.
+        final platformSegment = Platform.isIOS ? 'ios' : 'android';
+        await _auth0!.webAuthentication(scheme: Environment.auth0Scheme).logout(
+              returnTo:
+                  '${Environment.auth0Scheme}://${Environment.auth0Domain}/$platformSegment/${Environment.auth0Scheme}/callback',
+            );
       }
 
       _clearSessionState();
