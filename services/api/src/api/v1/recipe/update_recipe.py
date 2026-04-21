@@ -289,7 +289,7 @@ class UpdateRecipe(Endpoint):
 
         ingredient_responses = [
             UpdateRecipe.IngredientResponse(
-                id=ri.id,
+                id=str(ri.ingredient_id),
                 ingredient=UpdateRecipe.IngredientSummary(
                     id=ing.id,
                     canonical_name=ing.canonical_name,

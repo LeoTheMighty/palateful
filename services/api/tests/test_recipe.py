@@ -2457,6 +2457,11 @@ class TestUpdateRecipeMissingBranches:
             }
         )
         assert response.status_code == 200
+        # Regression: IngredientResponse.id was previously `ri.id`, which
+        # AttributeErrored because RecipeIngredient has a composite PK (no
+        # `id` column). Confirm it now surfaces the ingredient_id instead.
+        body = response.json()
+        assert body["ingredients"][0]["id"] == ingredient_id
 
     def test_update_recipe_ingredient_not_found(self, client, mock_db, mock_user):
         """Test updating recipe with nonexistent ingredient returns 400."""

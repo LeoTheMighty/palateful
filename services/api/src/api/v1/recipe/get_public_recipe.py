@@ -78,7 +78,7 @@ class GetPublicRecipe(Endpoint):
 
         ingredient_responses = [
             GetPublicRecipe.IngredientResponse(
-                id=ri.id,
+                id=str(ri.ingredient_id),
                 ingredient=GetPublicRecipe.IngredientSummary(
                     id=ing.id,
                     canonical_name=ing.canonical_name,

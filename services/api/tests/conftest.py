@@ -152,7 +152,14 @@ class MockIngredient(MockModel):
 
 
 class MockRecipeIngredient(MockModel):
-    """Mock RecipeIngredient model."""
+    """Mock RecipeIngredient model.
+
+    The real RecipeIngredient is a join table with a composite PK
+    (recipe_id, ingredient_id) and no `id` column. The base MockModel
+    sets `id` by default, so strip it here — otherwise production code
+    that accidentally reads `ri.id` passes tests but raises
+    AttributeError in prod.
+    """
 
     def __init__(self, **kwargs):
         from decimal import Decimal
@@ -169,6 +176,11 @@ class MockRecipeIngredient(MockModel):
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
+        if "id" not in kwargs:
+            try:
+                delattr(self, "id")
+            except AttributeError:
+                pass
 
 
 class MockRecipeStep(MockModel):

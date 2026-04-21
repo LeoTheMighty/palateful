@@ -57,7 +57,7 @@ class GetPublicRecipeByToken(Endpoint):
                 tags=recipe.tags or [],
                 ingredients=[
                     GetPublicRecipe.IngredientResponse(
-                        id=ri.id,
+                        id=str(ri.ingredient_id),
                         ingredient=GetPublicRecipe.IngredientSummary(
                             id=ing.id,
                             canonical_name=ing.canonical_name,
