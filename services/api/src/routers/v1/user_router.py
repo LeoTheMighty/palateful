@@ -7,6 +7,7 @@ from api.v1.user import (
     ExportRecipes,
     GetMe,
     GetNotificationPreferences,
+    RecordClientError,
     RegisterPushToken,
     SearchUsers,
     SetDefaultRecipeBook,
@@ -100,6 +101,16 @@ async def unregister_push_token(
 ):
     """Unregister a device push notification token."""
     return UnregisterPushToken.call(params=params, user=user, database=database)
+
+
+@user_router.post("/me/client-errors")
+async def record_client_error(
+    params: RecordClientError.Params,
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Record a client-side error/breadcrumb as an error_logs row with service='client'."""
+    return RecordClientError.call(params=params, user=user, database=database)
 
 
 @user_router.get("/me/notification-preferences")

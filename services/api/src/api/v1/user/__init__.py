@@ -11,6 +11,7 @@ from api.v1.user.push_tokens import (
     UnregisterPushToken,
     UpdateNotificationPreferences,
 )
+from api.v1.user.record_client_error import RecordClientError
 from api.v1.user.search_users import SearchUsers
 from api.v1.user.set_default_recipe_book import SetDefaultRecipeBook
 from api.v1.user.set_default_shopping_list import SetDefaultShoppingList
@@ -22,6 +23,7 @@ __all__ = [
     "CompleteOnboarding",
     "CreateUserFeedback",
     "ExportRecipes",
+    "RecordClientError",
     "RegisterPushToken",
     "UnregisterPushToken",
     "UpdateNotificationPreferences",

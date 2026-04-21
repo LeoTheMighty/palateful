@@ -60,8 +60,15 @@ class ApiClient {
         // events. Resolved 401 retries above don't reach here. Client
         // errors (4xx) and connectivity failures are intentionally
         // skipped for now — see Phase 1 scope.
+        // Never report failures of the /client-errors mirror endpoint
+        // itself — that would recurse (mirror failure → report → mirror
+        // → report → …).
         final status = error.response?.statusCode;
-        if (status != null && status >= 500 && status < 600) {
+        final path = error.requestOptions.path;
+        if (status != null
+            && status >= 500
+            && status < 600
+            && !path.contains('/client-errors')) {
           ErrorReporter.report(
             error,
             error.stackTrace,
@@ -498,6 +505,28 @@ class ApiClient {
   Future<Response> unregisterPushToken(String token) {
     return _dio.delete('/v1/users/me/push-tokens', data: {
       'token': token,
+    });
+  }
+
+  /// Record a client-side error (or breadcrumb) as a row in the backend
+  /// `error_logs` table with `service='client'`. Used by [ErrorReporter]
+  /// to mirror Crashlytics events so admin diagnostics don't require
+  /// Crashlytics console access.
+  Future<Response> recordClientError({
+    required String errorType,
+    required String errorMessage,
+    String? area,
+    String? operation,
+    Map<String, Object?>? extras,
+    int? statusCode,
+  }) {
+    return _dio.post('/v1/users/me/client-errors', data: {
+      'error_type': errorType,
+      'error_message': errorMessage,
+      if (area != null) 'area': area,
+      if (operation != null) 'operation': operation,
+      if (extras != null) 'extras': extras,
+      if (statusCode != null) 'status_code': statusCode,
     });
   }
 

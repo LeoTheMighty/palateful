@@ -42,6 +42,11 @@ void main() async {
 
   setupDependencies();
 
+  // Bind the API client into ErrorReporter so every report()/log() call
+  // mirrors into backend error_logs as service="client". Fire-and-forget
+  // from the reporter side — a failing mirror POST is swallowed.
+  ErrorReporter.bindApiClient(getIt<ApiClient>());
+
   final authService = getIt<AuthService>();
 
   // Wire the iOS Share Extension bridge. Initialize the App Group handle

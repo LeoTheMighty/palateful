@@ -1150,3 +1150,176 @@ class TestSetDefaultRecipeBook:
         assert response.status_code == 200
         data = response.json()
         assert data["previous_recipe_book_id"] == prev_id
+
+
+class TestRecordClientError:
+    """Tests for POST /v1/users/me/client-errors."""
+
+    def test_minimal_payload_writes_row(self, client, mock_user, mock_db):
+        mock_db.db.commit = MagicMock()
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={
+                "error_type": "StateError",
+                "error_message": "FCM token null after granted permission",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["recorded"] is True
+
+        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        rows = [r for r in added if type(r).__name__ == "ErrorLog"]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.service == "client"
+        assert row.user_id == mock_user.id
+        assert row.error_type == "StateError"
+        assert row.error_message == "FCM token null after granted permission"
+        assert row.stack_trace is None
+        assert row.method is None
+        assert row.path is None
+        assert row.status_code is None
+
+    def test_area_operation_extras_serialised_to_stack_trace(
+        self, client, mock_user, mock_db,
+    ):
+        mock_db.db.commit = MagicMock()
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={
+                "error_type": "PlatformException",
+                "error_message": "APNs registration failed",
+                "area": "push",
+                "operation": "apns.registrationFailed",
+                "extras": {"platform": "ios", "auth_status": "authorized"},
+            },
+        )
+        assert response.status_code == 200
+
+        rows = [
+            c.args[0] for c in mock_db.db.add.call_args_list
+            if type(c.args[0]).__name__ == "ErrorLog"
+        ]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.stack_trace is not None
+        import json as _json
+        envelope = _json.loads(row.stack_trace)
+        assert envelope["area"] == "push"
+        assert envelope["operation"] == "apns.registrationFailed"
+        assert envelope["extras"]["platform"] == "ios"
+        assert envelope["extras"]["auth_status"] == "authorized"
+
+    def test_dio_extras_hoisted_to_first_class_columns(
+        self, client, mock_user, mock_db,
+    ):
+        """http.method and http.path in extras land as method/path for rollups."""
+        mock_db.db.commit = MagicMock()
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={
+                "error_type": "DioException",
+                "error_message": "POST /v1/users/me/push-tokens → 500",
+                "area": "push",
+                "operation": "registerToken.backend",
+                "extras": {
+                    "http.method": "POST",
+                    "http.path": "/v1/users/me/push-tokens",
+                    "platform": "ios",
+                },
+                "status_code": 500,
+            },
+        )
+        assert response.status_code == 200
+
+        rows = [
+            c.args[0] for c in mock_db.db.add.call_args_list
+            if type(c.args[0]).__name__ == "ErrorLog"
+        ]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.method == "POST"
+        assert row.path == "/v1/users/me/push-tokens"
+        assert row.status_code == 500
+
+    def test_missing_required_fields_rejected(self, client, mock_user, mock_db):
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={"error_message": "missing error_type"},
+        )
+        assert response.status_code == 422
+
+    def test_extra_fields_rejected(self, client, mock_user, mock_db):
+        """extra='forbid' blocks unknown keys (no smuggling arbitrary columns)."""
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={
+                "error_type": "X",
+                "error_message": "Y",
+                "service": "api",  # attempt to spoof service
+            },
+        )
+        assert response.status_code == 422
+
+    def test_long_fields_truncated(self, client, mock_user, mock_db):
+        """Fields exceeding Pydantic max_length return 422 (enforced by caller)."""
+        mock_db.db.commit = MagicMock()
+        # error_type over 120 chars → 422 at validation
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={"error_type": "x" * 121, "error_message": "msg"},
+        )
+        assert response.status_code == 422
+
+    def test_empty_extras_no_stack_trace(self, client, mock_user, mock_db):
+        """No area/operation/extras → stack_trace stays None."""
+        mock_db.db.commit = MagicMock()
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={"error_type": "ClientLog", "error_message": "hello"},
+        )
+        assert response.status_code == 200
+        rows = [
+            c.args[0] for c in mock_db.db.add.call_args_list
+            if type(c.args[0]).__name__ == "ErrorLog"
+        ]
+        assert rows[0].stack_trace is None
+
+    def test_long_error_message_truncated_to_limit(
+        self, client, mock_user, mock_db,
+    ):
+        """Valid-but-at-limit message stored, over-limit rejected at validation."""
+        mock_db.db.commit = MagicMock()
+        # 2000 chars is the max allowed — should succeed.
+        at_limit = "a" * 2000
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={"error_type": "X", "error_message": at_limit},
+        )
+        assert response.status_code == 200
+        rows = [
+            c.args[0] for c in mock_db.db.add.call_args_list
+            if type(c.args[0]).__name__ == "ErrorLog"
+        ]
+        assert rows[0].error_message == at_limit
+        assert len(rows[0].error_message) == 2000
+
+    def test_non_string_http_extras_ignored(self, client, mock_user, mock_db):
+        """Garbage types in http.method/http.path don't populate method/path."""
+        mock_db.db.commit = MagicMock()
+        response = client.post(
+            "/v1/users/me/client-errors",
+            json={
+                "error_type": "X",
+                "error_message": "Y",
+                "extras": {"http.method": 42, "http.path": {"nested": True}},
+            },
+        )
+        assert response.status_code == 200
+        rows = [
+            c.args[0] for c in mock_db.db.add.call_args_list
+            if type(c.args[0]).__name__ == "ErrorLog"
+        ]
+        assert rows[0].method is None
+        assert rows[0].path is None

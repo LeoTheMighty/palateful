@@ -24,10 +24,13 @@ class RegisterPushToken(Endpoint):
         """
         user: User = self.user
 
-        # Get current tokens (or empty list)
-        tokens = user.push_tokens or []
+        # list(...) forces a fresh reference so the assignment below is
+        # always an identity change — SQLAlchemy's default JSONB column
+        # would otherwise miss an in-place append on the existing list.
+        # Redundant with the MutableList wrapping on the column, but kept
+        # as defense-in-depth.
+        tokens = list(user.push_tokens or [])
 
-        # Add token if not already present
         if params.token not in tokens:
             tokens.append(params.token)
             user.push_tokens = tokens
@@ -65,7 +68,9 @@ class UnregisterPushToken(Endpoint):
         """
         user: User = self.user
 
-        tokens = user.push_tokens or []
+        # Fresh-reference copy so removal is seen as a dirty write by
+        # SQLAlchemy even on the plain-JSONB fallback path.
+        tokens = list(user.push_tokens or [])
 
         if params.token in tokens:
             tokens.remove(params.token)

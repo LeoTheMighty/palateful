@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -96,7 +97,12 @@ class User(Base):
         },
         nullable=True,
     )
-    push_tokens: Mapped[list | None] = mapped_column(JSONB, default=[], nullable=True)
+    # MutableList wrapping so in-place mutations (append/remove) are tracked by
+    # SQLAlchemy's dirty state — plain JSONB treats `user.push_tokens.append(x)`
+    # as a no-op because the attribute reference didn't change.
+    push_tokens: Mapped[list | None] = mapped_column(
+        MutableList.as_mutable(JSONB), default=list, nullable=True
+    )
 
     # Recorded from the onboarding notification-permission step. Reflects
     # the OS AuthorizationStatus outcome, not which button the user tapped:

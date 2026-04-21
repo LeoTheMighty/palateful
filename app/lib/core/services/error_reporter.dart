@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../config/environment.dart';
+import 'api_client.dart';
 
 /// Central error reporter for Palateful.
 ///
@@ -29,6 +32,25 @@ class ErrorReporter {
   /// Test-only hook. When set, every [log] call invokes the hook.
   @visibleForTesting
   static void Function(String message)? testLogHook;
+
+  /// API client used to mirror [report]/[log] events into server-side
+  /// `error_logs` (service="client") via `POST /v1/users/me/client-errors`.
+  /// Bound once from `main.dart` after DI setup. `null` before binding —
+  /// mirror calls are then no-ops. Fire-and-forget; mirror-own-failure
+  /// is swallowed to avoid recursion.
+  static ApiClient? _mirrorClient;
+
+  /// Wire the API client used for backend-mirror POSTs. Call once after
+  /// DI setup (see main.dart). Idempotent.
+  static void bindApiClient(ApiClient client) {
+    _mirrorClient = client;
+  }
+
+  /// Clear the mirror binding (logout path). After this, mirror calls
+  /// no-op until [bindApiClient] is called again with a fresh client.
+  static void clearApiClient() {
+    _mirrorClient = null;
+  }
 
   /// Extract a debug-friendly detail string from any caught error.
   /// Used by screens to show expandable debug info alongside user-facing
@@ -57,6 +79,63 @@ class ErrorReporter {
   /// because `firebase_crashlytics` has no web platform implementation —
   /// calling it on web throws `MissingPluginException` at startup.
   static bool get _reportingDisabled => kDebugMode || kE2EMode || kIsWeb;
+
+  /// True when the backend mirror POST should be suppressed. Debug +
+  /// E2E skip mirroring so local iteration doesn't pollute prod
+  /// error_logs. Web is allowed — our backend works from web.
+  static bool get _backendMirrorDisabled => kDebugMode || kE2EMode;
+
+  /// Fire-and-forget backend mirror. Any failure (including the
+  /// `/client-errors` endpoint 5xx'ing) is swallowed — a mirror that
+  /// reported its own failure via [report] would recurse. The Dio
+  /// interceptor in `api_client.dart` also skips 5xx reporting for
+  /// `/client-errors` as a second line of defense.
+  static void _mirrorToBackend({
+    required String errorType,
+    required String errorMessage,
+    String? area,
+    String? operation,
+    Map<String, Object?>? extras,
+    int? statusCode,
+  }) {
+    if (_backendMirrorDisabled) return;
+    final client = _mirrorClient;
+    if (client == null) return;
+    unawaited(_postMirror(
+      client,
+      errorType: errorType,
+      errorMessage: errorMessage,
+      area: area,
+      operation: operation,
+      extras: extras,
+      statusCode: statusCode,
+    ));
+  }
+
+  static Future<void> _postMirror(
+    ApiClient client, {
+    required String errorType,
+    required String errorMessage,
+    String? area,
+    String? operation,
+    Map<String, Object?>? extras,
+    int? statusCode,
+  }) async {
+    try {
+      await client
+          .recordClientError(
+            errorType: errorType,
+            errorMessage: errorMessage,
+            area: area,
+            operation: operation,
+            extras: extras,
+            statusCode: statusCode,
+          )
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Never recurse. The mirror's own failure is intentionally dropped.
+    }
+  }
 
   /// Enable Crashlytics collection and wire fatal-error handlers. Safe to
   /// call from every platform — no-ops when reporting is disabled (debug,
@@ -102,6 +181,11 @@ class ErrorReporter {
       hook(error, stack, area: area, operation: operation, extras: extras, fatal: fatal);
       return;
     }
+
+    // Mirror to backend regardless of Crashlytics suppression state —
+    // a web or debug session still benefits from an error_logs row when
+    // bound to a real backend.
+    _mirrorReportToBackend(error, area: area, operation: operation, extras: extras);
 
     if (_reportingDisabled) {
       debugPrint(
@@ -190,11 +274,53 @@ class ErrorReporter {
       return;
     }
 
+    // Mirror breadcrumbs into server-side error_logs as service="client",
+    // error_type="ClientLog" rows. Lets us read Leo's boot-time push flow
+    // (the ensureRegistered breadcrumbs from push-diag-2) from the same
+    // audit_errors.py pipeline as server errors.
+    _mirrorToBackend(errorType: 'ClientLog', errorMessage: message);
+
     if (_reportingDisabled) {
       debugPrint('[ErrorReporter.log] $message');
       return;
     }
     FirebaseCrashlytics.instance.log(message);
+  }
+
+  /// Translate a [report] call into the mirror-POST shape. Split out so
+  /// DioException-specific metadata (method, path, status) is hoisted
+  /// into `extras` + `status_code` for audit_errors.py rollups.
+  static void _mirrorReportToBackend(
+    Object error, {
+    String? area,
+    String? operation,
+    Map<String, Object?>? extras,
+  }) {
+    String mirrorType;
+    String mirrorMessage;
+    int? statusCode;
+    final mirrorExtras = <String, Object?>{...?extras};
+    if (error is DioException) {
+      mirrorType = 'DioException';
+      statusCode = error.response?.statusCode;
+      final req = error.requestOptions;
+      mirrorExtras['http.method'] = req.method;
+      mirrorExtras['http.path'] = req.path;
+      final suffix = statusCode != null ? ' → $statusCode' : '';
+      final detailPart = error.message != null ? ': ${error.message}' : '';
+      mirrorMessage = '${req.method} ${req.path}$suffix$detailPart';
+    } else {
+      mirrorType = error.runtimeType.toString();
+      mirrorMessage = error.toString();
+    }
+    _mirrorToBackend(
+      errorType: mirrorType,
+      errorMessage: mirrorMessage,
+      area: area,
+      operation: operation,
+      extras: mirrorExtras.isEmpty ? null : mirrorExtras,
+      statusCode: statusCode,
+    );
   }
 }
 
