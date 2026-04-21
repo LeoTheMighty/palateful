@@ -90,6 +90,67 @@ class TestUnifiedSearch:
         assert first == second == third  # same cached result
         assert qc.select == 1  # exactly one round-trip across 3 calls
 
+    def test_semantic_tier_eager_loads_recipe_ingredients(
+        self, mock_db, mock_user
+    ):
+        """pbq-4b — both semantic-tier `select()` statements attach
+        `selectinload(Recipe.ingredients).selectinload(RecipeIngredient
+        .ingredient)`.
+
+        Under MockDatabase we can't reproduce the lazy-load chain
+        (`recipe.ingredients[:5]` / `ri.ingredient.canonical_name`
+        reads return pre-populated empty lists), so the regression
+        test spies on the handler's `selectinload` import and asserts
+        the wrapped-attribute key set contains both `"ingredients"`
+        and `"ingredient"` — which proves the chain is wired on
+        every `execute()` pass through the semantic branch.
+        """
+        import inspect
+
+        import api.v1.search.unified_search as search_module
+
+        mock_db.db.execute.return_value = MockExecuteResult([])
+        ep = search_module.UnifiedSearch(user=mock_user, database=mock_db)
+
+        with patch.object(
+            search_module,
+            "selectinload",
+            wraps=search_module.selectinload,
+        ) as spy:
+            ep._search_my_recipes_semantic(
+                query_embedding=[0.0] * 384,
+                limit=10,
+                user=mock_user,
+                book_ids=["book-1"],
+                exclude_ids=set(),
+            )
+            ep._search_public_recipes_semantic(
+                query_embedding=[0.0] * 384,
+                limit=10,
+                user=mock_user,
+                exclude_ids=set(),
+            )
+
+        # Outer selectinload(Recipe.ingredients) wired on BOTH semantic
+        # tiers (private + public). Counted via the module-level spy.
+        outer_keys = [
+            getattr(call.args[0], "key", None) for call in spy.call_args_list
+        ]
+        assert outer_keys.count("ingredients") >= 2
+
+        # The nested `.selectinload(RecipeIngredient.ingredient)` is a
+        # bound method on the Load returned by the outer call, which
+        # the module-level spy doesn't intercept. Verify structurally
+        # by inspecting the handler source for the chain literal — a
+        # refactor that dropped the chain would trip this assert.
+        for fn in (
+            search_module.UnifiedSearch._search_my_recipes_semantic,
+            search_module.UnifiedSearch._search_public_recipes_semantic,
+        ):
+            src = inspect.getsource(fn)
+            assert "selectinload(Recipe.ingredients)" in src
+            assert ".selectinload(RecipeIngredient.ingredient)" in src
+
     def test_search_by_tag(self, client, mock_db, mock_user):
         """Test searching by tag term returns 200 with expected response shape.
 

@@ -580,6 +580,14 @@ class UnifiedSearch(Endpoint):
             stmt = (
                 select(Recipe, RecipeBook.name.label("book_name"))
                 .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
+                .options(
+                    # pbq-4b: eager-load the ingredient chain so the
+                    # per-result `recipe.ingredients[:5]` +
+                    # `ri.ingredient.canonical_name` reads below don't
+                    # fire 2×limit lazy-load queries.
+                    selectinload(Recipe.ingredients)
+                    .selectinload(RecipeIngredient.ingredient)
+                )
                 .where(
                     Recipe.recipe_book_id.in_(book_ids),
                     Recipe.archived_at.is_(None),
@@ -649,6 +657,12 @@ class UnifiedSearch(Endpoint):
                 )
                 .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
                 .outerjoin(owner_subq, owner_subq.c.recipe_book_id == RecipeBook.id)
+                .options(
+                    # pbq-4b: eager-load the ingredient chain — same
+                    # rationale as `_search_my_recipes_semantic` above.
+                    selectinload(Recipe.ingredients)
+                    .selectinload(RecipeIngredient.ingredient)
+                )
                 .where(
                     RecipeBook.is_public == True,  # noqa: E712
                     Recipe.archived_at.is_(None),
