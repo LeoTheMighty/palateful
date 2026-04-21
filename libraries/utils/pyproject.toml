@@ -39,6 +39,11 @@ exclude = [
   starlette = "^0.49.1"
   pgvector = "^0.4"
   firebase-admin = "^6.5.0"
+  # pim-5 (2026-04-21): redis.asyncio client for the Auth0 JWKS cache
+  # relocated to ElastiCache. Fail-open semantics mean utils callers
+  # never raise when Redis is unreachable — see
+  # utils/services/redis_client.py.
+  redis = "^5.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.11"

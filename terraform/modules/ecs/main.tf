@@ -158,6 +158,17 @@ variable "firebase_secret_arn" {
   description = "Secrets Manager ARN for Firebase credentials JSON"
 }
 
+variable "redis_url_ssm_parameter_arn" {
+  type        = string
+  default     = ""
+  description = <<-EOT
+    SSM parameter ARN holding the REDIS_URL SecureString (pim-5). Wired
+    into API + worker task secrets as REDIS_URL. Empty disables the
+    Redis JWKS cache — Auth0Verifier falls back to in-memory only,
+    which is the pre-pim-5 behavior.
+  EOT
+}
+
 # ─── pim-4a (2026-04-21) — API task sizing ───
 
 variable "api_task_cpu" {
@@ -284,14 +295,19 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DB_SSLMODE", value = var.db_sslmode },
       ]
 
-      secrets = [
-        { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
-        { name = "AUTH0_DOMAIN", valueFrom = "${var.auth0_secret_arn}:domain::" },
-        { name = "AUTH0_CLIENT_ID", valueFrom = "${var.auth0_secret_arn}:client_id::" },
-        { name = "AUTH0_AUDIENCE", valueFrom = "${var.auth0_secret_arn}:audience::" },
-        { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
-        { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
-      ]
+      secrets = concat(
+        [
+          { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
+          { name = "AUTH0_DOMAIN", valueFrom = "${var.auth0_secret_arn}:domain::" },
+          { name = "AUTH0_CLIENT_ID", valueFrom = "${var.auth0_secret_arn}:client_id::" },
+          { name = "AUTH0_AUDIENCE", valueFrom = "${var.auth0_secret_arn}:audience::" },
+          { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
+          { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
+        ],
+        var.redis_url_ssm_parameter_arn != "" ? [
+          { name = "REDIS_URL", valueFrom = var.redis_url_ssm_parameter_arn },
+        ] : []
+      )
 
       healthCheck = {
         command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')\""]
@@ -399,11 +415,16 @@ resource "aws_ecs_task_definition" "worker" {
         { name = "DB_SSLMODE", value = var.db_sslmode },
       ]
 
-      secrets = [
-        { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
-        { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
-        { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
-      ]
+      secrets = concat(
+        [
+          { name = "DB_PASSWORD", valueFrom = "${var.db_master_secret_arn}:password::" },
+          { name = "OPENAI_API_KEY", valueFrom = var.openai_secret_arn },
+          { name = "FIREBASE_CREDENTIALS_JSON", valueFrom = var.firebase_secret_arn },
+        ],
+        var.redis_url_ssm_parameter_arn != "" ? [
+          { name = "REDIS_URL", valueFrom = var.redis_url_ssm_parameter_arn },
+        ] : []
+      )
 
       logConfiguration = {
         logDriver = "awslogs"

@@ -49,6 +49,17 @@ variable "secrets_arns" {
   description = "ARNs of Secrets Manager secrets for ECS tasks"
 }
 
+variable "ssm_secure_parameter_arns" {
+  type        = list(string)
+  default     = []
+  description = <<-EOT
+    ARNs of SSM SecureString parameters ECS tasks pull via
+    `valueFrom`. Distinct from `secrets_arns` because the IAM action
+    for SSM is `ssm:GetParameters`, not `secretsmanager:GetSecretValue`.
+    Introduced by pim-5 (2026-04-21) for REDIS_URL.
+  EOT
+}
+
 # Batch Instance Role (for EC2 instances in compute environment)
 resource "aws_iam_role" "batch_instance" {
   name = "${var.project}-batch-instance-${var.environment}"
@@ -365,6 +376,41 @@ resource "aws_iam_role_policy" "ecs_execution_secrets" {
     ]
   })
 }
+
+# pim-5 (2026-04-21): SSM SecureString access for REDIS_URL. Separate
+# policy because `ssm:GetParameters` is distinct from
+# `secretsmanager:GetSecretValue`, and kms:Decrypt is needed on the
+# account-default KMS key SSM uses for SecureStrings.
+resource "aws_iam_role_policy" "ecs_execution_ssm" {
+  count = var.create_ecs_roles && length(var.ssm_secure_parameter_arns) > 0 ? 1 : 0
+  name  = "${var.project}-ecs-execution-ssm-${var.environment}"
+  role  = aws_iam_role.ecs_execution[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "SSMGetParameters"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameters"]
+        Resource = var.ssm_secure_parameter_arns
+      },
+      {
+        Sid      = "SSMKMSDecrypt"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+}
+
+data "aws_region" "current" {}
 
 # ECS API Task Role — S3, Batch, SQS send
 resource "aws_iam_role" "ecs_api_task" {

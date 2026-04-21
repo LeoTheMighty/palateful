@@ -113,6 +113,11 @@ module "iam" {
       module.rds.db_master_secret_arn,
     ],
   )
+  # pim-5 (2026-04-21): ECS needs ssm:GetParameters on the REDIS_URL
+  # SecureString so tasks can hydrate REDIS_URL at start time.
+  ssm_secure_parameter_arns = [
+    module.elasticache.redis_url_ssm_parameter_arn,
+  ]
 }
 
 # ─── Database ───
@@ -134,6 +139,18 @@ module "rds" {
   # stays true throughout.
   instance_class    = "db.t4g.small"
   allocated_storage = 20
+}
+
+# ─── Cache (pim-5 2026-04-21) ───
+
+module "elasticache" {
+  source = "../../modules/elasticache"
+
+  environment                = local.environment
+  project                    = local.project
+  vpc_id                     = module.vpc.vpc_id
+  subnet_ids                 = module.vpc.public_subnet_ids
+  allowed_security_group_ids = [module.vpc.ecs_security_group_id]
 }
 
 # ─── Queues ───
@@ -224,6 +241,10 @@ module "ecs" {
   batch_job_definition  = module.batch.job_definition_name
   api_base_url          = "https://api.palateful.app"
   firebase_secret_arn   = "arn:aws:secretsmanager:us-east-1:592349850338:secret:palateful-firebase-prod-jy4C1N"
+  # pim-5 (2026-04-21): wire REDIS_URL SecureString to API + worker
+  # tasks. Empty disables (pre-pim-5 behavior); populated enables the
+  # three-tier Auth0 JWKS cache (in-memory → Redis → Auth0).
+  redis_url_ssm_parameter_arn = module.elasticache.redis_url_ssm_parameter_arn
 }
 
 # ─── Outputs ───
