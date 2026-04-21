@@ -34,25 +34,52 @@ class ApiClient {
       onError: (error, handler) async {
         debugPrint('API Error: ${error.response?.statusCode} - ${error.message}');
 
-        // Auto-refresh on 401 and retry the request once
+        // Auto-refresh on 401 and retry the request once. If refresh is
+        // unavailable (web), returns false, or throws, fall through to
+        // logout() so callers land on /login rather than seeing a mystery
+        // DioException on whatever screen they're on.
         if (error.response?.statusCode == 401 &&
             _authService != null &&
             !_isRefreshing) {
           _isRefreshing = true;
+          bool refreshSucceeded = false;
           try {
-            final refreshed = await _authService!.refreshToken();
-            if (refreshed && _authService!.accessToken != null) {
-              _authToken = _authService!.accessToken;
-              // Retry the original request with new token
+            refreshSucceeded = await _authService!.refreshToken();
+          } catch (e) {
+            debugPrint('Token refresh during request failed: $e');
+            refreshSucceeded = false;
+          }
+
+          if (refreshSucceeded && _authService!.accessToken != null) {
+            _authToken = _authService!.accessToken;
+            // Keep _isRefreshing=true across the retry fetch so a
+            // second 401 on the same request doesn't re-enter this
+            // branch and loop.
+            try {
               final opts = error.requestOptions;
               opts.headers['Authorization'] = 'Bearer $_authToken';
               final response = await _dio.fetch(opts);
               _isRefreshing = false;
               return handler.resolve(response);
+            } catch (retryError) {
+              // Retry itself failed (still 401, network blip, etc.).
+              // Fall through to the original error instead of looping.
+              _isRefreshing = false;
+              return handler.next(error);
             }
-          } catch (e) {
-            debugPrint('Token refresh during request failed: $e');
           }
+
+          // Refresh unavailable or failed — tokens are gone, Auth0
+          // rejected, or we're on web where refresh isn't supported.
+          // Kick the user out so the app-level AuthService listener
+          // redirects to /login.
+          try {
+            await _authService!.logout();
+          } catch (_) {
+            // Swallow — logout() already has its own catch-all that
+            // clears local state even if the Auth0 round-trip fails.
+          }
+          _authToken = null;
           _isRefreshing = false;
         }
 
