@@ -14,13 +14,30 @@ class ListCalendars(Endpoint):
     def execute(self):
         user: User = self.user
 
-        # Subquery: active member count per calendar.
+        # pbq-6: scope the member-count aggregate to the user's calendar
+        # set. The old subquery aggregated the entire `calendar_users`
+        # table (hash-aggregate over every row in the DB); scoping to
+        # ``calendar_id IN (the user's calendars)`` lets Postgres hit
+        # the `ix_calendar_users_calendar_id` index and aggregate a
+        # small per-request slice instead.
+        user_calendar_ids = [
+            row[0]
+            for row in self.db.query(CalendarUser.calendar_id)
+            .filter(
+                CalendarUser.user_id == user.id,
+                CalendarUser.archived_at.is_(None),
+            )
+            .all()
+        ]
         member_count_subq = (
             self.db.query(
                 CalendarUser.calendar_id,
                 func.count(CalendarUser.user_id).label("member_count"),
             )
-            .filter(CalendarUser.archived_at.is_(None))
+            .filter(
+                CalendarUser.archived_at.is_(None),
+                CalendarUser.calendar_id.in_(user_calendar_ids),
+            )
             .group_by(CalendarUser.calendar_id)
             .subquery()
         )

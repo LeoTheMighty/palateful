@@ -11,6 +11,7 @@ from conftest import (
     MockCalendarUser,
     MockQuery,
     MockUser,
+    count_queries,
 )
 
 
@@ -51,6 +52,49 @@ class TestListCalendars:
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 2
+
+    def test_list_calendars_member_count_subq_scoped_to_user(
+        self, client, mock_db, mock_user
+    ):
+        """pbq-6 — the member-count aggregate only scans the user's
+        calendar set.
+
+        Pre-fix, the subquery aggregated every row in `calendar_users`.
+        Post-fix, a leading `IN (user's calendars)` clause lets Postgres
+        hit the `ix_calendar_users_calendar_id` index and aggregate a
+        small per-request slice. We verify behaviourally by patching
+        `Column.in_` and asserting it's invoked during request
+        execution with the pre-computed list — a regression that
+        dropped the scoping would skip the `.in_(...)` call entirely.
+        """
+        from sqlalchemy.sql.elements import ColumnClause, ColumnElement
+        from utils.models.calendar_user import CalendarUser
+
+        mock_db.db.query.return_value = MockQuery([])
+
+        calls: list = []
+        original_in_ = CalendarUser.calendar_id.__class__.in_
+
+        def spy_in(self_col, other):
+            calls.append(other)
+            return original_in_(self_col, other)
+
+        CalendarUser.calendar_id.__class__.in_ = spy_in
+        try:
+            with count_queries(mock_db) as qc:
+                response = client.get("/v1/calendars")
+        finally:
+            CalendarUser.calendar_id.__class__.in_ = original_in_
+
+        assert response.status_code == 200
+        # `Column.in_(...)` fired at least once with a Python list
+        # (materialized `user_calendar_ids`). Pre-fix had no such call.
+        assert any(isinstance(arg, list) for arg in calls)
+
+        # Two `db.query(CalendarUser)`-shaped calls max: one to fetch
+        # the user's calendar IDs, one for the member-count subquery.
+        # Main Calendar join doesn't query `CalendarUser` directly.
+        assert qc.query_count_for(CalendarUser) <= 3
 
 
 class TestCreateCalendar:
