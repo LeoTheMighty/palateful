@@ -46,19 +46,20 @@ class ShoppingListItem {
 
   factory ShoppingListItem.fromJson(Map<String, dynamic> json) {
     return ShoppingListItem(
+      // id stays strict — a null id IS a real bug we want to see, not
+      // render a ghost row.
       id: json['id'] as String,
-      name: json['name'] as String,
+      // Fall back to empty string rather than crash the whole list parse
+      // if one row is missing a name. Rendering "" is better than a
+      // caller-side exception that takes out the cart.
+      name: (json['name'] as String?) ?? '',
       quantity: (json['quantity'] as num?)?.toDouble(),
       unit: json['unit'] as String?,
       isChecked: json['is_checked'] as bool? ?? false,
-      checkedAt: json['checked_at'] != null
-          ? DateTime.parse(json['checked_at'] as String)
-          : null,
+      checkedAt: _tryParseDateTime(json['checked_at']),
       category: json['category'] as String?,
       notes: json['notes'] as String?,
-      dueAt: json['due_at'] != null
-          ? DateTime.parse(json['due_at'] as String)
-          : null,
+      dueAt: _tryParseDateTime(json['due_at']),
       dueReason: json['due_reason'] as String?,
       mealEventId: json['meal_event_id'] as String?,
       priority: json['priority'] as int? ?? 0,
@@ -70,6 +71,12 @@ class ShoppingListItem {
       pantryIngredientId: json['pantry_ingredient_id'] as String?,
       pantryId: json['pantry_id'] as String?,
     );
+  }
+
+  static DateTime? _tryParseDateTime(Object? raw) {
+    if (raw == null) return null;
+    if (raw is! String) return null;
+    return DateTime.tryParse(raw);
   }
 
   Map<String, dynamic> toJson() {

@@ -85,7 +85,14 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           _service.updatePresence('shopping');
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'shopping.cart',
+        operation: 'loadList',
+        extras: {'list_id': widget.listId},
+      );
       if (mounted) {
         setState(() {
           _error = 'Failed to load shopping list';

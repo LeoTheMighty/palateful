@@ -104,7 +104,14 @@ class _FloatingCartWidgetState extends State<FloatingCartWidget>
         });
         _service.connectWebSocket(listId);
       }
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'shopping.cart',
+        operation: 'loadList',
+        extras: {'list_id': listId},
+      );
       if (mounted) {
         setState(() {
           _error = 'Failed to load shopping list';

@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/error_reporter.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
 
@@ -205,7 +206,17 @@ class ShoppingCartService {
   }
 
   void _doConnect() {
-    if (_currentListId == null) return;
+    final listId = _currentListId;
+    if (listId == null) {
+      ErrorReporter.report(
+        StateError('shopping WS connect with null list id'),
+        StackTrace.current,
+        area: 'shopping.websocket',
+        operation: 'connect',
+        extras: {'reason': 'null_list_id'},
+      );
+      return;
+    }
 
     final token = _apiClient.authToken;
     if (token == null) {
@@ -217,7 +228,7 @@ class ShoppingCartService {
 
     try {
       final wsUrl =
-          '${_apiClient.wsBaseUrl}/v1/ws/shopping-lists/$_currentListId?token=$token';
+          '${_apiClient.wsBaseUrl}/v1/ws/shopping-lists/$listId?token=$token';
       _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       _wsSubscription = _wsChannel!.stream.listen(
@@ -228,7 +239,14 @@ class ShoppingCartService {
 
       _updateWebSocketState(WebSocketState.connected);
       _startPingTimer();
-    } catch (e) {
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'shopping.websocket',
+        operation: 'connect',
+        extras: {'list_id': listId},
+      );
       _updateWebSocketState(WebSocketState.error);
       _scheduleReconnect();
     }
@@ -302,12 +320,50 @@ class ShoppingCartService {
 
   void _handleError(Object error) {
     debugPrint('WebSocket error: $error');
+    ErrorReporter.report(
+      error,
+      null,
+      area: 'shopping.websocket',
+      operation: 'stream',
+      extras: {'list_id': _currentListId},
+    );
     _updateWebSocketState(WebSocketState.error);
     _scheduleReconnect();
   }
 
   void _handleDisconnect() {
+    // When the backend closes with an app-defined code (4xxx), treat it
+    // as an auth/access issue and try a single refresh before the next
+    // reconnect attempt. Known close codes: 4003 access denied, 4004
+    // shopping list not found (see services/api/src/api/v1/shopping_list/websocket.py).
+    final closeCode = _wsChannel?.closeCode;
     _updateWebSocketState(WebSocketState.disconnected);
+    if (closeCode != null && closeCode >= 4000 && closeCode < 5000) {
+      unawaited(_refreshTokenThenReconnect(closeCode));
+      return;
+    }
+    _scheduleReconnect();
+  }
+
+  Future<void> _refreshTokenThenReconnect(int closeCode) async {
+    ErrorReporter.report(
+      StateError('shopping WS closed with code $closeCode'),
+      null,
+      area: 'shopping.websocket',
+      operation: 'disconnect',
+      extras: {'list_id': _currentListId, 'close_code': closeCode},
+    );
+    try {
+      await getIt<AuthService>().refreshToken();
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'shopping.websocket',
+        operation: 'refresh_on_disconnect',
+        extras: {'list_id': _currentListId, 'close_code': closeCode},
+      );
+    }
     _scheduleReconnect();
   }
 
