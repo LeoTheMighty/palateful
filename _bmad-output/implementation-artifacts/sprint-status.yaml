@@ -1064,3 +1064,55 @@ development_status:
   rp-4-shopping-cart-service-ws-adapter-consolidation: done
   rp-5-central-failure-copy-grep-guard-and-e2e-sweep: done
   epic-reactive-migration-books-profile-pantry-and-polish-retrospective: optional
+
+  # epic-cook-mode-remove-chat — Pull the experimental CookModeChatSheet and
+  # its header entry point out of recipe cook mode. No backend touch; the
+  # /v1/recipes/{id}/chat route stays intact for potential future reuse. A
+  # new grep-gate in CI blocks re-introduction of chat references under
+  # app/lib/features/recipes/cook_mode/. Unblocks the header layout
+  # simplification that epic-cook-mode-meal assumes. 2 stories.
+  epic-cook-mode-remove-chat: in-progress
+  cmrc-1-delete-chat-sheet-button-and-route-wiring: done
+  cmrc-2-grep-gate-and-test-cleanup: backlog
+  epic-cook-mode-remove-chat-retrospective: optional
+
+  # epic-cook-mode-resume — Persist cook-mode state (current step, checked
+  # ingredients, active timers with remaining durations, elapsed time) to
+  # SharedPreferences keyed by recipe_id. On re-entry, present a Resume /
+  # Start Over gate when state exists. Rebuild active timers on Resume;
+  # expired ones fire a "While you were away: X timer is done" snackbar.
+  # New in-cook "Reset" header affordance clears state without leaving.
+  # Post-cook sheet submission clears state automatically. Same
+  # CookSessionPersister service is meal-ready (keyed by recipe_id or
+  # meal_id interchangeably) — foundation for epic-cook-mode-meal. Zero
+  # backend changes. 5 stories.
+  epic-cook-mode-resume: backlog
+  cmr-1-cook-session-persister-service-and-schema: backlog
+  cmr-2-wire-recipe-cook-mode-writes-with-debounce: backlog
+  cmr-3-resume-reset-gate-sheet-on-entry: backlog
+  cmr-4-in-cook-reset-affordance-and-auto-clear-on-done: backlog
+  cmr-5-timer-rebuild-on-resume-and-expired-while-away-snackbar: backlog
+  epic-cook-mode-resume-retrospective: optional
+
+  # epic-cook-mode-meal — Cooking mode for a whole Meal. New
+  # MealCookModeScreen at /meals/:id/cook reached via FAB on meal detail.
+  # Sectioned step traversal with per-recipe headers (Dressing · 3 / 7);
+  # interlaced combined ingredient strip (aggregate_meal_ingredients
+  # reused; no dedup; each chip tagged with source recipe name); meal-level
+  # active-timers row with component-name label disambiguation; per-
+  # component post-cook rating (N cooking_logs rows). Cook-mode atoms
+  # (IngredientStrip, StepNavigator, StepTimersRow, ManualTimerSheet,
+  # timer services) extracted to shared/ so both recipe and meal cook
+  # consume the same widgets + a CookPlan abstraction. Reuses
+  # CookSessionPersister from epic-cook-mode-resume keyed by meal_id.
+  # Zero backend changes (client fan-out for N recipe fetches). Depends on
+  # epic-cook-mode-resume. 7 stories.
+  epic-cook-mode-meal: backlog
+  cmm-1-shared-widget-extraction-and-cookplan-abstraction: backlog
+  cmm-2-meal-cook-mode-screen-loader-and-route: backlog
+  cmm-3-sectioned-step-traversal-and-header: backlog
+  cmm-4-interlaced-combined-ingredient-strip-with-source-tags: backlog
+  cmm-5-meal-level-timers-and-label-disambiguation: backlog
+  cmm-6-per-component-post-cook-sheet: backlog
+  cmm-7-meal-cook-resume-wiring-and-regression-sweep: backlog
+  epic-cook-mode-meal-retrospective: optional
