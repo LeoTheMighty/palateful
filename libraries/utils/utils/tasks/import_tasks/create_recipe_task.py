@@ -454,10 +454,26 @@ class CreateRecipeTask(BaseTask):
 
         previous_status = job.status
 
+        # Cancelled is terminal and user-driven; never silently flip a
+        # cancelled job back into a status that would fire IMPORT_FAILED
+        # (sched-2) or any other user-visible transition.
+        if previous_status == "cancelled":
+            self.database.db.commit()
+            return
+
         # Check if job is complete
         total_final = job.succeeded_items + job.failed_items + status_counts.get("skipped", 0)
         if total_final >= job.total_items:
-            job.status = "completed"
+            if (
+                job.failed_items == job.total_items
+                and job.total_items > 0
+            ):
+                # Every approved item failed to create. Mirror the
+                # `extract_recipe_task` terminal branch so post-approval
+                # failures surface the IMPORT_FAILED push.
+                job.status = "failed"
+            else:
+                job.status = "completed"
             job.completed_at = datetime.now(UTC)
             # abi-2a: `import_complete` user_activity row no longer
             # written. The Imports tab shows completed items in the
@@ -477,6 +493,16 @@ class CreateRecipeTask(BaseTask):
             )
 
             notify_import_needs_review(self.database, job)
+
+        if (
+            job.status == "failed"
+            and previous_status != "failed"
+        ):
+            from utils.services.import_notifications import (
+                notify_import_failed,
+            )
+
+            notify_import_failed(self.database, job)
 
 
 # Register task with Celery

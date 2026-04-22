@@ -53,6 +53,7 @@ class NotificationType(str, Enum):
 
     # Import pipeline
     IMPORT_NEEDS_REVIEW = "import_needs_review"
+    IMPORT_FAILED = "import_failed"
 
     # Meal events
     MEAL_EVENT_INVITE = "meal_event_invite"
@@ -129,6 +130,7 @@ _CATEGORY_FOR_TYPE: dict[NotificationType, str] = {
     NotificationType.RECIPE_COOKED_BY_PARTNER: "partner_activity",
     NotificationType.COOK_FEEDBACK_PROMPT: "partner_activity",
     NotificationType.IMPORT_NEEDS_REVIEW: "imports",
+    NotificationType.IMPORT_FAILED: "imports",
     NotificationType.MEAL_EVENT_INVITE: "meals",
     # Back-fan (invitee → inviter) is partner activity, not meal logistics.
     NotificationType.MEAL_EVENT_INVITE_ACCEPTED: "partner_activity",

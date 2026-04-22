@@ -456,6 +456,13 @@ class ExtractRecipeTask(BaseTask):
 
         previous_status = job.status
 
+        # Cancelled is a terminal, user-driven state. Don't silently
+        # flip a cancelled job to failed / completed / awaiting_review
+        # — otherwise we'd fire a surprise IMPORT_FAILED push (sched-2).
+        if previous_status == "cancelled":
+            self.database.db.commit()
+            return
+
         # Check if job is complete
         total_processed = job.processed_items
         if total_processed >= job.total_items:
@@ -477,6 +484,16 @@ class ExtractRecipeTask(BaseTask):
             )
 
             notify_import_needs_review(self.database, job)
+
+        if (
+            job.status == "failed"
+            and previous_status != "failed"
+        ):
+            from utils.services.import_notifications import (
+                notify_import_failed,
+            )
+
+            notify_import_failed(self.database, job)
 
 
 # Register task with Celery

@@ -1002,9 +1002,9 @@ development_status:
   partner-4-meal-event-invite-accepted-back-fan: backlog
   partner-5-frontend-deep-link-routes-new-types: backlog
 
-  epic-notifications-scheduled-reminders: backlog
+  epic-notifications-scheduled-reminders: done
   sched-1-shopping-deadline-reminders-schema-beat-copy: done
-  sched-2-import-failed-enum-callsite-route: in-progress
+  sched-2-import-failed-enum-callsite-route: done
 
   # === Reactive State Permeation Initiative (3 epics) — added 2026-04-22 ===
   # Motivation: dogfood complaint — "a ton of places in the app where the
