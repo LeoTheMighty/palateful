@@ -983,12 +983,12 @@ development_status:
   nfn-4-frontend-per-category-prefs-ui: done
   nfn-5-meal-detail-screen-deep-link-route: done
 
-  epic-notifications-meal-reminders: in-progress
+  epic-notifications-meal-reminders: done
   meal-1-schema-meal-reminder-time-columns-api-flutter: done
   meal-2-frontend-remind-me-at-time-picker: done
   meal-3-celery-beat-meal-reminder-fanout-copy: done
   meal-4-wire-meal-event-updated-on-shared-edits: done
-  meal-5-meal-detail-reminder-row-edit: backlog
+  meal-5-meal-detail-reminder-row-edit: done
 
   epic-notifications-timer-actions-live-activities: done
   timer-1-android-notification-actions-parity: done

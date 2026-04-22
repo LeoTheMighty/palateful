@@ -5,6 +5,7 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import 'models/meal_event.dart';
+import 'services/meal_calendar_service.dart';
 
 /// Lightweight read-mostly meal-event detail screen, served by the
 /// `/calendar/meals/:id` deep-link route. Push notifications for
@@ -26,6 +27,7 @@ class MealEventDetailScreen extends StatefulWidget {
 
 class _MealEventDetailScreenState extends State<MealEventDetailScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _calendarService = getIt<MealCalendarService>();
 
   bool _isLoading = true;
   String? _error;
@@ -33,6 +35,7 @@ class _MealEventDetailScreenState extends State<MealEventDetailScreen> {
   List<_Participant> _participants = const [];
   String? _currentUserId;
   bool _rsvpInFlight = false;
+  bool _reminderInFlight = false;
 
   @override
   void initState() {
@@ -130,6 +133,102 @@ class _MealEventDetailScreenState extends State<MealEventDetailScreen> {
     }
   }
 
+  /// Wall-clock slot defaults. KEEP IN SYNC with
+  /// `app/lib/features/calendar/widgets/plan_meal_sheet.dart::_mealDefaultTime`
+  /// and the backend's `MEAL_SLOT_DEFAULT_TIMES` constant.
+  TimeOfDay _slotDefault(MealType type) {
+    switch (type) {
+      case MealType.breakfast:
+        return const TimeOfDay(hour: 8, minute: 0);
+      case MealType.lunch:
+        return const TimeOfDay(hour: 12, minute: 0);
+      case MealType.dinner:
+        return const TimeOfDay(hour: 18, minute: 30);
+      case MealType.snack:
+        return const TimeOfDay(hour: 15, minute: 0);
+    }
+  }
+
+  TimeOfDay? _parseTimeOfDay(String? hhmm) {
+    if (hhmm == null || hhmm.length < 4) return null;
+    final parts = hhmm.split(':');
+    if (parts.length < 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  String _wire(TimeOfDay t) {
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  String _formatTimeOfDay(TimeOfDay t) {
+    final hour12 = t.hour == 0 ? 12 : (t.hour > 12 ? t.hour - 12 : t.hour);
+    final mm = t.minute.toString().padLeft(2, '0');
+    final ampm = t.hour < 12 ? 'AM' : 'PM';
+    return '$hour12:$mm $ampm';
+  }
+
+  Future<void> _pickReminderTime() async {
+    if (_reminderInFlight) return;
+    final event = _event;
+    if (event == null) return;
+
+    final override = _parseTimeOfDay(event.mealReminderTime);
+    final initial = override ?? _slotDefault(event.mealType);
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+    );
+    if (picked == null || !mounted) return;
+    await _saveReminder(_wire(picked));
+  }
+
+  Future<void> _resetReminder() async {
+    if (_reminderInFlight) return;
+    // Explicit null clears the override → backend falls back to slot
+    // default (meal-1 Update handler uses model_fields_set to tell the
+    // difference from omit).
+    await _saveReminder(null);
+  }
+
+  Future<void> _saveReminder(String? wire) async {
+    final event = _event;
+    if (event == null) return;
+    setState(() => _reminderInFlight = true);
+    try {
+      final updated = await _calendarService.setMealReminderTime(
+        event.id,
+        wire,
+      );
+      if (!mounted) return;
+      setState(() {
+        _event = updated;
+      });
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'calendar',
+        operation: 'meal_detail.set_reminder_time',
+        extras: {
+          'meal_event_id': event.id,
+          'reminder_time': wire ?? 'null',
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update reminder time.')),
+      );
+    } finally {
+      if (mounted) setState(() => _reminderInFlight = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,7 +291,11 @@ class _MealEventDetailScreenState extends State<MealEventDetailScreen> {
             if (event.isShared) const Chip(label: Text('Shared')),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+
+        _buildReminderRow(event),
+
+        const SizedBox(height: 16),
 
         if (event.recipe != null) _buildRecipeCard(event.recipe!),
         if (event.mealSummary != null) _buildMealSummaryCard(event.mealSummary!),
@@ -222,6 +325,100 @@ class _MealEventDetailScreenState extends State<MealEventDetailScreen> {
             onPressed: () => context.go('/calendar'),
             icon: const Icon(Icons.calendar_today),
             label: const Text('Open in Calendar'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReminderRow(MealEvent event) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    final override = _parseTimeOfDay(event.mealReminderTime);
+    final resolved = _parseTimeOfDay(event.reminderTime) ??
+        override ??
+        _slotDefault(event.mealType);
+    final hasOverride = override != null;
+
+    return Column(
+      key: const Key('meal_detail_reminder_row'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Reminder',
+              style: textTheme.titleSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            if (hasOverride)
+              TextButton(
+                onPressed: _reminderInFlight ? null : _resetReminder,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  'Reset to default',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _reminderInFlight ? null : _pickReminderTime,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.notifications_outlined,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _formatTimeOfDay(resolved),
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                if (!hasOverride) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '(${event.mealType.displayName} default)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (_reminderInFlight)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Icon(
+                    Icons.edit_outlined,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+              ],
+            ),
           ),
         ),
       ],
