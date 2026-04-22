@@ -27,7 +27,7 @@ per-event; one bad event doesn't kill the batch.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -92,7 +92,7 @@ def _resolve_reminder_moment(
     )
 
     local_dt = datetime.combine(local_date, resolved_time, tzinfo=owner_tz)
-    return local_dt.astimezone(timezone.utc)
+    return local_dt.astimezone(UTC)
 
 
 def _should_fire(
@@ -119,12 +119,9 @@ def _should_fire(
     if reminder_at < now or reminder_at >= window_end:
         return False
 
+    # Idempotency: already fired in this-or-later tick → dedupe.
     last_sent: datetime | None = getattr(meal_event, "last_reminder_sent_at", None)
-    if last_sent is not None and last_sent >= now:
-        # Already fired in a later-or-equal tick — dedupe.
-        return False
-
-    return True
+    return not (last_sent is not None and last_sent >= now)
 
 
 def _log_task_failure(database: Any, meal_event_id: str, detail: str) -> None:
@@ -154,7 +151,7 @@ class SendMealRemindersTask(BaseTask):
     name = "send_meal_reminders"
 
     def execute(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window_end = now + timedelta(seconds=BEAT_WINDOW_SECONDS)
 
         # SQL-level pre-filter: only today's events with a permissive

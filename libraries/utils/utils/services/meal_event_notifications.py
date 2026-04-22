@@ -19,12 +19,17 @@ Layering:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from utils.services.notification_copy import (
     _resolve_actor_name,
+)
+from utils.services.notification_copy import (
     meal_event_reminder as _meal_event_reminder_copy,
+)
+from utils.services.notification_copy import (
     meal_event_updated as _meal_event_updated_copy,
 )
 from utils.services.push_notification import (
@@ -123,7 +128,7 @@ def notify_meal_event_reminder(
     `db_session` is forwarded to `send_to_user` so invalid-token
     cleanup can run.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
 
     recipients = _resolve_recipients(meal_event)
     if not recipients:
