@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../core/state/meal_event_coalescer.dart';
 import '../../../core/state/mutation_bus.dart';
 import '../models/meal_event.dart';
 import '../services/meal_calendar_service.dart';
@@ -20,15 +19,11 @@ import '../services/meal_calendar_service.dart';
 /// stress test).
 final mealEventsByRangeProvider = FutureProvider.family
     .autoDispose<List<MealEvent>, MealEventsRangeKey>((ref, key) async {
-  Timer? debounce;
-  ref.onDispose(() => debounce?.cancel());
+  final coalescer = MealEventCoalescer();
+  ref.onDispose(coalescer.cancel);
   final sub = ref.read(mutationBusProvider).listen((event) {
     if (!_rangeShouldInvalidate(event, key)) return;
-    debounce?.cancel();
-    debounce = Timer(const Duration(milliseconds: 100), () {
-      debounce = null;
-      ref.invalidateSelf();
-    });
+    coalescer.schedule(ref.invalidateSelf);
   });
   ref.onDispose(sub.cancel);
   return getIt<MealCalendarService>().listMealEvents(
@@ -44,15 +39,11 @@ final mealEventsByRangeProvider = FutureProvider.family
 /// opened during a recurrence materialization do not refetch per-event.
 final mealEventsByDayProvider = FutureProvider.family
     .autoDispose<List<MealEvent>, MealEventsDayKey>((ref, key) async {
-  Timer? debounce;
-  ref.onDispose(() => debounce?.cancel());
+  final coalescer = MealEventCoalescer();
+  ref.onDispose(coalescer.cancel);
   final sub = ref.read(mutationBusProvider).listen((event) {
     if (!_dayShouldInvalidate(event, key)) return;
-    debounce?.cancel();
-    debounce = Timer(const Duration(milliseconds: 100), () {
-      debounce = null;
-      ref.invalidateSelf();
-    });
+    coalescer.schedule(ref.invalidateSelf);
   });
   ref.onDispose(sub.cancel);
   final dayStart = DateTime(key.date.year, key.date.month, key.date.day);
@@ -74,15 +65,11 @@ final mealEventsByDayProvider = FutureProvider.family
 /// `RecurrenceRule*` triggers a refetch via the same coalescer).
 final upcomingEventsForMealProvider = FutureProvider.family
     .autoDispose<List<MealEvent>, String>((ref, mealId) async {
-  Timer? debounce;
-  ref.onDispose(() => debounce?.cancel());
+  final coalescer = MealEventCoalescer();
+  ref.onDispose(coalescer.cancel);
   final sub = ref.read(mutationBusProvider).listen((event) {
     if (!_upcomingShouldInvalidate(event, mealId)) return;
-    debounce?.cancel();
-    debounce = Timer(const Duration(milliseconds: 100), () {
-      debounce = null;
-      ref.invalidateSelf();
-    });
+    coalescer.schedule(ref.invalidateSelf);
   });
   ref.onDispose(sub.cancel);
   // Forward-looking window — from now to 90 days out. The service's
