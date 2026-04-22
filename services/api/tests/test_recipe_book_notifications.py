@@ -202,6 +202,52 @@ class TestNotifyRecipeAdded:
         assert member_a in recipients
         assert member_b in recipients
 
+    def test_image_url_attached_when_present(self):
+        from api.v1.recipe_book.notifications import notify_recipe_added
+
+        actor = _make_user()
+        member = _make_user()
+        book_id = str(uuid.uuid4())
+
+        membership_a = _make_membership(actor.id, book_id)
+        membership_m = _make_membership(member.id, book_id)
+
+        database = MagicMock()
+        db = MagicMock()
+        database.db = db
+
+        member_query = MagicMock()
+        member_query.filter.return_value = member_query
+        member_query.all.return_value = [membership_a, membership_m]
+
+        user_query = MagicMock()
+        user_query.filter.return_value = user_query
+        user_query.all.return_value = [member]
+
+        db.query.side_effect = [member_query, user_query]
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.is_available = True
+            mock_get.return_value = mock_service
+
+            notify_recipe_added(
+                recipe_book_id=book_id,
+                recipe_book_name="Brunch",
+                recipe_name="Pancakes",
+                added_by_user=actor,
+                database=database,
+                image_url="https://example.com/pancakes.jpg",
+            )
+
+        notification = mock_service.send_to_users.call_args[0][1]
+        assert notification.image_url == "https://example.com/pancakes.jpg"
+        # Title uses centralized copy: "🍳 New in Brunch"
+        assert "Brunch" in notification.title
+        assert "🍳" in notification.title
+        # Body uses centralized copy: "{actor} added {recipe}"
+        assert notification.body == "Alice added Pancakes"
+
     def test_recipe_name_in_notification(self):
         from api.v1.recipe_book.notifications import notify_recipe_added
 

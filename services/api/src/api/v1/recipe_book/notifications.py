@@ -3,6 +3,7 @@
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.services.database import Database
+from utils.services.notification_copy import recipe_added as recipe_added_copy
 from utils.services.push_notification import (
     NotificationType,
     PushNotification,
@@ -110,6 +111,7 @@ def notify_recipe_added(
     recipe_name: str,
     added_by_user: User,
     database: Database,
+    image_url: str | None = None,
 ) -> dict:
     """
     Send a push notification when a recipe is added to a shared book.
@@ -123,6 +125,8 @@ def notify_recipe_added(
         recipe_name: Name of the newly added recipe
         added_by_user: The user who added the recipe
         database: Database session
+        image_url: Optional cover image URL — attached to the push so iOS
+            renders the recipe photo in the notification.
 
     Returns:
         Send result
@@ -130,15 +134,22 @@ def notify_recipe_added(
     actor_name = added_by_user.name or "Someone"
     book_name = recipe_book_name or "a shared recipe book"
 
+    title, body = recipe_added_copy(
+        actor_name=actor_name,
+        recipe_name=recipe_name,
+        book_name=book_name,
+    )
+
     notification = PushNotification(
-        title=f"New recipe in {book_name}",
-        body=f"{actor_name} added {recipe_name}",
+        title=title,
+        body=body,
         notification_type=NotificationType.RECIPE_ADDED,
         data={
             "recipe_book_id": recipe_book_id,
             "recipe_book_name": book_name,
             "recipe_name": recipe_name,
         },
+        image_url=image_url,
     )
 
     return notify_recipe_book_members(

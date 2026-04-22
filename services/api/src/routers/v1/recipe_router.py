@@ -94,6 +94,7 @@ async def create_recipe(
             recipe_name=params.name,
             added_by_user=user,
             database=database,
+            image_url=params.image_url,
         )
     return result
 
