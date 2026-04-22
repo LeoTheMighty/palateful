@@ -21,6 +21,7 @@ import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
+import 'features/recipes/cook_mode/services/cook_session_persister.dart';
 import 'providers/theme_mode_provider.dart';
 
 void main() async {
@@ -47,6 +48,9 @@ void main() async {
   // mirrors into backend error_logs as service="client". Fire-and-forget
   // from the reporter side — a failing mirror POST is swallowed.
   ErrorReporter.bindApiClient(getIt<ApiClient>());
+
+  // Prune cook sessions older than 30 days on startup (epic-cook-mode-resume).
+  unawaited(CookSessionPersister().pruneStaleOlderThan(const Duration(days: 30)));
 
   final authService = getIt<AuthService>();
 
