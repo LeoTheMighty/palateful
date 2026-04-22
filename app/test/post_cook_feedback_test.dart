@@ -66,7 +66,7 @@ void main() {
 
     // Helper to build the sheet in test harness.
     // Uses isOffline: true so no real API calls are made.
-    Widget buildSheet({required VoidCallback onComplete}) {
+    Widget buildSheet({required void Function({bool saved}) onComplete}) {
       return MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
@@ -87,7 +87,7 @@ void main() {
 
     testWidgets('renders 5 star icons, notes field, Save and Skip buttons',
         (tester) async {
-      await tester.pumpWidget(buildSheet(onComplete: () {}));
+      await tester.pumpWidget(buildSheet(onComplete: ({bool saved = false}) {}));
 
       // 5 stars
       expect(find.byKey(const Key('star_1')), findsOneWidget);
@@ -107,7 +107,7 @@ void main() {
 
     testWidgets('Skip button fires onComplete without saving', (tester) async {
       bool completed = false;
-      await tester.pumpWidget(buildSheet(onComplete: () => completed = true));
+      await tester.pumpWidget(buildSheet(onComplete: ({bool saved = false}) => completed = true));
 
       await tester.tap(find.byKey(const Key('skip_button')));
       await tester.pump();
@@ -122,7 +122,7 @@ void main() {
     testWidgets('Save button fires onComplete after selecting a rating',
         (tester) async {
       bool completed = false;
-      await tester.pumpWidget(buildSheet(onComplete: () => completed = true));
+      await tester.pumpWidget(buildSheet(onComplete: ({bool saved = false}) => completed = true));
 
       // Tap the 4th star
       await tester.tap(find.byKey(const Key('star_4')));
@@ -143,7 +143,7 @@ void main() {
     testWidgets('Save without rating still fires onComplete (no log saved)',
         (tester) async {
       bool completed = false;
-      await tester.pumpWidget(buildSheet(onComplete: () => completed = true));
+      await tester.pumpWidget(buildSheet(onComplete: ({bool saved = false}) => completed = true));
 
       // Tap Save without selecting any star
       await tester.tap(find.byKey(const Key('save_button')));
@@ -158,7 +158,7 @@ void main() {
 
     testWidgets('Save with note queues it offline via queueNoteAdd',
         (tester) async {
-      await tester.pumpWidget(buildSheet(onComplete: () {}));
+      await tester.pumpWidget(buildSheet(onComplete: ({bool saved = false}) {}));
 
       // Enter a note
       await tester.enterText(find.byKey(const Key('notes_field')), 'Added more garlic');

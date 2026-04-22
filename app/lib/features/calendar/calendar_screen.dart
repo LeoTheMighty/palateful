@@ -236,7 +236,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         apiClient: apiClient,
         recipeCache: recipeCache,
         isOffline: false,
-        onComplete: () => Navigator.of(sheetCtx).pop(),
+        onComplete: ({bool saved = false}) => Navigator.of(sheetCtx).pop(),
       ),
     );
   }

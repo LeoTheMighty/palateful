@@ -17,7 +17,12 @@ class PostCookFeedbackSheet extends StatefulWidget {
 
   /// Called when the user completes or skips the feedback flow.
   /// The caller is responsible for dismissing the sheet after this fires.
-  final VoidCallback onComplete;
+  ///
+  /// [saved] is true only when the user tapped Save AND the log/note
+  /// calls returned without throwing. Skip and any caught exception
+  /// fire `saved: false` so callers can preserve retry-relevant state
+  /// (e.g. persisted cook session, see epic-cook-mode-resume cmr-4).
+  final void Function({bool saved}) onComplete;
 
   const PostCookFeedbackSheet({
     super.key,
@@ -46,6 +51,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
 
   Future<void> _saveFeedback() async {
     setState(() => _isSaving = true);
+    var saved = true;
     try {
       if (_selectedRating > 0) {
         await widget.recipeCache.logCook(
@@ -68,11 +74,13 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
         }
       }
     } catch (_) {
-      // Feedback capture is best-effort — always complete even on error
+      // Feedback capture is best-effort — always complete, but flag as
+      // unsaved so callers preserve retry-relevant state (cmr-4 AC7).
+      saved = false;
     }
     // Reset saving state before invoking onComplete so tests can use pumpAndSettle.
     setState(() => _isSaving = false);
-    widget.onComplete();
+    widget.onComplete(saved: saved);
   }
 
   @override
@@ -185,10 +193,12 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
           ),
           const SizedBox(height: 8),
 
-          // Skip button
+          // Skip button — user declined to submit feedback; treat as
+          // unsaved so the caller doesn't clear retry-relevant state.
           TextButton(
             key: const Key('skip_button'),
-            onPressed: _isSaving ? null : widget.onComplete,
+            onPressed:
+                _isSaving ? null : () => widget.onComplete(saved: false),
             style: TextButton.styleFrom(
               foregroundColor: cook.cookOnSurface.withValues(alpha: 0.6),
               minimumSize: const Size.fromHeight(48),

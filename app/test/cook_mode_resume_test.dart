@@ -216,4 +216,57 @@ void main() {
       dispatcher.toString(); // reference to avoid unused var
     });
   });
+
+  group('cmr-4 — reset affordance + post-cook clear', () {
+    testWidgets('overflow menu → Reset cook → confirm clears state + snackbar',
+        (tester) async {
+      await _pumpCookMode(tester);
+      expect(find.text('Do step 1'), findsOneWidget);
+      // Advance to step 2 first so there's state to reset.
+      await tester.tap(find.text('Next'));
+      await tester.pump();
+      expect(find.text('Do step 2'), findsOneWidget);
+      // Open overflow menu.
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset cook'));
+      await tester.pumpAndSettle();
+      // Confirm sheet visible.
+      expect(find.text('Reset'), findsOneWidget);
+      await tester.tap(find.text('Reset'));
+      await tester.pumpAndSettle();
+      // Back to step 1 with snackbar.
+      expect(find.text('Do step 1'), findsOneWidget);
+      expect(find.text('Cook session reset'), findsOneWidget);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(CookSessionKey.forRecipe('r1')), isNull);
+    });
+
+    testWidgets('reset sheet Cancel leaves state alone',
+        (tester) async {
+      await _pumpCookMode(tester);
+      await tester.tap(find.text('Next'));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset cook'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Do step 2'), findsOneWidget);
+      expect(find.text('Cook session reset'), findsNothing);
+    });
+
+    testWidgets('overflow menu is the rightmost header icon after close',
+        (tester) async {
+      await _pumpCookMode(tester);
+      // Sanity: overflow icon is present.
+      expect(find.byIcon(Icons.more_vert), findsOneWidget);
+      // The header icons are: back (arrow_back), timer_outlined, close,
+      // more_vert. The overflow sits after the close button.
+      final overflowRect = tester.getRect(find.byIcon(Icons.more_vert));
+      final closeRect = tester.getRect(find.byIcon(Icons.close));
+      expect(overflowRect.left, greaterThan(closeRect.right));
+    });
+  });
 }

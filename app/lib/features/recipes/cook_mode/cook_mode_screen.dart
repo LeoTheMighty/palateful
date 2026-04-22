@@ -15,6 +15,7 @@ import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
 import 'services/cook_session_debouncer.dart';
 import 'services/cook_session_persister.dart';
+import 'widgets/cook_reset_confirm_sheet.dart';
 import 'widgets/cook_resume_gate_sheet.dart';
 import 'widgets/timer_completion_overlay.dart';
 import 'widgets/ingredient_strip.dart';
@@ -669,10 +670,55 @@ class _CookModeScreenState extends State<CookModeScreen>
         apiClient: _apiClient,
         recipeCache: _recipeCache,
         isOffline: _isOffline,
-        onComplete: () => Navigator.of(sheetContext).pop(),
+        onComplete: ({bool saved = false}) {
+          // cmr-4 AC4: clear the persisted session only when the post-cook
+          // save succeeded. Skip / catch path leaves state intact so the
+          // user can retry without losing their session.
+          if (saved) {
+            _debouncer.discardPending();
+            unawaited(_persister.clear(_sessionKey));
+          }
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+        },
       ),
     );
     if (mounted) context.pop(); // Exit cook mode screen after sheet closes
+  }
+
+  /// Open the overflow-menu-driven Reset confirmation sheet. On confirm:
+  /// cancel every active timer + OS notification + live activity, clear
+  /// persisted state, reset in-memory state, and restart the stopwatch.
+  Future<void> _confirmAndResetCook() async {
+    final confirmed = await showCookResetConfirmSheet(context);
+    if (!confirmed || !mounted) return;
+    // Cancel timers (in-memory + OS + live activity). Copy the list —
+    // _cancelTimer mutates _activeTimers via setState.
+    for (final timer in List<_ActiveTimer>.from(_activeTimers)) {
+      timer.timer?.cancel();
+      _timerNotifService.cancelTimerNotification(timer.notifId);
+      _liveActivityService.endTimerActivity(timer.notifId);
+    }
+    _maybeStopLiveActivityPulse();
+    _debouncer.discardPending();
+    await _persister.clear(_sessionKey);
+    if (!mounted) return;
+    setState(() {
+      _currentStep = 0;
+      _completedSteps.clear();
+      _checkedIngredients.clear();
+      _activeTimers.clear();
+      _cookingStopwatch.stop();
+      _cookingStopwatch.reset();
+      _cookingStopwatch.start();
+      _restoredElapsedMs = 0;
+      _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Cook session reset'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   String _formatDuration(Duration d) {
@@ -914,6 +960,23 @@ class _CookModeScreenState extends State<CookModeScreen>
             onPressed: _exitCookMode,
             constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
             padding: EdgeInsets.zero,
+          ),
+
+          // Overflow menu (cmr-4). Rightmost header element. Currently
+          // carries a single Reset-cook entry; future affordances fold
+          // into the same menu rather than spawning more icons.
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: cook.cookOnSurface),
+            tooltip: 'More',
+            onSelected: (value) {
+              if (value == 'reset') _confirmAndResetCook();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(
+                value: 'reset',
+                child: Text('Reset cook'),
+              ),
+            ],
           ),
         ],
       ),
