@@ -4,9 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../services/share_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'services/recipe_book_service.dart';
 
 class RecipeBookMembersScreen extends StatefulWidget {
   final String recipeBookId;
@@ -24,6 +27,7 @@ class RecipeBookMembersScreen extends StatefulWidget {
 
 class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _bookService = getIt<RecipeBookService>();
   List<dynamic> _members = [];
   bool _isLoading = true;
   String? _error;
@@ -61,10 +65,10 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
 
   Future<void> _changeRole(String userId, String newRole) async {
     try {
-      await _apiClient.updateRecipeBookMemberRole(
+      await _bookService.updateMemberRole(
         widget.recipeBookId,
         userId,
-        {'role': newRole},
+        newRole,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -74,8 +78,10 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not update role. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.updateBookMemberRole,
+          () => _changeRole(userId, newRole),
         );
       }
     }
@@ -101,7 +107,7 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
     );
     if (confirmed != true) return;
     try {
-      await _apiClient.removeRecipeBookMember(widget.recipeBookId, userId);
+      await _bookService.removeMember(widget.recipeBookId, userId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Member removed')),
@@ -110,8 +116,10 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not remove member. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.removeBookMember,
+          () => _removeMember(userId, memberName),
         );
       }
     }
@@ -176,10 +184,11 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
       );
 
       if (result == true && userIdController.text.trim().isNotEmpty) {
-        await _apiClient.addRecipeBookMember(widget.recipeBookId, {
-          'user_id': userIdController.text.trim(),
-          'role': selectedRole,
-        });
+        await _bookService.addMember(
+          widget.recipeBookId,
+          userEmail: userIdController.text.trim(),
+          role: selectedRole,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Member added')),
@@ -189,8 +198,10 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not add member. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.addBookMember,
+          _showAddMemberDialog,
         );
       }
     } finally {

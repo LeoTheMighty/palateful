@@ -9,6 +9,7 @@ import '../services/shared_state_service.dart';
 import '../services/pending_imports_reconciler.dart';
 import '../../features/pantry/services/pantry_service.dart';
 import '../../features/shopping_cart/services/shopping_cart_service.dart';
+import '../../features/recipe_books/services/recipe_book_service.dart';
 import '../../features/recipe_books/services/recipe_book_sync_service.dart';
 import '../../features/recipes/add_recipe/batch_parser_service.dart';
 import '../../features/calendar/services/calendar_service.dart';
@@ -28,6 +29,9 @@ void setupDependencies() {
   getIt.registerLazySingleton<ShoppingCartService>(() => ShoppingCartService());
   getIt.registerLazySingleton<PantryService>(() => PantryService());
   getIt.registerLazySingleton<RecipeBookSyncService>(() => RecipeBookSyncService());
+  getIt.registerLazySingleton<RecipeBookService>(
+    () => RecipeBookService(getIt<ApiClient>()),
+  );
   getIt.registerLazySingleton<PushNotificationService>(
     () => PushNotificationService(getIt<ApiClient>()),
   );

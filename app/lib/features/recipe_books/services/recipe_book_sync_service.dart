@@ -6,6 +6,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_bus.dart';
 
 /// WebSocket connection state.
 enum RecipeBookWebSocketState {
@@ -110,10 +111,25 @@ class RecipeBookSyncService {
         case 'recipe_added':
           final payload = (message['data'] as Map<String, dynamic>?) ?? {};
           _recipeAddedController.add(payload);
+          // rp-1: lower WS frame into MutationBus so reactive
+          // subscribers (HomeScreen, books provider, etc.) react
+          // uniformly to local mutations AND partner broadcasts.
+          final bookId = _currentBookId;
+          if (bookId != null) {
+            emitMutation(RecipeCreated(
+              recipeId: payload['id']?.toString() ?? '',
+              recipe: payload,
+              bookId: bookId,
+            ));
+          }
           break;
         case 'recipe_updated':
           final payload = (message['data'] as Map<String, dynamic>?) ?? {};
           _recipeUpdatedController.add(payload);
+          emitMutation(RecipeUpdated(
+            recipeId: payload['id']?.toString() ?? '',
+            recipe: payload,
+          ));
           break;
         case 'recipe_removed':
           final recipeId =
@@ -121,6 +137,13 @@ class RecipeBookSyncService {
                   as String? ??
               '';
           _recipeRemovedController.add(recipeId);
+          final bookId = _currentBookId;
+          if (bookId != null && recipeId.isNotEmpty) {
+            emitMutation(RecipeArchived(
+              recipeId: recipeId,
+              bookId: bookId,
+            ));
+          }
           break;
         case 'connected':
           _reconnectAttempts = 0;

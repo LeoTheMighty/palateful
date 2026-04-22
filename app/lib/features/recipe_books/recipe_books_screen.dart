@@ -3,9 +3,12 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'services/recipe_book_service.dart';
 
 class RecipeBooksScreen extends StatefulWidget {
   const RecipeBooksScreen({super.key});
@@ -16,6 +19,7 @@ class RecipeBooksScreen extends StatefulWidget {
 
 class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _bookService = getIt<RecipeBookService>();
   List<dynamic> _recipeBooks = [];
   bool _isLoading = true;
   String? _error;
@@ -108,7 +112,7 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
 
       if (result == true && nameController.text.isNotEmpty) {
         try {
-          final response = await _apiClient.createRecipeBook({
+          final book = await _bookService.createRecipeBook({
             'name': nameController.text,
             'description': descriptionController.text.isEmpty
                 ? null
@@ -116,8 +120,8 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
           });
           // If this is the user's first book, auto-set as default
           final authService = getIt<AuthService>();
-          if (authService.defaultRecipeBookId == null && response.data != null) {
-            final newBookId = response.data['id']?.toString();
+          if (authService.defaultRecipeBookId == null && book.isNotEmpty) {
+            final newBookId = book['id']?.toString();
             if (newBookId != null) {
               await _apiClient.setDefaultRecipeBook(newBookId);
               authService.updateDefaultRecipeBook(
@@ -133,8 +137,10 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
           _loadRecipeBooks();
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not create recipe book. Please try again.')),
+            showMutationFailureSnackbar(
+              context,
+              MutationType.createRecipeBook,
+              _createRecipeBook,
             );
           }
         }

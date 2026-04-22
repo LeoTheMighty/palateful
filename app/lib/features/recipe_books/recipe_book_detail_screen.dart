@@ -16,6 +16,7 @@ import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
 import '../recipes/providers/recipe_provider.dart';
 import '../recipes/services/recipe_service.dart';
+import 'services/recipe_book_service.dart';
 import 'services/recipe_book_sync_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/state/mutation_failure_copy.dart';
@@ -34,6 +35,7 @@ class RecipeBookDetailScreen extends StatefulWidget {
 class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
   final _apiClient = getIt<ApiClient>();
   final _mealService = getIt<MealService>();
+  final _bookService = getIt<RecipeBookService>();
   late final RecipeBookSyncService _syncService;
   Map<String, dynamic>? _recipeBook;
   List<dynamic> _recipes = [];
@@ -322,7 +324,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     if (confirm == true) {
       try {
         HapticFeedback.selectionClick();
-        await _apiClient.archiveRecipeBook(widget.recipeBookId);
+        await _bookService.archiveRecipeBook(widget.recipeBookId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Recipe book archived')),
@@ -331,8 +333,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not archive recipe book. Please try again.')),
+          showMutationFailureSnackbar(
+            context,
+            MutationType.archiveRecipeBook,
+            _archiveRecipeBook,
           );
         }
       }
@@ -393,7 +397,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
 
       if (result == true) {
         try {
-          await _apiClient.updateRecipeBook(widget.recipeBookId, {
+          await _bookService.updateRecipeBook(widget.recipeBookId, {
             'name': nameController.text,
             'description': descriptionController.text.isEmpty
                 ? null
@@ -402,8 +406,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
           _loadRecipeBook();
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Could not update recipe book. Please try again.')),
+            showMutationFailureSnackbar(
+              context,
+              MutationType.updateRecipeBook,
+              _renameRecipeBook,
             );
           }
         }
@@ -487,7 +493,11 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
       HapticFeedback.selectionClick();
       final count = _selectedRecipeIds.length;
       final movedIds = _selectedRecipeIds.toList();
-      await _apiClient.bulkMoveRecipes(movedIds, book['id']);
+      await _bookService.bulkMoveRecipes(
+        movedIds,
+        book['id'] as String,
+        sourceBookId: widget.recipeBookId,
+      );
       // pfc-3: drop each moved recipe's cached detail payload
       // (recipe_book_id changed).
       if (mounted) {
@@ -504,8 +514,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not move recipes. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.bulkMoveRecipes,
+          _bulkMove,
         );
       }
     } finally {
@@ -648,7 +660,7 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
       HapticFeedback.selectionClick();
       final tags = result['tags'] as List<String>;
       final count = _selectedRecipeIds.length;
-      await _apiClient.bulkUpdateTags(
+      await _bookService.bulkUpdateTags(
         _selectedRecipeIds.toList(),
         addTags: result['isAdd'] == true ? tags : null,
         removeTags: result['isAdd'] == false ? tags : null,
@@ -663,8 +675,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not update tags. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.bulkUpdateTags,
+          _bulkTags,
         );
       }
     } finally {

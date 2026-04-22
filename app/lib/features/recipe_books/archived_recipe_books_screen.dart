@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'services/recipe_book_service.dart';
 
 class ArchivedRecipeBooksScreen extends StatefulWidget {
   const ArchivedRecipeBooksScreen({super.key});
@@ -17,6 +20,7 @@ class ArchivedRecipeBooksScreen extends StatefulWidget {
 
 class _ArchivedRecipeBooksScreenState extends State<ArchivedRecipeBooksScreen> {
   final _apiClient = getIt<ApiClient>();
+  final _bookService = getIt<RecipeBookService>();
   List<dynamic> _archivedBooks = [];
   bool _isLoading = true;
   String? _error;
@@ -62,7 +66,7 @@ class _ArchivedRecipeBooksScreenState extends State<ArchivedRecipeBooksScreen> {
 
     try {
       HapticFeedback.selectionClick();
-      await _apiClient.restoreRecipeBook(bookId);
+      await _bookService.restoreRecipeBook(bookId);
       if (mounted) {
         setState(() {
           _archivedBooks.removeWhere((b) => b['id']?.toString() == bookId);
@@ -73,10 +77,10 @@ class _ArchivedRecipeBooksScreenState extends State<ArchivedRecipeBooksScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content:
-                  Text('Could not restore recipe book. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.restoreRecipeBook,
+          () => _restoreBook(book),
         );
       }
     } finally {
