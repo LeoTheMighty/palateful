@@ -15,6 +15,7 @@ import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
 import 'services/cook_session_debouncer.dart';
 import 'services/cook_session_persister.dart';
+import 'widgets/cook_resume_gate_sheet.dart';
 import 'widgets/timer_completion_overlay.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/manual_timer_sheet.dart';
@@ -97,19 +98,89 @@ class _CookModeScreenState extends State<CookModeScreen>
     _initCookSession();
   }
 
-  /// Resolve any persisted session and start the live stopwatch. cmr-3
-  /// inserts the Resume / Start Over gate inside this flow; for now any
-  /// saved state is cleared so the screen always starts fresh.
+  /// Resolve any persisted session and start the live stopwatch.
+  ///
+  /// Ordering is load-bearing:
+  ///   1. Load persisted state (may be null).
+  ///   2. Fetch the recipe so the gate has the name + total step count.
+  ///   3. If recipe load failed or yielded zero steps, skip the gate —
+  ///      the error / empty-state UI takes over.
+  ///   4. If persisted state exists, show the Resume / Start Over gate.
+  ///   5. Only after the gate resolves (or no gate was shown) do we
+  ///      start the cooking stopwatch — otherwise the restored
+  ///      `cumulative_elapsed_ms` drifts during the load + gate window.
   Future<void> _initCookSession() async {
     final persisted = await _persister.load(_sessionKey);
     if (!mounted) return;
-    if (persisted != null) {
-      await _persister.clear(_sessionKey);
+    await _loadRecipe();
+    if (!mounted) return;
+    if (persisted != null && _error == null && _steps.isNotEmpty) {
+      final targetName = _recipe?['name'] as String? ?? widget.recipeId;
+      final choice = await showCookResumeGate(
+        context,
+        state: persisted,
+        targetName: targetName,
+        totalSteps: _steps.length,
+      );
+      if (!mounted) return;
+      if (choice == CookResumeChoice.resume) {
+        _applyRestoredState(persisted);
+      } else {
+        await _persister.clear(_sessionKey);
+        _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+      }
+    } else {
+      _startedAtMs = DateTime.now().millisecondsSinceEpoch;
     }
     if (!mounted) return;
-    _startedAtMs = DateTime.now().millisecondsSinceEpoch;
     _cookingStopwatch.start();
-    await _loadRecipe();
+  }
+
+  /// Populate in-memory state from a persisted [state] snapshot.
+  /// Steps + ingredients beyond the current recipe's shape are clamped
+  /// silently (Path E of the epic — recipe edited since last session);
+  /// a one-shot snackbar explains the shift.
+  void _applyRestoredState(CookSessionState state) {
+    final totalSteps = _steps.length;
+    int restoredStep = state.currentStep;
+    bool clamped = false;
+    if (restoredStep >= totalSteps) {
+      restoredStep = totalSteps - 1;
+      clamped = true;
+    }
+    if (restoredStep < 0) restoredStep = 0;
+    final validCompleted = state.completedSteps
+        .where((i) => i >= 0 && i < totalSteps)
+        .toSet();
+    final ingredientCount = _ingredients.length;
+    final validChecked = <int>{};
+    for (final raw in state.checkedIngredients) {
+      final idx = int.tryParse(raw);
+      if (idx != null && idx >= 0 && idx < ingredientCount) {
+        validChecked.add(idx);
+      }
+    }
+    setState(() {
+      _currentStep = restoredStep;
+      _completedSteps
+        ..clear()
+        ..addAll(validCompleted);
+      _checkedIngredients
+        ..clear()
+        ..addAll(validChecked);
+      _restoredElapsedMs = state.cumulativeElapsedMs;
+      _startedAtMs = state.startedAtMs;
+    });
+    if (clamped && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Recipe changed since your last session — picking up at the last step',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   /// Fire-and-forget read of the user's per-category notification prefs.
