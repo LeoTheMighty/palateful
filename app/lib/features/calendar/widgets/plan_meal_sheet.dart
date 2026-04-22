@@ -107,6 +107,13 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
   /// Non-null when the user has configured the meal to repeat.
   RecurrenceValue? _recurrence;
 
+  /// User's per-meal "Remind me at" override. Null = use slot default
+  /// (shown as greyed caption). Set via the time picker; cleared via
+  /// the Reset-to-default inline action. On save, null → key omitted
+  /// from payload (backend falls back to slot default); override → sent
+  /// as "HH:MM".
+  TimeOfDay? _mealReminderOverride;
+
   bool get _isEditMode => widget.eventId != null;
   bool get _hasRecipe => widget.recipeId != null;
   String? get _effectiveRecipeId => widget.recipeId ?? _pickedRecipeId;
@@ -355,6 +362,9 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
           recipeId: _isMealMode ? null : _effectiveRecipeId,
           mealId: _isMealMode ? _pickedMeal!.mealId : null,
           isShared: true,
+          mealReminderTime: _mealReminderOverride == null
+              ? null
+              : _reminderTimeWire(_mealReminderOverride!),
         );
         // Only save to the free-text recent list when the meal isn't
         // linked to a real recipe OR a Meal; otherwise the chip row
@@ -401,6 +411,134 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
     return 'UTC';
   }
 
+  /// Resolved reminder time: override when set, else the current slot's
+  /// default. This is what the picker displays + what gets formatted
+  /// into `meal_reminder_time` when an override is present.
+  TimeOfDay get _effectiveReminderTime {
+    if (_mealReminderOverride != null) return _mealReminderOverride!;
+    final (h, m) = _mealDefaultTime(_selectedMealType);
+    return TimeOfDay(hour: h, minute: m);
+  }
+
+  String _formatTimeOfDay(TimeOfDay t) {
+    final hour12 = t.hour == 0 ? 12 : (t.hour > 12 ? t.hour - 12 : t.hour);
+    final mm = t.minute.toString().padLeft(2, '0');
+    final ampm = t.hour < 12 ? 'AM' : 'PM';
+    return '$hour12:$mm $ampm';
+  }
+
+  /// Serialize TimeOfDay as "HH:MM" (24h) for the API payload. Matches
+  /// the backend's `time` column wire format.
+  String _reminderTimeWire(TimeOfDay t) {
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
+  Future<void> _pickReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _effectiveReminderTime,
+    );
+    if (picked != null && mounted) {
+      setState(() => _mealReminderOverride = picked);
+    }
+  }
+
+  void _resetReminderToDefault() {
+    setState(() => _mealReminderOverride = null);
+  }
+
+  Widget _buildReminderRow(ColorScheme colorScheme) {
+    final effective = _effectiveReminderTime;
+    final hasOverride = _mealReminderOverride != null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Remind me at',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const Spacer(),
+              if (hasOverride)
+                TextButton(
+                  onPressed: _resetReminderToDefault,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 28),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Reset to default',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            key: const Key('remind_me_at_row'),
+            onTap: _pickReminderTime,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.notifications_outlined,
+                    size: 18,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _formatTimeOfDay(effective),
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  if (!hasOverride) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_selectedMealType.displayName} default',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  Icon(
+                    Icons.chevron_right,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Wall-clock default reminder time per meal slot. KEEP IN SYNC with
+  /// `MEAL_SLOT_DEFAULT_TIMES` in
+  /// `libraries/utils/utils/models/meal_event.py` — the backend
+  /// scheduler reads its copy when `meal_reminder_time` is null, so a
+  /// drift here means the user sees one time in the picker and gets
+  /// pinged at a different one.
   (int, int) _mealDefaultTime(MealType type) {
     switch (type) {
       case MealType.breakfast:
@@ -408,7 +546,7 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
       case MealType.lunch:
         return (12, 0);
       case MealType.dinner:
-        return (18, 0);
+        return (18, 30);
       case MealType.snack:
         return (15, 0);
     }
@@ -616,6 +754,10 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
                   child: Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: GestureDetector(
+                      // Switching meal type only changes the *displayed*
+                      // default when no override is set; an override is
+                      // preserved across slot switches (the user's
+                      // explicit choice wins). Matches meal-2 AC 3.
                       onTap: () => setState(() => _selectedMealType = type),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 10),
@@ -642,6 +784,11 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
                 );
               }).toList(),
             ),
+
+            // "Remind me at" picker. Default tracks the current slot;
+            // user can override per-meal. Override persists across
+            // meal-type switches (meal-2 AC 3).
+            _buildReminderRow(colorScheme),
 
             // Repeats section — hidden in edit mode (series-level edits
             // happen from the manage screen, not the reschedule flow).

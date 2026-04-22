@@ -985,7 +985,7 @@ development_status:
 
   epic-notifications-meal-reminders: in-progress
   meal-1-schema-meal-reminder-time-columns-api-flutter: done
-  meal-2-frontend-remind-me-at-time-picker: backlog
+  meal-2-frontend-remind-me-at-time-picker: done
   meal-3-celery-beat-meal-reminder-fanout-copy: backlog
   meal-4-wire-meal-event-updated-on-shared-edits: backlog
   meal-5-meal-detail-reminder-row-edit: backlog

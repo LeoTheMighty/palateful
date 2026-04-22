@@ -19,6 +19,8 @@ class _FakeMealCalendarService implements MealCalendarService {
   Future<MealEvent> getMealEvent(String eventId) async =>
       throw UnimplementedError();
 
+  String? lastCreatedReminderTime;
+
   @override
   Future<MealEvent> createMealEvent({
     required String title,
@@ -28,6 +30,7 @@ class _FakeMealCalendarService implements MealCalendarService {
     String? recipeId,
     String? mealId,
     bool isShared = true,
+    String? mealReminderTime,
   }) async {
     lastCreated = MealEvent(
       id: 'new-event',
@@ -38,10 +41,29 @@ class _FakeMealCalendarService implements MealCalendarService {
       isShared: isShared,
       ownerId: 'user-1',
       mealId: mealId,
+      mealReminderTime: mealReminderTime,
     );
     lastCreatedRecipeId = recipeId;
     lastCreatedMealId = mealId;
+    lastCreatedReminderTime = mealReminderTime;
     return lastCreated!;
+  }
+
+  @override
+  Future<MealEvent> setMealReminderTime(
+    String eventId,
+    String? reminderTime,
+  ) async {
+    return MealEvent(
+      id: eventId,
+      title: 'Updated',
+      scheduledAt: DateTime.now(),
+      mealType: MealType.lunch,
+      status: 'planned',
+      isShared: true,
+      ownerId: 'user-1',
+      mealReminderTime: reminderTime,
+    );
   }
 
   @override
@@ -412,6 +434,58 @@ void main() {
     testWidgets('body is wrapped in a SingleChildScrollView', (tester) async {
       await tester.pumpWidget(_buildQuickAddSheet());
       expect(find.byType(SingleChildScrollView), findsAtLeastNWidgets(1));
+    });
+  });
+
+  group('PlanMealSheet — Remind-me-at picker (meal-2)', () {
+    testWidgets('Lunch slot shows 12:00 PM with "Lunch default" caption',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.lunch));
+      await tester.ensureVisible(find.byKey(const Key('remind_me_at_row')));
+      expect(find.text('12:00 PM'), findsOneWidget);
+      expect(find.text('Lunch default'), findsOneWidget);
+    });
+
+    testWidgets('Dinner slot shows 6:30 PM with "Dinner default" caption',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.dinner));
+      await tester.ensureVisible(find.byKey(const Key('remind_me_at_row')));
+      expect(find.text('6:30 PM'), findsOneWidget);
+      expect(find.text('Dinner default'), findsOneWidget);
+    });
+
+    testWidgets('Breakfast / Snack slots show correct defaults',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.breakfast));
+      await tester.ensureVisible(find.byKey(const Key('remind_me_at_row')));
+      expect(find.text('8:00 AM'), findsOneWidget);
+      expect(find.text('Breakfast default'), findsOneWidget);
+    });
+
+    testWidgets('Switching meal-type updates default (no override)',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.lunch));
+      await tester.tap(find.text('Snack'));
+      await tester.pump();
+      expect(find.text('3:00 PM'), findsOneWidget);
+      expect(find.text('Snack default'), findsOneWidget);
+    });
+
+    testWidgets(
+        'Save with no override → payload omits meal_reminder_time',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.dinner));
+      await tester.tap(find.text('Add to Calendar'));
+      await tester.pump();
+      expect(fakeService.lastCreatedReminderTime, isNull);
+    });
+
+    testWidgets(
+        'Reset-to-default button only appears when an override is set',
+        (tester) async {
+      await tester.pumpWidget(_buildSheet(initialMealType: MealType.lunch));
+      // No override yet.
+      expect(find.text('Reset to default'), findsNothing);
     });
   });
 }

@@ -42,7 +42,14 @@ class _FakeService implements MealCalendarService {
     String? recipeId,
     String? mealId,
     bool isShared = true,
+    String? mealReminderTime,
   }) async =>
+      throw UnimplementedError();
+  @override
+  Future<MealEvent> setMealReminderTime(
+    String eventId,
+    String? reminderTime,
+  ) async =>
       throw UnimplementedError();
   @override
   Future<MealEvent> updateMealEvent(
