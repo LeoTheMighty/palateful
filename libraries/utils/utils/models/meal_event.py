@@ -69,6 +69,15 @@ class MealEvent(Base):
             "scheduled_at",
         ),
         Index("ix_meal_events_meal_id", "meal_id"),
+        # meal-1: backs the reminder-scheduler scan that filters by
+        # `scheduled_at::date = today` and `last_reminder_sent_at IS NULL
+        # OR last_reminder_sent_at < :window_start`. Created by migration
+        # `mealrmndrflds01`; declared here so `alembic check` stays clean.
+        Index(
+            "ix_meal_events_reminder_scan",
+            "scheduled_at",
+            "last_reminder_sent_at",
+        ),
         # At most one of recipe_id / meal_id may be set. Both-null is legal
         # (free-text event). Both-set is rejected.
         CheckConstraint(
