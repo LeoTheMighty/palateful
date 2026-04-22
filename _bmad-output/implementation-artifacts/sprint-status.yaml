@@ -1061,6 +1061,6 @@ development_status:
   rp-1-recipe-books-mutation-sites-and-providers: done
   rp-2-profile-and-notification-prefs-reactivity: done
   rp-3-pantry-reactivity: done
-  rp-4-shopping-cart-service-ws-adapter-consolidation: backlog
+  rp-4-shopping-cart-service-ws-adapter-consolidation: done
   rp-5-central-failure-copy-grep-guard-and-e2e-sweep: backlog
   epic-reactive-migration-books-profile-pantry-and-polish-retrospective: optional

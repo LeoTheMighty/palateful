@@ -8,6 +8,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/error_reporter.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../models/shopping_list.dart';
 import '../models/shopping_list_item.dart';
 
@@ -97,7 +98,18 @@ class ShoppingCartService {
       if (category != null) 'category': category,
       if (notes != null) 'notes': notes,
     });
-    return ShoppingListItem.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    final item = ShoppingListItem.fromJson(payload);
+    // rp-4: emit on the bus so Riverpod-based shopping-list surfaces
+    // (landed in a follow-on epic) reconcile. Local mutation + WS
+    // frame may both fire — subscribers are idempotent (Foundation's
+    // WS/MutationBus duplication note).
+    emitMutation(ShoppingListItemAdded(
+      itemId: item.id,
+      item: payload,
+      listId: listId,
+    ));
+    return item;
   }
 
   /// Toggle item checked state.
@@ -106,7 +118,14 @@ class ShoppingCartService {
     final response = await _apiClient.updateShoppingListItem(listId, item.id, {
       'is_checked': !item.isChecked,
     });
-    return ShoppingListItem.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    final updated = ShoppingListItem.fromJson(payload);
+    emitMutation(ShoppingListItemUpdated(
+      itemId: updated.id,
+      item: payload,
+      listId: listId,
+    ));
+    return updated;
   }
 
   /// Update an item.
@@ -117,12 +136,20 @@ class ShoppingCartService {
   ) async {
     final response =
         await _apiClient.updateShoppingListItem(listId, itemId, data);
-    return ShoppingListItem.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    final updated = ShoppingListItem.fromJson(payload);
+    emitMutation(ShoppingListItemUpdated(
+      itemId: itemId,
+      item: payload,
+      listId: listId,
+    ));
+    return updated;
   }
 
   /// Delete an item.
   Future<void> deleteItem(String listId, String itemId) async {
     await _apiClient.deleteShoppingListItem(listId, itemId);
+    emitMutation(ShoppingListItemRemoved(itemId: itemId, listId: listId));
   }
 
   /// Get items grouped by deadline urgency.
@@ -252,31 +279,62 @@ class ShoppingCartService {
     }
   }
 
+  @visibleForTesting
+  void handleMessageForTest(dynamic data) => _handleMessage(data);
+
+  @visibleForTesting
+  void setCurrentListIdForTest(String listId) {
+    _currentListId = listId;
+  }
+
   void _handleMessage(dynamic data) {
     try {
       final message = jsonDecode(data as String) as Map<String, dynamic>;
       final type = message['type'] as String?;
+      final listId = _currentListId;
 
       switch (type) {
         case 'sync_response':
+          // Not a mutation — transport-level state only; no emit.
           _handleSyncResponse(message);
           break;
         case 'item_added':
-          final item = ShoppingListItem.fromJson(
-              message['data'] as Map<String, dynamic>);
+          final payload = message['data'] as Map<String, dynamic>;
+          final item = ShoppingListItem.fromJson(payload);
           _itemAddedController.add(item);
+          if (listId != null) {
+            emitMutation(ShoppingListItemAdded(
+              itemId: item.id,
+              item: payload,
+              listId: listId,
+            ));
+          }
           break;
         case 'item_updated':
         case 'item_checked':
-          final item = ShoppingListItem.fromJson(
-              message['data'] as Map<String, dynamic>);
+          final payload = message['data'] as Map<String, dynamic>;
+          final item = ShoppingListItem.fromJson(payload);
           _itemUpdatedController.add(item);
+          if (listId != null) {
+            emitMutation(ShoppingListItemUpdated(
+              itemId: item.id,
+              item: payload,
+              listId: listId,
+            ));
+          }
           break;
         case 'item_removed':
           final itemId = message['data']['item_id'] as String;
           _itemRemovedController.add(itemId);
+          if (listId != null) {
+            emitMutation(ShoppingListItemRemoved(
+              itemId: itemId,
+              listId: listId,
+            ));
+          }
           break;
         case 'presence_update':
+          // Transient session state — not a mutation; no emit.
           final user = OnlineUser.fromJson(message);
           _presenceController.add(user);
           break;
