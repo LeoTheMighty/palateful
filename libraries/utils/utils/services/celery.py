@@ -41,7 +41,9 @@ celery_app.conf.broker_transport_options = broker_transport_options
 celery_app.conf.beat_schedule = {
     'shopping-list-deadline-reminders': {
         'task': 'shopping_list_deadline_reminder',
-        'schedule': 900.0,  # Every 15 minutes
+        # Beat every 5 min so exactly one tick per tz per day lands in
+        # the `[08:00, 08:05)` morning window — see deadline_reminder_task.
+        'schedule': crontab(minute='*/5'),
         'options': {'queue': 'celery'},
     },
     'cleanup-error-logs': {

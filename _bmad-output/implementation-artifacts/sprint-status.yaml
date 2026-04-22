@@ -1003,7 +1003,7 @@ development_status:
   partner-5-frontend-deep-link-routes-new-types: backlog
 
   epic-notifications-scheduled-reminders: backlog
-  sched-1-shopping-deadline-reminders-schema-beat-copy: in-progress
+  sched-1-shopping-deadline-reminders-schema-beat-copy: done
   sched-2-import-failed-enum-callsite-route: backlog
 
   # === Reactive State Permeation Initiative (3 epics) — added 2026-04-22 ===

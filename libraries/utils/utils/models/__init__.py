@@ -41,6 +41,9 @@ from utils.models.request_latency import RequestLatency
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_event import ShoppingListEvent
 from utils.models.shopping_list_user import ShoppingListUser
+from utils.models.shopping_list_user_reminder_state import (
+    ShoppingListUserReminderState,
+)
 from utils.models.suggestion import Suggestion
 from utils.models.task_latency import TaskLatency
 from utils.models.thread import Thread
@@ -92,6 +95,7 @@ __all__ = [
     "ShoppingList",
     "ShoppingListItem",
     "ShoppingListUser",
+    "ShoppingListUserReminderState",
     "ShoppingListEvent",
     "ActiveTimer",
     "ImportJob",
