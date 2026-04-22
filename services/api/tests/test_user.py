@@ -610,6 +610,73 @@ class TestNotificationPreferences:
         )
         assert response.status_code == 200
 
+    def test_get_returns_categories_defaulted_to_true(
+        self, client, mock_user, mock_db
+    ):
+        """GET prefs echoes a fully-defaulted categories block (all ON)."""
+        mock_user.notification_preferences = {"push_enabled": True}
+        response = client.get("/v1/users/me/notification-preferences")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["categories"] == {
+            "meals": True,
+            "timers": True,
+            "shopping": True,
+            "partner_activity": True,
+            "imports": True,
+            "friends_invitations": True,
+        }
+
+    def test_get_returns_categories_with_user_opt_outs_preserved(
+        self, client, mock_user, mock_db
+    ):
+        """GET prefs preserves user-set False overrides; missing keys default ON."""
+        mock_user.notification_preferences = {
+            "push_enabled": True,
+            "categories": {"imports": False, "shopping": False},
+        }
+        response = client.get("/v1/users/me/notification-preferences")
+        data = response.json()
+        assert data["categories"]["imports"] is False
+        assert data["categories"]["shopping"] is False
+        assert data["categories"]["meals"] is True  # defaulted
+        assert data["categories"]["timers"] is True  # defaulted
+
+    def test_update_notification_preferences_categories_partial(
+        self, client, mock_user, mock_db
+    ):
+        """PUT with categories merges into existing categories (preserves others)."""
+        mock_user.notification_preferences = {
+            "push_enabled": True,
+            "categories": {"imports": False},
+        }
+        mock_db.db.commit = MagicMock()
+        response = client.put(
+            "/v1/users/me/notification-preferences",
+            json={"categories": {"shopping": False}},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["categories"]["imports"] is False  # preserved
+        assert data["categories"]["shopping"] is False  # newly set
+        assert data["categories"]["meals"] is True  # defaulted
+
+    def test_update_notification_preferences_unknown_category_key_400(
+        self, client, mock_user, mock_db
+    ):
+        """PUT with an unknown category key returns 400 with descriptive error."""
+        mock_db.db.commit = MagicMock()
+        response = client.put(
+            "/v1/users/me/notification-preferences",
+            json={"categories": {"imports": False, "not_a_real_category": True}},
+        )
+        assert response.status_code == 400
+        body = response.json()
+        # Error message should call out the bad key + list valid options.
+        error_message = body.get("error_message") or ""
+        assert "not_a_real_category" in error_message
+        assert "imports" in error_message  # valid keys included
+
 
 class TestPushTokens:
     """Tests for push token endpoints."""

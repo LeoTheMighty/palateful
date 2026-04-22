@@ -965,3 +965,43 @@ development_status:
   pfc-3-recipe-detail-keep-alive: done
   pfc-4-home-filter-no-refetch: done
   pfc-5-regression-sweep: deleted  # folded into pfc-1 walkthrough
+
+  # Notifications Comprehensive Coverage — addendum 2026-04-21
+  # Test push works end-to-end; bring every other notification up to the
+  # same proven-working bar. Five epics, gated on Foundation (epic A).
+  # User-locked decisions (2026-04-21 batch):
+  #   - Partner activity = high-signal only (forks/notes/cooks, not edits)
+  #   - Per-category prefs (6 toggles)
+  #   - Meal-reminder fan-out to all accepted participants
+  #   - Live Activities wired in cook timer epic
+  # See planning-artifacts/epic-notifications-*.md for full specs.
+
+  epic-notifications-foundation-prefs-copy: in-progress
+  nfn-1-backend-per-category-prefs-defaults: done
+  nfn-2-notification-copy-module-rich-import-copy: backlog
+  nfn-3-fix-recipe-added-arity-bug-use-copy-library: backlog
+  nfn-4-frontend-per-category-prefs-ui: backlog
+  nfn-5-meal-detail-screen-deep-link-route: backlog
+
+  epic-notifications-meal-reminders: backlog
+  meal-1-schema-meal-reminder-time-columns-api-flutter: backlog
+  meal-2-frontend-remind-me-at-time-picker: backlog
+  meal-3-celery-beat-meal-reminder-fanout-copy: backlog
+  meal-4-wire-meal-event-updated-on-shared-edits: backlog
+  meal-5-meal-detail-reminder-row-edit: backlog
+
+  epic-notifications-timer-actions-live-activities: backlog
+  timer-1-android-notification-actions-parity: backlog
+  timer-2-wire-live-activity-into-cook-mode: backlog
+  timer-3-timer-completion-overlay-cupertino-modal: backlog
+
+  epic-notifications-partner-activity: backlog
+  partner-1-new-notification-types-copy-functions: backlog
+  partner-2-recipe-forked-and-note-added-callsites: backlog
+  partner-3-recipe-cooked-by-partner-and-cook-feedback-prompt: backlog
+  partner-4-meal-event-invite-accepted-back-fan: backlog
+  partner-5-frontend-deep-link-routes-new-types: backlog
+
+  epic-notifications-scheduled-reminders: backlog
+  sched-1-shopping-deadline-reminders-schema-beat-copy: backlog
+  sched-2-import-failed-enum-callsite-route: backlog

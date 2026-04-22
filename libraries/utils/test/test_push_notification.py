@@ -301,3 +301,183 @@ def test_send_to_user_no_tokens(caplog):
     mock_messaging.send.assert_not_called()
     no_token_logs = [r for r in caplog.records if "no tokens registered" in r.getMessage()]
     assert len(no_token_logs) == 1
+
+
+# ======================================================================
+# nfn-1: Per-category preference suppression tests.
+# ======================================================================
+
+
+def _make_user_with_categories(
+    *,
+    push_enabled: bool = True,
+    categories: dict | None = None,
+    legacy_partner_activity: bool | None = None,
+    quiet_start: str | None = None,
+    quiet_end: str | None = None,
+    tokens: list[str] | None = None,
+):
+    """User mock with explicit prefs.categories control."""
+    user = MagicMock()
+    user.id = "user-cat-1"
+    user.push_tokens = tokens if tokens is not None else ["token-cat-1"]
+    prefs = {
+        "push_enabled": push_enabled,
+        "quiet_hours_start": quiet_start,
+        "quiet_hours_end": quiet_end,
+    }
+    if categories is not None:
+        prefs["categories"] = categories
+    if legacy_partner_activity is not None:
+        prefs["partner_activity"] = legacy_partner_activity
+    user.notification_preferences = prefs
+    return user
+
+
+# Test A: categories.imports = False + IMPORT_NEEDS_REVIEW → suppressed,
+# no FCM call, log line emitted, response shape correct.
+def test_send_to_user_suppressed_by_category_imports(caplog):
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging") as mock_messaging:
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(categories={"imports": False})
+        notification = _make_notification(NotificationType.IMPORT_NEEDS_REVIEW)
+
+        with caplog.at_level(logging.INFO, logger="utils.services.push_notification"):
+            result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is True
+    assert result["suppressed_by_prefs"] is False
+    assert result["suppressed_by_quiet_hours"] is False
+    assert result["message_id"] is None
+    mock_messaging.send_each_for_multicast.assert_not_called()
+    suppression_logs = [
+        r for r in caplog.records
+        if "suppressed (category=imports)" in r.getMessage()
+    ]
+    assert len(suppression_logs) == 1
+
+
+# Test B: categories absent + IMPORT_NEEDS_REVIEW → fires (default true).
+def test_send_to_user_no_categories_key_defaults_to_on(caplog):
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging") as mock_messaging:
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories()
+        notification = _make_notification(NotificationType.IMPORT_NEEDS_REVIEW)
+
+        with caplog.at_level(logging.INFO, logger="utils.services.push_notification"):
+            result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is False
+    # Log-only mode by default in this test (no FCM creds): success_count
+    # equals number of tokens.
+    assert result["log_only"] is True
+    assert result["success_count"] == 1
+
+
+# Test C: legacy partner_activity=False (no categories key) + RECIPE_ADDED
+# → suppressed via legacy fallback path.
+def test_send_to_user_legacy_partner_activity_false_suppresses(caplog):
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging") as mock_messaging:
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(legacy_partner_activity=False)
+        notification = _make_notification(NotificationType.RECIPE_ADDED)
+
+        with caplog.at_level(logging.INFO, logger="utils.services.push_notification"):
+            result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is True
+    mock_messaging.send_each_for_multicast.assert_not_called()
+
+
+# Test C2: legacy partner_activity=True (no categories key) + RECIPE_ADDED
+# → fires.
+def test_send_to_user_legacy_partner_activity_true_passes(caplog):
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging"):
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(legacy_partner_activity=True)
+        notification = _make_notification(NotificationType.RECIPE_ADDED)
+
+        with caplog.at_level(logging.INFO, logger="utils.services.push_notification"):
+            result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is False
+
+
+# Test D: master push_enabled=False + any category True → still suppressed
+# (master wins; never reaches the category check).
+def test_send_to_user_master_off_suppresses_even_with_category_on():
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging") as mock_messaging:
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(
+            push_enabled=False,
+            categories={"imports": True},
+        )
+        notification = _make_notification(NotificationType.IMPORT_NEEDS_REVIEW)
+
+        result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_prefs"] is True
+    assert result["suppressed_by_category"] is False  # Never reached.
+    mock_messaging.send_each_for_multicast.assert_not_called()
+
+
+# Bonus: force=True bypasses category opt-out.
+def test_send_to_user_force_bypasses_category():
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging") as mock_messaging:
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(categories={"imports": False})
+        notification = _make_notification(NotificationType.IMPORT_NEEDS_REVIEW)
+
+        result = service.send_to_user(user, notification, force=True)
+
+    assert result["suppressed_by_category"] is False
+    assert result["log_only"] is True
+
+
+# Bonus: TEST type bypasses category opt-out (diagnostic).
+def test_send_to_user_test_type_bypasses_category():
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging"):
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        # Pretend admin set imports=False AND friends_invitations=False;
+        # TEST should still go through.
+        user = _make_user_with_categories(
+            categories={"imports": False, "friends_invitations": False},
+        )
+        notification = _make_notification(NotificationType.TEST)
+
+        result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is False
+
+
+# Bonus: SYSTEM type bypasses category check (no user-facing category).
+def test_send_to_user_system_type_bypasses_category():
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging"):
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(
+            categories={k: False for k in (
+                "meals", "timers", "shopping",
+                "partner_activity", "imports", "friends_invitations",
+            )},
+        )
+        notification = _make_notification(NotificationType.SYSTEM)
+
+        result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is False

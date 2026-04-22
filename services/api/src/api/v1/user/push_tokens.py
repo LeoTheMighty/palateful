@@ -1,8 +1,13 @@
 """Push notification token management endpoints."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import APIException, Endpoint, success
+from utils.classes.error_code import ErrorCode
 from utils.models.user import User
+from utils.services.push_notification import (
+    NOTIFICATION_CATEGORIES,
+    categories_default,
+)
 
 
 class RegisterPushToken(Endpoint):
@@ -130,8 +135,30 @@ class UpdateNotificationPreferences(Endpoint):
         if params.partner_activity is not None:
             prefs["partner_activity"] = params.partner_activity
 
+        if params.categories is not None:
+            unknown = set(params.categories.keys()) - NOTIFICATION_CATEGORIES
+            if unknown:
+                raise APIException(
+                    status_code=400,
+                    detail=(
+                        "Unknown notification category key(s): "
+                        f"{sorted(unknown)}. Valid keys: "
+                        f"{sorted(NOTIFICATION_CATEGORIES)}."
+                    ),
+                    code=ErrorCode.VALIDATION_ERROR,
+                )
+            existing = prefs.get("categories")
+            if not isinstance(existing, dict):
+                existing = {}
+            merged = {**existing, **params.categories}
+            prefs["categories"] = merged
+
         user.notification_preferences = prefs
         self.database.db.commit()
+
+        # Always echo a fully-defaulted categories dict so the client can
+        # render the toggles without needing to reapply defaults itself.
+        echo_categories = {**categories_default(), **(prefs.get("categories") or {})}
 
         return success(
             data=UpdateNotificationPreferences.Response(
@@ -141,6 +168,7 @@ class UpdateNotificationPreferences(Endpoint):
                 quiet_hours_end=prefs.get("quiet_hours_end", "08:00"),
                 timezone=prefs.get("timezone", "America/Denver"),
                 partner_activity=prefs.get("partner_activity", True),
+                categories=echo_categories,
             )
         )
 
@@ -151,6 +179,10 @@ class UpdateNotificationPreferences(Endpoint):
         quiet_hours_end: str | None = None  # "HH:MM" format
         timezone: str | None = None
         partner_activity: bool | None = None
+        # Per-category opt-out map. Keys must be in NOTIFICATION_CATEGORIES;
+        # unknown keys → 400. Missing keys default to True at send time
+        # (legacy clients without `categories` get all-on automatically).
+        categories: dict[str, bool] | None = None
 
     class Response(BaseModel):
         push_enabled: bool
@@ -159,6 +191,7 @@ class UpdateNotificationPreferences(Endpoint):
         quiet_hours_end: str
         timezone: str
         partner_activity: bool
+        categories: dict[str, bool]
 
 
 class GetNotificationPreferences(Endpoint):
@@ -175,6 +208,11 @@ class GetNotificationPreferences(Endpoint):
 
         prefs = user.notification_preferences or {}
 
+        # Always emit a fully-defaulted categories dict; missing keys
+        # become True so clients render the right initial toggle state.
+        existing_categories = prefs.get("categories") or {}
+        echo_categories = {**categories_default(), **existing_categories}
+
         return success(
             data=GetNotificationPreferences.Response(
                 push_enabled=prefs.get("push_enabled", True),
@@ -183,6 +221,7 @@ class GetNotificationPreferences(Endpoint):
                 quiet_hours_end=prefs.get("quiet_hours_end", "08:00"),
                 timezone=prefs.get("timezone", "America/Denver"),
                 partner_activity=prefs.get("partner_activity", True),
+                categories=echo_categories,
                 token_count=len(user.push_tokens or []),
             )
         )
@@ -194,4 +233,5 @@ class GetNotificationPreferences(Endpoint):
         quiet_hours_end: str
         timezone: str
         partner_activity: bool
+        categories: dict[str, bool]
         token_count: int

@@ -81,6 +81,93 @@ class NotificationType(str, Enum):
 _DIAGNOSTIC_TYPES = frozenset({NotificationType.TEST})
 
 
+# The 6 user-facing notification categories. Every non-diagnostic
+# NotificationType MUST map to exactly one of these in
+# `_CATEGORY_FOR_TYPE` below; CI fails otherwise (see exhaustiveness
+# assertion at module bottom).
+NOTIFICATION_CATEGORIES = frozenset({
+    "meals",
+    "timers",
+    "shopping",
+    "partner_activity",
+    "imports",
+    "friends_invitations",
+})
+
+
+def categories_default() -> dict[str, bool]:
+    """Default per-category opt-in dict for new users / missing prefs.
+
+    Every category defaults to True. Used by the prefs PUT handler when
+    persisting a fresh `notification_preferences.categories` blob, and
+    referenced as the implicit default by `send_to_user` when a key is
+    missing on an old payload.
+    """
+    return {key: True for key in NOTIFICATION_CATEGORIES}
+
+
+# Maps each notification type to its user-facing opt-out category.
+# Diagnostic types (TEST) are intentionally absent — they bypass
+# category checks entirely.
+_CATEGORY_FOR_TYPE: dict[NotificationType, str] = {
+    NotificationType.SHOPPING_ITEM_ADDED: "shopping",
+    NotificationType.SHOPPING_ITEM_CHECKED: "shopping",
+    NotificationType.SHOPPING_LIST_SHARED: "shopping",
+    NotificationType.SHOPPING_DEADLINE_REMINDER: "shopping",
+    NotificationType.SHOPPING_LIST_COMPLETE: "shopping",
+    NotificationType.RECIPE_BOOK_SHARED: "partner_activity",
+    NotificationType.RECIPE_ADDED: "partner_activity",
+    NotificationType.IMPORT_NEEDS_REVIEW: "imports",
+    NotificationType.MEAL_EVENT_INVITE: "meals",
+    NotificationType.MEAL_EVENT_REMINDER: "meals",
+    NotificationType.MEAL_EVENT_UPDATED: "meals",
+    NotificationType.FRIEND_REQUEST: "friends_invitations",
+    NotificationType.FRIEND_REQUEST_ACCEPTED: "friends_invitations",
+    NotificationType.INVITATION_RECEIVED: "friends_invitations",
+    NotificationType.INVITATION_ACCEPTED: "friends_invitations",
+    NotificationType.MEMBER_JOINED: "friends_invitations",
+    # SYSTEM and NEW_FEEDBACK are admin/system-facing — treated as
+    # diagnostic for category-suppression purposes (always allowed),
+    # but quiet hours + master push_enabled still apply.
+}
+
+
+# Types that bypass per-category opt-out (master switch + quiet hours
+# still apply). System messages and admin-facing feedback fan-out
+# don't belong to any user-toggleable category.
+_CATEGORY_BYPASS_TYPES = frozenset({
+    NotificationType.SYSTEM,
+    NotificationType.NEW_FEEDBACK,
+})
+
+
+def _resolve_category(notification_type: NotificationType) -> str | None:
+    """Return the category key for a notification type, or None if it
+    has no user-facing category (diagnostic / system / admin types)."""
+    if notification_type in _DIAGNOSTIC_TYPES:
+        return None
+    if notification_type in _CATEGORY_BYPASS_TYPES:
+        return None
+    return _CATEGORY_FOR_TYPE.get(notification_type)
+
+
+# Exhaustiveness check: every NotificationType must be either diagnostic,
+# bypassed, or have a category mapping. Future epics adding a new type
+# without extending this map will fail at import time (and CI).
+_uncovered = {
+    t for t in NotificationType
+    if t not in _DIAGNOSTIC_TYPES
+    and t not in _CATEGORY_BYPASS_TYPES
+    and t not in _CATEGORY_FOR_TYPE
+}
+assert not _uncovered, (
+    f"NotificationType(s) missing from _CATEGORY_FOR_TYPE / "
+    f"_CATEGORY_BYPASS_TYPES / _DIAGNOSTIC_TYPES: {sorted(t.value for t in _uncovered)}. "
+    "Every new notification type must declare its category mapping in "
+    "libraries/utils/utils/services/push_notification.py."
+)
+
+
 @dataclass
 class PushNotification:
     """Push notification to send."""
@@ -353,11 +440,20 @@ class PushNotificationService:
             "log_only": self.log_only,
             "quiet_hours_active": in_quiet,
             "suppressed_by_prefs": False,
+            "suppressed_by_category": False,
             "suppressed_by_quiet_hours": False,
             "message_id": None,
         }
 
-        # Per-user preferences — diagnostic types always bypass.
+        # Suppression order (locked by epic-notifications-foundation party-mode):
+        #   1. master `push_enabled`         — kill switch, bypassed only by force / TEST
+        #   2. per-category opt-out          — bypassed by force / TEST / SYSTEM / NEW_FEEDBACK
+        #   3. quiet hours                   — bypassed by force only
+        # `force` is the deliberate escape valve at the bottom; categories are
+        # the user's specific opt-out and trump quiet hours suppression-wise.
+        # Future contributors must not reorder these checks.
+
+        # 1. Per-user master preference — diagnostic types always bypass.
         if not push_enabled and not force and not is_diagnostic:
             logger.info(
                 "push_notifications: suppressed (user prefs disabled) user=%s type=%s",
@@ -365,7 +461,31 @@ class PushNotificationService:
             )
             return {**base_result, "suppressed_by_prefs": True}
 
-        # Quiet hours — `force=True` bypasses.
+        # 2. Per-category opt-out. Diagnostic / SYSTEM / NEW_FEEDBACK + force
+        # all bypass. Legacy clients without `categories` get all-on; the
+        # legacy `partner_activity` flat field still works as a fallback.
+        category = _resolve_category(notification.notification_type)
+        if category and not force:
+            categories = prefs.get("categories")
+            if isinstance(categories, dict):
+                # New nested shape — default missing keys to True so an old
+                # payload that includes `categories` but missed a freshly
+                # added category doesn't silently opt the user out.
+                category_enabled = categories.get(category, True) is not False
+            elif category == "partner_activity":
+                # Legacy flat-field fallback for old clients.
+                category_enabled = prefs.get("partner_activity", True) is not False
+            else:
+                category_enabled = True
+
+            if not category_enabled:
+                logger.info(
+                    "push_notifications: suppressed (category=%s) user=%s type=%s",
+                    category, user.id, type_value,
+                )
+                return {**base_result, "suppressed_by_category": True}
+
+        # 3. Quiet hours — `force=True` bypasses.
         if in_quiet and not force:
             logger.info(
                 "push_notifications: suppressed (quiet hours) user=%s type=%s window=%s-%s",
