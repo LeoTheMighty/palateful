@@ -980,7 +980,7 @@ development_status:
   nfn-1-backend-per-category-prefs-defaults: done
   nfn-2-notification-copy-module-rich-import-copy: done
   nfn-3-fix-recipe-added-arity-bug-use-copy-library: done
-  nfn-4-frontend-per-category-prefs-ui: backlog
+  nfn-4-frontend-per-category-prefs-ui: done
   nfn-5-meal-detail-screen-deep-link-route: backlog
 
   epic-notifications-meal-reminders: backlog

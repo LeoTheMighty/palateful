@@ -569,6 +569,7 @@ class ApiClient {
     String? timezone,
     bool? partnerActivity,
     bool? autoApproveImports,
+    Map<String, bool>? categories,
   }) {
     return _dio.put('/v1/users/me/notification-preferences', data: {
       if (pushEnabled != null) 'push_enabled': pushEnabled,
@@ -578,6 +579,7 @@ class ApiClient {
       if (timezone != null) 'timezone': timezone,
       if (partnerActivity != null) 'partner_activity': partnerActivity,
       if (autoApproveImports != null) 'auto_approve_imports': autoApproveImports,
+      if (categories != null) 'categories': categories,
     });
   }
 

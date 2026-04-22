@@ -25,12 +25,34 @@ class _NotificationPreferencesScreenState
   String? _errorDetail;
 
   bool _pushEnabled = true;
-  bool _partnerActivity = true;
   bool _autoApproveImports = true;
   String _quietHoursStart = '22:00';
   String _quietHoursEnd = '08:00';
   String _timezone = 'America/Denver';
   AuthorizationStatus? _osPermissionStatus;
+
+  // Per-category opt-out toggles. Order = display order on the screen.
+  // Keys MUST match the backend `NOTIFICATION_CATEGORIES` set in
+  // libraries/utils/utils/services/push_notification.py.
+  static const _categoryDefinitions = <_CategoryDef>[
+    _CategoryDef('meals', 'Meal reminders', Icons.restaurant_menu_outlined,
+        'Invites, time-of-meal reminders, and updates'),
+    _CategoryDef('timers', 'Timers', Icons.timer_outlined,
+        'Background alerts when a cook timer finishes'),
+    _CategoryDef('shopping', 'Shopping', Icons.shopping_cart_outlined,
+        'List updates, items checked off, deadline reminders'),
+    _CategoryDef('partner_activity', 'Partner activity', Icons.people_outline,
+        'When a partner adds a recipe or shares a book'),
+    _CategoryDef('imports', 'Imports', Icons.cloud_download_outlined,
+        '"Ready to review" pushes after a recipe import finishes'),
+    _CategoryDef('friends_invitations', 'Friends & invitations',
+        Icons.person_add_alt_outlined,
+        'Friend requests, book/calendar invites, and acceptances'),
+  ];
+
+  Map<String, bool> _categories = {
+    for (final c in _categoryDefinitions) c.key: true,
+  };
 
   @override
   void initState() {
@@ -70,12 +92,12 @@ class _NotificationPreferencesScreenState
       if (!mounted) return;
       setState(() {
         _pushEnabled = data['push_enabled'] as bool? ?? true;
-        _partnerActivity = data['partner_activity'] as bool? ?? true;
         _autoApproveImports = data['auto_approve_imports'] as bool? ?? true;
         _quietHoursStart = data['quiet_hours_start'] as String? ?? '22:00';
         _quietHoursEnd = data['quiet_hours_end'] as String? ?? '08:00';
         _timezone = data['timezone'] as String? ?? 'America/Denver';
         _osPermissionStatus = osStatus;
+        _categories = _readCategories(data['categories']);
         _isLoading = false;
       });
     } catch (e) {
@@ -142,6 +164,49 @@ class _NotificationPreferencesScreenState
     );
     if (opened == true) {
       await _pushService.openOsSettings();
+    }
+  }
+
+  Map<String, bool> _readCategories(dynamic raw) {
+    final result = <String, bool>{
+      for (final c in _categoryDefinitions) c.key: true,
+    };
+    if (raw is Map) {
+      for (final entry in raw.entries) {
+        final key = entry.key;
+        if (key is String && result.containsKey(key) && entry.value is bool) {
+          result[key] = entry.value as bool;
+        }
+      }
+    }
+    return result;
+  }
+
+  Future<void> _toggleCategory(String key, bool value) async {
+    final previous = _categories[key] ?? true;
+    if (previous == value) return;
+    setState(() {
+      _categories = {..._categories, key: value};
+    });
+    try {
+      await _apiClient.updateNotificationPreferences(
+        categories: {key: value},
+      );
+    } catch (e, st) {
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'push',
+        operation: 'preferences.category.save',
+      );
+      if (!mounted) return;
+      // Revert local state on failure.
+      setState(() {
+        _categories = {..._categories, key: previous};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save preference.')),
+      );
     }
   }
 
@@ -278,27 +343,53 @@ class _NotificationPreferencesScreenState
 
         const SizedBox(height: 32),
 
-        // Household notifications
-        _buildSectionHeader('Household', textTheme),
-        const SizedBox(height: 12),
-        _buildToggleTile(
-          icon: Icons.people_outlined,
-          label: 'Partner Activity',
-          subtitle: 'Notify when a partner shares a book or adds a recipe',
-          value: _partnerActivity,
-          onChanged: (value) {
-            setState(() => _partnerActivity = value);
-            _updatePreference(partnerActivity: value);
-          },
-          colorScheme: colorScheme,
-          textTheme: textTheme,
+        // Per-category opt-out — the load-bearing surface for this epic.
+        _buildSectionHeader('Notifications by category', textTheme),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            _pushEnabled
+                ? 'Mute any single category without disabling all push.'
+                : 'Turn the master switch on to manage individual categories.',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
+        for (var i = 0; i < _categoryDefinitions.length; i++) ...[
+          if (i > 0) const SizedBox(height: 8),
+          _buildToggleTile(
+            icon: _categoryDefinitions[i].icon,
+            label: _categoryDefinitions[i].label,
+            subtitle: _categoryDefinitions[i].subtitle,
+            value: _categories[_categoryDefinitions[i].key] ?? true,
+            onChanged: _pushEnabled
+                ? (value) =>
+                    _toggleCategory(_categoryDefinitions[i].key, value)
+                : null,
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+            enabled: _pushEnabled,
+          ),
+        ],
 
         const SizedBox(height: 32),
 
-        // Import settings
-        _buildSectionHeader('Imports', textTheme),
-        const SizedBox(height: 12),
+        // Import behavior — NOT a notification opt-out. Controls whether
+        // the import pipeline auto-approves high-confidence extractions
+        // (skipping the review step entirely).
+        _buildSectionHeader('Import behavior', textTheme),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            'Not a notification setting — controls whether confident imports auto-save.',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
         _buildToggleTile(
           icon: Icons.auto_awesome,
           label: 'Auto-save high-confidence imports',
@@ -445,34 +536,44 @@ class _NotificationPreferencesScreenState
     required String label,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
     required ColorScheme colorScheme,
     required TextTheme textTheme,
+    bool enabled = true,
   }) {
+    final foreground = enabled
+        ? colorScheme.onSurface
+        : colorScheme.onSurface.withValues(alpha: 0.38);
+    final muted = enabled
+        ? colorScheme.onSurfaceVariant
+        : colorScheme.onSurfaceVariant.withValues(alpha: 0.38);
     return Material(
-      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      color: colorScheme.surfaceContainerHighest.withValues(
+        alpha: enabled ? 0.5 : 0.25,
+      ),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            Icon(icon, color: colorScheme.onSurfaceVariant),
+            Icon(icon, color: muted),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: textTheme.bodyLarge),
+                  Text(
+                    label,
+                    style: textTheme.bodyLarge?.copyWith(color: foreground),
+                  ),
                   Text(
                     subtitle,
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: textTheme.bodySmall?.copyWith(color: muted),
                   ),
                 ],
               ),
             ),
-            Switch(value: value, onChanged: onChanged),
+            Switch(value: value, onChanged: enabled ? onChanged : null),
           ],
         ),
       ),
@@ -573,4 +674,12 @@ class _NotificationPreferencesScreenState
       ),
     );
   }
+}
+
+class _CategoryDef {
+  const _CategoryDef(this.key, this.label, this.icon, this.subtitle);
+  final String key;
+  final String label;
+  final IconData icon;
+  final String subtitle;
 }
