@@ -12,6 +12,8 @@ Palateful is an NX monorepo with Python microservices (FastAPI) and Flutter mobi
 - **`_bmad-output/planning-artifacts/epics.md`** - Current roadmap and epic status — **primary source for what to do next**
 - **`_bmad-output/planning-artifacts/architecture.md`** - Current system architecture
 - **`ANDROID.md`** - Play Store release runbook (single operator, Day 1 signup → Day 3 first tag). See `epic-android-play-console-launch` for epic-level context.
+- **`app/lib/core/state/README.md`** - MutationBus convention (emit/subscribe patterns, coalescer recipe, WS-lowering recipe). Ships the `mutationFailureCopy` map, the `showMutationFailureSnackbar` helper, and the `pumpWithMutation` test helper used by every reactivity regression test.
+- **`tools/no-silent-catch-check.sh`** - CI grep guard that blocks PRs where a feature-service catch block silently swallows an exception. Allowlist in `tools/silent-catch-allowlist.txt` (format: `file:lineno:rationale`, reviewer sign-off required).
 
 ## Project Structure
 
@@ -187,3 +189,79 @@ for baseline-capture / post-upgrade diff recipes.
 
 Exit codes: `0` rows emitted, `2` empty (informational), `1` DB /
 runtime error.
+
+### `audit_errors.py` — surface common errors from `error_logs`
+
+Two modes: **aggregate** (triage — "what's on fire?") and **drill**
+(debug — "what do I need to fix?"). Always triage first to find the
+noisy groups, then drill into one at a time.
+
+**Aggregate mode** (default):
+
+```bash
+# Top-20 (service, error_type) groups over the last 24h.
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py
+
+# Last hour, all services including audit rows, JSON-lines.
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --window 1h --include-audit --format json
+
+# Drill into one service, last 7 days, keep only groups with >= 5 hits.
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --service api --window 7d --min-samples 5 --top 50
+
+# CSV snapshot for diffing against a future run.
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --window 7d --format csv > /tmp/errors-baseline.csv
+```
+
+Aggregate output includes, per group, the most-recent non-null sample
+of `status_code`, `method`, `path`, `request_id`, `user_id`,
+`error_code`, `stage`, `import_item_id`, and `error_message` — enough
+correlation handles to hop straight into CloudWatch (`bin/prod-logs`)
+or into `--drill` without a second query.
+
+**Drill mode** (`--drill SERVICE:ERROR_TYPE`):
+
+```bash
+# Last 20 full rows for api:ValueError over 24h (vertical per-row dump,
+# includes stack_trace, request_id, user_id, error_code, import_item_id).
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --drill api:ValueError
+
+# JSON-lines — easiest format when stack traces are multiline.
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --drill api:ValueError --format json --top 50
+
+# Any error_type for one service (empty error_type after the colon).
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --drill push_notifications: --window 7d
+
+# Wider window, big batch for offline triage.
+DATABASE_URL=<prod-url> python services/api/scripts/audit_errors.py \
+    --drill worker:CreateRecipeTask --window 30d --top 100 --format json \
+    > /tmp/recipe-task-failures.jsonl
+```
+
+Drill mode emits individual rows, most-recent first, with every
+column from the `ErrorLog` model: `id`, `created_at`, `service`,
+`error_type`, `error_code`, `status_code`, `method`, `path`,
+`request_id`, `user_id`, `import_item_id`, `stage`, `error_message`,
+**`stack_trace`**. `--service`, `--include-audit`, and `--min-samples`
+are ignored in drill mode (the drill key encodes the service, and
+aggregation doesn't apply).
+
+Flags: `--window {1h|24h|7d|30d|all}` (default `24h`), `--top <int>`
+clamped to `[1,200]` (default `20`), `--format {table|csv|json}`
+(default `table`), `--service <name>` (aggregate only; omit for all
+non-audit services), `--include-audit` (aggregate only; include
+`service='audit'` rows — excluded by default because those are
+admin-action trails), `--min-samples <int>` (aggregate only; default
+`1`), `--drill SERVICE:ERROR_TYPE` (switch to drill mode; empty
+error_type matches any). Default sort (aggregate): **count desc,
+then last_seen desc**. Default sort (drill): **created_at desc**.
+
+Read-only — no mutations, no audit row. Safe to run freely.
+
+Exit codes: `0` rows emitted, `2` empty (informational), `1` DB /
+runtime error, or malformed `--drill`.

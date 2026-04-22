@@ -1057,10 +1057,10 @@ development_status:
   # mutation_snackbar.dart entry point, and CI grep-guard against silent
   # catches in feature services. Zero backend changes. Parallelizable with
   # meals-calendar migration. 5 stories.
-  epic-reactive-migration-books-profile-pantry-and-polish: backlog
+  epic-reactive-migration-books-profile-pantry-and-polish: done
   rp-1-recipe-books-mutation-sites-and-providers: done
   rp-2-profile-and-notification-prefs-reactivity: done
   rp-3-pantry-reactivity: done
   rp-4-shopping-cart-service-ws-adapter-consolidation: done
-  rp-5-central-failure-copy-grep-guard-and-e2e-sweep: backlog
+  rp-5-central-failure-copy-grep-guard-and-e2e-sweep: done
   epic-reactive-migration-books-profile-pantry-and-polish-retrospective: optional

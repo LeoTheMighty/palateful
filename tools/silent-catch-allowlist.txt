@@ -1,0 +1,29 @@
+# rp-5 — silent-catch allowlist.
+#
+# Format: file:lineno:rationale (colon-separated; trailing rationale is
+# free-form). Lines starting with `#` are comments.
+#
+# Entries require a code-review comment on the PR that adds them
+# (enforced by the checklist in `.claude/commands/review.md`).
+#
+# Line numbers drift across refactors. If the grep-guard flags an
+# existing file:lineno because the block moved, re-verify the catch
+# body still satisfies the allowlist rationale, then update the line
+# number here.
+
+# Malformed-message recovery — dropping a single bad WS frame is the
+# correct behavior; a single bad frame is not actionable to the user.
+# (Parallel pattern in shopping_cart_service.dart which DOES call
+# debugPrint, which we already allow implicitly via `throw` patterns.)
+app/lib/features/recipe_books/services/recipe_book_sync_service.dart:156:malformed-WS-frame recovery
+
+# SharedPreferences best-effort queue ops. Feedback queue is an
+# offline-first affordance; a failed local persist is informational
+# only (the user can retry; we log via debugPrint).
+app/lib/features/profile/services/feedback_cache_service.dart:38:shared_prefs queue persist — log and swallow
+app/lib/features/profile/services/feedback_cache_service.dart:53:shared_prefs queue read — log and swallow
+app/lib/features/profile/services/feedback_cache_service.dart:64:shared_prefs queue clear — log and swallow
+
+# Live alias-map fetch failure — the session keeps running on the
+# hardcoded seed. No user-facing impact; no Snackbar warranted.
+app/lib/features/recipes/services/session_alias_map.dart:101:fall back to hardcoded seed alias map

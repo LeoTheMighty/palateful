@@ -7,6 +7,7 @@ import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/features/profile/profile_screen.dart';
+import 'package:palateful/features/profile/services/profile_service.dart';
 import 'package:palateful/providers/theme_mode_provider.dart' show FontStyleNotifier, FontStyle, ThemeModeNotifier, fontStyleProvider, themeModeProvider;
 
 // ---------------------------------------------------------------------------
@@ -87,10 +88,15 @@ void main() {
     gi.registerSingleton<ApiClient>(_FakeApiClient());
     if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
     gi.registerSingleton<AuthService>(_FakeAuthService());
+    if (gi.isRegistered<ProfileService>()) gi.unregister<ProfileService>();
+    gi.registerLazySingleton<ProfileService>(
+      () => ProfileService(gi<ApiClient>()),
+    );
   });
 
   tearDown(() {
     final gi = GetIt.instance;
+    if (gi.isRegistered<ProfileService>()) gi.unregister<ProfileService>();
     if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
     if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
   });
@@ -141,8 +147,12 @@ void main() {
       int callCount = 0;
       final gi = GetIt.instance;
       if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+      if (gi.isRegistered<ProfileService>()) gi.unregister<ProfileService>();
       final slowClient = _SlowFakeApiClient(onExport: () => callCount++);
       gi.registerSingleton<ApiClient>(slowClient);
+      gi.registerLazySingleton<ProfileService>(
+        () => ProfileService(gi<ApiClient>()),
+      );
 
       await tester.pumpWidget(ProviderScope(
           overrides: [
@@ -187,8 +197,9 @@ void main() {
       await tester.tap(find.text('Export Collection'));
       await tester.pumpAndSettle();
 
+      // Post-rp-2 copy routed through showMutationFailureSnackbar.
       expect(
-        find.text('Export failed — please try again'),
+        find.text("Couldn't export recipes"),
         findsOneWidget,
       );
     });
