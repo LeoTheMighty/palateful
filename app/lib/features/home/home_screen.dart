@@ -15,6 +15,7 @@ import '../meals/providers/meals_provider.dart';
 import '../meals/services/meal_service.dart';
 import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
+import 'providers/home_content_provider.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/bulk_dispatcher.dart';
 import 'widgets/bulk_partial_failure_dialog.dart';
@@ -27,7 +28,6 @@ import 'widgets/selection_app_bar.dart';
 import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
 import '../../core/services/error_reporter.dart';
-import '../../core/services/shared_state_service.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -40,26 +40,28 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _apiClient = getIt<ApiClient>();
 
+  /// rf-3: `_allRecipes`, `_allMeals`, `_favorites`, `_favoriteIds`,
+  /// `_favoriteMealIds`, `_todayMealEvent`, `_recentlyCooked` are mirrors
+  /// of the pristine data `homeContentProvider` emits. They're kept as
+  /// local state so the existing optimistic-mutation paths (favorite,
+  /// bulk-archive, meal-favorite) can patch them in-place without waiting
+  /// for a refetch — per epic Locked Decision #6 (reconcile-only: old
+  /// optimistic paths stay). Filter/sort state stays local too (pfc-4
+  /// guarantee — filter flips do not refetch).
   List<dynamic> _recipes = [];
-  /// pfc-4: pristine recipe list (post is_favorite merge, pre filters /
-  /// sort / kind-filters). Filter sheet mutates selection state and calls
-  /// [_reapplyFilters], which rebuilds `_recipes` from this + `_allMeals`
-  /// in-memory — no network fetch. Refilled on every `_loadRecipes()`.
   List<dynamic> _allRecipes = [];
-  /// pfc-4: pristine meal list for the same reason. See `_allRecipes`.
   List<dynamic> _allMeals = [];
   List<dynamic> _favorites = [];
   Set<String> _favoriteIds = {};
-  // Favorited-meal ids populated from /v1/favorites.favorited_meals.
-  // Separate from _favoriteIds because meal favorites hit a different
-  // endpoint (favoriteMeal / unfavoriteMeal) and are never conflated
-  // with recipe favorites.
   Set<String> _favoriteMealIds = {};
   final Set<String> _togglingFavoriteIds = {};
-  bool _isLoading = true;
   bool _isBulkOperating = false;
-  String? _error;
-  String? _errorDetail;
+
+  /// True once the first [HomeContent] frame has been copied into local
+  /// state. Guards the loading-flicker path — during an `invalidateSelf`
+  /// refetch we keep the stale grid visible rather than flashing to the
+  /// skeleton (epic AC #5).
+  bool _hasContent = false;
 
   MealFilter _mealFilter = MealFilter.all;
   String? _vibeFilter;
@@ -67,109 +69,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ShowTypeFilter _showTypeFilter = ShowTypeFilter.all;
   bool _hideComponentsOfMeals = false;
 
-  dynamic _todayMealEvent; // null = no planned meal today
+  dynamic _todayMealEvent;
   List<dynamic> _recentlyCooked = [];
 
-  @override
-  void initState() {
-    super.initState();
-    _loadRecipes();
-    _loadHomeContext();
-  }
-
-  Future<void> _loadRecipes() async {
+  /// Copy the freshest [HomeContent] into local state and reapply
+  /// filters. Called from `ref.listen` in `build()` — fires once per new
+  /// `AsyncData`, and is idempotent on identical content (Riverpod emits
+  /// one `AsyncData` per fetch, not per watch).
+  void _applyHomeContent(HomeContent content) {
+    if (!mounted) return;
     setState(() {
-      _isLoading = true;
-      _error = null;
+      _allRecipes = content.recipes;
+      _allMeals = content.meals;
+      _favorites = List<dynamic>.from(content.favorites);
+      _favoriteIds = Set<String>.from(content.favoriteIds);
+      _favoriteMealIds = Set<String>.from(content.favoriteMealIds);
+      _todayMealEvent = content.todayMealEvent;
+      _recentlyCooked = List<dynamic>.from(content.recentlyCooked);
+      _recipes = _buildFilteredGrid(_allRecipes, _allMeals);
+      _hasContent = true;
     });
-
-    try {
-      // Load recipes and favorites in parallel
-      final booksResponse = await _apiClient.getRecipeBooks();
-      final books = List<dynamic>.from(booksResponse.data['items'] ?? []);
-
-      // Mirror the book list into the iOS App Group so the Share Extension's
-      // book picker has something to show. Debounced inside the service.
-      getIt<SharedStateService>().syncRecipeBooks(
-        books
-            .whereType<Map>()
-            .map((m) => SharedRecipeBook.fromMap(Map<String, dynamic>.from(m)))
-            .toList(),
-      );
-
-      final recipesFuture = _loadAllRecipesFromBooks(books);
-      final favFuture = _apiClient.getFavorites();
-      // md-4: parallel Meal fetch. A failure here must NOT block the grid
-      // — a zero-Meal render is bit-identical to pre-epic, so we swallow
-      // the error and keep recipes rendering.
-      final mealsFuture = _loadMealsForHome();
-
-      final results = await Future.wait([recipesFuture, favFuture, mealsFuture]);
-      List<dynamic> allRecipes = results[0] as List<dynamic>;
-      final favResponse = results[1];
-      final mealItems = results[2] as List<dynamic>;
-      final favData = (favResponse as dynamic).data as Map<String, dynamic>;
-      final favItems = (favData['items'] as List<dynamic>?) ?? [];
-      final favIds = favItems.map((f) => f['id'].toString()).toSet();
-
-      // md-3 additive response key: favorited Meals render alongside
-      // favorited recipes in the same carousel.
-      final favMealItems = ((favData['favorited_meals'] as List<dynamic>?) ?? [])
-          .map((m) => _tagMeal(m as Map<String, dynamic>))
-          .toList();
-      final favMealIds = favMealItems
-          .map((m) => (m as Map)['id']?.toString())
-          .whereType<String>()
-          .toSet();
-
-      // Merge is_favorite into recipes
-      for (final recipe in allRecipes) {
-        recipe['is_favorite'] = favIds.contains(recipe['id']?.toString());
-        recipe['kind'] = 'recipe';
-      }
-
-      final mergedGrid = _buildFilteredGrid(allRecipes, mealItems);
-      final mergedFavorites = <dynamic>[...favItems, ...favMealItems];
-
-      if (mounted) {
-        setState(() {
-          _allRecipes = allRecipes;
-          _allMeals = mealItems;
-          _recipes = mergedGrid;
-          _favorites = mergedFavorites;
-          _favoriteIds = favIds;
-          _favoriteMealIds = favMealIds;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = 'Failed to load recipes: $e';
-          _errorDetail = ErrorReporter.detail(e);
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  /// Fetch Meals for the home grid. Swallows errors — a failed Meal
-  /// fetch must never block recipe rendering (zero-regression contract).
-  Future<List<dynamic>> _loadMealsForHome() async {
-    try {
-      final resp = await _apiClient.listMeals(scope: 'home');
-      final items = ((resp.data as Map<String, dynamic>)['items'] as List? ?? [])
-          .cast<Map<String, dynamic>>();
-      return items.map(_tagMeal).toList();
-    } catch (_) {
-      return <dynamic>[];
-    }
-  }
-
-  /// Decorate a meal summary payload with `kind:'meal'` so the grid's
-  /// itemBuilder can discriminate without a second lookup table.
-  Map<String, dynamic> _tagMeal(Map<String, dynamic> meal) {
-    return {...meal, 'kind': 'meal'};
   }
 
   /// Merge recipes + meals for the grid. Zero-meal → recipes unchanged
@@ -258,50 +177,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } finally {
       _togglingFavoriteIds.remove(mealId);
     }
-  }
-
-  Future<List<dynamic>> _loadAllRecipesFromBooks(List<dynamic> books) async {
-    // Fetch all books in parallel instead of sequentially
-    final results = await Future.wait(
-      books.map((book) async {
-        try {
-          final bookDetail = await _apiClient.getRecipeBook(book['id']);
-          final recipes = List<dynamic>.from(bookDetail.data['recipes'] ?? []);
-          for (final recipe in recipes) {
-            recipe['recipe_book_id'] = book['id'];
-            recipe['recipe_book_name'] = book['name'];
-          }
-          return recipes;
-        } catch (_) {
-          return <dynamic>[]; // One book failure doesn't block others
-        }
-      }),
-    );
-    return results.expand((r) => r).toList();
-  }
-
-  Future<void> _loadHomeContext() async {
-    // Load each section independently so one failure doesn't drop the other
-    dynamic todayMeal;
-    List<dynamic> recentlyCooked = [];
-
-    await Future.wait([
-      _apiClient.getMealEventsForToday().then((r) {
-        final items = r.data['items'] as List?;
-        if (items != null && items.isNotEmpty && items[0]['recipe'] != null) {
-          todayMeal = items[0];
-        }
-      }).catchError((_) {}),
-      _apiClient.getRecentlyCookedRecipes().then((r) {
-        recentlyCooked = (r.data['items'] as List?) ?? [];
-      }).catchError((_) {}),
-    ]);
-
-    if (!mounted) return;
-    setState(() {
-      _todayMealEvent = todayMeal;
-      _recentlyCooked = recentlyCooked;
-    });
   }
 
   Future<void> _toggleFavorite(dynamic recipe) async {
@@ -502,10 +377,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return merged;
   }
 
-  /// pfc-4: in-memory rebuild. Previously this called `_loadRecipes()`
-  /// which refetched the whole backing list on every filter flip — a
-  /// regression against perf-2 AC 3. Now `_loadRecipes` runs only on
-  /// initState, pull-to-refresh, and mutations (save/archive/etc.).
+  /// pfc-4: in-memory rebuild. Filter flips never refetch — network
+  /// reloads come from [homeContentProvider] (initial fetch + pull-to-
+  /// refresh + MutationBus-driven invalidations).
   void _reapplyFilters() {
     if (!mounted) return;
     setState(() {
@@ -528,6 +402,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // rf-3: mirror the provider's latest AsyncData into local state.
+    // Runs once per fresh fetch; Riverpod's `ref.listen` fires for the
+    // initial loading→data transition too, so no synchronous bootstrap
+    // is needed (which would have risked a `setState` during build).
+    ref.listen<AsyncValue<HomeContent>>(homeContentProvider,
+        (_, next) => next.whenData(_applyHomeContent));
+
     final selection = ref.watch(homeSelectionProvider);
     // Keep the selection set in sync with the loaded recipe/meal ids —
     // anything that vanished mid-session (archived elsewhere, unshared
@@ -706,7 +587,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onCreated: (meal) {
         invalidateMeal(ref, meal.id, bookId: meal.recipeBookId);
         ref.read(homeSelectionProvider.notifier).exit();
-        _loadRecipes();
+        ref.invalidate(homeContentProvider);
       },
     );
   }
@@ -769,7 +650,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
       invalidateMeal(ref, mealId, bookId: meal.recipeBookId);
       ref.read(homeSelectionProvider.notifier).exit();
-      _loadRecipes();
+      ref.invalidate(homeContentProvider);
     } finally {
       if (mounted) setState(() => _isBulkOperating = false);
     }
@@ -844,7 +725,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         allFailMessage: 'Could not archive — see details',
       );
       ref.read(homeSelectionProvider.notifier).exit();
-      _loadRecipes();
+      ref.invalidate(homeContentProvider);
     } finally {
       if (mounted) setState(() => _isBulkOperating = false);
     }
@@ -1299,7 +1180,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildRecipeGrid() {
-    if (_isLoading) {
+    final async = ref.watch(homeContentProvider);
+    // rf-3 AC #5: while refetching, keep showing the stale grid rather
+    // than flashing to the skeleton. Only show the shimmer before the
+    // very first content frame lands.
+    if (async.isLoading && !_hasContent) {
       return GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1313,8 +1198,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    if (_error != null) {
-      return _buildErrorState();
+    if (async.hasError && !_hasContent) {
+      return _buildErrorState(async.error);
     }
 
     if (_recipes.isEmpty) {
@@ -1322,7 +1207,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadRecipes,
+      onRefresh: () => ref.refresh(homeContentProvider.future),
       color: Theme.of(context).colorScheme.primary,
       child: GridView.builder(
         padding: const EdgeInsets.all(16),
@@ -1400,18 +1285,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildErrorState() {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildErrorState(Object? error) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ErrorBanner(message: _error!, detail: _errorDetail),
+            ErrorBanner(
+              message: 'Failed to load recipes: $error',
+              detail: ErrorReporter.detail(error ?? ''),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _loadRecipes,
+              onPressed: () => ref.invalidate(homeContentProvider),
               child: const Text('Retry'),
             ),
           ],

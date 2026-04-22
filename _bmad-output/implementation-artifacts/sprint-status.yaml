@@ -1030,7 +1030,7 @@ development_status:
   epic-reactive-foundation-home-imports: backlog
   rf-1-mutation-bus-primitive-and-convention-docs: done
   rf-2-backend-dismiss-and-favorite-full-object-responses: done
-  rf-3-home-screen-migration-to-home-content-provider: backlog
+  rf-3-home-screen-migration-to-home-content-provider: done
   rf-4-recipe-mutation-sites-emit-events: backlog
   rf-5-imports-tab-and-activity-badge-reactivity: backlog
   rf-6-regression-sweep-and-end-to-end-tests: backlog

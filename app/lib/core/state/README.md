@@ -56,11 +56,13 @@ final homeContentProvider =
     FutureProvider.autoDispose<HomeContent>((ref) async {
   ref.keepAlive();
 
-  ref.listen<Stream<MutationEvent>>(mutationBusProvider, (_, stream) {
-    stream.listen((event) {
-      if (_shouldInvalidate(event)) ref.invalidateSelf();
-    });
+  // `ref.listen` on a `Provider<Stream<T>>` only fires on *value
+  // change*; the bus's stream instance is stable for the app lifetime,
+  // so read-once + listen + cancel-on-dispose is the correct shape.
+  final sub = ref.read(mutationBusProvider).listen((event) {
+    if (_shouldInvalidate(event)) ref.invalidateSelf();
   });
+  ref.onDispose(sub.cancel);
 
   return _loadHomeContent();
 });
@@ -82,11 +84,14 @@ bool _shouldInvalidate(MutationEvent event) => switch (event) {
 };
 ```
 
-> **Note on the inline `stream.listen(...)`.** The outer
-> `ref.listen(mutationBusProvider, ...)` fires once with the stream. Wire
-> `stream.listen(...)` inside that callback — the subscription is torn
-> down automatically when the provider disposes, because the closure
-> captures no long-lived reference outside Riverpod's scope.
+> **Why `ref.read` + `.listen`, not `ref.listen<Stream>(...)`.** Riverpod's
+> `ref.listen` on a `Provider<T>` fires only when the provider's *value*
+> changes. Since the bus wraps a module-level singleton
+> `StreamController.broadcast()`, the `Stream<MutationEvent>` instance
+> never changes — so `ref.listen(mutationBusProvider, ...)` would never
+> fire its inner `stream.listen` subscription. `ref.read(...)` +
+> `stream.listen(...)` + `ref.onDispose(sub.cancel)` is the shape that
+> actually subscribes.
 
 ## Coarse-key rule (Design Principle #1)
 

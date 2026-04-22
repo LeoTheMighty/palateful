@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +36,24 @@ class _FakeApiClient extends ApiClient {
   Future<Response> getFavorites() async => _fakeResponse({'items': []});
 
   @override
+  Future<Response> listMeals({
+    int? limit,
+    int offset = 0,
+    bool includeArchived = false,
+    bool? archived,
+    String? scope,
+    String? q,
+  }) async =>
+      _fakeResponse({'items': <Map<String, dynamic>>[], 'total': 0});
+
+  @override
+  Future<Response> getRecipeBook(String id) async => _fakeResponse({
+        'id': id,
+        'name': 'Dinners',
+        'recipes': <Map<String, dynamic>>[],
+      });
+
+  @override
   Future<Response> getMealEventsForToday() async {
     if (todayMealEvent != null) {
       return _fakeResponse({
@@ -58,6 +77,9 @@ void _registerFakes(_FakeApiClient client) {
   gi.registerLazySingleton<BatchParserService>(() => BatchParserService());
   if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
   gi.registerSingleton<AuthService>(AuthService());
+  // Intentionally NOT registering SharedStateService — the provider
+  // tolerates its absence; registering it here would pull in a
+  // platform-channel-bound debounce timer that leaks across tests.
 }
 
 void _unregister() {
@@ -73,7 +95,18 @@ void main() {
     await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
   });
 
-  tearDown(_unregister);
+  setUp(() {
+    // Swallow platform-channel writes so SharedStateService.syncRecipeBooks
+    // (fires on first home-content load) doesn't throw under test.
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (_) async => null);
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
+    _unregister();
+  });
 
   group('HomeScreen — hero card', () {
     testWidgets('shows timing chip when meal event has prep and cook time',
@@ -104,7 +137,11 @@ void main() {
       await tester.pumpWidget(const ProviderScope(
         child: MaterialApp(home: HomeScreen()),
       ));
-      await tester.pump(); // Let async load complete
+      // rf-3: homeContentProvider resolves across a couple of frames
+      // (future settle → ref.listen → setState).
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(find.text('35 min'), findsOneWidget);
     });
