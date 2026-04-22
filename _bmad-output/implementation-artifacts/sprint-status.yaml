@@ -995,13 +995,72 @@ development_status:
   timer-2-wire-live-activity-into-cook-mode: backlog
   timer-3-timer-completion-overlay-cupertino-modal: backlog
 
-  epic-notifications-partner-activity: backlog
-  partner-1-new-notification-types-copy-functions: backlog
+  epic-notifications-partner-activity: in-progress
+  partner-1-new-notification-types-copy-functions: done
   partner-2-recipe-forked-and-note-added-callsites: backlog
   partner-3-recipe-cooked-by-partner-and-cook-feedback-prompt: backlog
   partner-4-meal-event-invite-accepted-back-fan: backlog
   partner-5-frontend-deep-link-routes-new-types: backlog
 
   epic-notifications-scheduled-reminders: backlog
-  sched-1-shopping-deadline-reminders-schema-beat-copy: backlog
+  sched-1-shopping-deadline-reminders-schema-beat-copy: in-progress
   sched-2-import-failed-enum-callsite-route: backlog
+
+  # === Reactive State Permeation Initiative (3 epics) — added 2026-04-22 ===
+  # Motivation: dogfood complaint — "a ton of places in the app where the
+  # state is not updating whenever we update the underlying objects. I click
+  # dismiss on a recipe import, it stays in that view. I recently added a
+  # recipe, it doesn't show up until I refresh." Frontend audit confirmed
+  # ~50% of mutation sites don't invalidate cross-surface state. Fix via a
+  # cross-cutting MutationBus primitive + systematic migration.
+  # User-locked decisions (2026-04-22):
+  #   - Foundation epic + per-domain migration epics (not one mega-epic)
+  #   - Reconcile-only for v1 (optimistic layer stays only where already
+  #     present: dismiss, favorite, check-off; optimistic-everywhere deferred)
+  #   - Toast + automatic rollback on mutation failure (central Snackbar)
+  #   - WS expansion DEFERRED — client-side MutationBus only; no new WS
+  #     broadcasts for meals/calendars/meal_events this round
+
+  # epic-reactive-foundation-home-imports — Foundation: MutationBus primitive
+  # + migrate HomeScreen (imperative _loadRecipes → homeContentProvider) +
+  # migrate ImportHistoryScreen dismiss/retry/clear-all + backend
+  # response-shape fixes (dismiss returns full ImportItem; favorite returns
+  # full resource). Kills both named dogfood bugs. Blocks the two migration
+  # epics. 6 stories; ~3 frontend + 1 backend + 2 regression.
+  epic-reactive-foundation-home-imports: backlog
+  rf-1-mutation-bus-primitive-and-convention-docs: backlog
+  rf-2-backend-dismiss-and-favorite-full-object-responses: backlog
+  rf-3-home-screen-migration-to-home-content-provider: backlog
+  rf-4-recipe-mutation-sites-emit-events: backlog
+  rf-5-imports-tab-and-activity-badge-reactivity: backlog
+  rf-6-regression-sweep-and-end-to-end-tests: backlog
+  epic-reactive-foundation-home-imports-retrospective: optional
+
+  # epic-reactive-migration-meals-calendar — Apply the MutationBus pattern to
+  # meals, meal components, calendars, meal events, recurrence rules.
+  # Includes recurrence-materialization debounce correctness (52-event
+  # stress test). Zero backend changes. Parallelizable with the
+  # books/profile/pantry migration epic. 5 stories.
+  epic-reactive-migration-meals-calendar: backlog
+  rmc-1-meal-mutation-sites-and-providers-reactivity: backlog
+  rmc-2-used-in-these-meals-on-recipe-detail: backlog
+  rmc-3-calendar-and-meal-event-mutation-sites-and-providers: backlog
+  rmc-4-recurrence-materialization-debounce-correctness: backlog
+  rmc-5-meals-calendar-regression-sweep-and-end-to-end: backlog
+  epic-reactive-migration-meals-calendar-retrospective: optional
+
+  # epic-reactive-migration-books-profile-pantry-and-polish — Closes the
+  # remaining mutation sites (recipe books, profile + notification prefs,
+  # pantry) + consolidates ShoppingCartService WS handlers onto MutationBus
+  # (WS frames lower into the bus; existing StreamController API preserved
+  # for backward compat) + ships the central mutation_failure_copy.dart map,
+  # mutation_snackbar.dart entry point, and CI grep-guard against silent
+  # catches in feature services. Zero backend changes. Parallelizable with
+  # meals-calendar migration. 5 stories.
+  epic-reactive-migration-books-profile-pantry-and-polish: backlog
+  rp-1-recipe-books-mutation-sites-and-providers: backlog
+  rp-2-profile-and-notification-prefs-reactivity: backlog
+  rp-3-pantry-reactivity: backlog
+  rp-4-shopping-cart-service-ws-adapter-consolidation: backlog
+  rp-5-central-failure-copy-grep-guard-and-e2e-sweep: backlog
+  epic-reactive-migration-books-profile-pantry-and-polish-retrospective: optional

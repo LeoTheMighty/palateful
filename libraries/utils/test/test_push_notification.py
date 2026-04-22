@@ -464,6 +464,31 @@ def test_send_to_user_test_type_bypasses_category():
     assert result["suppressed_by_category"] is False
 
 
+# Test E: each of the 5 new partner_activity types introduced by
+# epic-notifications-partner-activity is suppressed when categories.partner_activity=False.
+@pytest.mark.parametrize("ntype", [
+    NotificationType.RECIPE_FORKED,
+    NotificationType.RECIPE_NOTE_ADDED,
+    NotificationType.RECIPE_COOKED_BY_PARTNER,
+    NotificationType.MEAL_EVENT_INVITE_ACCEPTED,
+    NotificationType.COOK_FEEDBACK_PROMPT,
+])
+def test_new_partner_activity_types_respect_category_opt_out(ntype):
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.messaging") as mock_messaging:
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        user = _make_user_with_categories(
+            categories={"partner_activity": False},
+        )
+        notification = _make_notification(ntype)
+
+        result = service.send_to_user(user, notification)
+
+    assert result["suppressed_by_category"] is True
+    mock_messaging.send_each_for_multicast.assert_not_called()
+
+
 # Bonus: SYSTEM type bypasses category check (no user-facing category).
 def test_send_to_user_system_type_bypasses_category():
     with patch("utils.services.push_notification.firebase_admin") as mock_fa, \

@@ -47,14 +47,21 @@ class NotificationType(str, Enum):
     # Recipe book
     RECIPE_BOOK_SHARED = "recipe_book_shared"
     RECIPE_ADDED = "recipe_added"
+    RECIPE_FORKED = "recipe_forked"
+    RECIPE_NOTE_ADDED = "recipe_note_added"
+    RECIPE_COOKED_BY_PARTNER = "recipe_cooked_by_partner"
 
     # Import pipeline
     IMPORT_NEEDS_REVIEW = "import_needs_review"
 
     # Meal events
     MEAL_EVENT_INVITE = "meal_event_invite"
+    MEAL_EVENT_INVITE_ACCEPTED = "meal_event_invite_accepted"
     MEAL_EVENT_REMINDER = "meal_event_reminder"
     MEAL_EVENT_UPDATED = "meal_event_updated"
+
+    # Cook follow-ups (2h post-cook personal prompt)
+    COOK_FEEDBACK_PROMPT = "cook_feedback_prompt"
 
     # Friends
     FRIEND_REQUEST = "friend_request"
@@ -117,8 +124,14 @@ _CATEGORY_FOR_TYPE: dict[NotificationType, str] = {
     NotificationType.SHOPPING_LIST_COMPLETE: "shopping",
     NotificationType.RECIPE_BOOK_SHARED: "partner_activity",
     NotificationType.RECIPE_ADDED: "partner_activity",
+    NotificationType.RECIPE_FORKED: "partner_activity",
+    NotificationType.RECIPE_NOTE_ADDED: "partner_activity",
+    NotificationType.RECIPE_COOKED_BY_PARTNER: "partner_activity",
+    NotificationType.COOK_FEEDBACK_PROMPT: "partner_activity",
     NotificationType.IMPORT_NEEDS_REVIEW: "imports",
     NotificationType.MEAL_EVENT_INVITE: "meals",
+    # Back-fan (invitee → inviter) is partner activity, not meal logistics.
+    NotificationType.MEAL_EVENT_INVITE_ACCEPTED: "partner_activity",
     NotificationType.MEAL_EVENT_REMINDER: "meals",
     NotificationType.MEAL_EVENT_UPDATED: "meals",
     NotificationType.FRIEND_REQUEST: "friends_invitations",
