@@ -992,3 +992,99 @@ class TestNotifyRecipeNoteAdded:
 
         mock_service.send_to_user.assert_not_called()
         assert result["skipped"] == "no_recipient"
+
+
+# ---------------------------------------------------------------------------
+# partner-3 — notify_recipe_cooked_by_partner
+# ---------------------------------------------------------------------------
+
+class TestNotifyRecipeCookedByPartner:
+
+    def test_fires_in_shared_book(self):
+        from api.v1.recipe_book.notifications import notify_recipe_cooked_by_partner
+
+        cooker = _make_user()
+        owner = _make_user()
+        recipe = _make_recipe(image_url="https://cdn/r.jpg")
+        shared_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=True)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = shared_book
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(owner.id),
+            owner_user=owner,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            notify_recipe_cooked_by_partner(
+                recipe=recipe,
+                actor=cooker,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_called_once()
+        recipient, notification = mock_service.send_to_user.call_args[0][:2]
+        assert recipient is owner
+        assert notification.notification_type.value == "recipe_cooked_by_partner"
+        assert "cooked your Sweet Potato Quiche" in notification.title
+        assert notification.body == "Tap to see how it went."
+        assert notification.data == {"recipe_id": str(recipe.id)}
+        assert notification.image_url == "https://cdn/r.jpg"
+
+    def test_silent_on_solo_book(self):
+        from api.v1.recipe_book.notifications import notify_recipe_cooked_by_partner
+
+        cooker = _make_user()
+        recipe = _make_recipe()
+        solo_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=False)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = solo_book
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_cooked_by_partner(
+                recipe=recipe,
+                actor=cooker,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "book_not_shared"
+
+    def test_self_cook_is_silent(self):
+        from api.v1.recipe_book.notifications import notify_recipe_cooked_by_partner
+
+        cooker = _make_user()
+        recipe = _make_recipe()
+        shared_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=True)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = shared_book
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(cooker.id),
+            owner_user=cooker,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_cooked_by_partner(
+                recipe=recipe,
+                actor=cooker,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "no_recipient"

@@ -12,6 +12,9 @@ from utils.services.notification_copy import (
     recipe_added as recipe_added_copy,
 )
 from utils.services.notification_copy import (
+    recipe_cooked_by_partner as recipe_cooked_by_partner_copy,
+)
+from utils.services.notification_copy import (
     recipe_forked as recipe_forked_copy,
 )
 from utils.services.notification_copy import (
@@ -280,6 +283,46 @@ def notify_recipe_note_added(
             "recipe_id": str(recipe.id),
             "note_id": note_id,
         },
+        image_url=recipe.image_url,
+    )
+
+    push_service = get_push_service()
+    return push_service.send_to_user(owner, notification, database.db)
+
+
+def notify_recipe_cooked_by_partner(
+    recipe: Recipe,
+    actor: User,
+    database: Database,
+) -> dict:
+    """Fire `RECIPE_COOKED_BY_PARTNER` when a partner cooks your recipe.
+
+    Recipient policy (epic locked):
+      * Recipient = owner of the book the recipe lives in.
+      * Self-cooks are silent.
+      * Non-shared books silently no-op — no partner relationship.
+    """
+    book = database.find_by(RecipeBook, id=str(recipe.recipe_book_id))
+    if book is None or not book.is_shared:
+        return {"success_count": 0, "failure_count": 0, "skipped": "book_not_shared"}
+
+    owner = _find_book_owner(str(recipe.recipe_book_id), database)
+    if owner is None or str(owner.id) == str(actor.id):
+        return {"success_count": 0, "failure_count": 0, "skipped": "no_recipient"}
+
+    actor_name = _resolve_actor_name(actor)
+    recipe_name = recipe.name or "a recipe"
+
+    title, body = recipe_cooked_by_partner_copy(
+        actor_name=actor_name,
+        recipe_name=recipe_name,
+    )
+
+    notification = PushNotification(
+        title=title,
+        body=body,
+        notification_type=NotificationType.RECIPE_COOKED_BY_PARTNER,
+        data={"recipe_id": str(recipe.id)},
         image_url=recipe.image_url,
     )
 

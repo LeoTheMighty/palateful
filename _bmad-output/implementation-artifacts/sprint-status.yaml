@@ -990,7 +990,7 @@ development_status:
   meal-4-wire-meal-event-updated-on-shared-edits: backlog
   meal-5-meal-detail-reminder-row-edit: backlog
 
-  epic-notifications-timer-actions-live-activities: in-progress
+  epic-notifications-timer-actions-live-activities: done
   timer-1-android-notification-actions-parity: done
   timer-2-wire-live-activity-into-cook-mode: done
   timer-3-timer-completion-overlay-cupertino-modal: done
@@ -998,13 +998,13 @@ development_status:
   epic-notifications-partner-activity: in-progress
   partner-1-new-notification-types-copy-functions: done
   partner-2-recipe-forked-and-note-added-callsites: done
-  partner-3-recipe-cooked-by-partner-and-cook-feedback-prompt: backlog
+  partner-3-recipe-cooked-by-partner-and-cook-feedback-prompt: done
   partner-4-meal-event-invite-accepted-back-fan: backlog
   partner-5-frontend-deep-link-routes-new-types: backlog
 
   epic-notifications-scheduled-reminders: backlog
   sched-1-shopping-deadline-reminders-schema-beat-copy: done
-  sched-2-import-failed-enum-callsite-route: backlog
+  sched-2-import-failed-enum-callsite-route: in-progress
 
   # === Reactive State Permeation Initiative (3 epics) — added 2026-04-22 ===
   # Motivation: dogfood complaint — "a ton of places in the app where the
