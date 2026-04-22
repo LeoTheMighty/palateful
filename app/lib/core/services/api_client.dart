@@ -879,6 +879,19 @@ class ApiClient {
     return _dio.get('/v1/cooking-logs', queryParameters: {'limit': limit});
   }
 
+  /// rp-3 — log a cook. Backed by `POST /v1/cooking-logs`.
+  Future<Response> createCookingLog(Map<String, dynamic> data) {
+    return _dio.post('/v1/cooking-logs', data: data);
+  }
+
+  /// rp-3 — fetch cooking-history for a specific recipe (used by the
+  /// recipe-detail cooking-history section).
+  Future<Response> getRecipeCookingLogs(String recipeId) {
+    return _dio.get('/v1/cooking-logs', queryParameters: {
+      'recipe_id': recipeId,
+    });
+  }
+
   // Invitations
   Future<Response> listReceivedInvitations() =>
       _dio.get('/v1/invitations');

@@ -18,6 +18,7 @@ import '../../features/meals/services/meal_service.dart';
 import '../../features/activity/providers/activity_read_provider.dart';
 import '../../features/profile/services/notification_prefs_service.dart';
 import '../../features/profile/services/profile_service.dart';
+import '../../features/recipes/services/cooking_log_service.dart';
 import '../../features/recipes/services/recipe_service.dart';
 import '../../features/recipes/services/session_alias_map.dart';
 
@@ -64,6 +65,9 @@ void setupDependencies() {
   );
   getIt.registerLazySingleton<NotificationPrefsService>(
     () => NotificationPrefsService(getIt<ApiClient>()),
+  );
+  getIt.registerLazySingleton<CookingLogService>(
+    () => CookingLogService(getIt<ApiClient>()),
   );
   getIt.registerLazySingleton<ActivityReadProvider>(
     () => ActivityReadProvider(getIt<ApiClient>()),

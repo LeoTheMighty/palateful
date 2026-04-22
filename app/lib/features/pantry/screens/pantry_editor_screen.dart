@@ -1,14 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_failure_copy.dart';
+import '../../../core/state/mutation_snackbar.dart';
 import '../models/pantry_ingredient.dart';
+import '../providers/pantry_provider.dart';
 import '../services/pantry_service.dart';
 
-class PantryEditorScreen extends StatefulWidget {
+class PantryEditorScreen extends ConsumerStatefulWidget {
   /// The path parameter — either an `ingredientId` to edit, or the literal
   /// string `"new"` to open in add mode.
   final String ingredientId;
@@ -18,10 +22,10 @@ class PantryEditorScreen extends StatefulWidget {
   bool get isNew => ingredientId == 'new';
 
   @override
-  State<PantryEditorScreen> createState() => _PantryEditorScreenState();
+  ConsumerState<PantryEditorScreen> createState() => _PantryEditorScreenState();
 }
 
-class _PantryEditorScreenState extends State<PantryEditorScreen> {
+class _PantryEditorScreenState extends ConsumerState<PantryEditorScreen> {
   PantryService get _service => getIt<PantryService>();
   ApiClient get _api => getIt<ApiClient>();
 
@@ -50,10 +54,9 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
     super.dispose();
   }
 
-  void _loadExisting() {
+  Future<void> _loadExisting() async {
     try {
-      final pantry = _service.current;
-      if (pantry == null || pantry.items.isEmpty) return;
+      final pantry = await _service.getDefaultPantry();
       PantryIngredient? match;
       for (final item in pantry.items) {
         if (item.ingredientId == widget.ingredientId) {
@@ -95,7 +98,8 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
       return;
     }
 
-    final pantryId = _existing?.pantryId ?? _service.current?.id;
+    final pantrySnapshot = ref.read(defaultPantryProvider).value;
+    final pantryId = _existing?.pantryId ?? pantrySnapshot?.id;
     final ingredientId = _existing?.ingredientId;
     if (pantryId == null || ingredientId == null) return;
 
@@ -136,7 +140,8 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
       _saving = true;
       _error = null;
     });
-    final pantryId = _existing?.pantryId ?? _service.current?.id;
+    final pantrySnapshot = ref.read(defaultPantryProvider).value;
+    final pantryId = _existing?.pantryId ?? pantrySnapshot?.id;
     if (pantryId == null) {
       setState(() {
         _saving = false;
@@ -163,9 +168,11 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
         payload['name'] = _nameController.text.trim();
         await _service.addPantryIngredient(pantryId, payload);
       } else {
-        // PATCH via ApiClient directly (PantryService doesn't own PATCH yet).
-        await _api.updatePantryIngredient(pantryId, widget.ingredientId, payload);
-        await _service.loadDefaultPantry();
+        await _service.updatePantryIngredient(
+          pantryId,
+          widget.ingredientId,
+          payload,
+        );
       }
       if (!mounted) return;
       context.pop();
@@ -175,6 +182,11 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
         _saving = false;
         _error = 'Save failed. Please try again.';
       });
+      showMutationFailureSnackbar(
+        context,
+        widget.isNew ? MutationType.addPantryItem : MutationType.updatePantryItem,
+        _save,
+      );
     }
   }
 
@@ -205,8 +217,10 @@ class _PantryEditorScreenState extends State<PantryEditorScreen> {
       context.pop();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Remove failed')),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.deletePantryItem,
+        _confirmDelete,
       );
     }
   }

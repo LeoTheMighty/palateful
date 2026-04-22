@@ -1,69 +1,34 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
-import '../models/pantry.dart';
+import '../../../core/state/mutation_failure_copy.dart';
+import '../../../core/state/mutation_snackbar.dart';
 import '../models/pantry_ingredient.dart';
+import '../providers/pantry_provider.dart';
 import '../services/pantry_service.dart';
 import '../widgets/fuzzy_expiry_text.dart';
 import '../widgets/pantry_filter_bar.dart';
 import '../widgets/pantry_ingredient_tile.dart';
 
-/// Pantry list grouped by expiry urgency (Expiring Soon / Fresh / No Date).
-/// The emotional hook: "what's about to go bad?"
-class PantryListScreen extends StatefulWidget {
+/// rp-3 — Pantry list is now a Riverpod consumer. `PantryService` is
+/// stateless (no `_current` cache, no `StreamController`); all state
+/// flows through `defaultPantryProvider`, which invalidates on
+/// `PantryItem*` bus events.
+class PantryListScreen extends ConsumerStatefulWidget {
   const PantryListScreen({super.key});
 
   @override
-  State<PantryListScreen> createState() => _PantryListScreenState();
+  ConsumerState<PantryListScreen> createState() => _PantryListScreenState();
 }
 
-class _PantryListScreenState extends State<PantryListScreen> {
-  final PantryService _service = getIt<PantryService>();
-
-  Pantry? _pantry;
-  bool _isLoading = true;
-  String? _error;
+class _PantryListScreenState extends ConsumerState<PantryListScreen> {
   Set<String> _selectedCategories = <String>{};
-  StreamSubscription<Pantry?>? _sub;
 
-  @override
-  void initState() {
-    super.initState();
-    _pantry = _service.current;
-    _isLoading = _pantry == null;
-    _sub = _service.pantryStream.listen((p) {
-      if (!mounted) return;
-      setState(() {
-        _pantry = p;
-        _isLoading = false;
-      });
-    });
-    _load();
-  }
+  PantryService get _service => getIt<PantryService>();
 
-  Future<void> _load() async {
-    try {
-      await _service.loadDefaultPantry();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _error = 'Could not load your pantry. Pull to retry.';
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  List<PantryIngredient> _visibleItems() {
-    final items = _pantry?.items ?? const <PantryIngredient>[];
+  List<PantryIngredient> _visibleItems(List<PantryIngredient> items) {
     if (_selectedCategories.isEmpty) return items;
     return items
         .where((i) =>
@@ -116,6 +81,9 @@ class _PantryListScreenState extends State<PantryListScreen> {
     context.push('/search?q=${Uri.encodeQueryComponent(name)}');
   }
 
+  /// Delete + undo-success-snackbar path. The undo action is a
+  /// success-flow UX affordance (rp-3 Design Principle #4), distinct
+  /// from `showMutationFailureSnackbar`.
   Future<void> _handleDelete(PantryIngredient item) async {
     final pantryId = item.pantryId;
     final removed = item;
@@ -143,8 +111,10 @@ class _PantryListScreenState extends State<PantryListScreen> {
                 });
               } catch (_) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Undo failed')),
+                showMutationFailureSnackbar(
+                  context,
+                  MutationType.addPantryItem,
+                  () => _handleDelete(item),
                 );
               }
             },
@@ -153,8 +123,10 @@ class _PantryListScreenState extends State<PantryListScreen> {
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not remove item')),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.deletePantryItem,
+        () => _handleDelete(item),
       );
     }
   }
@@ -173,45 +145,49 @@ class _PantryListScreenState extends State<PantryListScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && (_pantry?.items.isEmpty ?? true)) {
-      return Center(
+    final pantryAsync = ref.watch(defaultPantryProvider);
+    return pantryAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(_error!, textAlign: TextAlign.center),
-        ),
-      );
-    }
-    final pantry = _pantry;
-    if (pantry == null || pantry.items.isEmpty) {
-      return const _EmptyState();
-    }
-
-    final categories = <String>{
-      for (final item in pantry.items)
-        if (item.category != null && item.category!.isNotEmpty) item.category!,
-    }.toList()
-      ..sort();
-
-    final (expiringSoon, fresh, noDate) = _group(_visibleItems());
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 80),
-        children: [
-          PantryFilterBar(
-            availableCategories: categories,
-            selectedCategories: _selectedCategories,
-            onChanged: (next) => setState(() => _selectedCategories = next),
+          child: Text(
+            'Could not load your pantry. Pull to retry.',
+            textAlign: TextAlign.center,
           ),
-          _section(context, 'Expiring Soon', expiringSoon, showUseMeUp: true),
-          _section(context, 'Fresh', fresh),
-          _section(context, 'No Date', noDate),
-        ],
+        ),
       ),
+      data: (pantry) {
+        if (pantry.items.isEmpty) return const _EmptyState();
+        final categories = <String>{
+          for (final item in pantry.items)
+            if (item.category != null && item.category!.isNotEmpty)
+              item.category!,
+        }.toList()
+          ..sort();
+
+        final (expiringSoon, fresh, noDate) = _group(_visibleItems(pantry.items));
+
+        return RefreshIndicator(
+          onRefresh: () async =>
+              ref.refresh(defaultPantryProvider.future),
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: 80),
+            children: [
+              PantryFilterBar(
+                availableCategories: categories,
+                selectedCategories: _selectedCategories,
+                onChanged: (next) =>
+                    setState(() => _selectedCategories = next),
+              ),
+              _section(context, 'Expiring Soon', expiringSoon,
+                  showUseMeUp: true),
+              _section(context, 'Fresh', fresh),
+              _section(context, 'No Date', noDate),
+            ],
+          ),
+        );
+      },
     );
   }
 

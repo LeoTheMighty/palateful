@@ -1,72 +1,67 @@
-import 'dart:async';
-
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../models/pantry.dart';
 import '../models/pantry_ingredient.dart';
 
-/// StreamController-based service for the user's default pantry.
+/// rp-3 — stateless PantryService. Pre-rp-3 the service kept a
+/// `Pantry?` cache behind a `StreamController<Pantry?>` which violated
+/// Foundation Locked Decision #9. Now every read goes straight to the
+/// API and every mutation emits on the MutationBus.
 ///
-/// Mirrors the pattern established by [ShoppingCartService] — plain streams,
-/// no Bloc/Riverpod.
+/// The `pantryIngredientsProvider(pantryId)` family (see
+/// `providers/pantry_provider.dart`) owns list-state and subscribes to
+/// `PantryItem*` events with a pantry-id filter.
 class PantryService {
-  final ApiClient _apiClient = getIt<ApiClient>();
+  PantryService({ApiClient? api}) : _api = api ?? getIt<ApiClient>();
 
-  final _pantryController = StreamController<Pantry?>.broadcast();
-  Pantry? _current;
+  final ApiClient _api;
 
-  Stream<Pantry?> get pantryStream => _pantryController.stream;
-  Pantry? get current => _current;
-
-  Future<void> loadDefaultPantry() async {
-    final response = await _apiClient.getDefaultPantry();
-    final pantry = Pantry.fromJson(response.data as Map<String, dynamic>);
-    _current = pantry;
-    _pantryController.add(pantry);
+  Future<Pantry> getDefaultPantry() async {
+    final response = await _api.getDefaultPantry();
+    return Pantry.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<PantryIngredient> addPantryIngredient(
     String pantryId,
     Map<String, dynamic> data,
   ) async {
-    final response = await _apiClient.addPantryIngredient(pantryId, data);
-    final added = PantryIngredient.fromJson(response.data as Map<String, dynamic>);
-    final current = _current;
-    if (current != null && current.id == pantryId) {
-      final next = List<PantryIngredient>.from(current.items)
-        ..removeWhere((i) => i.ingredientId == added.ingredientId)
-        ..add(added);
-      _current = current.copyWith(items: next);
-      _pantryController.add(_current);
-    }
+    final response = await _api.addPantryIngredient(pantryId, data);
+    final added =
+        PantryIngredient.fromJson(response.data as Map<String, dynamic>);
+    emitMutation(PantryItemAdded(
+      itemId: added.ingredientId,
+      item: response.data as Map<String, dynamic>,
+      pantryId: pantryId,
+    ));
     return added;
   }
 
-  /// Optimistically removes the row from the cached pantry and issues the
-  /// DELETE. On failure the caller is responsible for rollback — we don't
-  /// own the snackbar here.
+  Future<PantryIngredient> updatePantryIngredient(
+    String pantryId,
+    String ingredientId,
+    Map<String, dynamic> data,
+  ) async {
+    final response =
+        await _api.updatePantryIngredient(pantryId, ingredientId, data);
+    final updated =
+        PantryIngredient.fromJson(response.data as Map<String, dynamic>);
+    emitMutation(PantryItemUpdated(
+      itemId: ingredientId,
+      item: response.data as Map<String, dynamic>,
+      pantryId: pantryId,
+    ));
+    return updated;
+  }
+
   Future<void> deletePantryIngredient(
     String pantryId,
     String ingredientId,
   ) async {
-    final current = _current;
-    if (current != null && current.id == pantryId) {
-      final next = current.items
-          .where((i) => i.ingredientId != ingredientId)
-          .toList();
-      _current = current.copyWith(items: next);
-      _pantryController.add(_current);
-    }
-    try {
-      await _apiClient.deletePantryIngredient(pantryId, ingredientId);
-    } catch (_) {
-      // Reload to resync on failure.
-      await loadDefaultPantry();
-      rethrow;
-    }
-  }
-
-  void dispose() {
-    _pantryController.close();
+    await _api.deletePantryIngredient(pantryId, ingredientId);
+    emitMutation(PantryItemRemoved(
+      itemId: ingredientId,
+      pantryId: pantryId,
+    ));
   }
 }
