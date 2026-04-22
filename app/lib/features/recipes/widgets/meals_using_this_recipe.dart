@@ -1,10 +1,12 @@
 // md-6: "Used in these Meals" row on the recipe detail screen.
+// rmc-2: migrated from `StatefulWidget + FutureBuilder` to
+// `ConsumerWidget + ref.watch(usedInMealsProvider)` so the row reacts
+// to meal-component mutations without a remount.
 //
-// Fires `GET /v1/recipes/{id}/meals` once on mount. Load-bearing
-// invariant: empty / error → `SizedBox.shrink()` (no header, no empty
-// state). That guarantees recipe-detail rendering is bit-identical to
-// pre-epic for any user with zero Meals referencing the recipe, and
-// never blocks the screen on a failed cross-lookup call.
+// Load-bearing invariant preserved: empty / error → `SizedBox.shrink()`
+// (no header, no empty state). Recipe detail rendering stays bit-
+// identical to pre-epic for any user with zero Meals referencing the
+// recipe, and never blocks the screen on a failed cross-lookup call.
 //
 // NOT mounted on `public_recipe_screen.dart` by design — leaking
 // private Meal names to unauthenticated viewers is a privacy regression
@@ -12,65 +14,34 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/di/injection.dart';
-import '../../../core/services/api_client.dart';
-import '../../../core/services/error_reporter.dart';
 import '../../meals/models/meal.dart';
-import '../../meals/services/meal_service.dart';
+import '../providers/used_in_meals_provider.dart';
 
-class MealsUsingThisRecipe extends StatefulWidget {
+class MealsUsingThisRecipe extends ConsumerWidget {
   final String recipeId;
 
   const MealsUsingThisRecipe({super.key, required this.recipeId});
 
   @override
-  State<MealsUsingThisRecipe> createState() => _MealsUsingThisRecipeState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(usedInMealsProvider(recipeId));
+    // Preserve previous data across refetches (AsyncValue.value guard —
+    // Foundation loading-flicker pattern). During refetch, render the
+    // last-known list instead of flashing back to the shimmer.
+    final previous = async.value;
 
-class _MealsUsingThisRecipeState extends State<MealsUsingThisRecipe> {
-  late Future<List<MealSummary>?> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<List<MealSummary>?> _load() async {
-    try {
-      return await MealService(getIt<ApiClient>())
-          .listMealsUsingRecipe(widget.recipeId);
-    } catch (e, st) {
-      // Failure is silent — recipe detail must render even if the
-      // cross-lookup explodes. Still report to Crashlytics so we notice.
-      ErrorReporter.report(
-        e,
-        st,
-        area: 'recipes.detail',
-        operation: 'listMealsUsingRecipe',
-      );
-      return null;
+    if (async.isLoading && previous == null) {
+      return const _ShimmerRow();
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<List<MealSummary>?>(
-      future: _future,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _ShimmerRow();
-        }
-        final data = snapshot.data;
-        // Error OR empty → hide entirely. Section header does NOT render.
-        if (data == null || data.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return _MealsRow(meals: data);
-      },
-    );
+    final data = previous;
+    // Error OR empty → hide entirely. Section header does NOT render.
+    if (data == null || data.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return _MealsRow(meals: data);
   }
 }
 

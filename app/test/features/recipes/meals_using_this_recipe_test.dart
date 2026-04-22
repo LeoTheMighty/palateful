@@ -3,10 +3,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:palateful/core/services/api_client.dart';
+import 'package:palateful/features/meals/services/meal_service.dart';
 import 'package:palateful/features/recipes/widgets/meals_using_this_recipe.dart';
 
 Response<dynamic> _fakeResponse(dynamic data) => Response(
@@ -37,11 +39,14 @@ void _registerFakes(_FakeApiClient client) {
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   gi.registerSingleton<ApiClient>(client);
+  if (gi.isRegistered<MealService>()) gi.unregister<MealService>();
+  gi.registerLazySingleton<MealService>(() => MealService(client));
 }
 
 void _unregister() {
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
+  if (gi.isRegistered<MealService>()) gi.unregister<MealService>();
 }
 
 Map<String, dynamic> _mealSummary({
@@ -72,7 +77,7 @@ Widget _pumpTarget(Widget child) {
       ),
     ],
   );
-  return MaterialApp.router(routerConfig: router);
+  return ProviderScope(child: MaterialApp.router(routerConfig: router));
 }
 
 void main() {
