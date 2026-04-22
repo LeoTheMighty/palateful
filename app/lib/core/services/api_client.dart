@@ -823,6 +823,18 @@ class ApiClient {
     return _dio.post('/v1/meal-events', data: data);
   }
 
+  Future<Response> getMealEvent(String eventId) {
+    return _dio.get('/v1/meal-events/$eventId');
+  }
+
+  /// RSVP to a meal event invite. status ∈ {accepted, declined, maybe}.
+  Future<Response> respondToMealInvite(String eventId, String status) {
+    return _dio.post(
+      '/v1/meal-events/$eventId/respond',
+      data: {'status': status},
+    );
+  }
+
   Future<Response> updateMealEvent(String eventId, Map<String, dynamic> data) {
     return _dio.put('/v1/meal-events/$eventId', data: data);
   }

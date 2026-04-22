@@ -22,6 +22,14 @@ class MealCalendarService {
     return items.map(MealEvent.fromJson).toList();
   }
 
+  /// Fetch a single meal event by id. Used by the deep-link
+   /// MealDetailScreen — list endpoints return a windowed projection,
+   /// the detail endpoint returns the full record (participants etc.).
+  Future<MealEvent> getMealEvent(String eventId) async {
+    final response = await _apiClient.getMealEvent(eventId);
+    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<MealEvent> createMealEvent({
     required String title,
     required DateTime scheduledAt,

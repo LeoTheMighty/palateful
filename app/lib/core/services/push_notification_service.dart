@@ -582,6 +582,12 @@ class PushNotificationService {
       case 'meal_event_invite':
       case 'meal_event_reminder':
       case 'meal_event_updated':
+        // Deep-link straight to the meal-detail screen when we have an id;
+        // fall back to calendar root otherwise (defensive — payload bug).
+        final mealEventId = data['meal_event_id'];
+        if (mealEventId != null) {
+          return '/calendar/meals/$mealEventId';
+        }
         return '/calendar';
 
       case 'friend_request':

@@ -110,6 +110,10 @@ class _FakeMealCalendarService implements MealCalendarService {
       events;
 
   @override
+  Future<MealEvent> getMealEvent(String eventId) async =>
+      throw UnimplementedError();
+
+  @override
   Future<MealEvent> createMealEvent({
     required String title,
     required DateTime scheduledAt,

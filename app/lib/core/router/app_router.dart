@@ -40,6 +40,7 @@ import '../../features/cart/cart_screen.dart';
 import '../../features/shopping_cart/screens/shopping_list_screen.dart';
 import '../../features/calendar/calendar_members_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
+import '../../features/calendar/meal_detail_screen.dart' as calendar_detail;
 import '../../features/pantry/screens/pantry_editor_screen.dart';
 import '../../features/pantry/screens/pantry_list_screen.dart';
 import '../../features/invitations/invitations_screen.dart';
@@ -673,6 +674,17 @@ GoRouter get appRouter {
               GoRoute(
                 path: '/calendar',
                 builder: (context, state) => const CalendarScreen(),
+                routes: [
+                  // nfn-5 — meal_event detail target for push deep-links.
+                  // Keeps the calendar nav shell so the bottom nav persists.
+                  GoRoute(
+                    path: 'meals/:id',
+                    builder: (context, state) =>
+                        calendar_detail.MealEventDetailScreen(
+                      mealEventId: state.pathParameters['id']!,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

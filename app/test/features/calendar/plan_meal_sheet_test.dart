@@ -16,6 +16,10 @@ class _FakeMealCalendarService implements MealCalendarService {
   bool throwOnRuleCreate = false;
 
   @override
+  Future<MealEvent> getMealEvent(String eventId) async =>
+      throw UnimplementedError();
+
+  @override
   Future<MealEvent> createMealEvent({
     required String title,
     required DateTime scheduledAt,
