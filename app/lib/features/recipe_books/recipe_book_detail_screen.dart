@@ -15,8 +15,11 @@ import '../meals/services/meal_service.dart';
 import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
 import '../recipes/providers/recipe_provider.dart';
+import '../recipes/services/recipe_service.dart';
 import 'services/recipe_book_sync_service.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class RecipeBookDetailScreen extends StatefulWidget {
@@ -540,7 +543,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
     try {
       HapticFeedback.selectionClick();
       final archivedIds = _selectedRecipeIds.toList();
-      await _apiClient.bulkArchiveRecipes(archivedIds);
+      await getIt<RecipeService>().bulkArchiveRecipes(
+        archivedIds,
+        bookId: widget.recipeBookId,
+      );
       if (mounted) {
         for (final id in archivedIds) {
           invalidateRecipe(context, id);
@@ -553,10 +559,12 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
         _exitSelectMode();
         _loadRecipeBook();
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not archive recipes. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.bulkArchiveRecipes,
+          _bulkArchive,
         );
       }
     } finally {

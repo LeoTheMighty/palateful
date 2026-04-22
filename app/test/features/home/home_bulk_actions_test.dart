@@ -21,6 +21,7 @@ import 'package:palateful/features/meals/widgets/create_meal_sheet.dart';
 import 'package:palateful/features/meals/widgets/meal_tile.dart';
 import 'package:palateful/features/home/widgets/recipe_card.dart';
 import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
+import 'package:palateful/features/recipes/services/recipe_service.dart';
 
 Response<dynamic> _fakeResponse(dynamic data, {int status = 200}) => Response(
       data: data,
@@ -134,6 +135,8 @@ void _registerFakes(_FakeApi client) {
   gi.registerSingleton<ApiClient>(client);
   if (gi.isRegistered<MealService>()) gi.unregister<MealService>();
   gi.registerLazySingleton<MealService>(() => MealService(client));
+  if (gi.isRegistered<RecipeService>()) gi.unregister<RecipeService>();
+  gi.registerLazySingleton<RecipeService>(() => RecipeService(client));
   if (gi.isRegistered<BatchParserService>()) {
     gi.unregister<BatchParserService>();
   }
@@ -150,6 +153,7 @@ void _unregister() {
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   if (gi.isRegistered<MealService>()) gi.unregister<MealService>();
+  if (gi.isRegistered<RecipeService>()) gi.unregister<RecipeService>();
   if (gi.isRegistered<BatchParserService>()) {
     gi.unregister<BatchParserService>();
   }

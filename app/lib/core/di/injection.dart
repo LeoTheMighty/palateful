@@ -15,6 +15,7 @@ import '../../features/calendar/services/calendar_service.dart';
 import '../../features/calendar/services/meal_calendar_service.dart';
 import '../../features/meals/services/meal_service.dart';
 import '../../features/activity/providers/activity_read_provider.dart';
+import '../../features/recipes/services/recipe_service.dart';
 import '../../features/recipes/services/session_alias_map.dart';
 
 final getIt = GetIt.instance;
@@ -48,6 +49,9 @@ void setupDependencies() {
   );
   getIt.registerLazySingleton<MealService>(
     () => MealService(getIt<ApiClient>()),
+  );
+  getIt.registerLazySingleton<RecipeService>(
+    () => RecipeService(getIt<ApiClient>()),
   );
   getIt.registerLazySingleton<ActivityReadProvider>(
     () => ActivityReadProvider(getIt<ApiClient>()),

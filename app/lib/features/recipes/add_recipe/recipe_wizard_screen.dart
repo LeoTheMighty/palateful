@@ -8,6 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/state/mutation_failure_copy.dart';
+import '../../../core/state/mutation_snackbar.dart';
+import '../services/recipe_service.dart';
 import '../widgets/structured_ingredient_row.dart';
 import 'ingredient_edits_mapping.dart';
 
@@ -164,12 +167,15 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
         'steps': structuredSteps.isEmpty ? [] : structuredSteps,
       };
 
-      final createResponse = await _apiClient.createRecipe(_selectedRecipeBookId!, recipeData);
+      final createdRecipe = await getIt<RecipeService>().createRecipe(
+        _selectedRecipeBookId!,
+        recipeData,
+      );
 
       // If image was picked, upload to S3 and update recipe with image_url
       var photoFailed = false;
       if (_imageBytes != null && _imageFileName != null) {
-        final recipeId = createResponse.data['id'] as String;
+        final recipeId = createdRecipe['id'] as String;
         final uploadUrlResponse = await _apiClient.getRecipePhotoUploadUrl(
           recipeId,
           _imageFileName!,
@@ -185,7 +191,8 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
         );
 
         if (uploadResponse.statusCode == 200) {
-          await _apiClient.updateRecipe(recipeId, {'image_url': imageUrl});
+          await getIt<RecipeService>()
+              .updateRecipe(recipeId, {'image_url': imageUrl});
         } else {
           photoFailed = true;
         }
@@ -204,10 +211,12 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
         );
         context.pop();
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not create recipe. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.createRecipe,
+          _saveRecipe,
         );
         setState(() => _isSaving = false);
       }

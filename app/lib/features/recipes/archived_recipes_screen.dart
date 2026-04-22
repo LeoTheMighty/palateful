@@ -4,11 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../meals/models/meal.dart';
 import 'providers/recipe_provider.dart';
+import 'services/recipe_service.dart';
 import '../meals/services/meal_service.dart';
 
 class ArchivedRecipesScreen extends StatefulWidget {
@@ -130,7 +133,7 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
 
     try {
       HapticFeedback.selectionClick();
-      await _apiClient.restoreRecipe(recipeId);
+      await getIt<RecipeService>().restoreRecipe(recipeId);
       if (mounted) invalidateRecipe(context, recipeId);
       if (mounted) {
         setState(() {
@@ -140,10 +143,12 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
           const SnackBar(content: Text('Recipe restored')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not restore recipe. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.unarchiveRecipe,
+          () => _restoreRecipe(recipe),
         );
       }
     } finally {

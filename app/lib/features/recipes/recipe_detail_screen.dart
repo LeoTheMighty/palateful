@@ -19,7 +19,10 @@ import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import 'providers/recipe_provider.dart';
+import 'services/recipe_service.dart';
 import 'widgets/meals_using_this_recipe.dart';
 import '../../shared/widgets/error_banner.dart';
 
@@ -117,18 +120,23 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     });
 
     try {
-      await _apiClient.updateRecipe(widget.recipeId, {
+      await getIt<RecipeService>().updateRecipe(widget.recipeId, {
         'primary_vibe': primary ?? '',
         'secondary_vibe': secondary ?? '',
       });
       invalidateRecipe(ref, widget.recipeId);
-    } catch (e) {
+    } catch (_) {
       // Revert on failure
       if (mounted) {
         setState(() {
           _recipe?['primary_vibe'] = oldPrimary;
           _recipe?['secondary_vibe'] = oldSecondary;
         });
+        showMutationFailureSnackbar(
+          context,
+          MutationType.updateRecipe,
+          () => _saveVibes(primary, secondary),
+        );
       }
     }
   }
@@ -142,11 +150,18 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     setState(() => _isFavorite = !_isFavorite);
 
     try {
-      await _apiClient.toggleFavorite(widget.recipeId);
+      await getIt<RecipeService>().toggleFavorite(widget.recipeId);
       invalidateRecipe(ref, widget.recipeId);
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _isFavorite = wasFavorite);
+        showMutationFailureSnackbar(
+          context,
+          wasFavorite
+              ? MutationType.unfavoriteRecipe
+              : MutationType.favoriteRecipe,
+          _toggleFavorite,
+        );
       }
     } finally {
       if (mounted) {
@@ -301,7 +316,11 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
 
     try {
       HapticFeedback.selectionClick();
-      await _apiClient.deleteRecipe(widget.recipeId);
+      final bookId = _recipe?['recipe_book_id']?.toString() ?? '';
+      await getIt<RecipeService>().archiveRecipe(
+        widget.recipeId,
+        bookId: bookId,
+      );
       invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         context.pop();
@@ -309,10 +328,12 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
           const SnackBar(content: Text('Recipe archived')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not archive recipe. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.archiveRecipe,
+          _archiveRecipe,
         );
       }
     }
@@ -388,7 +409,11 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     setState(() => _isMovingOrCopying = true);
     try {
       HapticFeedback.selectionClick();
-      await _apiClient.moveRecipe(widget.recipeId, book['id']);
+      await getIt<RecipeService>().moveRecipe(
+        widget.recipeId,
+        book['id'],
+        oldBookId: currentBookId ?? '',
+      );
       invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         context.pop();
@@ -396,10 +421,12 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
           SnackBar(content: Text('Recipe moved to ${book['name']}')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not move recipe. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.moveRecipe,
+          _moveRecipe,
         );
       }
     } finally {
@@ -416,16 +443,18 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     setState(() => _isMovingOrCopying = true);
     try {
       HapticFeedback.selectionClick();
-      await _apiClient.copyRecipe(widget.recipeId, book['id']);
+      await getIt<RecipeService>().copyRecipe(widget.recipeId, book['id']);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Recipe copied to ${book['name']}')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not copy recipe. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.forkRecipe,
+          _copyRecipe,
         );
       }
     } finally {
@@ -506,19 +535,21 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     setState(() => _isMovingOrCopying = true);
     try {
       HapticFeedback.selectionClick();
-      final response = await _apiClient.forkRecipe(
-          widget.recipeId, book['id']);
-      final forkedId = response.data['id'] as String?;
-      if (mounted && forkedId != null) {
+      final forked =
+          await getIt<RecipeService>().forkRecipe(widget.recipeId, book['id']);
+      final forkedId = forked['id']?.toString();
+      if (mounted && forkedId != null && forkedId.isNotEmpty) {
         messenger.showSnackBar(
           SnackBar(content: Text('Forked to ${book['name']}')),
         );
         context.push('/recipes/$forkedId');
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Could not fork recipe. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.forkRecipe,
+          _forkRecipe,
         );
       }
     } finally {
@@ -1197,21 +1228,23 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     if (body.isEmpty) return;
     setState(() => _isAddingNote = true);
     try {
-      final response = await _apiClient.addRecipeNote(widget.recipeId, body);
+      final newNote =
+          await getIt<RecipeService>().addRecipeNote(widget.recipeId, body);
       invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
-        final newNote = response.data as Map<String, dynamic>;
         setState(() {
           _notes = [..._notes, newNote];
           _isAddingNote = false;
         });
         _noteController.clear();
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _isAddingNote = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add note: $e')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.updateRecipe,
+          _submitNote,
         );
       }
     }
@@ -1219,17 +1252,19 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
 
   Future<void> _deleteNote(String noteId) async {
     try {
-      await _apiClient.deleteRecipeNote(widget.recipeId, noteId);
+      await getIt<RecipeService>().deleteRecipeNote(widget.recipeId, noteId);
       invalidateRecipe(ref, widget.recipeId);
       if (mounted) {
         setState(() {
           _notes = _notes.where((n) => (n as Map)['id'] != noteId).toList();
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete note: $e')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.updateRecipe,
+          () => _deleteNote(noteId),
         );
       }
     }

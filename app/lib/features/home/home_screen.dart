@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../recipes/providers/recipe_provider.dart';
+import '../recipes/services/recipe_service.dart';
 import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
@@ -199,10 +202,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     try {
-      await _apiClient.toggleFavorite(recipeId);
+      await getIt<RecipeService>().toggleFavorite(recipeId);
       // pfc-3: bust cached recipe payload so detail reopen sees new flag.
       invalidateRecipe(ref, recipeId);
-    } catch (e) {
+    } catch (_) {
       // Revert on failure
       if (mounted) {
         setState(() {
@@ -215,6 +218,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _favorites.removeWhere((f) => f['id']?.toString() == recipeId);
           }
         });
+        showMutationFailureSnackbar(
+          context,
+          wasFavorite
+              ? MutationType.unfavoriteRecipe
+              : MutationType.favoriteRecipe,
+          () => _toggleFavorite(recipe),
+        );
       }
     } finally {
       _togglingFavoriteIds.remove(recipeId);
@@ -755,8 +765,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final item = _findRecipe(id);
       names[id] = (item is Map) ? (item['name']?.toString() ?? id) : id;
     }
+    // The selection may span multiple books; derive the best-guess
+    // anchor from the first recipe so subscribers that scope by book
+    // see a coherent event. Home uses the type-level filter anyway
+    // (coarse-key rule).
+    final first = recipeIds.isEmpty ? null : _findRecipe(recipeIds.first);
+    final bookId = (first is Map)
+        ? (first['recipe_book_id']?.toString() ?? '')
+        : '';
     try {
-      await _apiClient.bulkArchiveRecipes(recipeIds);
+      await getIt<RecipeService>().bulkArchiveRecipes(
+        recipeIds,
+        bookId: bookId,
+      );
       // pfc-3: drop each archived recipe's cached detail payload.
       for (final id in recipeIds) {
         invalidateRecipe(ref, id);

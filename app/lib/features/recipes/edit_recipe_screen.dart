@@ -9,11 +9,14 @@ import '../../core/constants/inferable_fields.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../core/utils/fraction_parser.dart';
 import '../../shared/widgets/error_banner.dart';
 import 'add_recipe/ingredient_edits_mapping.dart';
 import 'add_recipe/widgets/inferred_field_badge.dart';
 import 'providers/recipe_provider.dart';
+import 'services/recipe_service.dart';
 import 'widgets/structured_ingredient_row.dart';
 
 class EditRecipeScreen extends StatefulWidget {
@@ -237,7 +240,7 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
         'inferred_fields': _inferredFields.toList(),
       };
 
-      await _apiClient.updateRecipe(widget.recipeId, data);
+      await getIt<RecipeService>().updateRecipe(widget.recipeId, data);
       // pfc-3: bust the recipe_provider cache so the detail screen
       // re-fetches fresh data when the user navigates back.
       if (mounted) invalidateRecipe(context, widget.recipeId);
@@ -248,12 +251,14 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
           _hasSaved = true;
         });
       }
-    } catch (e) {
+    } catch (_) {
       _isSaving = false;
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save. Please try again.')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.updateRecipe,
+          _saveNow,
         );
       }
     }
@@ -392,7 +397,8 @@ class _EditRecipeScreenState extends State<EditRecipeScreen> {
       );
 
       if (uploadResponse.statusCode == 200) {
-        await _apiClient.updateRecipe(widget.recipeId, {'image_url': imageUrl});
+        await getIt<RecipeService>()
+            .updateRecipe(widget.recipeId, {'image_url': imageUrl});
         if (mounted) invalidateRecipe(context, widget.recipeId);
         if (mounted) {
           setState(() {
