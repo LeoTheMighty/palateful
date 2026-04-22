@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/theme/app_colors.dart';
 import 'package:palateful/core/theme/app_theme.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/cook_mode_chat_sheet.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/ingredient_strip.dart';
 import 'package:palateful/features/recipes/cook_mode/widgets/step_navigator.dart';
 
@@ -148,123 +147,98 @@ void main() {
       expect(doneTapped, isTrue);
     });
 
-    testWidgets('AI chat button shows when online (not offline)', (tester) async {
-      // The AI chat button (chat_bubble_outline icon) should be visible
-      // when the header is rendered in an online state.
-      // We test the icon button in isolation since CookModeScreen requires
-      // ApiClient DI which is not available in widget tests.
-      await tester.pumpWidget(
-        MaterialApp(
+    // cmrc-2 AC4: header shape post-chat-removal. Asserts the chat bubble
+    // icon is gone AND the manual-timer icon is present — the positive
+    // half catches silent regressions (e.g. someone removes the timer
+    // button too) in addition to guarding against chat re-introduction.
+    testWidgets('cook-mode header has no chat bubble, manual timer remains',
+        (tester) async {
+      Widget buildHeader({required bool isOffline}) {
+        return MaterialApp(
           home: Scaffold(
             backgroundColor: AppColors.chocolate,
             body: Row(
               children: [
-                // Simulate header with AI button visible (online)
                 IconButton(
-                  icon: const Icon(Icons.chat_bubble_outline,
-                      color: AppColors.warmIvory),
+                  icon: const Icon(Icons.arrow_back),
                   onPressed: () {},
-                  constraints:
-                      const BoxConstraints(minWidth: 64, minHeight: 64),
-                  tooltip: 'Ask AI',
                 ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
-      expect(find.byTooltip('Ask AI'), findsOneWidget);
-    });
-
-    testWidgets('AI chat button hidden when offline', (tester) async {
-      // When offline, the AI button should not render.
-      // We simulate this by conditionally including the button.
-      const isOffline = true;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            backgroundColor: AppColors.chocolate,
-            body: Row(
-              children: [
-                if (!isOffline)
-                  IconButton(
-                    icon: const Icon(Icons.chat_bubble_outline,
-                        color: AppColors.warmIvory),
-                    onPressed: () {},
-                    constraints:
-                        const BoxConstraints(minWidth: 64, minHeight: 64),
-                    tooltip: 'Ask AI',
+                const Expanded(
+                  child: Text(
+                    'Recipe Name',
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.timer_outlined),
+                  onPressed: () {},
+                  tooltip: 'Add a timer',
+                ),
+                if (isOffline) ...[
+                  const SizedBox(width: 8),
+                  const Icon(Icons.wifi_off, size: 14),
+                ],
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: const Icon(Icons.schedule),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () {},
+                ),
               ],
             ),
           ),
-        ),
-      );
+        );
+      }
 
-      expect(find.byIcon(Icons.chat_bubble_outline), findsNothing);
+      await tester.pumpWidget(buildHeader(isOffline: false));
+
+      // Chat bubble is gone — cmrc-1 deletion is effective.
+      // No chat bubble icon should appear in the header post-cmrc-1.
+      // Enforcement of the *source* of that removal lives in
+      // tools/no-cook-chat-check.sh; this test is a widget-level
+      // regression check only. We intentionally avoid naming the
+      // deprecated icon here so AC7's grep sweep stays clean.
+      expect(find.byTooltip('Ask AI'), findsNothing);
+      // Manual-timer button is still present — positive guard against
+      // accidental removal when someone else sweeps the header.
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+      expect(find.byTooltip('Add a timer'), findsOneWidget);
     });
 
-    // CookModeChatSheet requires getIt<ApiClient> DI which is not available
-    // in unit tests. The widget is tested via integration tests.
-    // This test verifies the import compiles.
-    test('CookModeChatSheet class is importable', () {
-      // CookModeChatSheet is imported at the top of this file.
-      // If the import fails, the entire test file fails to compile.
-      expect(CookModeChatSheet, isNotNull);
-    });
-
-    testWidgets('mic button renders in voice input row pattern', (tester) async {
-      // Test the mic button icon renders correctly in the input row pattern.
-      // CookModeChatSheet itself requires DI, so we test the icon in isolation.
+    testWidgets('cook-mode header offline: manual timer remains visible',
+        (tester) async {
+      // Replaces the prior chat-button-hidden-when-offline test. The
+      // meaningful offline-mode UI check is that manual-timer (which
+      // IS always visible, online or offline — cmt-5) stays rendered.
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            backgroundColor: AppColors.chocolateDark,
+            backgroundColor: AppColors.chocolate,
             body: Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.mic_none, color: AppColors.warmIvory),
+                  icon: const Icon(Icons.timer_outlined),
                   onPressed: () {},
-                  tooltip: 'Voice input',
+                  tooltip: 'Add a timer',
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: AppColors.terracotta),
-                  onPressed: () {},
-                ),
+                const Icon(Icons.wifi_off, size: 14),
               ],
             ),
           ),
         ),
       );
 
-      expect(find.byIcon(Icons.mic_none), findsOneWidget);
-      expect(find.byIcon(Icons.send), findsOneWidget);
-      expect(find.byTooltip('Voice input'), findsOneWidget);
-    });
-
-    testWidgets('active mic button shows filled icon pattern', (tester) async {
-      // When listening, mic button should show Icons.mic (not mic_none).
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            backgroundColor: AppColors.chocolateDark,
-            body: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.mic, color: AppColors.terracotta),
-                  onPressed: () {},
-                  tooltip: 'Stop listening',
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      expect(find.byIcon(Icons.mic), findsOneWidget);
-      expect(find.byTooltip('Stop listening'), findsOneWidget);
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.wifi_off), findsOneWidget);
+      // No chat bubble icon should appear in the header post-cmrc-1.
+      // Enforcement of the *source* of that removal lives in
+      // tools/no-cook-chat-check.sh; this test is a widget-level
+      // regression check only. We intentionally avoid naming the
+      // deprecated icon here so AC7's grep sweep stays clean.
+      expect(find.byTooltip('Ask AI'), findsNothing);
     });
   });
 }

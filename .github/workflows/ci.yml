@@ -343,6 +343,9 @@ jobs:
       - name: No silent catches (rp-5 grep guard)
         run: bash tools/no-silent-catch-check.sh
 
+      - name: No cook-mode chat references (cmrc-2 grep guard)
+        run: bash tools/no-cook-chat-check.sh
+
       - name: Test
         working-directory: app
         run: flutter test

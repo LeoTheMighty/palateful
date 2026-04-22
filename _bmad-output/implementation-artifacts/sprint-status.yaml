@@ -1071,9 +1071,9 @@ development_status:
   # new grep-gate in CI blocks re-introduction of chat references under
   # app/lib/features/recipes/cook_mode/. Unblocks the header layout
   # simplification that epic-cook-mode-meal assumes. 2 stories.
-  epic-cook-mode-remove-chat: in-progress
+  epic-cook-mode-remove-chat: done
   cmrc-1-delete-chat-sheet-button-and-route-wiring: done
-  cmrc-2-grep-gate-and-test-cleanup: backlog
+  cmrc-2-grep-gate-and-test-cleanup: done
   epic-cook-mode-remove-chat-retrospective: optional
 
   # epic-cook-mode-resume — Persist cook-mode state (current step, checked
