@@ -1,4 +1,5 @@
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../models/meal_event.dart';
 
 /// Service for meal calendar CRUD operations.
@@ -54,7 +55,12 @@ class MealCalendarService {
       'is_shared': isShared,
       if (mealReminderTime != null) 'meal_reminder_time': mealReminderTime,
     });
-    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealEventCreated(
+      eventId: payload['id']?.toString() ?? '',
+      event: payload,
+    ));
+    return MealEvent.fromJson(payload);
   }
 
   Future<MealEvent> updateMealEvent(
@@ -68,7 +74,9 @@ class MealCalendarService {
       'meal_type': mealType.name,
       if (calendarId != null) 'calendar_id': calendarId,
     });
-    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealEventUpdated(eventId: eventId, event: payload));
+    return MealEvent.fromJson(payload);
   }
 
   /// Partial-update: sets the per-meal wall-clock reminder override.
@@ -86,7 +94,9 @@ class MealCalendarService {
     final response = await _apiClient.updateMealEvent(eventId, {
       'meal_reminder_time': reminderTime,
     });
-    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealEventUpdated(eventId: eventId, event: payload));
+    return MealEvent.fromJson(payload);
   }
 
   /// Move-to-calendar — delegates the calendar_id flip to the backend.
@@ -98,11 +108,14 @@ class MealCalendarService {
     final response = await _apiClient.updateMealEvent(eventId, {
       'calendar_id': newCalendarId,
     });
-    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealEventUpdated(eventId: eventId, event: payload));
+    return MealEvent.fromJson(payload);
   }
 
-  Future<void> deleteMealEvent(String eventId) async {
+  Future<void> deleteMealEvent(String eventId, {String? calendarId}) async {
     await _apiClient.deleteMealEvent(eventId);
+    emitMutation(MealEventDeleted(eventId: eventId, calendarId: calendarId));
   }
 
   /// Partial-update: writes a new scheduled_at only. Callers derive the UTC
@@ -111,13 +124,24 @@ class MealCalendarService {
     final response = await _apiClient.updateMealEvent(eventId, {
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
     });
-    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealEventUpdated(eventId: eventId, event: payload));
+    return MealEvent.fromJson(payload);
   }
 
   /// Flip status to `completed`. The backend pantry-decrement hook fires on
   /// the planned→completed transition (see update_meal_event.py).
-  Future<void> markMealCompleted(String eventId) async {
-    await _apiClient.updateMealEvent(eventId, {'status': 'completed'});
+  ///
+  /// Returns the updated MealEvent (the endpoint already returns it; rmc-3
+  /// upgraded this from `Future<void>` so the `MealEventCompleted` payload
+  /// carries the full record, letting subscribers patch in place instead of
+  /// refetching — AC #3).
+  Future<MealEvent> markMealCompleted(String eventId) async {
+    final response =
+        await _apiClient.updateMealEvent(eventId, {'status': 'completed'});
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealEventCompleted(eventId: eventId, event: payload));
+    return MealEvent.fromJson(payload);
   }
 
   /// Create a recurrence rule. Server materializes the first 9 weeks in the
@@ -159,7 +183,12 @@ class MealCalendarService {
     if (monthlyNth != null) data['monthly_nth'] = monthlyNth;
 
     final response = await _apiClient.createRecurrenceRule(data);
-    return RecurrenceRule.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(RecurrenceRuleCreated(
+      ruleId: payload['id']?.toString() ?? '',
+      rule: payload,
+    ));
+    return RecurrenceRule.fromJson(payload);
   }
 
   Future<List<RecurrenceRule>> listRecurrenceRules() async {
@@ -185,6 +214,7 @@ class MealCalendarService {
       occurrenceDate:
           occurrenceDate?.toIso8601String().substring(0, 10),
     );
+    emitMutation(RecurrenceRuleDeleted(ruleId: ruleId, scope: scope));
   }
 
   Future<Map<String, dynamic>> updateRecurrenceRule(
@@ -224,7 +254,18 @@ class MealCalendarService {
     if (calendarId != null) data['calendar_id'] = calendarId;
 
     final response = await _apiClient.updateRecurrenceRule(ruleId, data);
-    return response.data as Map<String, dynamic>;
+    final payload = response.data as Map<String, dynamic>;
+    // Response shape varies by scope — `occurrence` scope returns a
+    // slim body without the full rule. Carry the raw map when it
+    // looks like a rule (has `id`), otherwise null + subscribers
+    // invalidate-and-refetch.
+    final rule = payload.containsKey('id') ? payload : null;
+    emitMutation(RecurrenceRuleUpdated(
+      ruleId: ruleId,
+      scope: scope,
+      rule: rule,
+    ));
+    return payload;
   }
 
   /// Rule-level Move-to-calendar. Cascades to future materialized events.

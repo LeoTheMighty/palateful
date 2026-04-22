@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
 import '../models/meal_event.dart';
+import '../providers/meal_events_provider.dart';
 
 /// Bottom-sheet surfaced on calendar empty-day tap (bugs-cal-1). Renders
 /// every meal for the day as an inline-expandable row and, when the day is
 /// empty, an inline CTA to plan a meal. The sheet never stacks on another
 /// sheet: tapping a meal row dismisses this sheet and the caller opens the
 /// meal detail sheet (locked decision #14 — no sheet-on-sheet).
-class DayDetailSheet extends StatelessWidget {
+///
+/// rmc-3: events come from `mealEventsByDayProvider((date, calendarId))`
+/// — no callback back to the parent for refresh. The provider
+/// subscribes to the MutationBus and re-fetches on any event that
+/// lands on this day.
+class DayDetailSheet extends ConsumerWidget {
   final DateTime day;
-  final List<MealEvent> events;
+  final String? calendarId;
 
   /// Fired when the user taps a meal row. Caller pops this sheet before
   /// opening the meal detail sheet.
@@ -23,15 +30,22 @@ class DayDetailSheet extends StatelessWidget {
   const DayDetailSheet({
     super.key,
     required this.day,
-    required this.events,
     required this.onMealTap,
     required this.onPlanMeal,
+    this.calendarId,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final normalized = DateTime(day.year, day.month, day.day);
+    final asyncEvents = ref.watch(mealEventsByDayProvider(
+      MealEventsDayKey(date: normalized, calendarId: calendarId),
+    ));
+    // Use the last-known data during refetch so the sheet doesn't flash
+    // to a spinner after a mutation.
+    final events = asyncEvents.value ?? const <MealEvent>[];
 
     return SafeArea(
       child: Padding(

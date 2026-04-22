@@ -151,7 +151,7 @@ class _FakeMealCalendarService implements MealCalendarService {
       throw UnimplementedError();
 
   @override
-  Future<void> deleteMealEvent(String eventId) async {}
+  Future<void> deleteMealEvent(String eventId, {String? calendarId}) async {}
 
   @override
   Future<MealEvent> moveMealEventToCalendar(String eventId, String newCalendarId) async => throw UnimplementedError();
@@ -164,7 +164,7 @@ class _FakeMealCalendarService implements MealCalendarService {
       throw UnimplementedError();
 
   @override
-  Future<void> markMealCompleted(String eventId) async {}
+  Future<MealEvent> markMealCompleted(String eventId) async => throw UnimplementedError();
 
   @override
   Future<RecurrenceRule> createRecurrenceRule({
@@ -462,7 +462,7 @@ void main() {
       await tester.tap(find.text('Add to shopping list'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to add ingredients'), findsOneWidget);
+      expect(find.text("Couldn't add ingredients"), findsOneWidget);
     });
   });
 

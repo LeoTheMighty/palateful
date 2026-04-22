@@ -72,6 +72,28 @@ enum MutationType {
   addShoppingListItem,
   updateShoppingListItem,
   deleteShoppingListItem,
+
+  // Calendars (rmc-3)
+  createCalendar,
+  updateCalendar,
+  deleteCalendar,
+
+  // Meal events (rmc-3)
+  createMealEvent,
+  updateMealEvent,
+  rescheduleMealEvent,
+  moveMealEvent,
+  deleteMealEvent,
+  markMealCompleted,
+  planMealEvent,
+  loadShoppingLists,
+  addEventIngredients,
+
+  // Recurrence rules (rmc-3)
+  createRecurrenceRule,
+  updateRecurrenceRule,
+  deleteRecurrenceRule,
+  moveRecurrenceRule,
 }
 
 /// (verb, noun) pair used to render `"Couldn't <verb> <noun>"` in the
@@ -184,4 +206,36 @@ const Map<MutationType, MutationFailureCopy> mutationFailureCopy = {
       MutationFailureCopy(verb: 'update', noun: 'shopping item'),
   MutationType.deleteShoppingListItem:
       MutationFailureCopy(verb: 'remove', noun: 'shopping item'),
+  MutationType.createCalendar:
+      MutationFailureCopy(verb: 'create', noun: 'calendar'),
+  MutationType.updateCalendar:
+      MutationFailureCopy(verb: 'update', noun: 'calendar'),
+  MutationType.deleteCalendar:
+      MutationFailureCopy(verb: 'delete', noun: 'calendar'),
+  MutationType.createMealEvent:
+      MutationFailureCopy(verb: 'plan', noun: 'meal'),
+  MutationType.updateMealEvent:
+      MutationFailureCopy(verb: 'update', noun: 'meal'),
+  MutationType.rescheduleMealEvent:
+      MutationFailureCopy(verb: 'reschedule', noun: 'meal'),
+  MutationType.moveMealEvent:
+      MutationFailureCopy(verb: 'move', noun: 'meal'),
+  MutationType.deleteMealEvent:
+      MutationFailureCopy(verb: 'remove', noun: 'meal'),
+  MutationType.markMealCompleted:
+      MutationFailureCopy(verb: 'mark', noun: 'cooked'),
+  MutationType.planMealEvent:
+      MutationFailureCopy(verb: 'plan', noun: 'meal'),
+  MutationType.loadShoppingLists:
+      MutationFailureCopy(verb: 'load', noun: 'shopping lists'),
+  MutationType.addEventIngredients:
+      MutationFailureCopy(verb: 'add', noun: 'ingredients'),
+  MutationType.createRecurrenceRule:
+      MutationFailureCopy(verb: 'save', noun: 'repeating meal'),
+  MutationType.updateRecurrenceRule:
+      MutationFailureCopy(verb: 'update', noun: 'repeating meal'),
+  MutationType.deleteRecurrenceRule:
+      MutationFailureCopy(verb: 'remove', noun: 'repeating meal'),
+  MutationType.moveRecurrenceRule:
+      MutationFailureCopy(verb: 'move', noun: 'repeating meal'),
 };

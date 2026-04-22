@@ -2,14 +2,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/di/injection.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../models/calendar.dart';
 import '../services/calendar_service.dart';
 
 const _kActiveCalendarIdKey = 'active_calendar_id';
 
 /// The list of calendars the user is a member of.
-/// Refreshed explicitly via `ref.invalidate(calendarsListProvider)`.
+///
+/// Subscribes to the MutationBus and invalidates on any calendar CRUD
+/// mutation (create / update / delete). rmc-3 AC #4.
 final calendarsListProvider = FutureProvider<List<Calendar>>((ref) async {
+  final sub = ref.read(mutationBusProvider).listen((event) {
+    if (event is CalendarCreated ||
+        event is CalendarUpdated ||
+        event is CalendarDeleted ||
+        event is CalendarArchived) {
+      ref.invalidateSelf();
+    }
+  });
+  ref.onDispose(sub.cancel);
   final service = getIt<CalendarService>();
   return service.listCalendars();
 });

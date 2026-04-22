@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../core/theme/theme.dart';
 import '../../shared/widgets/default_change_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
@@ -11,6 +13,7 @@ import '../shopping_cart/services/shopping_cart_service.dart';
 import 'models/meal_event.dart';
 import 'models/calendar.dart';
 import 'providers/active_calendar_provider.dart';
+import 'providers/meal_events_provider.dart';
 import 'services/meal_calendar_service.dart';
 import 'widgets/calendar_create_dialog.dart';
 import 'widgets/calendar_settings_sheet.dart';
@@ -19,13 +22,20 @@ import 'widgets/day_detail_sheet.dart';
 import 'widgets/meal_detail_sheet.dart';
 import 'widgets/plan_meal_sheet.dart';
 import '../../core/services/error_reporter.dart';
-import '../../shared/widgets/error_banner.dart';
 import '../recipes/cook_mode/widgets/post_cook_feedback_sheet.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/recipe_cache_service.dart';
 import '../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
 
 /// Calendar tab — week view showing scheduled meal events.
+///
+/// rmc-3: grid state is driven by [mealEventsByRangeProvider] rather than
+/// an imperative `_loadEvents()` + `_eventsByDay` map. Every mutation
+/// site in `MealCalendarService` emits a MutationBus event; the provider
+/// subscribes with a 100ms coalescer and re-fetches. Pending deletes
+/// (for the optimistic-undo affordance) are tracked locally so the
+/// provider's source-of-truth list can be filtered without touching
+/// server state during the undo window.
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
 
@@ -40,24 +50,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// Monday of the currently displayed week.
   late DateTime _weekStart;
 
-  /// Events keyed by date (time zeroed out to midnight local).
-  Map<DateTime, List<MealEvent>> _eventsByDay = {};
-  bool _isLoading = true;
-  String? _error;
-  String? _errorDetail;
-
-  /// Incremented on every load; prevents stale responses from overwriting newer state.
-  int _loadGeneration = 0;
-
   /// Session-scoped set of event ids whose ingredients have been added to a
-  /// shopping list in the current load. Cleared on every `_loadEvents()`.
+  /// shopping list in the current week. Cleared whenever the user moves to
+  /// a new week.
   final Set<String> _addedEventIds = <String>{};
+
+  /// Event ids the user tapped Unschedule on. Filtered out of the grid
+  /// optimistically during the 3-second undo window. Cleared on undo
+  /// (event reappears) or on commit (the delete fires and the provider
+  /// re-fetches without the event).
+  final Set<String> _pendingDeleteIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     _weekStart = _mondayOf(DateTime.now());
-    _loadEvents();
   }
 
   DateTime _mondayOf(DateTime date) {
@@ -74,68 +81,58 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   DateTime _dayKey(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
-  Future<void> _loadEvents() async {
-    _loadGeneration++;
-    final generation = _loadGeneration;
-    setState(() {
-      _isLoading = true;
-      _error = null;
-      _addedEventIds.clear();
-    });
-    try {
-      // Scope to the active calendar when resolved. Before the provider
-      // settles (first frame), fall back to the legacy union behavior so
-      // the grid doesn't block on calendar boot.
-      final activeId = ref.read(activeCalendarProvider).value;
-      final events = await _service.listMealEvents(
-        _weekStart,
-        _weekEnd,
-        calendarId: activeId,
+  /// Resolve the active calendar id synchronously for provider keying.
+  String? get _activeCalendarId => ref.watch(activeCalendarProvider).value;
+
+  MealEventsRangeKey get _rangeKey => MealEventsRangeKey(
+        start: _weekStart,
+        end: _weekEnd,
+        calendarId: _activeCalendarId,
       );
-      if (generation != _loadGeneration) return;
-      final Map<DateTime, List<MealEvent>> byDay = {};
-      for (final e in events) {
-        final key = _dayKey(e.scheduledAt);
-        byDay.putIfAbsent(key, () => []).add(e);
-      }
-      if (mounted) {
-        setState(() {
-          _eventsByDay = byDay;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (generation != _loadGeneration) return;
-      if (mounted) {
-        setState(() {
-          _error = 'Failed to load calendar';
-          _errorDetail = ErrorReporter.detail(e);
-          _isLoading = false;
-        });
-      }
+
+  /// Events for the active week, grouped by day — derived from the
+  /// range provider's value (or the previous value during refetch, via
+  /// `AsyncValue.value` — the loading-flicker guard inherited from
+  /// the rf-3 homeContentProvider pattern).
+  Map<DateTime, List<MealEvent>> _groupByDay(List<MealEvent> events) {
+    final byDay = <DateTime, List<MealEvent>>{};
+    for (final e in events) {
+      if (_pendingDeleteIds.contains(e.id)) continue;
+      final key = _dayKey(e.scheduledAt);
+      byDay.putIfAbsent(key, () => []).add(e);
     }
+    return byDay;
   }
 
   void _previousWeek() {
-    setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
-    _loadEvents();
+    setState(() {
+      _weekStart = _weekStart.subtract(const Duration(days: 7));
+      _addedEventIds.clear();
+    });
   }
 
   void _nextWeek() {
-    setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
-    _loadEvents();
+    setState(() {
+      _weekStart = _weekStart.add(const Duration(days: 7));
+      _addedEventIds.clear();
+    });
+  }
+
+  Future<void> _refreshGrid() async {
+    ref.invalidate(mealEventsByRangeProvider(_rangeKey));
+    await ref.read(mealEventsByRangeProvider(_rangeKey).future);
   }
 
   Future<void> _deleteEvent(MealEvent event) async {
     try {
-      await _service.deleteMealEvent(event.id);
-      _loadEvents();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to remove meal')),
-        );
-      }
+      await _service.deleteMealEvent(event.id, calendarId: _activeCalendarId);
+    } catch (_) {
+      if (!mounted) return;
+      showMutationFailureSnackbar(
+        context,
+        MutationType.deleteMealEvent,
+        () => _deleteEvent(event),
+      );
     }
   }
 
@@ -144,17 +141,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   /// under the current backend — see locked decision #20 + the audit
   /// filed as bugs-cal-3b.
   void _unscheduleWithUndo(MealEvent event) {
-    final key = _dayKey(event.scheduledAt);
-    final list = _eventsByDay[key];
-    final index = list?.indexWhere((e) => e.id == event.id) ?? -1;
-
-    // Optimistic: remove from local grouping.
-    if (list != null && index >= 0) {
-      setState(() {
-        list.removeAt(index);
-        if (list.isEmpty) _eventsByDay.remove(key);
-      });
-    }
+    setState(() => _pendingDeleteIds.add(event.id));
 
     var undone = false;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -166,27 +153,35 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           onPressed: () {
             undone = true;
             if (!mounted) return;
-            setState(() {
-              final restored = _eventsByDay.putIfAbsent(key, () => []);
-              restored.insert(index < 0 ? 0 : index.clamp(0, restored.length), event);
-            });
+            setState(() => _pendingDeleteIds.remove(event.id));
           },
         ),
       ),
     );
 
     // Wait past the snackbar window before committing the server-side
-    // delete. If the user tapped Undo, we skip the call entirely.
+    // delete. If the user tapped Undo, skip the call entirely. Fire the
+    // delete even if the widget unmounted — matches pre-refactor
+    // behavior (the server source-of-truth must reflect the user's
+    // intent, and the provider invalidation happens via MealEventDeleted
+    // regardless of this widget's lifecycle).
+    final calendarIdAtDispatch = _activeCalendarId;
     Future.delayed(const Duration(seconds: 3), () async {
       if (undone) return;
       try {
-        await _service.deleteMealEvent(event.id);
+        await _service.deleteMealEvent(event.id,
+            calendarId: calendarIdAtDispatch);
+        if (mounted) {
+          setState(() => _pendingDeleteIds.remove(event.id));
+        }
       } catch (_) {
         if (!mounted) return;
-        // Restore on failure so the UI matches the server.
-        _loadEvents();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to unschedule meal')),
+        // Restore on failure and let the user retry manually.
+        setState(() => _pendingDeleteIds.remove(event.id));
+        showMutationFailureSnackbar(
+          context,
+          MutationType.deleteMealEvent,
+          () => _unscheduleWithUndo(event),
         );
       }
     });
@@ -195,14 +190,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Future<void> _rescheduleEvent(MealEvent event, DateTime newLocal) async {
     try {
       await _service.rescheduleMealEvent(event.id, newLocal);
-      if (!mounted) return;
-      _loadEvents();
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to reschedule meal')),
-        );
-      }
+      if (!mounted) return;
+      showMutationFailureSnackbar(
+        context,
+        MutationType.rescheduleMealEvent,
+        () => _rescheduleEvent(event, newLocal),
+      );
     }
   }
 
@@ -218,13 +212,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     unawaited(() async {
       try {
         await _service.markMealCompleted(event.id);
-        if (mounted) _loadEvents();
       } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to mark cooked')),
-          );
-        }
+        if (!mounted) return;
+        showMutationFailureSnackbar(
+          context,
+          MutationType.markMealCompleted,
+          () => _markMealCooked(event),
+        );
       }
     }());
 
@@ -255,25 +249,25 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         event: event,
         onReschedule: (newLocal) => _rescheduleEvent(event, newLocal),
         onUnschedule: () => _unscheduleWithUndo(event),
-        onMarkCooked: event.recipe == null ? null : () => _markMealCooked(event),
+        onMarkCooked:
+            event.recipe == null ? null : () => _markMealCooked(event),
         onSeriesEnded: () {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Series ended. Future occurrences removed.')),
+            const SnackBar(
+                content: Text('Series ended. Future occurrences removed.')),
           );
-          _loadEvents();
         },
       ),
     );
   }
 
   void _openDayDetailSheet(DateTime day) {
-    final events = _eventsByDay[_dayKey(day)] ?? const <MealEvent>[];
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => DayDetailSheet(
         day: day,
-        events: events,
+        calendarId: _activeCalendarId,
         onMealTap: _openMealDetailSheet,
         onPlanMeal: () => _openQuickAdd(date: day),
       ),
@@ -285,28 +279,25 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       event.recipe != null || event.mealId != null,
       '_addIngredientsFromEvent requires a linked recipe or meal',
     );
-    // Capture the load generation before any await so a mid-flight
-    // `_loadEvents()` can't leave us writing a stale "added" indicator on a
-    // new grid. If the generation drifts by the time we resolve, silently
-    // drop the visual flip — the user still got their snackbar.
-    final generation = _loadGeneration;
     final authService = getIt<AuthService>();
     List<ShoppingList> lists;
     try {
       lists = await _cartService.getShoppingLists();
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load shopping lists')),
-        );
-      }
+      if (!mounted) return;
+      showMutationFailureSnackbar(
+        context,
+        MutationType.loadShoppingLists,
+        () => _addIngredientsFromEvent(event),
+      );
       return;
     }
 
     if (lists.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No shopping lists — tap + to create one')),
+          const SnackBar(
+              content: Text('No shopping lists — tap + to create one')),
         );
       }
       return;
@@ -371,12 +362,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         itemsAdded = result.itemsAdded;
       }
       if (mounted) {
-        // Only flip the per-card "added" indicator when the add landed on
-        // the current load's grid AND at least one ingredient was actually
-        // added. items_added == 0 still fires the snackbar (with the
-        // existing zero-count wording), but a check mark on a no-op would
-        // be a lie.
-        if (generation == _loadGeneration && itemsAdded > 0) {
+        if (itemsAdded > 0) {
           setState(() => _addedEventIds.add(event.id));
         }
         final n = itemsAdded;
@@ -404,11 +390,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         );
       }
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to add ingredients')),
-        );
-      }
+      if (!mounted) return;
+      showMutationFailureSnackbar(
+        context,
+        MutationType.addEventIngredients,
+        () => _addIngredientsFromEvent(event),
+      );
     }
   }
 
@@ -424,7 +411,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               title: const Text('Reschedule'),
               onTap: () async {
                 Navigator.pop(ctx);
-                final result = await showModalBottomSheet<bool>(
+                await showModalBottomSheet<bool>(
                   context: context,
                   isScrollControlled: true,
                   builder: (_) => PlanMealSheet(
@@ -435,7 +422,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     initialMealType: event.mealType,
                   ),
                 );
-                if (result == true) _loadEvents();
+                // Provider emits on update; no explicit reload needed.
               },
             ),
             if (event.recipe != null)
@@ -454,8 +441,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               ),
               title: Text(
                 'Remove',
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.error),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               onTap: () {
                 Navigator.pop(ctx);
@@ -475,20 +461,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       builder: (_) => PlanMealSheet(
         initialDate: date ?? DateTime.now(),
       ),
-    ).then((result) {
-      if (result == true) _loadEvents();
-    });
+    );
+    // Provider emits on successful create; no result-based reload.
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // Reload events whenever the active calendar changes.
-    ref.listen<AsyncValue<String?>>(activeCalendarProvider, (prev, next) {
-      if (prev?.value != next.value && next is AsyncData) {
-        _loadEvents();
-      }
-    });
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: _buildAppBar(),
@@ -505,15 +484,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       context: context,
       builder: (_) => const CalendarCreateDialog(),
     );
-    // createCalendar + setActive already fired inside the dialog. The
-    // ref.listen on activeCalendarProvider triggers _loadEvents.
+    // createCalendar emits CalendarCreated; calendarsListProvider refreshes.
   }
 
   Future<void> _openCalendarSettings(Calendar cal) async {
     final calendars = ref.read(calendarsListProvider).value ?? const [];
     final owned = calendars.where((c) => c.isOwner).length;
     final isLast = owned <= 1;
-    final result = await showModalBottomSheet<String>(
+    await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -524,10 +502,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         isLastCalendar: isLast,
       ),
     );
-    if (result == 'deleted' && mounted) {
-      // Provider already re-resolves; trigger a grid reload.
-      _loadEvents();
-    }
+    // deleteCalendar / updateCalendar emit; calendarsListProvider refetches.
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -584,19 +559,30 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   Widget _buildBody() {
     final colorScheme = Theme.of(context).colorScheme;
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
+    final asyncEvents = ref.watch(mealEventsByRangeProvider(_rangeKey));
+    final lastValue = asyncEvents.value;
+
+    // Hard-error state only when there's no data at all — otherwise keep
+    // showing the last-known grid and let the user retry inline via
+    // pull-to-refresh.
+    if (lastValue == null && asyncEvents.hasError) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(_error!,
-                style: TextStyle(color: colorScheme.onSurfaceVariant)),
+            Text(
+              'Failed to load calendar',
+              style: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              ErrorReporter.detail(asyncEvents.error!),
+              style: TextStyle(
+                  fontSize: 11, color: colorScheme.onSurfaceVariant),
+            ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _loadEvents,
+              onPressed: _refreshGrid,
               child: const Text('Retry'),
             ),
           ],
@@ -604,26 +590,34 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       );
     }
 
+    // Render the day columns straight through. `lastValue ?? []` gives an
+    // empty grid during the first load — matches the pre-refactor
+    // behavior where day headers render while events are in flight.
+    final eventsByDay = _groupByDay(lastValue ?? const []);
     return RefreshIndicator(
-      onRefresh: _loadEvents,
+      onRefresh: _refreshGrid,
       color: colorScheme.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
-          children: _weekDays.map(_buildDayColumn).toList(),
+          children:
+              _weekDays.map((d) => _buildDayColumn(d, eventsByDay)).toList(),
         ),
       ),
     );
   }
 
-  Widget _buildDayColumn(DateTime day) {
+  Widget _buildDayColumn(
+    DateTime day,
+    Map<DateTime, List<MealEvent>> eventsByDay,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final appColors = context.appColors;
 
     final today = _dayKey(DateTime.now());
     final isToday = _dayKey(day) == today;
-    final events = _eventsByDay[_dayKey(day)] ?? [];
+    final events = eventsByDay[_dayKey(day)] ?? const <MealEvent>[];
 
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     final dayName = dayNames[day.weekday - 1];
@@ -631,7 +625,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isToday ? colorScheme.surfaceContainerHighest : colorScheme.surface,
+        color:
+            isToday ? colorScheme.surfaceContainerHighest : colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: isToday
             ? Border.all(color: colorScheme.primary.withValues(alpha: 0.4))
@@ -697,7 +692,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: Row(
                   children: [
-                    Icon(Icons.add_circle_outline, size: 14, color: appColors.textDisabled),
+                    Icon(Icons.add_circle_outline,
+                        size: 14, color: appColors.textDisabled),
                     const SizedBox(width: 6),
                     Text(
                       'Tap to plan a meal',

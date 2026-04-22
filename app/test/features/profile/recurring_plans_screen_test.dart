@@ -59,7 +59,7 @@ class _FakeService implements MealCalendarService {
   }) async =>
       throw UnimplementedError();
   @override
-  Future<void> deleteMealEvent(String eventId) async {}
+  Future<void> deleteMealEvent(String eventId, {String? calendarId}) async {}
 
   @override
   Future<MealEvent> moveMealEventToCalendar(String eventId, String newCalendarId) async => throw UnimplementedError();
@@ -71,7 +71,7 @@ class _FakeService implements MealCalendarService {
           String eventId, DateTime scheduledAt) async =>
       throw UnimplementedError();
   @override
-  Future<void> markMealCompleted(String eventId) async {}
+  Future<MealEvent> markMealCompleted(String eventId) async => throw UnimplementedError();
   @override
   Future<RecurrenceRule> createRecurrenceRule({
     required MealType mealType,

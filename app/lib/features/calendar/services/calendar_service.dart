@@ -1,4 +1,5 @@
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../models/calendar.dart';
 import '../models/calendar_member.dart';
 
@@ -21,7 +22,12 @@ class CalendarService {
       if (description != null && description.isNotEmpty)
         'description': description,
     });
-    return Calendar.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(CalendarCreated(
+      calendarId: payload['id']?.toString() ?? '',
+      calendar: payload,
+    ));
+    return Calendar.fromJson(payload);
   }
 
   Future<Calendar> getCalendar(String id) async {
@@ -38,11 +44,14 @@ class CalendarService {
     if (name != null) data['name'] = name;
     if (description != null) data['description'] = description;
     final response = await _apiClient.updateCalendar(id, data);
-    return Calendar.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(CalendarUpdated(calendarId: id, calendar: payload));
+    return Calendar.fromJson(payload);
   }
 
   Future<void> deleteCalendar(String id) async {
     await _apiClient.deleteCalendar(id);
+    emitMutation(CalendarDeleted(calendarId: id));
   }
 
   // Member management (cal-share-2)

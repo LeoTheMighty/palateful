@@ -25,6 +25,7 @@ enum MutationCategory {
   meal,
   calendar,
   mealEvent,
+  recurrenceRule,
   recipeBook,
   recipeBookMember,
   importJob,
@@ -393,11 +394,27 @@ class CalendarArchived extends MutationEvent {
   MutationCategory get category => MutationCategory.calendar;
 }
 
+/// Calendar was deleted server-side. Emitted by `CalendarService.deleteCalendar`.
+/// Subscribers invalidate calendar-scoped providers (list + active id).
+class CalendarDeleted extends MutationEvent {
+  const CalendarDeleted({required this.calendarId});
+
+  final String calendarId;
+
+  @override
+  MutationCategory get category => MutationCategory.calendar;
+}
+
 class MealEventCreated extends MutationEvent {
   const MealEventCreated({required this.eventId, required this.event});
 
   final String eventId;
   final Map<String, dynamic> event;
+
+  /// Calendar id extracted from [event] at emit time. `null` only when
+  /// the server response omitted `calendar_id` (defensive — the
+  /// migrated backend always populates it).
+  String? get calendarId => event['calendar_id'] as String?;
 
   @override
   MutationCategory get category => MutationCategory.mealEvent;
@@ -408,6 +425,8 @@ class MealEventUpdated extends MutationEvent {
 
   final String eventId;
   final Map<String, dynamic> event;
+
+  String? get calendarId => event['calendar_id'] as String?;
 
   @override
   MutationCategory get category => MutationCategory.mealEvent;
@@ -420,6 +439,80 @@ class MealEventArchived extends MutationEvent {
 
   @override
   MutationCategory get category => MutationCategory.mealEvent;
+}
+
+/// Event deleted via `DELETE /v1/meal-events/{id}`. Ids-only payload —
+/// subscribers invalidate range/day providers.
+class MealEventDeleted extends MutationEvent {
+  const MealEventDeleted({required this.eventId, this.calendarId});
+
+  final String eventId;
+
+  /// Calendar id the deleted event belonged to, when known by the
+  /// emit site. Range providers can skip invalidation for other
+  /// calendars; `null` means "unknown, invalidate to be safe".
+  final String? calendarId;
+
+  @override
+  MutationCategory get category => MutationCategory.mealEvent;
+}
+
+/// Event status flipped to `completed` via `PATCH /v1/meal-events/{id}`.
+/// Carries the full updated event so subscribers can patch in place
+/// without a refetch round-trip (AC #3).
+class MealEventCompleted extends MutationEvent {
+  const MealEventCompleted({required this.eventId, required this.event});
+
+  final String eventId;
+  final Map<String, dynamic> event;
+
+  String? get calendarId => event['calendar_id'] as String?;
+
+  @override
+  MutationCategory get category => MutationCategory.mealEvent;
+}
+
+/// A recurrence rule was created. Server materializes the first 9
+/// weeks in the same transaction; client subscribers observe the
+/// effect via the range-fetch invalidation that fires here.
+class RecurrenceRuleCreated extends MutationEvent {
+  const RecurrenceRuleCreated({required this.ruleId, required this.rule});
+
+  final String ruleId;
+  final Map<String, dynamic> rule;
+
+  String? get calendarId => rule['calendar_id'] as String?;
+
+  @override
+  MutationCategory get category => MutationCategory.recurrenceRule;
+}
+
+/// Rule updated — scope is one of `all | future | occurrence`.
+/// [rule] may be null when the server returns a slim response shape
+/// (occurrence-scope currently does — see epic § Backend changes).
+class RecurrenceRuleUpdated extends MutationEvent {
+  const RecurrenceRuleUpdated({
+    required this.ruleId,
+    required this.scope,
+    this.rule,
+  });
+
+  final String ruleId;
+  final String scope;
+  final Map<String, dynamic>? rule;
+
+  @override
+  MutationCategory get category => MutationCategory.recurrenceRule;
+}
+
+class RecurrenceRuleDeleted extends MutationEvent {
+  const RecurrenceRuleDeleted({required this.ruleId, required this.scope});
+
+  final String ruleId;
+  final String scope;
+
+  @override
+  MutationCategory get category => MutationCategory.recurrenceRule;
 }
 
 // ---------------------------------------------------------------------------

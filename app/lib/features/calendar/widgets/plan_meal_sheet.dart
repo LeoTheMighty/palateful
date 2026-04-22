@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/state/mutation_failure_copy.dart';
+import '../../../core/state/mutation_snackbar.dart';
 import '../../../core/theme/theme.dart';
 import '../models/calendar.dart';
 import '../models/meal_event.dart';
@@ -385,15 +387,15 @@ class _PlanMealSheetState extends ConsumerState<PlanMealSheet> {
           SnackBar(content: Text(message)),
         );
       }
-    } catch (e) {
+    } catch (_) {
       setState(() => _isSaving = false);
       if (mounted) {
-        final message = _recurrence != null
-            ? "Couldn't save repeating meal. Try again."
-            : 'Failed to save. Please try again.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+        final type = _isEditMode
+            ? MutationType.rescheduleMealEvent
+            : _recurrence != null
+                ? MutationType.createRecurrenceRule
+                : MutationType.planMealEvent;
+        showMutationFailureSnackbar(context, type, _save);
       }
     }
   }

@@ -76,16 +76,19 @@ class _FakeMealService implements MealService {
       throw UnimplementedError();
 
   @override
-  Future<void> archiveMeal(String mealId) async => throw UnimplementedError();
+  Future<void> archiveMeal(String mealId, {required String bookId}) async =>
+      throw UnimplementedError();
 
   @override
-  Future<void> restoreMeal(String mealId) async => throw UnimplementedError();
+  Future<void> restoreMeal(String mealId, {required String bookId}) async =>
+      throw UnimplementedError();
 
   @override
-  Future<bool> favoriteMeal(String mealId) async => throw UnimplementedError();
+  Future<bool> favoriteMeal(String mealId, {required String bookId}) async =>
+      throw UnimplementedError();
 
   @override
-  Future<bool> unfavoriteMeal(String mealId) async =>
+  Future<bool> unfavoriteMeal(String mealId, {required String bookId}) async =>
       throw UnimplementedError();
 
   @override
