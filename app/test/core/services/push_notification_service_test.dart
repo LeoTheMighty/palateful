@@ -277,6 +277,104 @@ void main() {
     });
   });
 
+  // partner-5: deep-link routing for the five new partner-activity types.
+  group('PushNotificationService — partner-5 deep-link routes', () {
+    _TestablePushNotificationService makeService() =>
+        _TestablePushNotificationService(
+          _FakeApiClient(),
+          messagingClient: _FakePushMessagingClient(
+            settings: _settings(AuthorizationStatus.authorized),
+          ),
+        );
+
+    test('recipe_forked → forked_recipe_id (Sarah\'s copy)', () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'recipe_forked',
+        {'forked_recipe_id': 'fk-1', 'source_recipe_id': 'src-1'},
+      );
+      expect(route, '/recipes/fk-1');
+    });
+
+    test('recipe_forked falls back to source_recipe_id when forked id missing',
+        () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'recipe_forked',
+        {'source_recipe_id': 'src-1'},
+      );
+      expect(route, '/recipes/src-1');
+    });
+
+    test('recipe_forked with no ids falls back to /', () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest('recipe_forked', {});
+      expect(route, '/');
+    });
+
+    test('recipe_note_added → /recipes/{recipe_id}', () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'recipe_note_added',
+        {'recipe_id': 'r-1', 'note_id': 'nt-1'},
+      );
+      expect(route, '/recipes/r-1');
+    });
+
+    test('recipe_cooked_by_partner → /recipes/{recipe_id}', () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'recipe_cooked_by_partner',
+        {'recipe_id': 'r-2'},
+      );
+      expect(route, '/recipes/r-2');
+    });
+
+    test('cook_feedback_prompt → /recipes/{recipe_id}', () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'cook_feedback_prompt',
+        {'recipe_id': 'r-3', 'source': 'cook_feedback_prompt'},
+      );
+      expect(route, '/recipes/r-3');
+    });
+
+    test(
+        'recipe-anchored types fall back to / when recipe_id missing',
+        () {
+      final service = makeService();
+      for (final type in const [
+        'recipe_note_added',
+        'recipe_cooked_by_partner',
+        'cook_feedback_prompt',
+      ]) {
+        expect(service.routeForNotificationForTest(type, {}), '/');
+      }
+    });
+
+    test(
+        'meal_event_invite_accepted → /calendar/meals/{meal_event_id}',
+        () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'meal_event_invite_accepted',
+        {'meal_event_id': 'evt-1', 'status': 'accepted'},
+      );
+      expect(route, '/calendar/meals/evt-1');
+    });
+
+    test(
+        'meal_event_invite_accepted falls back to /calendar when id missing',
+        () {
+      final service = makeService();
+      final route = service.routeForNotificationForTest(
+        'meal_event_invite_accepted',
+        {},
+      );
+      expect(route, '/calendar');
+    });
+  });
+
   // push-diag-2: autoPrompt gating + Firebase readiness + 3-strike retry +
   // breadcrumb ordering.
   group('PushNotificationService — push-diag-2 (ensureRegistered hardening)',

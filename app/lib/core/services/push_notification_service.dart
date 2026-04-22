@@ -551,6 +551,14 @@ class PushNotificationService {
   }
 
   /// Map notification type to a deep link route.
+  @visibleForTesting
+  String routeForNotificationForTest(
+    String? notificationType,
+    Map<String, dynamic> data,
+  ) =>
+      _routeForNotification(notificationType, data);
+
+  /// Map notification type to a deep link route.
   String _routeForNotification(String? notificationType, Map<String, dynamic> data) {
     switch (notificationType) {
       case 'import_complete':
@@ -580,7 +588,24 @@ class PushNotificationService {
         if (bookId != null) return '/recipe-books/$bookId';
         return '/';
 
+      case 'recipe_forked':
+        // Prefer Sarah's new copy so Leo sees what she saved; fall back
+        // to his original only if the forked id is missing.
+        final forkedId = data['forked_recipe_id'];
+        if (forkedId != null) return '/recipes/$forkedId';
+        final sourceId = data['source_recipe_id'];
+        if (sourceId != null) return '/recipes/$sourceId';
+        return '/';
+
+      case 'recipe_note_added':
+      case 'recipe_cooked_by_partner':
+      case 'cook_feedback_prompt':
+        final recipeId = data['recipe_id'];
+        if (recipeId != null) return '/recipes/$recipeId';
+        return '/';
+
       case 'meal_event_invite':
+      case 'meal_event_invite_accepted':
       case 'meal_event_reminder':
       case 'meal_event_updated':
         // Deep-link straight to the meal-detail screen when we have an id;

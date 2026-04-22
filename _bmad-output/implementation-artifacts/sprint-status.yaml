@@ -995,12 +995,12 @@ development_status:
   timer-2-wire-live-activity-into-cook-mode: done
   timer-3-timer-completion-overlay-cupertino-modal: done
 
-  epic-notifications-partner-activity: in-progress
+  epic-notifications-partner-activity: done
   partner-1-new-notification-types-copy-functions: done
   partner-2-recipe-forked-and-note-added-callsites: done
   partner-3-recipe-cooked-by-partner-and-cook-feedback-prompt: done
   partner-4-meal-event-invite-accepted-back-fan: done
-  partner-5-frontend-deep-link-routes-new-types: backlog
+  partner-5-frontend-deep-link-routes-new-types: done
 
   epic-notifications-scheduled-reminders: done
   sched-1-shopping-deadline-reminders-schema-beat-copy: done
