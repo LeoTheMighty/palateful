@@ -13,6 +13,8 @@ import '../../../core/services/cook_timer_notification_service.dart';
 import '../../../core/services/live_activity_service.dart';
 import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
+import 'services/cook_session_debouncer.dart';
+import 'services/cook_session_persister.dart';
 import 'widgets/timer_completion_overlay.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/manual_timer_sheet.dart';
@@ -52,6 +54,17 @@ class _CookModeScreenState extends State<CookModeScreen>
   final Set<int> _completedSteps = {};
   final Set<int> _checkedIngredients = {};
 
+  // Persisted-resume bookkeeping (epic-cook-mode-resume). A Stopwatch
+  // cannot be seeded to a baseline; instead we stash prior elapsed
+  // milliseconds here and display `baseline + stopwatch.elapsed`.
+  // Assigned on the Resume path in cmr-3.
+  // ignore: prefer_final_fields
+  int _restoredElapsedMs = 0;
+  int? _startedAtMs;
+  late final CookSessionPersister _persister;
+  late final CookSessionDebouncer _debouncer;
+  String get _sessionKey => CookSessionKey.forRecipe(widget.recipeId);
+
   // Per-category notification pref (timer-3). Null until the one-shot
   // fetch resolves; callers treat null as "assume true" so the overlay
   // appears on first-run / offline paths.
@@ -73,11 +86,30 @@ class _CookModeScreenState extends State<CookModeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadRecipe();
+    _persister = CookSessionPersister();
+    _debouncer = CookSessionDebouncer(_persister);
     _enableWakelock();
-    _cookingStopwatch.start();
     _startTimerTick();
     _loadTimerCategoryPref();
+    // cmr-2: stopwatch start is deferred until after the persisted-state
+    // resolution runs. cmr-3 adds the Resume / Start Over gate between
+    // these two points; for cmr-2 any prior state is discarded.
+    _initCookSession();
+  }
+
+  /// Resolve any persisted session and start the live stopwatch. cmr-3
+  /// inserts the Resume / Start Over gate inside this flow; for now any
+  /// saved state is cleared so the screen always starts fresh.
+  Future<void> _initCookSession() async {
+    final persisted = await _persister.load(_sessionKey);
+    if (!mounted) return;
+    if (persisted != null) {
+      await _persister.clear(_sessionKey);
+    }
+    if (!mounted) return;
+    _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _cookingStopwatch.start();
+    await _loadRecipe();
   }
 
   /// Fire-and-forget read of the user's per-category notification prefs.
@@ -103,6 +135,11 @@ class _CookModeScreenState extends State<CookModeScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Belt-and-suspenders flush. The primary flush is
+    // `AppLifecycleState.paused` — dispose can fire after the OS
+    // already killed the process. Fire-and-forget: we can't await in
+    // dispose and the save is idempotent.
+    unawaited(_debouncer.flushNow());
     _disableWakelock();
     _timerTick?.cancel();
     _liveActivityPulse?.cancel();
@@ -121,6 +158,13 @@ class _CookModeScreenState extends State<CookModeScreen>
   /// and attempt to sync any pending offline note additions.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // cmr-2: flush pending session writes before the OS potentially
+    // kills the process. `paused` is the reliable signal; `dispose`
+    // fires too late in kill scenarios. Safe to call unconditionally
+    // — flushNow is a no-op when nothing is pending.
+    if (state == AppLifecycleState.paused) {
+      unawaited(_debouncer.flushNow());
+    }
     if (state == AppLifecycleState.resumed && mounted) {
       final now = DateTime.now();
       final expired = <_ActiveTimer>[];
@@ -274,6 +318,7 @@ class _CookModeScreenState extends State<CookModeScreen>
         }
         _currentStep = step;
       });
+      _persistState();
     }
   }
 
@@ -281,6 +326,8 @@ class _CookModeScreenState extends State<CookModeScreen>
     _completedSteps.add(_currentStep);
     if (_currentStep < _steps.length - 1) {
       _goToStep(_currentStep + 1);
+    } else {
+      _persistState();
     }
   }
 
@@ -295,6 +342,7 @@ class _CookModeScreenState extends State<CookModeScreen>
         _completedSteps.add(i);
       }
     });
+    _persistState();
   }
 
   void _toggleIngredient(int index) {
@@ -306,9 +354,10 @@ class _CookModeScreenState extends State<CookModeScreen>
         _checkedIngredients.add(index);
       }
     });
+    _persistState();
   }
 
-  void _startTimer(Duration duration, String label) {
+  void _startTimer(Duration duration, String label, {String source = 'manual'}) {
     HapticFeedback.mediumImpact();
 
     final notifId = _nextNotifId++;
@@ -321,6 +370,7 @@ class _CookModeScreenState extends State<CookModeScreen>
       remaining: duration,
       startTime: startTime,
       notifId: notifId,
+      source: source,
     );
 
     // Schedule OS-level notification so timer fires even when app is suspended
@@ -362,6 +412,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     setState(() {
       _activeTimers.add(activeTimer);
     });
+    _persistState();
   }
 
   void _cancelTimer(_ActiveTimer timer) {
@@ -370,6 +421,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     _liveActivityService.endTimerActivity(timer.notifId);
     setState(() => _activeTimers.remove(timer));
     _maybeStopLiveActivityPulse();
+    _persistState();
   }
 
   void _restartTimer(_ActiveTimer timer) {
@@ -378,7 +430,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     _timerNotifService.cancelTimerNotification(timer.notifId);
     _liveActivityService.endTimerActivity(timer.notifId);
     setState(() => _activeTimers.remove(timer));
-    _startTimer(timer.duration, timer.label);
+    _startTimer(timer.duration, timer.label, source: timer.source);
   }
 
   void _onTimerComplete(_ActiveTimer timer) {
@@ -397,6 +449,7 @@ class _CookModeScreenState extends State<CookModeScreen>
       _activeTimers.remove(timer);
     });
     _maybeStopLiveActivityPulse();
+    _persistState();
 
     // timer-3: show the cook-mode completion overlay unless the user
     // has explicitly turned timer notifications off. Null = not yet
@@ -460,6 +513,43 @@ class _CookModeScreenState extends State<CookModeScreen>
     if (_activeTimers.isNotEmpty) return;
     _liveActivityPulse?.cancel();
     _liveActivityPulse = null;
+  }
+
+  /// Schedule a debounced snapshot write. Call from every
+  /// state-mutating handler (step advance, toggle, timer add/cancel/
+  /// complete). Timer-tick handlers do NOT call this — absolute
+  /// `deadline_ms` doesn't drift on each tick.
+  void _persistState() {
+    _debouncer.markDirty(_sessionKey, _buildSnapshot);
+  }
+
+  CookSessionState _buildSnapshot() {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _startedAtMs ??= nowMs;
+    final completed = _completedSteps.toList()..sort();
+    final checked = _checkedIngredients.map((i) => i.toString()).toList()
+      ..sort();
+    return CookSessionState(
+      targetKind: CookTargetKind.recipe,
+      targetId: widget.recipeId,
+      startedAtMs: _startedAtMs!,
+      cumulativeElapsedMs:
+          _restoredElapsedMs + _cookingStopwatch.elapsedMilliseconds,
+      currentStep: _currentStep,
+      completedSteps: completed,
+      checkedIngredients: checked,
+      activeTimers: _activeTimers
+          .map(
+            (t) => SavedTimerState(
+              label: t.label,
+              deadlineMs: t.startTime.add(t.duration).millisecondsSinceEpoch,
+              totalDurationSeconds: t.duration.inSeconds,
+              source: t.source,
+            ),
+          )
+          .toList(),
+      updatedAtMs: nowMs,
+    );
   }
 
   Future<void> _showManualTimerSheet() async {
@@ -732,7 +822,10 @@ class _CookModeScreenState extends State<CookModeScreen>
                 Icon(Icons.schedule, size: 16, color: cook.cookOnSurface),
                 const SizedBox(width: 4),
                 Text(
-                  _formatDuration(_cookingStopwatch.elapsed),
+                  _formatDuration(
+                    Duration(milliseconds: _restoredElapsedMs) +
+                        _cookingStopwatch.elapsed,
+                  ),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -1092,6 +1185,10 @@ class _ActiveTimer {
   Duration remaining;
   final DateTime startTime;
   final int notifId;
+  // One of 'extracted', 'regex', 'manual' — preserved across the
+  // persist / Resume boundary so restored timers look identical to the
+  // ones the user originally started.
+  final String source;
   Timer? timer;
 
   // ignore: unused_element_parameter
@@ -1101,6 +1198,7 @@ class _ActiveTimer {
     required this.remaining,
     required this.startTime,
     required this.notifId,
+    this.source = 'manual',
     this.timer,
   });
 }
