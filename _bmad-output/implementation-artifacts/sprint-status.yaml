@@ -1041,12 +1041,12 @@ development_status:
   # Includes recurrence-materialization debounce correctness (52-event
   # stress test). Zero backend changes. Parallelizable with the
   # books/profile/pantry migration epic. 5 stories.
-  epic-reactive-migration-meals-calendar: in-progress
+  epic-reactive-migration-meals-calendar: done
   rmc-1-meal-mutation-sites-and-providers-reactivity: done
   rmc-2-used-in-these-meals-on-recipe-detail: done
   rmc-3-calendar-and-meal-event-mutation-sites-and-providers: done
   rmc-4-recurrence-materialization-debounce-correctness: done
-  rmc-5-meals-calendar-regression-sweep-and-end-to-end: backlog
+  rmc-5-meals-calendar-regression-sweep-and-end-to-end: done
   epic-reactive-migration-meals-calendar-retrospective: optional
 
   # epic-reactive-migration-books-profile-pantry-and-polish — Closes the

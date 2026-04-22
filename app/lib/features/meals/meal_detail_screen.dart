@@ -148,8 +148,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
         lists = await cartService.getShoppingLists();
       } catch (_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to load shopping lists')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.loadShoppingLists,
+          () => _addToShoppingList(meal),
         );
         return;
       }
@@ -219,10 +221,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
         operation: 'addToShoppingList',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to add meal to shopping list'),
-          ),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.addEventIngredients,
+          () => _addToShoppingList(meal),
         );
       }
     } finally {

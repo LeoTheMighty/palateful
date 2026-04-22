@@ -47,6 +47,14 @@ void main() {
       MutationType.createCookingLog, // cooking log (rp-3 handoff)
       MutationType.addShoppingListItem, // shopping cart
       MutationType.dismissImportItem, // imports (foundation)
+      // rmc-5 representatives — one per calendar / meal-event / recurrence verb.
+      MutationType.createCalendar,
+      MutationType.deleteCalendar,
+      MutationType.createMealEvent,
+      MutationType.planMealEvent,
+      MutationType.markMealCompleted,
+      MutationType.rescheduleMealEvent,
+      MutationType.createRecurrenceRule,
     ];
 
     for (final type in representatives) {
@@ -58,5 +66,18 @@ void main() {
         expect(find.text('Retry'), findsOneWidget);
       });
     }
+  });
+
+  // rmc-5 AC #6 — the copy map must have an entry for every enum value.
+  // CI fails the moment a new MutationType lands without `Couldn't <verb>
+  // <noun>` copy. Avoids the silent "Couldn't complete that action"
+  // fallback shipping to production.
+  test('every MutationType has a mutationFailureCopy entry', () {
+    final missing = MutationType.values
+        .where((t) => mutationFailureCopy[t] == null)
+        .map((t) => t.name)
+        .toList();
+    expect(missing, isEmpty,
+        reason: 'Missing mutationFailureCopy entries: $missing');
   });
 }
