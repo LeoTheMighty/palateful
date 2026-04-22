@@ -661,6 +661,21 @@ class TestNotificationPreferences:
         assert data["categories"]["shopping"] is False  # newly set
         assert data["categories"]["meals"] is True  # defaulted
 
+    def test_update_notification_preferences_categories_first_time(
+        self, client, mock_user, mock_db
+    ):
+        """PUT with categories when prefs has no `categories` key creates the dict."""
+        mock_user.notification_preferences = {"push_enabled": True}
+        mock_db.db.commit = MagicMock()
+        response = client.put(
+            "/v1/users/me/notification-preferences",
+            json={"categories": {"meals": False}},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["categories"]["meals"] is False
+        assert data["categories"]["timers"] is True  # defaulted
+
     def test_update_notification_preferences_unknown_category_key_400(
         self, client, mock_user, mock_db
     ):
