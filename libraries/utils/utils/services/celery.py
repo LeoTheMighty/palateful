@@ -66,6 +66,16 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(hour=2, minute=0),  # 02:00 UTC nightly
         'options': {'queue': 'celery'},
     },
+    'send-meal-reminders': {
+        # meal-3: scan today's meal_events whose resolved wall-clock
+        # reminder falls in [now, now+5min] and fan pushes to accepted
+        # participants. Beat cadence MUST match the scan window
+        # (BEAT_WINDOW_SECONDS in send_meal_reminders.py) so the
+        # resolved moment is hit exactly once.
+        'task': 'send_meal_reminders',
+        'schedule': crontab(minute='*/5'),
+        'options': {'queue': 'celery'},
+    },
 }
 celery_app.conf.timezone = 'UTC'
 

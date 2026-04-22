@@ -251,3 +251,98 @@ def import_failed(
         f"{EMOJI_ERROR} Couldn't import from {trimmed}",
         "We couldn't extract a recipe. Tap to retry.",
     )
+
+
+# Per-slot display label + emoji for meal-event reminders. Keep aligned
+# with MealEvent.meal_type / Flutter MealType enum. `snack` gets its
+# own emoji per the meal-3 epic spec; the others share the cooking pan.
+_MEAL_SLOT_LABELS: dict[str, str] = {
+    "breakfast": "Breakfast",
+    "lunch": "Lunch",
+    "dinner": "Dinner",
+    "snack": "Snack",
+}
+_MEAL_SLOT_EMOJI: dict[str, str] = {
+    "breakfast": EMOJI_RECIPE,
+    "lunch": EMOJI_RECIPE,
+    "dinner": EMOJI_RECIPE,
+    "snack": "🥨",
+}
+
+
+def meal_event_reminder(
+    *,
+    meal_type: str,
+    recipe_name: str | None = None,
+    minutes_until: int = 0,
+    is_shared: bool = False,
+    partner_name: str | None = None,
+) -> tuple[str, str]:
+    """Push copy for `MEAL_EVENT_REMINDER` fired by the beat scheduler.
+
+    `minutes_until` is the delta from the resolved reminder-time to the
+    meal's `scheduled_at`, computed by the task. ≤0 means "now" — the
+    title drops the "in Nmin" suffix.
+
+    Variants:
+    - Solo + recipe: "Lunch in 5 — Carbonara 🍳" + "Tap to open and
+      start prepping."
+    - Solo, no recipe: "Lunch time! 🍳" + "Tap to open the meal you
+      planned."
+    - Shared + partner_name: body becomes
+      "{partner_name} is also cooking — tap to coordinate."
+    - `snack` → emoji flips to 🥨.
+    """
+    slot_label = _MEAL_SLOT_LABELS.get(meal_type, "Meal")
+    emoji = _MEAL_SLOT_EMOJI.get(meal_type, EMOJI_RECIPE)
+
+    if recipe_name:
+        if minutes_until >= 1:
+            title = f"{slot_label} in {minutes_until} — {recipe_name} {emoji}"
+        else:
+            title = f"{slot_label} now — {recipe_name} {emoji}"
+    else:
+        title = f"{slot_label} time! {emoji}"
+
+    if is_shared and partner_name:
+        body = f"{partner_name} is also cooking — tap to coordinate."
+    elif recipe_name:
+        body = "Tap to open and start prepping."
+    else:
+        body = "Tap to open the meal you planned."
+
+    return (title, body)
+
+
+def meal_event_updated(
+    *,
+    actor_name: str,
+    event_title: str,
+    scheduled_at_changed: bool = False,
+    new_time: str | None = None,
+) -> tuple[str, str]:
+    """Push copy for `MEAL_EVENT_UPDATED` (shared-meal edits fan-out).
+
+    Two variants:
+    - Only `scheduled_at` changed (with a formatted `new_time`) →
+      "{event_title} moved to {new_time}" + "{actor_name} updated
+      '{event_title}'".
+    - Anything else → "{event_title} updated" + "{actor_name} made
+      changes to '{event_title}'".
+
+    Empty `actor_name` / `event_title` fall back to "Someone" / "Meal
+    event" to match the long-standing update-stub shape.
+    """
+    actor = actor_name or "Someone"
+    title_text = event_title or "Meal event"
+
+    if scheduled_at_changed and new_time:
+        return (
+            f"{title_text} moved to {new_time}",
+            f"{actor} updated '{title_text}'",
+        )
+
+    return (
+        f"{title_text} updated",
+        f"{actor} made changes to '{title_text}'",
+    )
