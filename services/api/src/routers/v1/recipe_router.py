@@ -31,7 +31,11 @@ from api.v1.recipe import (
     UpdateRecipe,
 )
 from api.v1.recipe_book import GetPublicRecipeBook
-from api.v1.recipe_book.notifications import notify_recipe_added
+from api.v1.recipe_book.notifications import (
+    notify_recipe_added,
+    notify_recipe_forked,
+    notify_recipe_note_added,
+)
 from api.v1.recipe_book.websocket import broadcast_event_to_recipe_book
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
@@ -270,12 +274,27 @@ async def add_recipe_note(
     database: Database = Depends(get_database),
 ):
     """Add a note to a recipe."""
-    return AddRecipeNote.call(
+    result = AddRecipeNote.call(
         recipe_id=recipe_id,
         params=params,
         user=user,
         database=database,
     )
+    # Back-fan: ping the recipe's book owner when a partner notes their
+    # recipe in a shared book. Self-notes and solo-book notes are silent.
+    if result.get("success") and result.get("data") is not None:
+        recipe = database.find_by(Recipe, id=recipe_id)
+        if recipe is not None:
+            note_data = result["data"]
+            note_id = getattr(note_data, "id", None) or ""
+            notify_recipe_note_added(
+                recipe=recipe,
+                note_id=str(note_id),
+                note_body=params.body,
+                actor=user,
+                database=database,
+            )
+    return result
 
 
 @recipe_router.delete("/recipes/{recipe_id}/notes/{note_id}")
@@ -437,6 +456,19 @@ async def fork_recipe(
         {"forked_from_recipe_id": recipe_id},
         user_id=str(user.id),
     )
+    # Notify the source recipe's book owner that their recipe was forked.
+    # Self-forks are no-ops inside `notify_recipe_forked`.
+    if result.get("success") and result.get("data") is not None:
+        source_recipe = database.find_by(Recipe, id=recipe_id)
+        target_book = database.find_by(RecipeBook, id=params.destination_book_id)
+        if source_recipe is not None:
+            notify_recipe_forked(
+                source_recipe=source_recipe,
+                forked_recipe_id=str(result["data"].id),
+                target_book=target_book,
+                actor=user,
+                database=database,
+            )
     return result
 
 

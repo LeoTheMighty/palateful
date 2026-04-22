@@ -685,3 +685,310 @@ class TestNotifyRecipeAddedMissingBranches:
 
         notification = mock_service.send_to_users.call_args[0][1]
         assert "a shared recipe book" in notification.title
+
+
+# ---------------------------------------------------------------------------
+# partner-2 — notify_recipe_forked + notify_recipe_note_added
+# ---------------------------------------------------------------------------
+
+def _make_recipe(recipe_id=None, book_id=None, name="Sweet Potato Quiche", image_url=None):
+    recipe = MagicMock()
+    recipe.id = recipe_id or uuid.uuid4()
+    recipe.recipe_book_id = book_id or uuid.uuid4()
+    recipe.name = name
+    recipe.image_url = image_url
+    return recipe
+
+
+def _make_recipe_book(book_id=None, name="Weeknight Dinners", is_shared=True):
+    book = MagicMock()
+    book.id = book_id or uuid.uuid4()
+    book.name = name
+    book.is_shared = is_shared
+    return book
+
+
+def _make_owner_row(user_id):
+    """Mock RecipeBookUser row with role=owner, non-archived."""
+    row = MagicMock()
+    row.user_id = user_id
+    row.role = "owner"
+    row.archived_at = None
+    return row
+
+
+def _install_owner_and_find_by(
+    database,
+    *,
+    owner_row=None,
+    owner_user=None,
+    find_by_map=None,
+):
+    """Wire up database.db.query → owner_row, user, and database.find_by."""
+    db = database.db
+    # The owner-lookup chain: db.query(RecipeBookUser).filter(...).first()
+    owner_query = MagicMock()
+    owner_query.filter.return_value = owner_query
+    owner_query.first.return_value = owner_row
+
+    # The user fetch after we have owner_row: db.query(User).filter(...).first()
+    user_query = MagicMock()
+    user_query.filter.return_value = user_query
+    user_query.first.return_value = owner_user
+
+    # db.query() is called twice in the helper (RecipeBookUser, User); expose
+    # both via side_effect so each call returns the right chain.
+    db.query.side_effect = [owner_query, user_query]
+
+    if find_by_map is not None:
+        def _find_by(model, **kwargs):  # pragma: no cover — MagicMock side_effect
+            key = (model.__name__ if hasattr(model, "__name__") else str(model), tuple(sorted(kwargs.items())))
+            for (model_name, k), value in find_by_map.items():
+                if model_name == key[0]:
+                    return value
+            return None
+        database.find_by.side_effect = _find_by
+
+
+class TestNotifyRecipeForked:
+
+    def test_fires_push_to_book_owner(self):
+        from api.v1.recipe_book.notifications import notify_recipe_forked
+
+        book_id = uuid.uuid4()
+        actor = _make_user()
+        owner = _make_user()
+        source_recipe = _make_recipe(book_id=book_id, image_url="https://cdn/recipe.jpg")
+        target_book = _make_recipe_book(name="Sarah's Recipes")
+
+        database = MagicMock()
+        database.db = MagicMock()
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(owner.id),
+            owner_user=owner,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            notify_recipe_forked(
+                source_recipe=source_recipe,
+                forked_recipe_id="fk-123",
+                target_book=target_book,
+                actor=actor,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_called_once()
+        sent_user, notification = mock_service.send_to_user.call_args[0][:2]
+        assert sent_user is owner
+        assert notification.notification_type.value == "recipe_forked"
+        assert "forked your Sweet Potato Quiche" in notification.title
+        assert "Sarah's Recipes" in notification.body
+        assert notification.image_url == "https://cdn/recipe.jpg"
+        assert notification.data == {
+            "forked_recipe_id": "fk-123",
+            "source_recipe_id": str(source_recipe.id),
+        }
+
+    def test_self_fork_is_silent(self):
+        from api.v1.recipe_book.notifications import notify_recipe_forked
+
+        actor = _make_user()
+        source_recipe = _make_recipe()
+        target_book = _make_recipe_book()
+
+        database = MagicMock()
+        database.db = MagicMock()
+        # Owner *is* the actor.
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(actor.id),
+            owner_user=actor,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_forked(
+                source_recipe=source_recipe,
+                forked_recipe_id="fk-123",
+                target_book=target_book,
+                actor=actor,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "no_recipient"
+
+    def test_no_owner_is_silent(self):
+        from api.v1.recipe_book.notifications import notify_recipe_forked
+
+        actor = _make_user()
+        source_recipe = _make_recipe()
+        target_book = _make_recipe_book()
+
+        database = MagicMock()
+        database.db = MagicMock()
+        _install_owner_and_find_by(
+            database,
+            owner_row=None,  # no owner in the book
+            owner_user=None,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_forked(
+                source_recipe=source_recipe,
+                forked_recipe_id="fk-123",
+                target_book=target_book,
+                actor=actor,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "no_recipient"
+
+
+class TestNotifyRecipeNoteAdded:
+
+    def test_fires_in_shared_book(self):
+        from api.v1.recipe_book.notifications import notify_recipe_note_added
+
+        actor = _make_user()
+        owner = _make_user()
+        recipe = _make_recipe(image_url="https://cdn/r.jpg")
+        shared_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=True)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = shared_book  # book lookup
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(owner.id),
+            owner_user=owner,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            notify_recipe_note_added(
+                recipe=recipe,
+                note_id="nt-1",
+                note_body="Add more cinnamon next time, was a hit.",
+                actor=actor,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_called_once()
+        _, notification = mock_service.send_to_user.call_args[0][:2]
+        assert notification.notification_type.value == "recipe_note_added"
+        assert "noted your Sweet Potato Quiche" in notification.title
+        assert "Add more cinnamon" in notification.body
+        assert notification.image_url == "https://cdn/r.jpg"
+        assert notification.data == {
+            "recipe_id": str(recipe.id),
+            "note_id": "nt-1",
+        }
+
+    def test_silent_on_solo_book(self):
+        from api.v1.recipe_book.notifications import notify_recipe_note_added
+
+        actor = _make_user()
+        recipe = _make_recipe()
+        solo_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=False)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = solo_book
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_note_added(
+                recipe=recipe,
+                note_id="nt-1",
+                note_body="private note",
+                actor=actor,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "book_not_shared"
+
+    def test_long_note_gets_truncated_in_body(self):
+        from api.v1.recipe_book.notifications import notify_recipe_note_added
+
+        actor = _make_user()
+        owner = _make_user()
+        recipe = _make_recipe()
+        shared_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=True)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = shared_book
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(owner.id),
+            owner_user=owner,
+        )
+
+        long_note = "x" * 200
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            notify_recipe_note_added(
+                recipe=recipe,
+                note_id="nt-2",
+                note_body=long_note,
+                actor=actor,
+                database=database,
+            )
+
+        _, notification = mock_service.send_to_user.call_args[0][:2]
+        # Body is: '<actor>: "<snippet>"'. Snippet must be exactly 120 chars
+        # with a trailing ellipsis.
+        start = notification.body.index('"') + 1
+        end = notification.body.rindex('"')
+        inner = notification.body[start:end]
+        assert len(inner) == 120
+        assert inner.endswith("…")
+
+    def test_self_note_is_silent(self):
+        from api.v1.recipe_book.notifications import notify_recipe_note_added
+
+        actor = _make_user()
+        recipe = _make_recipe()
+        shared_book = _make_recipe_book(book_id=recipe.recipe_book_id, is_shared=True)
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = shared_book
+        _install_owner_and_find_by(
+            database,
+            owner_row=_make_owner_row(actor.id),  # actor owns the book
+            owner_user=actor,
+        )
+
+        with patch("api.v1.recipe_book.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_recipe_note_added(
+                recipe=recipe,
+                note_id="nt-1",
+                note_body="my own note",
+                actor=actor,
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "no_recipient"

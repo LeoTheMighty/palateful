@@ -1,14 +1,44 @@
 """Push notification helpers for recipe book events."""
 
+from utils.models.recipe import Recipe
+from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.services.database import Database
-from utils.services.notification_copy import recipe_added as recipe_added_copy
+from utils.services.notification_copy import (
+    _resolve_actor_name,
+)
+from utils.services.notification_copy import (
+    recipe_added as recipe_added_copy,
+)
+from utils.services.notification_copy import (
+    recipe_forked as recipe_forked_copy,
+)
+from utils.services.notification_copy import (
+    recipe_note_added as recipe_note_added_copy,
+)
 from utils.services.push_notification import (
     NotificationType,
     PushNotification,
     get_push_service,
 )
+
+
+def _find_book_owner(recipe_book_id: str, database: Database) -> User | None:
+    """Return the active owner of a recipe book, or None if none found.
+
+    Recipe-owner-centric notifications (fork / note / cook) fan to the
+    owner of the book the source recipe lives in. If the book has no
+    active owner row we silently skip — there is nobody to notify.
+    """
+    owner_row = database.db.query(RecipeBookUser).filter(
+        RecipeBookUser.recipe_book_id == recipe_book_id,
+        RecipeBookUser.role == "owner",
+        RecipeBookUser.archived_at.is_(None),
+    ).first()
+    if owner_row is None:
+        return None
+    return database.db.query(User).filter(User.id == owner_row.user_id).first()
 
 
 def notify_recipe_book_members(
@@ -159,3 +189,99 @@ def notify_recipe_added(
         exclude_user_id=str(added_by_user.id),
         category="partner_activity",
     )
+
+
+def notify_recipe_forked(
+    source_recipe: Recipe,
+    forked_recipe_id: str,
+    target_book: RecipeBook,
+    actor: User,
+    database: Database,
+) -> dict:
+    """Fire a `RECIPE_FORKED` push to the source recipe's book owner.
+
+    Recipient policy (epic locked):
+      * Recipient = owner of the book the source recipe lives in.
+      * Self-forks (actor owns the source book) are silent.
+      * No-owner / archived-owner → silent no-op.
+
+    Deep-link payload carries `forked_recipe_id` so the tap lands on the
+    new copy in the actor's book, not the original.
+    """
+    owner = _find_book_owner(str(source_recipe.recipe_book_id), database)
+    if owner is None or str(owner.id) == str(actor.id):
+        return {"success_count": 0, "failure_count": 0, "skipped": "no_recipient"}
+
+    actor_name = _resolve_actor_name(actor)
+    recipe_name = source_recipe.name or "a recipe"
+    target_book_name = (target_book.name if target_book else None) or "their book"
+
+    title, body = recipe_forked_copy(
+        actor_name=actor_name,
+        recipe_name=recipe_name,
+        target_book_name=target_book_name,
+    )
+
+    notification = PushNotification(
+        title=title,
+        body=body,
+        notification_type=NotificationType.RECIPE_FORKED,
+        data={
+            "forked_recipe_id": forked_recipe_id,
+            "source_recipe_id": str(source_recipe.id),
+        },
+        image_url=source_recipe.image_url,
+    )
+
+    push_service = get_push_service()
+    return push_service.send_to_user(owner, notification, database.db)
+
+
+def notify_recipe_note_added(
+    recipe: Recipe,
+    note_id: str,
+    note_body: str,
+    actor: User,
+    database: Database,
+) -> dict:
+    """Fire a `RECIPE_NOTE_ADDED` push to the recipe's book owner.
+
+    Recipient policy (epic locked):
+      * Recipient = owner of the book the recipe lives in.
+      * Self-notes are silent.
+      * Non-shared books silently no-op — there is no "partner" in a
+        solo book to be a partner.
+
+    The note body is sliced to the copy library's snippet limit by
+    `notification_copy.recipe_note_added`; we pass the full body in.
+    """
+    book = database.find_by(RecipeBook, id=str(recipe.recipe_book_id))
+    if book is None or not book.is_shared:
+        return {"success_count": 0, "failure_count": 0, "skipped": "book_not_shared"}
+
+    owner = _find_book_owner(str(recipe.recipe_book_id), database)
+    if owner is None or str(owner.id) == str(actor.id):
+        return {"success_count": 0, "failure_count": 0, "skipped": "no_recipient"}
+
+    actor_name = _resolve_actor_name(actor)
+    recipe_name = recipe.name or "a recipe"
+
+    title, body = recipe_note_added_copy(
+        actor_name=actor_name,
+        recipe_name=recipe_name,
+        note_snippet=note_body or "",
+    )
+
+    notification = PushNotification(
+        title=title,
+        body=body,
+        notification_type=NotificationType.RECIPE_NOTE_ADDED,
+        data={
+            "recipe_id": str(recipe.id),
+            "note_id": note_id,
+        },
+        image_url=recipe.image_url,
+    )
+
+    push_service = get_push_service()
+    return push_service.send_to_user(owner, notification, database.db)
