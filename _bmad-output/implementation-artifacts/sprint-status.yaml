@@ -1086,12 +1086,12 @@ development_status:
   # CookSessionPersister service is meal-ready (keyed by recipe_id or
   # meal_id interchangeably) — foundation for epic-cook-mode-meal. Zero
   # backend changes. 5 stories.
-  epic-cook-mode-resume: backlog
-  cmr-1-cook-session-persister-service-and-schema: backlog
-  cmr-2-wire-recipe-cook-mode-writes-with-debounce: backlog
-  cmr-3-resume-reset-gate-sheet-on-entry: backlog
-  cmr-4-in-cook-reset-affordance-and-auto-clear-on-done: backlog
-  cmr-5-timer-rebuild-on-resume-and-expired-while-away-snackbar: backlog
+  epic-cook-mode-resume: done
+  cmr-1-cook-session-persister-service-and-schema: done
+  cmr-2-wire-recipe-cook-mode-writes-with-debounce: done
+  cmr-3-resume-reset-gate-sheet-on-entry: done
+  cmr-4-in-cook-reset-affordance-and-auto-clear-on-done: done
+  cmr-5-timer-rebuild-on-resume-and-expired-while-away-snackbar: done
   epic-cook-mode-resume-retrospective: optional
 
   # epic-cook-mode-meal — Cooking mode for a whole Meal. New
