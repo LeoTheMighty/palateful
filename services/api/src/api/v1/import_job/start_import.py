@@ -79,6 +79,30 @@ class StartImport(Endpoint):
         """
         user: User = self.user
 
+        # Idempotency short-circuit. The iOS Share Extension POSTs once
+        # on save, and the Flutter reconciler re-POSTs the same record
+        # on every app resume until the extension's URLSession callback
+        # clears it. Without this check, a single share produced
+        # duplicate ImportJobs. Runs before rate-limit so a legit
+        # reconciler retry doesn't burn a rate slot.
+        if params.idempotency_key:
+            existing_job = self._find_existing_job(
+                user_id=str(user.id),
+                idempotency_key=params.idempotency_key,
+            )
+            if existing_job is not None:
+                return success(
+                    data=StartImport.Response(
+                        id=str(existing_job.id),
+                        status=existing_job.status,
+                        source_type=existing_job.source_type,
+                        total_items=existing_job.total_items,
+                        recipe_book_id=str(existing_job.recipe_book_id),
+                        created_at=existing_job.created_at,
+                    ),
+                    status=200,
+                )
+
         # sbf-3: per-user rate limit first; over-cap doesn't consume state.
         allowed, retry_after = _check_rate_limit(str(user.id))
         if not allowed:
@@ -226,8 +250,34 @@ class StartImport(Endpoint):
             source_filename=source_filename,
             user_id=user.id,
             recipe_book_id=book_id,
+            idempotency_key=params.idempotency_key,
         )
-        self.database.create(job)
+        try:
+            self.database.create(job)
+        except IntegrityError:
+            # Only the (user_id, idempotency_key) partial UNIQUE can
+            # fire here — so if there's no key, we have nothing to
+            # recover and must surface. If a key was supplied this is a
+            # true race: the pre-check above missed a concurrent
+            # /import that already persisted. Return the winner so both
+            # callers see the same job.
+            if params.idempotency_key is None:
+                raise
+            winner = self._find_existing_job(
+                user_id=str(user.id),
+                idempotency_key=params.idempotency_key,
+            )
+            return success(
+                data=StartImport.Response(
+                    id=str(winner.id),
+                    status=winner.status,
+                    source_type=winner.source_type,
+                    total_items=winner.total_items,
+                    recipe_book_id=str(winner.recipe_book_id),
+                    created_at=winner.created_at,
+                ),
+                status=200,
+            )
         self.database.db.refresh(job)
 
         # Create import items for URL list
@@ -434,6 +484,20 @@ class StartImport(Endpoint):
             status=201,
         )
 
+    def _find_existing_job(
+        self,
+        user_id: str,
+        idempotency_key: str,
+    ) -> ImportJob | None:
+        return (
+            self.database.db.query(ImportJob)
+            .filter(
+                ImportJob.user_id == user_id,
+                ImportJob.idempotency_key == idempotency_key,
+            )
+            .first()
+        )
+
     def _validate_s3_key_inputs(self, params: "StartImport.Params", user: User) -> None:
         """sbf-3: validate s3_key ownership + object readiness + replay.
 
@@ -491,6 +555,11 @@ class StartImport(Endpoint):
         s3_key: str | None = None
         etag: str | None = None
         mime_type: str | None = None
+        # Replay token supplied by the iOS Share Extension and the Flutter
+        # reconciler so a double-fire returns the existing job instead of
+        # creating a duplicate. Scoped per-user by the partial UNIQUE
+        # index on import_jobs.
+        idempotency_key: str | None = Field(default=None, max_length=128)
 
     class Response(BaseModel):
         id: str

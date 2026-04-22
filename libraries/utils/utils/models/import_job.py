@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, DateTime, ForeignKey, Integer, String
+from sqlalchemy import UUID, DateTime, ForeignKey, Index, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -20,8 +20,29 @@ class ImportJob(Base):
 
     __tablename__ = "import_jobs"
 
+    __table_args__ = (
+        # Replay guard for the Share Extension / reconciler double-fire.
+        # Client-supplied opaque token; partial index so the legacy rows
+        # (no key) stay out of the index and different users can never
+        # collide on the same key.
+        Index(
+            "ix_import_jobs_user_idempotency_key_unique",
+            "user_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
+
     # Status: pending | processing | awaiting_review | completed | failed | cancelled
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+
+    # Client-supplied replay token. Set by the iOS Share Extension and
+    # the Flutter reconciler so a double-fire of `/import` for the same
+    # share returns the existing job rather than creating a new one.
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
 
     # Source info
     source_type: Mapped[str] = mapped_column(String(20))  # spreadsheet | pdf | url | url_list

@@ -3,6 +3,8 @@
 import uuid
 from unittest.mock import patch
 
+from sqlalchemy.exc import IntegrityError
+
 from conftest import (
     MockExecuteResult,
     MockImportItem,
@@ -570,6 +572,145 @@ class TestStartImport:
             }
         )
         assert response.status_code == 201
+
+    def test_start_import_idempotency_replay_returns_existing(
+        self, client, mock_db, mock_user
+    ):
+        """Replay with same idempotency_key returns the existing job (200)."""
+        book_id = "test-book-id"
+        key = "share-ext-uuid-abc"
+        existing = MockImportJob(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            source_type="url",
+            idempotency_key=key,
+        )
+        mock_db.db.query.return_value = MockQuery([existing])
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+                "idempotency_key": key,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["id"] == str(existing.id)
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_start_import_idempotency_first_call_creates_job(
+        self, mock_task, client, mock_db, mock_user
+    ):
+        """New idempotency_key: pre-check misses, job is created normally."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_task.delay.return_value = None
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+                "idempotency_key": "new-key-xyz",
+            },
+        )
+        assert response.status_code == 201
+
+    def test_start_import_idempotency_race_returns_winner(
+        self, client, mock_db, mock_user
+    ):
+        """IntegrityError on insert → endpoint returns the winning job."""
+        from unittest.mock import MagicMock
+
+        book_id = "test-book-id"
+        key = "race-key-123"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        winner = MockImportJob(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            source_type="url",
+            idempotency_key=key,
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+
+        # Pre-check misses (empty), create raises IntegrityError, recovery
+        # lookup finds the concurrent winner.
+        query_results = iter([MockQuery([]), MockQuery([winner])])
+        mock_db.db.query.side_effect = lambda *a, **kw: next(query_results)
+        mock_db.create = MagicMock(
+            side_effect=IntegrityError("INSERT", {}, Exception())
+        )
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+                "idempotency_key": key,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["id"] == str(winner.id)
+
+    def test_start_import_integrity_error_without_idempotency_key_reraises(
+        self, client, mock_db, mock_user
+    ):
+        """IntegrityError with no idempotency_key bubbles up as a 500."""
+        from unittest.mock import MagicMock
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_db.create = MagicMock(
+            side_effect=IntegrityError("INSERT", {}, Exception())
+        )
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+            },
+        )
+        assert response.status_code == 500
 
 
 class TestListImportJobs:
