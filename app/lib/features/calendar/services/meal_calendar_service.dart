@@ -38,6 +38,7 @@ class MealCalendarService {
     String? recipeId,
     String? mealId,
     bool isShared = true,
+    String? mealReminderTime,
   }) async {
     assert(
       recipeId == null || mealId == null,
@@ -51,6 +52,7 @@ class MealCalendarService {
       if (recipeId != null) 'recipe_id': recipeId,
       if (mealId != null) 'meal_id': mealId,
       'is_shared': isShared,
+      if (mealReminderTime != null) 'meal_reminder_time': mealReminderTime,
     });
     return MealEvent.fromJson(response.data as Map<String, dynamic>);
   }
@@ -65,6 +67,24 @@ class MealCalendarService {
       'scheduled_at': scheduledAt.toUtc().toIso8601String(),
       'meal_type': mealType.name,
       if (calendarId != null) 'calendar_id': calendarId,
+    });
+    return MealEvent.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Partial-update: sets the per-meal wall-clock reminder override.
+  ///
+  /// Semantics mirror the backend contract:
+  ///   - `"HH:MM"` → persist the override
+  ///   - `null`    → explicit clear (revert to slot default); sent as
+  ///                 JSON null so the endpoint's field-presence check
+  ///                 (model_fields_set) treats it as an update, not a
+  ///                 skip. Use this for the Reset-to-default affordance.
+  Future<MealEvent> setMealReminderTime(
+    String eventId,
+    String? reminderTime,
+  ) async {
+    final response = await _apiClient.updateMealEvent(eventId, {
+      'meal_reminder_time': reminderTime,
     });
     return MealEvent.fromJson(response.data as Map<String, dynamic>);
   }

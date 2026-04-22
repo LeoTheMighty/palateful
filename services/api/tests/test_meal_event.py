@@ -135,6 +135,64 @@ class TestCreateMealEvent:
         assert response.status_code == 400
         assert response.json()["error_code"] == 264
 
+    def test_create_with_meal_reminder_time_persists_value(
+        self, client, mock_db, mock_user
+    ):
+        """meal-1 AC 7 Test A: create with explicit meal_reminder_time →
+        value reaches the row + Response, `reminder_time` echoes it."""
+        response = client.post(
+            "/v1/meal-events",
+            json={
+                "title": "Saturday Lunch",
+                "meal_type": "lunch",
+                "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
+                "meal_reminder_time": "11:45",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        # Pydantic serializes `time` as "HH:MM:SS".
+        assert data["meal_reminder_time"].startswith("11:45")
+        assert data["reminder_time"].startswith("11:45")
+
+    def test_create_without_reminder_override_resolves_slot_default(
+        self, client, mock_db, mock_user
+    ):
+        """meal-1 AC 7 Test B: omit meal_reminder_time → DB column stays
+        null and `reminder_time` resolves to the lunch slot default."""
+        response = client.post(
+            "/v1/meal-events",
+            json={
+                "title": "Regular Lunch",
+                "meal_type": "lunch",
+                "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["meal_reminder_time"] is None
+        # Slot default for lunch is 12:00.
+        assert data["reminder_time"].startswith("12:00")
+
+    def test_create_with_invalid_reminder_time_string_is_422(
+        self, client, mock_db, mock_user
+    ):
+        """meal-1 AC 7 Test D: malformed time string → 422 (Pydantic
+        catches at parse time before the handler runs)."""
+        response = client.post(
+            "/v1/meal-events",
+            json={
+                "title": "Bad Input",
+                "meal_type": "lunch",
+                "scheduled_at": datetime.now(UTC).isoformat(),
+                "calendar_id": str(uuid.uuid4()),
+                "meal_reminder_time": "not-a-time",
+            },
+        )
+        assert response.status_code == 422
+
 
 class TestGetMealEvent:
     """Tests for GET /v1/meal-events/{event_id}."""
@@ -850,6 +908,82 @@ class TestUpdateMealEvent:
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Updated Dinner"
+
+    def test_update_meal_reminder_time_persists(
+        self, client, mock_db, mock_user
+    ):
+        """meal-1 AC 7 Test C: update with a new reminder_time → the
+        column is set and `last_reminder_sent_at` is untouched."""
+        from datetime import datetime as _dt
+
+        event_id = "evt-upd-rem-1"
+        prior_sent = _dt(2026, 4, 1, 12, 0, tzinfo=UTC)
+        event = MockMealEvent(
+            id=event_id,
+            owner_id=str(mock_user.id),
+            participants=[], recipe=None, parent_event_id=None,
+            pantry_id=None,
+            meal_reminder_time=None,
+            last_reminder_sent_at=prior_sent,
+        )
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        response = client.put(
+            f"/v1/meal-events/{event_id}",
+            json={"meal_reminder_time": "11:45"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meal_reminder_time"].startswith("11:45")
+        assert data["reminder_time"].startswith("11:45")
+        # last_reminder_sent_at is internal state, not shaped into the
+        # response; verify the model field wasn't reset by the handler.
+        assert event.last_reminder_sent_at == prior_sent
+
+    def test_update_meal_reminder_time_clear_via_explicit_null(
+        self, client, mock_db, mock_user
+    ):
+        """Reset-to-default: sending `null` explicitly clears the
+        override back to the slot default. (`None`-means-skip pattern
+        can't do this — the endpoint uses model_fields_set to detect
+        the explicit-null case.)"""
+        from datetime import time as _time
+
+        event_id = "evt-upd-rem-2"
+        event = MockMealEvent(
+            id=event_id,
+            owner_id=str(mock_user.id),
+            participants=[], recipe=None, parent_event_id=None,
+            pantry_id=None,
+            meal_type="lunch",
+            meal_reminder_time=_time(11, 45),
+        )
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        response = client.put(
+            f"/v1/meal-events/{event_id}",
+            json={"meal_reminder_time": None},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["meal_reminder_time"] is None
+        assert data["reminder_time"].startswith("12:00")
 
     def test_update_as_cohost(self, client, mock_db, mock_user):
         """Test updating as a cohost."""

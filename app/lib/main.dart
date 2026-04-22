@@ -14,6 +14,7 @@ import 'core/services/auth_service.dart';
 import 'core/services/api_client.dart';
 import 'core/services/cook_timer_notification_service.dart';
 import 'core/services/error_reporter.dart';
+import 'core/services/live_activity_service.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/services/share_intent_handler.dart';
 import 'core/services/shared_state_service.dart';
@@ -75,6 +76,8 @@ void main() async {
   if (!kE2EMode) {
     final timerService = getIt<CookTimerNotificationService>();
     await timerService.initialize();
+    // Live Activities (iOS-only; the service no-ops on other platforms).
+    await getIt<LiveActivityService>().initialize();
   }
 
   if (kE2EMode) {

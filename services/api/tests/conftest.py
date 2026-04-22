@@ -283,6 +283,8 @@ class MockMealEvent(MockModel):
             "prep_start_offset_minutes": 60,
             "notify_cook_start": True,
             "cook_start_offset_minutes": 30,
+            "meal_reminder_time": None,
+            "last_reminder_sent_at": None,
             "is_shared": False,
             "is_recurring": False,
             "recurrence_rule": None,
@@ -293,6 +295,18 @@ class MockMealEvent(MockModel):
         }
         defaults.update(kwargs)
         super().__init__(**defaults)
+
+    @property
+    def reminder_time(self):
+        """Mirror the real model's `reminder_time` property so endpoint
+        response builders that call it work in tests without hitting the
+        real SQLAlchemy model."""
+        from utils.models.meal_event import MEAL_SLOT_DEFAULT_TIMES
+        if self.meal_reminder_time is not None:
+            return self.meal_reminder_time
+        return MEAL_SLOT_DEFAULT_TIMES.get(
+            self.meal_type, MEAL_SLOT_DEFAULT_TIMES["lunch"]
+        )
 
 
 class MockMealEventParticipant(MockModel):

@@ -110,6 +110,16 @@ class MealEvent {
   /// Non-null when this event was materialized from a recurrence rule.
   final String? recurrenceRuleId;
 
+  /// User's per-meal wall-clock reminder override, formatted "HH:MM".
+  /// Null = user hasn't overridden → fall back to the slot default
+  /// (matches backend `MEAL_SLOT_DEFAULT_TIMES`).
+  final String? mealReminderTime;
+
+  /// Effective reminder time, resolved server-side. Always populated —
+  /// falls back to slot default when `mealReminderTime` is null. Safe
+  /// to display verbatim on the detail screen.
+  final String? reminderTime;
+
   const MealEvent({
     required this.id,
     required this.title,
@@ -122,6 +132,8 @@ class MealEvent {
     this.mealSummary,
     this.ownerId,
     this.recurrenceRuleId,
+    this.mealReminderTime,
+    this.reminderTime,
   });
 
   factory MealEvent.fromJson(Map<String, dynamic> json) {
@@ -143,7 +155,19 @@ class MealEvent {
           : null,
       ownerId: json['owner_id'] as String?,
       recurrenceRuleId: json['recurrence_rule_id'] as String?,
+      mealReminderTime: _parseTimeString(json['meal_reminder_time']),
+      reminderTime: _parseTimeString(json['reminder_time']),
     );
+  }
+
+  /// Backend serializes `time` values as "HH:MM:SS" (Pydantic default).
+  /// The UI just needs "HH:MM" — trim seconds if present so picker code
+  /// downstream only deals with one shape.
+  static String? _parseTimeString(dynamic raw) {
+    if (raw == null) return null;
+    final s = raw as String;
+    if (s.length >= 5) return s.substring(0, 5);
+    return s;
   }
 }
 

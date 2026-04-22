@@ -2,6 +2,7 @@ import 'package:get_it/get_it.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/cook_timer_notification_service.dart';
+import '../services/live_activity_service.dart';
 import '../services/push_notification_service.dart';
 import '../services/recipe_cache_service.dart';
 import '../services/shared_state_service.dart';
@@ -33,6 +34,7 @@ void setupDependencies() {
   getIt.registerLazySingleton<CookTimerNotificationService>(
     () => CookTimerNotificationService(),
   );
+  getIt.registerLazySingleton<LiveActivityService>(() => LiveActivityService());
   getIt.registerLazySingleton<RecipeCacheService>(() => RecipeCacheService());
   getIt.registerLazySingleton<SharedStateService>(() => SharedStateService());
   getIt.registerLazySingleton<PendingImportsReconciler>(

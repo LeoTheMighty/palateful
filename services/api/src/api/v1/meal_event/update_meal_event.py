@@ -1,7 +1,7 @@
 """Update meal event endpoint."""
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Optional
 
 from api.v1.calendar.dependencies import require_calendar_access
@@ -163,6 +163,12 @@ class UpdateMealEvent(Endpoint):
             meal_event.notify_cook_start = params.notify_cook_start
         if params.cook_start_offset_minutes is not None:
             meal_event.cook_start_offset_minutes = params.cook_start_offset_minutes
+        # `meal_reminder_time` needs field-presence semantics, not null-
+        # means-leave-alone: sending `null` explicitly is how the client
+        # clears a per-meal override back to the slot default. Use
+        # model_fields_set to distinguish "omitted" from "sent as null".
+        if "meal_reminder_time" in params.model_fields_set:
+            meal_event.meal_reminder_time = params.meal_reminder_time
         if params.is_shared is not None:
             meal_event.is_shared = params.is_shared
         if params.is_recurring is not None:
@@ -244,6 +250,8 @@ class UpdateMealEvent(Endpoint):
                 prep_start_offset_minutes=meal_event.prep_start_offset_minutes,
                 notify_cook_start=meal_event.notify_cook_start,
                 cook_start_offset_minutes=meal_event.cook_start_offset_minutes,
+                meal_reminder_time=meal_event.meal_reminder_time,
+                reminder_time=meal_event.reminder_time,
                 is_shared=meal_event.is_shared,
                 is_recurring=meal_event.is_recurring,
                 recurrence_rule=meal_event.recurrence_rule,
@@ -281,6 +289,13 @@ class UpdateMealEvent(Endpoint):
         prep_start_offset_minutes: int | None = None
         notify_cook_start: bool | None = None
         cook_start_offset_minutes: int | None = None
+        # Per-meal wall-clock reminder override. Semantics:
+        #   - key omitted  → leave unchanged
+        #   - key = "HH:MM" → persist the override
+        #   - key = null   → clear the override (revert to slot default)
+        # The endpoint uses `model_fields_set` to distinguish omit from
+        # explicit-null (standard None-means-skip pattern can't clear).
+        meal_reminder_time: time | None = None
         is_shared: bool | None = None
         is_recurring: bool | None = None
         recurrence_rule: str | None = None
@@ -314,6 +329,11 @@ class UpdateMealEvent(Endpoint):
         prep_start_offset_minutes: int
         notify_cook_start: bool
         cook_start_offset_minutes: int
+        # User's per-meal override (may be null). `reminder_time` is the
+        # resolved value the scheduler fires at — always populated,
+        # falls back to slot default when override is null.
+        meal_reminder_time: time | None = None
+        reminder_time: time
         is_shared: bool
         is_recurring: bool
         recurrence_rule: str | None = None

@@ -10,6 +10,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../providers/recipe_provider.dart';
 import '../../../core/services/cook_timer_notification_service.dart';
+import '../../../core/services/live_activity_service.dart';
 import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
 import 'widgets/cook_mode_chat_sheet.dart';
@@ -36,6 +37,7 @@ class _CookModeScreenState extends State<CookModeScreen>
     with WidgetsBindingObserver {
   final _apiClient = getIt<ApiClient>();
   final _timerNotifService = getIt<CookTimerNotificationService>();
+  final _liveActivityService = getIt<LiveActivityService>();
   final _recipeCache = getIt<RecipeCacheService>();
 
   Map<String, dynamic>? _recipe;
@@ -53,6 +55,10 @@ class _CookModeScreenState extends State<CookModeScreen>
   // Timers
   final List<_ActiveTimer> _activeTimers = [];
   Timer? _timerTick;
+  // Minute-cadence pump that re-anchors `endTime` on every active Live
+  // Activity. Created lazily when the first timer starts and torn down
+  // when the last timer clears.
+  Timer? _liveActivityPulse;
   int _nextNotifId = 0;
 
   // Total cooking time tracker
@@ -73,10 +79,14 @@ class _CookModeScreenState extends State<CookModeScreen>
     WidgetsBinding.instance.removeObserver(this);
     _disableWakelock();
     _timerTick?.cancel();
+    _liveActivityPulse?.cancel();
     _cookingStopwatch.stop();
     for (final timer in _activeTimers) {
       timer.timer?.cancel();
       _timerNotifService.cancelTimerNotification(timer.notifId);
+      // End the lock-screen / Dynamic Island activity so it doesn't
+      // linger after the user exits cook mode.
+      _liveActivityService.endTimerActivity(timer.notifId);
     }
     super.dispose();
   }
@@ -297,6 +307,16 @@ class _CookModeScreenState extends State<CookModeScreen>
       originalDurationSeconds: duration.inSeconds,
     );
 
+    // Start a Live Activity so the lock-screen banner + Dynamic Island
+    // countdown appear immediately (iOS only; no-op elsewhere).
+    _liveActivityService.startTimerActivity(
+      notifId: notifId,
+      timerLabel: label,
+      recipeName: _recipe?['name'] as String? ?? 'Recipe',
+      duration: duration,
+    );
+    _ensureLiveActivityPulse();
+
     activeTimer.timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         final elapsed = DateTime.now().difference(activeTimer.startTime);
@@ -321,13 +341,16 @@ class _CookModeScreenState extends State<CookModeScreen>
   void _cancelTimer(_ActiveTimer timer) {
     timer.timer?.cancel();
     _timerNotifService.cancelTimerNotification(timer.notifId);
+    _liveActivityService.endTimerActivity(timer.notifId);
     setState(() => _activeTimers.remove(timer));
+    _maybeStopLiveActivityPulse();
   }
 
   void _restartTimer(_ActiveTimer timer) {
     // Cancel existing and start fresh with same label/duration
     timer.timer?.cancel();
     _timerNotifService.cancelTimerNotification(timer.notifId);
+    _liveActivityService.endTimerActivity(timer.notifId);
     setState(() => _activeTimers.remove(timer));
     _startTimer(timer.duration, timer.label);
   }
@@ -336,6 +359,9 @@ class _CookModeScreenState extends State<CookModeScreen>
     HapticFeedback.heavyImpact();
     // Cancel the OS notification in case the timer fired in-app
     _timerNotifService.cancelTimerNotification(timer.notifId);
+    // Flip the Live Activity to the "Done!" state; Swift side auto-
+    // dismisses after 5 minutes.
+    _liveActivityService.completeTimerActivity(timer.notifId);
     if (!mounted) return;
     final cook = context.cookModeTheme;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -348,6 +374,35 @@ class _CookModeScreenState extends State<CookModeScreen>
     setState(() {
       _activeTimers.remove(timer);
     });
+    _maybeStopLiveActivityPulse();
+  }
+
+  /// Start the minute-cadence pulse that re-anchors `endTime` on every
+  /// active Live Activity. Idempotent — called every time a timer is
+  /// added, but only creates the pulse when there isn't one already.
+  void _ensureLiveActivityPulse() {
+    if (_liveActivityPulse != null) return;
+    _liveActivityPulse = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted || _activeTimers.isEmpty) return;
+      final now = DateTime.now();
+      for (final t in _activeTimers) {
+        final elapsed = now.difference(t.startTime);
+        final remaining = t.duration - elapsed;
+        if (remaining.isNegative) continue;
+        _liveActivityService.updateTimerActivity(
+          notifId: t.notifId,
+          newRemaining: remaining,
+        );
+      }
+    });
+  }
+
+  /// Tear down the minute-cadence pulse once the last active timer
+  /// clears, so we don't burn battery on an idle cook-mode screen.
+  void _maybeStopLiveActivityPulse() {
+    if (_activeTimers.isNotEmpty) return;
+    _liveActivityPulse?.cancel();
+    _liveActivityPulse = null;
   }
 
   String _buildRecipeContext() {

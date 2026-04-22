@@ -1,6 +1,6 @@
 """Create meal event endpoint."""
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Optional
 
 from api.v1.calendar.dependencies import require_calendar_access
@@ -82,6 +82,7 @@ class CreateMealEvent(Endpoint):
             prep_start_offset_minutes=params.prep_start_offset_minutes,
             notify_cook_start=params.notify_cook_start,
             cook_start_offset_minutes=params.cook_start_offset_minutes,
+            meal_reminder_time=params.meal_reminder_time,
             is_shared=params.is_shared,
             is_recurring=params.is_recurring,
             recurrence_rule=params.recurrence_rule,
@@ -125,6 +126,8 @@ class CreateMealEvent(Endpoint):
                 prep_start_offset_minutes=meal_event.prep_start_offset_minutes,
                 notify_cook_start=meal_event.notify_cook_start,
                 cook_start_offset_minutes=meal_event.cook_start_offset_minutes,
+                meal_reminder_time=meal_event.meal_reminder_time,
+                reminder_time=meal_event.reminder_time,
                 is_shared=meal_event.is_shared,
                 is_recurring=meal_event.is_recurring,
                 recurrence_rule=meal_event.recurrence_rule,
@@ -167,6 +170,9 @@ class CreateMealEvent(Endpoint):
         prep_start_offset_minutes: int = 60
         notify_cook_start: bool = True
         cook_start_offset_minutes: int = 30
+        # Per-meal wall-clock reminder override (HH:MM). Null/omitted =
+        # use the slot default from MEAL_SLOT_DEFAULT_TIMES.
+        meal_reminder_time: time | None = None
         is_shared: bool = False
         is_recurring: bool = False
         recurrence_rule: str | None = None
@@ -200,6 +206,11 @@ class CreateMealEvent(Endpoint):
         prep_start_offset_minutes: int
         notify_cook_start: bool
         cook_start_offset_minutes: int
+        # User's per-meal override (may be null). `reminder_time` is the
+        # resolved value the scheduler will actually fire at — it's
+        # always populated, falling back to slot default.
+        meal_reminder_time: time | None = None
+        reminder_time: time
         is_shared: bool
         is_recurring: bool
         recurrence_rule: str | None = None

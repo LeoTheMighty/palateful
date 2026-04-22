@@ -4,6 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:live_activities/live_activities.dart';
 
 /// Service for managing iOS Live Activities (Dynamic Island + Lock Screen).
+///
+/// The Swift widget (`CookingTimerLiveActivity`) renders countdowns natively
+/// using `Text(endTime, style: .timer)` — Flutter only sets / updates the
+/// `endTime` field and the "done" state. There is no tick loop on the iOS
+/// side, and no per-second update traffic from Dart. Methods no-op on
+/// Android + Web so call sites don't need platform guards.
 class LiveActivityService {
   final LiveActivities _liveActivities = LiveActivities();
   final Map<int, String> _timerActivityIds = {};

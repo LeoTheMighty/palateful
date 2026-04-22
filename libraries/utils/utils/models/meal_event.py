@@ -1,7 +1,7 @@
 """MealEvent model - A planned meal on the calendar."""
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -14,12 +14,31 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Time,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
+
+# Wall-clock default reminder times per meal slot. Used by
+# `MealEvent.reminder_time` when the user hasn't set a per-meal override
+# (meal_reminder_time IS NULL). The scheduler (send_meal_reminders task)
+# combines these with the recipient's timezone to resolve the UTC moment
+# to fire the push at.
+#
+# KEEP IN SYNC with `_mealDefaultTime` in
+# `app/lib/features/calendar/widgets/plan_meal_sheet.dart` — both
+# backend and Flutter must agree on the slot defaults or the user will
+# see one time in the picker and get pinged at a different one.
+MEAL_SLOT_DEFAULT_TIMES: dict[str, time] = {
+    "breakfast": time(8, 0),
+    "lunch": time(12, 0),
+    "dinner": time(18, 30),
+    "snack": time(15, 0),
+}
+
 
 if TYPE_CHECKING:
     from utils.models.meal import Meal
@@ -81,6 +100,19 @@ class MealEvent(Base):
     notify_cook_start: Mapped[bool] = mapped_column(Boolean, default=True)
     cook_start_offset_minutes: Mapped[int] = mapped_column(
         Integer, default=30
+    )
+
+    # Per-meal reminder preference. NULL = use the slot default from
+    # MEAL_SLOT_DEFAULT_TIMES. The user sets this via the Remind-me-at
+    # picker in plan_meal_sheet / meal_detail_screen.
+    meal_reminder_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+
+    # Idempotency gate for the send_meal_reminders beat task. Set to
+    # NOW() after a successful fan-out so the next 5-min tick skips
+    # rows already pushed today. Recurring instances are separate rows,
+    # so per-row gating is sufficient.
+    last_reminder_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     # Sharing settings
@@ -151,3 +183,19 @@ class MealEvent(Base):
     shopping_list: Mapped["ShoppingList | None"] = relationship(
         back_populates="meal_event", uselist=False
     )
+
+    @property
+    def reminder_time(self) -> time:
+        """Resolve the effective reminder wall-clock time.
+
+        Returns the per-meal override (`meal_reminder_time`) when the
+        user has set one, otherwise the slot default from
+        `MEAL_SLOT_DEFAULT_TIMES`. Falls back to the lunch default if
+        `meal_type` is unexpectedly unmapped — defensive; the column
+        is validated to one of the four slot keys on write.
+        """
+        if self.meal_reminder_time is not None:
+            return self.meal_reminder_time
+        return MEAL_SLOT_DEFAULT_TIMES.get(
+            self.meal_type, MEAL_SLOT_DEFAULT_TIMES["lunch"]
+        )

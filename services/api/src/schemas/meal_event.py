@@ -1,6 +1,6 @@
 """MealEvent-related Pydantic schemas."""
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from pydantic import BaseModel
 
@@ -58,6 +58,9 @@ class MealEventCreate(BaseModel):
     notify_cook_start: bool = True
     cook_start_offset_minutes: int = 30
 
+    # Per-meal wall-clock reminder override. NULL = use slot default.
+    meal_reminder_time: time | None = None
+
     # Sharing
     is_shared: bool = False
 
@@ -83,6 +86,11 @@ class MealEventUpdate(BaseModel):
     prep_start_offset_minutes: int | None = None
     notify_cook_start: bool | None = None
     cook_start_offset_minutes: int | None = None
+
+    # Per-meal wall-clock reminder override. Send null to clear the
+    # override (fall back to slot default); omit the key to leave it
+    # unchanged.
+    meal_reminder_time: time | None = None
 
     # Sharing
     is_shared: bool | None = None
