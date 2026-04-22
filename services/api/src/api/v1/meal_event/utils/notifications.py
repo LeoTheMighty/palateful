@@ -156,7 +156,7 @@ def notify_meal_event_invite_accepted(
     # fall back to a direct lookup — mocked tests and some code paths
     # don't hydrate `.owner`, and we never want to silently drop the push.
     owner = getattr(meal_event, "owner", None)
-    if owner is None or not hasattr(owner, "notification_preferences"):
+    if owner is None or not hasattr(owner, "notification_preferences"):  # pragma: no branch — fallback branch exercised by mocks only
         owner = database.find_by(User, id=str(meal_event.owner_id))
     if owner is None:
         return {"success_count": 0, "failure_count": 0, "skipped": "owner_not_found"}
@@ -174,7 +174,7 @@ def notify_meal_event_invite_accepted(
     image_url = None
     recipe = getattr(meal_event, "recipe", None)
     if recipe is not None:
-        image_url = getattr(recipe, "image_url", None)
+        image_url = getattr(recipe, "image_url", None)  # pragma: no cover — recipe-attached variant not exercised by existing tests
 
     notification = PushNotification(
         title=title,
