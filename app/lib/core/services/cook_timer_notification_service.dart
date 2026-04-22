@@ -109,6 +109,7 @@ Future<void> _scheduleNotification(
       priority: Priority.max,
       category: AndroidNotificationCategory.alarm,
       groupKey: 'cooking_timer',
+      actions: categoryId == 'cooking_timer' ? timerAndroidActions : null,
     );
     final iosDetails = DarwinNotificationDetails(
       interruptionLevel: InterruptionLevel.timeSensitive,
@@ -148,6 +149,22 @@ Map<String, dynamic> _parsePayload(String? payloadStr) {
 const _channelId = 'cook_timers';
 const _channelName = 'Cooking Timers';
 const _channelDesc = 'Alerts when a cooking timer finishes';
+
+/// Android inline actions attached to every cook-timer notification.
+/// Action IDs match the iOS `DarwinNotificationCategory` registration
+/// so the shared `_backgroundNotificationHandler` routes taps
+/// identically on both platforms. Exposed (no leading underscore) so
+/// unit tests can assert the shipped list shape.
+const timerAndroidActions = <AndroidNotificationAction>[
+  AndroidNotificationAction('TIMER_ADD_2_MIN', '+ 2 min',
+      showsUserInterface: false),
+  AndroidNotificationAction('TIMER_ADD_5_MIN', '+ 5 min',
+      showsUserInterface: false),
+  AndroidNotificationAction('TIMER_RESET', 'Reset',
+      showsUserInterface: false),
+  AndroidNotificationAction('TIMER_DISMISS', 'Stop',
+      showsUserInterface: false),
+];
 
 /// Notification categories for iOS action buttons.
 final _cookingTimerCategory = DarwinNotificationCategory(
@@ -273,6 +290,7 @@ class CookTimerNotificationService {
         fullScreenIntent: false,
         category: AndroidNotificationCategory.alarm,
         groupKey: 'cooking_timer',
+        actions: timerAndroidActions,
       );
       const iosDetails = DarwinNotificationDetails(
         interruptionLevel: InterruptionLevel.timeSensitive,

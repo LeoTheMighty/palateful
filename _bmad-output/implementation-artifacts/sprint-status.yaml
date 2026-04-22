@@ -990,8 +990,8 @@ development_status:
   meal-4-wire-meal-event-updated-on-shared-edits: backlog
   meal-5-meal-detail-reminder-row-edit: backlog
 
-  epic-notifications-timer-actions-live-activities: backlog
-  timer-1-android-notification-actions-parity: backlog
+  epic-notifications-timer-actions-live-activities: in-progress
+  timer-1-android-notification-actions-parity: done
   timer-2-wire-live-activity-into-cook-mode: backlog
   timer-3-timer-completion-overlay-cupertino-modal: backlog
 
