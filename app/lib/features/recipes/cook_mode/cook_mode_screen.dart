@@ -14,6 +14,7 @@ import '../../../core/services/live_activity_service.dart';
 import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
 import 'widgets/cook_mode_chat_sheet.dart';
+import 'widgets/timer_completion_overlay.dart';
 import 'widgets/ingredient_strip.dart';
 import 'widgets/manual_timer_sheet.dart';
 import 'widgets/post_cook_feedback_sheet.dart';
@@ -52,6 +53,11 @@ class _CookModeScreenState extends State<CookModeScreen>
   final Set<int> _completedSteps = {};
   final Set<int> _checkedIngredients = {};
 
+  // Per-category notification pref (timer-3). Null until the one-shot
+  // fetch resolves; callers treat null as "assume true" so the overlay
+  // appears on first-run / offline paths.
+  bool? _timerCategoryEnabled;
+
   // Timers
   final List<_ActiveTimer> _activeTimers = [];
   Timer? _timerTick;
@@ -72,6 +78,27 @@ class _CookModeScreenState extends State<CookModeScreen>
     _enableWakelock();
     _cookingStopwatch.start();
     _startTimerTick();
+    _loadTimerCategoryPref();
+  }
+
+  /// Fire-and-forget read of the user's per-category notification prefs.
+  /// If the user has explicitly set `categories.timers == false`, the
+  /// in-app timer-completion overlay is suppressed (the OS alarm still
+  /// fires — that's a system-level signal). A failure / missing value
+  /// leaves `_timerCategoryEnabled` null, which the call site treats as
+  /// "assume true".
+  Future<void> _loadTimerCategoryPref() async {
+    try {
+      final response = await _apiClient.getNotificationPreferences();
+      if (!mounted) return;
+      final data = response.data as Map<String, dynamic>;
+      final categories = data['categories'];
+      if (categories is Map && categories['timers'] is bool) {
+        setState(() => _timerCategoryEnabled = categories['timers'] as bool);
+      }
+    } catch (_) {
+      // Silently ignore — leave null so the overlay defaults to showing.
+    }
   }
 
   @override
@@ -363,18 +390,49 @@ class _CookModeScreenState extends State<CookModeScreen>
     // dismisses after 5 minutes.
     _liveActivityService.completeTimerActivity(timer.notifId);
     if (!mounted) return;
-    final cook = context.cookModeTheme;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Timer done: ${timer.label}'),
-        backgroundColor: cook.cookCompleted,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+
+    // Remove the expired timer from state before surfacing UI —
+    // drag-down dismiss, action callbacks, and the SnackBar fallback
+    // all assume the timer is no longer "active".
     setState(() {
       _activeTimers.remove(timer);
     });
     _maybeStopLiveActivityPulse();
+
+    // timer-3: show the cook-mode completion overlay unless the user
+    // has explicitly turned timer notifications off. Null = not yet
+    // fetched or fetch failed → default to showing (epic-level
+    // "acceptable lag" decision).
+    final gated = _timerCategoryEnabled == false;
+    if (!gated) {
+      showTimerCompletionOverlay(
+        context: context,
+        label: timer.label,
+        recipeName: _recipe?['name'] as String?,
+        stepNumber: _currentStep,
+        onAdd2: () => _extendExpiredTimer(timer, 2),
+        onAdd5: () => _extendExpiredTimer(timer, 5),
+        onReset: () => _startTimer(timer.duration, timer.label),
+        onStop: () {}, // no-op — the timer is already removed
+      );
+    } else {
+      final cook = context.cookModeTheme;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Timer done: ${timer.label}'),
+          backgroundColor: cook.cookCompleted,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  /// Restart an expired timer with an extended duration. Preserves the
+  /// original label lineage (e.g. `Bake (+2m)`) so repeat extensions
+  /// stay readable.
+  void _extendExpiredTimer(_ActiveTimer expired, int minutes) {
+    final extendedLabel = '${expired.label} (+${minutes}m)';
+    _startTimer(Duration(minutes: minutes), extendedLabel);
   }
 
   /// Start the minute-cadence pulse that re-anchors `endTime` on every

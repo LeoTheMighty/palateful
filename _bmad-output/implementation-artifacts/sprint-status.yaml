@@ -993,7 +993,7 @@ development_status:
   epic-notifications-timer-actions-live-activities: in-progress
   timer-1-android-notification-actions-parity: done
   timer-2-wire-live-activity-into-cook-mode: done
-  timer-3-timer-completion-overlay-cupertino-modal: backlog
+  timer-3-timer-completion-overlay-cupertino-modal: done
 
   epic-notifications-partner-activity: in-progress
   partner-1-new-notification-types-copy-functions: done
