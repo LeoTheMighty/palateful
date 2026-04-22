@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from sqlalchemy import insert
 from sqlalchemy.orm import Session, selectinload
 
 from utils.models.meal import Meal
@@ -360,13 +361,20 @@ class MealService:
         self.db.add(meal)
         self.db.flush()
 
-        for idx, rid in enumerate(recipe_ids):
-            self.db.add(
-                MealRecipe(
-                    meal_id=meal.id,
-                    recipe_id=rid,
-                    order_index=idx,
-                )
+        # Use Core executemany rather than per-row ORM `add()`. SQLAlchemy
+        # 2.0's ORM bulk path emits INSERT...RETURNING and tries to map
+        # results back via sentinel values; for `meal_recipes`'s composite
+        # PK every row in the batch shares the same `meal_id`, the chosen
+        # sentinel collides, and the flush raises `Can't match sentinel
+        # values in result set to parameter sets`. Core executemany skips
+        # the sentinel machinery entirely.
+        if recipe_ids:
+            self.db.execute(
+                insert(MealRecipe),
+                [
+                    {"meal_id": meal.id, "recipe_id": rid, "order_index": idx}
+                    for idx, rid in enumerate(recipe_ids)
+                ],
             )
         self.db.flush()
         self.db.refresh(meal)

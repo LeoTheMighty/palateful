@@ -282,10 +282,11 @@ class TestCreateWithComponents:
             MockQuery([("book-1",)]),
         ]
 
-        # Capture add() calls to inspect the Meal + MealRecipe rows.
+        # Capture the Meal add() and the MealRecipe Core executemany.
         added = []
         session.add.side_effect = added.append
         session.refresh = MagicMock()
+        session.execute = MagicMock()
 
         meal = service.create_with_components(
             book_id="book-1",
@@ -295,14 +296,17 @@ class TestCreateWithComponents:
             user_id="u",
         )
 
-        # First add is the Meal, next two are MealRecipe joins.
         assert isinstance(meal, Meal)
         assert meal.name == "Test"
         assert meal.description == "desc"
         assert meal.recipe_book_id == "book-1"
-        assert len(added) == 3
-        assert added[1].order_index == 0
-        assert added[2].order_index == 1
+        # Only the Meal goes through ORM add(); MealRecipe rows go through
+        # session.execute(insert(...), [...]) to dodge the sentinel bug.
+        assert len(added) == 1
+        session.execute.assert_called_once()
+        rows = session.execute.call_args.args[1]
+        assert [row["recipe_id"] for row in rows] == ["r1", "r2"]
+        assert [row["order_index"] for row in rows] == [0, 1]
 
     def test_rejects_unreadable(self):
         service, session = _build_service()
