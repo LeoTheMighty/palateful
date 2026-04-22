@@ -513,10 +513,13 @@ class TestReorderMealComponentsEndpoint:
 class TestFavoriteEndpoints:
     def test_favorite_first_time(self, client, mock_db, mock_user):
         meal = _meal_with([])
+        # rf-2: response now builds a full MealResponse, which adds one
+        # _readable_book_ids query inside hydrate_components.
         mock_db.db.query.side_effect = [
-            MockQuery([meal]),      # require_meal_read → get_with_components
-            MockQuery([_owner()]),  # user_has_book_read
-            MockQuery([]),          # existing favorite? none
+            MockQuery([meal]),       # require_meal_read → get_with_components
+            MockQuery([_owner()]),   # user_has_book_read
+            MockQuery([]),           # set_favorite: existing favorite? none
+            MockQuery([]),           # rf-2: hydrate_components → _readable_book_ids
         ]
         response = client.post("/v1/meals/meal-1/favorite")
         assert response.status_code == 201
@@ -528,6 +531,7 @@ class TestFavoriteEndpoints:
             MockQuery([meal]),
             MockQuery([_owner()]),
             MockQuery([_MockMealFavorite()]),  # already favorited
+            MockQuery([]),           # rf-2: _readable_book_ids
         ]
         response = client.post("/v1/meals/meal-1/favorite")
         assert response.status_code == 201
@@ -539,6 +543,7 @@ class TestFavoriteEndpoints:
             MockQuery([meal]),
             MockQuery([_owner()]),
             MockQuery([_MockMealFavorite()]),
+            MockQuery([]),           # rf-2: _readable_book_ids
         ]
         response = client.delete("/v1/meals/meal-1/favorite")
         assert response.status_code == 200
@@ -550,6 +555,7 @@ class TestFavoriteEndpoints:
             MockQuery([meal]),
             MockQuery([_owner()]),
             MockQuery([]),
+            MockQuery([]),           # rf-2: _readable_book_ids
         ]
         response = client.delete("/v1/meals/meal-1/favorite")
         assert response.status_code == 200

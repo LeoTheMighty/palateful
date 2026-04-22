@@ -1028,8 +1028,8 @@ development_status:
   # full resource). Kills both named dogfood bugs. Blocks the two migration
   # epics. 6 stories; ~3 frontend + 1 backend + 2 regression.
   epic-reactive-foundation-home-imports: backlog
-  rf-1-mutation-bus-primitive-and-convention-docs: backlog
-  rf-2-backend-dismiss-and-favorite-full-object-responses: backlog
+  rf-1-mutation-bus-primitive-and-convention-docs: done
+  rf-2-backend-dismiss-and-favorite-full-object-responses: done
   rf-3-home-screen-migration-to-home-content-provider: backlog
   rf-4-recipe-mutation-sites-emit-events: backlog
   rf-5-imports-tab-and-activity-badge-reactivity: backlog

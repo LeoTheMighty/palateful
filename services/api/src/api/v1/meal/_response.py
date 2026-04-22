@@ -15,6 +15,7 @@ def build_meal_response(
     db,
     user_id,
     readable_book_ids: set | None = None,
+    is_favorite: bool | None = None,
 ) -> MealResponse:
     """Hydrate a Meal into the full response shape.
 
@@ -22,6 +23,12 @@ def build_meal_response(
     so callers paging over many meals can hoist the lookup once —
     single-meal callers keep the `None` default and pay one extra
     round-trip, same as before.
+
+    `is_favorite` is an optional override. rf-2 mutation endpoints
+    (`favorite_meal`) already know the post-mutation state — passing it
+    here skips the extra `is_favorited` query and avoids a mock-state
+    foot-gun in unit tests that pre-specify `db.query` `side_effect`
+    sequences.
     """
     service = MealService(db)
     hydrations = service.hydrate_components(
@@ -50,7 +57,11 @@ def build_meal_response(
         created_at=meal.created_at,
         updated_at=meal.updated_at,
         components=components,
-        is_favorite=service.is_favorited(user_id=user_id, meal_id=meal.id),
+        is_favorite=(
+            is_favorite
+            if is_favorite is not None
+            else service.is_favorited(user_id=user_id, meal_id=meal.id)
+        ),
     )
 
 

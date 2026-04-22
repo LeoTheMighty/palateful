@@ -3,11 +3,18 @@
 Hard dismiss: sets dismissed_at on the item so list endpoints hide it.
 No soft-delete, no trash bin — the only safety net is the snackbar undo
 on the frontend, which holds local state only.
+
+rf-2 (additive): the response now also carries the full updated
+``ImportItemSummary`` under the ``item`` field so the client can patch
+its cached state without a GET round-trip. Old fields
+(``item_id``, ``dismissed_at``, ``job_dismissed``) stay at the top level
+for pre-rf-2 clients.
 """
 
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
+from schemas.import_job import ImportItemSummary
 from utils.api.endpoint import APIException, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
@@ -99,10 +106,42 @@ class DismissImportItem(Endpoint):
                 item_id=str(item.id),
                 dismissed_at=now.isoformat(),
                 job_dismissed=job.dismissed_at is not None,
+                item=_item_summary(item),
             )
         )
 
     class Response(BaseModel):
+        # Legacy fields — retained at top level so pre-rf-2 clients keep
+        # working. Do NOT remove without a deprecation cycle.
         item_id: str
         dismissed_at: str
         job_dismissed: bool
+
+        # rf-2: full updated item so the client can patch cached state
+        # without a round-trip. Optional for cheap rollback.
+        item: ImportItemSummary | None = None
+
+
+def _item_summary(item: ImportItem) -> ImportItemSummary:
+    """Shape an ImportItem row for the dismiss response.
+
+    Mirrors the derivation used by `listImportItems` — `recipe_name` +
+    `needs_review` come from `parsed_recipe`, not direct columns. For
+    dismissed (failed) items `parsed_recipe` is typically None; both
+    fields fall through to their defaults.
+    """
+    parsed = item.parsed_recipe or {}
+    recipe_name = parsed.get("name")
+    ingredients = parsed.get("ingredients") or []
+    flagged = any((ing or {}).get("needs_review", False) for ing in ingredients)
+    return ImportItemSummary(
+        id=str(item.id),
+        status=item.status,
+        source_type=item.source_type,
+        source_url=item.source_url,
+        recipe_name=recipe_name,
+        error_message=item.error_message,
+        needs_review=bool(flagged or item.status == "awaiting_review"),
+        ai_cost_cents=int(item.ai_cost_cents or 0),
+        created_at=item.created_at,
+    )
