@@ -1893,3 +1893,171 @@ class TestNotifyMealEventUpdated:
         notification = mock_service.send_to_users.call_args[0][1]
         assert "Meal event" in notification.title
         assert notification.data["meal_event_title"] == ""
+
+
+# ---------------------------------------------------------------------------
+# partner-4 — notify_meal_event_invite_accepted (RSVP back-fan)
+# ---------------------------------------------------------------------------
+
+class TestNotifyMealEventInviteAccepted:
+
+    def _make_database(self, owner):
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = owner
+        return database
+
+    def test_accepted_fires_to_owner(self):
+        from api.v1.meal_event.utils.notifications import (
+            notify_meal_event_invite_accepted,
+        )
+
+        owner = MockUser(id="owner-1", name="Leo Belyi")
+        responder = MockUser(id="responder-1", name="Sarah Smith")
+        meal_event = MockMealEvent(
+            id="evt-rsvp-1",
+            title="Saturday brunch",
+            owner_id=owner.id,
+        )
+        database = self._make_database(owner)
+
+        with patch("api.v1.meal_event.utils.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.send_to_user.return_value = {"success_count": 1}
+            mock_get.return_value = mock_service
+
+            notify_meal_event_invite_accepted(
+                meal_event=meal_event,
+                responder=responder,
+                status="accepted",
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_called_once()
+        recipient, notification = mock_service.send_to_user.call_args[0][:2]
+        assert recipient is owner
+        assert notification.notification_type.value == "meal_event_invite_accepted"
+        assert "Sarah's coming to Saturday brunch" in notification.title
+        assert notification.body == "They just RSVP'd yes."
+        assert notification.data == {
+            "meal_event_id": str(meal_event.id),
+            "responder_id": str(responder.id),
+            "status": "accepted",
+        }
+
+    def test_declined_branch(self):
+        from api.v1.meal_event.utils.notifications import (
+            notify_meal_event_invite_accepted,
+        )
+
+        owner = MockUser(id="owner-2", name="Leo Belyi")
+        responder = MockUser(id="responder-2", name="Sarah Smith")
+        meal_event = MockMealEvent(
+            id="evt-rsvp-2",
+            title="Saturday brunch",
+            owner_id=owner.id,
+        )
+        database = self._make_database(owner)
+
+        with patch("api.v1.meal_event.utils.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.send_to_user.return_value = {"success_count": 1}
+            mock_get.return_value = mock_service
+
+            notify_meal_event_invite_accepted(
+                meal_event=meal_event,
+                responder=responder,
+                status="declined",
+                database=database,
+            )
+
+        _, notification = mock_service.send_to_user.call_args[0][:2]
+        assert notification.title == "Sarah can't make Saturday brunch"
+        assert notification.body == "Tap to swap recipes if needed."
+
+    def test_maybe_branch(self):
+        from api.v1.meal_event.utils.notifications import (
+            notify_meal_event_invite_accepted,
+        )
+
+        owner = MockUser(id="owner-3", name="Leo Belyi")
+        responder = MockUser(id="responder-3", name="Sarah Smith")
+        meal_event = MockMealEvent(
+            id="evt-rsvp-3",
+            title="Saturday brunch",
+            owner_id=owner.id,
+        )
+        database = self._make_database(owner)
+
+        with patch("api.v1.meal_event.utils.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_service.send_to_user.return_value = {"success_count": 1}
+            mock_get.return_value = mock_service
+
+            notify_meal_event_invite_accepted(
+                meal_event=meal_event,
+                responder=responder,
+                status="maybe",
+                database=database,
+            )
+
+        _, notification = mock_service.send_to_user.call_args[0][:2]
+        assert notification.title == "Sarah might join Saturday brunch"
+        assert notification.body == "They marked themselves as a maybe."
+
+    def test_owner_rsvp_is_silent(self):
+        from api.v1.meal_event.utils.notifications import (
+            notify_meal_event_invite_accepted,
+        )
+
+        owner = MockUser(id="owner-4", name="Leo")
+        meal_event = MockMealEvent(
+            id="evt-rsvp-4",
+            title="Leo's dinner",
+            owner_id=owner.id,
+        )
+        database = self._make_database(owner)
+
+        with patch("api.v1.meal_event.utils.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            # Responder *is* the owner.
+            result = notify_meal_event_invite_accepted(
+                meal_event=meal_event,
+                responder=owner,
+                status="accepted",
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "self_rsvp"
+
+    def test_owner_not_found_is_silent(self):
+        from api.v1.meal_event.utils.notifications import (
+            notify_meal_event_invite_accepted,
+        )
+
+        responder = MockUser(id="responder-5", name="Sarah")
+        meal_event = MockMealEvent(
+            id="evt-rsvp-5",
+            title="Dinner",
+            owner_id="owner-missing",
+        )
+        database = MagicMock()
+        database.db = MagicMock()
+        database.find_by.return_value = None  # owner not in DB
+
+        with patch("api.v1.meal_event.utils.notifications.get_push_service") as mock_get:
+            mock_service = MagicMock()
+            mock_get.return_value = mock_service
+
+            result = notify_meal_event_invite_accepted(
+                meal_event=meal_event,
+                responder=responder,
+                status="accepted",
+                database=database,
+            )
+
+        mock_service.send_to_user.assert_not_called()
+        assert result["skipped"] == "owner_not_found"

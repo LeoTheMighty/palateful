@@ -1,5 +1,6 @@
 """Meal event endpoints router."""
 
+import logging
 from datetime import date
 
 from api.v1.meal_event import (
@@ -13,10 +14,14 @@ from api.v1.meal_event import (
     SkipMealEvent,
     UpdateMealEvent,
 )
+from api.v1.meal_event.utils.notifications import notify_meal_event_invite_accepted
 from dependencies import get_current_user, get_database
 from fastapi import APIRouter, Depends
+from utils.models.meal_event import MealEvent
 from utils.models.user import User
 from utils.services.database import Database
+
+logger = logging.getLogger(__name__)
 
 meal_event_router = APIRouter(tags=["meal-events"])
 
@@ -143,12 +148,31 @@ async def respond_to_invite(
     database: Database = Depends(get_database),
 ):
     """Respond to a meal event invitation."""
-    return RespondToInvite.call(
+    result = RespondToInvite.call(
         event_id=event_id,
         params=params,
         user=user,
         database=database,
     )
+
+    # partner-4: back-fan the RSVP status to the event owner.
+    if result.get("success"):
+        meal_event = database.find_by(MealEvent, id=event_id)
+        if meal_event is not None:
+            try:
+                notify_meal_event_invite_accepted(
+                    meal_event=meal_event,
+                    responder=user,
+                    status=params.status,
+                    database=database,
+                )
+            except Exception as exc:  # noqa: BLE001 — never fail the RSVP
+                logger.error(
+                    "meal_event_rsvp: back-fan notify failed event_id=%s err=%s: %s",
+                    event_id, type(exc).__name__, exc,
+                )
+
+    return result
 
 
 @meal_event_router.post("/meal-events/{event_id}/add-to-shopping-list")
