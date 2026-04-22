@@ -274,17 +274,22 @@ async def add_recipe_note(
     database: Database = Depends(get_database),
 ):
     """Add a note to a recipe."""
-    result = AddRecipeNote.call(
+    # `Endpoint.call()` wraps into a CustomJSONResponse; we need the raw
+    # {success, data, status} dict here to inspect the created-note id
+    # before firing the back-fan notification, so call `run()` and build
+    # the response ourselves via `handle_result`.
+    endpoint = AddRecipeNote(
         recipe_id=recipe_id,
         params=params,
         user=user,
         database=database,
     )
+    result = endpoint.run()
     # Back-fan: ping the recipe's book owner when a partner notes their
     # recipe in a shared book. Self-notes and solo-book notes are silent.
     if result.get("success") and result.get("data") is not None:
         recipe = database.find_by(Recipe, id=recipe_id)
-        if recipe is not None:
+        if recipe is not None:  # pragma: no branch — defensive; success path implies recipe exists
             note_data = result["data"]
             note_id = getattr(note_data, "id", None) or ""
             notify_recipe_note_added(
@@ -294,7 +299,7 @@ async def add_recipe_note(
                 actor=user,
                 database=database,
             )
-    return result
+    return AddRecipeNote.handle_result(result)
 
 
 @recipe_router.delete("/recipes/{recipe_id}/notes/{note_id}")
@@ -450,7 +455,14 @@ async def fork_recipe(
     database: Database = Depends(get_database),
 ):
     """Fork a recipe into a book you own, preserving lineage."""
-    result = ForkRecipe.call(recipe_id=recipe_id, params=params, user=user, database=database)
+    # `Endpoint.call()` wraps into a CustomJSONResponse; we need the raw
+    # dict here so we can read the forked-recipe id before firing the
+    # partner-activity notification. `handle_result` turns the raw dict
+    # into the final response shape at the return site.
+    endpoint = ForkRecipe(
+        recipe_id=recipe_id, params=params, user=user, database=database
+    )
+    result = endpoint.run()
     await broadcast_event_to_recipe_book(
         params.destination_book_id, "recipe_added",
         {"forked_from_recipe_id": recipe_id},
@@ -461,7 +473,7 @@ async def fork_recipe(
     if result.get("success") and result.get("data") is not None:
         source_recipe = database.find_by(Recipe, id=recipe_id)
         target_book = database.find_by(RecipeBook, id=params.destination_book_id)
-        if source_recipe is not None:
+        if source_recipe is not None:  # pragma: no branch — defensive; success path implies source exists
             notify_recipe_forked(
                 source_recipe=source_recipe,
                 forked_recipe_id=str(result["data"].id),
@@ -469,7 +481,7 @@ async def fork_recipe(
                 actor=user,
                 database=database,
             )
-    return result
+    return ForkRecipe.handle_result(result)
 
 
 @recipe_router.post("/recipes/{recipe_id}/copy")

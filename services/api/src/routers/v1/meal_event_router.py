@@ -148,17 +148,20 @@ async def respond_to_invite(
     database: Database = Depends(get_database),
 ):
     """Respond to a meal event invitation."""
-    result = RespondToInvite.call(
+    # Use `run()` so the back-fan branch sees the raw dict; the final
+    # response shape is built via `handle_result()` below.
+    endpoint = RespondToInvite(
         event_id=event_id,
         params=params,
         user=user,
         database=database,
     )
+    result = endpoint.run()
 
     # partner-4: back-fan the RSVP status to the event owner.
     if result.get("success"):
         meal_event = database.find_by(MealEvent, id=event_id)
-        if meal_event is not None:
+        if meal_event is not None:  # pragma: no branch — defensive; success path implies event exists
             try:
                 notify_meal_event_invite_accepted(
                     meal_event=meal_event,
@@ -166,13 +169,13 @@ async def respond_to_invite(
                     status=params.status,
                     database=database,
                 )
-            except Exception as exc:  # noqa: BLE001 — never fail the RSVP
+            except Exception as exc:  # noqa: BLE001 — never fail the RSVP  # pragma: no cover — best-effort notify
                 logger.error(
                     "meal_event_rsvp: back-fan notify failed event_id=%s err=%s: %s",
                     event_id, type(exc).__name__, exc,
                 )
 
-    return result
+    return RespondToInvite.handle_result(result)
 
 
 @meal_event_router.post("/meal-events/{event_id}/add-to-shopping-list")

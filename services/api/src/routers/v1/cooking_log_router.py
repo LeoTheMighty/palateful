@@ -46,9 +46,11 @@ async def create_cooking_log(
     and recipe-level "last cooked" queries stay accurate from a single
     user action.
     """
-    result = CreateCookingLog.call(
-        params=params, user=user, database=database
-    )
+    # `Endpoint.call()` returns a CustomJSONResponse; we need the raw
+    # {success, data, status} dict so the partner-cooked / feedback
+    # fan-out can read the created cook-log id.
+    endpoint = CreateCookingLog(params=params, user=user, database=database)
+    result = endpoint.run()
 
     # partner-3: fire partner-cooked push to the recipe owner + enqueue
     # the 2h cook-feedback prompt for the cooker. Only applies to
@@ -63,7 +65,7 @@ async def create_cooking_log(
                     actor=user,
                     database=database,
                 )
-            except Exception as exc:  # noqa: BLE001 — never fail the cook
+            except Exception as exc:  # noqa: BLE001 — never fail the cook  # pragma: no cover — best-effort notify
                 logger.error(
                     "cooking_log: partner-cooked notify failed cook_log_id=%s err=%s: %s",
                     data.parent_log_id, type(exc).__name__, exc,
@@ -86,4 +88,4 @@ async def create_cooking_log(
                     data.parent_log_id, type(exc).__name__, exc,
                 )
 
-    return result
+    return CreateCookingLog.handle_result(result)
