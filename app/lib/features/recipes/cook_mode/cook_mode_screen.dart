@@ -140,7 +140,9 @@ class _CookModeScreenState extends State<CookModeScreen>
   /// Populate in-memory state from a persisted [state] snapshot.
   /// Steps + ingredients beyond the current recipe's shape are clamped
   /// silently (Path E of the epic — recipe edited since last session);
-  /// a one-shot snackbar explains the shift.
+  /// a one-shot snackbar explains the shift. Timers whose deadlines
+  /// are already past are NOT added back; their labels are surfaced
+  /// in a "while you were away" snackbar (cmr-5).
   void _applyRestoredState(CookSessionState state) {
     final totalSteps = _steps.length;
     int restoredStep = state.currentStep;
@@ -161,6 +163,61 @@ class _CookModeScreenState extends State<CookModeScreen>
         validChecked.add(idx);
       }
     }
+
+    // cmr-5: rebuild timers. Absolute deadline_ms lets us compute
+    // remaining without caring how long the app was backgrounded.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final restoredTimers = <_ActiveTimer>[];
+    final expiredWhileAway = <String>[];
+    for (final saved in state.activeTimers) {
+      final remainingMs = saved.deadlineMs - nowMs;
+      if (remainingMs <= 0) {
+        expiredWhileAway.add(saved.label);
+        continue;
+      }
+      final total = Duration(seconds: saved.totalDurationSeconds);
+      final startTime =
+          DateTime.fromMillisecondsSinceEpoch(saved.deadlineMs).subtract(total);
+      final notifId = _nextNotifId++;
+      final timer = _ActiveTimer(
+        label: saved.label,
+        duration: total,
+        remaining: Duration(milliseconds: remainingMs),
+        startTime: startTime,
+        notifId: notifId,
+        source: saved.source,
+      );
+      // Re-schedule OS notification at the original deadline so the
+      // alert fires whether or not the app is foregrounded. Idempotent
+      // from the OS's perspective — if a phantom notification survived
+      // the kill, rescheduling at the same time is a no-op.
+      _timerNotifService.scheduleTimerNotification(
+        id: notifId,
+        label: saved.label,
+        expiresAt: DateTime.fromMillisecondsSinceEpoch(saved.deadlineMs),
+        recipeId: widget.recipeId,
+        stepIndex: restoredStep,
+        originalDurationSeconds: saved.totalDurationSeconds,
+      );
+      // Live Activities are OS-ephemeral — the kill disposed them.
+      // Resume intentionally does NOT restart them. A new timer started
+      // post-Resume gets a fresh activity via _startTimer.
+      timer.timer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) return;
+        final elapsed = DateTime.now().difference(timer.startTime);
+        final remaining = timer.duration - elapsed;
+        if (remaining.isNegative) {
+          t.cancel();
+          _onTimerComplete(timer);
+        } else {
+          setState(() {
+            timer.remaining = remaining;
+          });
+        }
+      });
+      restoredTimers.add(timer);
+    }
+
     setState(() {
       _currentStep = restoredStep;
       _completedSteps
@@ -169,9 +226,11 @@ class _CookModeScreenState extends State<CookModeScreen>
       _checkedIngredients
         ..clear()
         ..addAll(validChecked);
+      _activeTimers.addAll(restoredTimers);
       _restoredElapsedMs = state.cumulativeElapsedMs;
       _startedAtMs = state.startedAtMs;
     });
+    if (restoredTimers.isNotEmpty) _ensureLiveActivityPulse();
     if (clamped && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -182,6 +241,35 @@ class _CookModeScreenState extends State<CookModeScreen>
         ),
       );
     }
+    if (expiredWhileAway.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_expiredAwayCopy(expiredWhileAway)),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () {},
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Compose the "while you were away" snackbar body. 1 label →
+  /// singular; 2–3 labels → comma list with Oxford "and"; 4+ →
+  /// consolidated count.
+  String _expiredAwayCopy(List<String> labels) {
+    if (labels.length == 1) {
+      return 'While you were away: ${labels.first} timer finished';
+    }
+    if (labels.length <= 3) {
+      final joined = labels.length == 2
+          ? '${labels[0]} and ${labels[1]}'
+          : '${labels.sublist(0, labels.length - 1).join(', ')}, '
+              'and ${labels.last}';
+      return 'While you were away: $joined timers finished';
+    }
+    return 'While you were away: ${labels.length} timers finished';
   }
 
   /// Fire-and-forget read of the user's per-category notification prefs.

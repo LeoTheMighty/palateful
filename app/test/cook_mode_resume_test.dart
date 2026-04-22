@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/cook_mode_test_harness.dart';
 
-CookSessionState _seed({
+CookSessionState seedState({
   String recipeId = 'r1',
   int currentStep = 3,
   List<int> completed = const [0, 1, 2],
@@ -33,7 +33,7 @@ CookSessionState _seed({
   );
 }
 
-Future<void> _prime(String recipeId, CookSessionState state) async {
+Future<void> prime(String recipeId, CookSessionState state) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString(
     CookSessionKey.forRecipe(recipeId),
@@ -42,16 +42,18 @@ Future<void> _prime(String recipeId, CookSessionState state) async {
 }
 
 void main() {
+  late RecordingTimerNotifService timerService;
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    await setUpCookModeHarness();
+    timerService = await setUpCookModeHarness();
   });
 
   tearDown(() {
     tearDownCookModeHarness();
   });
 
-  Future<void> _pumpCookMode(
+  Future<void> pumpCookMode(
     WidgetTester tester, {
     String recipeId = 'r1',
   }) async {
@@ -72,7 +74,7 @@ void main() {
     testWidgets('advancing a step + checking ingredient + starting timer '
         'produces a persisted snapshot on AppLifecycleState.paused',
         (tester) async {
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       // Recipe should have rendered with 3 steps.
       expect(find.text('Do step 1'), findsOneWidget);
 
@@ -112,7 +114,7 @@ void main() {
 
     testWidgets('no prior state mounts fresh at step 0 (regression guard)',
         (tester) async {
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       expect(find.text('Do step 1'), findsOneWidget);
       expect(find.text('Resume'), findsNothing);
       expect(find.text('Start Over'), findsNothing);
@@ -122,8 +124,8 @@ void main() {
   group('cmr-3 — resume gate on entry', () {
     testWidgets('tapping Resume restores step + checks + elapsed baseline',
         (tester) async {
-      await _prime('r1', _seed(currentStep: 2, checked: const ['0', '2']));
-      await _pumpCookMode(tester);
+      await prime('r1', seedState(currentStep: 2, checked: const ['0', '2']));
+      await pumpCookMode(tester);
       expect(find.text('Resume'), findsOneWidget);
       expect(find.text('Start Over'), findsOneWidget);
       await tester.tap(find.text('Resume'));
@@ -141,8 +143,8 @@ void main() {
 
     testWidgets('tapping Start Over clears state and mounts at step 0',
         (tester) async {
-      await _prime('r1', _seed(currentStep: 2));
-      await _pumpCookMode(tester);
+      await prime('r1', seedState(currentStep: 2));
+      await pumpCookMode(tester);
       expect(find.text('Start Over'), findsOneWidget);
       await tester.tap(find.text('Start Over'));
       await tester.pumpAndSettle();
@@ -153,9 +155,9 @@ void main() {
 
     testWidgets('drift clamp: recipe shrank to 3 steps, saved step=15',
         (tester) async {
-      await _prime(
+      await prime(
         'r1',
-        _seed(
+        seedState(
           currentStep: 15,
           completed: const [0, 1, 20],
           // Avoid the pre-existing ingredient-chip overflow by keeping
@@ -163,7 +165,7 @@ void main() {
           checked: const [],
         ),
       );
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       await tester.tap(find.text('Resume'));
       // The clamp path fires a 4s snackbar; pump a few frames so the
       // snackbar slides in without waiting out the full duration.
@@ -188,7 +190,7 @@ void main() {
         CookSessionKey.forRecipe('r1'),
         '{not valid json',
       );
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       expect(find.text('Resume'), findsNothing);
       expect(find.text('Do step 1'), findsOneWidget);
       expect(prefs.getString(CookSessionKey.forRecipe('r1')), isNull);
@@ -196,8 +198,8 @@ void main() {
 
     testWidgets('back-button on gate is consumed (no dismiss)',
         (tester) async {
-      await _prime('r1', _seed());
-      await _pumpCookMode(tester);
+      await prime('r1', seedState());
+      await pumpCookMode(tester);
       expect(find.text('Resume'), findsOneWidget);
       // Simulate Android hardware back button.
       final dispatcher =
@@ -220,7 +222,7 @@ void main() {
   group('cmr-4 — reset affordance + post-cook clear', () {
     testWidgets('overflow menu → Reset cook → confirm clears state + snackbar',
         (tester) async {
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       expect(find.text('Do step 1'), findsOneWidget);
       // Advance to step 2 first so there's state to reset.
       await tester.tap(find.text('Next'));
@@ -244,7 +246,7 @@ void main() {
 
     testWidgets('reset sheet Cancel leaves state alone',
         (tester) async {
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       await tester.tap(find.text('Next'));
       await tester.pump();
       await tester.tap(find.byIcon(Icons.more_vert));
@@ -259,7 +261,7 @@ void main() {
 
     testWidgets('overflow menu is the rightmost header icon after close',
         (tester) async {
-      await _pumpCookMode(tester);
+      await pumpCookMode(tester);
       // Sanity: overflow icon is present.
       expect(find.byIcon(Icons.more_vert), findsOneWidget);
       // The header icons are: back (arrow_back), timer_outlined, close,
@@ -267,6 +269,162 @@ void main() {
       final overflowRect = tester.getRect(find.byIcon(Icons.more_vert));
       final closeRect = tester.getRect(find.byIcon(Icons.close));
       expect(overflowRect.left, greaterThan(closeRect.right));
+    });
+  });
+
+  group('cmr-5 — timer rebuild on resume', () {
+    int msFromNow(Duration d) =>
+        DateTime.now().millisecondsSinceEpoch + d.inMilliseconds;
+    int msAgo(Duration d) =>
+        DateTime.now().millisecondsSinceEpoch - d.inMilliseconds;
+
+    testWidgets('non-expired timer restores + OS notification re-scheduled',
+        (tester) async {
+      await prime(
+        'r1',
+        seedState(
+          currentStep: 1,
+          checked: const [],
+          timers: [
+            SavedTimerState(
+              label: 'simmer',
+              deadlineMs: msFromNow(const Duration(minutes: 5)),
+              totalDurationSeconds: 600,
+              source: 'extracted',
+            ),
+          ],
+        ),
+      );
+      await pumpCookMode(tester);
+      await tester.tap(find.text('Resume'));
+      await tester.pumpAndSettle();
+      // Timer chip should render with an MM:SS countdown in the 04:
+      // range (5m minus a few pump frames).
+      expect(find.textContaining(RegExp(r'0[4-5]:')), findsWidgets);
+      expect(timerService.scheduled.length, 1);
+      expect(timerService.scheduled.first['label'], 'simmer');
+    });
+
+    testWidgets('single expired timer produces singular snackbar',
+        (tester) async {
+      await prime(
+        'r1',
+        seedState(
+          currentStep: 1,
+          checked: const [],
+          timers: [
+            SavedTimerState(
+              label: 'roast',
+              deadlineMs: msAgo(const Duration(minutes: 10)),
+              totalDurationSeconds: 1800,
+              source: 'manual',
+            ),
+          ],
+        ),
+      );
+      await pumpCookMode(tester);
+      await tester.tap(find.text('Resume'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.text('While you were away: roast timer finished'),
+        findsOneWidget,
+      );
+      // No scheduling for expired timers.
+      expect(timerService.scheduled, isEmpty);
+    });
+
+    testWidgets('two expired timers listed with Oxford-and join',
+        (tester) async {
+      await prime(
+        'r1',
+        seedState(
+          currentStep: 1,
+          checked: const [],
+          timers: [
+            SavedTimerState(
+              label: 'simmer',
+              deadlineMs: msAgo(const Duration(minutes: 10)),
+              totalDurationSeconds: 600,
+              source: 'manual',
+            ),
+            SavedTimerState(
+              label: 'bake',
+              deadlineMs: msAgo(const Duration(minutes: 1)),
+              totalDurationSeconds: 1200,
+              source: 'manual',
+            ),
+          ],
+        ),
+      );
+      await pumpCookMode(tester);
+      await tester.tap(find.text('Resume'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.text('While you were away: simmer and bake timers finished'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('four expired timers consolidate to count copy',
+        (tester) async {
+      await prime(
+        'r1',
+        seedState(
+          currentStep: 1,
+          checked: const [],
+          timers: List.generate(
+            4,
+            (i) => SavedTimerState(
+              label: 'timer$i',
+              deadlineMs: msAgo(Duration(minutes: 10 + i)),
+              totalDurationSeconds: 600,
+              source: 'manual',
+            ),
+          ),
+        ),
+      );
+      await pumpCookMode(tester);
+      await tester.tap(find.text('Resume'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.text('While you were away: 4 timers finished'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'clock-skew forward (deadline_ms > 24h in past) is treated expired',
+        (tester) async {
+      await prime(
+        'r1',
+        seedState(
+          currentStep: 1,
+          checked: const [],
+          timers: [
+            SavedTimerState(
+              label: 'ancient',
+              deadlineMs: msAgo(const Duration(days: 2)),
+              totalDurationSeconds: 600,
+              source: 'manual',
+            ),
+          ],
+        ),
+      );
+      await pumpCookMode(tester);
+      await tester.tap(find.text('Resume'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.text('While you were away: ancient timer finished'),
+        findsOneWidget,
+      );
     });
   });
 }

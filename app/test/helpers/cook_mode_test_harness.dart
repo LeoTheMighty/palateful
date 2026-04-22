@@ -7,6 +7,36 @@ import 'package:palateful/core/services/cook_timer_notification_service.dart';
 import 'package:palateful/core/services/live_activity_service.dart';
 import 'package:palateful/core/services/recipe_cache_service.dart';
 
+/// Recording fake that captures `scheduleTimerNotification` calls so
+/// tests can assert re-scheduling behavior on cook-mode Resume.
+class RecordingTimerNotifService extends CookTimerNotificationService {
+  final List<Map<String, dynamic>> scheduled = [];
+
+  @override
+  Future<void> scheduleTimerNotification({
+    required int id,
+    required String label,
+    required DateTime expiresAt,
+    required String recipeId,
+    int? stepIndex,
+    int? originalDurationSeconds,
+  }) async {
+    scheduled.add({
+      'id': id,
+      'label': label,
+      'expiresAt': expiresAt,
+      'recipeId': recipeId,
+      'stepIndex': stepIndex,
+      'originalDurationSeconds': originalDurationSeconds,
+    });
+  }
+
+  @override
+  Future<void> cancelTimerNotification(int id) async {
+    // no-op in tests
+  }
+}
+
 /// Minimal stub of the production FastAPI recipe payload — enough for
 /// `CookModeScreen._populateFromData` to succeed.
 Map<String, dynamic> fakeRecipe({
@@ -84,7 +114,8 @@ class FakeCookModeApiClient extends ApiClient {
 
 /// Registers fakes for every getIt lookup `CookModeScreen` performs.
 /// Call from `setUp`; pair with [tearDownCookModeHarness].
-Future<void> setUpCookModeHarness({
+/// Returns the registered [RecordingTimerNotifService] for assertions.
+Future<RecordingTimerNotifService> setUpCookModeHarness({
   Map<String, dynamic>? recipe,
   Map<String, dynamic>? notificationPrefs,
 }) async {
@@ -101,11 +132,8 @@ Future<void> setUpCookModeHarness({
   if (gi.isRegistered<CookTimerNotificationService>()) {
     gi.unregister<CookTimerNotificationService>();
   }
-  // The production service no-ops every public call when `_initialized`
-  // is false, so an unstarted instance is safe in tests.
-  gi.registerSingleton<CookTimerNotificationService>(
-    CookTimerNotificationService(),
-  );
+  final timerService = RecordingTimerNotifService();
+  gi.registerSingleton<CookTimerNotificationService>(timerService);
   if (gi.isRegistered<LiveActivityService>()) {
     gi.unregister<LiveActivityService>();
   }
@@ -114,6 +142,7 @@ Future<void> setUpCookModeHarness({
     gi.unregister<RecipeCacheService>();
   }
   gi.registerSingleton<RecipeCacheService>(RecipeCacheService());
+  return timerService;
 }
 
 void tearDownCookModeHarness() {
