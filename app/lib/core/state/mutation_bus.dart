@@ -56,6 +56,10 @@ void emitMutation(MutationEvent event) {
   _controller.add(event);
 }
 
+/// Non-Riverpod stream handle on the bus, for getIt services and other
+/// contexts without a `Ref`. Equivalent to `ref.read(mutationBusProvider)`.
+Stream<MutationEvent> mutationBusStream() => _controller.stream;
+
 /// Test-only: does the bus have any active subscriber? Used by
 /// `mutation_bus_test.dart` to assert the singleton does not leak
 /// subscribers across subscribe/dispose cycles.

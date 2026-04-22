@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/state/mutation_bus.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../core/theme/theme.dart';
 import '../recipes/add_recipe/batch_parser_service.dart';
 import '../../core/services/error_reporter.dart';
@@ -187,6 +190,7 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
     final itemIds = jobWithItems.items
         .map((i) => i['id'].toString())
         .toList();
+    final jobId = jobWithItems.job['id']?.toString();
 
     // Optimistic removal
     setState(() {
@@ -194,17 +198,45 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
     });
 
     try {
-      await Future.wait(
+      final responses = await Future.wait(
         itemIds.map((id) => _apiClient.dismissImportItem(id)),
       );
+      // rf-5: emit one ImportItemDismissed per successfully-dismissed
+      // item + one ImportJobDismissed at the end if the parent job
+      // flipped. Subscribers (imports-see-all, activity-read) refetch
+      // or recompute on the event types they care about.
+      for (var i = 0; i < itemIds.length; i++) {
+        final data = responses[i].data;
+        final payload =
+            data is Map ? Map<String, dynamic>.from(data) : null;
+        emitMutation(ImportItemDismissed(
+          itemId: itemIds[i],
+          item: payload?['item'] is Map
+              ? Map<String, dynamic>.from(payload!['item'] as Map)
+              : null,
+          jobDismissed: payload?['job_dismissed'] == true,
+          jobId: jobId,
+        ));
+      }
+      if (jobId != null) {
+        emitMutation(ImportJobDismissed(jobId: jobId));
+      }
     } catch (_) {
-      if (mounted) _loadAttentionView();
+      if (mounted) {
+        _loadAttentionView();
+        showMutationFailureSnackbar(
+          context,
+          MutationType.dismissAllFailed,
+          () => _dismissAllFailed(jobWithItems),
+        );
+      }
     }
   }
 
   Future<void> _dismissSingleItem(
       _JobWithItems jobWithItems, dynamic item) async {
     final itemId = item['id'].toString();
+    final jobId = jobWithItems.job['id']?.toString();
 
     // Optimistic removal
     setState(() {
@@ -215,19 +247,48 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
     });
 
     try {
-      await _apiClient.dismissImportItem(itemId);
+      final response = await _apiClient.dismissImportItem(itemId);
+      final data = response.data;
+      final payload = data is Map ? Map<String, dynamic>.from(data) : null;
+      final jobDismissed = payload?['job_dismissed'] == true;
+      emitMutation(ImportItemDismissed(
+        itemId: itemId,
+        item: payload?['item'] is Map
+            ? Map<String, dynamic>.from(payload!['item'] as Map)
+            : null,
+        jobDismissed: jobDismissed,
+        jobId: jobId,
+      ));
+      if (jobDismissed && jobId != null) {
+        emitMutation(ImportJobDismissed(jobId: jobId));
+      }
     } catch (_) {
-      if (mounted) _loadAttentionView();
+      if (mounted) {
+        _loadAttentionView();
+        showMutationFailureSnackbar(
+          context,
+          MutationType.dismissImportItem,
+          () => _dismissSingleItem(jobWithItems, item),
+        );
+      }
     }
   }
 
   Future<void> _retrySingleItem(
       _JobWithItems jobWithItems, dynamic item) async {
     final itemId = item['id'].toString();
+    final jobId = jobWithItems.job['id']?.toString();
 
     try {
-      await _apiClient.retryImportItem(itemId);
+      final response = await _apiClient.retryImportItem(itemId);
       if (!mounted) return;
+      final data = response.data;
+      final payload = data is Map ? Map<String, dynamic>.from(data) : null;
+      emitMutation(ImportItemRetried(
+        itemId: itemId,
+        item: payload,
+        jobId: jobId,
+      ));
       // Optimistically remove from failed list; the next refresh will
       // pick up the item's new status.
       setState(() {
@@ -242,13 +303,12 @@ class _ImportHistoryScreenState extends State<ImportHistoryScreen> {
           duration: Duration(seconds: 2),
         ),
       );
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Retry failed: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.retryImportItem,
+        () => _retrySingleItem(jobWithItems, item),
       );
     }
   }

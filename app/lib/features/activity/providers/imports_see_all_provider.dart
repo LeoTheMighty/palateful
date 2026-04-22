@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_bus.dart';
 
 /// View model for a See-all row in the Imports tab.
 ///
@@ -78,7 +79,23 @@ class ImportsSeeAllState {
 
 class ImportsSeeAllNotifier extends Notifier<ImportsSeeAllState> {
   @override
-  ImportsSeeAllState build() => ImportsSeeAllState.empty;
+  ImportsSeeAllState build() {
+    // rf-5: refetch from top whenever an import-item event fires on
+    // the MutationBus. Keeps the See-all footer fresh without waiting
+    // on the 30s poll. Subscription torn down on provider dispose.
+    final sub = ref.read(mutationBusProvider).listen((event) {
+      if (event is ImportItemDismissed ||
+          event is ImportItemRetried ||
+          event is ImportJobDismissed) {
+        // Only refetch if the user has already opened See-all.
+        // `hasLoadedFirstPage=false` means the section is closed —
+        // the next open triggers its own fetch anyway.
+        if (state.hasLoadedFirstPage) refreshFromTop();
+      }
+    });
+    ref.onDispose(sub.cancel);
+    return ImportsSeeAllState.empty;
+  }
 
   Future<void> loadNextPage() async {
     if (state.isLoading) return;

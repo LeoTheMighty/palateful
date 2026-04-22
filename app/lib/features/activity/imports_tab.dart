@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/state/mutation_bus.dart';
 import '../../core/theme/import_state_colors.dart';
 import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
@@ -238,6 +239,16 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     String? errorMessage;
     try {
       await _apiClient.archiveImportItem(id);
+      // rf-5: emit so home-surface subscribers (imports-see-all,
+      // activity-read badge) react without waiting on a poll tick.
+      // This is the epic's one UI-handler emit exception — flagged
+      // as cleanup debt in the epic Risks section (pull into an
+      // ImportItemService in a follow-on).
+      emitMutation(ImportItemDismissed(
+        itemId: id,
+        item: null,
+        jobDismissed: false,
+      ));
       // afh-4: See-all count bumps by 1. Fire-and-forget so the
       // snackbar UX stays instant.
       if (mounted) {
@@ -561,6 +572,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     try {
       await _apiClient.retryImportItem(item.id);
       if (!mounted) return;
+      // rf-5: emit so see-all + activity-read refetch immediately.
+      emitMutation(ImportItemRetried(
+        itemId: item.id,
+        item: null,
+      ));
       // Next poll will redraw the row's statusLabel; invalidate
       // telemetry so the expansion's stage timeline refetches once
       // the task completes.

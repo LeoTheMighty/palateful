@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../../core/services/error_reporter.dart';
+import '../../../core/state/mutation_bus.dart';
 
 /// Shared read-state + unread-count cache for the Activity Hub.
 ///
@@ -23,9 +24,31 @@ import '../../../core/services/error_reporter.dart';
 ///    `{count}` shape, `structuredCountsAvailable` flips false and per-tab
 ///    badges are expected to hide (bell still renders).
 class ActivityReadProvider {
-  ActivityReadProvider(this._apiClient);
+  ActivityReadProvider(this._apiClient) {
+    // rf-5: subscribe to import events so the bell badge refreshes
+    // eagerly without waiting on the 30s poll. The poll still runs
+    // to cover cold-start + WS-missed states (epic AC #4 — double
+    // path is intentional).
+    _busSub = mutationBusStream().listen((event) {
+      if (event is ImportItemDismissed ||
+          event is ImportJobDismissed ||
+          event is ImportItemRetried) {
+        refreshUnreadCount();
+      }
+    });
+  }
 
   final ApiClient _apiClient;
+  StreamSubscription<MutationEvent>? _busSub;
+
+  /// Release the MutationBus subscription. Tests call this in tearDown;
+  /// production getIt lifecycle never calls it (the service lives for
+  /// the process lifetime).
+  void dispose() {
+    _busSub?.cancel();
+    _busSub = null;
+    stopPolling();
+  }
 
   /// Combined count (notifications + imports_actionable). Kept for
   /// backwards-compat — callers that only care about "is there anything
