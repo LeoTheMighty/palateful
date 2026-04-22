@@ -8,6 +8,7 @@ import '../../../core/constants/inferable_fields.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/error_reporter.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../../../shared/widgets/error_banner.dart';
 import '../../activity/widgets/import_activity_detail.dart';
 import '../widgets/structured_ingredient_row.dart';
@@ -330,6 +331,15 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   Future<void> _dismiss() async {
     try {
       await _apiClient.skipImportItem(widget.itemId);
+      // Skipping is semantically a dismissal from the user's perspective:
+      // the item leaves Needs Review and lands in Skipped. Emit on the
+      // MutationBus so the Imports tab (and any see-all / activity-read
+      // subscriber) refreshes without waiting for the 30s tick.
+      emitMutation(ImportItemDismissed(
+        itemId: widget.itemId,
+        item: null,
+        jobDismissed: false,
+      ));
       if (mounted) context.pop(false);
     } catch (_) {
       if (mounted) {

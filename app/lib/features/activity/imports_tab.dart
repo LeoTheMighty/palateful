@@ -77,6 +77,13 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   @override
   bool get wantKeepAlive => true;
 
+  /// MutationBus subscription — reloads silently when any import item
+  /// changes elsewhere in the app (e.g., `Dismiss` on the per-item review
+  /// screen, retry from the see-all footer, etc.). Without this the tab's
+  /// local `_needsReview` / `_failed` state goes stale until the 30s tick
+  /// or a manual pull-to-refresh.
+  StreamSubscription<MutationEvent>? _busSub;
+
   @override
   void initState() {
     super.initState();
@@ -87,12 +94,19 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     _disposeTickListener = _readProvider.registerTickListener(
       () => _load(silent: true),
     );
+    _busSub = mutationBusStream().listen((event) {
+      if (event is ImportItemDismissed || event is ImportItemRetried) {
+        _load(silent: true);
+      }
+    });
   }
 
   @override
   void dispose() {
     _disposeTickListener?.call();
     _disposeTickListener = null;
+    _busSub?.cancel();
+    _busSub = null;
     super.dispose();
   }
 
