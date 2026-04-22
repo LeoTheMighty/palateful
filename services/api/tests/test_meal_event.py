@@ -985,6 +985,181 @@ class TestUpdateMealEvent:
         assert data["meal_reminder_time"] is None
         assert data["reminder_time"].startswith("12:00")
 
+    # ------------------------------------------------------------------
+    # meal-4: MEAL_EVENT_UPDATED fan-out on shared-event edits
+    # ------------------------------------------------------------------
+
+    def _setup_shared_event(self, event_id: str, owner_id: str):
+        """Shared event fixture for meal-4 tests. Owner + one accepted
+        other participant. Returns the event so the test can tweak
+        before-state as needed."""
+        event = MockMealEvent(
+            id=event_id,
+            owner_id=owner_id,
+            is_shared=True,
+            participants=[],
+            recipe=None,
+            parent_event_id=None,
+            pantry_id=None,
+        )
+        return event
+
+    def test_update_title_on_shared_event_fires_meal_event_updated(
+        self, client, mock_db, mock_user
+    ):
+        """Title change on a shared event → notify_meal_event_updated
+        called (actor passed through)."""
+        event_id = "evt-upd-shared-title"
+        event = self._setup_shared_event(event_id, str(mock_user.id))
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        with patch(
+            "api.v1.meal_event.update_meal_event.notify_meal_event_updated"
+        ) as notify_mock:
+            response = client.put(
+                f"/v1/meal-events/{event_id}",
+                json={"title": "Updated Title"},
+            )
+
+        assert response.status_code == 200
+        notify_mock.assert_called_once()
+        call_kwargs = notify_mock.call_args.kwargs
+        assert "title" in call_kwargs["changed_fields"]
+        # Actor is the second positional arg (the endpoint's current user).
+        actor = notify_mock.call_args.args[1]
+        assert str(actor.id) == str(mock_user.id)
+
+    def test_update_scheduled_at_only_passes_new_time_to_copy(
+        self, client, mock_db, mock_user
+    ):
+        """When ONLY scheduled_at changed, `new_time` is formatted and
+        passed through — that triggers the time-specific copy variant."""
+        event_id = "evt-upd-shared-time"
+        event = self._setup_shared_event(event_id, str(mock_user.id))
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        with patch(
+            "api.v1.meal_event.update_meal_event.notify_meal_event_updated"
+        ) as notify_mock:
+            response = client.put(
+                f"/v1/meal-events/{event_id}",
+                json={
+                    "scheduled_at": datetime(2026, 5, 1, 18, 30, tzinfo=UTC).isoformat(),
+                },
+            )
+
+        assert response.status_code == 200
+        notify_mock.assert_called_once()
+        kwargs = notify_mock.call_args.kwargs
+        assert kwargs["changed_fields"] == ["scheduled_at"]
+        assert kwargs["new_time"] is not None
+        assert "PM" in kwargs["new_time"] or "AM" in kwargs["new_time"]
+
+    def test_update_description_only_does_not_fire_notification(
+        self, client, mock_db, mock_user
+    ):
+        """Description is not in the trigger set → no fan-out."""
+        event_id = "evt-upd-shared-desc"
+        event = self._setup_shared_event(event_id, str(mock_user.id))
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        with patch(
+            "api.v1.meal_event.update_meal_event.notify_meal_event_updated"
+        ) as notify_mock:
+            response = client.put(
+                f"/v1/meal-events/{event_id}",
+                json={"description": "new description"},
+            )
+
+        assert response.status_code == 200
+        notify_mock.assert_not_called()
+
+    def test_update_title_on_nonshared_event_does_not_fire(
+        self, client, mock_db, mock_user
+    ):
+        """Non-shared event → fan-out is a no-op (no co-cooks to wake)."""
+        event_id = "evt-upd-solo-title"
+        event = MockMealEvent(
+            id=event_id,
+            owner_id=str(mock_user.id),
+            is_shared=False,
+            participants=[], recipe=None, parent_event_id=None,
+            pantry_id=None,
+        )
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        with patch(
+            "api.v1.meal_event.update_meal_event.notify_meal_event_updated"
+        ) as notify_mock:
+            response = client.put(
+                f"/v1/meal-events/{event_id}",
+                json={"title": "Solo title"},
+            )
+
+        assert response.status_code == 200
+        notify_mock.assert_not_called()
+
+    def test_update_fanout_exception_does_not_500(
+        self, client, mock_db, mock_user
+    ):
+        """A raise from the fan-out helper must not propagate — the
+        edit already committed, so we log and return 200."""
+        event_id = "evt-upd-shared-err"
+        event = self._setup_shared_event(event_id, str(mock_user.id))
+
+        from utils.models.meal_event import MealEvent
+        from utils.models.meal_event_participant import MealEventParticipant
+
+        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_db.set_find_by(
+            MealEventParticipant, None,
+            meal_event_id=event_id, user_id=str(mock_user.id),
+        )
+
+        with patch(
+            "api.v1.meal_event.update_meal_event.notify_meal_event_updated",
+            side_effect=RuntimeError("fan-out blew up"),
+        ):
+            response = client.put(
+                f"/v1/meal-events/{event_id}",
+                json={"title": "Will still succeed"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["title"] == "Will still succeed"
+
     def test_update_as_cohost(self, client, mock_db, mock_user):
         """Test updating as a cohost."""
         event_id = "evt-upd-2"

@@ -18,11 +18,50 @@ from utils.events import MealEventCompleted, dispatch
 from utils.models.meal_event import MealEvent
 from utils.models.recipe import Recipe
 from utils.models.user import User
+from utils.services.meal_event_notifications import notify_meal_event_updated
 
 logger = logging.getLogger(__name__)
 
 VALID_STATUSES = ["planned", "shopping", "prepping", "cooking", "completed", "skipped"]
 VALID_MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"]
+
+# Fields whose mutation should trigger MEAL_EVENT_UPDATED. Intentionally
+# narrower than the full PATCH surface — edits to `description`,
+# notification offsets, etc. shouldn't wake co-cooks.
+_NOTIFY_TRIGGER_FIELDS: frozenset[str] = frozenset(
+    {"title", "scheduled_at", "recipe_id", "meal_id", "meal_reminder_time"}
+)
+
+
+def _compute_changed_fields(
+    before: dict, meal_event: MealEvent
+) -> list[str]:
+    """Diff the pre-commit snapshot against the refreshed row; return
+    the subset of `_NOTIFY_TRIGGER_FIELDS` whose value changed."""
+    changed: list[str] = []
+    after_map = {
+        "title": meal_event.title,
+        "scheduled_at": meal_event.scheduled_at,
+        "recipe_id": meal_event.recipe_id,
+        "meal_id": meal_event.meal_id,
+        "meal_reminder_time": meal_event.meal_reminder_time,
+    }
+    for key in _NOTIFY_TRIGGER_FIELDS:
+        if before.get(key) != after_map.get(key):
+            changed.append(key)
+    return changed
+
+
+def _format_new_time(scheduled_at: datetime) -> str:
+    """Human-friendly 12h time for the "moved to X" notification title.
+    Uses UTC (server tz) — recipient tz localization happens on-device
+    when the deep-link opens the detail screen. For the body text
+    that's fine; the precise wall-clock is in the detail view."""
+    hour24 = scheduled_at.hour
+    hour12 = 12 if hour24 == 0 else (hour24 - 12 if hour24 > 12 else hour24)
+    ampm = "AM" if hour24 < 12 else "PM"
+    minute_str = f"{scheduled_at.minute:02d}"
+    return f"{hour12}:{minute_str} {ampm}"
 
 
 class UpdateMealEvent(Endpoint):
@@ -133,6 +172,19 @@ class UpdateMealEvent(Endpoint):
 
         # Capture pre-update state for pantry-4 event dispatch.
         previous_status = meal_event.status
+        # Capture pre-update state for meal-4 MEAL_EVENT_UPDATED
+        # dispatch. We diff the request payload against these snapshots
+        # AFTER commit to decide which recipients (if any) should be
+        # notified. Holding primitives, not the loaded row, avoids any
+        # subtle "was this column re-bound?" issues.
+        before = {
+            "title": meal_event.title,
+            "scheduled_at": meal_event.scheduled_at,
+            "recipe_id": meal_event.recipe_id,
+            "meal_id": meal_event.meal_id,
+            "meal_reminder_time": meal_event.meal_reminder_time,
+        }
+        was_shared = bool(meal_event.is_shared)
 
         # Update fields
         if params.title is not None:
@@ -180,6 +232,38 @@ class UpdateMealEvent(Endpoint):
 
         self.database.db.commit()
         self.database.db.refresh(meal_event)
+
+        # meal-4: fan MEAL_EVENT_UPDATED to accepted participants when a
+        # SHARED event's user-visible fields changed. We skip when the
+        # event wasn't shared before AND isn't shared now — the
+        # notification only makes sense between co-cooks. Per-recipient
+        # prefs + quiet hours apply inside the notify function.
+        changed_fields = _compute_changed_fields(before, meal_event)
+        should_notify_update = (
+            (was_shared or meal_event.is_shared)
+            and bool(changed_fields)
+        )
+        if should_notify_update:
+            try:
+                new_time_display = (
+                    _format_new_time(meal_event.scheduled_at)
+                    if "scheduled_at" in changed_fields
+                    else None
+                )
+                notify_meal_event_updated(
+                    meal_event,
+                    user,
+                    changed_fields=changed_fields,
+                    new_time=new_time_display,
+                    db_session=self.database.db,
+                )
+            except Exception:
+                # Best-effort — a push-fanout failure must never 500 the
+                # PATCH (the user's edit already committed).
+                logger.exception(
+                    "meal_event_updated_fanout_failed meal_event_id=%s",
+                    meal_event.id,
+                )
 
         # Pantry decrement hook (pantry-4). Only fires on the transition
         # into "completed" — re-submitting completed→completed is a no-op
