@@ -11,6 +11,8 @@ import 'package:shimmer/shimmer.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../services/share_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/push_notification_service.dart';
@@ -19,6 +21,7 @@ import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../chat/chat_service.dart';
 import 'services/feedback_cache_service.dart';
+import 'services/profile_service.dart';
 import 'widgets/feedback_sheet.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:io' show Platform;
@@ -35,6 +38,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   final _apiClient = getIt<ApiClient>();
   final _authService = getIt<AuthService>();
   final _feedbackCache = FeedbackCacheService();
+  final _profileService = getIt<ProfileService>();
 
   bool _isLoading = true;
   bool _isExporting = false;
@@ -110,7 +114,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         final body = entry['body'] as String?;
         if (body == null || body.isEmpty) continue;
         try {
-          await _apiClient.submitFeedback(
+          await _profileService.submitFeedback(
             body: body,
             category: entry['category'] as String?,
             context: entry['context'] as Map<String, dynamic>?,
@@ -285,7 +289,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                           });
 
                           try {
-                            await _apiClient.updateProfile(name: newName);
+                            await _profileService.updateProfile(name: newName);
                             if (context.mounted) {
                               Navigator.of(context).pop(newName);
                             }
@@ -510,7 +514,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
                           });
 
                           try {
-                            await _apiClient.setUsername(newUsername);
+                            await _profileService.setUsername(newUsername);
                             debounceTimer?.cancel();
                             if (context.mounted) {
                               Navigator.of(context).pop(newUsername);
@@ -560,8 +564,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     if (_isExporting) return;
     setState(() => _isExporting = true);
     try {
-      final response = await _apiClient.exportRecipes();
-      final jsonString = jsonEncode(response.data);
+      final payload = await _profileService.exportRecipes();
+      final jsonString = jsonEncode(payload);
       final bytes = Uint8List.fromList(utf8.encode(jsonString));
       final timestamp = DateTime.now()
           .toIso8601String()
@@ -580,8 +584,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       );
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Export failed — please try again')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.exportRecipes,
+          _exportCollection,
         );
       }
     } finally {

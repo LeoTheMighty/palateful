@@ -5,7 +5,10 @@ import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/services/push_notification_service.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'services/notification_prefs_service.dart';
 
 class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({super.key});
@@ -19,6 +22,7 @@ class _NotificationPreferencesScreenState
     extends State<NotificationPreferencesScreen> {
   final _apiClient = getIt<ApiClient>();
   final _pushService = getIt<PushNotificationService>();
+  final _prefsService = getIt<NotificationPrefsService>();
 
   bool _isLoading = true;
   String? _error;
@@ -182,6 +186,10 @@ class _NotificationPreferencesScreenState
     return result;
   }
 
+  /// rp-2 AC #5 — optimistic toggle. The visible switch flips within
+  /// one frame of the tap (`setState` synchronous); on failure, we
+  /// revert via `setState` AND route through `showMutationFailureSnackbar`
+  /// with the (now noop) rollback callback, preserving today's UX.
   Future<void> _toggleCategory(String key, bool value) async {
     final previous = _categories[key] ?? true;
     if (previous == value) return;
@@ -189,9 +197,7 @@ class _NotificationPreferencesScreenState
       _categories = {..._categories, key: value};
     });
     try {
-      await _apiClient.updateNotificationPreferences(
-        categories: {key: value},
-      );
+      await _prefsService.updateCategoryPref(category: key, enabled: value);
     } catch (e, st) {
       ErrorReporter.report(
         e,
@@ -200,12 +206,16 @@ class _NotificationPreferencesScreenState
         operation: 'preferences.category.save',
       );
       if (!mounted) return;
-      // Revert local state on failure.
+      // Revert local state on failure (rollback already applied in
+      // setState below; passing `rollback: null` to the helper because
+      // we're already mounted-and-rendered in the reverted state).
       setState(() {
         _categories = {..._categories, key: previous};
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to save preference.')),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.updateNotificationPrefs,
+        () => _toggleCategory(key, value),
       );
     }
   }
@@ -219,7 +229,7 @@ class _NotificationPreferencesScreenState
     String? timezone,
   }) async {
     try {
-      await _apiClient.updateNotificationPreferences(
+      await _prefsService.updateNotificationPreferences(
         pushEnabled: pushEnabled,
         partnerActivity: partnerActivity,
         autoApproveImports: autoApproveImports,
@@ -235,10 +245,19 @@ class _NotificationPreferencesScreenState
         operation: 'preferences.save',
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to save preference.')),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.updateNotificationPrefs,
+        () => _updatePreference(
+          pushEnabled: pushEnabled,
+          partnerActivity: partnerActivity,
+          autoApproveImports: autoApproveImports,
+          quietHoursStart: quietHoursStart,
+          quietHoursEnd: quietHoursEnd,
+          timezone: timezone,
+        ),
       );
-      // Reload to get server state
+      // Reload to get server state.
       _loadPreferences();
     }
   }
