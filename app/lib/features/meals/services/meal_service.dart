@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/services/api_client.dart';
+import '../../../core/state/mutation_bus.dart';
 import '../models/meal.dart';
 
 /// Typed exception for the 422 `COMPONENT_UNAVAILABLE` response — the
@@ -138,7 +139,13 @@ class MealService {
           'description': description,
         'component_recipe_ids': componentRecipeIds,
       });
-      return Meal.fromJson(response.data as Map<String, dynamic>);
+      final payload = response.data as Map<String, dynamic>;
+      emitMutation(MealCreated(
+        mealId: payload['id']?.toString() ?? '',
+        meal: payload,
+        bookId: payload['recipe_book_id']?.toString() ?? bookId,
+      ));
+      return Meal.fromJson(payload);
     } on DioException catch (e) {
       _rethrowTyped(e);
     }
@@ -153,7 +160,9 @@ class MealService {
     if (name != null) data['name'] = name;
     if (description != null) data['description'] = description;
     final response = await _apiClient.updateMeal(mealId, data);
-    return Meal.fromJson(response.data as Map<String, dynamic>);
+    final payload = response.data as Map<String, dynamic>;
+    emitMutation(MealUpdated(mealId: mealId, meal: payload));
+    return Meal.fromJson(payload);
   }
 
   Future<Meal> addRecipeToMeal(
@@ -166,7 +175,13 @@ class MealService {
         'recipe_id': recipeId,
         if (orderIndex != null) 'order_index': orderIndex,
       });
-      return Meal.fromJson(response.data as Map<String, dynamic>);
+      final payload = response.data as Map<String, dynamic>;
+      emitMutation(MealComponentAdded(
+        mealId: mealId,
+        recipeId: recipeId,
+        meal: payload,
+      ));
+      return Meal.fromJson(payload);
     } on DioException catch (e) {
       _rethrowTyped(e);
     }
@@ -179,7 +194,13 @@ class MealService {
     try {
       final response =
           await _apiClient.removeRecipeFromMeal(mealId, recipeId);
-      return Meal.fromJson(response.data as Map<String, dynamic>);
+      final payload = response.data as Map<String, dynamic>;
+      emitMutation(MealComponentRemoved(
+        mealId: mealId,
+        recipeId: recipeId,
+        meal: payload,
+      ));
+      return Meal.fromJson(payload);
     } on DioException catch (e) {
       _rethrowTyped(e);
     }
@@ -193,30 +214,89 @@ class MealService {
       final response = await _apiClient.reorderMealComponents(mealId, {
         'recipe_ids': recipeIds,
       });
-      return Meal.fromJson(response.data as Map<String, dynamic>);
+      final payload = response.data as Map<String, dynamic>;
+      emitMutation(MealComponentsReordered(mealId: mealId, meal: payload));
+      return Meal.fromJson(payload);
     } on DioException catch (e) {
       _rethrowTyped(e);
     }
   }
 
-  Future<void> archiveMeal(String mealId) async {
+  Future<void> archiveMeal(
+    String mealId, {
+    required String bookId,
+  }) async {
     await _apiClient.archiveMeal(mealId);
+    emitMutation(MealArchived(mealId: mealId, bookId: bookId));
   }
 
-  Future<void> restoreMeal(String mealId) async {
-    await _apiClient.restoreMeal(mealId);
+  Future<void> restoreMeal(
+    String mealId, {
+    required String bookId,
+  }) async {
+    final response = await _apiClient.restoreMeal(mealId);
+    final raw = response.data;
+    Map<String, dynamic>? meal;
+    if (raw is Map && raw.containsKey('id')) {
+      meal = Map<String, dynamic>.from(raw);
+    }
+    emitMutation(MealUnarchived(
+      mealId: mealId,
+      bookId: bookId,
+      meal: meal,
+    ));
   }
 
-  Future<bool> favoriteMeal(String mealId) async {
+  /// Toggle favorite on. Post rf-2 the server returns the full
+  /// `MealResponse`; the service emits [MealFavorited] with the full
+  /// payload so `mealByIdProvider` can patch in place. Pre-rf-2 slim
+  /// shape `{is_favorite: bool}` is handled by emitting with
+  /// `meal: null` — subscribers fall back to invalidate.
+  Future<bool> favoriteMeal(
+    String mealId, {
+    required String bookId,
+  }) async {
     final response = await _apiClient.favoriteMeal(mealId);
-    final data = response.data as Map<String, dynamic>;
-    return data['is_favorite'] as bool? ?? true;
+    return _emitFavorite(
+      response: response,
+      mealId: mealId,
+      bookId: bookId,
+      isFavoritedFallback: true,
+    );
   }
 
-  Future<bool> unfavoriteMeal(String mealId) async {
+  Future<bool> unfavoriteMeal(
+    String mealId, {
+    required String bookId,
+  }) async {
     final response = await _apiClient.unfavoriteMeal(mealId);
-    final data = response.data as Map<String, dynamic>;
-    return data['is_favorite'] as bool? ?? false;
+    return _emitFavorite(
+      response: response,
+      mealId: mealId,
+      bookId: bookId,
+      isFavoritedFallback: false,
+    );
+  }
+
+  bool _emitFavorite({
+    required Response response,
+    required String mealId,
+    required String bookId,
+    required bool isFavoritedFallback,
+  }) {
+    final payload = response.data as Map<String, dynamic>;
+    // Post-rf-2 the endpoint returns a full Meal (has `components`).
+    // Legacy slim shape is `{is_favorite: bool}` with no components.
+    final hasFullMeal = payload.containsKey('components');
+    final isFavorited =
+        (payload['is_favorite'] as bool?) ?? isFavoritedFallback;
+    emitMutation(MealFavorited(
+      mealId: mealId,
+      bookId: bookId,
+      isFavorited: isFavorited,
+      meal: hasFullMeal ? payload : null,
+    ));
+    return isFavorited;
   }
 
   /// msa-1 / msa-2: generate (or re-fetch) the public share link for a
@@ -225,8 +305,10 @@ class MealService {
   Future<ShareMealResult> share(String mealId) async {
     final response = await _apiClient.shareMeal(mealId);
     final data = response.data as Map<String, dynamic>;
+    final token = data['token'] as String;
+    emitMutation(MealShared(mealId: mealId, shareToken: token));
     return ShareMealResult(
-      token: data['token'] as String,
+      token: token,
       deepLink: data['deep_link'] as String,
     );
   }

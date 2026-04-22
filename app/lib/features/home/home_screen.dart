@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
-import '../../core/services/api_client.dart';
 import '../../core/state/mutation_failure_copy.dart';
 import '../../core/state/mutation_snackbar.dart';
 import '../recipes/providers/recipe_provider.dart';
@@ -41,8 +40,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final _apiClient = getIt<ApiClient>();
-
   /// rf-3: `_allRecipes`, `_allMeals`, `_favorites`, `_favoriteIds`,
   /// `_favoriteMealIds`, `_todayMealEvent`, `_recentlyCooked` are mirrors
   /// of the pristine data `homeContentProvider` emits. They're kept as
@@ -161,10 +158,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     try {
+      final mealService = getIt<MealService>();
       if (wasFav) {
-        await _apiClient.unfavoriteMeal(mealId);
+        await mealService.unfavoriteMeal(mealId, bookId: meal.recipeBookId);
       } else {
-        await _apiClient.favoriteMeal(mealId);
+        await mealService.favoriteMeal(mealId, bookId: meal.recipeBookId);
       }
     } catch (_) {
       if (!mounted) return;
@@ -707,12 +705,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         final mealTargets = mealIds.map((id) {
           final item = _findMealItem(id);
           final name = (item is Map) ? (item['name']?.toString() ?? id) : id;
-          return _ArchiveMealTarget(id, name);
+          final bookId = (item is Map)
+              ? (item['recipe_book_id']?.toString() ?? '')
+              : '';
+          return _ArchiveMealTarget(id, name, bookId);
         }).toList();
         final mealService = getIt<MealService>();
         futures.add(runBulkOperations<_ArchiveMealTarget>(
           items: mealTargets,
-          operation: (t) => mealService.archiveMeal(t.mealId),
+          operation: (t) =>
+              mealService.archiveMeal(t.mealId, bookId: t.bookId),
           nameOf: (t) => t.name,
           bulkOp: BulkOperation.archive,
         ));
@@ -1338,5 +1340,6 @@ class _AddToMealTarget {
 class _ArchiveMealTarget {
   final String mealId;
   final String name;
-  const _ArchiveMealTarget(this.mealId, this.name);
+  final String bookId;
+  const _ArchiveMealTarget(this.mealId, this.name, this.bookId);
 }

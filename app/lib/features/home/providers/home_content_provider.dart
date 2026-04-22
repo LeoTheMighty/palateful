@@ -87,7 +87,11 @@ bool _shouldInvalidate(MutationEvent event) => switch (event) {
       MealCreated() ||
       MealUpdated() ||
       MealArchived() ||
-      MealFavorited() =>
+      MealUnarchived() ||
+      MealFavorited() ||
+      MealComponentAdded() ||
+      MealComponentRemoved() ||
+      MealComponentsReordered() =>
         true,
       _ => false,
     };

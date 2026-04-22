@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/error_banner.dart';
 import 'models/meal.dart';
 import 'providers/meals_provider.dart';
@@ -74,8 +76,10 @@ class _MealEditScreenState extends ConsumerState<MealEditScreen> {
       );
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not save meal')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.updateMeal,
+          _saveNameDescription,
         );
       }
     }
@@ -104,8 +108,10 @@ class _MealEditScreenState extends ConsumerState<MealEditScreen> {
       );
       if (!mounted) return;
       setState(() => _components = original);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not reorder. Please try again.')),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.reorderComponents,
+        () => _reorderComponents(oldIndex, newIndex),
       );
     }
   }
@@ -148,8 +154,10 @@ class _MealEditScreenState extends ConsumerState<MealEditScreen> {
       );
       if (!mounted) return;
       setState(() => _components = original);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not remove recipe')),
+      showMutationFailureSnackbar(
+        context,
+        MutationType.removeComponent,
+        () => _removeComponent(c),
       );
     }
   }
@@ -177,13 +185,14 @@ class _MealEditScreenState extends ConsumerState<MealEditScreen> {
           operation: 'addRecipe',
         );
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not add ${p.name}')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.addComponent,
+          () => _service.addRecipeToMeal(widget.mealId, recipeId: p.id),
         );
         continue;
       }
     }
-    invalidateMeal(ref, widget.mealId, bookId: _bookId);
   }
 
   @override

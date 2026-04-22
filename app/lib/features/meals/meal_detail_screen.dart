@@ -6,6 +6,8 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/error_reporter.dart';
+import '../../core/state/mutation_failure_copy.dart';
+import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
 import '../shopping_cart/models/shopping_list.dart';
@@ -44,11 +46,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
     });
     try {
       if (currentlyFav) {
-        await _service.unfavoriteMeal(meal.id);
+        await _service.unfavoriteMeal(meal.id, bookId: meal.recipeBookId);
       } else {
-        await _service.favoriteMeal(meal.id);
+        await _service.favoriteMeal(meal.id, bookId: meal.recipeBookId);
       }
-      invalidateMeal(ref, meal.id, bookId: meal.recipeBookId);
       if (mounted) {
         setState(() {
           _optimisticFavorite = null;
@@ -67,8 +68,12 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
           _optimisticFavorite = currentlyFav;
           _busyFavorite = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not update favorite')),
+        showMutationFailureSnackbar(
+          context,
+          currentlyFav
+              ? MutationType.unfavoriteMeal
+              : MutationType.favoriteMeal,
+          () => _toggleFavorite(meal),
         );
       }
     }
@@ -97,10 +102,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
         operation: 'shareMeal',
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Couldn't generate share link. Try again."),
-          ),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.shareMeal,
+          () => _shareMeal(meal),
         );
       }
     } finally {
@@ -249,8 +254,7 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
     if (confirmed != true) return;
     setState(() => _busyArchive = true);
     try {
-      await _service.archiveMeal(meal.id);
-      invalidateMeal(ref, meal.id, bookId: meal.recipeBookId);
+      await _service.archiveMeal(meal.id, bookId: meal.recipeBookId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Meal archived')),
@@ -266,8 +270,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
       );
       if (mounted) {
         setState(() => _busyArchive = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not archive meal')),
+        showMutationFailureSnackbar(
+          context,
+          MutationType.archiveMeal,
+          () => _archiveMeal(meal),
         );
       }
     }

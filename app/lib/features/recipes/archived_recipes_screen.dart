@@ -102,7 +102,7 @@ class _ArchivedRecipesScreenState extends State<ArchivedRecipesScreen> {
     _restoringIds.add(meal.id);
     try {
       HapticFeedback.selectionClick();
-      await _mealService.restoreMeal(meal.id);
+      await _mealService.restoreMeal(meal.id, bookId: meal.recipeBookId);
       if (mounted) {
         setState(() {
           _archivedMeals =

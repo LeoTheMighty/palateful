@@ -9,7 +9,6 @@ import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/meals/meal_detail_screen.dart';
 import 'package:palateful/features/meals/meal_edit_screen.dart';
 import 'package:palateful/features/meals/models/meal.dart';
-import 'package:palateful/features/meals/providers/meals_provider.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
 
 class _FakeApi extends ApiClient {}
@@ -53,21 +52,21 @@ class _FakeMealService extends MealService {
   Future<Meal> getMeal(String mealId) async => stubbedMeal;
 
   @override
-  Future<bool> favoriteMeal(String mealId) async {
+  Future<bool> favoriteMeal(String mealId, {required String bookId}) async {
     favoriteCalls++;
     if (favoriteError != null) throw favoriteError!;
     return true;
   }
 
   @override
-  Future<bool> unfavoriteMeal(String mealId) async {
+  Future<bool> unfavoriteMeal(String mealId, {required String bookId}) async {
     unfavoriteCalls++;
     if (favoriteError != null) throw favoriteError!;
     return false;
   }
 
   @override
-  Future<void> archiveMeal(String mealId) async {
+  Future<void> archiveMeal(String mealId, {required String bookId}) async {
     archiveCalls++;
     if (archiveError != null) throw archiveError!;
   }
@@ -176,7 +175,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('Could not update favorite'), findsOneWidget);
+    expect(find.text("Couldn't favorite meal"), findsOneWidget);
     // State rolled back — icon stays at outline.
     expect(find.byIcon(Icons.favorite_border), findsOneWidget);
   });
@@ -294,10 +293,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(
-      find.text("Couldn't generate share link. Try again."),
-      findsOneWidget,
-    );
+    expect(find.text("Couldn't share meal"), findsOneWidget);
   });
 
   testWidgets('plan/shop actions are live as of mcal-9; share is live',

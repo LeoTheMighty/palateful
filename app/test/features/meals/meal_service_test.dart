@@ -222,15 +222,15 @@ void main() {
     test('archiveMeal + restoreMeal', () async {
       api.stubOk('archiveMeal', {'success': true});
       api.stubOk('restoreMeal', {'success': true});
-      await service.archiveMeal('meal-1');
-      await service.restoreMeal('meal-1');
+      await service.archiveMeal('meal-1', bookId: 'b');
+      await service.restoreMeal('meal-1', bookId: 'b');
     });
 
     test('favorite + unfavorite', () async {
       api.stubOk('favoriteMeal', {'is_favorite': true});
       api.stubOk('unfavoriteMeal', {'is_favorite': false});
-      expect(await service.favoriteMeal('meal-1'), true);
-      expect(await service.unfavoriteMeal('meal-1'), false);
+      expect(await service.favoriteMeal('meal-1', bookId: 'b'), true);
+      expect(await service.unfavoriteMeal('meal-1', bookId: 'b'), false);
     });
   });
 
