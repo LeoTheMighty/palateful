@@ -1027,13 +1027,13 @@ development_status:
   # response-shape fixes (dismiss returns full ImportItem; favorite returns
   # full resource). Kills both named dogfood bugs. Blocks the two migration
   # epics. 6 stories; ~3 frontend + 1 backend + 2 regression.
-  epic-reactive-foundation-home-imports: backlog
+  epic-reactive-foundation-home-imports: done
   rf-1-mutation-bus-primitive-and-convention-docs: done
   rf-2-backend-dismiss-and-favorite-full-object-responses: done
   rf-3-home-screen-migration-to-home-content-provider: done
   rf-4-recipe-mutation-sites-emit-events: done
   rf-5-imports-tab-and-activity-badge-reactivity: done
-  rf-6-regression-sweep-and-end-to-end-tests: backlog
+  rf-6-regression-sweep-and-end-to-end-tests: done
   epic-reactive-foundation-home-imports-retrospective: optional
 
   # epic-reactive-migration-meals-calendar — Apply the MutationBus pattern to
