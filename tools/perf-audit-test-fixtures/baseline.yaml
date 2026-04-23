@@ -1,0 +1,12 @@
+# ptd-8 — paired synthetic baseline that matches observed.csv.
+# Feeding observed.csv against this budget should produce a clean
+# exit. Confirms the assert-logic's happy path still works.
+screens:
+  home:
+    total: 5
+    endpoints:
+      GET /v1/cooking-logs: 1
+      GET /v1/favorites: 1
+      GET /v1/meal-events: 1
+      GET /v1/meals: 1
+      GET /v1/recipe-books: 1

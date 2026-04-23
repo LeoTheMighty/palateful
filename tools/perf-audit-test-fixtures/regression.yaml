@@ -1,0 +1,18 @@
+# ptd-8 — synthetic budget for the perf-audit self-test.
+#
+# Deliberately UNDER-SIZED: observed home fires 5 GETs (the real
+# baseline), this budget pins home at 3. The self-test feeds the
+# canonical observed CSV into perf-audit-diff.py against this budget
+# and asserts a non-zero exit.
+#
+# If the assert logic silently passes when it should fail, the self-
+# test catches it — "tests for the test."
+screens:
+  home:
+    total: 3
+    endpoints:
+      GET /v1/recipe-books: 1
+      GET /v1/favorites: 1
+      GET /v1/meals: 1
+      GET /v1/meal-events: 0
+      GET /v1/cooking-logs: 0

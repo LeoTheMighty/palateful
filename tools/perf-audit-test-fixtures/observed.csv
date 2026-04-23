@@ -1,0 +1,5 @@
+PERF_AUDIT_CSV,home,GET /v1/recipe-books,1
+PERF_AUDIT_CSV,home,GET /v1/favorites,1
+PERF_AUDIT_CSV,home,GET /v1/meals,1
+PERF_AUDIT_CSV,home,GET /v1/meal-events,1
+PERF_AUDIT_CSV,home,GET /v1/cooking-logs,1
