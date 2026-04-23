@@ -8,6 +8,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'firebase_options.dart';
+import 'core/debug/perf_dio_interceptor.dart';
+import 'core/debug/perf_overlay.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/services/auth_service.dart';
@@ -49,6 +51,13 @@ void main() async {
   // from the reporter side — a failing mirror POST is swallowed.
   ErrorReporter.bindApiClient(getIt<ApiClient>());
 
+  // ptd-1: attach the debug-only perf interceptor so the [PerfOverlay]
+  // (installed as the MaterialApp builder below) shows live HTTP
+  // request timings. Release builds skip this entirely.
+  if (kDebugMode) {
+    getIt<ApiClient>().dio.interceptors.add(PerfDioInterceptor());
+  }
+
   // Prune cook sessions older than 30 days on startup (epic-cook-mode-resume).
   unawaited(CookSessionPersister().pruneStaleOlderThan(const Duration(days: 30)));
 
@@ -76,8 +85,9 @@ void main() async {
     );
   });
 
-  // Initialize local timer notifications unconditionally (no auth required — purely local OS APIs)
-  if (!kE2EMode) {
+  // Initialize local timer notifications unconditionally (no auth required — purely local OS APIs).
+  // Web skipped: both services call dart:io Platform APIs which throw on web.
+  if (!kE2EMode && !kIsWeb) {
     final timerService = getIt<CookTimerNotificationService>();
     await timerService.initialize();
     // Live Activities (iOS-only; the service no-ops on other platforms).
@@ -383,6 +393,10 @@ class _PalatefulAppState extends ConsumerState<PalatefulApp>
       themeMode: themeMode,
       routerConfig: appRouter,
       debugShowCheckedModeBanner: false,
+      // ptd-1: debug-only overlay listing recent HTTP requests.
+      // Returns child unwrapped in release — zero cost off-debug.
+      builder: (context, child) =>
+          PerfOverlay(child: child ?? const SizedBox.shrink()),
     );
   }
 }
