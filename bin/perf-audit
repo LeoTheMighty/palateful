@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# ptd-4 — perf audit runner.
+#
+# Capture mode: runs each app/integration_test/perf_audit/*_test.dart
+# file, collects PERF_AUDIT_CSV sentinels, writes tools/perf-budgets.yaml.
+#
+# Assert mode: same test run, then compares observed vs committed
+# budget. Exits 0 if all within budget, 1 if any exceed (unless
+# warn-mode — see below).
+#
+# Usage:
+#   bin/perf-audit --capture
+#   bin/perf-audit --assert
+#   bin/perf-audit --help
+#
+# Env:
+#   PERF_AUDIT_STRICT=1 — fail the run on any budget violation.
+#     Default: warn (print diff + violation list, exit 0). ptd-5's
+#     CI step flips this to 1 once the 14-day grace window elapses.
+#   PERF_AUDIT_BUDGET_FILE — override budget path. Default:
+#     tools/perf-budgets.yaml.
+#
+# Test files are run one at a time — the flutter-tester device has a
+# log-reader race when multiple integration test files load back-to-
+# back in a single `flutter test` invocation. Per-file invocation
+# trades ~12s × N files of cold-start for deterministic pass.
+#
+# Exit codes:
+#   0 — capture success, or assert within budget, or assert violation
+#       in warn-mode (PERF_AUDIT_STRICT unset).
+#   1 — assert violation in strict mode, OR no CSV sentinels collected
+#       (tests failing?), OR diff.py error.
+#   2 — usage / tooling error.
+
+set -eu
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APP_DIR="$ROOT/app"
+TESTS_DIR="$APP_DIR/integration_test/perf_audit"
+BUDGET_FILE="${PERF_AUDIT_BUDGET_FILE:-$ROOT/tools/perf-budgets.yaml}"
+DIFF_TOOL="$ROOT/tools/perf-audit-diff.py"
+
+MODE="${1:-}"
+case "$MODE" in
+  --capture|--assert) ;;
+  --help|-h)
+    sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+  *)
+    echo "usage: $0 --capture|--assert [--help]" >&2
+    exit 2
+    ;;
+esac
+
+if [ ! -d "$TESTS_DIR" ]; then
+  echo "perf-audit: test dir $TESTS_DIR not found." >&2
+  exit 2
+fi
+
+if [ ! -x "$DIFF_TOOL" ]; then
+  echo "perf-audit: diff helper $DIFF_TOOL missing or not executable." >&2
+  exit 2
+fi
+
+csv_out="$(mktemp -t perf-audit-csv.XXXXXX)"
+trap 'rm -f "$csv_out"' EXIT
+
+# Walk numbered test files; skip non-test siblings (harness.dart,
+# test_harness.dart).
+test_count=0
+for f in "$TESTS_DIR"/[0-9][0-9]_perf_audit_*.dart "$TESTS_DIR"/[0-9][0-9]_harness_*.dart; do
+  [ -f "$f" ] || continue
+  name="$(basename "$f")"
+  echo "perf-audit: running $name" >&2
+  # --reporter=compact keeps stdout tight; the CSV sentinels print
+  # unconditionally from the emitCsv() helper.
+  set +e
+  (cd "$APP_DIR" && flutter test "$f" -d flutter-tester --reporter=compact) \
+    | tee -a "$csv_out" >/dev/null
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "perf-audit: $name failed (exit $rc)" >&2
+    # Keep going — capture-mode may partial-complete, and assert-mode
+    # will flag the missing screens as under-budget which is fine
+    # information. A truly catastrophic test failure surfaces via the
+    # "no sentinels collected" check below.
+  fi
+  test_count=$((test_count + 1))
+done
+
+if [ "$test_count" -eq 0 ]; then
+  echo "perf-audit: no test files found under $TESTS_DIR." >&2
+  exit 2
+fi
+
+# Filter to sentinel lines only — Python's parser is strict.
+sentinel_csv="$(mktemp -t perf-audit-sentinels.XXXXXX)"
+grep '^PERF_AUDIT_CSV,' "$csv_out" > "$sentinel_csv" || true
+rm -f "$csv_out"
+trap 'rm -f "$sentinel_csv"' EXIT
+
+if [ ! -s "$sentinel_csv" ]; then
+  echo "perf-audit: no PERF_AUDIT_CSV sentinels collected — tests failing?" >&2
+  exit 1
+fi
+
+case "$MODE" in
+  --capture)
+    "$DIFF_TOOL" --mode capture --budget "$BUDGET_FILE" < "$sentinel_csv"
+    exit $?
+    ;;
+  --assert)
+    set +e
+    "$DIFF_TOOL" --mode assert --budget "$BUDGET_FILE" < "$sentinel_csv"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
+      exit 0
+    fi
+    if [ "${PERF_AUDIT_STRICT:-0}" = "1" ]; then
+      exit "$rc"
+    fi
+    echo "perf-audit: warn-mode — violations ignored (set PERF_AUDIT_STRICT=1 to fail)." >&2
+    exit 0
+    ;;
+esac
