@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "body": {
+    "id": "perf-audit-recipe-1",
+    "title": "Perf Audit Fixture Recipe",
+    "recipe_book_id": "perf-audit-book-1",
+    "ingredients": [],
+    "steps": [],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+}

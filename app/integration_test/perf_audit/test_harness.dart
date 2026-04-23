@@ -34,6 +34,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:palateful/core/di/injection.dart';
 import 'package:palateful/core/services/api_client.dart';
+import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
 import 'package:palateful/features/recipe_books/services/recipe_book_service.dart';
 import 'package:palateful/features/recipes/services/cooking_log_service.dart';
@@ -106,9 +107,13 @@ AUTH0_AUDIENCE=https://perf-audit.example.com
   }
 
   // Core services — same shape as setupDependencies() but without the
-  // side-effectful plugins (Firebase, HomeWidget, push notif, Auth0).
-  // AuthService is intentionally NOT registered — no provider we care
-  // about reads it in its cold-start path.
+  // side-effectful plugins (Firebase, HomeWidget, push notif).
+  // AuthService's constructor reads dotenv for AUTH0_DOMAIN /
+  // AUTH0_CLIENT_ID — seeded above — and then instantiates an Auth0
+  // handle with those placeholder strings. No network calls happen at
+  // construction time, so it's safe in flutter-tester.
+  getIt.registerSingleton<AuthService>(AuthService());
+
   final apiClient = ApiClient();
   apiClient.setAuthToken('e2e-test-token');
   getIt.registerSingleton<ApiClient>(apiClient);
