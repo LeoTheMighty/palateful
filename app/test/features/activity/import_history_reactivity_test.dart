@@ -53,7 +53,11 @@ class _FakeApi extends ApiClient {
   }
 
   @override
-  Future<Response> listImportItems(String jobId, {String? status}) async {
+  Future<Response> listImportItems(
+    String jobId, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
     listImportItemsCalls++;
     return _ok({
       'items': [

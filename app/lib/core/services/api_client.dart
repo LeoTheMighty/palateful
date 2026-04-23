@@ -653,9 +653,14 @@ class ApiClient {
     return _dio.post('/v1/recipe-books/$bookId/import', data: body);
   }
 
-  Future<Response> listImportItems(String jobId, {String? status}) {
+  Future<Response> listImportItems(
+    String jobId, {
+    String? status,
+    bool includeArchived = false,
+  }) {
     return _dio.get('/v1/import-jobs/$jobId/items', queryParameters: {
       if (status != null) 'status': status,
+      if (includeArchived) 'include_archived': true,
     });
   }
 

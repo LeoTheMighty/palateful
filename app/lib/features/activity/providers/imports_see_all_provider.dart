@@ -119,14 +119,16 @@ class ImportsSeeAllNotifier extends Notifier<ImportsSeeAllState> {
           List<dynamic>.from(jobsResponse.data['jobs'] ?? []);
       final nextCursor = jobsResponse.data['next_cursor'] as String?;
 
-      // For each archived job, fetch its items in parallel. Items
-      // from archived jobs are what we render in See-all — the
-      // existing tab already ships this semantic (ahr-5). Archived
-      // jobs usually hold archived items; the rare exception where a
-      // job is archived while its items aren't yet archived is
-      // cosmetically harmless — the row still renders under "See all".
+      // For each archived job, fetch its items in parallel with
+      // `include_archived=true` so the archived items (which is
+      // exactly what See-all is meant to surface) actually come back
+      // — the default item list hides archived rows to keep the main
+      // tab clean, and we have to opt in here.
       final itemResults = await Future.wait(rawJobs.map(
-        (j) => client.listImportItems(j['id'].toString()),
+        (j) => client.listImportItems(
+          j['id'].toString(),
+          includeArchived: true,
+        ),
       ));
       final newRows = <SeeAllImportItemView>[];
       for (var i = 0; i < rawJobs.length; i++) {
