@@ -26,7 +26,7 @@ from starlette.routing import Mount
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from agent.tools.base import BaseTool
-    from utils.api.endpoint import Endpoint
+    from utils.api.endpoint import AsyncEndpoint, Endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,36 @@ def call_endpoint(endpoint_cls: type[Endpoint], *args: Any, **kwargs: Any) -> st
         result = endpoint_cls(database=database, user=user).run(*args, **kwargs)
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("MCP endpoint %s raised", endpoint_cls.__name__)
+        return f"Error: {exc}"
+
+    if result.get("success"):
+        return json.dumps(jsonable_encoder(result.get("data")), default=str)
+
+    return f"Error: {result.get('error_message') or 'Unknown error'}"
+
+
+async def call_endpoint_async(
+    endpoint_cls: type[AsyncEndpoint], *args: Any, **kwargs: Any
+) -> str:
+    """Async counterpart of `call_endpoint` (aam-3).
+
+    Each Phase 3 domain story swaps its MCP tool file from
+    `call_endpoint(...)` to `await call_endpoint_async(...)` at the same
+    time as the domain's HTTP handlers convert. The sync helper stays
+    until post-cutover so dual-dispatch tools continue to work during
+    the observation window.
+
+    Requires an async database — the caller's MCP auth dep must resolve
+    to an `AsyncDatabase`, which `get_current_database_async` provides
+    (aam-6). Until aam-6 lands, MCP callers keep using the sync helper.
+    """
+    user = get_current_user()
+    database = get_current_database()
+
+    try:
+        result = await endpoint_cls(database=database, user=user).run(*args, **kwargs)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("MCP async endpoint %s raised", endpoint_cls.__name__)
         return f"Error: {exc}"
 
     if result.get("success"):

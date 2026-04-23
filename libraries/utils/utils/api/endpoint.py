@@ -198,7 +198,17 @@ class Endpoint:
             if self.user:
                 user_id = getattr(self.user, "id", None)
 
-            database = Database()
+            # aam-3: prefer the dedicated error-log engine (pool_size=3,
+            # max_overflow=2) when available so error logging can never
+            # starve behind a main-pool exhaustion incident. Falls back
+            # to the default sync engine if the sub-pool isn't wired
+            # (worker/scripts don't initialize it in all environments).
+            from utils.services.database import ErrorLogSessionLocal
+
+            if ErrorLogSessionLocal is not None:
+                database = Database(db=ErrorLogSessionLocal())
+            else:
+                database = Database()
             try:
                 error_log = ErrorLog(
                     error_type=type(error).__name__,
@@ -224,6 +234,109 @@ class Endpoint:
     class Response(BaseModel):
         """The Response model for the endpoint."""
         success: bool
+
+
+class AsyncEndpoint(Endpoint):
+    """Async counterpart of Endpoint (aam-3).
+
+    Sync semantics are preserved method-for-method; the only difference
+    is that `execute`, `run`, and `call` are async. Subclasses override
+    `async def execute(...)` and do their DB work via `await self.db.execute(...)`
+    or `await self.database.find_by(...)` (the async `AsyncDatabase`).
+
+    Error-log writes stay on the sync engine — they're rare, tiny, and
+    a separate concern from request latency. The writer is dispatched
+    via `run_in_threadpool` onto the dedicated `error_log_engine`
+    carved off in `utils.services.database` so a pool-exhaustion
+    incident on the main sync engine can never starve error logging.
+
+    Example:
+        class ExampleAsync(AsyncEndpoint):
+            async def execute(self, params):
+                user = await self.database.find_by(User, id=params.user_id)
+                return success(user)
+
+        @router.post("/")
+        async def endpoint(params: Params, db=Depends(get_async_database)):
+            return await ExampleAsync.call(params, database=db)
+    """
+
+    @classmethod
+    async def call(cls, *args, **kwargs):  # type: ignore[override]
+        return cls.handle_result(await cls(*args, **kwargs).run())
+
+    async def run(self):  # type: ignore[override]
+        args = self.args
+        kwargs = self.kwargs
+
+        logger.debug(
+            "AsyncEndpoint %s - Args: %s, Kwargs: %s",
+            self.__class__.__name__,
+            args,
+            kwargs,
+        )
+
+        try:
+            logger.info("Executing endpoint: %s", self.__class__.__name__)
+            result = await self.execute(*args, **kwargs)
+            if endpoint_result_is_valid(result):
+                return result
+            raise APIException(
+                status_code=500,
+                detail=(
+                    "Endpoint result not valid. Result: "
+                    f"{json.dumps(result, cls=CustomEncoder)}"
+                ),
+                code=ErrorCode.INVALID_ENDPOINT_RESULT,
+            )
+        except APIException as e:
+            logger.error(
+                "AsyncEndpoint %s failed with api error: %s",
+                self.__class__.__name__,
+                str(e),
+                exc_info=True,
+            )
+            return failure(
+                error_code=e.code,
+                error_message=e.detail,
+                status=e.status_code,
+                data={},
+                error=e,
+            )
+        except Exception as e:
+            logger.error(
+                "AsyncEndpoint %s failed with error: %s",
+                self.__class__.__name__,
+                str(e),
+                exc_info=True,
+            )
+            await self._log_error_to_db_async(e)
+            return failure(
+                data={},
+                error_message=str(e),
+                error=e,
+            )
+
+    async def _log_error_to_db_async(self, error: Exception) -> None:
+        """Dispatch the sync error-log writer onto the threadpool.
+
+        Keeps the async event loop unblocked while the write happens on
+        the dedicated `error_log_engine` sub-pool — see
+        `utils.services.database.error_log_engine`. Silently swallows
+        any threadpool-side exception so error tracking never breaks
+        the response (the sync writer already does the same).
+        """
+        from fastapi.concurrency import run_in_threadpool
+
+        try:
+            await run_in_threadpool(self._log_error_to_db, error)
+        except Exception:
+            logger.exception("Failed to dispatch error log write to threadpool")
+
+    async def execute(self, *args, **kwargs):  # type: ignore[override]
+        raise NotImplementedError(
+            "AsyncEndpoint must implement the async execute method."
+        )
 
 
 def ack():

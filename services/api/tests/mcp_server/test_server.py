@@ -97,6 +97,83 @@ class TestCallEndpoint:
             call_endpoint(_FakeEndpoint)
 
 
+class _FakeAsyncEndpoint:
+    """Minimal AsyncEndpoint-like class — async run() returning valid shape."""
+
+    def __init__(self, database=None, user=None):
+        self.user = user
+
+    async def run(self, *args, **kwargs):
+        return {
+            "success": True,
+            "data": {"seen_user": str(self.user.id)},
+            "status": 200,
+        }
+
+
+class _FailingAsyncEndpoint:
+    def __init__(self, database=None, user=None):
+        pass
+
+    async def run(self, *args, **kwargs):
+        return {"success": False, "error_message": "async boom", "status": 500}
+
+
+class _RaisingAsyncEndpoint:
+    def __init__(self, database=None, user=None):
+        pass
+
+    async def run(self, *args, **kwargs):
+        raise RuntimeError("async oops")
+
+
+class TestCallEndpointAsync:
+    async def test_success_returns_json_string(self):
+        from mcp_server.auth import current_database, current_user
+        from mcp_server.server import call_endpoint_async
+
+        user = MagicMock()
+        user.id = "u1"
+        utok = current_user.set(user)
+        dtok = current_database.set(MagicMock())
+        try:
+            result = await call_endpoint_async(_FakeAsyncEndpoint)
+        finally:
+            current_user.reset(utok)
+            current_database.reset(dtok)
+
+        parsed = json.loads(result)
+        assert parsed["seen_user"] == "u1"
+
+    async def test_failure_returns_error_message(self):
+        from mcp_server.auth import current_database, current_user
+        from mcp_server.server import call_endpoint_async
+
+        utok = current_user.set(MagicMock(id="u"))
+        dtok = current_database.set(MagicMock())
+        try:
+            result = await call_endpoint_async(_FailingAsyncEndpoint)
+        finally:
+            current_user.reset(utok)
+            current_database.reset(dtok)
+
+        assert result.startswith("Error: async boom")
+
+    async def test_exception_returns_error_message(self):
+        from mcp_server.auth import current_database, current_user
+        from mcp_server.server import call_endpoint_async
+
+        utok = current_user.set(MagicMock(id="u"))
+        dtok = current_database.set(MagicMock())
+        try:
+            result = await call_endpoint_async(_RaisingAsyncEndpoint)
+        finally:
+            current_user.reset(utok)
+            current_database.reset(dtok)
+
+        assert result.startswith("Error:")
+
+
 class _FakeAgentTool:
     name = "fake_tool"
 

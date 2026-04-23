@@ -80,6 +80,30 @@ else:
     AsyncSessionLocal = None
 
 
+# aam-3: dedicated small sync engine for error-log writes from the async
+# path. The AsyncEndpoint hot path invokes _log_error_to_db via
+# run_in_threadpool; that threadpool-hop acquires a sync Session. If
+# errors co-occur during a pool-exhaustion incident on the main sync
+# engine, the error-log writer itself would block trying to get a
+# connection. Carving off 3+2 connections on a dedicated engine
+# guarantees error logging always has capacity even when the main pool
+# is starved. pool_pre_ping=False: errors are already rare; an extra RTT
+# per write isn't worth the header cost.
+if DATABASE_URL:
+    error_log_engine = create_engine(
+        DATABASE_URL,
+        pool_size=3,
+        max_overflow=2,
+        pool_recycle=3600,
+    )
+    ErrorLogSessionLocal = sessionmaker(
+        autocommit=False, autoflush=False, bind=error_log_engine
+    )
+else:
+    error_log_engine = None
+    ErrorLogSessionLocal = None
+
+
 class Database:
     """Database class to manage database connection and common operations."""
 
