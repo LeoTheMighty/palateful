@@ -27,3 +27,14 @@ app/lib/features/profile/services/feedback_cache_service.dart:64:shared_prefs qu
 # Live alias-map fetch failure — the session keeps running on the
 # hardcoded seed. No user-facing impact; no Snackbar warranted.
 app/lib/features/recipes/services/session_alias_map.dart:101:fall back to hardcoded seed alias map
+
+# CookSessionPersister malformed-state recovery — wipe the corrupt
+# prefs entry and log via ErrorReporter.log (best-effort persistence;
+# blocking the Resume gate on a single bad JSON entry would lose the
+# user's session permanently). Parallel to feedback_cache_service.
+app/lib/features/recipes/cook_mode/services/cook_session_persister.dart:272:malformed-state recovery — wipe + ErrorReporter.log
+
+# CookSessionPersister 30-day prune — corrupt entries are treated as
+# removable so the prune sweep can still complete. No actionable
+# user-facing failure; the entry is going away anyway.
+app/lib/features/recipes/cook_mode/services/cook_session_persister.dart:333:30-day prune — corrupt entry treated as removable
