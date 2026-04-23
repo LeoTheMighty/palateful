@@ -2,7 +2,7 @@
 
 from api.v1.meal._access import require_meal_write
 from api.v1.meal._response import build_meal_response
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.services.meal_service import (
@@ -12,18 +12,18 @@ from utils.services.meal_service import (
 )
 
 
-class RemoveRecipeFromMeal(Endpoint):
+class RemoveRecipeFromMeal(AsyncEndpoint):
     """Detach a component from a Meal. Rejects if it would leave <2."""
 
-    def execute(self, meal_id: str, recipe_id: str):
+    async def execute(self, meal_id: str, recipe_id: str):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_write(db, meal_id, user)
+        meal = await require_meal_write(db, meal_id, user)
         service = MealService(db)
 
         try:
-            service.remove_component(meal=meal, recipe_id=recipe_id)
+            await service.remove_component(meal=meal, recipe_id=recipe_id)
         except MinComponentsError as exc:
             raise APIException(
                 status_code=422,
@@ -40,8 +40,8 @@ class RemoveRecipeFromMeal(Endpoint):
                 code=ErrorCode.MEAL_COMPONENT_NOT_FOUND,
             ) from exc
 
-        meal = service.get_with_components(meal_id)
-        db.commit()
+        meal = await service.get_with_components(meal_id)
+        await db.commit()
         return success(
-            data=build_meal_response(meal, db=db, user_id=user.id)
+            data=await build_meal_response(meal, db=db, user_id=user.id)
         )

@@ -12,41 +12,41 @@ field is still top-level on the response.
 
 from api.v1.meal._access import require_meal_read
 from api.v1.meal._response import build_meal_response
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.user import User
 from utils.services.meal_service import MealService
 
 
-class FavoriteMeal(Endpoint):
-    def execute(self, meal_id: str):
+class FavoriteMeal(AsyncEndpoint):
+    async def execute(self, meal_id: str):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_read(db, meal_id, user)
-        MealService(db).set_favorite(
+        meal = await require_meal_read(db, meal_id, user)
+        await MealService(db).set_favorite(
             user_id=user.id, meal_id=meal_id, favorite=True
         )
-        db.commit()
+        await db.commit()
         return success(
-            data=build_meal_response(
+            data=await build_meal_response(
                 meal, db=db, user_id=user.id, is_favorite=True
             ),
             status=201,
         )
 
 
-class UnfavoriteMeal(Endpoint):
-    def execute(self, meal_id: str):
+class UnfavoriteMeal(AsyncEndpoint):
+    async def execute(self, meal_id: str):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_read(db, meal_id, user)
-        MealService(db).set_favorite(
+        meal = await require_meal_read(db, meal_id, user)
+        await MealService(db).set_favorite(
             user_id=user.id, meal_id=meal_id, favorite=False
         )
-        db.commit()
+        await db.commit()
         return success(
-            data=build_meal_response(
+            data=await build_meal_response(
                 meal, db=db, user_id=user.id, is_favorite=False
             )
         )

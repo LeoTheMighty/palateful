@@ -1,7 +1,7 @@
 """MCP tools for Meals — reusable named groupings of 2+ recipes.
 
-Each tool wraps one foundation Endpoint via `call_endpoint`. Two tools
-add an MCP-specific confirmation gate so the AI pauses before
+Each tool wraps one foundation Endpoint via `call_endpoint_async`. Two
+tools add an MCP-specific confirmation gate so the AI pauses before
 irreversible-feeling writes:
 
 * `remove_recipe_from_meal`: pre-checks the meal's current component
@@ -18,6 +18,11 @@ irreversible-feeling writes:
 
 All other tools execute without prompting — the user explicitly asked
 for the action and the result is reversible (restore, re-add, etc.).
+
+aam-10: tool functions are now `async def` and dispatch through
+`await call_endpoint_async(...)`. Confirmation-gate reads use
+`await db.execute(select(...))` against the AsyncSession exposed via
+`get_current_database_async()`.
 """
 
 from __future__ import annotations
@@ -33,13 +38,14 @@ from api.v1.meal.get_meal import GetMeal
 from api.v1.meal.list_meals import ListMeals
 from api.v1.meal.remove_recipe_from_meal import RemoveRecipeFromMeal
 from api.v1.meal.update_meal import UpdateMeal
-from mcp_server.auth import get_current_database
-from mcp_server.server import call_endpoint, mcp
+from mcp_server.auth import get_current_database_async
+from mcp_server.server import call_endpoint_async, mcp
 from schemas.meal import (
     MealComponentAddRequest,
     MealCreateRequest,
     MealUpdateRequest,
 )
+from sqlalchemy import func, select
 from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
 from utils.models.meal_recipe import MealRecipe
@@ -47,7 +53,7 @@ from utils.models.meal_recurrence_rule import MealRecurrenceRule
 
 
 @mcp.tool()
-def create_meal(
+async def create_meal(
     recipe_book_id: str,
     name: str,
     component_recipe_ids: list[str],
@@ -65,19 +71,21 @@ def create_meal(
         description=description,
         component_recipe_ids=component_recipe_ids,
     )
-    return call_endpoint(CreateMeal, book_id=recipe_book_id, params=params)
+    return await call_endpoint_async(
+        CreateMeal, book_id=recipe_book_id, params=params
+    )
 
 
 @mcp.tool()
-def get_meal(meal_id: str) -> str:
+async def get_meal(meal_id: str) -> str:
     """Get a Meal by id. Returns name, description, the component recipes
     (with availability markers), and whether the user has favorited it.
     """
-    return call_endpoint(GetMeal, meal_id=meal_id)
+    return await call_endpoint_async(GetMeal, meal_id=meal_id)
 
 
 @mcp.tool()
-def list_meals(
+async def list_meals(
     q: str | None = None,
     limit: int = 20,
     offset: int = 0,
@@ -86,7 +94,7 @@ def list_meals(
     description (case-insensitive substring match). Use to disambiguate
     names before calling `create_meal` or `add_recipe_to_meal`.
     """
-    result = call_endpoint(ListMeals, limit=limit, offset=offset)
+    result = await call_endpoint_async(ListMeals, limit=limit, offset=offset)
     # Client-side `q` filter — foundation's ListMeals doesn't take a
     # search parameter. Kept thin: the AI can always widen `limit` and
     # filter in its prompt. Bypass if the endpoint call errored.
@@ -115,7 +123,7 @@ def list_meals(
 
 
 @mcp.tool()
-def update_meal(
+async def update_meal(
     meal_id: str,
     name: str | None = None,
     description: str | None = None,
@@ -124,11 +132,13 @@ def update_meal(
     `add_recipe_to_meal` / `remove_recipe_from_meal`.
     """
     params = MealUpdateRequest(name=name, description=description)
-    return call_endpoint(UpdateMeal, meal_id=meal_id, params=params)
+    return await call_endpoint_async(
+        UpdateMeal, meal_id=meal_id, params=params
+    )
 
 
 @mcp.tool()
-def add_recipe_to_meal(
+async def add_recipe_to_meal(
     meal_id: str,
     recipe_id: str,
     order_index: int | None = None,
@@ -139,11 +149,13 @@ def add_recipe_to_meal(
     params = MealComponentAddRequest(
         recipe_id=recipe_id, order_index=order_index
     )
-    return call_endpoint(AddRecipeToMeal, meal_id=meal_id, params=params)
+    return await call_endpoint_async(
+        AddRecipeToMeal, meal_id=meal_id, params=params
+    )
 
 
 @mcp.tool()
-def remove_recipe_from_meal(meal_id: str, recipe_id: str) -> str:
+async def remove_recipe_from_meal(meal_id: str, recipe_id: str) -> str:
     """Remove a component from a Meal. Rejects if it would leave fewer than
     2 components.
 
@@ -153,11 +165,14 @@ def remove_recipe_from_meal(meal_id: str, recipe_id: str) -> str:
     confirm, add a replacement first, or archive the Meal instead. At 3+
     components, the removal executes silently.
     """
-    database = get_current_database()
+    database = get_current_database_async()
     db = database.db
-    component_count = (
-        db.query(MealRecipe).filter(MealRecipe.meal_id == meal_id).count()
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(MealRecipe)
+        .where(MealRecipe.meal_id == meal_id)
     )
+    component_count = int(count_result.scalar_one())
     if component_count == 2:
         return json.dumps(
             {
@@ -170,13 +185,13 @@ def remove_recipe_from_meal(meal_id: str, recipe_id: str) -> str:
                 ),
             }
         )
-    return call_endpoint(
+    return await call_endpoint_async(
         RemoveRecipeFromMeal, meal_id=meal_id, recipe_id=recipe_id
     )
 
 
 @mcp.tool()
-def archive_meal(meal_id: str, confirmed: bool = False) -> str:
+async def archive_meal(meal_id: str, confirmed: bool = False) -> str:
     """Archive (soft-delete) a Meal. The Meal stays restorable from the
     archive view.
 
@@ -189,9 +204,17 @@ def archive_meal(meal_id: str, confirmed: bool = False) -> str:
     With `confirmed=True` OR zero references, archives silently.
     """
     if not confirmed:
-        database = get_current_database()
+        database = get_current_database_async()
         db = database.db
         now = datetime.now(UTC)
+        events_result = await db.execute(
+            select(MealEvent)
+            .where(MealEvent.meal_id == meal_id)
+            .where(MealEvent.archived_at.is_(None))
+            .where(MealEvent.scheduled_at >= now)
+            .order_by(MealEvent.scheduled_at)
+            .limit(20)
+        )
         upcoming_events: list[dict[str, Any]] = [
             {
                 "id": str(ev.id),
@@ -199,32 +222,27 @@ def archive_meal(meal_id: str, confirmed: bool = False) -> str:
                 "scheduled_at": ev.scheduled_at.isoformat(),
                 "meal_type": ev.meal_type,
             }
-            for ev in (
-                db.query(MealEvent)
-                .filter(MealEvent.meal_id == meal_id)
-                .filter(MealEvent.archived_at.is_(None))
-                .filter(MealEvent.scheduled_at >= now)
-                .order_by(MealEvent.scheduled_at)
-                .limit(20)
-                .all()
-            )
+            for ev in events_result.scalars().all()
         ]
+        rules_result = await db.execute(
+            select(MealRecurrenceRule)
+            .where(MealRecurrenceRule.meal_id == meal_id)
+            .where(MealRecurrenceRule.archived_at.is_(None))
+            .limit(20)
+        )
         active_rules: list[dict[str, Any]] = [
             {
                 "id": str(rule.id),
                 "rrule": getattr(rule, "rrule", None),
                 "meal_type": getattr(rule, "meal_type", None),
             }
-            for rule in (
-                db.query(MealRecurrenceRule)
-                .filter(MealRecurrenceRule.meal_id == meal_id)
-                .filter(MealRecurrenceRule.archived_at.is_(None))
-                .limit(20)
-                .all()
-            )
+            for rule in rules_result.scalars().all()
         ]
         if upcoming_events or active_rules:
-            meal = db.query(Meal).filter(Meal.id == meal_id).first()
+            meal_result = await db.execute(
+                select(Meal).where(Meal.id == meal_id)
+            )
+            meal = meal_result.scalars().first()
             return json.dumps(
                 {
                     "success": False,
@@ -241,7 +259,7 @@ def archive_meal(meal_id: str, confirmed: bool = False) -> str:
                     "rules": active_rules,
                 }
             )
-    return call_endpoint(ArchiveMeal, meal_id=meal_id)
+    return await call_endpoint_async(ArchiveMeal, meal_id=meal_id)
 
 
 __all__ = [

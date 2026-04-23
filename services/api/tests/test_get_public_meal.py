@@ -4,14 +4,20 @@ Includes the **privacy invariant** assertion: the raw JSON response for a
 shared Meal must NOT contain `recipe_id` / `order_index` / `book_id` on any
 component entry. A stranger holding the public link should not be able to
 probe private recipe UUIDs.
+
+aam-10: handler converted to `AsyncEndpoint`. Tests configure
+`mock_async_db.db.execute.side_effect` (2 execute calls per request:
+the Meal load with selectinload + the RecipeBook lookup). The
+`unauthed_client` fixture is updated in conftest to override the async
+DB dep too.
 """
 
 import json
 from datetime import UTC, datetime
 
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
 )
@@ -69,16 +75,16 @@ def _component(
 class TestGetPublicMealByTokenHappy:
     """Valid token → 200 with the expected shape."""
 
-    def test_happy_mixed_components(self, unauthed_client, mock_db):
+    def test_happy_mixed_components(self, unauthed_client, mock_async_db):
         meal = _MockMeal(
             components=[
                 _component("r1", "Lemon Dressing", share_token="recipetokenA" + "x" * 8),
                 _component("r2", "Kale Salad", order=1, share_token=None),
             ]
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBook(id="book-1", name="Dinners")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBook(id="book-1", name="Dinners")]),
         ]
         response = unauthed_client.get(f"/v1/meals/public/{meal.share_token}")
         assert response.status_code == 200
@@ -95,17 +101,17 @@ class TestGetPublicMealByTokenHappy:
         assert data["components"][1]["has_public_token"] is False
         assert data["components"][1]["public_token"] is None
 
-    def test_empty_book_name_when_book_missing(self, unauthed_client, mock_db):
+    def test_empty_book_name_when_book_missing(self, unauthed_client, mock_async_db):
         meal = _MockMeal(components=[_component("r1", share_token="x" * 20)])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([]),  # RecipeBook lookup returns nothing
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[]),  # RecipeBook lookup returns nothing
         ]
         response = unauthed_client.get(f"/v1/meals/public/{meal.share_token}")
         assert response.status_code == 200
         assert response.json()["recipe_book_name"] == ""
 
-    def test_orders_components_by_order_index(self, unauthed_client, mock_db):
+    def test_orders_components_by_order_index(self, unauthed_client, mock_async_db):
         # Stored out of order to prove we re-sort by order_index.
         meal = _MockMeal(
             components=[
@@ -113,9 +119,9 @@ class TestGetPublicMealByTokenHappy:
                 _component("r1", "First", order=0),
             ]
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBook(id="book-1", name="Dinners")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBook(id="book-1", name="Dinners")]),
         ]
         response = unauthed_client.get(f"/v1/meals/public/{meal.share_token}")
         assert response.status_code == 200
@@ -126,23 +132,23 @@ class TestGetPublicMealByTokenHappy:
 class TestGetPublicMealByTokenArchived:
     """Archived meals + archived components are hidden from strangers."""
 
-    def test_archived_meal_404(self, unauthed_client, mock_db):
+    def test_archived_meal_404(self, unauthed_client, mock_async_db):
         # The handler filters `archived_at IS NULL` inside the query, so a
         # DB with only an archived meal returns nothing → 404.
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = unauthed_client.get("/v1/meals/public/anytoken")
         assert response.status_code == 404
 
-    def test_archived_component_omitted(self, unauthed_client, mock_db):
+    def test_archived_component_omitted(self, unauthed_client, mock_async_db):
         meal = _MockMeal(
             components=[
                 _component("r1", "Live", share_token="x" * 20),
                 _component("r2", "Archived", order=1, archived=True),
             ]
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBook(id="book-1", name="Dinners")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBook(id="book-1", name="Dinners")]),
         ]
         response = unauthed_client.get(f"/v1/meals/public/{meal.share_token}")
         assert response.status_code == 200
@@ -150,14 +156,14 @@ class TestGetPublicMealByTokenArchived:
         assert len(components) == 1
         assert components[0]["name"] == "Live"
 
-    def test_component_with_missing_recipe_omitted(self, unauthed_client, mock_db):
+    def test_component_with_missing_recipe_omitted(self, unauthed_client, mock_async_db):
         bad = _MockMealRecipe(recipe_id="missing", recipe=None)
         meal = _MockMeal(
             components=[bad, _component("r1", "Survivor", share_token="x" * 20)]
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBook(id="book-1", name="Dinners")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBook(id="book-1", name="Dinners")]),
         ]
         response = unauthed_client.get(f"/v1/meals/public/{meal.share_token}")
         assert response.status_code == 200
@@ -169,8 +175,8 @@ class TestGetPublicMealByTokenArchived:
 class TestGetPublicMealByTokenNotFound:
     """Invalid token → 404. Does not distinguish archived from invalid."""
 
-    def test_invalid_token_404(self, unauthed_client, mock_db):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_invalid_token_404(self, unauthed_client, mock_async_db):
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = unauthed_client.get("/v1/meals/public/invalid-token-value")
         assert response.status_code == 404
 
@@ -182,7 +188,7 @@ class TestGetPublicMealPrivacyInvariant:
     shared-Meal link could enumerate private recipe UUIDs.
     """
 
-    def test_no_recipe_id_key_in_components(self, unauthed_client, mock_db):
+    def test_no_recipe_id_key_in_components(self, unauthed_client, mock_async_db):
         meal = _MockMeal(
             components=[
                 _component(
@@ -198,9 +204,9 @@ class TestGetPublicMealPrivacyInvariant:
                 ),
             ]
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBook(id="book-1", name="Dinners")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBook(id="book-1", name="Dinners")]),
         ]
         response = unauthed_client.get(f"/v1/meals/public/{meal.share_token}")
         assert response.status_code == 200

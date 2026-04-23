@@ -4,20 +4,20 @@ from datetime import UTC, datetime
 
 from api.v1.meal._access import require_meal_write
 from schemas.meal import MealArchiveResponse
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.error_log import ErrorLog
 from utils.models.user import User
 
 
-class ArchiveMeal(Endpoint):
+class ArchiveMeal(AsyncEndpoint):
     """Soft-archive a Meal. Idempotent — already-archived → 400."""
 
-    def execute(self, meal_id: str):
+    async def execute(self, meal_id: str):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_write(db, meal_id, user)
+        meal = await require_meal_write(db, meal_id, user)
         if meal.archived_at is not None:
             raise APIException(
                 status_code=400,
@@ -35,10 +35,10 @@ class ArchiveMeal(Endpoint):
             service="audit",
             user_id=user.id,
         )
-        self.database.create(audit)
+        await self.database.create(audit)
 
-        db.flush()
-        db.commit()
+        await db.flush()
+        await db.commit()
         return success(
             data=MealArchiveResponse(success=True, archived_at=meal.archived_at)
         )

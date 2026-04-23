@@ -8,6 +8,13 @@ books) lives in one place.
 Kept orthogonal to `services/api/src/api/v1/meal/*.py` — handlers are
 thin wrappers that do auth + schema translation; everything else lives
 here.
+
+aam-10: `MealService` class methods are now `async`. Instances accept an
+`AsyncSession` and issue queries via `await session.execute(select(...))`.
+Module-level `aggregate_meal_ingredients` stays sync because it walks an
+already-eager-loaded component tree and calls `normalize_unit_display`,
+which hits memory only (the unit-alias cache is pre-warmed at lifespan
+startup). Worker + parser keep building against the sync module surface.
 """
 
 from __future__ import annotations
@@ -18,7 +25,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session, selectinload
 
 from utils.models.meal import Meal
@@ -100,6 +107,12 @@ def aggregate_meal_ingredients(
     skipped with a warning log. Components whose `recipe` relationship
     is unexpectedly null are skipped silently. Components with zero
     non-archived ingredients are skipped at debug level.
+
+    **aam-10 sync contract**: stays sync. Called from both sync worker
+    paths and async API paths — the latter pass an `AsyncSession` whose
+    `execute(...)` coroutine is only reached if the pre-warmed unit-alias
+    cache misses, which never happens in a healthy API process. See the
+    runbook's whitelist section.
     """
     rows: list[AggregatedIngredient] = []
 
@@ -178,7 +191,13 @@ class ComponentHydration:
 
 
 class MealService:
-    """Meal domain service. Instantiated per-request with a live session."""
+    """Meal domain service. Instantiated per-request with a live session.
+
+    aam-10: `db` is now an `AsyncSession`. All query-issuing methods are
+    `async def`; the loop-body of `hydrate_components` stays sync because
+    it walks an eager-loaded collection (`meal.components[i].recipe...`)
+    and doesn't touch the session.
+    """
 
     def __init__(self, db):
         self.db = db
@@ -187,7 +206,7 @@ class MealService:
     # Read helpers
     # ------------------------------------------------------------------
 
-    def get_with_components(self, meal_id: str) -> Meal | None:
+    async def get_with_components(self, meal_id: str) -> Meal | None:
         """Eager-load a Meal + components (MealRecipe → Recipe → RecipeBook).
 
         `selectinload` is deliberate: the IN-batched second query
@@ -195,30 +214,28 @@ class MealService:
         component count, which matters for the list endpoint (50 meals
         × 6 components would be 50 wide-row explosions under joinedload).
         """
-        return (
-            self.db.query(Meal)
+        result = await self.db.execute(
+            select(Meal)
             .options(
                 selectinload(Meal.components)
                 .selectinload(MealRecipe.recipe)
                 .selectinload(Recipe.recipe_book)
             )
-            .filter(Meal.id == meal_id)
-            .first()
+            .where(Meal.id == meal_id)
         )
+        return result.scalars().first()
 
-    def _readable_book_ids(self, user_id) -> set:
+    async def _readable_book_ids(self, user_id) -> set:
         """Return the set of recipe_book_ids the user can read."""
-        rows = (
-            self.db.query(RecipeBookUser.recipe_book_id)
-            .filter(
+        result = await self.db.execute(
+            select(RecipeBookUser.recipe_book_id).where(
                 RecipeBookUser.user_id == user_id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .all()
         )
-        return {str(row[0]) for row in rows}
+        return {str(row[0]) for row in result.all()}
 
-    def hydrate_components(
+    async def hydrate_components(
         self,
         meal: Meal,
         *,
@@ -237,7 +254,7 @@ class MealService:
         readable = (
             readable_book_ids
             if readable_book_ids is not None
-            else self._readable_book_ids(user_id)
+            else await self._readable_book_ids(user_id)
         )
         hydrations: list[ComponentHydration] = []
         for comp in meal.components:
@@ -288,46 +305,42 @@ class MealService:
     # Auth helpers
     # ------------------------------------------------------------------
 
-    def user_has_book_read(self, user_id, book_id) -> bool:
-        return (
-            self.db.query(RecipeBookUser)
-            .filter(
+    async def user_has_book_read(self, user_id, book_id) -> bool:
+        result = await self.db.execute(
+            select(RecipeBookUser).where(
                 RecipeBookUser.user_id == user_id,
                 RecipeBookUser.recipe_book_id == book_id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .first()
-            is not None
         )
+        return result.scalars().first() is not None
 
-    def user_has_book_write(self, user_id, book_id) -> bool:
-        membership = (
-            self.db.query(RecipeBookUser)
-            .filter(
+    async def user_has_book_write(self, user_id, book_id) -> bool:
+        result = await self.db.execute(
+            select(RecipeBookUser).where(
                 RecipeBookUser.user_id == user_id,
                 RecipeBookUser.recipe_book_id == book_id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .first()
         )
+        membership = result.scalars().first()
         return membership is not None and membership.role in ("owner", "editor")
 
     # ------------------------------------------------------------------
     # Write helpers
     # ------------------------------------------------------------------
 
-    def _ensure_components_readable(
+    async def _ensure_components_readable(
         self, recipe_ids: list[str], *, user_id
     ) -> list[Recipe]:
         """Fetch recipes by id; raise if any are missing or unreadable."""
-        recipes = (
-            self.db.query(Recipe)
-            .filter(Recipe.id.in_(recipe_ids))
-            .all()
+        result = await self.db.execute(
+            select(Recipe).where(Recipe.id.in_(recipe_ids))
         )
+        recipes = list(result.scalars().all())
         found_ids = {str(r.id) for r in recipes}
         missing = [rid for rid in recipe_ids if rid not in found_ids]
-        readable = self._readable_book_ids(user_id)
+        readable = await self._readable_book_ids(user_id)
         unreadable = [
             str(r.id) for r in recipes if str(r.recipe_book_id) not in readable
         ]
@@ -335,7 +348,7 @@ class MealService:
             raise ComponentUnreadableError(missing + unreadable)
         return recipes
 
-    def create_with_components(
+    async def create_with_components(
         self,
         *,
         book_id: str,
@@ -351,7 +364,7 @@ class MealService:
         the request-scoped endpoint middleware handles the commit so a
         failure downstream in the handler rolls the whole thing back.
         """
-        self._ensure_components_readable(recipe_ids, user_id=user_id)
+        await self._ensure_components_readable(recipe_ids, user_id=user_id)
 
         meal = Meal(
             name=name,
@@ -359,7 +372,7 @@ class MealService:
             recipe_book_id=book_id,
         )
         self.db.add(meal)
-        self.db.flush()
+        await self.db.flush()
 
         # Use Core executemany rather than per-row ORM `add()`. SQLAlchemy
         # 2.0's ORM bulk path emits INSERT...RETURNING and tries to map
@@ -369,41 +382,40 @@ class MealService:
         # values in result set to parameter sets`. Core executemany skips
         # the sentinel machinery entirely.
         if recipe_ids:
-            self.db.execute(
+            await self.db.execute(
                 insert(MealRecipe),
                 [
                     {"meal_id": meal.id, "recipe_id": rid, "order_index": idx}
                     for idx, rid in enumerate(recipe_ids)
                 ],
             )
-        self.db.flush()
-        self.db.refresh(meal)
+        await self.db.flush()
+        await self.db.refresh(meal)
         return meal
 
-    def add_component(
+    async def add_component(
         self, *, meal: Meal, recipe_id: str, order_index: int | None, user_id
     ) -> MealRecipe:
-        existing = (
-            self.db.query(MealRecipe)
-            .filter(
+        result = await self.db.execute(
+            select(MealRecipe).where(
                 MealRecipe.meal_id == meal.id,
                 MealRecipe.recipe_id == recipe_id,
             )
-            .first()
         )
+        existing = result.scalars().first()
         if existing is not None:
             raise ComponentDuplicateError(
                 f"recipe {recipe_id} already on meal {meal.id}"
             )
-        self._ensure_components_readable([recipe_id], user_id=user_id)
+        await self._ensure_components_readable([recipe_id], user_id=user_id)
 
         if order_index is None:
-            max_row = (
-                self.db.query(MealRecipe)
-                .filter(MealRecipe.meal_id == meal.id)
+            result = await self.db.execute(
+                select(MealRecipe)
+                .where(MealRecipe.meal_id == meal.id)
                 .order_by(MealRecipe.order_index.desc())
-                .first()
             )
+            max_row = result.scalars().first()
             order_index = (max_row.order_index + 1) if max_row else 0
 
         row = MealRecipe(
@@ -412,15 +424,14 @@ class MealService:
             order_index=order_index,
         )
         self.db.add(row)
-        self.db.flush()
+        await self.db.flush()
         return row
 
-    def remove_component(self, *, meal: Meal, recipe_id: str) -> None:
-        rows = (
-            self.db.query(MealRecipe)
-            .filter(MealRecipe.meal_id == meal.id)
-            .all()
+    async def remove_component(self, *, meal: Meal, recipe_id: str) -> None:
+        result = await self.db.execute(
+            select(MealRecipe).where(MealRecipe.meal_id == meal.id)
         )
+        rows = list(result.scalars().all())
         if len(rows) <= 2:
             raise MinComponentsError("Meal must retain at least 2 components")
         target = next(
@@ -430,17 +441,16 @@ class MealService:
             raise ComponentNotFoundError(
                 f"recipe {recipe_id} not on meal {meal.id}"
             )
-        self.db.delete(target)
-        self.db.flush()
+        await self.db.delete(target)
+        await self.db.flush()
 
-    def reorder_components(
+    async def reorder_components(
         self, *, meal: Meal, recipe_ids: list[str]
     ) -> None:
-        current = (
-            self.db.query(MealRecipe)
-            .filter(MealRecipe.meal_id == meal.id)
-            .all()
+        result = await self.db.execute(
+            select(MealRecipe).where(MealRecipe.meal_id == meal.id)
         )
+        current = list(result.scalars().all())
         current_ids = {str(r.recipe_id) for r in current}
         if current_ids != set(recipe_ids) or len(recipe_ids) != len(current):
             raise ReorderMismatchError(
@@ -449,52 +459,49 @@ class MealService:
         by_recipe = {str(r.recipe_id): r for r in current}
         for idx, rid in enumerate(recipe_ids):
             by_recipe[rid].order_index = idx
-        self.db.flush()
+        await self.db.flush()
 
-    def archive(self, meal: Meal) -> Meal:
+    async def archive(self, meal: Meal) -> Meal:
         meal.archived_at = datetime.now(UTC)
-        self.db.flush()
+        await self.db.flush()
         return meal
 
-    def restore(self, meal: Meal) -> Meal:
+    async def restore(self, meal: Meal) -> Meal:
         meal.archived_at = None
-        self.db.flush()
+        await self.db.flush()
         return meal
 
     # ------------------------------------------------------------------
     # Favorite helpers
     # ------------------------------------------------------------------
 
-    def set_favorite(self, *, user_id, meal_id: str, favorite: bool) -> bool:
+    async def set_favorite(self, *, user_id, meal_id: str, favorite: bool) -> bool:
         """Toggle `meal_favorites` row. Returns True if state changed."""
-        existing = (
-            self.db.query(MealFavorite)
-            .filter(
+        result = await self.db.execute(
+            select(MealFavorite).where(
                 MealFavorite.user_id == user_id,
                 MealFavorite.meal_id == meal_id,
             )
-            .first()
         )
+        existing = result.scalars().first()
         if favorite:
             if existing is not None:
                 return False  # no-op, already favorited
             self.db.add(MealFavorite(user_id=user_id, meal_id=meal_id))
-            self.db.flush()
+            await self.db.flush()
             return True
         if existing is None:
             return False  # no-op, already not favorited
-        self.db.delete(existing)
-        self.db.flush()
+        await self.db.delete(existing)
+        await self.db.flush()
         return True
 
-    def is_favorited(self, *, user_id, meal_id) -> bool:
+    async def is_favorited(self, *, user_id, meal_id) -> bool:
         """Return whether the given user has favorited this meal."""
-        return (
-            self.db.query(MealFavorite)
-            .filter(
+        result = await self.db.execute(
+            select(MealFavorite).where(
                 MealFavorite.user_id == user_id,
                 MealFavorite.meal_id == meal_id,
             )
-            .first()
-            is not None
         )
+        return result.scalars().first() is not None

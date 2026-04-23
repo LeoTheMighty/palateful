@@ -3,24 +3,24 @@
 from api.v1.meal._access import require_book_write
 from api.v1.meal._response import build_meal_response
 from schemas.meal import MealCreateRequest
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.services.meal_service import ComponentUnreadableError, MealService
 
 
-class CreateMeal(Endpoint):
+class CreateMeal(AsyncEndpoint):
     """Create a Meal + its component joins in a single transaction."""
 
-    def execute(self, book_id: str, params: MealCreateRequest):
+    async def execute(self, book_id: str, params: MealCreateRequest):
         user: User = self.user
         db = self.db
 
-        require_book_write(db, book_id, user)
+        await require_book_write(db, book_id, user)
 
         service = MealService(db)
         try:
-            meal = service.create_with_components(
+            meal = await service.create_with_components(
                 book_id=book_id,
                 name=params.name,
                 description=params.description,
@@ -35,10 +35,10 @@ class CreateMeal(Endpoint):
             ) from exc
 
         # Re-fetch with selectinload chain so the response hydrates cleanly.
-        meal = service.get_with_components(str(meal.id))
-        db.commit()
+        meal = await service.get_with_components(str(meal.id))
+        await db.commit()
 
         return success(
-            data=build_meal_response(meal, db=db, user_id=user.id),
+            data=await build_meal_response(meal, db=db, user_id=user.id),
             status=201,
         )

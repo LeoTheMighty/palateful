@@ -1,4 +1,8 @@
-"""Shared response shaping for Meal endpoints."""
+"""Shared response shaping for Meal endpoints.
+
+aam-10: both builders are `async` — they await `MealService.hydrate_components`
+and `.is_favorited` on an `AsyncSession`.
+"""
 
 from schemas.meal import (
     MealComponentResponse,
@@ -9,7 +13,7 @@ from utils.models.meal import Meal
 from utils.services.meal_service import MealService
 
 
-def build_meal_response(
+async def build_meal_response(
     meal: Meal,
     *,
     db,
@@ -31,7 +35,7 @@ def build_meal_response(
     sequences.
     """
     service = MealService(db)
-    hydrations = service.hydrate_components(
+    hydrations = await service.hydrate_components(
         meal, user_id=user_id, readable_book_ids=readable_book_ids
     )
     components = [
@@ -48,6 +52,11 @@ def build_meal_response(
         )
         for h in hydrations
     ]
+    resolved_is_favorite = (
+        is_favorite
+        if is_favorite is not None
+        else await service.is_favorited(user_id=user_id, meal_id=meal.id)
+    )
     return MealResponse(
         id=str(meal.id),
         name=meal.name,
@@ -57,15 +66,11 @@ def build_meal_response(
         created_at=meal.created_at,
         updated_at=meal.updated_at,
         components=components,
-        is_favorite=(
-            is_favorite
-            if is_favorite is not None
-            else service.is_favorited(user_id=user_id, meal_id=meal.id)
-        ),
+        is_favorite=resolved_is_favorite,
     )
 
 
-def build_meal_summary(
+async def build_meal_summary(
     meal: Meal,
     *,
     db,
@@ -82,7 +87,7 @@ def build_meal_summary(
     callers (`list_meals`) compute this set once per request instead of
     re-fetching per meal. Single-meal callers keep the `None` default.
     """
-    hydrations = MealService(db).hydrate_components(
+    hydrations = await MealService(db).hydrate_components(
         meal, user_id=user_id, readable_book_ids=readable_book_ids
     )
     image_urls = [h.image_url for h in hydrations if h.available and h.image_url][:4]

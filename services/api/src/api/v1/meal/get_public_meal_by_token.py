@@ -8,8 +8,9 @@ shared) — never internal UUIDs they could probe. See
 """
 
 from schemas.meal import PublicMealComponent, PublicMealResponse
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal import Meal
 from utils.models.meal_recipe import MealRecipe
@@ -17,21 +18,21 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 
 
-class GetPublicMealByToken(Endpoint):
+class GetPublicMealByToken(AsyncEndpoint):
     """Load a Meal by its share token. No auth required."""
 
-    def execute(self, token: str):
+    async def execute(self, token: str):
         db = self.db
 
-        meal = (
-            db.query(Meal)
+        meal_result = await db.execute(
+            select(Meal)
             .options(
                 selectinload(Meal.components).selectinload(MealRecipe.recipe)
             )
-            .filter(Meal.share_token == token)
-            .filter(Meal.archived_at.is_(None))
-            .first()
+            .where(Meal.share_token == token)
+            .where(Meal.archived_at.is_(None))
         )
+        meal = meal_result.scalars().first()
         if meal is None:
             raise APIException(
                 status_code=404,
@@ -39,9 +40,10 @@ class GetPublicMealByToken(Endpoint):
                 code=ErrorCode.MEAL_NOT_FOUND,
             )
 
-        book = (
-            db.query(RecipeBook).filter(RecipeBook.id == meal.recipe_book_id).first()
+        book_result = await db.execute(
+            select(RecipeBook).where(RecipeBook.id == meal.recipe_book_id)
         )
+        book = book_result.scalars().first()
 
         components: list[PublicMealComponent] = []
         for mc in sorted(meal.components, key=lambda c: c.order_index):

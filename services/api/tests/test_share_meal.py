@@ -1,11 +1,17 @@
-"""Tests for POST /v1/meals/{meal_id}/share (msa-1)."""
+"""Tests for POST /v1/meals/{meal_id}/share (msa-1).
+
+aam-10: handler is now `AsyncEndpoint` — fixtures use `mock_async_db` and
+configure `db.execute.side_effect` with `MockExecuteResult` instead of
+`db.query.side_effect` with `MockQuery`. The sync `client` fixture still
+works because conftest overrides both sync + async deps.
+"""
 
 import re
 from datetime import UTC, datetime
 
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipeBookUser,
 )
 
@@ -39,12 +45,12 @@ def _viewer():
 class TestShareMealFirstTime:
     """POST /v1/meals/{id}/share with no existing token → 201 + new token."""
 
-    def test_happy_generates_token(self, client, mock_db, mock_user):
+    def test_happy_generates_token(self, client, mock_async_db, mock_user):
         meal = _MockMeal(share_token=None)
-        # Query order: 1) get_with_components 2) user_has_book_write
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
+        # Execute order: 1) get_with_components 2) user_has_book_write
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
         ]
         response = client.post("/v1/meals/meal-1/share")
         assert response.status_code == 201
@@ -54,11 +60,11 @@ class TestShareMealFirstTime:
         assert data["deep_link"] == f"palateful://meal-public/{data['token']}"
         assert meal.share_token == data["token"]
 
-    def test_editor_can_share(self, client, mock_db, mock_user):
+    def test_editor_can_share(self, client, mock_async_db, mock_user):
         meal = _MockMeal(share_token=None)
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_editor()]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_editor()]),
         ]
         response = client.post("/v1/meals/meal-1/share")
         assert response.status_code == 201
@@ -67,12 +73,12 @@ class TestShareMealFirstTime:
 class TestShareMealIdempotent:
     """Re-sharing returns the existing token with 200 (no rotation)."""
 
-    def test_returns_same_token_with_200(self, client, mock_db, mock_user):
+    def test_returns_same_token_with_200(self, client, mock_async_db, mock_user):
         existing = "abcd" * 5  # 20 chars
         meal = _MockMeal(share_token=existing)
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
         ]
         response = client.post("/v1/meals/meal-1/share")
         assert response.status_code == 200
@@ -86,34 +92,34 @@ class TestShareMealIdempotent:
 class TestShareMealAuth:
     """Permission + not-found paths."""
 
-    def test_viewer_403(self, client, mock_db, mock_user):
+    def test_viewer_403(self, client, mock_async_db, mock_user):
         meal = _MockMeal()
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_viewer()]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_viewer()]),
         ]
         response = client.post("/v1/meals/meal-1/share")
         assert response.status_code == 403
 
-    def test_non_member_403(self, client, mock_db, mock_user):
+    def test_non_member_403(self, client, mock_async_db, mock_user):
         meal = _MockMeal()
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[]),
         ]
         response = client.post("/v1/meals/meal-1/share")
         assert response.status_code == 403
 
-    def test_missing_meal_404(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_missing_meal_404(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.post("/v1/meals/nope/share")
         assert response.status_code == 404
 
-    def test_archived_meal_404(self, client, mock_db, mock_user):
+    def test_archived_meal_404(self, client, mock_async_db, mock_user):
         meal = _MockMeal(archived_at=datetime.now(UTC))
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
         ]
         response = client.post("/v1/meals/meal-1/share")
         assert response.status_code == 404

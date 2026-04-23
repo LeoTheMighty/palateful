@@ -1,10 +1,15 @@
-"""md-3: Filter tests for `GET /v1/meals` (archived, scope=home)."""
+"""md-3: Filter tests for `GET /v1/meals` (archived, scope=home).
+
+aam-10: handler converted to `AsyncEndpoint`. Tests configure
+`mock_async_db.db.execute.side_effect` (3 execute calls per request:
+readable-book-ids, total count via `scalar_one()`, meals list).
+"""
 
 from datetime import UTC, datetime
 
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
 )
@@ -44,66 +49,75 @@ def _component(recipe_id="r1", name="R"):
     return _MockMealRecipe(recipe=recipe, recipe_id=recipe_id)
 
 
+def _list_meals_side_effect(*, readable_books, count, meals):
+    """Build the canonical 3-execute side_effect tuple for /v1/meals.
+
+    Order matches `ListMeals.execute`: readable-books query, count query
+    (consumed by `scalar_one()`), meals query (consumed by
+    `scalars().all()`).
+    """
+    return [
+        MockExecuteResult(items=readable_books),
+        MockExecuteResult(items=[count]),
+        MockExecuteResult(items=meals),
+    ]
+
+
 class TestListMealsFilters:
-    def test_default_excludes_archived(self, client, mock_db, mock_user):
+    def test_default_excludes_archived(self, client, mock_async_db, mock_user):
         active = _MockMeal(components=[_component("r1"), _component("r2")])
-        mock_db.db.query.side_effect = [
-            MockQuery([]),
-            MockQuery([active]),
-            MockQuery([("book-1",)]),
-        ]
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[("book-1",)], count=1, meals=[active]
+        )
         resp = client.get("/v1/meals")
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
-    def test_archived_true_returns_only_archived(self, client, mock_db, mock_user):
+    def test_archived_true_returns_only_archived(
+        self, client, mock_async_db, mock_user
+    ):
         archived = _MockMeal(
             archived_at=datetime.now(UTC),
             components=[_component("r1"), _component("r2")],
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([]),
-            MockQuery([archived]),
-            MockQuery([("book-1",)]),
-        ]
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[("book-1",)], count=1, meals=[archived]
+        )
         resp = client.get("/v1/meals?archived=true")
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
-    def test_archived_false_excludes_archived(self, client, mock_db, mock_user):
+    def test_archived_false_excludes_archived(
+        self, client, mock_async_db, mock_user
+    ):
         active = _MockMeal(components=[_component("r1"), _component("r2")])
-        mock_db.db.query.side_effect = [
-            MockQuery([]),
-            MockQuery([active]),
-            MockQuery([("book-1",)]),
-        ]
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[("book-1",)], count=1, meals=[active]
+        )
         resp = client.get("/v1/meals?archived=false")
         assert resp.status_code == 200
         assert resp.json()["total"] == 1
 
-    def test_scope_home_returns_200(self, client, mock_db, mock_user):
+    def test_scope_home_returns_200(self, client, mock_async_db, mock_user):
         """Smoke: scope=home applies default-30 + exclude-archived sensibly."""
         meal = _MockMeal(components=[_component("r1"), _component("r2")])
-        mock_db.db.query.side_effect = [
-            MockQuery([]),
-            MockQuery([meal]),
-            MockQuery([("book-1",)]),
-        ]
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[("book-1",)], count=1, meals=[meal]
+        )
         resp = client.get("/v1/meals?scope=home")
         assert resp.status_code == 200
 
     def test_explicit_limit_wins_over_scope_home_default(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.side_effect = [
-            MockQuery([]),
-            MockQuery([]),
-        ]
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[], count=0, meals=[]
+        )
         resp = client.get("/v1/meals?scope=home&limit=5")
         assert resp.status_code == 200
 
     def test_list_meals_hoists_readable_book_ids_to_single_query(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """pbq-2 — a 30-meal page triggers ONE RecipeBookUser query, not 30.
 
@@ -112,90 +126,75 @@ class TestListMealsFilters:
         SELECTs for `/v1/meals?scope=home`. Post-fix, `list_meals`
         hoists the fetch once and threads it via `readable_book_ids`
         through `build_meal_summary` → `hydrate_components`.
-        """
-        from conftest import count_queries
-        from utils.models.recipe_book_user import RecipeBookUser
 
+        aam-10: assertion shifts from `qc.query_count_for(RecipeBookUser)`
+        (which inspected sync `db.query(...)` args) to counting
+        `db.execute` calls. With the hoist, exactly 3 execute calls fire
+        per request: readable-books, count, meals — and the per-meal
+        loop adds zero further DB hits because `readable_book_ids` is
+        threaded into `hydrate_components`.
+        """
         meals = [
             _MockMeal(id=f"meal-{i}", components=[_component("r1"), _component("r2")])
             for i in range(30)
         ]
-        # side_effect is ordered: subquery lookup, main Meal query,
-        # hoisted readable_book_ids lookup. Remaining query calls (if
-        # any) fall back to the default empty MockQuery via
-        # return_value — the post-fix code only queries twice more.
-        mock_db.db.query.side_effect = [
-            MockQuery([]),
-            MockQuery(meals),
-            MockQuery([("book-1",)]),
-        ]
-        with count_queries(mock_db) as qc:
-            resp = client.get("/v1/meals?scope=home")
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[("book-1",)], count=30, meals=meals
+        )
+        resp = client.get("/v1/meals?scope=home")
         assert resp.status_code == 200
         assert resp.json()["total"] == 30
-
-        # Hard AC — exactly ONE RecipeBookUser query regardless of page
-        # size (would be 30 before the fix).
-        assert qc.query_count_for(RecipeBookUser) == 1
+        # Hard AC: exactly 3 execute() calls regardless of page size.
+        # If the readable_book_ids hoist regresses, hydrate_components
+        # would re-fetch per meal → 3 + N additional executes.
+        assert mock_async_db.db.execute.call_count == 3
 
 
 class TestListMealsEndpointDirect:
-    """Direct tests for ListMeals.execute() to cover the branch matrix."""
+    """Direct tests for ListMeals.execute() to cover the branch matrix.
 
-    def _ep(self, mock_db, mock_user):
+    aam-10: tests are now `async def` because `execute` is async; the
+    endpoint's `database` is now a `MockAsyncDatabase`. The "captured
+    limit" spy from the sync era is gone — `Select.limit(N)` happens on
+    a SQLAlchemy expression before `db.execute(stmt)` fires, so we
+    introspect `stmt._limit_clause.value` on the captured statement
+    instead of intercepting a chained `.limit()` call.
+    """
+
+    def _ep(self, mock_async_db, mock_user):
         from api.v1.meal.list_meals import ListMeals
-        return ListMeals(user=mock_user, database=mock_db)
+        return ListMeals(user=mock_user, database=mock_async_db)
 
-    def test_scope_home_raises_default_limit_to_30(
-        self, mock_db, mock_user
+    async def test_scope_home_raises_default_limit_to_30(
+        self, mock_async_db, mock_user
     ):
         """When the caller doesn't pass `limit`, scope=home bumps it to 30."""
-        captured = {}
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[], count=0, meals=[]
+        )
+        ep = self._ep(mock_async_db, mock_user)
+        await ep.execute(scope="home")
+        # Third execute is the meals query; its limit clause holds the
+        # bumped scope=home default.
+        meals_stmt = mock_async_db.db.execute.call_args_list[2].args[0]
+        assert meals_stmt._limit_clause.value == 30
 
-        original_query = mock_db.db.query
+    async def test_no_scope_uses_default_20(self, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[], count=0, meals=[]
+        )
+        ep = self._ep(mock_async_db, mock_user)
+        await ep.execute()
+        meals_stmt = mock_async_db.db.execute.call_args_list[2].args[0]
+        assert meals_stmt._limit_clause.value == 20
 
-        def spy_query(*args, **kwargs):
-            # The `limit(N)` call inside the endpoint fires after the
-            # final .order_by(...). We capture the int via MockQuery.
-            q = MockQuery([])
-            real_limit = q.limit
-
-            def limit_capture(n):
-                captured["limit"] = n
-                return real_limit(n)
-
-            q.limit = limit_capture  # type: ignore[assignment]
-            return q
-
-        mock_db.db.query = spy_query
-        ep = self._ep(mock_db, mock_user)
-        ep.execute(scope="home")
-        # 30 = scope=home's bumped default
-        assert captured.get("limit") == 30
-        mock_db.db.query = original_query
-
-    def test_no_scope_uses_default_20(self, mock_db, mock_user):
-        captured = {}
-
-        def spy_query(*args, **kwargs):
-            q = MockQuery([])
-            real_limit = q.limit
-
-            def limit_capture(n):
-                captured["limit"] = n
-                return real_limit(n)
-
-            q.limit = limit_capture
-            return q
-
-        mock_db.db.query = spy_query
-        ep = self._ep(mock_db, mock_user)
-        ep.execute()
-        assert captured.get("limit") == 20
-
-    def test_archived_true_inverts_archived_filter(self, mock_db, mock_user):
+    async def test_archived_true_inverts_archived_filter(
+        self, mock_async_db, mock_user
+    ):
         """archived=True should not early-return. Smoke: returns ok."""
-        mock_db.db.query.return_value = MockQuery([])
-        ep = self._ep(mock_db, mock_user)
-        result = ep.execute(archived=True)
+        mock_async_db.db.execute.side_effect = _list_meals_side_effect(
+            readable_books=[], count=0, meals=[]
+        )
+        ep = self._ep(mock_async_db, mock_user)
+        result = await ep.execute(archived=True)
         assert result["success"] is True

@@ -2,9 +2,9 @@
 
 from api.v1.meal._response import build_meal_summary
 from schemas.meal import MealListResponse
-from sqlalchemy import or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.meal import Meal
 from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
@@ -12,7 +12,7 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ListMeals(Endpoint):
+class ListMeals(AsyncEndpoint):
     """List Meals across every book the user can read.
 
     md-3 filter extensions:
@@ -28,7 +28,7 @@ class ListMeals(Endpoint):
     both `archived` and `include_archived` are set, `archived` wins.
     """
 
-    def execute(
+    async def execute(
         self,
         limit: int | None = None,
         offset: int = 0,
@@ -68,53 +68,58 @@ class ListMeals(Endpoint):
         # scope the Meal list and to hydrate component availability.
         # Before: 1 subquery here + 1 per meal (30 for a home page).
         # After: 1 query total, regardless of page size.
-        readable_book_ids = {
-            str(row[0])
-            for row in db.query(RecipeBookUser.recipe_book_id)
-            .filter(
+        readable_result = await db.execute(
+            select(RecipeBookUser.recipe_book_id).where(
                 RecipeBookUser.user_id == user.id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .all()
+        )
+        readable_book_ids = {
+            str(row[0]) for row in readable_result.all()
         }
 
-        query = (
-            db.query(Meal)
-            .options(
-                selectinload(Meal.components)
-                .selectinload(MealRecipe.recipe)
-                .selectinload(Recipe.recipe_book)
-            )
-            .filter(Meal.recipe_book_id.in_(readable_book_ids))
-        )
+        conditions = [Meal.recipe_book_id.in_(readable_book_ids)]
         if archived_only:
-            query = query.filter(Meal.archived_at.is_not(None))
+            conditions.append(Meal.archived_at.is_not(None))
         elif not include_archived:
-            query = query.filter(Meal.archived_at.is_(None))
+            conditions.append(Meal.archived_at.is_(None))
 
         # mcal-5: text autocomplete. Ignore blank-after-strip to avoid
         # filtering on `%%` which would match every row.
         if q is not None and q.strip():
             needle = f"%{q.strip()}%"
-            query = query.filter(
+            conditions.append(
                 or_(Meal.name.ilike(needle), Meal.description.ilike(needle))
             )
 
-        total = query.count()
+        count_stmt = (
+            select(func.count()).select_from(Meal).where(*conditions)
+        )
+        total_result = await db.execute(count_stmt)
+        total = int(total_result.scalar_one())
+
         order_clause = (
             Meal.archived_at.desc()
             if archived_only
             else Meal.updated_at.desc()
         )
-        meals = (
-            query.order_by(order_clause)
+        meals_stmt = (
+            select(Meal)
+            .options(
+                selectinload(Meal.components)
+                .selectinload(MealRecipe.recipe)
+                .selectinload(Recipe.recipe_book)
+            )
+            .where(*conditions)
+            .order_by(order_clause)
             .offset(offset)
             .limit(effective_limit)
-            .all()
         )
+        meals_result = await db.execute(meals_stmt)
+        meals = list(meals_result.scalars().all())
 
         items = [
-            build_meal_summary(
+            await build_meal_summary(
                 m, db=db, user_id=user.id, readable_book_ids=readable_book_ids
             )
             for m in meals

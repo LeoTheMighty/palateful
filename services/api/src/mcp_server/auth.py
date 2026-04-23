@@ -73,17 +73,33 @@ class MCPAuthMiddleware:
             await _send_error_response(send, 500, f"Auth error: {exc}", ErrorCode.INTERNAL_ERROR.value)
             return
 
+        # aam-10: alongside the sync `Database` already provided by
+        # `_authenticate`, stand up a request-scoped `AsyncDatabase` so
+        # converted MCP tools can pull it via `get_current_database_async()`.
+        # Sync + async dbs share a process but NOT a transaction — each
+        # has its own session — so writes from an async tool don't
+        # accidentally commit state from a half-finished sync tool.
+        async_database = AsyncDatabase()
+
         user_token = current_user.set(user)
         db_token = current_database.set(database)
+        async_db_token = current_database_async.set(async_database)
         try:
             await self.app(scope, receive, send)
         finally:
             current_user.reset(user_token)
             current_database.reset(db_token)
+            current_database_async.reset(async_db_token)
             try:
                 database.close()
             except Exception:  # pragma: no cover - defensive
                 logger.exception("Failed to close MCP database session")
+            try:
+                await async_database.close()
+            except Exception:  # pragma: no cover - defensive
+                logger.exception(
+                    "Failed to close MCP async database session"
+                )
 
 
 def _get_authorization_header(scope: Scope) -> str | None:

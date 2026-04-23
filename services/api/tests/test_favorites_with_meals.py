@@ -7,14 +7,18 @@ Response is additive:
 
 Old clients ignore the new key; new clients iterate both arrays for the
 home favorites carousel.
+
+aam-10: handler converted to `AsyncEndpoint` (cross-domain — recipe
+endpoint depends on the now-async meal `_response.py` builders). Tests
+configure `mock_async_db.db.execute.side_effect` instead of
+`mock_db.db.query.side_effect`.
 """
 
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
-    MockRecipeBookUser,
     MockUserFavorite,
 )
 
@@ -67,11 +71,11 @@ class TestListFavoritesWithMeals:
     """Covers the additive `favorited_meals` key."""
 
     def test_empty_meal_favorites_returns_empty_key(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Zero-Meal-favorite user sees `favorited_meals: []` — same shape
         for new clients, ignored by old ones."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         resp = client.get("/v1/favorites")
         assert resp.status_code == 200
         data = resp.json()
@@ -81,16 +85,17 @@ class TestListFavoritesWithMeals:
         assert data["items"] == []
         assert data["total"] == 0
 
-    def test_with_favorited_meal(self, client, mock_db, mock_user):
+    def test_with_favorited_meal(self, client, mock_async_db, mock_user):
         meal = _MockMeal(
             components=[_component("r1"), _component("r2", "Kale")]
         )
         fav = _MockMealFavorite(user_id=str(mock_user.id), meal_id="meal-1")
-        # Queries: 1) recipe favorites 2) meal favorites 3) hydrate
-        mock_db.db.query.side_effect = [
-            MockQuery([]),            # recipe favorites — none
-            MockQuery([(fav, meal)]), # meal favorites
-            MockQuery([("book-1",)]), # hydrate → readable books
+        # Execute order: 1) recipe favorites 2) meal favorites
+        # 3) hydrate → _readable_book_ids
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),               # recipe favorites — none
+            MockExecuteResult(items=[(fav, meal)]),    # meal favorites
+            MockExecuteResult(items=[("book-1",)]),    # hydrate → readable books
         ]
         resp = client.get("/v1/favorites")
         assert resp.status_code == 200
@@ -99,7 +104,7 @@ class TestListFavoritesWithMeals:
         assert data["favorited_meals"][0]["id"] == "meal-1"
         assert data["favorited_meals"][0]["component_count"] == 2
 
-    def test_mixed_recipes_and_meals(self, client, mock_db, mock_user):
+    def test_mixed_recipes_and_meals(self, client, mock_async_db, mock_user):
         recipe = MockRecipe(name="Favorite Pasta", tags=["italian"])
         r_fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=str(recipe.id))
         meal = _MockMeal(
@@ -108,10 +113,10 @@ class TestListFavoritesWithMeals:
         m_fav = _MockMealFavorite(
             user_id=str(mock_user.id), meal_id="meal-1"
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([(r_fav, recipe)]),
-            MockQuery([(m_fav, meal)]),
-            MockQuery([("book-1",)]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[(r_fav, recipe)]),
+            MockExecuteResult(items=[(m_fav, meal)]),
+            MockExecuteResult(items=[("book-1",)]),
         ]
         resp = client.get("/v1/favorites")
         assert resp.status_code == 200

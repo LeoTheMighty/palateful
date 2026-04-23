@@ -85,10 +85,12 @@ async def call_endpoint_async(
 
     Requires an async database — the caller's MCP auth dep must resolve
     to an `AsyncDatabase`, which `get_current_database_async` provides
-    (aam-6). Until aam-6 lands, MCP callers keep using the sync helper.
+    (aam-6 contextvar; aam-10 middleware populates it).
     """
+    from mcp_server.auth import get_current_database_async
+
     user = get_current_user()
-    database = get_current_database()
+    database = get_current_database_async()
 
     try:
         result = await endpoint_cls(database=database, user=user).run(*args, **kwargs)

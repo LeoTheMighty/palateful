@@ -128,48 +128,72 @@ class _RaisingAsyncEndpoint:
 
 
 class TestCallEndpointAsync:
+    """aam-10: `call_endpoint_async` now resolves its DB from the
+    `current_database_async` contextvar (separate from the sync
+    `current_database`). Tests populate both so the helper reads the
+    async DB the MCP middleware would set in prod.
+    """
+
     async def test_success_returns_json_string(self):
-        from mcp_server.auth import current_database, current_user
+        from mcp_server.auth import (
+            current_database,
+            current_database_async,
+            current_user,
+        )
         from mcp_server.server import call_endpoint_async
 
         user = MagicMock()
         user.id = "u1"
         utok = current_user.set(user)
         dtok = current_database.set(MagicMock())
+        adtok = current_database_async.set(MagicMock())
         try:
             result = await call_endpoint_async(_FakeAsyncEndpoint)
         finally:
             current_user.reset(utok)
             current_database.reset(dtok)
+            current_database_async.reset(adtok)
 
         parsed = json.loads(result)
         assert parsed["seen_user"] == "u1"
 
     async def test_failure_returns_error_message(self):
-        from mcp_server.auth import current_database, current_user
+        from mcp_server.auth import (
+            current_database,
+            current_database_async,
+            current_user,
+        )
         from mcp_server.server import call_endpoint_async
 
         utok = current_user.set(MagicMock(id="u"))
         dtok = current_database.set(MagicMock())
+        adtok = current_database_async.set(MagicMock())
         try:
             result = await call_endpoint_async(_FailingAsyncEndpoint)
         finally:
             current_user.reset(utok)
             current_database.reset(dtok)
+            current_database_async.reset(adtok)
 
         assert result.startswith("Error: async boom")
 
     async def test_exception_returns_error_message(self):
-        from mcp_server.auth import current_database, current_user
+        from mcp_server.auth import (
+            current_database,
+            current_database_async,
+            current_user,
+        )
         from mcp_server.server import call_endpoint_async
 
         utok = current_user.set(MagicMock(id="u"))
         dtok = current_database.set(MagicMock())
+        adtok = current_database_async.set(MagicMock())
         try:
             result = await call_endpoint_async(_RaisingAsyncEndpoint)
         finally:
             current_user.reset(utok)
             current_database.reset(dtok)
+            current_database_async.reset(adtok)
 
         assert result.startswith("Error:")
 

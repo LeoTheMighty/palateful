@@ -7,6 +7,12 @@ Endpoints split across two mount points:
 The book-scoped routes ship under a second APIRouter at the
 `/recipe-books` prefix (same approach as `recipe_router.py`, which
 carries both `/recipes` and `/recipe-books/{id}/recipes/...`).
+
+aam-10: router flipped to `get_async_database` + `get_current_user_async`.
+Every endpoint dispatches through `await Foo.call(...)` on an
+`AsyncEndpoint` subclass. Rollback during the observation window is a
+`git revert <aam-10-commit>` + `bin/prod-deploy` (~10 min) — see the
+story notes for the deviation from the runbook's dual-register pattern.
 """
 
 from api.v1.meal import (
@@ -26,7 +32,7 @@ from api.v1.meal import (
     UnfavoriteMeal,
     UpdateMeal,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends
 from schemas.meal import (
     MealComponentAddRequest,
@@ -35,7 +41,7 @@ from schemas.meal import (
     MealUpdateRequest,
 )
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 meal_router = APIRouter(prefix="/meals", tags=["meals"])
 book_meal_router = APIRouter(prefix="/recipe-books", tags=["meals"])
@@ -46,8 +52,8 @@ book_meal_router = APIRouter(prefix="/recipe-books", tags=["meals"])
 
 @meal_router.get("")
 async def list_meals(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
     limit: int | None = None,
     offset: int = 0,
     include_archived: bool = False,
@@ -65,7 +71,7 @@ async def list_meals(
     flat list scoped to readable books (archived excluded by default).
     Callers typically pair `q=...&limit=8` for the plan-meal autocomplete.
     """
-    return ListMeals.call(
+    return await ListMeals.call(
         limit=limit,
         offset=offset,
         include_archived=include_archived,
@@ -84,32 +90,32 @@ async def list_meals(
 @meal_router.get("/public/{token}")
 async def get_public_meal_by_token(
     token: str,
-    database: Database = Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a Meal by its public share token (no auth required)."""
-    return GetPublicMealByToken.call(token=token, database=database)
+    return await GetPublicMealByToken.call(token=token, database=database)
 
 
 @meal_router.get("/{meal_id}")
 async def get_meal(
     meal_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a Meal by id — requires read membership on its book."""
-    return GetMeal.call(meal_id=meal_id, user=user, database=database)
+    return await GetMeal.call(meal_id=meal_id, user=user, database=database)
 
 
 @meal_router.patch("/{meal_id}")
 async def update_meal(
     meal_id: str,
     params: MealUpdateRequest,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update name / description. Component edits go through the
     dedicated add/remove/reorder endpoints."""
-    return UpdateMeal.call(
+    return await UpdateMeal.call(
         meal_id=meal_id, params=params, user=user, database=database
     )
 
@@ -118,11 +124,11 @@ async def update_meal(
 async def add_recipe_to_meal(
     meal_id: str,
     params: MealComponentAddRequest,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Attach an additional component recipe to a Meal."""
-    return AddRecipeToMeal.call(
+    return await AddRecipeToMeal.call(
         meal_id=meal_id, params=params, user=user, database=database
     )
 
@@ -131,11 +137,11 @@ async def add_recipe_to_meal(
 async def remove_recipe_from_meal(
     meal_id: str,
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Detach a component from a Meal (rejects if it would leave <2)."""
-    return RemoveRecipeFromMeal.call(
+    return await RemoveRecipeFromMeal.call(
         meal_id=meal_id,
         recipe_id=recipe_id,
         user=user,
@@ -147,11 +153,11 @@ async def remove_recipe_from_meal(
 async def reorder_meal_components(
     meal_id: str,
     params: MealReorderRequest,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Atomically rewrite order_index for every component."""
-    return ReorderMealComponents.call(
+    return await ReorderMealComponents.call(
         meal_id=meal_id, params=params, user=user, database=database
     )
 
@@ -159,21 +165,23 @@ async def reorder_meal_components(
 @meal_router.post("/{meal_id}/favorite")
 async def favorite_meal(
     meal_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Pin a Meal to the user's favorites (idempotent)."""
-    return FavoriteMeal.call(meal_id=meal_id, user=user, database=database)
+    return await FavoriteMeal.call(
+        meal_id=meal_id, user=user, database=database
+    )
 
 
 @meal_router.delete("/{meal_id}/favorite")
 async def unfavorite_meal(
     meal_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Remove a Meal from favorites (idempotent)."""
-    return UnfavoriteMeal.call(
+    return await UnfavoriteMeal.call(
         meal_id=meal_id, user=user, database=database
     )
 
@@ -181,23 +189,25 @@ async def unfavorite_meal(
 @meal_router.post("/{meal_id}/share")
 async def share_meal(
     meal_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Generate (or return) a Meal's public share token.
 
     Idempotent — re-POSTing returns the same token with a 200 instead of
     rotating it. Matches the ShareRecipe contract.
     """
-    return ShareMeal.call(meal_id=meal_id, user=user, database=database)
+    return await ShareMeal.call(
+        meal_id=meal_id, user=user, database=database
+    )
 
 
 @meal_router.post("/{meal_id}/add-to-shopping-list")
 async def add_meal_to_shopping_list(
     meal_id: str,
     params: AddMealToShoppingList.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Expand a Meal into a target shopping list (mcal-5).
 
@@ -206,7 +216,7 @@ async def add_meal_to_shopping_list(
     `source_meal_id=meal.id` for descriptive provenance. The "shop
     without scheduling" path from the Meal detail screen.
     """
-    return AddMealToShoppingList.call(
+    return await AddMealToShoppingList.call(
         meal_id=meal_id, params=params, user=user, database=database
     )
 
@@ -214,21 +224,25 @@ async def add_meal_to_shopping_list(
 @meal_router.post("/{meal_id}/archive")
 async def archive_meal(
     meal_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Soft-archive a Meal."""
-    return ArchiveMeal.call(meal_id=meal_id, user=user, database=database)
+    return await ArchiveMeal.call(
+        meal_id=meal_id, user=user, database=database
+    )
 
 
 @meal_router.post("/{meal_id}/restore")
 async def restore_meal(
     meal_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Un-archive a Meal."""
-    return RestoreMeal.call(meal_id=meal_id, user=user, database=database)
+    return await RestoreMeal.call(
+        meal_id=meal_id, user=user, database=database
+    )
 
 
 # ---------- /v1/recipe-books/{book_id}/meals ----------
@@ -237,14 +251,14 @@ async def restore_meal(
 @book_meal_router.get("/{book_id}/meals")
 async def list_meals_in_book(
     book_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
     limit: int = 20,
     offset: int = 0,
     include_archived: bool = False,
 ):
     """List Meals in a specific recipe_book."""
-    return ListMealsInBook.call(
+    return await ListMealsInBook.call(
         book_id=book_id,
         limit=limit,
         offset=offset,
@@ -258,10 +272,10 @@ async def list_meals_in_book(
 async def create_meal(
     book_id: str,
     params: MealCreateRequest,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Create a Meal inside this book."""
-    return CreateMeal.call(
+    return await CreateMeal.call(
         book_id=book_id, params=params, user=user, database=database
     )

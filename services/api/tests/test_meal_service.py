@@ -6,15 +6,19 @@ covered without having to route everything through the HTTP layer.
 
 mcv-3 adds add_component / remove_component / reorder_components /
 set_favorite methods; those get their own tests when mcv-3 lands.
+
+aam-10: `MealService` methods are `async`. `_build_service` now returns
+a MagicMock session whose write surface (`execute`, `flush`, `refresh`,
+`delete`) is `AsyncMock` so handler code can `await` each call.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
     MockRecipeBookUser,
@@ -53,15 +57,19 @@ class _MockMeal(MockModel):
 
 
 def _build_service():
-    """Build a MealService backed by a raw MagicMock session."""
+    """Build a MealService backed by a MagicMock async session."""
     session = MagicMock()
-    session.query.return_value = MockQuery()
+    session.execute = AsyncMock(return_value=MockExecuteResult())
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    session.delete = AsyncMock()
+    session.add = MagicMock()
     service = MealService(session)
     return service, session
 
 
 class TestHydrateComponents:
-    def test_all_available(self):
+    async def test_all_available(self):
         service, session = _build_service()
         book = MockRecipeBook(id="book-1", name="Dinners")
         r1 = MockRecipe(
@@ -89,9 +97,9 @@ class TestHydrateComponents:
             ]
         )
         # _readable_book_ids returns [("book-1",)]
-        session.query.return_value = MockQuery([("book-1",)])
+        session.execute.return_value = MockExecuteResult(items=[("book-1",)])
 
-        hydrations = service.hydrate_components(meal, user_id="user-1")
+        hydrations = await service.hydrate_components(meal, user_id="user-1")
         assert len(hydrations) == 2
         assert all(h.available for h in hydrations)
         assert hydrations[0].name == "Kale Salad"
@@ -99,7 +107,7 @@ class TestHydrateComponents:
         assert hydrations[1].image_url is None
         assert hydrations[0].last_known_name is None
 
-    def test_archived_recipe_is_unavailable(self):
+    async def test_archived_recipe_is_unavailable(self):
         service, session = _build_service()
         book = MockRecipeBook(id="book-1", name="Dinners")
         archived = MockRecipe(
@@ -116,15 +124,15 @@ class TestHydrateComponents:
                 )
             ]
         )
-        session.query.return_value = MockQuery([("book-1",)])
+        session.execute.return_value = MockExecuteResult(items=[("book-1",)])
 
-        hydrations = service.hydrate_components(meal, user_id="user-1")
+        hydrations = await service.hydrate_components(meal, user_id="user-1")
         assert len(hydrations) == 1
         assert hydrations[0].available is False
         assert hydrations[0].last_known_name == "Archived Recipe"
         assert hydrations[0].name == ""
 
-    def test_unshared_book_is_unavailable(self):
+    async def test_unshared_book_is_unavailable(self):
         service, session = _build_service()
         book = MockRecipeBook(id="book-hidden", name="Someone Else's")
         recipe = MockRecipe(
@@ -141,12 +149,12 @@ class TestHydrateComponents:
             ]
         )
         # User reads nothing
-        session.query.return_value = MockQuery([])
+        session.execute.return_value = MockExecuteResult(items=[])
 
-        hydrations = service.hydrate_components(meal, user_id="user-1")
+        hydrations = await service.hydrate_components(meal, user_id="user-1")
         assert hydrations[0].available is False
 
-    def test_archived_book_is_unavailable(self):
+    async def test_archived_book_is_unavailable(self):
         service, session = _build_service()
         book = MockRecipeBook(
             id="book-1",
@@ -164,12 +172,12 @@ class TestHydrateComponents:
                 _MockMealRecipe(recipe=recipe, recipe_id=recipe.id)
             ]
         )
-        session.query.return_value = MockQuery([("book-1",)])
+        session.execute.return_value = MockExecuteResult(items=[("book-1",)])
 
-        hydrations = service.hydrate_components(meal, user_id="user-1")
+        hydrations = await service.hydrate_components(meal, user_id="user-1")
         assert hydrations[0].available is False
 
-    def test_missing_recipe_relationship_is_unavailable(self):
+    async def test_missing_recipe_relationship_is_unavailable(self):
         """Guards the defensive `if recipe is None` branch in the service.
 
         With RESTRICT on the FK this state shouldn't be reachable in
@@ -181,114 +189,116 @@ class TestHydrateComponents:
                 _MockMealRecipe(recipe=None, recipe_id="ghost", order_index=0)
             ]
         )
-        session.query.return_value = MockQuery([])
-        hydrations = service.hydrate_components(meal, user_id="user-1")
+        session.execute.return_value = MockExecuteResult(items=[])
+        hydrations = await service.hydrate_components(meal, user_id="user-1")
         assert hydrations[0].available is False
         assert hydrations[0].recipe_id == "ghost"
 
 
 class TestUserHasBook:
-    def test_read_true(self):
+    async def test_read_true(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery(
-            [MockRecipeBookUser(role="viewer")]
+        session.execute.return_value = MockExecuteResult(
+            items=[MockRecipeBookUser(role="viewer")]
         )
-        assert service.user_has_book_read("u", "b") is True
+        assert await service.user_has_book_read("u", "b") is True
 
-    def test_read_false_when_no_membership(self):
+    async def test_read_false_when_no_membership(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([])
-        assert service.user_has_book_read("u", "b") is False
+        session.execute.return_value = MockExecuteResult(items=[])
+        assert await service.user_has_book_read("u", "b") is False
 
-    def test_write_true_for_owner(self):
+    async def test_write_true_for_owner(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery(
-            [MockRecipeBookUser(role="owner")]
+        session.execute.return_value = MockExecuteResult(
+            items=[MockRecipeBookUser(role="owner")]
         )
-        assert service.user_has_book_write("u", "b") is True
+        assert await service.user_has_book_write("u", "b") is True
 
-    def test_write_true_for_editor(self):
+    async def test_write_true_for_editor(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery(
-            [MockRecipeBookUser(role="editor")]
+        session.execute.return_value = MockExecuteResult(
+            items=[MockRecipeBookUser(role="editor")]
         )
-        assert service.user_has_book_write("u", "b") is True
+        assert await service.user_has_book_write("u", "b") is True
 
-    def test_write_false_for_viewer(self):
+    async def test_write_false_for_viewer(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery(
-            [MockRecipeBookUser(role="viewer")]
+        session.execute.return_value = MockExecuteResult(
+            items=[MockRecipeBookUser(role="viewer")]
         )
-        assert service.user_has_book_write("u", "b") is False
+        assert await service.user_has_book_write("u", "b") is False
 
-    def test_write_false_when_no_membership(self):
+    async def test_write_false_when_no_membership(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([])
-        assert service.user_has_book_write("u", "b") is False
+        session.execute.return_value = MockExecuteResult(items=[])
+        assert await service.user_has_book_write("u", "b") is False
 
 
 class TestEnsureComponentsReadable:
-    def test_happy(self):
+    async def test_happy(self):
         service, session = _build_service()
         book = MockRecipeBook(id="book-1")
         r1 = MockRecipe(id="r1", recipe_book_id="book-1", recipe_book=book)
         r2 = MockRecipe(id="r2", recipe_book_id="book-1", recipe_book=book)
-        # 1st query: Recipe.in_ — returns r1,r2
-        # 2nd query: _readable_book_ids — returns [("book-1",)]
-        session.query.side_effect = [
-            MockQuery([r1, r2]),
-            MockQuery([("book-1",)]),
+        # 1st execute: Recipe.in_ — returns r1,r2
+        # 2nd execute: _readable_book_ids — returns [("book-1",)]
+        session.execute.side_effect = [
+            MockExecuteResult(items=[r1, r2]),
+            MockExecuteResult(items=[("book-1",)]),
         ]
-        result = service._ensure_components_readable(
+        result = await service._ensure_components_readable(
             [str(r1.id), str(r2.id)], user_id="u"
         )
         assert len(result) == 2
 
-    def test_missing_recipe(self):
+    async def test_missing_recipe(self):
         service, session = _build_service()
         # No recipes matched
-        session.query.side_effect = [
-            MockQuery([]),
-            MockQuery([]),
+        session.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
         ]
         with pytest.raises(ComponentUnreadableError) as excinfo:
-            service._ensure_components_readable(
+            await service._ensure_components_readable(
                 ["r-missing"], user_id="u"
             )
         assert "r-missing" in excinfo.value.recipe_ids
 
-    def test_recipe_book_unreadable(self):
+    async def test_recipe_book_unreadable(self):
         service, session = _build_service()
         book = MockRecipeBook(id="book-1")
         r1 = MockRecipe(id="r1", recipe_book_id="book-1", recipe_book=book)
         # Recipe exists but user can't read its book
-        session.query.side_effect = [
-            MockQuery([r1]),
-            MockQuery([]),
+        session.execute.side_effect = [
+            MockExecuteResult(items=[r1]),
+            MockExecuteResult(items=[]),
         ]
         with pytest.raises(ComponentUnreadableError) as excinfo:
-            service._ensure_components_readable(["r1"], user_id="u")
+            await service._ensure_components_readable(["r1"], user_id="u")
         assert "r1" in excinfo.value.recipe_ids
 
 
 class TestCreateWithComponents:
-    def test_happy(self):
+    async def test_happy(self):
         service, session = _build_service()
         book = MockRecipeBook(id="book-1")
         r1 = MockRecipe(id="r1", recipe_book_id="book-1", recipe_book=book)
         r2 = MockRecipe(id="r2", recipe_book_id="book-1", recipe_book=book)
-        session.query.side_effect = [
-            MockQuery([r1, r2]),
-            MockQuery([("book-1",)]),
+        # Execute order:
+        #   1. _ensure_components_readable → Recipe.in_
+        #   2. _ensure_components_readable → _readable_book_ids
+        #   3. bulk insert(MealRecipe)
+        session.execute.side_effect = [
+            MockExecuteResult(items=[r1, r2]),
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[]),
         ]
 
-        # Capture the Meal add() and the MealRecipe Core executemany.
         added = []
         session.add.side_effect = added.append
-        session.refresh = MagicMock()
-        session.execute = MagicMock()
 
-        meal = service.create_with_components(
+        meal = await service.create_with_components(
             book_id="book-1",
             name="Test",
             description="desc",
@@ -303,19 +313,21 @@ class TestCreateWithComponents:
         # Only the Meal goes through ORM add(); MealRecipe rows go through
         # session.execute(insert(...), [...]) to dodge the sentinel bug.
         assert len(added) == 1
-        session.execute.assert_called_once()
-        rows = session.execute.call_args.args[1]
+        # 2 selects + 1 bulk insert = 3 execute calls.
+        assert session.execute.call_count == 3
+        insert_call = session.execute.call_args_list[2]
+        rows = insert_call.args[1]
         assert [row["recipe_id"] for row in rows] == ["r1", "r2"]
         assert [row["order_index"] for row in rows] == [0, 1]
 
-    def test_rejects_unreadable(self):
+    async def test_rejects_unreadable(self):
         service, session = _build_service()
-        session.query.side_effect = [
-            MockQuery([]),
-            MockQuery([]),
+        session.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
         ]
         with pytest.raises(ComponentUnreadableError):
-            service.create_with_components(
+            await service.create_with_components(
                 book_id="book-1",
                 name="Test",
                 description=None,
@@ -325,40 +337,40 @@ class TestCreateWithComponents:
 
 
 class TestGetWithComponents:
-    def test_found(self):
+    async def test_found(self):
         service, session = _build_service()
         meal = _MockMeal()
-        session.query.return_value = MockQuery([meal])
-        result = service.get_with_components("meal-1")
+        session.execute.return_value = MockExecuteResult(items=[meal])
+        result = await service.get_with_components("meal-1")
         assert result is meal
 
-    def test_not_found(self):
+    async def test_not_found(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([])
-        assert service.get_with_components("nope") is None
+        session.execute.return_value = MockExecuteResult(items=[])
+        assert await service.get_with_components("nope") is None
 
 
 class TestArchiveRestore:
-    def test_archive_sets_timestamp(self):
+    async def test_archive_sets_timestamp(self):
         service, _ = _build_service()
         meal = _MockMeal(archived_at=None)
-        result = service.archive(meal)
+        result = await service.archive(meal)
         assert result.archived_at is not None
 
-    def test_restore_clears_timestamp(self):
+    async def test_restore_clears_timestamp(self):
         service, _ = _build_service()
         meal = _MockMeal(archived_at=datetime.now(UTC))
-        result = service.restore(meal)
+        result = await service.restore(meal)
         assert result.archived_at is None
 
 
 class TestIsFavorited:
-    def test_returns_true_when_row_exists(self):
+    async def test_returns_true_when_row_exists(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery(["favorite-row"])
-        assert service.is_favorited(user_id="u-1", meal_id="m-1") is True
+        session.execute.return_value = MockExecuteResult(items=["favorite-row"])
+        assert await service.is_favorited(user_id="u-1", meal_id="m-1") is True
 
-    def test_returns_false_when_no_row(self):
+    async def test_returns_false_when_no_row(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([])
-        assert service.is_favorited(user_id="u-1", meal_id="m-1") is False
+        session.execute.return_value = MockExecuteResult(items=[])
+        assert await service.is_favorited(user_id="u-1", meal_id="m-1") is False

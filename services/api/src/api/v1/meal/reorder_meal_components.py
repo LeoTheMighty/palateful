@@ -3,24 +3,24 @@
 from api.v1.meal._access import require_meal_write
 from api.v1.meal._response import build_meal_response
 from schemas.meal import MealReorderRequest
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.services.meal_service import MealService, ReorderMismatchError
 
 
-class ReorderMealComponents(Endpoint):
+class ReorderMealComponents(AsyncEndpoint):
     """Atomically rewrite order_index for every component on a Meal."""
 
-    def execute(self, meal_id: str, params: MealReorderRequest):
+    async def execute(self, meal_id: str, params: MealReorderRequest):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_write(db, meal_id, user)
+        meal = await require_meal_write(db, meal_id, user)
         service = MealService(db)
 
         try:
-            service.reorder_components(
+            await service.reorder_components(
                 meal=meal, recipe_ids=params.recipe_ids
             )
         except ReorderMismatchError as exc:
@@ -33,8 +33,8 @@ class ReorderMealComponents(Endpoint):
                 code=ErrorCode.MEAL_REORDER_MISMATCH,
             ) from exc
 
-        meal = service.get_with_components(meal_id)
-        db.commit()
+        meal = await service.get_with_components(meal_id)
+        await db.commit()
         return success(
-            data=build_meal_response(meal, db=db, user_id=user.id)
+            data=await build_meal_response(meal, db=db, user_id=user.id)
         )

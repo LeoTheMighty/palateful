@@ -11,19 +11,19 @@ import secrets
 
 from api.v1.meal._access import require_meal_write
 from schemas.meal import ShareMealResponse
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 
 
-class ShareMeal(Endpoint):
+class ShareMeal(AsyncEndpoint):
     """Generate (or return the existing) public share token for a Meal."""
 
-    def execute(self, meal_id: str):
+    async def execute(self, meal_id: str):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_write(db, meal_id, user)
+        meal = await require_meal_write(db, meal_id, user)
         if meal.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -33,8 +33,8 @@ class ShareMeal(Endpoint):
 
         if meal.share_token is None:
             meal.share_token = secrets.token_urlsafe(15)
-            db.commit()
-            db.refresh(meal)
+            await db.commit()
+            await db.refresh(meal)
             status = 201
         else:
             status = 200

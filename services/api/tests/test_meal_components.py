@@ -7,14 +7,18 @@
   DELETE /v1/meals/{id}/favorite                (UnfavoriteMeal)
 
 Plus MealService unit tests for the mcv-3 methods.
+
+aam-10: MealService methods + meal endpoints are now async. Unit tests
+use AsyncMock-backed sessions; HTTP tests set up
+`mock_async_db.db.execute.side_effect` instead of `mock_db.db.query`.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
     MockRecipeBookUser,
@@ -81,8 +85,13 @@ def _build_component(recipe_id="r1", name="R", order=0, book_id="book-1"):
 
 
 def _build_service():
+    """Build a MealService backed by a MagicMock async session."""
     session = MagicMock()
-    session.query.return_value = MockQuery()
+    session.execute = AsyncMock(return_value=MockExecuteResult())
+    session.flush = AsyncMock()
+    session.refresh = AsyncMock()
+    session.delete = AsyncMock()
+    session.add = MagicMock()
     return MealService(session), session
 
 
@@ -92,95 +101,97 @@ def _build_service():
 
 
 class TestAddComponent:
-    def test_happy_with_explicit_order(self):
+    async def test_happy_with_explicit_order(self):
         service, session = _build_service()
         meal = _MockMeal()
-        # 1) duplicate-check query (empty)
+        # 1) duplicate-check (empty)
         # 2) _ensure_components_readable: Recipe.in_
         # 3) _readable_book_ids
-        session.query.side_effect = [
-            MockQuery([]),
-            MockQuery([
+        session.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[
                 MockRecipe(
                     id="r-new",
                     recipe_book_id="book-1",
                     recipe_book=MockRecipeBook(id="book-1"),
                 )
             ]),
-            MockQuery([("book-1",)]),
+            MockExecuteResult(items=[("book-1",)]),
         ]
-        result = service.add_component(
+        result = await service.add_component(
             meal=meal, recipe_id="r-new", order_index=5, user_id="u"
         )
         assert result.order_index == 5
 
-    def test_happy_with_default_order(self):
+    async def test_happy_with_default_order(self):
         service, session = _build_service()
         meal = _MockMeal()
         existing = _MockMealRecipe(order_index=3)
-        session.query.side_effect = [
-            MockQuery([]),  # duplicate-check
-            MockQuery([
+        session.execute.side_effect = [
+            MockExecuteResult(items=[]),  # duplicate-check
+            MockExecuteResult(items=[
                 MockRecipe(
                     id="r-new",
                     recipe_book_id="book-1",
                     recipe_book=MockRecipeBook(id="book-1"),
                 )
             ]),
-            MockQuery([("book-1",)]),
-            MockQuery([existing]),  # max_row lookup
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[existing]),  # max_row lookup
         ]
-        result = service.add_component(
+        result = await service.add_component(
             meal=meal, recipe_id="r-new", order_index=None, user_id="u"
         )
         assert result.order_index == 4
 
-    def test_happy_default_order_when_empty(self):
+    async def test_happy_default_order_when_empty(self):
         service, session = _build_service()
         meal = _MockMeal()
-        session.query.side_effect = [
-            MockQuery([]),
-            MockQuery([
+        session.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[
                 MockRecipe(
                     id="r-new",
                     recipe_book_id="book-1",
                     recipe_book=MockRecipeBook(id="book-1"),
                 )
             ]),
-            MockQuery([("book-1",)]),
-            MockQuery([]),  # no existing rows
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[]),  # no existing rows
         ]
-        result = service.add_component(
+        result = await service.add_component(
             meal=meal, recipe_id="r-new", order_index=None, user_id="u"
         )
         assert result.order_index == 0
 
-    def test_duplicate_raises(self):
+    async def test_duplicate_raises(self):
         service, session = _build_service()
         meal = _MockMeal()
-        session.query.return_value = MockQuery([_MockMealRecipe()])
+        session.execute.return_value = MockExecuteResult(
+            items=[_MockMealRecipe()]
+        )
         with pytest.raises(ComponentDuplicateError):
-            service.add_component(
+            await service.add_component(
                 meal=meal, recipe_id="r1", order_index=None, user_id="u"
             )
 
-    def test_unreadable_raises(self):
+    async def test_unreadable_raises(self):
         service, session = _build_service()
         meal = _MockMeal()
         # No duplicate, but recipe not found
-        session.query.side_effect = [
-            MockQuery([]),
-            MockQuery([]),
-            MockQuery([]),
+        session.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
         ]
         with pytest.raises(ComponentUnreadableError):
-            service.add_component(
+            await service.add_component(
                 meal=meal, recipe_id="r-x", order_index=None, user_id="u"
             )
 
 
 class TestRemoveComponent:
-    def test_happy_at_three(self):
+    async def test_happy_at_three(self):
         service, session = _build_service()
         meal = _MockMeal()
         rows = [
@@ -188,22 +199,22 @@ class TestRemoveComponent:
             _MockMealRecipe(recipe_id="r2"),
             _MockMealRecipe(recipe_id="r3"),
         ]
-        session.query.return_value = MockQuery(rows)
-        service.remove_component(meal=meal, recipe_id="r3")
+        session.execute.return_value = MockExecuteResult(items=rows)
+        await service.remove_component(meal=meal, recipe_id="r3")
         session.delete.assert_called_once()
 
-    def test_rejects_at_two(self):
+    async def test_rejects_at_two(self):
         service, session = _build_service()
         meal = _MockMeal()
         rows = [
             _MockMealRecipe(recipe_id="r1"),
             _MockMealRecipe(recipe_id="r2"),
         ]
-        session.query.return_value = MockQuery(rows)
+        session.execute.return_value = MockExecuteResult(items=rows)
         with pytest.raises(MinComponentsError):
-            service.remove_component(meal=meal, recipe_id="r1")
+            await service.remove_component(meal=meal, recipe_id="r1")
 
-    def test_not_found_raises(self):
+    async def test_not_found_raises(self):
         service, session = _build_service()
         meal = _MockMeal()
         rows = [
@@ -211,13 +222,13 @@ class TestRemoveComponent:
             _MockMealRecipe(recipe_id="r2"),
             _MockMealRecipe(recipe_id="r3"),
         ]
-        session.query.return_value = MockQuery(rows)
+        session.execute.return_value = MockExecuteResult(items=rows)
         with pytest.raises(ComponentNotFoundError):
-            service.remove_component(meal=meal, recipe_id="r-ghost")
+            await service.remove_component(meal=meal, recipe_id="r-ghost")
 
 
 class TestReorderComponents:
-    def test_happy(self):
+    async def test_happy(self):
         service, session = _build_service()
         meal = _MockMeal()
         rows = [
@@ -225,27 +236,27 @@ class TestReorderComponents:
             _MockMealRecipe(recipe_id="r2", order_index=1),
             _MockMealRecipe(recipe_id="r3", order_index=2),
         ]
-        session.query.return_value = MockQuery(rows)
-        service.reorder_components(
+        session.execute.return_value = MockExecuteResult(items=rows)
+        await service.reorder_components(
             meal=meal, recipe_ids=["r3", "r1", "r2"]
         )
         order_by_id = {str(r.recipe_id): r.order_index for r in rows}
         assert order_by_id == {"r1": 1, "r2": 2, "r3": 0}
 
-    def test_mismatch_rejects_missing_id(self):
+    async def test_mismatch_rejects_missing_id(self):
         service, session = _build_service()
         meal = _MockMeal()
         rows = [
             _MockMealRecipe(recipe_id="r1"),
             _MockMealRecipe(recipe_id="r2"),
         ]
-        session.query.return_value = MockQuery(rows)
+        session.execute.return_value = MockExecuteResult(items=rows)
         with pytest.raises(ReorderMismatchError):
-            service.reorder_components(
+            await service.reorder_components(
                 meal=meal, recipe_ids=["r1", "r-ghost"]
             )
 
-    def test_mismatch_rejects_wrong_length(self):
+    async def test_mismatch_rejects_wrong_length(self):
         service, session = _build_service()
         meal = _MockMeal()
         rows = [
@@ -253,42 +264,46 @@ class TestReorderComponents:
             _MockMealRecipe(recipe_id="r2"),
             _MockMealRecipe(recipe_id="r3"),
         ]
-        session.query.return_value = MockQuery(rows)
+        session.execute.return_value = MockExecuteResult(items=rows)
         with pytest.raises(ReorderMismatchError):
-            service.reorder_components(
+            await service.reorder_components(
                 meal=meal, recipe_ids=["r1", "r2"]
             )
 
 
 class TestSetFavorite:
-    def test_favorite_new(self):
+    async def test_favorite_new(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([])
-        assert service.set_favorite(
+        session.execute.return_value = MockExecuteResult(items=[])
+        assert await service.set_favorite(
             user_id="u", meal_id="m", favorite=True
         ) is True
         session.add.assert_called_once()
 
-    def test_favorite_idempotent_when_already_favorite(self):
+    async def test_favorite_idempotent_when_already_favorite(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([_MockMealFavorite()])
-        assert service.set_favorite(
+        session.execute.return_value = MockExecuteResult(
+            items=[_MockMealFavorite()]
+        )
+        assert await service.set_favorite(
             user_id="u", meal_id="m", favorite=True
         ) is False
         session.add.assert_not_called()
 
-    def test_unfavorite_existing(self):
+    async def test_unfavorite_existing(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([_MockMealFavorite()])
-        assert service.set_favorite(
+        session.execute.return_value = MockExecuteResult(
+            items=[_MockMealFavorite()]
+        )
+        assert await service.set_favorite(
             user_id="u", meal_id="m", favorite=False
         ) is True
         session.delete.assert_called_once()
 
-    def test_unfavorite_idempotent_when_not_favorited(self):
+    async def test_unfavorite_idempotent_when_not_favorited(self):
         service, session = _build_service()
-        session.query.return_value = MockQuery([])
-        assert service.set_favorite(
+        session.execute.return_value = MockExecuteResult(items=[])
+        assert await service.set_favorite(
             user_id="u", meal_id="m", favorite=False
         ) is False
         session.delete.assert_not_called()
@@ -304,32 +319,32 @@ def _meal_with(components):
 
 
 class TestAddRecipeToMealEndpoint:
-    def test_happy(self, client, mock_db, mock_user):
+    def test_happy(self, client, mock_async_db, mock_user):
         meal = _meal_with([_build_component("r1"), _build_component("r2", "R2", 1)])
-        # Queries:
+        # Execute order:
         # 1) get_with_components (require_meal_write)
         # 2) user_has_book_write
         # 3) duplicate check on MealRecipe
         # 4) _ensure_components_readable → Recipe.in_
         # 5) _readable_book_ids
-        # 6) max order_index (none provided)  → will be None so skipped if we pass explicit
-        # 7) get_with_components (re-fetch)
-        # 8) hydrate → _readable_book_ids
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery([]),  # no duplicate
-            MockQuery([
+        # 6) get_with_components (re-fetch)
+        # 7) hydrate → _readable_book_ids
+        # 8) is_favorited → MealFavorite
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=[]),  # no duplicate
+            MockExecuteResult(items=[
                 MockRecipe(
                     id="r3",
                     recipe_book_id="book-1",
                     recipe_book=MockRecipeBook(id="book-1"),
                 )
             ]),
-            MockQuery([("book-1",)]),
-            MockQuery([meal]),
-            MockQuery([("book-1",)]),
-            MockQuery([]),  # is_favorited → MealFavorite
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[]),
         ]
         response = client.post(
             "/v1/meals/meal-1/recipes",
@@ -337,12 +352,12 @@ class TestAddRecipeToMealEndpoint:
         )
         assert response.status_code == 201
 
-    def test_duplicate_409(self, client, mock_db, mock_user):
+    def test_duplicate_409(self, client, mock_async_db, mock_user):
         meal = _meal_with([_build_component("r1"), _build_component("r2", "R2", 1)])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery([_MockMealRecipe()]),  # duplicate
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=[_MockMealRecipe()]),  # duplicate
         ]
         response = client.post(
             "/v1/meals/meal-1/recipes",
@@ -350,14 +365,14 @@ class TestAddRecipeToMealEndpoint:
         )
         assert response.status_code == 409
 
-    def test_unreadable_recipe_404(self, client, mock_db, mock_user):
+    def test_unreadable_recipe_404(self, client, mock_async_db, mock_user):
         meal = _meal_with([_build_component("r1"), _build_component("r2", "R2", 1)])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery([]),  # no duplicate
-            MockQuery([]),  # recipe not found
-            MockQuery([]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=[]),  # no duplicate
+            MockExecuteResult(items=[]),  # recipe not found
+            MockExecuteResult(items=[]),
         ]
         response = client.post(
             "/v1/meals/meal-1/recipes",
@@ -365,11 +380,11 @@ class TestAddRecipeToMealEndpoint:
         )
         assert response.status_code == 404
 
-    def test_non_writer_403(self, client, mock_db, mock_user):
+    def test_non_writer_403(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBookUser(role="viewer")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBookUser(role="viewer")]),
         ]
         response = client.post(
             "/v1/meals/meal-1/recipes",
@@ -379,7 +394,7 @@ class TestAddRecipeToMealEndpoint:
 
 
 class TestRemoveRecipeFromMealEndpoint:
-    def test_happy_at_three(self, client, mock_db, mock_user):
+    def test_happy_at_three(self, client, mock_async_db, mock_user):
         meal = _meal_with([
             _build_component("r1"),
             _build_component("r2", "R2", 1),
@@ -390,58 +405,58 @@ class TestRemoveRecipeFromMealEndpoint:
             _MockMealRecipe(recipe_id="r2"),
             _MockMealRecipe(recipe_id="r3"),
         ]
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery(rows),  # service.remove_component fetches rows
-            MockQuery([meal]),  # re-fetch
-            MockQuery([("book-1",)]),
-            MockQuery([]),  # is_favorited → MealFavorite
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=rows),   # service.remove_component fetches rows
+            MockExecuteResult(items=[meal]),  # re-fetch
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[]),     # is_favorited → MealFavorite
         ]
         response = client.delete("/v1/meals/meal-1/recipes/r3")
         assert response.status_code == 200
 
-    def test_at_two_rejects_422(self, client, mock_db, mock_user):
+    def test_at_two_rejects_422(self, client, mock_async_db, mock_user):
         meal = _meal_with([_build_component("r1"), _build_component("r2", "R2", 1)])
         rows = [
             _MockMealRecipe(recipe_id="r1"),
             _MockMealRecipe(recipe_id="r2"),
         ]
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery(rows),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=rows),
         ]
         response = client.delete("/v1/meals/meal-1/recipes/r1")
         assert response.status_code == 422
 
-    def test_component_not_found_404(self, client, mock_db, mock_user):
+    def test_component_not_found_404(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
         rows = [
             _MockMealRecipe(recipe_id="r1"),
             _MockMealRecipe(recipe_id="r2"),
             _MockMealRecipe(recipe_id="r3"),
         ]
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery(rows),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=rows),
         ]
         response = client.delete("/v1/meals/meal-1/recipes/ghost")
         assert response.status_code == 404
 
-    def test_non_writer_403(self, client, mock_db, mock_user):
+    def test_non_writer_403(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBookUser(role="viewer")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBookUser(role="viewer")]),
         ]
         response = client.delete("/v1/meals/meal-1/recipes/r1")
         assert response.status_code == 403
 
 
 class TestReorderMealComponentsEndpoint:
-    def test_happy(self, client, mock_db, mock_user):
+    def test_happy(self, client, mock_async_db, mock_user):
         meal = _meal_with([
             _build_component("r1"),
             _build_component("r2", "R2", 1),
@@ -452,13 +467,13 @@ class TestReorderMealComponentsEndpoint:
             _MockMealRecipe(recipe_id="r2"),
             _MockMealRecipe(recipe_id="r3"),
         ]
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery(rows),      # reorder_components fetch
-            MockQuery([meal]),    # re-fetch
-            MockQuery([("book-1",)]),
-            MockQuery([]),        # is_favorited → MealFavorite
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=rows),       # reorder_components fetch
+            MockExecuteResult(items=[meal]),     # re-fetch
+            MockExecuteResult(items=[("book-1",)]),
+            MockExecuteResult(items=[]),         # is_favorited → MealFavorite
         ]
         response = client.post(
             "/v1/meals/meal-1/reorder",
@@ -466,16 +481,16 @@ class TestReorderMealComponentsEndpoint:
         )
         assert response.status_code == 200
 
-    def test_mismatch_422(self, client, mock_db, mock_user):
+    def test_mismatch_422(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
         rows = [
             _MockMealRecipe(recipe_id="r1"),
             _MockMealRecipe(recipe_id="r2"),
         ]
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery(rows),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=rows),
         ]
         response = client.post(
             "/v1/meals/meal-1/reorder",
@@ -483,25 +498,25 @@ class TestReorderMealComponentsEndpoint:
         )
         assert response.status_code == 422
 
-    def test_schema_rejects_duplicates(self, client, mock_db, mock_user):
+    def test_schema_rejects_duplicates(self, client, mock_async_db, mock_user):
         response = client.post(
             "/v1/meals/meal-1/reorder",
             json={"recipe_ids": ["r1", "r1"]},
         )
         assert response.status_code == 422
 
-    def test_schema_rejects_one_id(self, client, mock_db, mock_user):
+    def test_schema_rejects_one_id(self, client, mock_async_db, mock_user):
         response = client.post(
             "/v1/meals/meal-1/reorder",
             json={"recipe_ids": ["r1"]},
         )
         assert response.status_code == 422
 
-    def test_non_writer_403(self, client, mock_db, mock_user):
+    def test_non_writer_403(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([MockRecipeBookUser(role="viewer")]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBookUser(role="viewer")]),
         ]
         response = client.post(
             "/v1/meals/meal-1/reorder",
@@ -511,60 +526,60 @@ class TestReorderMealComponentsEndpoint:
 
 
 class TestFavoriteEndpoints:
-    def test_favorite_first_time(self, client, mock_db, mock_user):
+    def test_favorite_first_time(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
         # rf-2: response now builds a full MealResponse, which adds one
         # _readable_book_ids query inside hydrate_components.
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),       # require_meal_read → get_with_components
-            MockQuery([_owner()]),   # user_has_book_read
-            MockQuery([]),           # set_favorite: existing favorite? none
-            MockQuery([]),           # rf-2: hydrate_components → _readable_book_ids
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),       # require_meal_read → get_with_components
+            MockExecuteResult(items=[_owner()]),   # user_has_book_read
+            MockExecuteResult(items=[]),           # set_favorite: existing favorite? none
+            MockExecuteResult(items=[]),           # rf-2: hydrate_components → _readable_book_ids
         ]
         response = client.post("/v1/meals/meal-1/favorite")
         assert response.status_code == 201
         assert response.json()["is_favorite"] is True
 
-    def test_favorite_idempotent(self, client, mock_db, mock_user):
+    def test_favorite_idempotent(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery([_MockMealFavorite()]),  # already favorited
-            MockQuery([]),           # rf-2: _readable_book_ids
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=[_MockMealFavorite()]),  # already favorited
+            MockExecuteResult(items=[]),           # rf-2: _readable_book_ids
         ]
         response = client.post("/v1/meals/meal-1/favorite")
         assert response.status_code == 201
         assert response.json()["is_favorite"] is True
 
-    def test_unfavorite_existing(self, client, mock_db, mock_user):
+    def test_unfavorite_existing(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery([_MockMealFavorite()]),
-            MockQuery([]),           # rf-2: _readable_book_ids
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=[_MockMealFavorite()]),
+            MockExecuteResult(items=[]),           # rf-2: _readable_book_ids
         ]
         response = client.delete("/v1/meals/meal-1/favorite")
         assert response.status_code == 200
         assert response.json()["is_favorite"] is False
 
-    def test_unfavorite_idempotent(self, client, mock_db, mock_user):
+    def test_unfavorite_idempotent(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([_owner()]),
-            MockQuery([]),
-            MockQuery([]),           # rf-2: _readable_book_ids
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[_owner()]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),           # rf-2: _readable_book_ids
         ]
         response = client.delete("/v1/meals/meal-1/favorite")
         assert response.status_code == 200
 
-    def test_favorite_requires_read_membership(self, client, mock_db, mock_user):
+    def test_favorite_requires_read_membership(self, client, mock_async_db, mock_user):
         meal = _meal_with([])
-        mock_db.db.query.side_effect = [
-            MockQuery([meal]),
-            MockQuery([]),  # not a member
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[]),  # not a member
         ]
         response = client.post("/v1/meals/meal-1/favorite")
         assert response.status_code == 403

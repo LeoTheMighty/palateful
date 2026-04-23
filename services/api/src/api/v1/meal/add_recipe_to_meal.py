@@ -3,7 +3,7 @@
 from api.v1.meal._access import require_meal_write
 from api.v1.meal._response import build_meal_response
 from schemas.meal import MealComponentAddRequest
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.services.meal_service import (
@@ -13,18 +13,18 @@ from utils.services.meal_service import (
 )
 
 
-class AddRecipeToMeal(Endpoint):
+class AddRecipeToMeal(AsyncEndpoint):
     """Attach an additional component to a Meal."""
 
-    def execute(self, meal_id: str, params: MealComponentAddRequest):
+    async def execute(self, meal_id: str, params: MealComponentAddRequest):
         user: User = self.user
         db = self.db
 
-        meal = require_meal_write(db, meal_id, user)
+        meal = await require_meal_write(db, meal_id, user)
         service = MealService(db)
 
         try:
-            service.add_component(
+            await service.add_component(
                 meal=meal,
                 recipe_id=params.recipe_id,
                 order_index=params.order_index,
@@ -43,9 +43,9 @@ class AddRecipeToMeal(Endpoint):
                 code=ErrorCode.MEAL_COMPONENT_UNREADABLE,
             ) from exc
 
-        meal = service.get_with_components(meal_id)
-        db.commit()
+        meal = await service.get_with_components(meal_id)
+        await db.commit()
         return success(
-            data=build_meal_response(meal, db=db, user_id=user.id),
+            data=await build_meal_response(meal, db=db, user_id=user.id),
             status=201,
         )

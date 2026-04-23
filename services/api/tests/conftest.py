@@ -26,6 +26,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from fastapi.testclient import TestClient
 
 
+# Pre-warm the unit-alias cache so tests don't try to hit a real DB on
+# the first `normalize_unit_display` call. With sync mocks the lazy-init
+# happened to no-op cleanly (MagicMock's `execute(...).scalars().all()`
+# returned a usable empty list); with async mocks the same lazy-init
+# fires `mock_async_db.db.execute` (an `AsyncMock`) synchronously and
+# crashes on `.scalars()` of a coroutine. Forcing `_cache_initialized=True`
+# with empty sets makes `_ensure_cache` a no-op and `normalize_unit_display`
+# returns inputs as-is — sufficient for handler tests that don't assert
+# on canonical unit translation.
+def _prewarm_unit_alias_cache_for_tests() -> None:
+    from utils.services.units import normalize as _normalize
+
+    _normalize._cache_initialized = True
+    if not _normalize._canonical_units:
+        _normalize._canonical_units = set()
+    if not _normalize._alias_map:
+        _normalize._alias_map = {}
+
+
+_prewarm_unit_alias_cache_for_tests()
+
+
 # ---------------------------------------------------------------------------
 # Model-like objects for mocking database results
 # ---------------------------------------------------------------------------
@@ -727,6 +749,19 @@ class MockExecuteResult:
     def scalar_one_or_none(self):
         return self._items[0] if self._items else None
 
+    def scalar_one(self):
+        if not self._items:
+            from sqlalchemy.exc import NoResultFound
+
+            raise NoResultFound
+        return self._items[0]
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+    def one_or_none(self):
+        return self._items[0] if self._items else None
+
     def all(self):
         return self._items
 
@@ -1146,19 +1181,40 @@ def mock_user():
 
 
 @pytest.fixture
-def client(mock_db, mock_user):
-    """Create a TestClient with mocked dependencies."""
+def client(mock_db, mock_async_db, mock_user):
+    """Create a TestClient with mocked dependencies.
+
+    aam-10: also overrides async deps (`get_async_database` +
+    `get_current_user_async`) so sync-style tests can exercise async
+    routers without rewriting. Tests whose handler code hits async DB
+    paths need to pre-configure `mock_async_db` (not `mock_db`).
+    """
     from main import app
-    from dependencies import get_database, get_current_user
+    from dependencies import (
+        get_async_database,
+        get_current_user,
+        get_current_user_async,
+        get_database,
+    )
 
     def override_get_database():
         return mock_db
 
+    async def override_get_async_database():
+        yield mock_async_db
+
     def override_get_current_user():
         return mock_user
 
+    async def override_get_current_user_async():
+        return mock_user
+
     app.dependency_overrides[get_database] = override_get_database
+    app.dependency_overrides[get_async_database] = override_get_async_database
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_current_user_async] = (
+        override_get_current_user_async
+    )
 
     with TestClient(app) as c:
         yield c
@@ -1167,15 +1223,25 @@ def client(mock_db, mock_user):
 
 
 @pytest.fixture
-def unauthed_client(mock_db):
-    """Create a TestClient with only database mocked (no auth override)."""
+def unauthed_client(mock_db, mock_async_db):
+    """Create a TestClient with only the database deps mocked (no auth override).
+
+    aam-10: also overrides `get_async_database` so unauth'd async handlers
+    (e.g. `GET /v1/meals/public/{token}`) get the `MockAsyncDatabase`
+    instead of trying to instantiate the real `AsyncDatabase` (which
+    would crash because `DATABASE_URL` is empty in the API test env).
+    """
     from main import app
-    from dependencies import get_database
+    from dependencies import get_async_database, get_database
 
     def override_get_database():
         return mock_db
 
+    async def override_get_async_database():
+        yield mock_async_db
+
     app.dependency_overrides[get_database] = override_get_database
+    app.dependency_overrides[get_async_database] = override_get_async_database
 
     with TestClient(app) as c:
         yield c
@@ -1403,6 +1469,7 @@ async def async_client(mock_db, mock_async_db, mock_user):
     from dependencies import (
         get_async_database,
         get_current_user,
+        get_current_user_async,
         get_database,
     )
     from main import app
@@ -1416,9 +1483,15 @@ async def async_client(mock_db, mock_async_db, mock_user):
     def _override_get_current_user():
         return mock_user
 
+    async def _override_get_current_user_async():
+        return mock_user
+
     app.dependency_overrides[get_database] = _override_get_database
     app.dependency_overrides[get_async_database] = _override_get_async_database
     app.dependency_overrides[get_current_user] = _override_get_current_user
+    app.dependency_overrides[get_current_user_async] = (
+        _override_get_current_user_async
+    )
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

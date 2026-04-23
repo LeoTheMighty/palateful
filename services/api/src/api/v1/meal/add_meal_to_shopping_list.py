@@ -14,20 +14,28 @@ from decimal import Decimal
 
 from api.v1.meal._access import require_meal_read
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.meal import Meal
+from utils.models.meal_recipe import MealRecipe
+from utils.models.recipe import Recipe
+from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.services.meal_service import aggregate_meal_ingredients
 
 
-class AddMealToShoppingList(Endpoint):
+class AddMealToShoppingList(AsyncEndpoint):
     """Expand a Meal's aggregate ingredients into a shopping list."""
 
-    def execute(self, meal_id: str, params: "AddMealToShoppingList.Params"):
+    async def execute(
+        self, meal_id: str, params: "AddMealToShoppingList.Params"
+    ):
         user = self.user
 
-        meal = require_meal_read(self.database.db, meal_id, user)
+        meal = await require_meal_read(self.database.db, meal_id, user)
         if meal.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -35,9 +43,33 @@ class AddMealToShoppingList(Endpoint):
                 code=ErrorCode.MEAL_NOT_FOUND,
             )
 
-        shopping_list = self.database.find_by(
-            ShoppingList, id=params.shopping_list_id
+        # aggregate_meal_ingredients walks `meal.components[i].recipe.ingredients`
+        # and `.ingredient` — widen the selectinload chain so none of those
+        # attribute hops fire MissingGreenlet on the async engine.
+        meal_hydration = await self.database.db.execute(
+            select(Meal)
+            .options(
+                selectinload(Meal.components)
+                .selectinload(MealRecipe.recipe)
+                .selectinload(Recipe.ingredients)
+                .selectinload(RecipeIngredient.ingredient),
+                selectinload(Meal.components)
+                .selectinload(MealRecipe.recipe)
+                .selectinload(Recipe.recipe_book),
+            )
+            .where(Meal.id == meal_id)
         )
+        meal = meal_hydration.scalars().first() or meal
+
+        # Eager-load `items` because we iterate it below for dedupe — lazy
+        # relationship access after session.commit() would fire
+        # MissingGreenlet on the async engine.
+        sl_result = await self.database.db.execute(
+            select(ShoppingList)
+            .options(selectinload(ShoppingList.items))
+            .where(ShoppingList.id == params.shopping_list_id)
+        )
+        shopping_list = sl_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -46,7 +78,7 @@ class AddMealToShoppingList(Endpoint):
             )
 
         is_owner = shopping_list.owner_id == user.id
-        list_membership = self.database.find_by(
+        list_membership = await self.database.find_by(
             ShoppingListUser,
             shopping_list_id=params.shopping_list_id,
             user_id=user.id,
@@ -73,6 +105,10 @@ class AddMealToShoppingList(Endpoint):
             if item.archived_at is None
         }
 
+        # aggregate_meal_ingredients stays sync (worker contract frozen).
+        # Safe on the event loop: `meal.components` is eager-loaded via
+        # `selectinload`, and `normalize_unit_display` hits the pre-warmed
+        # memory cache — no DB I/O happens when the cache is hot.
         aggregates = aggregate_meal_ingredients(meal, self.database.db)
 
         added_items = []
@@ -102,8 +138,8 @@ class AddMealToShoppingList(Endpoint):
                 source_meal_id=meal.id,
                 added_by_user_id=user.id,
             )
-            self.database.create(item)
-            self.database.db.refresh(item)
+            await self.database.create(item)
+            await self.database.db.refresh(item)
 
             added_items.append(
                 AddMealToShoppingList.ItemResponse(
@@ -120,7 +156,7 @@ class AddMealToShoppingList(Endpoint):
                 )
             )
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=AddMealToShoppingList.Response(

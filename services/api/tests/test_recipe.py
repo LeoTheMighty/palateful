@@ -1044,9 +1044,16 @@ class TestToggleFavorite:
 class TestListFavorites:
     """Tests for GET /v1/favorites."""
 
-    def test_list_favorites_empty(self, client, mock_db, mock_user):
-        """Test listing favorites when user has none."""
-        mock_db.db.query.return_value = MockQuery([])
+    def test_list_favorites_empty(self, client, mock_async_db, mock_user):
+        """Test listing favorites when user has none.
+
+        aam-10: `ListFavorites` is now `AsyncEndpoint` — stub the async
+        execute with an empty `MockExecuteResult`. Default MockAsyncDatabase
+        already returns empty, so this is effectively a smoke test.
+        """
+        from conftest import MockExecuteResult
+
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.get("/v1/favorites")
         assert response.status_code == 200
@@ -1054,14 +1061,22 @@ class TestListFavorites:
         assert data["items"] == []
         assert data["total"] == 0
 
-    def test_list_favorites_with_results(self, client, mock_db, mock_user):
-        """Test listing favorites returns recipe data."""
+    def test_list_favorites_with_results(self, client, mock_async_db, mock_user):
+        """Test listing favorites returns recipe data.
+
+        aam-10: handler issues two `await db.execute(select(...))` calls —
+        one for `(UserFavorite, Recipe)` tuples, one for
+        `(MealFavorite, Meal)` tuples. Both are `result.all()` over the
+        tuple rows.
+        """
+        from conftest import MockExecuteResult
+
         recipe = MockRecipe(name="Favorite Pasta", tags=["italian"])
         fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=str(recipe.id))
         # md-3: two queries now — recipe favorites + meal favorites.
-        mock_db.db.query.side_effect = [
-            MockQuery([(fav, recipe)]),
-            MockQuery([]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[(fav, recipe)]),
+            MockExecuteResult(items=[]),
         ]
 
         response = client.get("/v1/favorites")
