@@ -42,6 +42,7 @@ import '../shared/widgets/step_timers_row.dart';
 import '../shared/widgets/timer_completion_overlay.dart';
 import '../widgets/cook_reset_confirm_sheet.dart';
 import 'widgets/component_load_placeholder.dart';
+import 'widgets/recipe_section_header.dart';
 
 class MealCookModeScreen extends ConsumerStatefulWidget {
   final String mealId;
@@ -761,12 +762,16 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
               currentStep: _currentStep,
               totalSteps: plan.totalSteps,
               completedSteps: _completedSteps,
+              componentBoundaries: plan.componentBoundaries,
+              componentNameForStep: (i) {
+                if (i < 0 || i >= plan.totalSteps) return null;
+                return plan.components[plan.stepAt(i).componentIndex].name;
+              },
               onPrevious: _currentStep > 0 ? _previousStep : null,
               onNext: _currentStep < plan.totalSteps - 1 ? _nextStep : null,
               onDone: _finishCooking,
               onStepTap: _goToStep,
               onLongPressStep: _markAllUpToHere,
-              // cmm-3 wires the boundary + componentNameForStep params.
             ),
           ],
         ),
@@ -964,11 +969,23 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     final timers = step.timers.isNotEmpty
         ? step.timers
         : extractTimers(step.instruction);
+    final showSectionHeader = plan.components.length > 1;
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
-          // cmm-3 inserts the recipe section header above the progress bar.
+          // cmm-3 — section header is hidden in 1-component plans
+          // (recipe-cook compat). Always shown for N>1 meals.
+          if (showSectionHeader) ...[
+            RecipeSectionHeader(
+              componentName: currentComponent.name,
+              localStep: stepIndex + 1,
+              componentTotal: currentComponent.steps.length,
+            ),
+            const SizedBox(height: 8),
+          ],
+          // Flat-total progress bar — consistent with cmm-3 AC9
+          // (10/20 reads 50%, regardless of component slicing).
           Container(
             height: 4,
             margin: const EdgeInsets.symmetric(horizontal: 48),
