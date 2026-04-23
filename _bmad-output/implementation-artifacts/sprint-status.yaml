@@ -1141,7 +1141,7 @@ development_status:
   # app cold-start. One prod runbook doc owns the 4-step flag rollout.
   # Coexists with riip (backlog) and efi (done) via flag coordination.
   # 8 stories across 3 parallel tracks.
-  epic-extractor-richer-ingredients: in-progress
+  epic-extractor-richer-ingredients: done
   eri-1-softened-unit-rule-flag-precedence-and-aggressive-capture-prompts: done
   eri-2-ingredient-parse-only-ai-pass-module-with-json-schema-response: done
   eri-3a-extract-recipe-from-html-parse-pass-invocation-and-coverage-audit: done
@@ -1149,7 +1149,7 @@ development_status:
   eri-4a-seed-freeform-units-table-rows-preserving-fk: done
   eri-4b-seed-freeform-unit-aliases-and-flutter-cache-refresh-verification: done
   eri-5-eval-ingredient-field-completeness-metric-and-seven-fixtures: done
-  eri-6-extractor-flag-rollout-runbook-and-staging-verification: backlog
+  eri-6-extractor-flag-rollout-runbook-and-staging-verification: done
   epic-extractor-richer-ingredients-retrospective: optional
 
   # ─────────────────────────────────────────────────────────────────────
