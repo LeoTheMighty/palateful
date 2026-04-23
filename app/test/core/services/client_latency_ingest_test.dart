@@ -138,9 +138,15 @@ void main() {
         route: '/home',
       );
     }
-    // `_flushInBackground` schedules as a microtask; wait on the queue
-    // drain to let it run.
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    // `_flushInBackground` schedules `flushNow()` via `unawaited`;
+    // poll for queue drain instead of a bare 20ms sleep so slow CI
+    // runners don't flake on microtask scheduling.
+    for (var i = 0; i < 50; i++) {
+      if (ingest.queuedEventCount == 0 && adapter.requests.isNotEmpty) {
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
     expect(adapter.requests, hasLength(1));
     expect(ingest.queuedEventCount, 0);
     ingest.dispose();
