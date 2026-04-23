@@ -1273,7 +1273,7 @@ development_status:
   cla-5-flutter-cold-start-timing-and-frame-jank-aggregator: done
   cla-6-dio-interceptor-chain-perf-firebase-dedup-coexistence: done
   cla-7-ios-metrickit-receiver-eventchannel-and-dart-handler: done
-  cla-8-android-jankstats-receiver-eventchannel-and-dart-handler: backlog
+  cla-8-android-jankstats-receiver-eventchannel-and-dart-handler: done
   cla-9-flutter-web-navigation-timing-bridge-package-web: done
   cla-10a-admin-aggregation-endpoints: done
   cla-10b-flutter-admin-dashboard-client-tab: done

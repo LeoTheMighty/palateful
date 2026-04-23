@@ -24,6 +24,7 @@ import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
 import 'core/services/client_latency_ingest.dart';
 import 'core/services/frame_jank_aggregator.dart';
+import 'core/services/jankstats_bridge.dart';
 import 'core/services/metrickit_bridge.dart';
 import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
@@ -317,6 +318,15 @@ Future<void> _bootstrapClientLatencyIngest() async {
     if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb) {
       final bridge = MetricKitBridge();
       getIt.registerSingleton<MetricKitBridge>(bridge);
+      bridge.start();
+    }
+
+    // cla-8: Android JankStats bridge. Release-only is enforced on
+    // the Kotlin side (`BuildConfig.DEBUG` guard in MainActivity), so
+    // the EventChannel delivers no events in dev builds.
+    if (defaultTargetPlatform == TargetPlatform.android && !kIsWeb) {
+      final bridge = JankStatsBridge();
+      getIt.registerSingleton<JankStatsBridge>(bridge);
       bridge.start();
     }
   } catch (e) {

@@ -31,6 +31,13 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    // cla-8: BuildConfig.DEBUG is consumed by MainActivity to gate the
+    // JankStats bridge to release builds only. AGP 8+ makes buildConfig
+    // opt-in; enabling it here is cheap and Crashlytics also benefits.
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.palateful.palateful"
@@ -82,4 +89,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // cla-8: AndroidX JankStats for OS-level frame-timing (hitches) —
+    // caught on a `Window` and rolled up per-minute by the bridge.
+    // Stable 1.0.0 (April 2024); upgrade on Google Maven notifications.
+    implementation("androidx.metrics:metrics-performance:1.0.0")
 }
