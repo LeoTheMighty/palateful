@@ -323,3 +323,26 @@ Reverse step 3 (`CLIENT_LATENCY_INGEST_ENABLED=true`, sampling back to `1.0`) an
 - Router: `services/api/src/routers/v1/flags_router.py`
 - Config: `services/api/src/config.py` (`client_latency_ingest_enabled`, `client_latency_sampling_rate`)
 - Tests: `services/api/tests/test_perf_flags.py`
+
+---
+
+## Web renderer caveat (cla-9)
+
+`WebPerfBridge` (`app/lib/core/services/web_perf_bridge.dart`) reads
+browser `PerformanceNavigationTiming` + Paint Timing entries on web
+only. When interpreting the dashboard, note:
+
+- **Canvas renderer** (CanvasKit / Skia-over-WebGL): the app draws on a
+  single `<canvas>` so the browser sees one paint event covering the
+  whole shell. `first-paint` and `first-contentful-paint` therefore
+  fire together at ~frame 1, regardless of content being ready.
+- **HTML renderer**: each Flutter widget maps to DOM nodes. The browser
+  sees successive paint events as real content mounts, so
+  `first-contentful-paint` tracks closer to what users perceive as
+  "content showed up."
+
+When cross-comparing web vs. mobile in the admin Client tab, filter to
+one renderer (via `platform=web` + `app_version`) at a time. A
+regression that only moves the FP line on canvas builds is an engine /
+bundle-size issue; one that moves FCP on the HTML renderer is usually
+a widget-tree problem.
