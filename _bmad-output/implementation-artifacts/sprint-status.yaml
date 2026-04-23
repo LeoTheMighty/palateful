@@ -1116,3 +1116,90 @@ development_status:
   cmm-6-per-component-post-cook-sheet: done
   cmm-7-meal-cook-resume-wiring-and-regression-sweep: done
   epic-cook-mode-meal-retrospective: optional
+
+  # Epic Extractor Richer Ingredient Extraction (planned 2026-04-22, refined via party-mode)
+  # Backend-only. Soften riip-3's "EXACTLY one of these tokens" canonical rule
+  # into "prefer these, allow freeform when source uses it". Bias toward
+  # convertible units (cup/ml/g/oz) when source is ambiguous, so later
+  # US↔metric conversion works. Add aggressive qty/unit/notes capture
+  # instruction + worked examples (clove/gram/stalk/salt/half-cup/range/
+  # pinchful) to fix the "1 clove garlic" name-folding bug and the
+  # "300 gram of vinegar" URL-import drop. New ingredient_parse.py runs
+  # gpt-4o-mini with strict json_schema response_format over JSON-LD's
+  # text-only recipeIngredient subset (mixed-structure sites get best of
+  # both — structured rows pass through, text-only rows get AI-parsed and
+  # splice back in-order). units table grows by 15 freeform rows
+  # (stalk/bunch/can/packet/…) to keep the unit_aliases FK intact; 15
+  # plural→singular aliases seeded on top. Two flippable flags:
+  # EXTRACTOR_SOFTEN_UNIT_RULE (default on), EXTRACTOR_JSON_LD_INGREDIENT_
+  # PARSE (default on). Flag precedence coded: SOFTEN > CANONICAL >
+  # freeform. Confidence score explicitly NOT inflated by parse pass
+  # (ingredients are review-editable; confidence reflects recipe-level
+  # structure). Review Import NEVER degrades below today — parse-pass
+  # failure → text-only row fallback (pre-ERI behavior). Zero Flutter UI
+  # changes; one small verification that SessionAliasMap refreshes on
+  # app cold-start. One prod runbook doc owns the 4-step flag rollout.
+  # Coexists with riip (backlog) and efi (done) via flag coordination.
+  # 8 stories across 3 parallel tracks.
+  epic-extractor-richer-ingredients: in-progress
+  eri-1-softened-unit-rule-flag-precedence-and-aggressive-capture-prompts: done
+  eri-2-ingredient-parse-only-ai-pass-module-with-json-schema-response: backlog
+  eri-3a-extract-recipe-from-html-parse-pass-invocation-and-coverage-audit: backlog
+  eri-3b-mixed-structure-subset-filter-and-splice-in-order: backlog
+  eri-4a-seed-freeform-units-table-rows-preserving-fk: backlog
+  eri-4b-seed-freeform-unit-aliases-and-flutter-cache-refresh-verification: backlog
+  eri-5-eval-ingredient-field-completeness-metric-and-seven-fixtures: backlog
+  eri-6-extractor-flag-rollout-runbook-and-staging-verification: backlog
+  epic-extractor-richer-ingredients-retrospective: optional
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Addendum — 2026-04-22 — Cook mode redesign (toggleable per-recipe flow)
+  # Two epics, sequential. See epic-cook-mode-layout-polish.md and
+  # epic-cook-mode-multi-recipe-flow.md for detail. Locked user decisions
+  # captured in prd.md addendum dated 2026-04-22.
+  # ─────────────────────────────────────────────────────────────────────
+  #
+  # epic-cook-mode-layout-polish — shared visual polish applied to both
+  # recipe and meal cook modes. Removes the X close button from the
+  # header, drops the INGREDIENTS ALL-CAPS label + Expand/Collapse
+  # button + compact horizontal strip entirely (ingredient list always
+  # expanded), bumps chip typography to 14px name + 14px w600 accented
+  # quantity with IntrinsicWidth + 2-line name, replaces meal-mode
+  # --- From X --- dashed dividers with clean typographic group
+  # headers, comments out the RecipeSectionHeader render call above
+  # the step card (file stays on disk; the multi-recipe-flow epic owns
+  # final deletion), and tightens the progress bar horizontal margin
+  # 48 → 24 to align with step card edges. Flutter-only; no API, no
+  # schema, no infra. 5 stories. Blocks the multi-recipe-flow epic.
+  epic-cook-mode-layout-polish: backlog
+  cmlp-1-remove-x-button-from-cook-mode-header-both-modes: backlog
+  cmlp-2-ingredient-strip-drop-header-expand-collapse-compact-strip: backlog
+  cmlp-3-ingredient-chip-readability-pass: backlog
+  cmlp-4-meal-mode-group-headers-and-drop-section-header-above-step-card: backlog
+  cmlp-5-progress-bar-and-header-padding-polish: backlog
+
+  # epic-cook-mode-multi-recipe-flow — per-recipe step tracking in meal
+  # cook mode. Replaces the flat _currentStep int with
+  # Map<recipeId, stepIndex> + activeRecipeId pointer. Adds a
+  # RecipeToggleBar widget below the ingredient list with pills like
+  # `Dressing 5/7` (active-state + completed-checkmark + pulse-on-timer
+  # animations). Bottom progress bar scopes to the active recipe.
+  # Auto-advances on recipe end to the first unfinished recipe in plan
+  # order. Active-timers chips prefix recipe name (`Dressing · 0:17`);
+  # cross-recipe timer completion shows snackbar + pulses the owning
+  # recipe's toggle pill (no auto-switch). Persister schema bumps
+  # v1 → v2 with one-shot migration on read; SavedTimerState gains
+  # sourceRecipeId. Cross-recipe backward swipe at recipe step 0
+  # rewinds to the prior entered recipe's last step. Single-recipe
+  # mode hides the toggle bar (no recipe cook regression).
+  # RecipeSectionHeader file deleted. Flutter-only; no API, no new
+  # endpoints, no infra. 7 stories. Depends on
+  # epic-cook-mode-layout-polish landing first.
+  epic-cook-mode-multi-recipe-flow: backlog
+  cmmrf-1-per-recipe-step-tracking-state-in-memory-only: backlog
+  cmmrf-2-persister-schema-v2-and-v1-migration: backlog
+  cmmrf-3-recipe-toggle-bar-widget-and-mount: backlog
+  cmmrf-4-per-recipe-bottom-progress-indicator-and-drop-section-header-file: backlog
+  cmmrf-5-auto-advance-on-recipe-end: backlog
+  cmmrf-6-active-timers-row-recipe-name-prefix-and-cross-recipe-pulse: backlog
+  cmmrf-7-cross-recipe-backward-swipe-rewind: backlog

@@ -95,10 +95,12 @@ Vibes: [light_fresh, hearty, comfort, energizing, carb_load, indulgent, warming]
 
 Ingredient rules — CRITICAL: quantity, unit, and text are rendered together downstream as "<quantity> <unit> <text>". Do NOT duplicate information across these fields or the UI will show things like "9 tbsp 9 tbsp butter".
 
+For every ingredient line, always extract `quantity`, `unit`, and `notes` when they appear in the source, even if the quantity is a fraction, a range, or implied by context. Notes capture preparation hints ("minced", "melted", "room temperature", "to taste"). If the source gives a range like "1-2 cups" or "1 to 2 cups", emit `quantity` as the first value and capture the full range in `notes` (e.g. `{{"quantity": 1, "notes": "to 2 cups"}}`). Respect word boundaries for units: "a pinchful" is NOT "pinch" (unit: null).
+
 - "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here.
 {unit_rule(freeform_fallback=_FREEFORM_UNIT_RULE)}
 - "name": the canonical ingredient name, stripped of quantity, unit, and prep notes (e.g. "onion" not "diced yellow onion"; "butter" not "9 tbsp butter").
-- "notes": preparation/state qualifiers ("minced", "sauteed", "room temperature", "to taste", "divided") or null.
+- "notes": preparation/state qualifiers ("minced", "sauteed", "room temperature", "to taste", "divided") or null. Do NOT hallucinate notes — if the source has no qualifier, notes MUST be null.
 - "text": the ingredient DESCRIPTION as it should appear next to the quantity and unit. Keep prep qualifiers in natural order, but STRIP the numeric quantity and the unit off the front. Never begins with a number or a unit. If the source has no quantity/unit to strip (e.g. "Salt"), use the whole line.
 - "is_optional": true only if the recipe explicitly marks the ingredient as optional.
 
@@ -109,6 +111,12 @@ Worked examples (source line -> extracted fields):
 - "3 large eggs" -> {{"text": "large eggs", "quantity": 3, "unit": null, "name": "eggs", "notes": "large", "is_optional": false}}
 - "Pinch nutmeg" -> {{"text": "nutmeg", "quantity": null, "unit": "pinch", "name": "nutmeg", "notes": null, "is_optional": false}}
 - "Salt to taste" -> {{"text": "salt, to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}}
+- "1 clove garlic, minced" -> {{"text": "garlic, minced", "quantity": 1, "unit": "clove", "name": "garlic", "notes": "minced", "is_optional": false}}
+- "2 stalks celery, chopped" -> {{"text": "celery, chopped", "quantity": 2, "unit": "stalk", "name": "celery", "notes": "chopped", "is_optional": false}}
+- "300 gram of vinegar" -> {{"text": "vinegar", "quantity": 300, "unit": "g", "name": "vinegar", "notes": null, "is_optional": false}}
+- "1-2 cups water" -> {{"text": "water", "quantity": 1, "unit": "cup", "name": "water", "notes": "to 2 cups", "is_optional": false}}
+- "a pinchful of salt" -> {{"text": "salt", "quantity": null, "unit": null, "name": "salt", "notes": "pinchful", "is_optional": false}}
+- "2 cups flour" -> {{"text": "flour", "quantity": 2, "unit": "cup", "name": "flour", "notes": null, "is_optional": false}}
 
 BAD examples — do NOT produce these:
 - {{"text": "9 tbsp butter", "quantity": 9, "unit": "tbsp", ...}}   # text repeats quantity+unit

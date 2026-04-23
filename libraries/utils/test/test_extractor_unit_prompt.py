@@ -22,17 +22,22 @@ from utils.services.recipe_extractors.unit_prompt import (
 
 @pytest.fixture
 def flag_off(monkeypatch):
+    """Both OFF — full rollback path (freeform)."""
     monkeypatch.setenv("EXTRACTOR_EMIT_CANONICAL_UNITS", "false")
+    monkeypatch.setenv("EXTRACTOR_SOFTEN_UNIT_RULE", "false")
 
 
 @pytest.fixture
 def flag_on(monkeypatch):
+    """CANONICAL on, SOFTEN off — exercises the riip-3 canonical-only path."""
     monkeypatch.setenv("EXTRACTOR_EMIT_CANONICAL_UNITS", "true")
+    monkeypatch.setenv("EXTRACTOR_SOFTEN_UNIT_RULE", "false")
 
 
 @pytest.fixture
 def flag_unset(monkeypatch):
     monkeypatch.delenv("EXTRACTOR_EMIT_CANONICAL_UNITS", raising=False)
+    monkeypatch.delenv("EXTRACTOR_SOFTEN_UNIT_RULE", raising=False)
 
 
 # ---------------------------------------------------------------------------
