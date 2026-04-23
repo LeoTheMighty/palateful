@@ -39,6 +39,29 @@ def _build_database_url() -> str | None:
 
 
 DATABASE_URL = _build_database_url()
+
+
+def _build_async_database_url() -> str | None:
+    """Async counterpart of DATABASE_URL.
+
+    Rewrites the `postgresql://` or `postgresql+psycopg2://` scheme to
+    `postgresql+asyncpg://` so SQLAlchemy picks the asyncpg driver
+    without us maintaining a second env var (single source of truth).
+    asyncpg does NOT accept libpq-style `sslmode` query params; strip
+    them and translate the common `require`/`verify-*` modes into
+    asyncpg's `ssl` connect-arg instead.
+    """
+    url = DATABASE_URL
+    if not url:
+        return None
+    if url.startswith("postgresql+psycopg2://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql+psycopg2://"):]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+    return url
+
+
+ASYNC_DATABASE_URL = _build_async_database_url()
 # pim-4b (2026-04-21): defaults bumped 10→20 / 20→40. Gated on pim-2's
 # static param reboot setting max_connections=80 (20 reserved for
 # beat/worker/migrator/psql). Env-overridable so local dev can stay on
@@ -46,6 +69,12 @@ DATABASE_URL = _build_database_url()
 # a dev .env).
 DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "20"))
 DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "40"))
+# aam-1 (2026-04-23): async pool for services/api. Same budget as sync
+# today; after aam-24 cutover the sync pool shrinks to 5/10 and these
+# stay at 20/40. max_connections=100 (bumped from 80 in aam-1) covers
+# sync(20) + async(20) + beat/worker/migrator(~15) + headroom.
+DB_ASYNC_POOL_SIZE = int(os.environ.get("DB_ASYNC_POOL_SIZE", "20"))
+DB_ASYNC_MAX_OVERFLOW = int(os.environ.get("DB_ASYNC_MAX_OVERFLOW", "40"))
 
 # AWS Parser / Batch settings (used by worker tasks)
 PARSER_INPUTS_BUCKET = os.environ.get("PARSER_INPUTS_BUCKET", "")

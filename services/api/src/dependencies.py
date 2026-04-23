@@ -1,18 +1,20 @@
 """FastAPI dependency injection for database and authentication."""
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from config import settings
 from fastapi import Depends, Header
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.constants import LOGGING_LEVEL
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
-from utils.services.database import Database, SessionLocal
+from utils.services.database import AsyncSessionLocal, Database, SessionLocal
 
 logger = logging.getLogger(__name__)
 logger.setLevel(LOGGING_LEVEL)
@@ -38,6 +40,37 @@ def get_database():
         yield database
     finally:
         database.close()
+
+
+async def get_async_session() -> AsyncGenerator[AsyncSession]:
+    """Yield a request-scoped AsyncSession (aam-1).
+
+    Stub for the async path. The real `AsyncDatabase` wrapper arrives in
+    aam-2 and will be injected via `get_async_database`. Until then this
+    exposes the raw session so a handler can exercise the async engine.
+    """
+    if AsyncSessionLocal is None:
+        raise RuntimeError(
+            "AsyncSessionLocal is not configured — "
+            "ASYNC_DATABASE_URL is unset. Set DATABASE_URL (or DB_HOST/DB_USERNAME/etc.)."
+        )
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+async def get_async_database() -> AsyncGenerator[AsyncSession]:
+    """Async DB dep (aam-1 stub — aam-2 swaps in AsyncDatabase).
+
+    Yields an `AsyncSession` today so a handler can `await` queries.
+    aam-2 replaces the yielded type with `AsyncDatabase` (a mirror of
+    the sync `Database` surface). Keeping the name stable now means no
+    handler has to re-import when the swap lands.
+    """
+    async for session in get_async_session():
+        yield session
 
 
 async def get_current_user(

@@ -1,6 +1,6 @@
 """Tests for main.py application setup."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -248,3 +248,92 @@ class TestLifespan:
             "Failed to load unit_alias cache" in rec.message
             for rec in caplog.records
         )
+
+    @pytest.mark.asyncio
+    async def test_lifespan_warms_async_engine_on_startup(self):
+        """aam-1: startup runs SELECT 1 on the async engine to prime asyncpg's
+        prepared-statement cache. Confirms the happy path (connect + execute)."""
+        from main import lifespan, app
+
+        fake_conn = AsyncMock()
+        fake_conn.execute = AsyncMock()
+
+        class _FakeConnCM:
+            async def __aenter__(self_inner):
+                return fake_conn
+
+            async def __aexit__(self_inner, exc_type, exc, tb):
+                return None
+
+        fake_engine = MagicMock()
+        fake_engine.connect = MagicMock(return_value=_FakeConnCM())
+        fake_engine.dispose = AsyncMock(return_value=None)
+
+        with patch("utils.services.database.async_db_engine", fake_engine):
+            async with lifespan(app):
+                pass
+
+        fake_conn.execute.assert_awaited()
+        fake_engine.dispose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_async_warmup_failure_is_swallowed(self, caplog):
+        """aam-1: warm-up failure falls back to lazy init on first request —
+        never breaks startup."""
+        import logging
+        from main import lifespan, app
+
+        fake_engine = MagicMock()
+        fake_engine.connect = MagicMock(side_effect=RuntimeError("no pg today"))
+        fake_engine.dispose = AsyncMock(return_value=None)
+
+        with (
+            patch("utils.services.database.async_db_engine", fake_engine),
+            caplog.at_level(logging.ERROR, logger="main"),
+        ):
+            async with lifespan(app):
+                pass
+
+        assert any(
+            "Async engine warm-up failed" in rec.message
+            for rec in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_lifespan_shutdown_disposes_async_engine(self):
+        """aam-1: shutdown awaits dispose() on the async engine (reverse
+        startup order — async first, sync second)."""
+        from main import lifespan, app
+
+        fake_async_engine = MagicMock()
+        fake_async_engine.connect = MagicMock(side_effect=Exception("skip warmup"))
+        fake_async_engine.dispose = AsyncMock(return_value=None)
+
+        with patch("utils.services.database.async_db_engine", fake_async_engine):
+            async with lifespan(app):
+                pass
+
+        fake_async_engine.dispose.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_lifespan_async_dispose_failure_is_swallowed(self):
+        """aam-1: async engine dispose failure must not break shutdown —
+        sync engine dispose still needs to run."""
+        from main import lifespan, app
+
+        fake_async_engine = MagicMock()
+        fake_async_engine.connect = MagicMock(side_effect=Exception("skip warmup"))
+        fake_async_engine.dispose = AsyncMock(
+            side_effect=RuntimeError("async dispose boom")
+        )
+        fake_sync_engine = MagicMock()
+
+        with (
+            patch("utils.services.database.async_db_engine", fake_async_engine),
+            patch("utils.services.database.db_engine", fake_sync_engine),
+        ):
+            # Should not raise
+            async with lifespan(app):
+                pass
+
+        fake_sync_engine.dispose.assert_called_once()

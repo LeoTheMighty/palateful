@@ -27,7 +27,10 @@ async def lifespan(app: FastAPI):
 
     # Load the unit-alias cache (riip-1) once at startup so the hot path
     # never pays a query on the first normalize_unit_display call. Best
-    # effort — failures fall back to the lazy-init in the helper.
+    # effort — failures fall back to the lazy-init in the helper. Runs
+    # on the sync engine (whitelisted off the event loop per epic design
+    # principle #1) — must happen BEFORE the async engine warm-up so
+    # sync-first ordering holds (aam-1).
     try:
         from utils.services.database import Database
         from utils.services.units import reload_unit_alias_cache
@@ -41,6 +44,25 @@ async def lifespan(app: FastAPI):
         import logging
         logging.getLogger(__name__).exception(
             "Failed to load unit_alias cache on FastAPI startup"
+        )
+
+    # aam-1: async engine warm-up. Touch the pool so the first real
+    # request doesn't pay asyncpg's prepared-statement cache build
+    # (~100-300ms per new connection). Lazy-imported so the worker
+    # container, which reuses this module indirectly via utils, is not
+    # forced to have the async engine configured. aam-23 expands this
+    # to warm every connection in the pool.
+    try:
+        from sqlalchemy import text
+        from utils.services.database import async_db_engine
+
+        if async_db_engine is not None:  # pragma: no branch
+            async with async_db_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Async engine warm-up failed on FastAPI startup"
         )
 
     # Start the MCP streamable-http session manager for the life of the process.
@@ -68,8 +90,17 @@ async def lifespan(app: FastAPI):
             get_request_writer().drain()
         except Exception:
             pass
-        # Dispose the SQLAlchemy connection pool on shutdown to avoid leaked
-        # connections against RDS/PostgreSQL when the container is stopped.
+        # Dispose the SQLAlchemy connection pools on shutdown to avoid
+        # leaked connections against RDS/PostgreSQL when the container
+        # is stopped. Reverse startup order: async first (drains
+        # request-scoped sessions still holding asyncpg connections),
+        # then sync (writers + one-shot paths).
+        try:
+            from utils.services.database import async_db_engine
+            if async_db_engine is not None:  # pragma: no branch
+                await async_db_engine.dispose()
+        except Exception:
+            pass
         try:
             from utils.services.database import db_engine
             if db_engine is not None:

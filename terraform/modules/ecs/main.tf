@@ -293,6 +293,12 @@ resource "aws_ecs_task_definition" "api" {
         { name = "DB_NAME", value = var.db_name },
         { name = "DB_USERNAME", value = var.db_username },
         { name = "DB_SSLMODE", value = var.db_sslmode },
+        # aam-1 (2026-04-23): pin async pool budget explicitly so rollback
+        # is deterministic. During the migration we run sync+async in
+        # parallel — both at 20/40 — against max_connections=100. Post
+        # aam-24 cutover, sync drops to 5/10 in a separate PR.
+        { name = "DB_ASYNC_POOL_SIZE", value = "20" },
+        { name = "DB_ASYNC_MAX_OVERFLOW", value = "40" },
       ]
 
       secrets = concat(

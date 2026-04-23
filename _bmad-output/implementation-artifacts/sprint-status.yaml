@@ -1309,3 +1309,60 @@ development_status:
   ptd-7-performance-ops-runbook-doc: done
   ptd-8-self-test-synthetic-regression-fixture: done
   epic-perf-debug-tooling-retrospective: optional
+
+  # === API Async SQLAlchemy Migration — added 2026-04-23 ===
+  # Motivation: evidence on 2026-04-23 from analyze_latency.py + cla-1a
+  # client_latencies shows GET /v1/meals/{id} with server-side p95 188ms
+  # but client-side p95 5192ms; POST /v1/users/me/client-errors p95
+  # 5931ms. Root cause: every router handler is `async def` but calls
+  # synchronous Endpoint.call(...) inline, blocking the event loop on
+  # every request's DB queries. Migrates services/api to async
+  # SQLAlchemy + async handlers + async-native SDKs. Worker + parser +
+  # migrator stay sync. Ops scripts + bin/prod-script prelude + manage.py
+  # REPL stay sync (permanent dual surface).
+  #
+  # User-locked decisions (2026-04-23):
+  #   - Scope: services/api only; worker/parser/migrator untouched
+  #   - Dual Database + Endpoint surface; sync stays for scripts/writers
+  #   - Big-bang cutover (no canary infra exists); revert-commit rollback
+  #   - OpenAI → AsyncOpenAI; Firebase Admin + boto3 → run_in_threadpool
+  #   - 100% API coverage gate stays on throughout; no temporary exemptions
+  #   - Per-router incremental rollout (mix of sync + async in prod mid-migration)
+  # No Terraform changes; one new pip dep (asyncpg); two new env vars.
+  # No Flutter changes; response shapes byte-identical.
+
+  epic-api-async-migration: backlog
+  # Phase 1 — Foundations
+  aam-1-async-engine-and-rds-capacity: done
+  aam-2-async-database-class-and-worker-contract-gate: backlog
+  aam-3-async-endpoint-base-and-mcp-helper: backlog
+  aam-4-async-test-fixtures-and-counter-parity: backlog
+  aam-5-migration-runbook: backlog
+  aam-6-async-auth-deps: backlog
+  # Phase 2 — External SDK async swaps (parallel after aam-1)
+  aam-7-openai-async: backlog
+  aam-8-firebase-threadpool-wrap: backlog
+  aam-9-boto3-threadpool-wrap: backlog
+  # Phase 3 — Per-domain conversions (parallel after Phase 1)
+  aam-10-meal-domain-async: backlog
+  aam-11-recipe-book-domain-async: backlog
+  aam-12-recipe-domain-async: backlog
+  aam-13-shopping-list-domain-async: backlog
+  aam-14-calendar-and-meal-event-domain-async: backlog
+  aam-15-pantry-domain-async: backlog
+  aam-16-activity-domain-async: backlog
+  aam-17-search-domain-async: backlog
+  aam-18-import-job-domain-async: backlog
+  aam-19-user-profile-push-tokens-async: backlog
+  aam-20-admin-domain-async: backlog
+  aam-21-misc-small-routers-async: backlog
+  # Phase 4 — Middleware + lifespan
+  aam-22-error-tracking-middleware-async: backlog
+  aam-23-lifespan-and-pre-warm: backlog
+  # Phase 5 — Cutover (serial, all prior stories must be done)
+  aam-24-cutover-and-shim-removal: backlog
+  # Phase 6 — Post-cutover hardening
+  aam-25-sync-in-async-startup-guard: backlog
+  aam-26-latency-baseline-snapshot: backlog
+  aam-27-concurrent-load-integration-test: backlog
+  epic-api-async-migration-retrospective: optional

@@ -4,11 +4,23 @@ import pkgutil
 from sqlalchemy import Engine, and_, create_engine
 from sqlalchemy import asc as sa_asc
 from sqlalchemy import desc as sa_desc
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.orm.exc import ObjectDeletedError
 
 from utils import models as models_package
-from utils.constants import DATABASE_URL, DB_MAX_OVERFLOW, DB_POOL_SIZE
+from utils.constants import (
+    ASYNC_DATABASE_URL,
+    DATABASE_URL,
+    DB_ASYNC_MAX_OVERFLOW,
+    DB_ASYNC_POOL_SIZE,
+    DB_MAX_OVERFLOW,
+    DB_POOL_SIZE,
+)
 from utils.services.advisory_lock import AdvisoryLock
 
 logger = logging.getLogger(__name__)
@@ -42,6 +54,30 @@ if DATABASE_URL:
 else:
     db_engine = None
     SessionLocal = None
+
+
+# aam-1: async engine + session factory. Built alongside the sync engine
+# (both target the same Postgres). services/api will flip handlers to the
+# async path incrementally; services/worker + parser + scripts keep using
+# the sync surface. Only created when an async URL is available so the
+# worker test DB (no asyncpg driver in that image) doesn't pay for it.
+if ASYNC_DATABASE_URL:
+    async_db_engine = create_async_engine(
+        ASYNC_DATABASE_URL,
+        pool_size=DB_ASYNC_POOL_SIZE,
+        max_overflow=DB_ASYNC_MAX_OVERFLOW,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+    AsyncSessionLocal = async_sessionmaker(
+        bind=async_db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autoflush=False,
+    )
+else:
+    async_db_engine = None
+    AsyncSessionLocal = None
 
 
 class Database:

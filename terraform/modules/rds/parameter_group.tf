@@ -1,11 +1,13 @@
-# Parameter group — palateful-prod-pg16-perf (pim-2, 2026-04-21)
+# Parameter group — palateful-prod-pg16-perf (pim-2, 2026-04-21; aam-1, 2026-04-23)
 #
 # Cost delta: $0/mo (parameter groups are free). Performance Insights is
 # free for 6 months on t4g.small, then ~$2/mo inside NFR29's $50 cap.
 #
 # STATIC params (require reboot; land on next maintenance window):
 #   - shared_buffers      = 256MB
-#   - max_connections     = 80
+#   - max_connections     = 100  (aam-1: raised 80 → 100 to accommodate
+#                                 dual sync+async pool during migration;
+#                                 shrinks back after aam-24 pool-shrink)
 #
 # DYNAMIC params (hot-apply, no reboot required):
 #   - work_mem                     = 8MB
@@ -37,7 +39,7 @@ resource "aws_db_parameter_group" "perf" {
 
   parameter {
     name         = "max_connections"
-    value        = "80"
+    value        = "100"
     apply_method = "pending-reboot"
   }
 
