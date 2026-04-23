@@ -1143,7 +1143,7 @@ development_status:
   # 8 stories across 3 parallel tracks.
   epic-extractor-richer-ingredients: in-progress
   eri-1-softened-unit-rule-flag-precedence-and-aggressive-capture-prompts: done
-  eri-2-ingredient-parse-only-ai-pass-module-with-json-schema-response: backlog
+  eri-2-ingredient-parse-only-ai-pass-module-with-json-schema-response: done
   eri-3a-extract-recipe-from-html-parse-pass-invocation-and-coverage-audit: backlog
   eri-3b-mixed-structure-subset-filter-and-splice-in-order: backlog
   eri-4a-seed-freeform-units-table-rows-preserving-fk: backlog
