@@ -1292,7 +1292,7 @@ development_status:
   #   NEW ptd-8 (self-test synthetic regression fixture).
   #   Overlay hit-zone: Profile avatar long-press (visible every screen).
   ptd-1-debug-perf-overlay-profile-avatar-long-press: done
-  ptd-2-perf-audit-harness-skeleton-and-home-test: backlog
+  ptd-2-perf-audit-harness-skeleton-and-home-test: done
   ptd-2-5-dio-mock-adapter-and-auth-bypass-plumbing: done
   ptd-3a-per-screen-rollout-first-four-books-detail-activity-meals: backlog
   ptd-3b-per-screen-rollout-remaining-four-calendar-profile-search-cook: backlog

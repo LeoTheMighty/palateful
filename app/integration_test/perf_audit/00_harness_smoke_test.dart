@@ -47,11 +47,17 @@ void main() {
     final harness =
         installPerfAuditHarness(dio, fixtureDir: resolveFixtureDir());
 
-    final response = await dio.get('/v1/recipe-books');
+    // Pick an endpoint that definitely has no committed fixture so
+    // the default-body fallback fires.
+    final response = await dio.get('/v1/this-endpoint-never-has-a-fixture');
 
     expect(response.statusCode, 200);
     expect(response.data, isEmpty);
-    expect(harness.counter.countsByEndpoint()['GET /v1/recipe-books'], 1);
+    expect(
+      harness.counter.countsByEndpoint()[
+          'GET /v1/this-endpoint-never-has-a-fixture'],
+      1,
+    );
   });
 
   test('counter redacts UUIDs and numeric ids to :id', () async {
