@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 import '../../../../../core/services/api_client.dart';
 import '../../../../../core/services/recipe_cache_service.dart';
+import '../../../../../core/state/mutation_bus.dart';
 import '../../../../../core/theme/theme.dart';
 import '../../../providers/recipe_provider.dart';
 import '../cook_plan.dart';
 
 /// Bottom sheet shown after the user finishes cooking.
 ///
-/// cmm-1 — refactored to accept a `List<ComponentRatable>`. The recipe
-/// cook path passes a single-entry list; meal cook (cmm-6) passes one
-/// per started component. Single-component rendering is pixel-identical
-/// to the pre-refactor layout (same keys, same widget tree).
+/// cmm-1 — refactored to accept a `List<ComponentRatable>`. Recipe
+/// cook passes a single-entry list; meal cook (cmm-6) passes one per
+/// started component.
+///
+/// Single-component rendering is pixel-identical to the pre-refactor
+/// layout (same keys, same widget tree). Multi-component renders N
+/// rating rows in a `ListView` (scrolls when rows overflow viewport)
+/// and submits sequential `POST /v1/cooking-logs` writes per
+/// `rating > 0` component, emitting a `CookingLogCreated` MutationBus
+/// event after each successful POST.
 class PostCookFeedbackSheet extends StatefulWidget {
   final List<ComponentRatable> components;
   final ApiClient? apiClient;
@@ -51,14 +58,31 @@ class PostCookFeedbackSheet extends StatefulWidget {
 
 class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
   // Single-component path uses these (preserves existing test keys).
-  // Multi-component meal path (cmm-6) layers per-row state on top.
   int _selectedRating = 0;
   final _notesController = TextEditingController();
   bool _isSaving = false;
 
+  // Multi-component path: one rating + one notes controller per row.
+  // Lists are sized to `widget.components.length` in `initState`.
+  late final List<int> _multiRatings;
+  late final List<TextEditingController> _multiNotes;
+
+  @override
+  void initState() {
+    super.initState();
+    _multiRatings = List<int>.filled(widget.components.length, 0);
+    _multiNotes = List<TextEditingController>.generate(
+      widget.components.length,
+      (_) => TextEditingController(),
+    );
+  }
+
   @override
   void dispose() {
     _notesController.dispose();
+    for (final c in _multiNotes) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -99,18 +123,86 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
     widget.onComplete(saved: saved);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_isSingle) {
-      // Multi-component layout is wired in cmm-6. Hard-fail rather than
-      // silently render only the first component (which would drop the
-      // user's per-component ratings on submit).
-      throw UnimplementedError(
-        'PostCookFeedbackSheet with components.length > 1 ships in cmm-6. '
-        'Got ${widget.components.length} components.',
+  /// cmm-6 — sequential per-component POST /v1/cooking-logs writes.
+  /// Components with rating == 0 are skipped (no log row, no event).
+  /// Each successful POST emits a `CookingLogCreated` so the cooking
+  /// history provider invalidates. Partial failure → snackbar
+  /// "Cooked X of Y components logged" but onComplete still fires
+  /// `saved: true` so the persister clears (user already submitted).
+  Future<void> _saveMulti() async {
+    setState(() => _isSaving = true);
+    final api = widget.apiClient;
+    final cookedAt = DateTime.now().toUtc().toIso8601String();
+    var attempted = 0;
+    var succeeded = 0;
+    final failures = <String>[]; // displayName entries
+    for (var i = 0; i < widget.components.length; i++) {
+      final rating = _multiRatings[i];
+      if (rating <= 0) continue;
+      attempted++;
+      final comp = widget.components[i];
+      final note = _multiNotes[i].text.trim();
+      try {
+        if (api == null || widget.isOffline) {
+          // Mirror single-recipe behavior: cache locally even when
+          // offline. The CookingLogCreated event is intentionally NOT
+          // emitted for offline writes — the providers expect a wire
+          // payload (`logId`/`log`) that only the API has.
+          await widget.recipeCache.logCook(
+            comp.recipeId,
+            rating,
+            DateTime.now(),
+          );
+          succeeded++;
+        } else {
+          final response = await api.createCookingLog({
+            'recipe_id': comp.recipeId,
+            'rating': rating,
+            'cooked_at': cookedAt,
+            if (note.isNotEmpty) 'notes': note,
+          });
+          final data = response.data as Map<String, dynamic>?;
+          if (data != null) {
+            emitMutation(CookingLogCreated(
+              logId: data['id'] as String? ?? '',
+              log: data,
+              recipeId: comp.recipeId,
+            ));
+          }
+          succeeded++;
+        }
+      } catch (_) {
+        failures.add(comp.displayName);
+      }
+    }
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (failures.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cooked $succeeded of $attempted components logged',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } else if (attempted == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Meal finished'),
+          duration: Duration(seconds: 2),
+        ),
       );
     }
-    return _buildSingle(context);
+    // Always fire saved=true: the user has submitted (even all-zeroes
+    // is a valid signal). Persister clear is the caller's job.
+    widget.onComplete(saved: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isSingle) return _buildSingle(context);
+    return _buildMulti(context);
   }
 
   Widget _buildSingle(BuildContext context) {
@@ -237,6 +329,154 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildMulti(BuildContext context) {
+    final cook = context.cookModeTheme;
+    final maxHeight = MediaQuery.of(context).size.height * 0.75;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          24,
+          20,
+          24,
+          MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: cook.cookOnSurface.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'How did it go?',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: cook.cookOnSurface,
+              ),
+            ),
+            if (widget.title != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                widget.title!,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: cook.cookOnSurface.withValues(alpha: 0.7),
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView.separated(
+                key: const Key('multi_rating_list'),
+                shrinkWrap: true,
+                itemCount: widget.components.length,
+                separatorBuilder: (_, _) => Divider(
+                  color: cook.cookDivider,
+                  height: 24,
+                ),
+                itemBuilder: (context, i) => _buildMultiRow(context, cook, i),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              key: const Key('multi_done_button'),
+              onPressed: _isSaving ? null : _saveMulti,
+              style: FilledButton.styleFrom(
+                backgroundColor: cook.cookAccent,
+                foregroundColor: cook.cookOnAccent,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              child: _isSaving
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: cook.cookOnAccent,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMultiRow(BuildContext context, CookModeTheme cook, int i) {
+    final c = widget.components[i];
+    final rating = _multiRatings[i];
+    return Column(
+      key: Key('multi_row_$i'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          c.displayName,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: cook.cookOnSurface,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Semantics(
+          label: '${c.displayName}, rate $rating of 5 stars',
+          container: true,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: List.generate(5, (s) {
+              final star = s + 1;
+              return IconButton(
+                key: Key('multi_star_${i}_$star'),
+                icon: Icon(
+                  rating >= star ? Icons.star : Icons.star_border,
+                  color: cook.cookAccent,
+                  size: 28,
+                ),
+                onPressed: () => setState(() => _multiRatings[i] = star),
+              );
+            }),
+          ),
+        ),
+        Semantics(
+          label: 'Notes for ${c.displayName}',
+          container: true,
+          child: TextField(
+            key: Key('multi_notes_$i'),
+            controller: _multiNotes[i],
+            maxLines: 2,
+            style: TextStyle(color: cook.cookOnSurface),
+            decoration: InputDecoration(
+              hintText: 'Add a note... (optional)',
+              hintStyle: TextStyle(
+                color: cook.cookOnSurface.withValues(alpha: 0.5),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: cook.cookDivider),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: cook.cookAccent),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              filled: true,
+              fillColor: cook.cookSurfaceDim,
+              isDense: true,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

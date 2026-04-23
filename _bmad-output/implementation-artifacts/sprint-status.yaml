@@ -1113,6 +1113,6 @@ development_status:
   cmm-3-sectioned-step-traversal-and-header: done
   cmm-4-interlaced-combined-ingredient-strip-with-source-tags: done
   cmm-5-meal-level-timers-and-label-disambiguation: done
-  cmm-6-per-component-post-cook-sheet: backlog
+  cmm-6-per-component-post-cook-sheet: done
   cmm-7-meal-cook-resume-wiring-and-regression-sweep: backlog
   epic-cook-mode-meal-retrospective: optional

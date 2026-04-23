@@ -37,6 +37,7 @@ import '../shared/util/timer_regex.dart';
 import '../shared/widgets/active_timers_row.dart';
 import '../shared/widgets/ingredient_strip.dart';
 import '../shared/widgets/manual_timer_sheet.dart';
+import '../shared/widgets/post_cook_feedback_sheet.dart';
 import '../shared/widgets/step_navigator.dart';
 import '../shared/widgets/step_timers_row.dart';
 import '../shared/widgets/timer_completion_overlay.dart';
@@ -691,14 +692,154 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     context.pop();
   }
 
-  // cmm-6 wires the actual finish flow (multi-row post-cook sheet +
-  // mutation events). For cmm-2, "Done" on the final flat step just
-  // pops the screen — same as Reset semantics minus the snackbar.
-  void _finishCooking() {
+  /// cmm-6 — Done at the final flat-step. Marks every started
+  /// component as cooked, opens the multi-row post-cook sheet seeded
+  /// with all components, then on submission clears the persister
+  /// and pops back to meal detail.
+  Future<void> _finishCooking() async {
+    final plan = _plan;
+    if (plan == null) return;
     _completedSteps.add(_currentStep);
     HapticFeedback.heavyImpact();
     _cookingStopwatch.stop();
-    context.pop();
+    final ratables = [
+      for (final c in plan.components)
+        if (!c.loadFailed)
+          ComponentRatable(recipeId: c.recipeId, displayName: c.name),
+    ];
+    if (ratables.isEmpty) {
+      // No started cookable components (every component failed to
+      // load). Just clear and pop.
+      _debouncer.discardPending();
+      await _persister.clear(_sessionKey);
+      if (mounted) context.pop();
+      return;
+    }
+    await _openPostCookSheet(ratables);
+  }
+
+  /// cmm-6 — overflow "Finish cooking now" item. Confirmation sheet
+  /// then opens post-cook seeded with components the user actually
+  /// reached (`_currentStep >= flatIndexFor(componentIndex, 0)`).
+  Future<void> _finishCookingEarly() async {
+    final plan = _plan;
+    if (plan == null) return;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.cookModeTheme.cookSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final cook = sheetContext.cookModeTheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Finish this meal early?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: cook.cookOnSurface,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "You'll be asked to rate the components you've cooked so far.",
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: cook.cookOnSurface.withValues(alpha: 0.7),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        key: const Key('finish_early_cancel'),
+                        onPressed: () => Navigator.of(sheetContext).pop(false),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        key: const Key('finish_early_confirm'),
+                        onPressed: () => Navigator.of(sheetContext).pop(true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(sheetContext).colorScheme.error,
+                          foregroundColor:
+                              Theme.of(sheetContext).colorScheme.onError,
+                        ),
+                        child: const Text('Finish'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted || confirmed != true) return;
+    HapticFeedback.heavyImpact();
+    _cookingStopwatch.stop();
+    // Seed the sheet with components the user has at least entered.
+    final ratables = <ComponentRatable>[];
+    for (var ci = 0; ci < plan.components.length; ci++) {
+      final c = plan.components[ci];
+      if (c.loadFailed) continue;
+      final firstFlat = plan.flatIndexFor(ci, 0);
+      if (_currentStep >= firstFlat) {
+        ratables.add(
+            ComponentRatable(recipeId: c.recipeId, displayName: c.name));
+      }
+    }
+    if (ratables.isEmpty) {
+      // User opened "Finish cooking now" before entering any component.
+      _debouncer.discardPending();
+      await _persister.clear(_sessionKey);
+      if (mounted) context.pop();
+      return;
+    }
+    await _openPostCookSheet(ratables);
+  }
+
+  Future<void> _openPostCookSheet(List<ComponentRatable> ratables) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: context.cookModeTheme.cookSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => PostCookFeedbackSheet(
+        components: ratables,
+        title: _meal?.name,
+        apiClient: _apiClient,
+        recipeCache: _recipeCache,
+        isOffline: _isOffline,
+        onComplete: ({bool saved = false}) {
+          if (saved) {
+            _debouncer.discardPending();
+            unawaited(_persister.clear(_sessionKey));
+          }
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+        },
+      ),
+    );
+    if (mounted) context.pop();
   }
 
   String _formatDuration(Duration d) {
@@ -939,13 +1080,17 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
             tooltip: 'More',
             onSelected: (value) {
               if (value == 'reset') _confirmAndResetCook();
+              if (value == 'finish_now') _finishCookingEarly();
             },
             itemBuilder: (_) => const [
               PopupMenuItem<String>(
                 value: 'reset',
                 child: Text('Reset cook'),
               ),
-              // cmm-6 adds a 'finish_now' entry here.
+              PopupMenuItem<String>(
+                value: 'finish_now',
+                child: Text('Finish cooking now'),
+              ),
             ],
           ),
         ],
