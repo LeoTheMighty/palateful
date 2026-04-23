@@ -827,86 +827,196 @@ class QueryCounter:
         return count
 
 
-@contextmanager
-def count_queries(mock_db: "MockDatabase") -> Iterator[QueryCounter]:
-    """Measure DB-interaction calls on a `MockDatabase` within the block.
+def _classify_sql(statement: str) -> str:
+    """Map a SQL statement's leading keyword to a counter category.
 
-    Typical usage::
+    Used by `count_queries`'s `before_cursor_execute` listener path
+    (aam-4). `WITH` falls into `select` because every CTE we issue ends
+    in a SELECT; explicit RETURNING on INSERT/UPDATE/DELETE is still
+    classified by the leading verb. Unknown verbs fall through to
+    `select` rather than dropping silently — the worst outcome is a
+    lightly-inflated select count, never a missed regression.
+    """
+    if not statement:
+        return "select"
+    head = statement.lstrip().split(None, 1)[0].lower()
+    if head in ("insert",):
+        return "insert"
+    if head in ("update",):
+        return "update"
+    if head in ("delete",):
+        return "delete"
+    return "select"
+
+
+def _attach_engine_listeners(counter: "QueryCounter"):
+    """Register `before_cursor_execute` on the sync + async engines.
+
+    Returns a cleanup callable that removes every listener on exit. Both
+    engines are optional — when `DATABASE_URL` (or `ASYNC_DATABASE_URL`)
+    is unset the matching engine is `None` and we just skip it. The
+    async engine's underlying sync engine (`engine.sync_engine`) is the
+    one that fires DB-API events, so we attach there.
+    """
+    from sqlalchemy import event
+
+    try:
+        from utils.services.database import async_db_engine, db_engine
+    except Exception:  # pragma: no cover  (import failure ≠ test scope)
+        return lambda: None
+
+    listeners = []
+
+    def _make_listener():
+        def _on_execute(conn, cursor, statement, params, context, executemany):
+            cat = _classify_sql(statement)
+            setattr(counter, cat, getattr(counter, cat) + 1)
+        return _on_execute
+
+    if db_engine is not None:
+        lst = _make_listener()
+        event.listen(db_engine, "before_cursor_execute", lst)
+        listeners.append((db_engine, lst))
+
+    if async_db_engine is not None:
+        lst = _make_listener()
+        event.listen(async_db_engine.sync_engine, "before_cursor_execute", lst)
+        listeners.append((async_db_engine.sync_engine, lst))
+
+    def _cleanup():
+        for target, lst in listeners:
+            event.remove(target, "before_cursor_execute", lst)
+
+    return _cleanup
+
+
+@contextmanager
+def count_queries(
+    mock_db: "MockDatabase | None" = None,
+) -> Iterator[QueryCounter]:
+    """Measure DB-interaction calls within the block.
+
+    Two pathways feed the same `QueryCounter`, so the same helper is
+    usable from sync mock-based tests AND async real-engine tests
+    (aam-4). The QueryCounter public surface (`.total/.select/.insert/
+    .update/.delete/.query_args`) is unchanged — every existing `pbq-*`
+    assertion keeps running as-is.
+
+    1. **Mock-db wrap (legacy path).** When `mock_db` is a
+       `MockDatabase`, increments come from the mock layer's
+       `db.query`, `db.execute`, `db.add`, `db.delete` call_counts plus
+       the high-level helpers (`find_by`, `where`, `create`, etc.).
+
+    2. **Engine event listener (new path).** A `before_cursor_execute`
+       listener attaches to whichever real engines exist (sync
+       `db_engine` and async `async_db_engine`) and classifies the
+       statement into select/insert/update/delete. This is what
+       async-handler tests against a real test DB use.
+
+    Both pathways always run inside the block; in mock-only tests the
+    engines are `None` (DATABASE_URL is empty in the API test env), so
+    the listener path no-ops. In real-engine tests `mock_db` is `None`
+    and only the listener fires. Hybrid tests (rare) get an additive
+    count.
+
+    Typical usage (sync mock)::
 
         with count_queries(mock_db) as qc:
             response = client.get("/v1/meals?scope=home")
         assert qc.select <= 3
         assert qc.query_count_for(RecipeBookUser) == 1
+
+    Typical usage (real-engine async)::
+
+        async with count_queries() as qc, AsyncClient(...) as ac:
+            await ac.get("/v1/meals/..."): ...
+
+        assert qc.select <= 3
     """
     counter = QueryCounter()
 
-    before_query = mock_db.db.query.call_count
-    before_execute = mock_db.db.execute.call_count
-    before_add = mock_db.db.add.call_count
-    before_sess_delete = mock_db.db.delete.call_count
+    legacy_cleanup = None
+    helper = None
+    before_query = before_execute = before_add = before_sess_delete = 0
 
-    # Intentionally NOT wrapping `save` — `MockDatabase.save` delegates
-    # to `self.create`, which is already instrumented. Wrapping both
-    # would double-count an insert whenever a test calls `save()`.
-    orig_find_by = mock_db.find_by
-    orig_where = mock_db.where
-    orig_create = mock_db.create
-    orig_create_all = mock_db.create_all
-    orig_update = mock_db.update
-    orig_delete = mock_db.delete
+    if mock_db is not None:
+        before_query = mock_db.db.query.call_count
+        before_execute = mock_db.db.execute.call_count
+        before_add = mock_db.db.add.call_count
+        before_sess_delete = mock_db.db.delete.call_count
 
-    helper = {
-        "find_by": 0,
-        "where": 0,
-        "create": 0,
-        "create_all": 0,
-        "update": 0,
-        "delete": 0,
-    }
+        # Intentionally NOT wrapping `save` — `MockDatabase.save` delegates
+        # to `self.create`, which is already instrumented. Wrapping both
+        # would double-count an insert whenever a test calls `save()`.
+        orig_find_by = mock_db.find_by
+        orig_where = mock_db.where
+        orig_create = mock_db.create
+        orig_create_all = mock_db.create_all
+        orig_update = mock_db.update
+        orig_delete = mock_db.delete
 
-    def _wrap(name, orig):
-        def wrapped(*args, **kwargs):
-            helper[name] += 1
-            return orig(*args, **kwargs)
-        return wrapped
+        helper = {
+            "find_by": 0,
+            "where": 0,
+            "create": 0,
+            "create_all": 0,
+            "update": 0,
+            "delete": 0,
+        }
 
-    mock_db.find_by = _wrap("find_by", orig_find_by)
-    mock_db.where = _wrap("where", orig_where)
-    mock_db.create = _wrap("create", orig_create)
-    mock_db.create_all = _wrap("create_all", orig_create_all)
-    mock_db.update = _wrap("update", orig_update)
-    mock_db.delete = _wrap("delete", orig_delete)
+        def _wrap(name, orig):
+            def wrapped(*args, **kwargs):
+                helper[name] += 1
+                return orig(*args, **kwargs)
+            return wrapped
+
+        mock_db.find_by = _wrap("find_by", orig_find_by)
+        mock_db.where = _wrap("where", orig_where)
+        mock_db.create = _wrap("create", orig_create)
+        mock_db.create_all = _wrap("create_all", orig_create_all)
+        mock_db.update = _wrap("update", orig_update)
+        mock_db.delete = _wrap("delete", orig_delete)
+
+        def _restore_mock():
+            mock_db.find_by = orig_find_by
+            mock_db.where = orig_where
+            mock_db.create = orig_create
+            mock_db.create_all = orig_create_all
+            mock_db.update = orig_update
+            mock_db.delete = orig_delete
+
+        legacy_cleanup = _restore_mock
+
+    detach_engine_listeners = _attach_engine_listeners(counter)
 
     try:
         yield counter
     finally:
-        counter.select = (
-            (mock_db.db.query.call_count - before_query)
-            + (mock_db.db.execute.call_count - before_execute)
-            + helper["find_by"]
-            + helper["where"]
-        )
-        counter.insert = (
-            (mock_db.db.add.call_count - before_add)
-            + helper["create"]
-            + helper["create_all"]
-        )
-        counter.update = helper["update"]
-        counter.delete = (
-            (mock_db.db.delete.call_count - before_sess_delete)
-            + helper["delete"]
-        )
-        counter.query_args = [
-            tuple(call.args)
-            for call in mock_db.db.query.call_args_list[before_query:]
-        ]
+        if mock_db is not None and helper is not None:
+            counter.select += (
+                (mock_db.db.query.call_count - before_query)
+                + (mock_db.db.execute.call_count - before_execute)
+                + helper["find_by"]
+                + helper["where"]
+            )
+            counter.insert += (
+                (mock_db.db.add.call_count - before_add)
+                + helper["create"]
+                + helper["create_all"]
+            )
+            counter.update += helper["update"]
+            counter.delete += (
+                (mock_db.db.delete.call_count - before_sess_delete)
+                + helper["delete"]
+            )
+            counter.query_args = [
+                tuple(call.args)
+                for call in mock_db.db.query.call_args_list[before_query:]
+            ]
 
-        mock_db.find_by = orig_find_by
-        mock_db.where = orig_where
-        mock_db.create = orig_create
-        mock_db.create_all = orig_create_all
-        mock_db.update = orig_update
-        mock_db.delete = orig_delete
+        if legacy_cleanup is not None:
+            legacy_cleanup()
+        detach_engine_listeners()
 
 
 # ---------------------------------------------------------------------------
@@ -1069,5 +1179,249 @@ def unauthed_client(mock_db):
 
     with TestClient(app) as c:
         yield c
+
+    app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Async fixtures (aam-4)
+# ---------------------------------------------------------------------------
+
+
+class MockAsyncDatabase:
+    """Async mirror of `MockDatabase`.
+
+    Phase 3 stories convert handlers from `Endpoint` to `AsyncEndpoint`
+    and switch the dep from `get_database` → `get_async_database`. Tests
+    for those handlers override the async dep to return an instance of
+    this class. Behavior parity with `MockDatabase` so per-domain test
+    conversion is mostly s/`def`/`async def`/ + s/`mock_db`/`mock_async_db`/.
+
+    The session double exposes async write methods (`commit`, `flush`,
+    `refresh`, `delete`, `add`, `add_all`) so handlers can `await
+    self.db.db.commit()` without crashing. Read paths return the same
+    `MockExecuteResult` the sync mock does — the API of `result.scalars()`
+    / `.all()` / `.scalar_one_or_none()` works the same on sync and async
+    sessions, so handler code that's been converted to `await
+    self.db.db.execute(stmt)` reads the result identically.
+    """
+
+    def __init__(self):
+        from unittest.mock import AsyncMock
+
+        self.db = MagicMock()
+        self._find_by_results = {}
+        self._where_results = {}
+
+        self.db.execute = AsyncMock(return_value=MockExecuteResult())
+        self.db.commit = AsyncMock()
+        self.db.flush = AsyncMock()
+        self.db.refresh = AsyncMock(side_effect=_apply_column_defaults)
+        self.db.add = MagicMock()
+        self.db.add_all = MagicMock()
+        self.db.delete = AsyncMock()
+        self.db.close = AsyncMock()
+
+    async def find_by(self, model_class, **kwargs):
+        """Async mirror of MockDatabase.find_by — same lookup semantics."""
+        key = (model_class.__name__, tuple(sorted(kwargs.items())))
+        if key in self._find_by_results:
+            return self._find_by_results[key]
+        simple_key = model_class.__name__
+        if simple_key in self._find_by_results:
+            return self._find_by_results[simple_key]
+        if model_class.__name__ == "CalendarUser":
+            user_id = kwargs.get("user_id")
+            calendar_id = kwargs.get("calendar_id")
+            if user_id is not None and calendar_id is not None:
+                return MockCalendarUser(
+                    user_id=user_id, calendar_id=calendar_id, role="owner"
+                )
+        return None
+
+    def set_find_by(self, model_class, result, **kwargs):
+        if kwargs:
+            key = (model_class.__name__, tuple(sorted(kwargs.items())))
+        else:
+            key = model_class.__name__
+        self._find_by_results[key] = result
+
+    async def find_or_create_by(self, model_class, defaults=None, **kwargs):
+        result = await self.find_by(model_class, **kwargs)
+        if result:
+            return result
+        all_attrs = {**(defaults or {}), **kwargs}
+        return (
+            model_class(**all_attrs)
+            if hasattr(model_class, "__call__")
+            else MockModel(**all_attrs)
+        )
+
+    def where(self, model, **kwargs):
+        """Sync builder (chainable) — terminals are `await`able.
+
+        Mirrors `AsyncDatabase.where` (returns an `AsyncQuery`-like
+        object). The terminal coroutines preserve the same return-types
+        the sync `MockQuery` exposes so handler code asserting on
+        `.first()` / `.all()` / `.count()` works without rewrites.
+        """
+        key = model.__name__
+        items = self._where_results.get(key, [])
+        return _MockAsyncQuery(items)
+
+    def set_where(self, model_class, items):
+        self._where_results[model_class.__name__] = items
+
+    async def create(self, model):
+        _apply_column_defaults(model)
+        return model
+
+    async def create_all(self, models):
+        for m in models:
+            await self.create(m)
+        return models
+
+    async def update(self, model, **kwargs):
+        for key, value in kwargs.items():
+            setattr(model, key, value)
+        model.updated_at = datetime.now(UTC)
+        return model
+
+    async def update_all(self, models, **kwargs):
+        for model in models:
+            await self.update(model, **kwargs)
+        return models
+
+    async def delete(self, model):
+        return model
+
+    async def save(self, model):
+        return await self.create(model)
+
+    async def save_all(self, models):
+        for m in models:
+            await self.create(m)
+        return models
+
+    async def bulk_update(self, model_class, filters, **kwargs):
+        return None
+
+    async def find_and_bulk_update(
+        self, model_class, updates, include_archived=False, **filters
+    ):
+        return None
+
+    async def delete_by(self, model_class, filters):
+        return None
+
+    async def close(self):
+        pass
+
+    def lock(self, key):
+        """Returns a no-op async context manager."""
+
+        class _NoopLock:
+            async def __aenter__(self_inner):
+                return True
+
+            async def __aexit__(self_inner, *a):
+                return None
+
+        return _NoopLock()
+
+
+class _MockAsyncQuery:
+    """Async-terminal mirror of `MockQuery` returned by MockAsyncDatabase.where."""
+
+    def __init__(self, items=None):
+        self._items = items or []
+
+    def filter(self, *a, **k):
+        return self
+
+    def filter_by(self, **k):
+        return self
+
+    def order_by(self, *a, **k):
+        return self
+
+    def limit(self, n):
+        return self
+
+    def offset(self, n):
+        return self
+
+    def options(self, *a, **k):
+        return self
+
+    async def all(self):
+        return self._items
+
+    async def first(self):
+        return self._items[0] if self._items else None
+
+    async def one_or_none(self):
+        return self._items[0] if self._items else None
+
+    async def one(self):
+        if not self._items:
+            from sqlalchemy.exc import NoResultFound
+
+            raise NoResultFound
+        return self._items[0]
+
+    async def count(self):
+        return len(self._items)
+
+
+@pytest.fixture
+def mock_async_db():
+    """Create a fresh MockAsyncDatabase for each test."""
+    return MockAsyncDatabase()
+
+
+@pytest.fixture
+async def async_client(mock_db, mock_async_db, mock_user):
+    """Create an httpx.AsyncClient backed by ASGITransport on the API app.
+
+    Mirrors the sync `client` fixture: overrides the async DB dep with
+    `MockAsyncDatabase` and the auth dep with the same `mock_user`.
+    Also overrides the SYNC `get_database` with a sync `MockDatabase`
+    so a request that lands on a not-yet-converted handler during the
+    dual-dispatch window doesn't try to instantiate the real
+    `Database()` (which would crash because `DATABASE_URL` is empty in
+    the API test env).
+
+    The fixture is `async def` and yields an `httpx.AsyncClient`, so
+    usage is::
+
+        async def test_something(async_client):
+            response = await async_client.get("/v1/health")
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    from dependencies import (
+        get_async_database,
+        get_current_user,
+        get_database,
+    )
+    from main import app
+
+    def _override_get_database():
+        return mock_db  # sync MockDatabase for any sync handler still present
+
+    async def _override_get_async_database():
+        yield mock_async_db
+
+    def _override_get_current_user():
+        return mock_user
+
+    app.dependency_overrides[get_database] = _override_get_database
+    app.dependency_overrides[get_async_database] = _override_get_async_database
+    app.dependency_overrides[get_current_user] = _override_get_current_user
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
 
     app.dependency_overrides.clear()

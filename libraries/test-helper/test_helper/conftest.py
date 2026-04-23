@@ -5,6 +5,11 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import text
 
+from test_helper.async_db import (  # noqa: F401  re-export for pytest discovery
+    async_database,
+    async_db_session,
+    async_postgres_engine,
+)
 from test_helper.environment import setup_environment
 from test_helper.factories.ingredient_factory import IngredientFactory
 from test_helper.factories.pantry_factory import PantryFactory
