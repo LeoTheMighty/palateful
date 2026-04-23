@@ -1346,9 +1346,11 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
         children: [
           // Flat-total progress bar — consistent with cmm-3 AC9
           // (10/20 reads 50%, regardless of component slicing).
+          // cmlp-5: horizontal margin 24 aligns with the step card's
+          // 24dp content padding.
           Container(
             height: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 48),
+            margin: const EdgeInsets.symmetric(horizontal: 24),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(

@@ -1105,10 +1105,12 @@ class _CookModeScreenState extends State<CookModeScreen>
           // step card. Both surfaces already convey position — the
           // intra-card subtitle was redundant.
 
-          // Progress bar
+          // Progress bar — cmlp-5: horizontal margin 24 matches the
+          // step card's 24dp content padding so the bar visually aligns
+          // with the text edges.
           Container(
             height: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 48),
+            margin: const EdgeInsets.symmetric(horizontal: 24),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(

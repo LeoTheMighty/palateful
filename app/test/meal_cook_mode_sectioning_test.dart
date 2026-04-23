@@ -212,6 +212,20 @@ void main() {
         find.byType(LinearProgressIndicator),
       );
       expect(progress.value, closeTo(10 / 20, 1e-9));
+
+      // cmlp-5: progress bar's outer Container.margin is horizontal 24.
+      final barContainer = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.byType(LinearProgressIndicator),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(
+        barContainer.margin,
+        const EdgeInsets.symmetric(horizontal: 24),
+      );
     });
   });
 }

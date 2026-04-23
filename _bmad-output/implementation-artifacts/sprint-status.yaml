@@ -1171,12 +1171,12 @@ development_status:
   # final deletion), and tightens the progress bar horizontal margin
   # 48 → 24 to align with step card edges. Flutter-only; no API, no
   # schema, no infra. 5 stories. Blocks the multi-recipe-flow epic.
-  epic-cook-mode-layout-polish: in-progress
+  epic-cook-mode-layout-polish: done
   cmlp-1-remove-x-button-from-cook-mode-header-both-modes: done
   cmlp-2-ingredient-strip-drop-header-expand-collapse-compact-strip: done
   cmlp-3-ingredient-chip-readability-pass: done
   cmlp-4-meal-mode-group-headers-and-drop-section-header-above-step-card: done
-  cmlp-5-progress-bar-and-header-padding-polish: backlog
+  cmlp-5-progress-bar-and-header-padding-polish: done
 
   # epic-cook-mode-multi-recipe-flow — per-recipe step tracking in meal
   # cook mode. Replaces the flat _currentStep int with

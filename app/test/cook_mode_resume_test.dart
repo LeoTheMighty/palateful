@@ -118,6 +118,26 @@ void main() {
       expect(find.text('Resume'), findsNothing);
       expect(find.text('Start Over'), findsNothing);
     });
+
+    // cmlp-5: progress bar's outer Container.margin is horizontal 24
+    // in single-recipe cook mode too (matches the step card's 24dp
+    // content padding).
+    testWidgets('cmlp-5 — progress bar margin is horizontal 24',
+        (tester) async {
+      await pumpCookMode(tester);
+      final barContainer = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.byType(LinearProgressIndicator),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(
+        barContainer.margin,
+        const EdgeInsets.symmetric(horizontal: 24),
+      );
+    });
   });
 
   group('cmr-3 — resume gate on entry', () {
