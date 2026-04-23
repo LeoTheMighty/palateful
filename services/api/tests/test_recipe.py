@@ -1137,6 +1137,126 @@ class TestGetRecipeFavoriteField:
         assert data["is_favorite"] is False
 
 
+class TestGetRecipeIncludeParam:
+    """ffm-9a: GET /v1/recipes/{id}?include= lenient default."""
+
+    def _setup(self, mock_db, mock_user, recipe_id="r-include"):
+        book_id = "b-include"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.db.query.return_value = MockQuery([])
+        return recipe_id
+
+    def test_default_returns_full_shape(
+        self, client, mock_db, mock_user
+    ):
+        """No `?include=` → today's full shape. Every gated key is
+        present; old clients see zero diff."""
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}")
+        assert response.status_code == 200
+        data = response.json()
+        for key in ("ingredients", "steps", "notes", "version_count"):
+            assert key in data, f"default must include {key}"
+
+    def test_explicit_include_minimal_set(
+        self, client, mock_db, mock_user
+    ):
+        """`?include=ingredients,steps` — notes + version_count are
+        ABSENT (not null) from the response."""
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(
+            f"/v1/recipes/{rid}?include=ingredients,steps"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "ingredients" in data
+        assert "steps" in data
+        assert "notes" not in data, "notes must be absent (not null)"
+        assert "version_count" not in data
+
+    def test_explicit_include_comments_only(
+        self, client, mock_db, mock_user
+    ):
+        """`?include=comments` maps to `notes`; ingredients + steps
+        + version_count are absent."""
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}?include=comments")
+        assert response.status_code == 200
+        data = response.json()
+        assert "notes" in data
+        assert "ingredients" not in data
+        assert "steps" not in data
+        assert "version_count" not in data
+
+    def test_explicit_include_versions_only(
+        self, client, mock_db, mock_user
+    ):
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}?include=versions")
+        assert response.status_code == 200
+        data = response.json()
+        assert "version_count" in data
+        assert "notes" not in data
+
+    def test_unknown_include_values_are_silent_noop(
+        self, client, mock_db, mock_user
+    ):
+        """A new-client value against an old server is treated as
+        a silent no-op — no 400. This keeps forward-compat easy."""
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(
+            f"/v1/recipes/{rid}?include=ingredients,bogus"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "ingredients" in data
+        # Everything else gated was NOT requested, so absent.
+        assert "notes" not in data
+        assert "version_count" not in data
+
+    def test_empty_include_drops_all_gated_fields(
+        self, client, mock_db, mock_user
+    ):
+        """`?include=` with nothing resolvable → every gated field
+        absent; non-gated base shape still returned."""
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}?include=")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == rid
+        for gated in ("ingredients", "steps", "notes", "version_count"):
+            assert gated not in data
+
+    def test_include_full_csv_matches_default(
+        self, client, mock_db, mock_user
+    ):
+        """Passing the complete alias list yields the same shape as
+        no include param."""
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(
+            f"/v1/recipes/{rid}"
+            "?include=ingredients,steps,comments,versions"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        for key in ("ingredients", "steps", "notes", "version_count"):
+            assert key in data
+
+
 class TestMoveRecipe:
     """Tests for POST /v1/recipes/{recipe_id}/move."""
 

@@ -313,10 +313,23 @@ class ApiClient {
     return _dio.post('/v1/recipe-books/$bookId/recipes', data: data);
   }
 
-  Future<Response> getRecipe(String recipeId, {bool debug = false}) {
+  /// ffm-9a — optional ``include`` CSV trims the response. Pass
+  /// `['ingredients', 'steps']` for the main detail screen; pass
+  /// `null` (or omit) to receive today's full shape. Comments +
+  /// versions lazy-load on their own tabs.
+  Future<Response> getRecipe(
+    String recipeId, {
+    bool debug = false,
+    List<String>? include,
+  }) {
+    final qp = <String, dynamic>{};
+    if (debug) qp['debug'] = 'true';
+    if (include != null && include.isNotEmpty) {
+      qp['include'] = include.join(',');
+    }
     return _dio.get(
       '/v1/recipes/$recipeId',
-      queryParameters: debug ? {'debug': 'true'} : null,
+      queryParameters: qp.isEmpty ? null : qp,
     );
   }
 

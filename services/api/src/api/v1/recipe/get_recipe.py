@@ -11,19 +11,48 @@ from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
+# ffm-9a: fields the caller can toggle on/off via ``?include=...``.
+# Every value is mapped to the concrete response key(s) that get
+# dropped when the value is absent from the include list. Keys NOT
+# listed here are always present (id, name, description, etc.).
+_INCLUDABLE_FIELDS: dict[str, tuple[str, ...]] = {
+    "ingredients": ("ingredients",),
+    "steps": ("steps",),
+    # `notes` is the on-the-wire name for "comments" in the PRD; the
+    # include alias matches the epic spec so client code reads
+    # naturally.
+    "comments": ("notes",),
+    # `versions` gates the count field today; when a future
+    # `versions` array is added it'll drop in here too.
+    "versions": ("version_count",),
+}
+
+_DEFAULT_INCLUDE = frozenset(_INCLUDABLE_FIELDS.keys())
+
 
 class GetRecipe(Endpoint):
     """Get recipe details by ID."""
 
-    def execute(self, recipe_id: str, debug: bool = False):
+    def execute(
+        self,
+        recipe_id: str,
+        debug: bool = False,
+        include: str | None = None,
+    ):
         """
         Get recipe details including ingredients.
 
         Args:
             recipe_id: The recipe's ID
-
-        Returns:
-            Recipe details with ingredients
+            debug: When True (and caller is admin), attach the
+                source import_item diagnostics blob.
+            include: ffm-9a optional CSV filter. When ``None``
+                (default) every field is included — today's shape
+                stays bit-identical for old clients. When supplied,
+                only the named fields are present in the response
+                (unknown values are silently ignored; unknown-in-
+                both-directions is the safest no-op). Omitted
+                fields are ABSENT from the JSON, not null.
         """
         user: User = self.user
 
@@ -49,15 +78,38 @@ class GetRecipe(Endpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED
             )
 
-        return success(
-            data=build_recipe_response(
-                self.database,
-                user,
-                recipe,
-                can_edit=membership.role in ("owner", "editor"),
-                debug=debug,
-            )
+        response_model = build_recipe_response(
+            self.database,
+            user,
+            recipe,
+            can_edit=membership.role in ("owner", "editor"),
+            debug=debug,
         )
+
+        if include is None:
+            return success(data=response_model)
+
+        # Parse the include CSV. Unknown values are dropped on the
+        # floor — easier than raising 400 when a client sends a new-
+        # world alias against an old server.
+        requested = {
+            s.strip() for s in include.split(",") if s.strip()
+        }
+        known_requested = requested & _DEFAULT_INCLUDE
+
+        # Build a dict and strip the gated fields the caller didn't
+        # ask for. Using a dict here (instead of returning the
+        # Response model) is the only way to truly OMIT fields under
+        # the existing ``CustomJSONResponse`` encoder — a None-valued
+        # Pydantic field still serializes as ``null``.
+        payload = response_model.model_dump()
+        for alias, keys in _INCLUDABLE_FIELDS.items():
+            if alias in known_requested:
+                continue
+            for key in keys:
+                payload.pop(key, None)
+
+        return success(data=payload)
 
     class IngredientSummary(BaseModel):
         id: str

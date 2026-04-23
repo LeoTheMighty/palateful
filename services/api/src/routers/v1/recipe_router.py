@@ -183,13 +183,21 @@ async def get_public_recipe_by_token(
 async def get_recipe(
     recipe_id: str,
     debug: bool = False,
+    include: str | None = None,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database)
 ):
-    """Get recipe details. `debug=true` attaches parser artifacts for admins."""
+    """Get recipe details. `debug=true` attaches parser artifacts for admins.
+
+    ffm-9a — optional ``?include=`` CSV (values:
+    ``ingredients,steps,comments,versions``) trims the response. When
+    omitted, today's full shape is returned; unknown values are silently
+    dropped; omitted fields are ABSENT from the JSON, not null.
+    """
     return GetRecipe.call(
         recipe_id=recipe_id,
         debug=debug,
+        include=include,
         user=user,
         database=database
     )
