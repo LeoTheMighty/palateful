@@ -166,6 +166,55 @@
     notification settings.
   </p>
 
+  <h3>Diagnostic and performance data</h3>
+  <p>
+    Palateful collects anonymous performance telemetry so we can detect
+    app slowdowns and crashes before they affect you. The data is
+    aggregate, not per-person, and never includes recipe content, photos,
+    messages, or other personal data. Specifically we measure:
+  </p>
+  <ul>
+    <li>
+      <strong>Cold-start time</strong> — how long the app takes to reach
+      the first frame after launch.
+    </li>
+    <li>
+      <strong>Screen paint time</strong> — how long each screen takes to
+      render after you tap its tab or link. Screen identifiers are
+      redacted to templates (e.g. <code>/recipes/:id/edit</code> rather
+      than the literal recipe ID).
+    </li>
+    <li>
+      <strong>Network-request latency</strong> — how long each HTTP
+      request to our backend takes, with the URL likewise redacted to
+      its template form.
+    </li>
+    <li>
+      <strong>Frame jank</strong> — a per-minute aggregate of frames
+      that rendered slower than the target refresh rate. No frame
+      content is sampled.
+    </li>
+    <li>
+      <strong>iOS MetricKit daily aggregates</strong> — the iOS operating
+      system reports daily roll-ups of launch time, responsiveness,
+      CPU time, cellular upload, disk writes, and memory usage. Apple
+      generates these on-device; we forward the aggregate, not the
+      individual events.
+    </li>
+    <li>
+      <strong>Android JankStats per-minute aggregates</strong> — the
+      Android operating system reports the number of janky frames per
+      minute. We forward the count, not the rendered content.
+    </li>
+  </ul>
+  <p>
+    The same data is also sampled by Google Firebase Performance
+    Monitoring as a secondary cross-check. Firebase receives the URL
+    + status code of HTTP requests (with the same redaction) and the
+    app-start timing. Diagnostic data is kept for 30 days and then
+    purged automatically.
+  </p>
+
   <h3>AI chat messages (opt-in)</h3>
   <p>
     If you use the in-app AI assistant, the prompts you send and the
@@ -196,10 +245,12 @@
       photos, audio memos, and video memos.
     </li>
     <li>
-      <strong>Google Firebase</strong> — crash reporting (Crashlytics)
-      and push notifications (Firebase Cloud Messaging). Receives
-      device and OS metadata plus your push token; never receives your
-      recipe content.
+      <strong>Google Firebase</strong> — crash reporting (Crashlytics),
+      push notifications (Firebase Cloud Messaging), and performance
+      monitoring (Firebase Performance). Receives device and OS
+      metadata, your push token, and anonymous app-start + HTTP
+      latency samples; never receives your recipe content, photos, or
+      account email.
     </li>
     <li>
       <strong>OpenAI, L.L.C.</strong> — AI assistant replies (opt-in

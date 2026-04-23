@@ -476,9 +476,17 @@ Path: **Play Console → App content → Data safety**. Each block below
 maps 1:1 to a "Data type" row in the form. Every subprocessor listed
 in `app/web/privacy.html` has a corresponding block — consistency
 between this form and the privacy policy is what Play reviewers
-check first. For v1 you can skip Block 7 (Play Billing — reserved
+check first. For v1 you can skip Block 8 (Play Billing — reserved
 for future subscriptions); the form accepts "not currently
 collected" for that data type.
+
+Block 7 (Diagnostic performance data) was added by cla-13 for the
+`epic-perf-client-analytics` rollout. Paste it alongside the
+existing blocks before submitting the Data Safety form — the new
+telemetry collected post-cla-epic-perf-client-analytics pushes
+the app into the Play-form "Diagnostics" data-type bucket, so
+ship the block even if you otherwise copy-pasted from a
+pre-cla-epic-perf-client-analytics revision.
 
 ### Block 1 — Firebase Crashlytics (crash diagnostics)
 
@@ -599,7 +607,38 @@ Notes:                User prompts are forwarded to OpenAI (gpt-4o-
                       data.
 ```
 
-### Block 7 — Play Billing (reserved; not currently collected)
+### Block 7 — Diagnostic performance data (cla-epic-perf-client-analytics)
+
+```
+Data type:            Diagnostics — Crash logs + App performance data
+Collected:            Yes
+Shared:               Yes — with Google Firebase (Performance Monitoring — secondary)
+Optional / Required:  Required (app functionality — diagnostics)
+Purpose(s):           Analytics
+Encrypted in transit: Yes
+Deletion request:     Stops on app uninstall. Custom pipeline aggregates
+                      age out after 30 days automatically (see
+                      `services/api/src/jobs/prune_latencies.py`).
+                      Firebase-side data: per-user deletion via
+                      leonid@ac93.org; Firebase Performance supports
+                      app-scoped data purge.
+Notes:                Palateful measures cold-start time, per-screen
+                      paint duration, network-request latency, and
+                      frame jank to detect app-wide slowdowns. Data
+                      is anonymous aggregates — route/URL identifiers
+                      are redacted to templates
+                      (`/recipes/:id/edit`, not the literal ID);
+                      recipe content / photos / messages are never
+                      sampled. The same metrics are also sampled by
+                      Firebase Performance as a secondary cross-check.
+                      iOS additionally reports MetricKit daily roll-
+                      ups (launch time, CPU time, disk writes, memory
+                      usage); Android reports JankStats per-minute
+                      frame aggregates. The OS generates these
+                      on-device; we forward the aggregate.
+```
+
+### Block 8 — Play Billing (reserved; not currently collected)
 
 ```
 Data type:            Financial info — purchase history
