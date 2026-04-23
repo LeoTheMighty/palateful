@@ -175,6 +175,19 @@ Map<String, Map<String, dynamic>> _threeCompRecipes() => {
       'r3': _recipe('r3', 'Grilled Chicken', 9),
     };
 
+// Each toggle pill now splits its label into two Text widgets — the
+// recipe name (which ellipsizes under squeeze) and the position
+// suffix (which must never truncate). Tests that want to assert pill
+// copy check for both pieces inside the pill.
+void _expectPillLabel(String pillKey, String name, String position) {
+  final pill = find.byKey(Key(pillKey));
+  expect(pill, findsOneWidget);
+  expect(find.descendant(of: pill, matching: find.text(name)),
+      findsOneWidget);
+  expect(find.descendant(of: pill, matching: find.text(position)),
+      findsOneWidget);
+}
+
 void main() {
   tearDown(_tearDown);
 
@@ -185,9 +198,9 @@ void main() {
       await _pump(tester, 'meal-1');
 
       expect(find.byType(RecipeToggleBar), findsOneWidget);
-      expect(find.text('Dressing 1/7'), findsOneWidget);
-      expect(find.text('Salad 1/4'), findsOneWidget);
-      expect(find.text('Grilled Chicken 1/9'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r1', 'Dressing', '1/7');
+      _expectPillLabel('toggle_pill_r2', 'Salad', '1/4');
+      _expectPillLabel('toggle_pill_r3', 'Grilled Chicken', '1/9');
     });
 
     testWidgets('single-component meal hides the toggle bar entirely',
@@ -209,7 +222,7 @@ void main() {
 
       // Widget is present but renders SizedBox.shrink for the single-
       // component case; the pill for Dressing is NOT in the tree.
-      expect(find.text('Dressing 1/7'), findsNothing);
+      expect(find.byKey(const Key('toggle_pill_r1')), findsNothing);
       expect(find.byType(RecipeToggleBar), findsOneWidget);
     });
 
@@ -226,7 +239,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(find.text('Step 1 of Salad'), findsOneWidget);
-      expect(find.text('Salad 1/4'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r2', 'Salad', '1/4');
     });
 
     testWidgets(
@@ -273,7 +286,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(find.text('Step 1 of Grilled Chicken'), findsOneWidget);
-      expect(find.text('Grilled Chicken 1/9'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r3', 'Grilled Chicken', '1/9');
     });
 
     testWidgets('load-failed pill renders disabled with ellipsis suffix',
@@ -289,10 +302,10 @@ void main() {
       await _pump(tester, 'meal-1');
 
       // Load-failed pill shows name + ellipsis, no step counter.
-      expect(find.text('Grilled Chicken …'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r3', 'Grilled Chicken', '…');
       // Healthy pills still render normally.
-      expect(find.text('Dressing 1/7'), findsOneWidget);
-      expect(find.text('Salad 1/4'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r1', 'Dressing', '1/7');
+      _expectPillLabel('toggle_pill_r2', 'Salad', '1/4');
     });
 
     testWidgets('tapping a load-failed pill is a no-op (no active switch)',
@@ -330,10 +343,10 @@ void main() {
       await _setUp(meal: _threeCompMeal(), recipes: _threeCompRecipes());
       await _pump(tester, 'meal-1');
 
-      expect(find.text('Dressing 1/7'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r1', 'Dressing', '1/7');
       await tester.tap(find.text('Next'));
       await tester.pump();
-      expect(find.text('Dressing 2/7'), findsOneWidget);
+      _expectPillLabel('toggle_pill_r1', 'Dressing', '2/7');
     });
 
     testWidgets('Dynamic Type 1.5x does not cause RenderFlex overflow',

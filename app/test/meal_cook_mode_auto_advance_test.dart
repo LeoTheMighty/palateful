@@ -173,7 +173,14 @@ void main() {
         await tester.pump();
       }
       expect(find.text('Step 1 of Salad'), findsOneWidget);
-      expect(find.text('Salad 1/4'), findsOneWidget);
+      // Pill label is split into two Text widgets so the position
+      // suffix never truncates under squeeze — name lives separate
+      // from the counter.
+      final saladPill = find.byKey(const Key('toggle_pill_r2'));
+      expect(find.descendant(of: saladPill, matching: find.text('Salad')),
+          findsOneWidget);
+      expect(find.descendant(of: saladPill, matching: find.text('1/4')),
+          findsOneWidget);
     });
 
     testWidgets('Salad last → Next → active == Grilled Chicken at step 1',

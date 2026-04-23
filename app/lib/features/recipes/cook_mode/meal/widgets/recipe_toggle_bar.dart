@@ -95,9 +95,13 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cook = context.cookModeTheme;
-    final label = summary.loadFailed
-        ? '${summary.name} …'
-        : '${summary.name} ${summary.currentStep + 1}/${summary.totalSteps}';
+    // Label is split into two Text widgets so the position suffix
+    // ("1/7", or "…" for load-fail) stays pinned on the right while
+    // a long recipe name ellipsizes. A single Text with ellipsis
+    // truncated the counter too.
+    final positionSuffix = summary.loadFailed
+        ? '…'
+        : '${summary.currentStep + 1}/${summary.totalSteps}';
     final textColor = summary.loadFailed
         ? cook.cookOnSurface.withValues(alpha: 0.4)
         : isActive
@@ -106,6 +110,11 @@ class _Pill extends StatelessWidget {
     final bgColor = isActive ? cook.cookAccent : Colors.transparent;
     final borderColor =
         isActive ? cook.cookAccent : cook.cookDivider;
+    final textStyle = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+      color: textColor,
+    );
     final pill = AnimatedScale(
       scale: isPulsing ? 1.08 : 1.0,
       duration: const Duration(milliseconds: 300),
@@ -131,15 +140,17 @@ class _Pill extends StatelessWidget {
           children: [
             Flexible(
               child: Text(
-                label,
+                summary.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: textColor,
-                ),
+                style: textStyle,
               ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              positionSuffix,
+              maxLines: 1,
+              style: textStyle,
             ),
             if (summary.isComplete && !summary.loadFailed) ...[
               const SizedBox(width: 4),
