@@ -6,18 +6,53 @@ import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
+import 'admin_client_metrics_tab.dart';
 import 'widgets/metrics_table.dart';
 
-/// Admin view at `/admin/metrics` — endpoint + task latency at a glance.
+/// Admin view at `/admin/metrics` — endpoint + task latency on the Server
+/// tab, client-side perf telemetry on the Client tab (cla-10b).
 ///
 /// Mirrors `AdminErrorsScreen`'s layout conventions: pull-to-refresh,
 /// inline error card with retry, and a simple stateful widget (no
 /// Riverpod here — consistent with the rest of the admin surface).
-class AdminMetricsScreen extends StatefulWidget {
+class AdminMetricsScreen extends StatelessWidget {
   const AdminMetricsScreen({super.key});
 
   @override
-  State<AdminMetricsScreen> createState() => _AdminMetricsScreenState();
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text('Metrics', style: textTheme.titleLarge),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+          ),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Server'),
+              Tab(text: 'Client'),
+            ],
+          ),
+        ),
+        body: const TabBarView(
+          children: [
+            _ServerMetricsTab(),
+            AdminClientMetricsTab(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ServerMetricsTab extends StatefulWidget {
+  const _ServerMetricsTab();
+
+  @override
+  State<_ServerMetricsTab> createState() => _ServerMetricsTabState();
 }
 
 enum _Window { oneHour, twentyFourHours, sevenDays }
@@ -101,7 +136,8 @@ class _TaskRow {
   }
 }
 
-class _AdminMetricsScreenState extends State<AdminMetricsScreen> {
+class _ServerMetricsTabState extends State<_ServerMetricsTab>
+    with AutomaticKeepAliveClientMixin {
   final _apiClient = getIt<ApiClient>();
 
   _Window _window = _Window.twentyFourHours;
@@ -121,10 +157,12 @@ class _AdminMetricsScreenState extends State<AdminMetricsScreen> {
   Timer? _updatedAgoTicker;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _fetch();
-    // "Last updated Xs ago" refreshes each second.
     _updatedAgoTicker = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
@@ -239,49 +277,43 @@ class _AdminMetricsScreenState extends State<AdminMetricsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Metrics', style: textTheme.titleLarge),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
-        ),
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return _buildError(colorScheme, textTheme);
+    }
+    return RefreshIndicator(
+      onRefresh: _fetch,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildHeader(textTheme, colorScheme),
+          const SizedBox(height: 24),
+          Text(
+            'Endpoints',
+            style: textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildEndpointsTable(),
+          const SizedBox(height: 24),
+          Text(
+            'Tasks',
+            style: textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildTasksTable(),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _buildError(colorScheme, textTheme)
-              : RefreshIndicator(
-                  onRefresh: _fetch,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildHeader(textTheme, colorScheme),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Endpoints',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildEndpointsTable(),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Tasks',
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      _buildTasksTable(),
-                    ],
-                  ),
-                ),
     );
   }
 

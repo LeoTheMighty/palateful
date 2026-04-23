@@ -40,6 +40,68 @@ class _FakeApiClient extends ApiClient {
       data: taskResponse,
     );
   }
+
+  // The tabbed screen eagerly mounts the Client tab too (TabBarView
+  // builds all children). Stub its four endpoints so the fetch resolves
+  // without hitting the network.
+  @override
+  Future<Response> getClientRouteMetrics({
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+  }) async =>
+      Response(
+        requestOptions: RequestOptions(path: ''),
+        statusCode: 200,
+        data: {'window': window, 'rows': <Map<String, dynamic>>[]},
+      );
+
+  @override
+  Future<Response> getClientEndpointMetrics({
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+  }) async =>
+      Response(
+        requestOptions: RequestOptions(path: ''),
+        statusCode: 200,
+        data: {'window': window, 'rows': <Map<String, dynamic>>[]},
+      );
+
+  @override
+  Future<Response> getClientJankMetrics({
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+  }) async =>
+      Response(
+        requestOptions: RequestOptions(path: ''),
+        statusCode: 200,
+        data: {'window': window, 'rows': <Map<String, dynamic>>[]},
+      );
+
+  @override
+  Future<Response> getClientSparkline({
+    required String metric,
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+    String? endpoint,
+  }) async =>
+      Response(
+        requestOptions: RequestOptions(path: ''),
+        statusCode: 200,
+        data: {
+          'metric': metric,
+          'window': window,
+          'bucket_seconds': 3600,
+          'buckets': List<double>.filled(24, 0.0),
+        },
+      );
 }
 
 Map<String, dynamic> _endpointRow({
@@ -91,6 +153,20 @@ void main() {
 
   Widget wrap(Widget child) => MaterialApp(home: child);
 
+  testWidgets('renders Server and Client tabs', (tester) async {
+    final fake = _FakeApiClient(
+      endpointResponse: {'window': '24h', 'rows': <Map<String, dynamic>>[]},
+      taskResponse: {'window': '24h', 'rows': <Map<String, dynamic>>[]},
+    );
+    GetIt.I.registerSingleton<ApiClient>(fake);
+
+    await tester.pumpWidget(wrap(const AdminMetricsScreen()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Server'), findsOneWidget);
+    expect(find.text('Client'), findsOneWidget);
+  });
+
   testWidgets('loads with 24h window and renders endpoint + task rows',
       (tester) async {
     final fake = _FakeApiClient(
@@ -125,13 +201,15 @@ void main() {
     await tester.pumpWidget(wrap(const AdminMetricsScreen()));
     await tester.pumpAndSettle();
 
+    // Server tab has two empty tables (endpoints + tasks). Client tab
+    // content is covered by admin_client_metrics_tab_test.dart.
     expect(
       find.text('No samples yet — check back after some traffic.'),
       findsNWidgets(2),
     );
   });
 
-  testWidgets('changing window re-queries both endpoints', (tester) async {
+  testWidgets('changing window re-queries server metrics', (tester) async {
     final fake = _FakeApiClient(
       endpointResponse: {'window': '24h', 'rows': <Map<String, dynamic>>[]},
       taskResponse: {'window': '24h', 'rows': <Map<String, dynamic>>[]},
@@ -141,7 +219,14 @@ void main() {
     await tester.pumpWidget(wrap(const AdminMetricsScreen()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('1h'));
+    // Both Server and Client tabs render a 1h button, but only the Server
+    // tab is visible and hit-testable — target the visible one via the
+    // Server-tab TabBarView child.
+    final serverTabFinder = find.descendant(
+      of: find.byType(RefreshIndicator).first,
+      matching: find.text('1h'),
+    );
+    await tester.tap(serverTabFinder);
     await tester.pumpAndSettle();
 
     expect(fake.endpointCalls, greaterThanOrEqualTo(2));

@@ -1079,6 +1079,79 @@ class ApiClient {
     );
   }
 
+  // Admin client-side metrics (cla-10a backend; cla-10b client tab)
+  Future<Response> getClientRouteMetrics({
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+  }) {
+    return _dio.get(
+      '/v1/admin/metrics/client/routes',
+      queryParameters: {
+        'window': window,
+        if (platform != null) 'platform': platform,
+        if (appVersion != null) 'app_version': appVersion,
+        if (route != null) 'route': route,
+      },
+    );
+  }
+
+  Future<Response> getClientEndpointMetrics({
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+  }) {
+    return _dio.get(
+      '/v1/admin/metrics/client/endpoints',
+      queryParameters: {
+        'window': window,
+        if (platform != null) 'platform': platform,
+        if (appVersion != null) 'app_version': appVersion,
+        if (route != null) 'route': route,
+      },
+    );
+  }
+
+  Future<Response> getClientJankMetrics({
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+  }) {
+    return _dio.get(
+      '/v1/admin/metrics/client/jank',
+      queryParameters: {
+        'window': window,
+        if (platform != null) 'platform': platform,
+        if (appVersion != null) 'app_version': appVersion,
+        if (route != null) 'route': route,
+      },
+    );
+  }
+
+  Future<Response> getClientSparkline({
+    required String metric,
+    String window = '24h',
+    String? platform,
+    String? appVersion,
+    String? route,
+    String? endpoint,
+  }) {
+    return _dio.get(
+      '/v1/admin/metrics/client/sparkline',
+      queryParameters: {
+        'metric': metric,
+        'window': window,
+        if (platform != null) 'platform': platform,
+        if (appVersion != null) 'app_version': appVersion,
+        if (route != null) 'route': route,
+        if (endpoint != null) 'endpoint': endpoint,
+      },
+    );
+  }
+
   Future<Response> sendAdminTestPush({
     String? title,
     String? body,
