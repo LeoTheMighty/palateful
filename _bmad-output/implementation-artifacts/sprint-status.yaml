@@ -1260,7 +1260,7 @@ development_status:
   #   → (cla-11, cla-12, cla-13, cla-14 parallel).
   cla-1a-backend-client-latencies-table-model-and-nightly-prune: done
   cla-1b-post-client-latencies-ingest-redaction-and-anonymous: done
-  cla-1c-flags-perf-kill-switch-endpoint-and-flutter-fetch: partial
+  cla-1c-flags-perf-kill-switch-endpoint-and-flutter-fetch: done
   cla-2-analyze-latency-section-client-and-all: done
   cla-3-flutter-client-latency-ingest-batched-flush-service: backlog
   cla-4-flutter-perf-navigator-observer-go-router-aware: backlog

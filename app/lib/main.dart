@@ -21,6 +21,7 @@ import 'core/services/push_notification_service.dart';
 import 'core/services/share_intent_handler.dart';
 import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
+import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 import 'features/recipes/cook_mode/services/cook_session_persister.dart';
@@ -50,6 +51,11 @@ void main() async {
   // mirrors into backend error_logs as service="client". Fire-and-forget
   // from the reporter side — a failing mirror POST is swallowed.
   ErrorReporter.bindApiClient(getIt<ApiClient>());
+
+  // cla-1c: warm the client-latency kill-switch flag. Fire-and-forget —
+  // fail-open if the endpoint errors/times out so boot is never blocked
+  // on it. Telemetry emitters re-read the cached flag on every enqueue.
+  unawaited(getIt<PerfFlagsService>().initialize());
 
   // ptd-1: attach the debug-only perf interceptor so the [PerfOverlay]
   // (installed as the MaterialApp builder below) shows live HTTP
