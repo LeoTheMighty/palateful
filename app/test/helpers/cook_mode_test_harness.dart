@@ -93,7 +93,7 @@ class FakeCookModeApiClient extends ApiClient {
             };
 
   @override
-  Future<Response> getRecipe(String recipeId, {bool debug = false}) async =>
+  Future<Response> getRecipe(String recipeId, {bool debug = false, List<String>? include}) async =>
       _fakeResponse(recipe);
 
   @override

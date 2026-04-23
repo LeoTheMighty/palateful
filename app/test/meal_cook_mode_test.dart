@@ -37,7 +37,7 @@ class _FakeMealCookApi extends ApiClient {
   }) : failingRecipeIds = Set<String>.from(failingRecipeIds);
 
   @override
-  Future<Response> getRecipe(String recipeId, {bool debug = false}) async {
+  Future<Response> getRecipe(String recipeId, {bool debug = false, List<String>? include}) async {
     if (failingRecipeIds.contains(recipeId)) {
       throw DioException(
         requestOptions: RequestOptions(path: '/v1/recipes/$recipeId'),
@@ -595,7 +595,7 @@ void main() {
 /// `getRecipe`. Used to drive the offline-cache fallback path.
 class _OfflineFakeApi extends ApiClient {
   @override
-  Future<Response> getRecipe(String recipeId, {bool debug = false}) async {
+  Future<Response> getRecipe(String recipeId, {bool debug = false, List<String>? include}) async {
     throw DioException(
       requestOptions: RequestOptions(path: '/v1/recipes/$recipeId'),
       type: DioExceptionType.connectionError,

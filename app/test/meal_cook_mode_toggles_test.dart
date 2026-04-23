@@ -29,7 +29,7 @@ class _FakeApi extends ApiClient {
   final Set<String> failingRecipeIds;
   _FakeApi(this.recipes, {this.failingRecipeIds = const {}});
   @override
-  Future<Response> getRecipe(String id, {bool debug = false}) async {
+  Future<Response> getRecipe(String id, {bool debug = false, List<String>? include}) async {
     if (failingRecipeIds.contains(id)) {
       throw DioException(
         requestOptions: RequestOptions(path: '/v1/recipes/$id'),

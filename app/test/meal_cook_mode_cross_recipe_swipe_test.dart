@@ -28,7 +28,7 @@ class _FakeApi extends ApiClient {
   final Map<String, Map<String, dynamic>> recipes;
   _FakeApi(this.recipes);
   @override
-  Future<Response> getRecipe(String id, {bool debug = false}) async => Response(
+  Future<Response> getRecipe(String id, {bool debug = false, List<String>? include}) async => Response(
         data: recipes[id],
         requestOptions: RequestOptions(path: '/v1/recipes/$id'),
         statusCode: 200,

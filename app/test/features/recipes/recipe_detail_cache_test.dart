@@ -51,7 +51,7 @@ class _CountingApi extends ApiClient {
             };
 
   @override
-  Future<Response> getRecipe(String recipeId, {bool debug = false}) async {
+  Future<Response> getRecipe(String recipeId, {bool debug = false, List<String>? include}) async {
     getRecipeCalls++;
     return _ok(recipePayload);
   }
