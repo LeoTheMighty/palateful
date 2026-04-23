@@ -1,0 +1,21 @@
+# ptd-4.5 — perf-budget waiver file.
+#
+# Format: screen:endpoint:rationale (colon-separated; trailing
+# rationale is free-form). Lines starting with `#` are comments.
+#
+# A waiver is required for every endpoint in tools/perf-budgets.yaml
+# whose count exceeds 1 — the invariant perf-audit enforces is "each
+# logical endpoint should fire at most once per cold-start." If a
+# screen legitimately needs a duplicate fetch (e.g. a recipe-detail
+# page that reads /v1/recipes/:id twice because version history
+# renders inline), record the exception here + in the PR description.
+#
+# Entries require a code-review comment on the PR that adds them
+# (enforced by the checklist in `.claude/commands/review.md`).
+#
+# Shape:
+#   home:GET /v1/recipe-books:second fetch from lazy book picker modal
+#   cook_mode_entry:GET /v1/recipes/:id:also fetched by version banner
+#
+# No waivers required at epic close — baseline has every endpoint
+# at count 1.
