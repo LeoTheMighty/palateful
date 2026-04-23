@@ -221,3 +221,50 @@ Shipped in pim-4b.
 Trims health-check volume on the hot path. Hung-task detection still
 fires within 2 min; ECS deployment circuit breaker still gates failed
 deploys.
+
+## Client-latency ingest kill-switch (`cla-1c`)
+
+Shipped in cla-1c as the escape hatch for the client-side analytics
+pipeline (`epic-perf-client-analytics`).
+
+The pipeline ships ~125k rows/day into `client_latencies` at normal
+scale. If the Postgres instance starts pushing against IOPS / storage
+/ connection budget *during an incident*, we need to stop the writes
+instantly — without shipping a new Flutter build (TestFlight / Play
+review lag measured in days).
+
+### Contract
+
+- `GET /v1/flags/perf` returns `{ingest_enabled: bool, sampling_rate: float}`.
+- Unauthenticated. Anonymous pre-login clients honor the switch too.
+- Flutter fetches once per cold-start (after Firebase init), caches
+  the result for 5 min, and **treats any error / timeout / unreachable
+  response as defaults-on**. The endpoint therefore never returns a
+  4xx / 5xx on the happy path.
+
+### Environment variables (ECS task definition)
+
+| Env var | Default | Effect |
+|---|---|---|
+| `CLIENT_LATENCY_INGEST_ENABLED` | `true` | When `false`, Flutter drops every enqueue on the floor — no retry, no disk buffer. Backend ingest endpoint keeps accepting (in case late-cached clients still POST), but write volume collapses within 5 min as clients refresh their flag cache. |
+| `CLIENT_LATENCY_SAMPLING_RATE` | `1.0` | Fraction in `[0.0, 1.0]`. Client samples events at this rate BEFORE batching. Soft lever — use this when volume is annoying but not an incident (e.g. drop to `0.1` during a traffic burst). |
+
+### Runbook: flip the kill-switch
+
+1. Confirm the pain source. `bin/prod-script audit_errors.py --service api --window 1h` + `bin/prod-logs` + CloudWatch RDS CPU / IOPS.
+2. ECS → `palateful-api-prod` service → Task definitions → create new revision.
+3. Container env: set `CLIENT_LATENCY_INGEST_ENABLED=false` (or `CLIENT_LATENCY_SAMPLING_RATE=0.1` for the softer lever).
+4. Update service to the new revision. Rolling deploy — zero downtime.
+5. Within 5 min every client refreshes its flag cache and stops enqueuing.
+6. Row-rate drop visible via `psql -c "SELECT count(*) FROM client_latencies WHERE created_at > now() - interval '5 minutes';"` — should trend to ~0.
+
+### Re-enable
+
+Reverse step 3 (`CLIENT_LATENCY_INGEST_ENABLED=true`, sampling back to `1.0`) and redeploy. Expect up to 5 min before field clients refresh.
+
+### Reference
+
+- Endpoint: `services/api/src/api/v1/flags/get_perf_flags.py`
+- Router: `services/api/src/routers/v1/flags_router.py`
+- Config: `services/api/src/config.py` (`client_latency_ingest_enabled`, `client_latency_sampling_rate`)
+- Tests: `services/api/tests/test_perf_flags.py`

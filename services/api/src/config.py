@@ -56,6 +56,25 @@ class Settings(BaseSettings):
     # case CreateParserBatch falls back to polling-only mode.
     api_base_url: str = ""
 
+    # Client-latency ingest kill-switch — served to clients via
+    # `GET /v1/flags/perf` (cla-1c). Flutter fetches on startup, caches
+    # for 5 min, defaults-on on fetch error. Flip `CLIENT_LATENCY_INGEST_ENABLED`
+    # to `false` on the ECS task-def to shed all client-latency writes
+    # without a client rebuild. `CLIENT_LATENCY_SAMPLING_RATE` (0.0..1.0)
+    # is a softer lever — clients sample events before enqueue at that
+    # rate. Default: everything on, 100% sampled.
+    client_latency_ingest_enabled: bool = True
+    client_latency_sampling_rate: float = 1.0
+
+    @field_validator("client_latency_sampling_rate")
+    @classmethod
+    def _sampling_rate_in_range(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError(
+                "client_latency_sampling_rate must be in [0.0, 1.0]"
+            )
+        return v
+
     @field_validator("auth0_domain", "auth0_audience", "database_url")
     @classmethod
     def require_non_empty(cls, v: str, info) -> str:

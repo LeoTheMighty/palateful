@@ -7,6 +7,7 @@ from routers.v1.calendar_router import calendar_router
 from routers.v1.chat_router import chat_router
 from routers.v1.client_latency_router import client_latency_router
 from routers.v1.cooking_log_router import cooking_log_router
+from routers.v1.flags_router import flags_router
 from routers.v1.friends_router import friends_router
 from routers.v1.health_router import health_router
 from routers.v1.import_router import import_router
@@ -51,3 +52,4 @@ v1_router.include_router(invitations_router)
 v1_router.include_router(invite_links_router)
 v1_router.include_router(units_router)
 v1_router.include_router(client_latency_router)
+v1_router.include_router(flags_router)
