@@ -441,6 +441,94 @@ secondary source.
 
 ---
 
+## Synthetic ingest load test (cla-14)
+
+`services/api/scripts/load_test_client_latencies.py` hammers
+`POST /v1/client-latencies` with N concurrent async workers for T
+seconds and reports per-request p50/p95/p99 latency + success rate.
+
+The default profile — **50 workers × 100 events × 5 minutes** — matches
+the epic AC and the expected steady-state fleet (50 active users × ~500
+events/day × ~5 sessions/day ≈ 125 k events/day, well inside the default
+profile's throughput).
+
+### Rate-limit note
+
+The anonymous ingest path caps at 10 events/IP/rolling-minute (see
+`services/api/src/api/v1/client_latency/ingest.py`). Running 50 × 100
+batches from one IP is ~500× that, so the load test requires an
+authenticated JWT. For a local docker-compose smoke run, you can
+temporarily bump `_ANON_RATE_LIMIT_MAX_EVENTS` to a very large number
+in the ingest module and skip the JWT; remember to revert.
+
+### Running it
+
+```bash
+# Against local docker-compose (with anon rate-limit loosened, or
+# --jwt passed).
+python services/api/scripts/load_test_client_latencies.py \
+    --jwt "$YOUR_TEST_TOKEN"
+
+# Quick smoke (30 s, 10 workers).
+python services/api/scripts/load_test_client_latencies.py \
+    --concurrency 10 --duration-s 30 --jwt "$JWT"
+```
+
+While it's running, also run the following in a second terminal to
+spot-check DB-side contention:
+
+```sql
+-- Active connections and what they're doing.
+SELECT pid, state, wait_event_type, wait_event, query_start, substring(query for 80)
+FROM pg_stat_activity
+WHERE state = 'active' AND datname = 'palateful'
+ORDER BY query_start;
+
+-- Cache-hit ratio on the client_latencies table specifically.
+SELECT relname,
+       heap_blks_read,
+       heap_blks_hit,
+       round(100.0 * heap_blks_hit / nullif(heap_blks_hit + heap_blks_read, 0), 2)
+         AS hit_ratio_pct
+FROM pg_statio_user_tables
+WHERE relname = 'client_latencies';
+```
+
+### Signed-off baseline
+
+Re-capture after any change that touches the ingest path. Paste the
+script's report block below verbatim.
+
+**Last run:** _TBD — operator captures after the next production-config
+ingest load test. Leave the placeholder until then; the AC validates
+against a real run, not a reproduced template. See the cla-14 qa
+walkthrough for the intended capture format._
+
+```
+Wall time:        300.0 s
+Workers:          50
+Total requests:   <fill in>
+Successful (2xx): <fill in>
+Events / sec:     <fill in>
+
+Per-request latency (ms):
+  p50:   <fill in>
+  p95:   <fill in>
+  p99:   <fill in>
+
+AC check:
+  p95 < 100 ms:          <PASS / FAIL>
+  success rate == 100 %: <PASS / FAIL>
+```
+
+DB-side during the run:
+- `pg_stat_activity` active queries: stay under ~N_workers
+- `client_latencies` cache hit ratio: stay > 98 %
+- No slow-query log entries (PostgreSQL
+  `log_min_duration_statement=1000ms` default).
+
+---
+
 ## Debug perf overlay (ptd-1)
 
 Floating in-app widget that lists the last 100 HTTP requests with

@@ -1280,7 +1280,7 @@ development_status:
   cla-11-firebase-performance-monitoring-scoped-enablement: done
   cla-12-firebase-performance-scope-lockdown-disable-screen-traces: done
   cla-13-privacy-policy-and-data-safety-form-update: done
-  cla-14-synthetic-load-test-on-ingest-endpoint: backlog
+  cla-14-synthetic-load-test-on-ingest-endpoint: done
   epic-perf-client-analytics-retrospective: optional
 
   epic-perf-debug-tooling: backlog
