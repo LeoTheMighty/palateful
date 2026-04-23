@@ -15,9 +15,8 @@ class IngredientStrip extends StatefulWidget {
   final ValueChanged<int> onToggle;
   final double scaleFactor;
 
-  /// Optional: when supplied, each chip renders a small source-tag chip
-  /// underneath the name (compact view) and group dividers appear in
-  /// the expanded grid view. Recipe-cook plans pass `null`; meal-cook
+  /// Optional: when supplied, chips are emitted grouped by the value
+  /// this builder returns. Recipe-cook plans pass `null`; meal-cook
   /// plans pass a builder backed by `CombinedIngredient.sourceComponentName`.
   final String? Function(int index)? sourceTagBuilder;
 
@@ -35,112 +34,12 @@ class IngredientStrip extends StatefulWidget {
 }
 
 class _IngredientStripState extends State<IngredientStrip> {
-  bool _isExpanded = false;
-
   @override
   Widget build(BuildContext context) {
-    final cook = context.cookModeTheme;
-    final labelColor = cook.cookOnSurface.withValues(alpha: 0.7);
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-            child: Row(
-              children: [
-                Text(
-                  'INGREDIENTS',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1,
-                    color: labelColor,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${widget.checkedIndices.length}/${widget.ingredients.length}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: cook.cookAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    setState(() => _isExpanded = !_isExpanded);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 23),
-                    child: Row(
-                      children: [
-                        Text(
-                          _isExpanded ? 'Collapse' : 'Expand',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: cook.cookOnSurface
-                                .withValues(alpha: 0.7),
-                          ),
-                        ),
-                        Icon(
-                          _isExpanded ? Icons.expand_less : Icons.expand_more,
-                          size: 18,
-                          color: cook.cookOnSurface
-                              .withValues(alpha: 0.7),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Ingredient chips
-          AnimatedCrossFade(
-            firstChild: _buildHorizontalStrip(),
-            secondChild: _buildExpandedGrid(),
-            crossFadeState: _isExpanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 300),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHorizontalStrip() {
-    return SizedBox(
-      height: 80,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: widget.ingredients.length,
-        itemBuilder: (context, index) {
-          final tag = widget.sourceTagBuilder?.call(index);
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: _IngredientChip(
-              ingredient: widget.ingredients[index],
-              isChecked: widget.checkedIndices.contains(index),
-              onTap: () => widget.onToggle(index),
-              isCompact: true,
-              scaleFactor: widget.scaleFactor,
-              sourceTag: tag,
-            ),
-          );
-        },
-      ),
-    );
+    // cmlp-2 empty-ingredient edge case: render nothing — no padding,
+    // no empty header, no "0 ingredients" label.
+    if (widget.ingredients.isEmpty) return const SizedBox.shrink();
+    return _buildExpandedGrid();
   }
 
   Widget _buildExpandedGrid() {
@@ -148,7 +47,7 @@ class _IngredientStripState extends State<IngredientStrip> {
     final builder = widget.sourceTagBuilder;
     if (builder == null) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
         child: Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -166,7 +65,8 @@ class _IngredientStripState extends State<IngredientStrip> {
     }
 
     // Grouped expanded view: emit "--- From <Component> ---" divider
-    // every time the source tag transitions. cmm-1 AC7 + cmm-4 AC5.
+    // every time the source tag transitions. cmlp-4 will replace the
+    // dashed text with a typographic group header.
     //
     // Null contract: if the builder returns null for an index (e.g. a
     // failed-load component with no name yet), the chip is grouped
@@ -237,7 +137,6 @@ class _IngredientChip extends StatelessWidget {
   final VoidCallback onTap;
   final bool isCompact;
   final double scaleFactor;
-  final String? sourceTag;
 
   const _IngredientChip({
     required this.ingredient,
@@ -245,17 +144,7 @@ class _IngredientChip extends StatelessWidget {
     required this.onTap,
     required this.isCompact,
     this.scaleFactor = 1.0,
-    this.sourceTag,
   });
-
-  /// Truncate to 10 grapheme clusters (not code units) so emoji and
-  /// accented chars don't get sliced through their surrogate pairs.
-  /// Component names come from user-controlled meal data.
-  String _truncatedTag(String tag) {
-    final chars = tag.characters;
-    if (chars.length <= 10) return tag;
-    return '${chars.take(9)}…';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -265,86 +154,7 @@ class _IngredientChip extends StatelessWidget {
         ingredient['quantity_display'] as String?, scaleFactor);
     final unit = ingredient['unit_display'] ?? '';
 
-    if (isCompact) {
-      // Compact vertical chip for horizontal scroll
-      final hasTag = sourceTag != null && sourceTag!.isNotEmpty;
-      return GestureDetector(
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        child: Container(
-          width: hasTag ? 72 : 64,
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: isChecked ? cook.cookCompleted : cook.cookSurfaceDim,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isChecked ? cook.cookCompleted : cook.cookDivider,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Quantity
-              Text(
-                '$quantity $unit'.trim(),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isChecked
-                      ? cook.cookOnCompleted
-                      : cook.cookOnSurface,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              SizedBox(height: hasTag ? 2 : 4),
-              // Name — drops to 1 line when a source tag occupies the
-              // third row so the chip fits in the 80dp strip.
-              Text(
-                name,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isChecked
-                      ? cook.cookOnCompleted
-                      : cook.cookOnSurface.withValues(alpha: 0.7),
-                ),
-                maxLines: hasTag ? 1 : 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
-              if (hasTag) ...[
-                const SizedBox(height: 2),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: cook.cookAccent.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    _truncatedTag(sourceTag!),
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w600,
-                      color: cook.cookAccent,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ] else if (isChecked) ...[
-                const SizedBox(height: 4),
-                Icon(Icons.check, size: 14, color: cook.cookOnCompleted),
-              ],
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Expanded horizontal chip
+    // Expanded horizontal chip — the only remaining layout after cmlp-2.
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();

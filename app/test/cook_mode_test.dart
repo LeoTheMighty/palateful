@@ -91,8 +91,10 @@ void main() {
         ),
       );
 
-      expect(find.text('Garlic'), findsOneWidget);
-      expect(find.text('Olive oil'), findsOneWidget);
+      // cmlp-2: chip renders as a single Text of "quantity unit name".
+      // cmlp-3 will split name + quantity into separate Text widgets.
+      expect(find.textContaining('Garlic'), findsOneWidget);
+      expect(find.textContaining('Olive oil'), findsOneWidget);
     });
 
     testWidgets('StepNavigator renders Next and Done buttons', (tester) async {
@@ -241,9 +243,9 @@ void main() {
       expect(find.byTooltip('Ask AI'), findsNothing);
     });
 
-    // cmm-1 AC7 — IngredientStrip with sourceTagBuilder renders per-chip
-    // tags in compact view + group dividers in expanded view.
-    testWidgets('IngredientStrip with sourceTagBuilder renders tags + groups',
+    // cmlp-2: IngredientStrip always renders the grouped grid directly.
+    // No Expand/Collapse — group keys are visible on initial mount.
+    testWidgets('IngredientStrip with sourceTagBuilder renders group keys',
         (tester) async {
       final ingredients = [
         {
@@ -278,23 +280,24 @@ void main() {
         ),
       );
 
-      // Compact view: each chip's source tag is rendered. Tags fit in 10
-      // chars so no truncation occurs here.
-      expect(find.text('Dressing'), findsAtLeast(1));
-      expect(find.text('Salad'), findsAtLeast(1));
+      // Expand/Collapse + header no longer exist.
+      expect(find.text('Expand'), findsNothing);
+      expect(find.text('Collapse'), findsNothing);
+      expect(find.text('INGREDIENTS'), findsNothing);
 
-      // Tap "Expand" to switch to grouped view, then verify dividers.
-      await tester.tap(find.text('Expand'));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('ingredient_group_Dressing')), findsOneWidget);
-      expect(find.byKey(const Key('ingredient_group_Salad')), findsOneWidget);
-      expect(find.text('--- From Dressing ---'), findsOneWidget);
-      expect(find.text('--- From Salad ---'), findsOneWidget);
+      // Group keys are visible on initial mount.
+      expect(
+        find.byKey(const Key('ingredient_group_Dressing')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('ingredient_group_Salad')),
+        findsOneWidget,
+      );
     });
 
-    // cmm-1 AC7 — when builder is null, tagged-rendering tree absent.
-    testWidgets('IngredientStrip without sourceTagBuilder: no tag chips',
+    // cmlp-2: when builder is null, no "From" group keys render.
+    testWidgets('IngredientStrip without sourceTagBuilder: no group keys',
         (tester) async {
       final ingredients = [
         {
@@ -315,8 +318,33 @@ void main() {
           ),
         ),
       );
-      // No "From" group divider key exists when builder is null.
       expect(find.byKey(const Key('ingredient_group_Dressing')), findsNothing);
+    });
+
+    // cmlp-2: empty-ingredient edge case — the strip renders nothing.
+    testWidgets('IngredientStrip with zero ingredients renders nothing',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: IngredientStrip(
+              ingredients: const [],
+              checkedIndices: const {},
+              onToggle: (_) {},
+            ),
+          ),
+        ),
+      );
+      // No padding, no chips, no headers. The widget renders as
+      // SizedBox.shrink — zero size.
+      final stripFinder = find.byType(IngredientStrip);
+      expect(stripFinder, findsOneWidget);
+      expect(tester.getSize(stripFinder), Size.zero);
+      expect(
+        find.descendant(of: stripFinder, matching: find.byType(Padding)),
+        findsNothing,
+      );
     });
 
     // cmm-1 AC8 — StepNavigator with componentBoundaries renders rules

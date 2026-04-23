@@ -88,25 +88,7 @@ void main() {
           home: Scaffold(body: strip),
         );
 
-    testWidgets('compact: per-chip source tag visible', (tester) async {
-      final ingredients = [
-        _ingredient('Garlic', '3', 'cloves'),
-        _ingredient('Olive oil', '2', 'tbsp'),
-        _ingredient('Salt', '1', 'tsp'),
-      ];
-      await tester.pumpWidget(_wrap(IngredientStrip(
-        ingredients: ingredients,
-        checkedIndices: const {},
-        onToggle: (_) {},
-        sourceTagBuilder: (i) => ['Dressing', 'Dressing', 'Salad'][i],
-      )));
-
-      // Per-chip tags appear in compact view (the default).
-      expect(find.text('Dressing'), findsAtLeast(1));
-      expect(find.text('Salad'), findsAtLeast(1));
-    });
-
-    testWidgets('expanded view: --- From <ComponentName> --- group dividers',
+    testWidgets('grouped view: group keys render on initial mount',
         (tester) async {
       final ingredients = [
         _ingredient('Garlic', '3', 'cloves'),
@@ -120,11 +102,8 @@ void main() {
         sourceTagBuilder: (i) => i < 2 ? 'Dressing' : 'Salad',
       )));
 
-      await tester.tap(find.text('Expand'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('--- From Dressing ---'), findsOneWidget);
-      expect(find.text('--- From Salad ---'), findsOneWidget);
+      // cmlp-2: no Expand/Collapse — list is always expanded.
+      expect(find.text('Expand'), findsNothing);
       expect(
         find.byKey(const Key('ingredient_group_Dressing')),
         findsOneWidget,
@@ -135,25 +114,8 @@ void main() {
       );
     });
 
-    testWidgets(
-        'compact: long source tags truncate to 10 grapheme clusters',
+    testWidgets('1-component plan: no source tag group keys',
         (tester) async {
-      final ingredients = [
-        _ingredient('Garlic', '3', 'cloves'),
-      ];
-      await tester.pumpWidget(_wrap(IngredientStrip(
-        ingredients: ingredients,
-        checkedIndices: const {},
-        onToggle: (_) {},
-        sourceTagBuilder: (i) => 'Grilled Chicken With Sauce',
-      )));
-
-      // Truncated to 9 chars + ellipsis (10 grapheme cap).
-      expect(find.textContaining('…'), findsOneWidget);
-      expect(find.text('Grilled Chicken With Sauce'), findsNothing);
-    });
-
-    testWidgets('1-component plan: no source tag chips', (tester) async {
       final ingredients = [
         _ingredient('Garlic', '3', 'cloves'),
       ];
@@ -163,11 +125,10 @@ void main() {
         onToggle: (_) {},
         // sourceTagBuilder omitted — recipe cook contract.
       )));
-      // No "From" group dividers in expanded view.
-      await tester.tap(find.text('Expand'));
-      await tester.pumpAndSettle();
+      // cmlp-2: no Expand/Collapse — and no "From" group keys when
+      // sourceTagBuilder is null.
+      expect(find.text('Expand'), findsNothing);
       expect(find.byKey(const Key('ingredient_group_Dressing')), findsNothing);
-      expect(find.textContaining('--- From'), findsNothing);
     });
   });
 

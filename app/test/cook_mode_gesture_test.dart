@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/core/theme/cook_mode_theme.dart';
-import 'package:palateful/features/recipes/cook_mode/shared/widgets/ingredient_strip.dart';
 import 'package:palateful/features/recipes/cook_mode/shared/widgets/step_navigator.dart';
 
 void main() {
@@ -158,38 +157,9 @@ void main() {
       expect(size.height, greaterThanOrEqualTo(64.0));
     });
 
-    testWidgets('IngredientStrip expand/collapse button has at least 64dp height',
-        (tester) async {
-      final ingredients = [
-        {
-          'ingredient': {'canonical_name': 'Salt'},
-          'quantity_display': '1',
-          'unit_display': 'tsp',
-        },
-      ];
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: Scaffold(
-            body: IngredientStrip(
-              ingredients: ingredients,
-              checkedIndices: const {},
-              onToggle: (_) {},
-            ),
-          ),
-        ),
-      );
-
-      // Find the GestureDetector wrapping the expand/collapse button
-      final gestureDetectorFinder = find.ancestor(
-        of: find.text('Expand'),
-        matching: find.byType(GestureDetector),
-      );
-      expect(gestureDetectorFinder, findsOneWidget);
-      final size = tester.getSize(gestureDetectorFinder);
-      expect(size.height, greaterThanOrEqualTo(64.0));
-    });
+    // cmlp-2: the Expand/Collapse button was removed — the ingredient
+    // list is always expanded. Former 64dp-height tap-target assertion
+    // on that button is gone.
   });
 
   // --------------------------------------------------------------------

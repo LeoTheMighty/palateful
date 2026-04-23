@@ -85,10 +85,10 @@ void main() {
       await tester.tap(find.text('Next'));
       await tester.pump();
 
-      // Check the first ingredient. The ingredient chip has a pre-existing
-      // ~7px overflow when the check icon appears; drain it so it doesn't
-      // fail the test.
-      await tester.tap(find.text('Ingredient 1'));
+      // Check the first ingredient. cmlp-2: the chip now renders its
+      // quantity + unit + name as a single Text ("1 cup Ingredient 1"),
+      // so match on textContaining.
+      await tester.tap(find.textContaining('Ingredient 1'));
       await tester.pump();
       tester.takeException();
 

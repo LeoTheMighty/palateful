@@ -1173,7 +1173,7 @@ development_status:
   # schema, no infra. 5 stories. Blocks the multi-recipe-flow epic.
   epic-cook-mode-layout-polish: in-progress
   cmlp-1-remove-x-button-from-cook-mode-header-both-modes: done
-  cmlp-2-ingredient-strip-drop-header-expand-collapse-compact-strip: backlog
+  cmlp-2-ingredient-strip-drop-header-expand-collapse-compact-strip: done
   cmlp-3-ingredient-chip-readability-pass: backlog
   cmlp-4-meal-mode-group-headers-and-drop-section-header-above-step-card: backlog
   cmlp-5-progress-bar-and-header-padding-polish: backlog
