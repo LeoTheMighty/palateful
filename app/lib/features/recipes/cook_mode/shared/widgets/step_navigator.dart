@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../core/theme/theme.dart';
+import '../../../../../core/theme/theme.dart';
 
 class StepNavigator extends StatelessWidget {
   final int currentStep;
@@ -12,6 +12,24 @@ class StepNavigator extends StatelessWidget {
   final ValueChanged<int> onStepTap;
   final VoidCallback onLongPressStep;
 
+  /// Optional flat-step indices where component boundaries fall. Length
+  /// `componentBoundaries.length` equals the number of components in
+  /// the active `CookPlan`; index 0 always equals 0 (the first pill).
+  /// When length > 1, pills at non-zero boundary indices render with a
+  /// 16dp wider left margin + a 1px vertical rule. When null/empty or
+  /// length == 1, rendering matches the recipe-cook layout exactly.
+  final List<int>? componentBoundaries;
+
+  /// Optional name lookup for Semantics announcements. Returns the
+  /// component name a given pill belongs to. Recipe cook passes null;
+  /// meal cook passes a closure that walks `componentBoundaries`.
+  final String? Function(int stepIndex)? componentNameForStep;
+
+  /// Override label shown on the primary action button at the end of a
+  /// section. Defaults to "Done" on the last flat step. Meal cook (cmm-6)
+  /// will use this to render "Finish meal".
+  final String? doneLabel;
+
   const StepNavigator({
     super.key,
     required this.currentStep,
@@ -22,7 +40,16 @@ class StepNavigator extends StatelessWidget {
     this.onDone,
     required this.onStepTap,
     required this.onLongPressStep,
+    this.componentBoundaries,
+    this.componentNameForStep,
+    this.doneLabel,
   });
+
+  bool _isBoundary(int index) {
+    final b = componentBoundaries;
+    if (b == null || b.length <= 1 || index == 0) return false;
+    return b.contains(index);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +94,7 @@ class StepNavigator extends StatelessWidget {
                     icon: isLastStep
                         ? Icons.check_rounded
                         : Icons.arrow_forward_rounded,
-                    label: isLastStep ? 'Done' : 'Next',
+                    label: isLastStep ? (doneLabel ?? 'Done') : 'Next',
                     onPressed: isLastStep ? onDone : onNext,
                     alignment: MainAxisAlignment.end,
                     isPrimary: true,
@@ -93,13 +120,18 @@ class StepNavigator extends StatelessWidget {
                     final isCompleted =
                         !isCurrent && completedSteps.contains(index);
 
-                    final semanticLabel = isCurrent
+                    final compName = componentNameForStep?.call(index);
+                    final baseLabel = isCurrent
                         ? 'Step ${index + 1}, current'
                         : isCompleted
                             ? 'Step ${index + 1}, completed'
                             : 'Step ${index + 1}, upcoming';
+                    final semanticLabel = compName != null && compName.isNotEmpty
+                        ? '$baseLabel, $compName'
+                        : baseLabel;
 
-                    return Semantics(
+                    final boundary = _isBoundary(index);
+                    final pill = Semantics(
                       label: semanticLabel,
                       button: true,
                       container: true,
@@ -110,7 +142,10 @@ class StepNavigator extends StatelessWidget {
                         child: Container(
                           width: isCurrent ? 28 : 24,
                           height: 28,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          margin: EdgeInsets.only(
+                            left: boundary ? 20 : 4,
+                            right: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: isCurrent
                                 ? cook.cookAccent
@@ -147,6 +182,19 @@ class StepNavigator extends StatelessWidget {
                           ),
                         ),
                       ),
+                    );
+                    if (!boundary) return pill;
+                    return Row(
+                      key: ValueKey('step_navigator_boundary_$index'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: cook.cookDivider,
+                        ),
+                        pill,
+                      ],
                     );
                   }),
                 ),

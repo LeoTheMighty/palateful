@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/theme/app_colors.dart';
 import 'package:palateful/core/theme/app_theme.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/ingredient_strip.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/step_navigator.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/ingredient_strip.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/step_navigator.dart';
 
 void main() {
   group('CookModeScreen widget tests', () {
@@ -239,6 +239,192 @@ void main() {
       // regression check only. We intentionally avoid naming the
       // deprecated icon here so AC7's grep sweep stays clean.
       expect(find.byTooltip('Ask AI'), findsNothing);
+    });
+
+    // cmm-1 AC7 — IngredientStrip with sourceTagBuilder renders per-chip
+    // tags in compact view + group dividers in expanded view.
+    testWidgets('IngredientStrip with sourceTagBuilder renders tags + groups',
+        (tester) async {
+      final ingredients = [
+        {
+          'ingredient': {'canonical_name': 'Garlic'},
+          'quantity_display': '3',
+          'unit_display': 'cloves',
+        },
+        {
+          'ingredient': {'canonical_name': 'Olive oil'},
+          'quantity_display': '2',
+          'unit_display': 'tbsp',
+        },
+        {
+          'ingredient': {'canonical_name': 'Salt'},
+          'quantity_display': '1',
+          'unit_display': 'tsp',
+        },
+      ];
+      final tags = ['Dressing', 'Dressing', 'Salad'];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: IngredientStrip(
+              ingredients: ingredients,
+              checkedIndices: const {},
+              onToggle: (_) {},
+              sourceTagBuilder: (i) => tags[i],
+            ),
+          ),
+        ),
+      );
+
+      // Compact view: each chip's source tag is rendered. Tags fit in 10
+      // chars so no truncation occurs here.
+      expect(find.text('Dressing'), findsAtLeast(1));
+      expect(find.text('Salad'), findsAtLeast(1));
+
+      // Tap "Expand" to switch to grouped view, then verify dividers.
+      await tester.tap(find.text('Expand'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('ingredient_group_Dressing')), findsOneWidget);
+      expect(find.byKey(const Key('ingredient_group_Salad')), findsOneWidget);
+      expect(find.text('--- From Dressing ---'), findsOneWidget);
+      expect(find.text('--- From Salad ---'), findsOneWidget);
+    });
+
+    // cmm-1 AC7 — when builder is null, tagged-rendering tree absent.
+    testWidgets('IngredientStrip without sourceTagBuilder: no tag chips',
+        (tester) async {
+      final ingredients = [
+        {
+          'ingredient': {'canonical_name': 'Garlic'},
+          'quantity_display': '3',
+          'unit_display': 'cloves',
+        },
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: IngredientStrip(
+              ingredients: ingredients,
+              checkedIndices: const {},
+              onToggle: (_) {},
+            ),
+          ),
+        ),
+      );
+      // No "From" group divider key exists when builder is null.
+      expect(find.byKey(const Key('ingredient_group_Dressing')), findsNothing);
+    });
+
+    // cmm-1 AC8 — StepNavigator with componentBoundaries renders rules
+    // before non-zero boundary indices.
+    testWidgets('StepNavigator boundaries render rule keys', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: StepNavigator(
+              currentStep: 0,
+              totalSteps: 9,
+              completedSteps: const {},
+              componentBoundaries: const [0, 2, 6],
+              onPrevious: null,
+              onNext: () {},
+              onDone: () {},
+              onStepTap: (_) {},
+              onLongPressStep: () {},
+            ),
+          ),
+        ),
+      );
+      // Boundary at index 0 never renders a rule (first pill).
+      expect(
+        find.byKey(const ValueKey('step_navigator_boundary_0')),
+        findsNothing,
+      );
+      // Boundaries at indices 2 and 6 each render their rule wrapper.
+      expect(
+        find.byKey(const ValueKey('step_navigator_boundary_2')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('step_navigator_boundary_6')),
+        findsOneWidget,
+      );
+    });
+
+    // cmm-1 AC8 — single-component (length-1 boundaries) renders no rules.
+    testWidgets('StepNavigator length-1 boundaries: no rules drawn',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: StepNavigator(
+              currentStep: 0,
+              totalSteps: 5,
+              completedSteps: const {},
+              componentBoundaries: const [0],
+              onPrevious: null,
+              onNext: () {},
+              onDone: () {},
+              onStepTap: (_) {},
+              onLongPressStep: () {},
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 5; i++) {
+        expect(
+          find.byKey(ValueKey('step_navigator_boundary_$i')),
+          findsNothing,
+        );
+      }
+    });
+
+    // cmm-1 AC8 — `componentNameForStep` adds the component name to the
+    // pill semantics announcement when boundaries are active.
+    testWidgets('StepNavigator semantics include component name when set',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      final names = ['Dressing', 'Dressing', 'Salad', 'Salad'];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: StepNavigator(
+              currentStep: 2,
+              totalSteps: 4,
+              completedSteps: const {0, 1},
+              componentBoundaries: const [0, 2],
+              componentNameForStep: (i) => names[i],
+              onPrevious: () {},
+              onNext: () {},
+              onDone: () {},
+              onStepTap: (_) {},
+              onLongPressStep: () {},
+            ),
+          ),
+        ),
+      );
+      // The current pill (index 2) should have a Semantics label that
+      // includes both "current" and the component name "Salad".
+      expect(
+        find.bySemanticsLabel('Step 3, current, Salad'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('Step 4, upcoming, Salad'),
+        findsOneWidget,
+      );
+      expect(
+        find.bySemanticsLabel('Step 1, completed, Dressing'),
+        findsOneWidget,
+      );
+      handle.dispose();
     });
   });
 }

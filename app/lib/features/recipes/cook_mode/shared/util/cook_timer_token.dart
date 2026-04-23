@@ -11,7 +11,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import '../../../../core/theme/cook_mode_theme.dart';
+import '../../../../../core/theme/cook_mode_theme.dart';
 
 Color resolveCookTimer(BuildContext context) {
   final ext = Theme.of(context).extension<CookModeTheme>();

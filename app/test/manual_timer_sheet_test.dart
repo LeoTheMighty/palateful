@@ -1,7 +1,7 @@
 // cmt-5 — widget tests for the manual timer sheet.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/manual_timer_sheet.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/manual_timer_sheet.dart';
 
 Widget _harness({required Function(dynamic) onResult}) {
   return MaterialApp(

@@ -1,8 +1,8 @@
 // cmt-4 — widget tests for the step timers row.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:palateful/features/recipes/cook_mode/util/timer_regex.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/step_timers_row.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/util/timer_regex.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/step_timers_row.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
       home: Scaffold(body: Center(child: child)),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/theme/theme.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/timer_completion_overlay.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/timer_completion_overlay.dart';
 
 /// Pumps a host that exposes a button which invokes the overlay. We need
 /// a real navigator around the host so `showModalBottomSheet` can push

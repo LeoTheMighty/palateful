@@ -1,6 +1,6 @@
 // cmt-4 — unit tests for the pure-Dart timer extraction regex.
 import 'package:flutter_test/flutter_test.dart';
-import 'package:palateful/features/recipes/cook_mode/util/timer_regex.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/util/timer_regex.dart';
 
 void main() {
   group('extractTimers single-value', () {

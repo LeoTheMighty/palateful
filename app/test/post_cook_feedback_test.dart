@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:palateful/core/services/recipe_cache_service.dart';
 import 'package:palateful/core/theme/app_theme.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/post_cook_feedback_sheet.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/cook_plan.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/post_cook_feedback_sheet.dart';
 
 void main() {
   // ------------------------------------------------------------------
@@ -73,8 +74,9 @@ void main() {
           backgroundColor: const Color(0xFF3A2A1E),
           body: Builder(
             builder: (ctx) => PostCookFeedbackSheet(
-              recipeId: 'r-test',
-              recipeName: 'Test Pasta',
+              components: const [
+                ComponentRatable(recipeId: 'r-test', displayName: 'Test Pasta'),
+              ],
               // apiClient omitted — null by default, not called when isOffline: true
               recipeCache: cache,
               isOffline: true,

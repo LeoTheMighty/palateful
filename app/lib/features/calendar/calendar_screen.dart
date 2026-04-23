@@ -22,7 +22,8 @@ import 'widgets/day_detail_sheet.dart';
 import 'widgets/meal_detail_sheet.dart';
 import 'widgets/plan_meal_sheet.dart';
 import '../../core/services/error_reporter.dart';
-import '../recipes/cook_mode/widgets/post_cook_feedback_sheet.dart';
+import '../recipes/cook_mode/shared/cook_plan.dart';
+import '../recipes/cook_mode/shared/widgets/post_cook_feedback_sheet.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/recipe_cache_service.dart';
 import '../meals/widgets/meal_tile.dart' show kMealComponentCountLabel;
@@ -231,8 +232,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetCtx) => PostCookFeedbackSheet(
-        recipeId: recipe.id,
-        recipeName: recipe.name,
+        components: [
+          ComponentRatable(recipeId: recipe.id, displayName: recipe.name),
+        ],
         apiClient: apiClient,
         recipeCache: recipeCache,
         isOffline: false,

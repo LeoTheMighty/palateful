@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/core/theme/cook_mode_theme.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/ingredient_strip.dart';
-import 'package:palateful/features/recipes/cook_mode/widgets/step_navigator.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/ingredient_strip.dart';
+import 'package:palateful/features/recipes/cook_mode/shared/widgets/step_navigator.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

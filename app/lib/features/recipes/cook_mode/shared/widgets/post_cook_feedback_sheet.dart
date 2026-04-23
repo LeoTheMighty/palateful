@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import '../../../../core/services/api_client.dart';
-import '../../../../core/services/recipe_cache_service.dart';
-import '../../../../core/theme/theme.dart';
-import '../../providers/recipe_provider.dart';
+import '../../../../../core/services/api_client.dart';
+import '../../../../../core/services/recipe_cache_service.dart';
+import '../../../../../core/theme/theme.dart';
+import '../../../providers/recipe_provider.dart';
+import '../cook_plan.dart';
 
-/// Bottom sheet shown after the user taps "Done cooking".
+/// Bottom sheet shown after the user finishes cooking.
 ///
-/// Prompts for a 5-star rating and optional notes. Saves the cook log locally
-/// and submits the note to the API (or queues it when offline).
+/// cmm-1 — refactored to accept a `List<ComponentRatable>`. The recipe
+/// cook path passes a single-entry list; meal cook (cmm-6) passes one
+/// per started component. Single-component rendering is pixel-identical
+/// to the pre-refactor layout (same keys, same widget tree).
 class PostCookFeedbackSheet extends StatefulWidget {
-  final String recipeId;
-  final String recipeName;
+  final List<ComponentRatable> components;
   final ApiClient? apiClient;
   final RecipeCacheService recipeCache;
   final bool isOffline;
+  final String? title;
 
   /// Called when the user completes or skips the feedback flow.
   /// The caller is responsible for dismissing the sheet after this fires.
@@ -24,21 +27,31 @@ class PostCookFeedbackSheet extends StatefulWidget {
   /// (e.g. persisted cook session, see epic-cook-mode-resume cmr-4).
   final void Function({bool saved}) onComplete;
 
-  const PostCookFeedbackSheet({
+  PostCookFeedbackSheet({
     super.key,
-    required this.recipeId,
-    required this.recipeName,
+    required this.components,
     this.apiClient,
     required this.recipeCache,
     required this.isOffline,
     required this.onComplete,
-  });
+    this.title,
+  }) {
+    if (components.isEmpty) {
+      throw ArgumentError.value(
+        components,
+        'components',
+        'PostCookFeedbackSheet requires at least one component',
+      );
+    }
+  }
 
   @override
   State<PostCookFeedbackSheet> createState() => _PostCookFeedbackSheetState();
 }
 
 class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
+  // Single-component path uses these (preserves existing test keys).
+  // Multi-component meal path (cmm-6) layers per-row state on top.
   int _selectedRating = 0;
   final _notesController = TextEditingController();
   bool _isSaving = false;
@@ -49,13 +62,16 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
     super.dispose();
   }
 
-  Future<void> _saveFeedback() async {
+  bool get _isSingle => widget.components.length == 1;
+
+  Future<void> _saveSingle() async {
     setState(() => _isSaving = true);
     var saved = true;
+    final c = widget.components.first;
     try {
       if (_selectedRating > 0) {
         await widget.recipeCache.logCook(
-          widget.recipeId,
+          c.recipeId,
           _selectedRating,
           DateTime.now(),
         );
@@ -65,12 +81,12 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
         // Online path: only call API when both online AND apiClient available.
         // Falls through to queue if apiClient is null (prevents silent data loss).
         if (!widget.isOffline && widget.apiClient != null) {
-          await widget.apiClient!.addRecipeNote(widget.recipeId, notes);
+          await widget.apiClient!.addRecipeNote(c.recipeId, notes);
           // pfc-3: drop cached recipe payload so reopening detail
           // reflects the freshly-appended note.
-          if (mounted) invalidateRecipe(context, widget.recipeId);
+          if (mounted) invalidateRecipe(context, c.recipeId);
         } else {
-          await widget.recipeCache.queueNoteAdd(widget.recipeId, notes);
+          await widget.recipeCache.queueNoteAdd(c.recipeId, notes);
         }
       }
     } catch (_) {
@@ -85,7 +101,21 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isSingle) {
+      // Multi-component layout is wired in cmm-6. Hard-fail rather than
+      // silently render only the first component (which would drop the
+      // user's per-component ratings on submit).
+      throw UnimplementedError(
+        'PostCookFeedbackSheet with components.length > 1 ships in cmm-6. '
+        'Got ${widget.components.length} components.',
+      );
+    }
+    return _buildSingle(context);
+  }
+
+  Widget _buildSingle(BuildContext context) {
     final cook = context.cookModeTheme;
+    final headerName = widget.title ?? widget.components.first.displayName;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -118,7 +148,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            widget.recipeName,
+            headerName,
             style: TextStyle(
               fontSize: 14,
               color: cook.cookOnSurface.withValues(alpha: 0.7),
@@ -174,7 +204,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
           // Save button
           FilledButton(
             key: const Key('save_button'),
-            onPressed: _isSaving ? null : _saveFeedback,
+            onPressed: _isSaving ? null : _saveSingle,
             style: FilledButton.styleFrom(
               backgroundColor: cook.cookAccent,
               foregroundColor: cook.cookOnAccent,

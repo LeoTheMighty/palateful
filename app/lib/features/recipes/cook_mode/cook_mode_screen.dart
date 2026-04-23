@@ -15,17 +15,18 @@ import '../../../core/services/recipe_cache_service.dart';
 import '../../../core/theme/theme.dart';
 import 'services/cook_session_debouncer.dart';
 import 'services/cook_session_persister.dart';
+import 'shared/cook_plan.dart';
+import 'shared/widgets/active_timers_row.dart';
 import 'widgets/cook_reset_confirm_sheet.dart';
 import 'widgets/cook_resume_gate_sheet.dart';
-import 'widgets/timer_completion_overlay.dart';
-import 'widgets/ingredient_strip.dart';
-import 'widgets/manual_timer_sheet.dart';
-import 'widgets/post_cook_feedback_sheet.dart';
-import 'widgets/step_navigator.dart';
-import 'widgets/step_timers_row.dart';
-import 'util/timer_regex.dart';
+import 'shared/widgets/timer_completion_overlay.dart';
+import 'shared/widgets/ingredient_strip.dart';
+import 'shared/widgets/manual_timer_sheet.dart';
+import 'shared/widgets/post_cook_feedback_sheet.dart';
+import 'shared/widgets/step_navigator.dart';
+import 'shared/widgets/step_timers_row.dart';
+import 'shared/util/timer_regex.dart';
 import '../../../core/services/error_reporter.dart';
-import '../../../shared/widgets/error_banner.dart';
 
 class CookModeScreen extends StatefulWidget {
   final String recipeId;
@@ -46,7 +47,7 @@ class _CookModeScreenState extends State<CookModeScreen>
 
   Map<String, dynamic>? _recipe;
   List<dynamic> _ingredients = [];
-  List<_StepData> _steps = [];
+  List<CookStep> _steps = [];
   bool _isLoading = true;
   bool _isOffline = false;
   String? _error;
@@ -450,16 +451,11 @@ class _CookModeScreenState extends State<CookModeScreen>
   }
 
   void _populateFromData(Map<String, dynamic> recipe) {
-    final stepsData = List<dynamic>.from(recipe['steps'] as List? ?? []);
-    stepsData.sort((a, b) =>
-        (a['step_number'] as int? ?? 0).compareTo(b['step_number'] as int? ?? 0));
+    final plan = CookPlan.fromRecipe(recipe);
     setState(() {
       _recipe = recipe;
-      _ingredients = recipe['ingredients'] ?? [];
-      _steps = stepsData
-          .map((s) => _StepData.fromJson(s))
-          .where((s) => s.instruction.isNotEmpty)
-          .toList();
+      _ingredients = plan.components.first.ingredients;
+      _steps = plan.components.first.steps;
       _isLoading = false;
     });
   }
@@ -687,8 +683,13 @@ class _CookModeScreenState extends State<CookModeScreen>
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     _startedAtMs ??= nowMs;
     final completed = _completedSteps.toList()..sort();
-    final checked = _checkedIngredients.map((i) => i.toString()).toList()
-      ..sort();
+    // Numeric sort: lexical sort would order ["10","2"] as ["10","2"]
+    // and confuse on-disk debugging once a recipe has >9 ingredients.
+    // Restoration is a Set rebuild so order doesn't affect correctness,
+    // but the snapshot is checksummed for change-detection in cmr-2.
+    final checked = (_checkedIngredients.toList()..sort())
+        .map((i) => i.toString())
+        .toList();
     return CookSessionState(
       targetKind: CookTargetKind.recipe,
       targetId: widget.recipeId,
@@ -753,8 +754,12 @@ class _CookModeScreenState extends State<CookModeScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) => PostCookFeedbackSheet(
-        recipeId: widget.recipeId,
-        recipeName: _recipe?['name'] as String? ?? 'Recipe',
+        components: [
+          ComponentRatable(
+            recipeId: widget.recipeId,
+            displayName: _recipe?['name'] as String? ?? 'Recipe',
+          ),
+        ],
         apiClient: _apiClient,
         recipeCache: _recipeCache,
         isOffline: _isOffline,
@@ -901,8 +906,14 @@ class _CookModeScreenState extends State<CookModeScreen>
             // Header
             _buildHeader(context, cook),
 
-            // Active timers (if any)
-            if (_activeTimers.isNotEmpty) _buildActiveTimers(cook),
+            // Active timers (if any) — shared widget consumed by both
+            // recipe cook (here) and meal cook (cmm-2).
+            if (_activeTimers.isNotEmpty)
+              ActiveTimersRow<_ActiveTimer>(
+                timers: _activeTimers,
+                onTap: _showTimerDetailSheet,
+                onCancel: _cancelTimer,
+              ),
 
             // Ingredient strip
             IngredientStrip(
@@ -1071,67 +1082,6 @@ class _CookModeScreenState extends State<CookModeScreen>
     );
   }
 
-  Widget _buildActiveTimers(CookModeTheme cook) {
-    return Container(
-      height: 44,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _activeTimers.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final timer = _activeTimers[index];
-          final progress =
-              1 - (timer.remaining.inSeconds / timer.duration.inSeconds);
-
-          return GestureDetector(
-            onTap: () => _showTimerDetailSheet(timer),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: cook.cookTimer.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: cook.cookTimer),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      value: progress,
-                      strokeWidth: 2,
-                      color: cook.cookTimer,
-                      backgroundColor:
-                          cook.cookTimer.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _formatDuration(timer.remaining),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: cook.cookTimer,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: () => _cancelTimer(timer),
-                    child: Icon(Icons.close,
-                        size: 16, color: cook.cookTimer),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildStepContent(BuildContext context, CookModeTheme cook) {
     if (_steps.isEmpty) {
       return Center(
@@ -1157,32 +1107,11 @@ class _CookModeScreenState extends State<CookModeScreen>
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          // Step indicator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '${_currentStep + 1}',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  color: cook.cookOnSurface,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'of ${_steps.length}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: cook.cookOnSurface.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          // cmm-1: removed the "Step N of M" subtitle. Recipe cook keeps
+          // the recipe name in the app bar and the progress bar below;
+          // meal cook adds a `recipe_section_header` (cmm-3) above the
+          // step card. Both surfaces already convey position — the
+          // intra-card subtitle was redundant.
 
           // Progress bar
           Container(
@@ -1375,36 +1304,7 @@ class _TimerDetailSheetState extends State<_TimerDetailSheet> {
   }
 }
 
-/// cmt-4 — per-step record kept on `_steps`.
-///
-/// Prior to cmt-4, `_steps` was `List<String>`; the upgrade pulls
-/// structured `timers` out of the backend payload at load time so the
-/// render path doesn't re-parse the JSON on every build.
-class _StepData {
-  final String instruction;
-  final List<StepTimer> timers;
-
-  const _StepData({required this.instruction, required this.timers});
-
-  factory _StepData.fromJson(dynamic raw) {
-    if (raw is! Map) return const _StepData(instruction: '', timers: []);
-    final instruction = raw['instruction'] as String? ?? '';
-    final rawTimers = raw['timers'];
-    final parsed = <StepTimer>[];
-    if (rawTimers is List) {
-      for (final t in rawTimers) {
-        final parsedTimer = StepTimer.fromJson(t);
-        if (parsedTimer != null) parsed.add(parsedTimer);
-      }
-    }
-    return _StepData(instruction: instruction, timers: parsed);
-  }
-}
-
-class _ActiveTimer {
-  final String label;
-  final Duration duration;
-  Duration remaining;
+class _ActiveTimer extends ActiveTimerView {
   final DateTime startTime;
   final int notifId;
   // One of 'extracted', 'regex', 'manual' — preserved across the
@@ -1415,9 +1315,9 @@ class _ActiveTimer {
 
   // ignore: unused_element_parameter
   _ActiveTimer({
-    required this.label,
-    required this.duration,
-    required this.remaining,
+    required super.label,
+    required super.duration,
+    required super.remaining,
     required this.startTime,
     required this.notifId,
     this.source = 'manual',
