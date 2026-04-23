@@ -161,6 +161,23 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- cla-12: Firebase Performance Monitoring scope lockdown.
+             `collection_enabled=true` is the documented public toggle and
+             matches the runtime setPerformanceCollectionEnabled(true) in
+             main.dart. `auto_activity_trace_enabled=false` is a best-
+             effort tap on the (undocumented) Firebase Android-SDK flag
+             for the `_st_*` screen-rendering traces; if the flag name
+             drifts in a future SDK bump, the lockdown is re-verified
+             via the manual Firebase Console check (see
+             docs/PERFORMANCE_OPS.md) rather than a compile-time
+             assertion. Firebase is secondary anyway — the custom
+             pipeline is our source of truth. -->
+        <meta-data
+            android:name="firebase_performance_collection_enabled"
+            android:value="true" />
+        <meta-data
+            android:name="firebase_performance_auto_activity_trace_enabled"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

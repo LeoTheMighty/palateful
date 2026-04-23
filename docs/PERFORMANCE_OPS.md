@@ -364,11 +364,18 @@ sampling of, and never read during an incident.
   **Endpoints** section.
 - **App-start** — Firebase SDK auto-captures and posts this with no
   code required.
-- **Scope lockdown (cla-12)**: iOS `Info.plist` + Android
-  `AndroidManifest.xml` keys disable the auto screen-rendering traces
-  (`_st_*` in Firebase). We don't want a second route-paint source
-  fighting with our own `route_paint` events, and Firebase's built-in
-  "slow screen" default UX is a surprise we'd rather avoid.
+- **Scope lockdown (cla-12)**: iOS `Info.plist` sets
+  `firebase_performance_collection_enabled=true` (pins the opt-in);
+  Android `AndroidManifest.xml` mirrors that plus a best-effort
+  `firebase_performance_auto_activity_trace_enabled=false` aimed at
+  silencing the `_st_*` screen traces. **Caveat**: Firebase's public
+  SDK contract does not expose a build-time key for disabling only
+  screen-rendering collection (we confirmed this at cla-12 time
+  against https://firebase.google.com/docs/perf-mon/disable-sdk ).
+  The Android flag may or may not be honored by a given SDK version.
+  Verify 24 h after each rollout by checking the Firebase Console →
+  Performance → Screen rendering tab is empty (or treated as
+  noise) — our incident response never reads it anyway.
 
 ### Platform scope
 

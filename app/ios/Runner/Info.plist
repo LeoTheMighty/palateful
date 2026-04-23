@@ -76,5 +76,14 @@
 	</array>
 	<key>NSUserNotificationUsageDescription</key>
 	<string>Palateful sends notifications when your recipe imports finish and when partners update shared books or shopping lists.</string>
+	<!-- cla-12: Firebase Performance Monitoring scope lockdown. Explicit
+	     `collection_enabled=true` pins the SDK-on-boot opt-in (matches
+	     main.dart's runtime setPerformanceCollectionEnabled(true)). The
+	     Firebase iOS SDK does not expose a build-time key for disabling
+	     only the auto screen-rendering traces — the iOS Performance SDK
+	     behaves differently from Android here and we accept Firebase as
+	     a secondary source, documented in docs/PERFORMANCE_OPS.md. -->
+	<key>firebase_performance_collection_enabled</key>
+	<true/>
 </dict>
 </plist>
