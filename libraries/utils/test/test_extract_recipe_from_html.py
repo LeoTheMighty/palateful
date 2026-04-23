@@ -184,6 +184,78 @@ def test_range_regression_q1_notes_to2cups(fresh_registry, capture_coverage):
 # ---------------------------------------------------------------------------
 
 
+def test_mixed_structure_only_text_only_strings_are_sent_to_openai(
+    fresh_registry, capture_coverage
+):
+    """eri-3b — the parse-pass OpenAI call must see ONLY the text-only
+    strings, never the structured rows. Stress: 3 structured + 2
+    text-only interleaved."""
+    registry = RecipeExtractorRegistry()
+    client = MagicMock()
+    client.chat.completions.create.return_value = _build_parse_response(
+        [
+            {"quantity": 1, "unit": "clove", "name": "garlic", "notes": None},
+            {"quantity": 2, "unit": "stalk", "name": "celery", "notes": None},
+        ]
+    )
+    registry._ai_extractor._client = client
+
+    html = _jsonld_html(
+        [
+            "A",
+            "1 clove garlic",
+            "B",
+            "C",
+            "2 stalks celery",
+        ]
+    )
+    raw_result = registry._extractors[0].extract(html, url="https://ex.com/")
+    # Overwrite indices 0, 2, 3 with structured rows (A, B, C stay
+    # structured-only with distinct text markers).
+    raw_result.recipe.ingredients[0] = ExtractedIngredient(
+        text="A", quantity=1, unit="cup", name="A"
+    )
+    raw_result.recipe.ingredients[2] = ExtractedIngredient(
+        text="B", quantity=1, unit="cup", name="B"
+    )
+    raw_result.recipe.ingredients[3] = ExtractedIngredient(
+        text="C", quantity=1, unit="cup", name="C"
+    )
+
+    from utils.services.recipe_extractors import (
+        _apply_parse_pass,
+        _emit_coverage_audit,
+    )
+
+    source = _apply_parse_pass(
+        raw_result.recipe, openai_client=client, url="https://ex.com/"
+    )
+    _emit_coverage_audit(raw_result.recipe, source=source, url="https://ex.com/")
+
+    # Exactly one parse-pass call
+    assert client.chat.completions.create.call_count == 1
+    prompt = client.chat.completions.create.call_args.kwargs["messages"][1][
+        "content"
+    ]
+    # The prompt body numbers its inputs "1. ...\n2. ..." — assert the
+    # text-only strings are present, the structured-row strings are NOT.
+    assert "1 clove garlic" in prompt
+    assert "2 stalks celery" in prompt
+    assert "\nA\n" not in prompt and "1. A\n" not in prompt
+    assert "\nB\n" not in prompt and "2. B\n" not in prompt
+    assert "\nC\n" not in prompt
+
+    ings = raw_result.recipe.ingredients
+    # Structured rows kept verbatim
+    assert ings[0].name == "A"
+    assert ings[2].name == "B"
+    assert ings[3].name == "C"
+    # Text-only rows filled in
+    assert ings[1].unit == "clove"
+    assert ings[4].unit == "stalk"
+    assert source == "json_ld_parse_pass"
+
+
 def test_mixed_structure_preserves_structured_rows_and_splices_back_in_order(
     fresh_registry, capture_coverage
 ):
