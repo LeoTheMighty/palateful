@@ -4,6 +4,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/shared_state_service.dart';
 import '../../../core/state/mutation_bus.dart';
+import '../../../core/state/provider_ttl.dart';
 import '../../recipe_books/providers/recipe_books_provider.dart';
 
 /// Value object produced by [homeContentProvider]. Holds the pristine
@@ -62,7 +63,13 @@ class HomeContent {
 /// Decision #2.
 final homeContentProvider =
     FutureProvider.autoDispose<HomeContent>((ref) async {
-  ref.keepAlive();
+  // ffm-6: 5-minute TTL (tighter than reference-data providers —
+  // home content changes more often in normal use).
+  keepAliveWithTtl(
+    ref,
+    maxAge: const Duration(minutes: 5),
+    revalidate: () async => ref.invalidateSelf(),
+  );
 
   // Subscribe directly to the broadcast stream. `ref.listen` on a
   // `Provider<Stream<T>>` only fires on *value change*, and the bus's

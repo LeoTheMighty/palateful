@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/state/mutation_bus.dart';
+import '../../../core/state/provider_ttl.dart';
 import '../models/pantry.dart';
 import '../models/pantry_ingredient.dart';
 import '../services/pantry_service.dart';
@@ -13,7 +14,12 @@ import '../services/pantry_service.dart';
 /// can key off a specific pantry id (future pantry-per-book support).
 final defaultPantryProvider =
     FutureProvider.autoDispose<Pantry>((ref) async {
-  ref.keepAlive();
+  // ffm-6: 10-minute TTL backstop.
+  keepAliveWithTtl(
+    ref,
+    maxAge: const Duration(minutes: 10),
+    revalidate: () async => ref.invalidateSelf(),
+  );
   final sub = ref.read(mutationBusProvider).listen((event) {
     if (_isPantryEvent(event)) ref.invalidateSelf();
   });

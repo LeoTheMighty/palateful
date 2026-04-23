@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/injection.dart';
 import '../../../core/state/mutation_bus.dart';
+import '../../../core/state/provider_ttl.dart';
 import '../services/recipe_book_service.dart';
 
 /// rp-1 — single source of truth for the Books tab. All three list
@@ -53,7 +54,15 @@ bool _shouldInvalidateBookMembers(MutationEvent event, String bookId) {
 /// any picker that shows "move to another book".
 final recipeBooksProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.keepAlive();
+  // ffm-6: 10-minute TTL backstop for multi-device / cold-resume
+  // drift. MutationBus still fires the primary invalidation path;
+  // this timer only catches the case where neither MutationBus nor
+  // a manual refresh fires for 10 minutes straight.
+  keepAliveWithTtl(
+    ref,
+    maxAge: const Duration(minutes: 10),
+    revalidate: () async => ref.invalidateSelf(),
+  );
   final sub = ref.read(mutationBusProvider).listen((event) {
     if (_shouldInvalidateBookList(event)) ref.invalidateSelf();
   });
