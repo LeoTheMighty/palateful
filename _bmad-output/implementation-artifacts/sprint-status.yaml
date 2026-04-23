@@ -1107,12 +1107,12 @@ development_status:
   # CookSessionPersister from epic-cook-mode-resume keyed by meal_id.
   # Zero backend changes (client fan-out for N recipe fetches). Depends on
   # epic-cook-mode-resume. 7 stories.
-  epic-cook-mode-meal: in-progress
+  epic-cook-mode-meal: done
   cmm-1-shared-widget-extraction-and-cookplan-abstraction: done
   cmm-2-meal-cook-mode-screen-loader-and-route: done
   cmm-3-sectioned-step-traversal-and-header: done
   cmm-4-interlaced-combined-ingredient-strip-with-source-tags: done
   cmm-5-meal-level-timers-and-label-disambiguation: done
   cmm-6-per-component-post-cook-sheet: done
-  cmm-7-meal-cook-resume-wiring-and-regression-sweep: backlog
+  cmm-7-meal-cook-resume-wiring-and-regression-sweep: done
   epic-cook-mode-meal-retrospective: optional

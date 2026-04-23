@@ -42,6 +42,7 @@ import '../shared/widgets/step_navigator.dart';
 import '../shared/widgets/step_timers_row.dart';
 import '../shared/widgets/timer_completion_overlay.dart';
 import '../widgets/cook_reset_confirm_sheet.dart';
+import '../widgets/cook_resume_gate_sheet.dart';
 import 'widgets/component_load_placeholder.dart';
 import 'widgets/recipe_section_header.dart';
 
@@ -110,16 +111,179 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   }
 
   Future<void> _initCookSession() async {
+    final persisted = await _persister.load(_sessionKey);
+    if (!mounted) return;
     await _loadMealAndRecipes();
     if (!mounted) return;
-    // Skip the stopwatch on the error path — without _plan there's
-    // nothing to time, and a running stopwatch would prevent
-    // `pumpAndSettle` from ever settling in the error scaffold.
     if (_error != null || _plan == null) return;
-    // cmm-7 will insert the Resume gate flow here. For cmm-2 the
-    // stopwatch starts immediately on a clean session.
-    _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    if (persisted != null && persisted.targetKind == CookTargetKind.meal) {
+      final plan = _plan!;
+      final stepSummary = _resumeStepSummary(persisted, plan);
+      final choice = await showCookResumeGate(
+        context,
+        state: persisted,
+        targetName: _meal?.name ?? widget.mealId,
+        totalSteps: plan.totalSteps,
+        stepSummaryOverride: stepSummary,
+      );
+      if (!mounted) return;
+      if (choice == CookResumeChoice.resume) {
+        _applyRestoredState(persisted, plan);
+      } else {
+        await _persister.clear(_sessionKey);
+        _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+      }
+    } else {
+      _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    }
+    if (!mounted) return;
     _cookingStopwatch.start();
+  }
+
+  /// Compose the Resume gate's section-aware step phrase.
+  /// "Salad · step 2 of 4" on a 3-component plan, clamped if drift.
+  String _resumeStepSummary(CookSessionState persisted, CookPlan plan) {
+    final clamped = persisted.currentStep.clamp(0, plan.totalSteps - 1);
+    final at = plan.stepAt(clamped);
+    final componentName = plan.components[at.componentIndex].name;
+    return '$componentName · step ${at.stepIndex + 1} of '
+        '${plan.components[at.componentIndex].steps.length}';
+  }
+
+  /// cmm-7 — restore in-memory state from a persisted snapshot.
+  /// Meal-version-drift handling:
+  ///   * `currentStep >= plan.totalSteps` → clamp + snackbar
+  ///   * Stable-key references that no longer exist → silently dropped
+  ///   * Active timers whose component no longer exists → dropped +
+  ///     surfaced in the "while you were away" snackbar
+  void _applyRestoredState(CookSessionState state, CookPlan plan) {
+    final totalSteps = plan.totalSteps;
+    var restoredStep = state.currentStep;
+    var clamped = false;
+    if (restoredStep >= totalSteps) {
+      restoredStep = totalSteps - 1;
+      clamped = true;
+    }
+    if (restoredStep < 0) restoredStep = 0;
+
+    final validCompleted = state.completedSteps
+        .where((i) => i >= 0 && i < totalSteps)
+        .toSet();
+
+    // Stable keys live as `<componentIndex>:<orderIndex>` strings.
+    // Drop any that don't resolve to a live ingredient.
+    final livingKeys = <String>{
+      for (final ing in plan.ingredients) ing.stableKey,
+    };
+    var droppedIngredientKey = false;
+    final validChecked = <String>{};
+    for (final raw in state.checkedIngredients) {
+      if (livingKeys.contains(raw)) {
+        validChecked.add(raw);
+      } else {
+        droppedIngredientKey = true;
+      }
+    }
+
+    // Rebuild active timers; expired ones surface in the "while away"
+    // snackbar with component-name prefixed labels (cmm-5 contract).
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final restoredTimers = <_ActiveTimer>[];
+    final expiredWhileAway = <String>[];
+    for (final saved in state.activeTimers) {
+      final remainingMs = saved.deadlineMs - nowMs;
+      if (remainingMs <= 0) {
+        expiredWhileAway.add(saved.label);
+        continue;
+      }
+      final total = Duration(seconds: saved.totalDurationSeconds);
+      final startTime =
+          DateTime.fromMillisecondsSinceEpoch(saved.deadlineMs).subtract(total);
+      final notifId = _nextNotifId++;
+      final timer = _ActiveTimer(
+        label: saved.label,
+        duration: total,
+        remaining: Duration(milliseconds: remainingMs),
+        startTime: startTime,
+        notifId: notifId,
+      );
+      _timerNotifService.scheduleTimerNotification(
+        id: notifId,
+        label: saved.label,
+        expiresAt: DateTime.fromMillisecondsSinceEpoch(saved.deadlineMs),
+        recipeId: widget.mealId,
+        stepIndex: restoredStep,
+        originalDurationSeconds: saved.totalDurationSeconds,
+      );
+      timer.timer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) return;
+        final elapsed = DateTime.now().difference(timer.startTime);
+        final remaining = timer.duration - elapsed;
+        if (remaining.isNegative) {
+          t.cancel();
+          _onTimerComplete(timer);
+        } else {
+          setState(() => timer.remaining = remaining);
+        }
+      });
+      restoredTimers.add(timer);
+    }
+
+    setState(() {
+      _currentStep = restoredStep;
+      _completedSteps
+        ..clear()
+        ..addAll(validCompleted);
+      _checkedIngredientKeys
+        ..clear()
+        ..addAll(validChecked);
+      _activeTimers.addAll(restoredTimers);
+      _restoredElapsedMs = state.cumulativeElapsedMs;
+      _startedAtMs = state.startedAtMs;
+    });
+    if (restoredTimers.isNotEmpty) _ensureLiveActivityPulse();
+
+    if (clamped && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Meal changed since your last session — picking up at the last step',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+    if (droppedIngredientKey && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingredients changed since your last session'),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+    if (expiredWhileAway.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_expiredAwayCopy(expiredWhileAway)),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(label: 'OK', onPressed: () {}),
+        ),
+      );
+    }
+  }
+
+  String _expiredAwayCopy(List<String> labels) {
+    if (labels.length == 1) {
+      return 'While you were away: ${labels.first} timer finished';
+    }
+    if (labels.length <= 3) {
+      final joined = labels.length == 2
+          ? '${labels[0]} and ${labels[1]}'
+          : '${labels.sublist(0, labels.length - 1).join(', ')}, '
+              'and ${labels.last}';
+      return 'While you were away: $joined timers finished';
+    }
+    return 'While you were away: ${labels.length} timers finished';
   }
 
   Future<void> _loadMealAndRecipes() async {

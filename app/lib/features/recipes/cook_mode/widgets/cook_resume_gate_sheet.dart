@@ -17,12 +17,16 @@ enum CookResumeChoice {
 /// [targetName] is the user-facing title (recipe name or meal name).
 /// [totalSteps] is optional — when null, the summary line drops the
 /// "of M" suffix.
+/// [stepSummaryOverride], when non-null, replaces the default
+/// "step N [of M]" phrase with caller-supplied section-aware copy
+/// (e.g. meal cook's "Salad · step 2 of 4").
 Future<CookResumeChoice?> showCookResumeGate(
   BuildContext context, {
   required CookSessionState state,
   required String targetName,
   int? totalSteps,
   DateTime? now,
+  String? stepSummaryOverride,
 }) {
   return showModalBottomSheet<CookResumeChoice>(
     context: context,
@@ -38,6 +42,7 @@ Future<CookResumeChoice?> showCookResumeGate(
       targetName: targetName,
       totalSteps: totalSteps,
       now: now,
+      stepSummaryOverride: stepSummaryOverride,
     ),
   );
 }
@@ -50,6 +55,7 @@ class CookResumeGateSheet extends StatelessWidget {
   final String targetName;
   final int? totalSteps;
   final DateTime? now;
+  final String? stepSummaryOverride;
 
   const CookResumeGateSheet({
     super.key,
@@ -57,6 +63,7 @@ class CookResumeGateSheet extends StatelessWidget {
     required this.targetName,
     this.totalSteps,
     this.now,
+    this.stepSummaryOverride,
   });
 
   @override
@@ -67,9 +74,10 @@ class CookResumeGateSheet extends StatelessWidget {
         DateTime.fromMillisecondsSinceEpoch(state.startedAtMs);
     final startedRelative = relativeTime(started, now: reference);
 
-    final stepSummary = totalSteps != null
-        ? 'step ${state.currentStep + 1} of $totalSteps'
-        : 'step ${state.currentStep + 1}';
+    final stepSummary = stepSummaryOverride ??
+        (totalSteps != null
+            ? 'step ${state.currentStep + 1} of $totalSteps'
+            : 'step ${state.currentStep + 1}');
     final checkedCount = state.checkedIngredients.length;
     final totalTimers = state.activeTimers.length;
     final expiredTimers = state.activeTimers
