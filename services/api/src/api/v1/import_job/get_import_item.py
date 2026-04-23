@@ -64,15 +64,26 @@ def _extract_inferred_fields(parsed_recipe: dict | None) -> list[str]:
     return clean
 
 
+_PARSED_RECIPE_KEY = "parsed_recipe"
+
+
 class GetImportItem(Endpoint):
     """Get import item details."""
 
-    def execute(self, item_id: str):
+    def execute(self, item_id: str, include: str | None = None):
         """
         Get import item details.
 
         Args:
             item_id: The import item ID.
+            include: ffm-10 — optional CSV of opt-in fields. The only
+                supported value today is ``parsed_recipe``. When
+                omitted, the heavy ``parsed_recipe`` blob is ABSENT
+                from the response (not null) — activity feed and
+                dashboard callers get the lean shape by default.
+                The telemetry viewer explicitly sends
+                ``?include=parsed_recipe``. Unknown tokens are
+                silently dropped for forward-compat.
 
         Returns:
             Import item data.
@@ -117,32 +128,45 @@ class GetImportItem(Endpoint):
             item.parsed_recipe
         )
 
-        return success(
-            data=GetImportItem.Response(
-                id=str(item.id),
-                status=item.status,
-                source_type=item.source_type,
-                source_reference=item.source_reference,
-                source_url=item.source_url,
-                raw_data=item.raw_data or {},
-                parsed_recipe=item.parsed_recipe,
-                user_edits=item.user_edits,
-                error_message=item.error_message,
-                error_code=item.error_code,
-                retry_count=item.retry_count,
-                ai_cost_cents=item.ai_cost_cents,
-                import_job_id=str(item.import_job_id),
-                created_recipe_id=str(item.created_recipe_id) if item.created_recipe_id else None,
-                created_at=item.created_at,
-                updated_at=item.updated_at,
-                last_successful_stage=item.last_successful_stage,
-                last_retry_at=item.last_retry_at,
-                awaiting_review_reason=item.awaiting_review_reason,
-                confidence_score=confidence_score,
-                confidence_source=confidence_source,
-                inferred_fields=_extract_inferred_fields(item.parsed_recipe),
-            )
+        response_model = GetImportItem.Response(
+            id=str(item.id),
+            status=item.status,
+            source_type=item.source_type,
+            source_reference=item.source_reference,
+            source_url=item.source_url,
+            raw_data=item.raw_data or {},
+            parsed_recipe=item.parsed_recipe,
+            user_edits=item.user_edits,
+            error_message=item.error_message,
+            error_code=item.error_code,
+            retry_count=item.retry_count,
+            ai_cost_cents=item.ai_cost_cents,
+            import_job_id=str(item.import_job_id),
+            created_recipe_id=str(item.created_recipe_id) if item.created_recipe_id else None,
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+            last_successful_stage=item.last_successful_stage,
+            last_retry_at=item.last_retry_at,
+            awaiting_review_reason=item.awaiting_review_reason,
+            confidence_score=confidence_score,
+            confidence_source=confidence_source,
+            inferred_fields=_extract_inferred_fields(item.parsed_recipe),
         )
+
+        # ffm-10: the ``parsed_recipe`` blob is expensive to serialize
+        # + ship (can be multi-KB). Drop it from the default response;
+        # the telemetry viewer opts in via ``?include=parsed_recipe``.
+        requested_parsed = False
+        if include is not None:
+            tokens = {s.strip() for s in include.split(",") if s.strip()}
+            requested_parsed = _PARSED_RECIPE_KEY in tokens
+
+        if requested_parsed:
+            return success(data=response_model)
+
+        payload = response_model.model_dump()
+        payload.pop(_PARSED_RECIPE_KEY, None)
+        return success(data=payload)
 
     class Response(BaseModel):
         id: str

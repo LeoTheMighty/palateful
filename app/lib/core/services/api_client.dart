@@ -718,8 +718,18 @@ class ApiClient {
     });
   }
 
-  Future<Response> getImportItem(String itemId) {
-    return _dio.get('/v1/import-items/$itemId');
+  /// ffm-10 — default response omits the heavy `parsed_recipe` JSON.
+  /// Pass `includeParsedRecipe: true` for the telemetry / correction
+  /// viewer; activity feed + dashboard callers can leave it off.
+  Future<Response> getImportItem(
+    String itemId, {
+    bool includeParsedRecipe = false,
+  }) {
+    return _dio.get(
+      '/v1/import-items/$itemId',
+      queryParameters:
+          includeParsedRecipe ? {'include': 'parsed_recipe'} : null,
+    );
   }
 
   /// irrd-2 telemetry endpoint — returns a 4-stage array plus raw-text

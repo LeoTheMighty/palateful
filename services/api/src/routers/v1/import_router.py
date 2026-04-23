@@ -210,12 +210,21 @@ async def import_see_all_count(
 @import_router.get("/import-items/{item_id}")
 async def get_import_item(
     item_id: str,
+    include: str | None = Query(
+        None,
+        description=(
+            "ffm-10 — optional CSV. Pass ``parsed_recipe`` to include "
+            "the heavy parsed-recipe JSON (telemetry viewer uses this)."
+            " Omitted by default."
+        ),
+    ),
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
     """Get import item details."""
     return GetImportItem.call(
         item_id=item_id,
+        include=include,
         user=user,
         database=database,
     )

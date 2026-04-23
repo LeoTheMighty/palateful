@@ -1690,7 +1690,12 @@ class TestGetImportItem:
         mock_db.set_find_by(ImportItem, item, id=item_id)
         mock_db.set_find_by(ImportJob, job, id=job_id)
 
-        response = client.get(f"/v1/import-items/{item_id}")
+        # ffm-10: default response omits `parsed_recipe` (heavy JSON);
+        # include=parsed_recipe opts back in (see test below). All
+        # other fields + the confidence hoists still ride the default.
+        response = client.get(
+            f"/v1/import-items/{item_id}?include=parsed_recipe"
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == item_id
@@ -1929,7 +1934,11 @@ class TestGetImportItem:
         mock_db.set_find_by(ImportItem, item, id=item_id)
         mock_db.set_find_by(ImportJob, job, id=job_id)
 
-        response = client.get(f"/v1/import-items/{item_id}")
+        # ffm-10: opt in so `parsed_recipe` is still present for
+        # this regression assertion.
+        response = client.get(
+            f"/v1/import-items/{item_id}?include=parsed_recipe"
+        )
         assert response.status_code == 200
         ings = response.json()["parsed_recipe"]["ingredients"]
         for ing in ings:
@@ -2063,6 +2072,107 @@ class TestGetImportItem:
         # irrd-3: missing parsed_recipe -> both confidence fields null.
         assert data["confidence_score"] is None
         assert data["confidence_source"] is None
+
+
+class TestGetImportItemLeanDefault:
+    """ffm-10: default omits `parsed_recipe`; ?include=parsed_recipe
+    opts in. Telemetry viewer sends the include; activity feed +
+    dashboard callers pay no weight for the heavy blob."""
+
+    def _setup(
+        self,
+        mock_db,
+        mock_user,
+        *,
+        item_id="i-ffm10",
+        parsed_recipe=None,
+    ):
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        job_id = "j-ffm10"
+        book_id = "b-ffm10"
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="completed",
+            source_type="url",
+            source_url="https://example.com/r",
+            source_reference=None,
+            raw_data={},
+            parsed_recipe=parsed_recipe,
+            user_edits=None,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_db.set_find_by(ImportJob, job, id=job_id)
+        return item_id
+
+    def test_default_omits_parsed_recipe(
+        self, client, mock_db, mock_user
+    ):
+        """No ?include → parsed_recipe is ABSENT (not null). Keys that
+        ride the default (id, status, confidence hoists, etc.) stay."""
+        rid = self._setup(
+            mock_db,
+            mock_user,
+            parsed_recipe={"name": "Pad Thai"},
+        )
+        response = client.get(f"/v1/import-items/{rid}")
+        assert response.status_code == 200
+        data = response.json()
+        assert "parsed_recipe" not in data, (
+            "parsed_recipe must be ABSENT, not null, on default"
+        )
+        assert data["status"] == "completed"
+
+    def test_include_parsed_recipe_returns_full_blob(
+        self, client, mock_db, mock_user
+    ):
+        """?include=parsed_recipe → blob is present."""
+        rid = self._setup(
+            mock_db,
+            mock_user,
+            parsed_recipe={"name": "Tacos", "source": "test"},
+        )
+        response = client.get(
+            f"/v1/import-items/{rid}?include=parsed_recipe"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["parsed_recipe"] == {"name": "Tacos", "source": "test"}
+
+    def test_include_unknown_token_still_omits_parsed_recipe(
+        self, client, mock_db, mock_user
+    ):
+        """Unknown include tokens don't accidentally unlock
+        parsed_recipe — only the exact ``parsed_recipe`` token opts
+        in. Protects against typos like ``parsedRecipe`` silently
+        enabling the heavy blob."""
+        rid = self._setup(
+            mock_db,
+            mock_user,
+            parsed_recipe={"name": "Sushi"},
+        )
+        response = client.get(
+            f"/v1/import-items/{rid}?include=ParsedRecipe"
+        )
+        assert response.status_code == 200
+        assert "parsed_recipe" not in response.json()
+
+    def test_default_with_no_parsed_recipe_still_omits_key(
+        self, client, mock_db, mock_user
+    ):
+        """Even when the server-side value is None (extraction hasn't
+        run), the key is absent on the default — no null leak."""
+        rid = self._setup(mock_db, mock_user, parsed_recipe=None)
+        response = client.get(f"/v1/import-items/{rid}")
+        assert response.status_code == 200
+        assert "parsed_recipe" not in response.json()
 
 
 class TestUpdateImportItem:

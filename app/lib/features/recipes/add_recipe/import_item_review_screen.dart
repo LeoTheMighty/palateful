@@ -93,7 +93,12 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
 
   Future<void> _loadItem() async {
     try {
-      final response = await _apiClient.getImportItem(widget.itemId);
+      // ffm-10: review screen needs the heavy `parsed_recipe` blob
+      // to render the editor. Opt in via the include param.
+      final response = await _apiClient.getImportItem(
+        widget.itemId,
+        includeParsedRecipe: true,
+      );
       if (!mounted) return;
 
       final item = response.data as Map<String, dynamic>;
