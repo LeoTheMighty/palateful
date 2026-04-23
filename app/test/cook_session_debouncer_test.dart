@@ -10,8 +10,9 @@ CookSessionState _sample({int currentStep = 0, int updatedAtMs = 100}) {
     targetId: 'r1',
     startedAtMs: 0,
     cumulativeElapsedMs: 0,
-    currentStep: currentStep,
-    completedSteps: const [],
+    activeRecipeId: null,
+    currentStepByRecipe: {'r1': currentStep},
+    completedStepsByRecipe: const {'r1': <int>{}},
     checkedIngredients: const [],
     activeTimers: const [],
     updatedAtMs: updatedAtMs,
@@ -39,7 +40,7 @@ void main() {
       // Flush the debounce window.
       async.elapse(const Duration(milliseconds: 250));
       expect(persister.saves.length, 1);
-      expect(persister.saves.single.state.currentStep, 4,
+      expect(persister.saves.single.state.currentStepByRecipe['r1'], 4,
           reason: 'latest snapshot wins');
     });
   });
@@ -51,7 +52,7 @@ void main() {
     debouncer.markDirty(key, () => _sample(currentStep: 3));
     await debouncer.flushNow();
     expect(persister.saves.length, 1);
-    expect(persister.saves.single.state.currentStep, 3);
+    expect(persister.saves.single.state.currentStepByRecipe['r1'], 3);
     // Wait well past the debounce window; no additional save should fire.
     await Future<void>.delayed(const Duration(milliseconds: 400));
     expect(persister.saves.length, 1);

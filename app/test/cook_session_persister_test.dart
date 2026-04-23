@@ -17,8 +17,11 @@ CookSessionState _sample({
     targetId: id,
     startedAtMs: updatedAtMs - elapsedMs,
     cumulativeElapsedMs: elapsedMs,
-    currentStep: currentStep,
-    completedSteps: const [0, 1],
+    activeRecipeId: null,
+    currentStepByRecipe: {id: currentStep},
+    completedStepsByRecipe: {
+      id: const {0, 1},
+    },
     checkedIngredients: const ['0', '2'],
     activeTimers: timers ??
         const [
@@ -65,16 +68,16 @@ void main() {
       expect(decoded.targetId, original.targetId);
       expect(decoded.startedAtMs, original.startedAtMs);
       expect(decoded.cumulativeElapsedMs, original.cumulativeElapsedMs);
-      expect(decoded.currentStep, original.currentStep);
-      expect(decoded.completedSteps, original.completedSteps);
+      expect(decoded.currentStepByRecipe, original.currentStepByRecipe);
+      expect(decoded.completedStepsByRecipe, original.completedStepsByRecipe);
       expect(decoded.checkedIngredients, original.checkedIngredients);
       expect(decoded.activeTimers, original.activeTimers);
       expect(decoded.updatedAtMs, original.updatedAtMs);
     });
 
-    test('writes schema_version=1 on toJson', () {
+    test('writes schema_version=2 on toJson', () {
       final json = _sample().toJson();
-      expect(json['schema_version'], 1);
+      expect(json['schema_version'], 2);
     });
 
     test('fromJson returns null for unknown schema_version', () {
@@ -113,7 +116,7 @@ void main() {
       await persister.save(key, _sample(id: 'r1'));
       final loaded = await persister.load(key);
       expect(loaded, isNotNull);
-      expect(loaded!.currentStep, 2);
+      expect(loaded!.currentStepByRecipe['r1'], 2);
     });
 
     test('returns null and keeps value when schema_version unknown', () async {
@@ -152,7 +155,7 @@ void main() {
       expect(raw, isNotNull);
       final decoded = jsonDecode(raw!) as Map<String, dynamic>;
       expect(decoded['target_id'], 'r4');
-      expect(decoded['schema_version'], 1);
+      expect(decoded['schema_version'], 2);
     });
 
     test('skips writes exceeding the 50 KB cap and preserves prior value',
@@ -178,7 +181,8 @@ void main() {
       await persister.save(key, oversized);
       final loaded = await persister.load(key);
       expect(loaded, isNotNull);
-      expect(loaded!.currentStep, 1, reason: 'prior value preserved');
+      expect(loaded!.currentStepByRecipe['r5'], 1,
+          reason: 'prior value preserved');
       expect(logged.any((m) => m.contains('exceeds')), isTrue);
     });
   });

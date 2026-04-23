@@ -143,6 +143,11 @@ Future<void> _pump(WidgetTester tester, String mealId) async {
   }
 }
 
+// cmmrf-2 — tests feed flat-step inputs for clarity; this helper
+// translates them to v2 per-recipe maps against the fixed [7, 4, 9]
+// test plan layout. Over-large inputs (drift tests) are NOT clamped
+// here — they pass through to _applyRestoredState so the clamp+
+// snackbar branch fires.
 CookSessionState _seed({
   required String mealId,
   int currentStep = 5,
@@ -154,16 +159,67 @@ CookSessionState _seed({
   int? updatedAtMs,
 }) {
   final now = DateTime.now().millisecondsSinceEpoch;
+  String recipeFor(int flat) {
+    if (flat < 7) return 'r1';
+    if (flat < 11) return 'r2';
+    return 'r3';
+  }
+  int localFor(int flat) {
+    if (flat < 7) return flat;
+    if (flat < 11) return flat - 7;
+    return flat - 11;
+  }
+  final activeId = recipeFor(currentStep);
+  final currentMap = <String, int>{'r1': 0, 'r2': 0, 'r3': 0};
+  currentMap[activeId] = localFor(currentStep);
+  final completedMap = <String, Set<int>>{
+    'r1': <int>{},
+    'r2': <int>{},
+    'r3': <int>{},
+  };
+  for (final flat in completed) {
+    if (flat < 0) continue;
+    completedMap[recipeFor(flat)]!.add(localFor(flat));
+  }
   return CookSessionState(
     targetKind: CookTargetKind.meal,
     targetId: mealId,
     startedAtMs: startedAtMs ?? (now - cumulativeElapsedMs),
     cumulativeElapsedMs: cumulativeElapsedMs,
-    currentStep: currentStep,
-    completedSteps: completed,
+    activeRecipeId: activeId,
+    currentStepByRecipe: currentMap,
+    completedStepsByRecipe: completedMap,
     checkedIngredients: checkedIngredients,
     activeTimers: timers,
     updatedAtMs: updatedAtMs ?? now,
+  );
+}
+
+/// Prime SharedPreferences with a raw v1 JSON payload (pre-cmmrf-2
+/// wire shape). Used by the migration-compat test to verify the
+/// resume-gate copy survives the v1→v2 unpack.
+Future<void> _primeV1Meal(
+  String mealId, {
+  required int currentStep,
+  List<int> completed = const [],
+}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final payload = {
+    'schema_version': 1,
+    'target_kind': 'meal',
+    'target_id': mealId,
+    'started_at_ms': now - 300000,
+    'cumulative_elapsed_ms': 300000,
+    'current_step': currentStep,
+    'completed_steps': completed,
+    'checked_ingredients': const [],
+    'active_timers': const [],
+    'updated_at_ms': now,
+  };
+  await prefs.setString(
+    CookSessionKey.forMeal(mealId),
+    jsonEncode(payload),
   );
 }
 
@@ -215,6 +271,27 @@ void main() {
 
     expect(find.text('Resume'), findsOneWidget);
     expect(find.text('Start Over'), findsOneWidget);
+    expect(find.textContaining('Salad · step 3 of 4'), findsOneWidget);
+  });
+
+  testWidgets(
+      'cmmrf-2 — v1 meal payload resume-gate copy is preserved '
+      'through the v1→v2 unpack',
+      (tester) async {
+    await _setUp(meal: _threeCompMeal(), recipes: _threeCompRecipes());
+    // Write a raw v1 JSON payload directly (pre-cmmrf-2 wire shape).
+    // Flat-step 9 in the [7,4,9] plan = Salad · step 3 of 4; after
+    // fromJson migration + unpackLegacyMeal the gate copy should
+    // match exactly.
+    await _primeV1Meal(
+      'meal-1',
+      currentStep: 9,
+      completed: const [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    );
+
+    await _pump(tester, 'meal-1');
+
+    expect(find.text('Resume'), findsOneWidget);
     expect(find.textContaining('Salad · step 3 of 4'), findsOneWidget);
   });
 

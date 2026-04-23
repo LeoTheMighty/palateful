@@ -74,10 +74,22 @@ class CookResumeGateSheet extends StatelessWidget {
         DateTime.fromMillisecondsSinceEpoch(state.startedAtMs);
     final startedRelative = relativeTime(started, now: reference);
 
+    // cmmrf-2 — compute the step phrase from the per-recipe map when
+    // no override is supplied. For recipe-mode (activeRecipeId == null)
+    // we fall back to the single-recipe entry under targetId; for
+    // transitional meal-v1 state (pre-unpack), legacyCurrentStep is
+    // the flat fallback. Callers that know the plan pass
+    // `stepSummaryOverride` instead so component name is included.
+    int resolveFlatStep() {
+      final activeId = state.activeRecipeId ?? state.targetId;
+      final fromMap = state.currentStepByRecipe[activeId];
+      if (fromMap != null) return fromMap;
+      return state.legacyCurrentStep ?? 0;
+    }
     final stepSummary = stepSummaryOverride ??
         (totalSteps != null
-            ? 'step ${state.currentStep + 1} of $totalSteps'
-            : 'step ${state.currentStep + 1}');
+            ? 'step ${resolveFlatStep() + 1} of $totalSteps'
+            : 'step ${resolveFlatStep() + 1}');
     final checkedCount = state.checkedIngredients.length;
     final totalTimers = state.activeTimers.length;
     final expiredTimers = state.activeTimers

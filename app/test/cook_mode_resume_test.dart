@@ -25,8 +25,9 @@ CookSessionState seedState({
     targetId: recipeId,
     startedAtMs: startedAtMs ?? (now - cumulativeElapsedMs),
     cumulativeElapsedMs: cumulativeElapsedMs,
-    currentStep: currentStep,
-    completedSteps: completed,
+    activeRecipeId: null,
+    currentStepByRecipe: {recipeId: currentStep},
+    completedStepsByRecipe: {recipeId: completed.toSet()},
     checkedIngredients: checked,
     activeTimers: timers,
     updatedAtMs: updatedAtMs ?? now,
@@ -105,7 +106,9 @@ void main() {
       final raw = prefs.getString(key);
       expect(raw, isNotNull, reason: 'state should persist on paused');
       final decoded = jsonDecode(raw!) as Map<String, dynamic>;
-      expect(decoded['current_step'], 2);
+      // cmmrf-2 — v2 wire shape: per-recipe maps keyed by recipe_id.
+      expect(decoded['schema_version'], 2);
+      expect(decoded['current_step_by_recipe'], {'r1': 2});
       expect(decoded['checked_ingredients'], contains('0'));
       expect(decoded['target_kind'], 'recipe');
       expect(decoded['target_id'], 'r1');

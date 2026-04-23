@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/services/error_reporter.dart';
+import '../shared/cook_plan.dart';
 
 /// Identifies the kind of target a cook session is attached to. Recipe
 /// cook uses `recipe`; meal cook (downstream — `epic-cook-mode-meal`)
@@ -48,18 +49,26 @@ class CookSessionKey {
 /// A single saved cook-mode timer. Stores absolute `deadline_ms` (epoch
 /// milliseconds) so remaining time survives sleep / wake / clock
 /// adjustments.
+///
+/// `sourceRecipeId` (cmmrf-2) tags meal-mode timers with the recipe
+/// that owned them when they were started. Null on recipe-mode AND on
+/// v1-restored meal-mode timers; meal UI treats null as "no prefix"
+/// (active-timers chip + completion snackbar both fall back to the
+/// prefixless copy — honesty over guessing).
 @immutable
 class SavedTimerState {
   final String label;
   final int deadlineMs;
   final int totalDurationSeconds;
   final String source;
+  final String? sourceRecipeId;
 
   const SavedTimerState({
     required this.label,
     required this.deadlineMs,
     required this.totalDurationSeconds,
     required this.source,
+    this.sourceRecipeId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -67,6 +76,7 @@ class SavedTimerState {
         'deadline_ms': deadlineMs,
         'total_duration_s': totalDurationSeconds,
         'source': source,
+        if (sourceRecipeId != null) 'source_recipe_id': sourceRecipeId,
       };
 
   static SavedTimerState? fromJson(dynamic raw) {
@@ -78,11 +88,14 @@ class SavedTimerState {
     if (label is! String || deadline is! int || duration is! int || source is! String) {
       return null;
     }
+    final rawSource = raw['source_recipe_id'];
+    final sourceRecipeId = rawSource is String ? rawSource : null;
     return SavedTimerState(
       label: label,
       deadlineMs: deadline,
       totalDurationSeconds: duration,
       source: source,
+      sourceRecipeId: sourceRecipeId,
     );
   }
 
@@ -92,42 +105,93 @@ class SavedTimerState {
       other.label == label &&
       other.deadlineMs == deadlineMs &&
       other.totalDurationSeconds == totalDurationSeconds &&
-      other.source == source;
+      other.source == source &&
+      other.sourceRecipeId == sourceRecipeId;
 
   @override
-  int get hashCode => Object.hash(label, deadlineMs, totalDurationSeconds, source);
+  int get hashCode =>
+      Object.hash(label, deadlineMs, totalDurationSeconds, source, sourceRecipeId);
 }
 
 /// Serialized cook-mode state for one recipe (or one meal).
 ///
-/// Schema is forward-compatible: reading an unknown `schema_version`
-/// returns null from [CookSessionPersister.load]. Never migrate old
-/// state in place — let the user re-enter a fresh session.
+/// cmmrf-2 — schema v2 moves to per-recipe maps keyed by `recipe_id`.
+/// Meal-mode surfaces `activeRecipeId` + the full step/completed maps.
+/// Recipe-mode sets `activeRecipeId = null` and keeps the maps
+/// single-keyed under `targetId`.
+///
+/// ### Migration invariant
+///
+/// After [fromJson] returns a non-null state, exactly one of the
+/// following holds:
+///
+///  * `legacyCurrentStep == null && legacyCompletedSteps == null` —
+///    state is fully in v2 shape. `currentStepByRecipe` +
+///    `completedStepsByRecipe` are authoritative. Recipe-mode v1
+///    payloads land here via the self-contained unpack (no plan
+///    needed). v2-native payloads land here directly.
+///
+///  * `legacyCurrentStep != null && legacyCompletedSteps != null &&
+///    currentStepByRecipe.isEmpty && completedStepsByRecipe.isEmpty &&
+///    targetKind == CookTargetKind.meal` — **transitional meal-v1**.
+///    The persister couldn't unpack flat → per-recipe without the
+///    plan. Callers must invoke [unpackLegacyMeal] once the plan
+///    lands before using the state.
+///
+/// No other combination is valid.
 @immutable
 class CookSessionState {
-  static const int currentSchemaVersion = 1;
+  static const int currentSchemaVersion = 2;
 
   final CookTargetKind targetKind;
   final String targetId;
   final int startedAtMs;
   final int cumulativeElapsedMs;
-  final int currentStep;
-  final List<int> completedSteps;
+
+  /// Pointer to the currently-active recipe id. Null on recipe-mode
+  /// (targetId is the implicit active recipe); non-null on meal-mode.
+  final String? activeRecipeId;
+
+  /// Per-recipe current step index. Keys are recipe ids; values are
+  /// 0-indexed local step indices.
+  final Map<String, int> currentStepByRecipe;
+
+  /// Per-recipe completed step indices (local, not flat). Keys are
+  /// recipe ids; values are sets of 0-indexed local step indices.
+  final Map<String, Set<int>> completedStepsByRecipe;
+
   final List<String> checkedIngredients;
   final List<SavedTimerState> activeTimers;
   final int updatedAtMs;
+
+  /// Transient migration fields — non-null ONLY in the transitional
+  /// meal-v1 state (invariant case b). Never serialized.
+  final int? legacyCurrentStep;
+  final Set<int>? legacyCompletedSteps;
 
   const CookSessionState({
     required this.targetKind,
     required this.targetId,
     required this.startedAtMs,
     required this.cumulativeElapsedMs,
-    required this.currentStep,
-    required this.completedSteps,
+    this.activeRecipeId,
+    required this.currentStepByRecipe,
+    required this.completedStepsByRecipe,
     required this.checkedIngredients,
     required this.activeTimers,
     required this.updatedAtMs,
+    this.legacyCurrentStep,
+    this.legacyCompletedSteps,
   });
+
+  /// True when this state is in the transitional meal-v1 shape and
+  /// needs [unpackLegacyMeal] before use.
+  bool get isTransitionalMealLegacy =>
+      legacyCurrentStep != null &&
+      legacyCompletedSteps != null &&
+      currentStepByRecipe.isEmpty &&
+      completedStepsByRecipe.isEmpty &&
+      targetKind == CookTargetKind.meal;
 
   Map<String, dynamic> toJson() => {
         'schema_version': currentSchemaVersion,
@@ -135,38 +199,35 @@ class CookSessionState {
         'target_id': targetId,
         'started_at_ms': startedAtMs,
         'cumulative_elapsed_ms': cumulativeElapsedMs,
-        'current_step': currentStep,
-        'completed_steps': completedSteps,
+        if (activeRecipeId != null) 'active_recipe_id': activeRecipeId,
+        'current_step_by_recipe': currentStepByRecipe,
+        'completed_steps_by_recipe': {
+          for (final e in completedStepsByRecipe.entries)
+            e.key: (e.value.toList()..sort()),
+        },
         'checked_ingredients': checkedIngredients,
         'active_timers': activeTimers.map((t) => t.toJson()).toList(),
         'updated_at_ms': updatedAtMs,
       };
 
-  /// Returns null when the payload is unparseable OR the schema version
-  /// is unknown. Callers treat null as "no usable state" and the
-  /// persister's [CookSessionPersister.load] clears the key.
+  /// Returns null when the payload is unparseable OR the schema
+  /// version is unknown. Schema v1 (previous shape) is migrated in
+  /// place — recipe-mode payloads are fully unpacked; meal-mode
+  /// payloads are marked transitional and await [unpackLegacyMeal].
   static CookSessionState? fromJson(dynamic raw) {
     if (raw is! Map) return null;
     final version = raw['schema_version'];
-    if (version != currentSchemaVersion) return null;
+    if (version is! int) return null;
+    if (version != 1 && version != currentSchemaVersion) return null;
     final targetKind = CookTargetKind.fromWire(raw['target_kind'] as String?);
     if (targetKind == null) return null;
     final targetId = raw['target_id'];
     if (targetId is! String) return null;
     final startedAt = _readInt(raw['started_at_ms']);
     final elapsed = _readInt(raw['cumulative_elapsed_ms']);
-    final currentStep = _readInt(raw['current_step']);
     final updatedAt = _readInt(raw['updated_at_ms']);
-    if (startedAt == null || elapsed == null || currentStep == null || updatedAt == null) {
+    if (startedAt == null || elapsed == null || updatedAt == null) {
       return null;
-    }
-    final completed = <int>[];
-    final rawCompleted = raw['completed_steps'];
-    if (rawCompleted is List) {
-      for (final entry in rawCompleted) {
-        final parsed = _readInt(entry);
-        if (parsed != null) completed.add(parsed);
-      }
     }
     final checked = <String>[];
     final rawChecked = raw['checked_ingredients'];
@@ -183,16 +244,128 @@ class CookSessionState {
         if (parsed != null) timers.add(parsed);
       }
     }
+
+    if (version == 1) {
+      final legacyCurrent = _readInt(raw['current_step']);
+      if (legacyCurrent == null) return null;
+      final legacyCompleted = <int>{};
+      final rawCompleted = raw['completed_steps'];
+      if (rawCompleted is List) {
+        for (final entry in rawCompleted) {
+          final parsed = _readInt(entry);
+          if (parsed != null) legacyCompleted.add(parsed);
+        }
+      }
+      if (targetKind == CookTargetKind.recipe) {
+        // Self-contained unpack — single recipe's flat step *is* its
+        // local step; no plan needed.
+        return CookSessionState(
+          targetKind: CookTargetKind.recipe,
+          targetId: targetId,
+          startedAtMs: startedAt,
+          cumulativeElapsedMs: elapsed,
+          activeRecipeId: null,
+          currentStepByRecipe: {targetId: legacyCurrent},
+          completedStepsByRecipe: {targetId: legacyCompleted},
+          checkedIngredients: checked,
+          activeTimers: timers,
+          updatedAtMs: updatedAt,
+        );
+      }
+      // Meal-mode v1 — transitional shape; callers unpack via
+      // [unpackLegacyMeal] once the plan is loaded.
+      return CookSessionState(
+        targetKind: CookTargetKind.meal,
+        targetId: targetId,
+        startedAtMs: startedAt,
+        cumulativeElapsedMs: elapsed,
+        activeRecipeId: null,
+        currentStepByRecipe: const {},
+        completedStepsByRecipe: const {},
+        checkedIngredients: checked,
+        activeTimers: timers,
+        updatedAtMs: updatedAt,
+        legacyCurrentStep: legacyCurrent,
+        legacyCompletedSteps: legacyCompleted,
+      );
+    }
+
+    // v2 native deserialization.
+    final activeRecipeId = raw['active_recipe_id'];
+    final currentMap = <String, int>{};
+    final rawCurrent = raw['current_step_by_recipe'];
+    if (rawCurrent is Map) {
+      rawCurrent.forEach((k, v) {
+        if (k is String) {
+          final parsed = _readInt(v);
+          if (parsed != null) currentMap[k] = parsed;
+        }
+      });
+    }
+    final completedMap = <String, Set<int>>{};
+    final rawCompletedMap = raw['completed_steps_by_recipe'];
+    if (rawCompletedMap is Map) {
+      rawCompletedMap.forEach((k, v) {
+        if (k is String && v is List) {
+          final parsed = <int>{};
+          for (final entry in v) {
+            final n = _readInt(entry);
+            if (n != null) parsed.add(n);
+          }
+          completedMap[k] = parsed;
+        }
+      });
+    }
     return CookSessionState(
       targetKind: targetKind,
       targetId: targetId,
       startedAtMs: startedAt,
       cumulativeElapsedMs: elapsed,
-      currentStep: currentStep,
-      completedSteps: completed,
+      activeRecipeId: activeRecipeId is String ? activeRecipeId : null,
+      currentStepByRecipe: currentMap,
+      completedStepsByRecipe: completedMap,
       checkedIngredients: checked,
       activeTimers: timers,
       updatedAtMs: updatedAt,
+    );
+  }
+
+  /// Unpack a transitional meal-v1 state (invariant case b) into the
+  /// v2 per-recipe shape using [plan]. No-op when the state is
+  /// already in case (a) — safe to call unconditionally.
+  CookSessionState unpackLegacyMeal(CookPlan plan) {
+    if (!isTransitionalMealLegacy) return this;
+    final flatCurrent = legacyCurrentStep!;
+    final flatCompleted = legacyCompletedSteps!;
+    final clampedCurrent = plan.totalSteps == 0
+        ? 0
+        : flatCurrent.clamp(0, plan.totalSteps - 1);
+    final atCurrent = plan.stepAt(clampedCurrent);
+    final activeId = plan.components[atCurrent.componentIndex].recipeId;
+    final currentMap = <String, int>{
+      for (final c in plan.components) c.recipeId: 0,
+    };
+    currentMap[activeId] = atCurrent.stepIndex;
+    final completedMap = <String, Set<int>>{
+      for (final c in plan.components) c.recipeId: <int>{},
+    };
+    for (final flat in flatCompleted) {
+      if (flat < 0 || flat >= plan.totalSteps) continue;
+      final at = plan.stepAt(flat);
+      final id = plan.components[at.componentIndex].recipeId;
+      completedMap[id]!.add(at.stepIndex);
+    }
+    return CookSessionState(
+      targetKind: targetKind,
+      targetId: targetId,
+      startedAtMs: startedAtMs,
+      cumulativeElapsedMs: cumulativeElapsedMs,
+      activeRecipeId: activeId,
+      currentStepByRecipe: currentMap,
+      completedStepsByRecipe: completedMap,
+      checkedIngredients: checkedIngredients,
+      activeTimers: activeTimers,
+      updatedAtMs: updatedAtMs,
     );
   }
 
@@ -201,8 +374,9 @@ class CookSessionState {
     String? targetId,
     int? startedAtMs,
     int? cumulativeElapsedMs,
-    int? currentStep,
-    List<int>? completedSteps,
+    String? activeRecipeId,
+    Map<String, int>? currentStepByRecipe,
+    Map<String, Set<int>>? completedStepsByRecipe,
     List<String>? checkedIngredients,
     List<SavedTimerState>? activeTimers,
     int? updatedAtMs,
@@ -212,8 +386,10 @@ class CookSessionState {
       targetId: targetId ?? this.targetId,
       startedAtMs: startedAtMs ?? this.startedAtMs,
       cumulativeElapsedMs: cumulativeElapsedMs ?? this.cumulativeElapsedMs,
-      currentStep: currentStep ?? this.currentStep,
-      completedSteps: completedSteps ?? this.completedSteps,
+      activeRecipeId: activeRecipeId ?? this.activeRecipeId,
+      currentStepByRecipe: currentStepByRecipe ?? this.currentStepByRecipe,
+      completedStepsByRecipe:
+          completedStepsByRecipe ?? this.completedStepsByRecipe,
       checkedIngredients: checkedIngredients ?? this.checkedIngredients,
       activeTimers: activeTimers ?? this.activeTimers,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
@@ -255,13 +431,16 @@ class CookSessionPersister {
       final decoded = jsonDecode(raw);
       final state = CookSessionState.fromJson(decoded);
       if (state == null) {
-        // Unknown schema version or structurally invalid — don't clear
-        // (might be a forward-compat newer build's data); just skip.
-        if (decoded is Map && decoded['schema_version'] is int &&
-            decoded['schema_version'] != CookSessionState.currentSchemaVersion) {
-          return null;
+        // Unknown schema version — don't clear (might be a forward-
+        // compat newer build's data); just skip.
+        if (decoded is Map && decoded['schema_version'] is int) {
+          final v = decoded['schema_version'] as int;
+          if (v != 1 && v != CookSessionState.currentSchemaVersion) {
+            return null;
+          }
         }
-        // Structurally invalid under current schema — treat as malformed.
+        // Structurally invalid under a known schema — treat as
+        // malformed.
         await prefs.remove(key);
         ErrorReporter.log(
           'CookSessionPersister: cleared malformed state at $key (structure mismatch)',

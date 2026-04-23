@@ -121,13 +121,18 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   }
 
   Future<void> _initCookSession() async {
-    final persisted = await _persister.load(_sessionKey);
+    final rawPersisted = await _persister.load(_sessionKey);
     if (!mounted) return;
     await _loadMealAndRecipes();
     if (!mounted) return;
     if (_error != null || _plan == null) return;
-    if (persisted != null && persisted.targetKind == CookTargetKind.meal) {
+    if (rawPersisted != null &&
+        rawPersisted.targetKind == CookTargetKind.meal) {
       final plan = _plan!;
+      // cmmrf-2 — unpack a transitional meal-v1 payload once the plan
+      // is available. v2-native payloads pass through unchanged
+      // (`unpackLegacyMeal` is a no-op in case a).
+      final persisted = rawPersisted.unpackLegacyMeal(plan);
       final stepSummary = _resumeStepSummary(persisted, plan);
       final choice = await showCookResumeGate(
         context,
@@ -152,33 +157,75 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
 
   /// Compose the Resume gate's section-aware step phrase.
   /// "Salad · step 2 of 4" on a 3-component plan, clamped if drift.
+  /// cmmrf-2 — reads from the v2 per-recipe maps; callers pass the
+  /// already-unpacked state (via [CookSessionState.unpackLegacyMeal]).
   String _resumeStepSummary(CookSessionState persisted, CookPlan plan) {
-    final clamped = persisted.currentStep.clamp(0, plan.totalSteps - 1);
-    final at = plan.stepAt(clamped);
-    final componentName = plan.components[at.componentIndex].name;
-    return '$componentName · step ${at.stepIndex + 1} of '
-        '${plan.components[at.componentIndex].steps.length}';
+    final activeId = persisted.activeRecipeId ??
+        (plan.components.isNotEmpty ? plan.components.first.recipeId : null);
+    if (activeId == null) return '';
+    final ci = plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (ci < 0) return '';
+    final component = plan.components[ci];
+    if (component.steps.isEmpty) {
+      return '${component.name} · step 1 of 1';
+    }
+    final local = (persisted.currentStepByRecipe[activeId] ?? 0)
+        .clamp(0, component.steps.length - 1);
+    return '${component.name} · step ${local + 1} of ${component.steps.length}';
   }
 
-  /// cmm-7 — restore in-memory state from a persisted snapshot.
+  /// cmm-7 / cmmrf-2 — restore in-memory state from a persisted
+  /// snapshot. Caller must pass a v2-shape state (via
+  /// [CookSessionState.unpackLegacyMeal] if the payload was v1).
   /// Meal-version-drift handling:
-  ///   * `currentStep >= plan.totalSteps` → clamp + snackbar
+  ///   * activeRecipeId no longer in plan → fall back to first
+  ///     component + snackbar
+  ///   * Per-recipe local step beyond component's step count → clamp
+  ///     + snackbar
   ///   * Stable-key references that no longer exist → silently dropped
   ///   * Active timers whose component no longer exists → dropped +
   ///     surfaced in the "while you were away" snackbar
   void _applyRestoredState(CookSessionState state, CookPlan plan) {
-    final totalSteps = plan.totalSteps;
-    var restoredStep = state.currentStep;
+    final liveIds = <String>{for (final c in plan.components) c.recipeId};
     var clamped = false;
-    if (restoredStep >= totalSteps) {
-      restoredStep = totalSteps - 1;
-      clamped = true;
-    }
-    if (restoredStep < 0) restoredStep = 0;
 
-    final validCompleted = state.completedSteps
-        .where((i) => i >= 0 && i < totalSteps)
-        .toSet();
+    String? restoredActiveId = state.activeRecipeId;
+    if (restoredActiveId == null || !liveIds.contains(restoredActiveId)) {
+      restoredActiveId =
+          plan.components.isNotEmpty ? plan.components.first.recipeId : null;
+      if (state.activeRecipeId != null &&
+          state.activeRecipeId != restoredActiveId) {
+        clamped = true;
+      }
+    }
+
+    final restoredCurrent = <String, int>{};
+    final restoredCompleted = <String, Set<int>>{};
+    final restoredEntered = <String>{};
+    for (final c in plan.components) {
+      restoredCurrent[c.recipeId] = 0;
+      restoredCompleted[c.recipeId] = <int>{};
+    }
+    state.currentStepByRecipe.forEach((id, local) {
+      if (!liveIds.contains(id)) return;
+      final len = plan.stepsFor(id).length;
+      if (len == 0) return;
+      final clampedLocal = local.clamp(0, len - 1);
+      if (clampedLocal != local) clamped = true;
+      restoredCurrent[id] = clampedLocal;
+      if (clampedLocal > 0) restoredEntered.add(id);
+    });
+    state.completedStepsByRecipe.forEach((id, localSet) {
+      if (!liveIds.contains(id)) return;
+      final len = plan.stepsFor(id).length;
+      final filtered = <int>{};
+      for (final si in localSet) {
+        if (si >= 0 && si < len) filtered.add(si);
+      }
+      restoredCompleted[id] = filtered;
+      if (filtered.isNotEmpty) restoredEntered.add(id);
+    });
+    if (restoredActiveId != null) restoredEntered.add(restoredActiveId);
 
     // Stable keys live as `<componentIndex>:<orderIndex>` strings.
     // Drop any that don't resolve to a live ingredient.
@@ -216,13 +263,16 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
         remaining: Duration(milliseconds: remainingMs),
         startTime: startTime,
         notifId: notifId,
+        sourceRecipeId: saved.sourceRecipeId,
       );
       _timerNotifService.scheduleTimerNotification(
         id: notifId,
         label: saved.label,
         expiresAt: DateTime.fromMillisecondsSinceEpoch(saved.deadlineMs),
         recipeId: widget.mealId,
-        stepIndex: restoredStep,
+        // Flat step index (for notification telemetry) — computed
+        // from the active recipe's local step if available.
+        stepIndex: _flatIndexOf(plan, restoredActiveId, restoredCurrent),
         originalDurationSeconds: saved.totalDurationSeconds,
       );
       timer.timer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -239,46 +289,17 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       restoredTimers.add(timer);
     }
 
-    // cmmrf-1 — unpack the v1 flat int + flat completed-set into the
-    // per-recipe maps. Still reads from the v1 wire fields on
-    // CookSessionState; cmmrf-2 swaps this for native v2 deserialization.
-    final unpackedCurrentStep = <String, int>{};
-    final unpackedCompleted = <String, Set<int>>{};
-    final unpackedEntered = <String>{};
-    for (final c in plan.components) {
-      unpackedCurrentStep[c.recipeId] = 0;
-      unpackedCompleted[c.recipeId] = <int>{};
-    }
-    for (final flat in validCompleted) {
-      final at = plan.stepAt(flat);
-      final id = plan.components[at.componentIndex].recipeId;
-      unpackedCompleted[id]!.add(at.stepIndex);
-      unpackedEntered.add(id);
-    }
-    final atRestored = plan.stepAt(restoredStep);
-    final restoredActiveId = plan.components[atRestored.componentIndex].recipeId;
-    unpackedCurrentStep[restoredActiveId] = atRestored.stepIndex;
-    unpackedEntered.add(restoredActiveId);
-    // Back-fill: any component with a flat-step less than the restored
-    // flat position should be treated as "entered" too, so early-finish
-    // row filtering matches v1 semantics (any component the user
-    // advanced past is ratable). This also makes previousEnteredRecipe
-    // (cmmrf-7) work on v1-restored sessions.
-    for (var ci = 0; ci <= atRestored.componentIndex; ci++) {
-      unpackedEntered.add(plan.components[ci].recipeId);
-    }
-
     setState(() {
       _currentStepByRecipe
         ..clear()
-        ..addAll(unpackedCurrentStep);
+        ..addAll(restoredCurrent);
       _completedStepsByRecipe
         ..clear()
-        ..addAll(unpackedCompleted);
+        ..addAll(restoredCompleted);
       _activeRecipeId = restoredActiveId;
       _enteredRecipeIds
         ..clear()
-        ..addAll(unpackedEntered);
+        ..addAll(restoredEntered);
       _checkedIngredientKeys
         ..clear()
         ..addAll(validChecked);
@@ -828,6 +849,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       remaining: duration,
       startTime: startTime,
       notifId: notifId,
+      sourceRecipeId: activeId,
     );
     _timerNotifService.scheduleTimerNotification(
       id: notifId,
@@ -1002,19 +1024,20 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     _startedAtMs ??= nowMs;
     final checked = _checkedIngredientKeys.toList()..sort();
-    final plan = _plan;
-    final flatCurrent = plan == null ? 0 : _flatCurrentStep;
-    final flatCompleted = plan == null
-        ? const <int>[]
-        : (_flatCompletedSteps.toList()..sort());
+    final currentMap = Map<String, int>.from(_currentStepByRecipe);
+    final completedMap = <String, Set<int>>{
+      for (final entry in _completedStepsByRecipe.entries)
+        entry.key: Set<int>.from(entry.value),
+    };
     return CookSessionState(
       targetKind: CookTargetKind.meal,
       targetId: widget.mealId,
       startedAtMs: _startedAtMs!,
       cumulativeElapsedMs:
           _restoredElapsedMs + _cookingStopwatch.elapsedMilliseconds,
-      currentStep: flatCurrent,
-      completedSteps: flatCompleted,
+      activeRecipeId: _activeRecipeId,
+      currentStepByRecipe: currentMap,
+      completedStepsByRecipe: completedMap,
       checkedIngredients: checked,
       activeTimers: _activeTimers
           .map(
@@ -1023,6 +1046,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
               deadlineMs: t.startTime.add(t.duration).millisecondsSinceEpoch,
               totalDurationSeconds: t.duration.inSeconds,
               source: 'manual',
+              sourceRecipeId: t.sourceRecipeId,
             ),
           )
           .toList(),
@@ -1038,6 +1062,23 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       if (c.recipeId == recipeId) return c.name;
     }
     return null;
+  }
+
+  /// Flat index (for notification telemetry) derived from the active
+  /// recipe's local step. Defensive — returns 0 if the active recipe
+  /// is missing from the plan.
+  int _flatIndexOf(
+    CookPlan plan,
+    String? activeId,
+    Map<String, int> currentByRecipe,
+  ) {
+    if (activeId == null) return 0;
+    final ci = plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (ci < 0) return 0;
+    final len = plan.components[ci].steps.length;
+    if (len == 0) return 0;
+    final local = (currentByRecipe[activeId] ?? 0).clamp(0, len - 1);
+    return plan.flatIndexFor(ci, local);
   }
 
   // -----------------------------------------------------------------
@@ -1723,6 +1764,13 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
 class _ActiveTimer extends ActiveTimerView {
   final DateTime startTime;
   final int notifId;
+  /// cmmrf-2 — the recipe id that was active when this timer was
+  /// created. Persisted in [SavedTimerState.sourceRecipeId] and read
+  /// by cmmrf-6 to build the `{RecipeName} · {MM:SS}` chip prefix and
+  /// the completion-snackbar copy. Null on recipe-mode AND on
+  /// v1-restored meal-mode timers (chip renders prefixless — honesty
+  /// over guessing).
+  final String? sourceRecipeId;
   Timer? timer;
 
   _ActiveTimer({
@@ -1731,5 +1779,6 @@ class _ActiveTimer extends ActiveTimerView {
     required super.remaining,
     required this.startTime,
     required this.notifId,
+    this.sourceRecipeId,
   });
 }

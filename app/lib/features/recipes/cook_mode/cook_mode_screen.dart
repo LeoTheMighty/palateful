@@ -146,14 +146,19 @@ class _CookModeScreenState extends State<CookModeScreen>
   /// in a "while you were away" snackbar (cmr-5).
   void _applyRestoredState(CookSessionState state) {
     final totalSteps = _steps.length;
-    int restoredStep = state.currentStep;
+    // cmmrf-2 — v2 persister keeps a per-recipe map even for recipe-
+    // mode (single key = `targetId`); v1 payloads are already unpacked
+    // by CookSessionState.fromJson's self-contained recipe-mode path.
+    int restoredStep = state.currentStepByRecipe[state.targetId] ?? 0;
     bool clamped = false;
     if (restoredStep >= totalSteps) {
       restoredStep = totalSteps - 1;
       clamped = true;
     }
     if (restoredStep < 0) restoredStep = 0;
-    final validCompleted = state.completedSteps
+    final restoredCompleted =
+        state.completedStepsByRecipe[state.targetId] ?? const <int>{};
+    final validCompleted = restoredCompleted
         .where((i) => i >= 0 && i < totalSteps)
         .toSet();
     final ingredientCount = _ingredients.length;
@@ -696,8 +701,9 @@ class _CookModeScreenState extends State<CookModeScreen>
       startedAtMs: _startedAtMs!,
       cumulativeElapsedMs:
           _restoredElapsedMs + _cookingStopwatch.elapsedMilliseconds,
-      currentStep: _currentStep,
-      completedSteps: completed,
+      activeRecipeId: null,
+      currentStepByRecipe: {widget.recipeId: _currentStep},
+      completedStepsByRecipe: {widget.recipeId: completed.toSet()},
       checkedIngredients: checked,
       activeTimers: _activeTimers
           .map(
