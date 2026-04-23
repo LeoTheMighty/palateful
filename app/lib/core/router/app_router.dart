@@ -18,6 +18,7 @@ import '../../features/meals/meal_edit_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
 import '../../features/recipes/archived_recipes_screen.dart';
 import '../../features/recipes/cook_mode/cook_mode_screen.dart';
+import '../../features/recipes/cook_mode/meal/meal_cook_mode_screen.dart';
 import '../../features/recipes/edit_recipe_screen.dart';
 import '../../features/recipes/add_recipe/recipe_wizard_screen.dart';
 import '../../features/recipes/add_recipe/photo_capture_screen.dart';
@@ -265,6 +266,18 @@ GoRouter get appRouter {
             context: context,
             state: state,
             child: CookModeScreen(recipeId: id, scaleFactor: scaleFactor),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/meals/:mealId/cook',
+        parentNavigatorKey: _rootNavigatorKey,
+        pageBuilder: (context, state) {
+          final id = state.pathParameters['mealId']!;
+          return buildReduceMotionPage(
+            context: context,
+            state: state,
+            child: MealCookModeScreen(mealId: id),
           );
         },
       ),

@@ -1,0 +1,1089 @@
+/// cmm-2 — `MealCookModeScreen` mounts the cook UI for a Meal: parallel
+/// load of meal + N component recipes, build a `CookPlan.fromMeal`,
+/// and reuse the shared cook widgets (ingredient strip, step navigator,
+/// active timers row) to drive the user through every step of every
+/// component in section order.
+///
+/// cmm-3 layers in the section header + navigator boundaries.
+/// cmm-4 layers in the source-tagged ingredient strip.
+/// cmm-5 layers in component-name timer disambiguation.
+/// cmm-6 layers in the multi-row post-cook sheet + early-finish.
+/// cmm-7 wires up the persistent-resume + meal-version-drift handling.
+
+library;
+
+import 'dart:async';
+
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+
+import '../../../../core/di/injection.dart';
+import '../../../../core/services/api_client.dart';
+import '../../../../core/services/cook_timer_notification_service.dart';
+import '../../../../core/services/error_reporter.dart';
+import '../../../../core/services/live_activity_service.dart';
+import '../../../../core/services/recipe_cache_service.dart';
+import '../../../../core/theme/theme.dart';
+import '../../../meals/models/meal.dart';
+import '../../../meals/providers/meals_provider.dart';
+import '../services/cook_session_debouncer.dart';
+import '../services/cook_session_persister.dart';
+import '../shared/cook_plan.dart';
+import '../shared/util/timer_regex.dart';
+import '../shared/widgets/active_timers_row.dart';
+import '../shared/widgets/ingredient_strip.dart';
+import '../shared/widgets/manual_timer_sheet.dart';
+import '../shared/widgets/step_navigator.dart';
+import '../shared/widgets/step_timers_row.dart';
+import '../shared/widgets/timer_completion_overlay.dart';
+import '../widgets/cook_reset_confirm_sheet.dart';
+import 'widgets/component_load_placeholder.dart';
+
+class MealCookModeScreen extends ConsumerStatefulWidget {
+  final String mealId;
+
+  const MealCookModeScreen({super.key, required this.mealId});
+
+  @override
+  ConsumerState<MealCookModeScreen> createState() =>
+      _MealCookModeScreenState();
+}
+
+class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
+    with WidgetsBindingObserver {
+  final _apiClient = getIt<ApiClient>();
+  final _timerNotifService = getIt<CookTimerNotificationService>();
+  final _liveActivityService = getIt<LiveActivityService>();
+  final _recipeCache = getIt<RecipeCacheService>();
+
+  Meal? _meal;
+  CookPlan? _plan;
+  bool _isLoading = true;
+  bool _isOffline = false;
+  String? _error;
+
+  // Per-recipe-id retry-in-flight state for the load placeholder.
+  final Set<String> _retryingRecipeIds = {};
+  // Cache raw API payloads per recipe id so retries don't lossy-round-trip
+  // through `_toRawRecipe`. Initially populated by `_loadMealAndRecipes`;
+  // a successful `_retryComponent` patches one entry in place.
+  final Map<String, Map<String, dynamic>?> _rawRecipes = {};
+
+  int _currentStep = 0;
+  final Set<int> _completedSteps = {};
+  // Stable-key ("componentIndex:orderIndex") set; cmm-4 wires the strip
+  // to use these keys directly. cmm-2 only persists checks done while
+  // the screen is mounted (no resume restoration yet — cmm-7).
+  final Set<String> _checkedIngredientKeys = {};
+
+  late final CookSessionPersister _persister;
+  late final CookSessionDebouncer _debouncer;
+  String get _sessionKey => CookSessionKey.forMeal(widget.mealId);
+
+  // Timers
+  final List<_ActiveTimer> _activeTimers = [];
+  Timer? _timerTick;
+  Timer? _liveActivityPulse;
+  int _nextNotifId = 0;
+
+  final Stopwatch _cookingStopwatch = Stopwatch();
+  // cmr-style restored-elapsed bookkeeping; cmm-7 will populate this
+  // from the persisted snapshot on Resume.
+  int _restoredElapsedMs = 0;
+  int? _startedAtMs;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _persister = CookSessionPersister();
+    _debouncer = CookSessionDebouncer(_persister);
+    _enableWakelock();
+    _startTimerTick();
+    _initCookSession();
+  }
+
+  Future<void> _initCookSession() async {
+    await _loadMealAndRecipes();
+    if (!mounted) return;
+    // Skip the stopwatch on the error path — without _plan there's
+    // nothing to time, and a running stopwatch would prevent
+    // `pumpAndSettle` from ever settling in the error scaffold.
+    if (_error != null || _plan == null) return;
+    // cmm-7 will insert the Resume gate flow here. For cmm-2 the
+    // stopwatch starts immediately on a clean session.
+    _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    _cookingStopwatch.start();
+  }
+
+  Future<void> _loadMealAndRecipes() async {
+    try {
+      final meal = await ref.read(mealByIdProvider(widget.mealId).future);
+      if (!mounted) return;
+      final ordered = [...meal.components]
+        ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
+      // Parallel fetch — cmm-2 AC10 perf bound is < 400ms in mocks.
+      final fetched = await Future.wait(
+        ordered.map(_fetchRecipeWithOfflineFallback),
+        eagerError: false,
+      );
+      if (!mounted) return;
+      _rawRecipes
+        ..clear()
+        ..addEntries([
+          for (var i = 0; i < ordered.length; i++)
+            MapEntry(ordered[i].recipeId, fetched[i]),
+        ]);
+      final orderedMeal = meal.copyWith(components: ordered);
+      final plan = CookPlan.fromMeal(orderedMeal, fetched);
+      setState(() {
+        _meal = orderedMeal;
+        _plan = plan;
+        _isLoading = false;
+      });
+    } on DioException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load this meal: ${e.message ?? e.type.name}';
+        _isLoading = false;
+      });
+    } catch (e, st) {
+      ErrorReporter.report(e, st,
+          area: 'cook.meal', operation: 'loadMealAndRecipes');
+      if (!mounted) return;
+      setState(() {
+        _error = "Could not load this meal";
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// Fetch a recipe; on a network-class DioException fall back to the
+  /// local recipe cache. cmm-2 AC3 / AC8 / AC9 — offline degrade per
+  /// component. Returns `null` only when both the live fetch AND the
+  /// cache are empty for this recipe.
+  Future<Map<String, dynamic>?> _fetchRecipeWithOfflineFallback(
+      MealComponent component) async {
+    try {
+      final response = await _apiClient.getRecipe(component.recipeId);
+      final data = response.data as Map<String, dynamic>;
+      // Cache on success so future offline cooks work.
+      await _recipeCache.cacheRecipe(component.recipeId, data);
+      return data;
+    } on DioException catch (e) {
+      if (_isNetworkError(e)) {
+        final cached =
+            await _recipeCache.loadCachedRecipe(component.recipeId);
+        if (cached != null) {
+          if (mounted && !_isOffline) {
+            setState(() => _isOffline = true);
+          }
+          return cached;
+        }
+      }
+      ErrorReporter.report(e, StackTrace.current,
+          area: 'cook.meal',
+          operation: 'fetchComponentRecipe',
+          extras: {
+            'meal_id': widget.mealId,
+            'recipe_id': component.recipeId,
+          });
+      return null;
+    } catch (e, st) {
+      ErrorReporter.report(e, st,
+          area: 'cook.meal',
+          operation: 'fetchComponentRecipe',
+          extras: {
+            'meal_id': widget.mealId,
+            'recipe_id': component.recipeId,
+          });
+      return null;
+    }
+  }
+
+  bool _isNetworkError(DioException e) {
+    return e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout;
+  }
+
+  Future<void> _retryComponent(String recipeId) async {
+    final plan = _plan;
+    final meal = _meal;
+    if (plan == null || meal == null) return;
+    if (_retryingRecipeIds.contains(recipeId)) return;
+    final componentIndex =
+        plan.components.indexWhere((c) => c.recipeId == recipeId);
+    if (componentIndex < 0) return;
+    setState(() => _retryingRecipeIds.add(recipeId));
+    final component = meal.components[componentIndex];
+    final fresh = await _fetchRecipeWithOfflineFallback(component);
+    if (!mounted) return;
+    if (fresh != null) {
+      _rawRecipes[recipeId] = fresh;
+      // Rebuild plan from the cached raw payloads — lossless and
+      // ignores in-flight peer retries (each retry only mutates its
+      // own entry in `_rawRecipes`).
+      final raws = <Map<String, dynamic>?>[
+        for (final c in meal.components) _rawRecipes[c.recipeId],
+      ];
+      final next = CookPlan.fromMeal(meal, raws);
+      // Remap step / completed indices via component identity so a
+      // placeholder (1 step) → N real steps growth doesn't teleport
+      // the user. We pin _currentStep to (oldComponentIndex,
+      // min(oldStepIndex, newCompLen-1)).
+      final remap = _remapAfterPlanRebuild(plan, next);
+      setState(() {
+        _plan = next;
+        _currentStep = remap.currentStep;
+        _completedSteps
+          ..clear()
+          ..addAll(remap.completedSteps);
+        _retryingRecipeIds.remove(recipeId);
+      });
+      _persistState();
+    } else {
+      setState(() => _retryingRecipeIds.remove(recipeId));
+    }
+  }
+
+  /// After a plan rebuild (retry), translate flat-index state from the
+  /// old plan into the new plan's flat-index space. Components are
+  /// matched by `recipeId`. Steps within a component clamp to the new
+  /// component length. Completed steps in components that no longer
+  /// exist (shouldn't happen in cmm-2 but defends cmm-7's drift logic)
+  /// are dropped silently.
+  ({int currentStep, Set<int> completedSteps}) _remapAfterPlanRebuild(
+    CookPlan oldPlan,
+    CookPlan newPlan,
+  ) {
+    int translate(int oldFlat) {
+      if (oldFlat < 0 || oldFlat >= oldPlan.totalSteps) return 0;
+      final at = oldPlan.stepAt(oldFlat);
+      final oldComp = oldPlan.components[at.componentIndex];
+      final newCi =
+          newPlan.components.indexWhere((c) => c.recipeId == oldComp.recipeId);
+      if (newCi < 0) return 0;
+      final newCompLen = newPlan.components[newCi].steps.length;
+      if (newCompLen == 0) return 0;
+      final clampedSi =
+          at.stepIndex >= newCompLen ? newCompLen - 1 : at.stepIndex;
+      return newPlan.flatIndexFor(newCi, clampedSi);
+    }
+
+    final newCurrent =
+        _currentStep.clamp(0, newPlan.totalSteps - 1).toInt();
+    final remappedCurrent = translate(newCurrent);
+    final remappedCompleted = <int>{
+      for (final c in _completedSteps)
+        if (c >= 0 && c < oldPlan.totalSteps) translate(c),
+    };
+    return (
+      currentStep: remappedCurrent,
+      completedSteps: remappedCompleted,
+    );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_debouncer.flushNow());
+    _disableWakelock();
+    _timerTick?.cancel();
+    _liveActivityPulse?.cancel();
+    _cookingStopwatch.stop();
+    for (final timer in _activeTimers) {
+      timer.timer?.cancel();
+      _timerNotifService.cancelTimerNotification(timer.notifId);
+      _liveActivityService.endTimerActivity(timer.notifId);
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // cmm-2 AC11 — paused-flush mirrors cmr-2's pattern so the meal
+    // session survives an OS kill mid-cook.
+    if (state == AppLifecycleState.paused) {
+      unawaited(_debouncer.flushNow());
+    }
+    if (state == AppLifecycleState.resumed && mounted) {
+      // Reconcile timer countdowns the same way recipe cook does.
+      final now = DateTime.now();
+      final expired = <_ActiveTimer>[];
+      setState(() {
+        for (final t in _activeTimers) {
+          final elapsed = now.difference(t.startTime);
+          final remaining = t.duration - elapsed;
+          if (remaining.isNegative || remaining == Duration.zero) {
+            expired.add(t);
+          } else {
+            t.remaining = remaining;
+          }
+        }
+      });
+      for (final t in expired) {
+        t.timer?.cancel();
+        _onTimerComplete(t);
+      }
+    }
+  }
+
+  void _enableWakelock() async {
+    await WakelockPlus.enable();
+  }
+
+  void _disableWakelock() async {
+    await WakelockPlus.disable();
+  }
+
+  void _startTimerTick() {
+    _timerTick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_activeTimers.isNotEmpty || _cookingStopwatch.isRunning) {
+        setState(() {});
+      }
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // Step navigation (flat-index over CookPlan)
+  // -----------------------------------------------------------------
+
+  void _goToStep(int step) {
+    final plan = _plan;
+    if (plan == null) return;
+    if (step >= 0 && step < plan.totalSteps) {
+      HapticFeedback.selectionClick();
+      setState(() {
+        if (step < _currentStep) {
+          _completedSteps.remove(step);
+        }
+        _currentStep = step;
+      });
+      _persistState();
+    }
+  }
+
+  void _nextStep() {
+    final plan = _plan;
+    if (plan == null) return;
+    _completedSteps.add(_currentStep);
+    if (_currentStep < plan.totalSteps - 1) {
+      _goToStep(_currentStep + 1);
+    } else {
+      _persistState();
+    }
+  }
+
+  void _previousStep() {
+    _goToStep(_currentStep - 1);
+  }
+
+  void _markAllUpToHere() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      for (int i = 0; i <= _currentStep; i++) {
+        _completedSteps.add(i);
+      }
+    });
+    _persistState();
+  }
+
+  void _toggleIngredient(int flatIndex) {
+    final plan = _plan;
+    if (plan == null || flatIndex < 0 || flatIndex >= plan.ingredients.length) {
+      return;
+    }
+    final key = plan.ingredients[flatIndex].stableKey;
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_checkedIngredientKeys.contains(key)) {
+        _checkedIngredientKeys.remove(key);
+      } else {
+        _checkedIngredientKeys.add(key);
+      }
+    });
+    _persistState();
+  }
+
+  Set<int> get _checkedFlatIndices {
+    final plan = _plan;
+    if (plan == null) return const {};
+    final out = <int>{};
+    for (var i = 0; i < plan.ingredients.length; i++) {
+      if (_checkedIngredientKeys.contains(plan.ingredients[i].stableKey)) {
+        out.add(i);
+      }
+    }
+    return out;
+  }
+
+  // -----------------------------------------------------------------
+  // Timers (cmm-5 will layer in component-aware label disambiguation)
+  // -----------------------------------------------------------------
+
+  void _startTimer(Duration duration, String label) {
+    HapticFeedback.mediumImpact();
+    final notifId = _nextNotifId++;
+    final startTime = DateTime.now();
+    final expiresAt = startTime.add(duration);
+    final mealName = _meal?.name ?? 'Meal';
+    final activeTimer = _ActiveTimer(
+      label: label,
+      duration: duration,
+      remaining: duration,
+      startTime: startTime,
+      notifId: notifId,
+    );
+    _timerNotifService.scheduleTimerNotification(
+      id: notifId,
+      label: label,
+      expiresAt: expiresAt,
+      recipeId: widget.mealId,
+      stepIndex: _currentStep,
+      originalDurationSeconds: duration.inSeconds,
+    );
+    _liveActivityService.startTimerActivity(
+      notifId: notifId,
+      timerLabel: label,
+      recipeName: mealName,
+      duration: duration,
+    );
+    _ensureLiveActivityPulse();
+    activeTimer.timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        final elapsed = DateTime.now().difference(activeTimer.startTime);
+        final remaining = duration - elapsed;
+        if (remaining.isNegative) {
+          timer.cancel();
+          _onTimerComplete(activeTimer);
+        } else {
+          setState(() {
+            activeTimer.remaining = remaining;
+          });
+        }
+      }
+    });
+    setState(() => _activeTimers.add(activeTimer));
+    _persistState();
+  }
+
+  void _cancelTimer(_ActiveTimer timer) {
+    timer.timer?.cancel();
+    _timerNotifService.cancelTimerNotification(timer.notifId);
+    _liveActivityService.endTimerActivity(timer.notifId);
+    setState(() => _activeTimers.remove(timer));
+    _maybeStopLiveActivityPulse();
+    _persistState();
+  }
+
+  void _restartTimer(_ActiveTimer timer) {
+    timer.timer?.cancel();
+    _timerNotifService.cancelTimerNotification(timer.notifId);
+    _liveActivityService.endTimerActivity(timer.notifId);
+    setState(() => _activeTimers.remove(timer));
+    _startTimer(timer.duration, timer.label);
+  }
+
+  void _onTimerComplete(_ActiveTimer timer) {
+    if (!mounted) return;
+    HapticFeedback.heavyImpact();
+    _timerNotifService.cancelTimerNotification(timer.notifId);
+    _liveActivityService.completeTimerActivity(timer.notifId);
+    setState(() => _activeTimers.remove(timer));
+    _maybeStopLiveActivityPulse();
+    _persistState();
+    showTimerCompletionOverlay(
+      context: context,
+      label: timer.label,
+      recipeName: _meal?.name,
+      stepNumber: _currentStep,
+      onAdd2: () =>
+          _startTimer(const Duration(minutes: 2), '${timer.label} (+2m)'),
+      onAdd5: () =>
+          _startTimer(const Duration(minutes: 5), '${timer.label} (+5m)'),
+      onReset: () => _startTimer(timer.duration, timer.label),
+      onStop: () {},
+    );
+  }
+
+  void _ensureLiveActivityPulse() {
+    if (_liveActivityPulse != null) return;
+    _liveActivityPulse = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted || _activeTimers.isEmpty) return;
+      final now = DateTime.now();
+      for (final t in _activeTimers) {
+        final elapsed = now.difference(t.startTime);
+        final remaining = t.duration - elapsed;
+        if (remaining.isNegative) continue;
+        _liveActivityService.updateTimerActivity(
+          notifId: t.notifId,
+          newRemaining: remaining,
+        );
+      }
+    });
+  }
+
+  void _maybeStopLiveActivityPulse() {
+    if (_activeTimers.isNotEmpty) return;
+    _liveActivityPulse?.cancel();
+    _liveActivityPulse = null;
+  }
+
+  Future<void> _showManualTimerSheet() async {
+    final result = await showModalBottomSheet<(int, String)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (_) => const ManualTimerSheet(),
+    );
+    if (result == null || !mounted) return;
+    final (minutes, rawLabel) = result;
+    final uniqueLabel = disambiguateTimerLabel(
+      rawLabel,
+      _activeTimers.map((t) => t.label),
+    );
+    _startTimer(Duration(minutes: minutes), uniqueLabel);
+  }
+
+  // -----------------------------------------------------------------
+  // Persistence
+  // -----------------------------------------------------------------
+
+  void _persistState() {
+    _debouncer.markDirty(_sessionKey, _buildSnapshot);
+  }
+
+  CookSessionState _buildSnapshot() {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    _startedAtMs ??= nowMs;
+    final completed = _completedSteps.toList()..sort();
+    final checked = _checkedIngredientKeys.toList()..sort();
+    return CookSessionState(
+      targetKind: CookTargetKind.meal,
+      targetId: widget.mealId,
+      startedAtMs: _startedAtMs!,
+      cumulativeElapsedMs:
+          _restoredElapsedMs + _cookingStopwatch.elapsedMilliseconds,
+      currentStep: _currentStep,
+      completedSteps: completed,
+      checkedIngredients: checked,
+      activeTimers: _activeTimers
+          .map(
+            (t) => SavedTimerState(
+              label: t.label,
+              deadlineMs: t.startTime.add(t.duration).millisecondsSinceEpoch,
+              totalDurationSeconds: t.duration.inSeconds,
+              source: 'manual',
+            ),
+          )
+          .toList(),
+      updatedAtMs: nowMs,
+    );
+  }
+
+  // -----------------------------------------------------------------
+  // Reset / exit
+  // -----------------------------------------------------------------
+
+  Future<void> _confirmAndResetCook() async {
+    final confirmed = await showCookResetConfirmSheet(context);
+    if (!confirmed || !mounted) return;
+    for (final timer in List<_ActiveTimer>.from(_activeTimers)) {
+      timer.timer?.cancel();
+      _timerNotifService.cancelTimerNotification(timer.notifId);
+      _liveActivityService.endTimerActivity(timer.notifId);
+    }
+    _maybeStopLiveActivityPulse();
+    _debouncer.discardPending();
+    await _persister.clear(_sessionKey);
+    if (!mounted) return;
+    setState(() {
+      _currentStep = 0;
+      _completedSteps.clear();
+      _checkedIngredientKeys.clear();
+      _activeTimers.clear();
+      _cookingStopwatch.stop();
+      _cookingStopwatch.reset();
+      _cookingStopwatch.start();
+      _restoredElapsedMs = 0;
+      _startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Cook session reset'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _exitCookMode() {
+    _cookingStopwatch.stop();
+    if (_plan != null) {
+      _completedSteps.add(_currentStep);
+    }
+    context.pop();
+  }
+
+  // cmm-6 wires the actual finish flow (multi-row post-cook sheet +
+  // mutation events). For cmm-2, "Done" on the final flat step just
+  // pops the screen — same as Reset semantics minus the snackbar.
+  void _finishCooking() {
+    _completedSteps.add(_currentStep);
+    HapticFeedback.heavyImpact();
+    _cookingStopwatch.stop();
+    context.pop();
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // -----------------------------------------------------------------
+  // Build
+  // -----------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    final cook = context.cookModeTheme;
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: cook.cookSurface,
+        body: Center(
+          child: CircularProgressIndicator(color: cook.cookAccent),
+        ),
+      );
+    }
+    final error = _error;
+    if (error != null) {
+      return Scaffold(
+        backgroundColor: cook.cookSurface,
+        appBar: AppBar(
+          backgroundColor: cook.cookSurface,
+          iconTheme: IconThemeData(color: cook.cookOnSurface),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cook.cookError.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    error,
+                    style: TextStyle(color: cook.cookOnSurface),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  key: const Key('meal_cook_retry'),
+                  onPressed: _retryFullLoad,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cook.cookError,
+                    foregroundColor: cook.cookOnAccent,
+                  ),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    final plan = _plan!;
+    final at = plan.stepAt(_currentStep);
+    final currentComponent = plan.components[at.componentIndex];
+    return Scaffold(
+      backgroundColor: cook.cookSurface,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context, cook, plan),
+            if (plan.hasAnyLoadFailures) _buildPartialLoadBanner(context, cook, plan),
+            if (_activeTimers.isNotEmpty)
+              ActiveTimersRow<_ActiveTimer>(
+                timers: _activeTimers,
+                onTap: _showTimerDetailSheet,
+                onCancel: _cancelTimer,
+              ),
+            IngredientStrip(
+              ingredients:
+                  plan.ingredients.map((i) => i.raw).toList(growable: false),
+              checkedIndices: _checkedFlatIndices,
+              onToggle: _toggleIngredient,
+            ),
+            Divider(height: 1, color: cook.cookDivider),
+            Expanded(
+              child: GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity != null) {
+                    if (details.primaryVelocity! < -500) {
+                      _nextStep();
+                    } else if (details.primaryVelocity! > 500) {
+                      _previousStep();
+                    }
+                  }
+                },
+                onTapUp: (details) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final tapX = details.localPosition.dx;
+                  if (tapX < screenWidth * 0.25) {
+                    if (_currentStep > 0) _previousStep();
+                  } else if (tapX > screenWidth * 0.75) {
+                    if (_currentStep < plan.totalSteps - 1) _nextStep();
+                  }
+                },
+                child: _buildStepContent(
+                  context,
+                  cook,
+                  plan,
+                  at.componentIndex,
+                  at.stepIndex,
+                  currentComponent,
+                ),
+              ),
+            ),
+            StepNavigator(
+              currentStep: _currentStep,
+              totalSteps: plan.totalSteps,
+              completedSteps: _completedSteps,
+              onPrevious: _currentStep > 0 ? _previousStep : null,
+              onNext: _currentStep < plan.totalSteps - 1 ? _nextStep : null,
+              onDone: _finishCooking,
+              onStepTap: _goToStep,
+              onLongPressStep: _markAllUpToHere,
+              // cmm-3 wires the boundary + componentNameForStep params.
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _retryFullLoad() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    await _loadMealAndRecipes();
+  }
+
+  Widget _buildHeader(BuildContext context, CookModeTheme cook, CookPlan plan) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      color: cook.cookSurface,
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back, color: cook.cookOnSurface),
+            onPressed: _exitCookMode,
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+            padding: EdgeInsets.zero,
+          ),
+          Expanded(
+            child: Text(
+              plan.title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: cook.cookOnSurface,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.timer_outlined, color: cook.cookOnSurface),
+            onPressed: _showManualTimerSheet,
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            padding: EdgeInsets.zero,
+            tooltip: 'Add a timer',
+          ),
+          if (_isOffline) ...[
+            const SizedBox(width: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.wifi_off, size: 14, color: cook.cookOffline),
+                const SizedBox(width: 2),
+                Text(
+                  'Offline',
+                  style: TextStyle(fontSize: 11, color: cook.cookOffline),
+                ),
+              ],
+            ),
+          ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: cook.cookSurfaceDim,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.schedule, size: 16, color: cook.cookOnSurface),
+                const SizedBox(width: 4),
+                Text(
+                  _formatDuration(
+                    Duration(milliseconds: _restoredElapsedMs) +
+                        _cookingStopwatch.elapsed,
+                  ),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: cook.cookOnSurface,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    // FontFeature is from package:flutter/painting.dart,
+                    // re-exported by material.dart.
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, color: cook.cookOnSurface),
+            onPressed: _exitCookMode,
+            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
+            padding: EdgeInsets.zero,
+          ),
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: cook.cookOnSurface),
+            tooltip: 'More',
+            onSelected: (value) {
+              if (value == 'reset') _confirmAndResetCook();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem<String>(
+                value: 'reset',
+                child: Text('Reset cook'),
+              ),
+              // cmm-6 adds a 'finish_now' entry here.
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPartialLoadBanner(
+      BuildContext context, CookModeTheme cook, CookPlan plan) {
+    final failed = [
+      for (final c in plan.components)
+        if (c.loadFailed) c,
+    ];
+    final headline = failed.length == 1
+        ? "${failed.first.name} couldn't load — some steps may be unavailable"
+        : "${failed.length} components couldn't load";
+    return Container(
+      key: const Key('meal_cook_partial_load_banner'),
+      width: double.infinity,
+      color: cook.cookError.withValues(alpha: 0.18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              color: cook.cookError, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              headline,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: cook.cookOnSurface,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              // Coalesced retry — _retryComponent guards against
+              // double-fire via `_retryingRecipeIds` and each completion
+              // patches its own slot in `_rawRecipes`, so peer in-flight
+              // retries don't corrupt each other's state.
+              for (final c in failed) {
+                _retryComponent(c.recipeId);
+              }
+            },
+            child: Text(
+              'Retry',
+              style: TextStyle(
+                color: cook.cookAccent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepContent(
+    BuildContext context,
+    CookModeTheme cook,
+    CookPlan plan,
+    int componentIndex,
+    int stepIndex,
+    CookComponent currentComponent,
+  ) {
+    if (currentComponent.steps.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No instructions available for this component.',
+            style: TextStyle(color: cook.cookOnSurface),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    final step = currentComponent.steps[stepIndex];
+    if (currentComponent.loadFailed && isLoadFailedStep(step)) {
+      return SingleChildScrollView(
+        child: ComponentLoadPlaceholder(
+          componentName: currentComponent.name,
+          isRetrying: _retryingRecipeIds.contains(currentComponent.recipeId),
+          onRetry: () => _retryComponent(currentComponent.recipeId),
+        ),
+      );
+    }
+    final timers = step.timers.isNotEmpty
+        ? step.timers
+        : extractTimers(step.instruction);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          // cmm-3 inserts the recipe section header above the progress bar.
+          Container(
+            height: 4,
+            margin: const EdgeInsets.symmetric(horizontal: 48),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: (_currentStep + 1) / plan.totalSteps,
+                backgroundColor: cook.cookSurfaceDim,
+                color: cook.cookProgress,
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: cook.cookSurfaceDim,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cook.cookDivider),
+            ),
+            child: Text(
+              step.instruction,
+              style: TextStyle(
+                fontSize: 24,
+                height: 1.5,
+                color: cook.cookOnSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          if (timers.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            StepTimersRow(
+              timers: timers,
+              onStart: (duration, label) => _startTimer(duration, label),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showTimerDetailSheet(_ActiveTimer timer) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.cookModeTheme.cookSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final cook = context.cookModeTheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                timer.label,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: cook.cookOnSurface,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _formatDuration(timer.remaining),
+                style: TextStyle(
+                  fontSize: 56,
+                  fontWeight: FontWeight.w700,
+                  color: cook.cookTimer,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _cancelTimer(timer);
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        _restartTimer(timer);
+                      },
+                      child: const Text('Restart'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ActiveTimer extends ActiveTimerView {
+  final DateTime startTime;
+  final int notifId;
+  Timer? timer;
+
+  _ActiveTimer({
+    required super.label,
+    required super.duration,
+    required super.remaining,
+    required this.startTime,
+    required this.notifId,
+  });
+}

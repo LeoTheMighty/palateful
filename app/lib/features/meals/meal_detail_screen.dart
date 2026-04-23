@@ -285,6 +285,10 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
   Widget build(BuildContext context) {
     final mealAsync = ref.watch(mealByIdProvider(widget.mealId));
     return Scaffold(
+      floatingActionButton: mealAsync.maybeWhen(
+        data: _buildStartCookingFab,
+        orElse: () => null,
+      ),
       body: mealAsync.when(
         data: (meal) => _buildBody(meal),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -301,6 +305,31 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// cmm-2 AC4 — bottom-right "Start Cooking" FAB on meal detail.
+  /// Hidden when zero components; disabled with a tooltip when all
+  /// components are unavailable; enabled when ≥1 is available.
+  Widget? _buildStartCookingFab(Meal meal) {
+    if (meal.components.isEmpty) return null;
+    final anyAvailable = meal.components.any((c) => c.available);
+    if (!anyAvailable) {
+      return Tooltip(
+        message: 'Add a recipe to start cooking',
+        child: FloatingActionButton.extended(
+          key: const Key('meal_start_cooking_fab_disabled'),
+          onPressed: null,
+          icon: const Icon(Icons.restaurant_menu),
+          label: const Text('Start Cooking'),
+        ),
+      );
+    }
+    return FloatingActionButton.extended(
+      key: const Key('meal_start_cooking_fab'),
+      onPressed: () => context.push('/meals/${meal.id}/cook'),
+      icon: const Icon(Icons.restaurant_menu),
+      label: const Text('Start Cooking'),
     );
   }
 

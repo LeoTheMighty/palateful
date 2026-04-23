@@ -1109,7 +1109,7 @@ development_status:
   # epic-cook-mode-resume. 7 stories.
   epic-cook-mode-meal: in-progress
   cmm-1-shared-widget-extraction-and-cookplan-abstraction: done
-  cmm-2-meal-cook-mode-screen-loader-and-route: backlog
+  cmm-2-meal-cook-mode-screen-loader-and-route: done
   cmm-3-sectioned-step-traversal-and-header: backlog
   cmm-4-interlaced-combined-ingredient-strip-with-source-tags: backlog
   cmm-5-meal-level-timers-and-label-disambiguation: backlog

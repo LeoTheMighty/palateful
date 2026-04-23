@@ -137,7 +137,9 @@ void main() {
       expect(plan.componentBoundaries, [0, 7, 11]);
     });
 
-    test('loadFailed: null recipe → component flagged + zero steps', () {
+    test(
+        'loadFailed: null recipe → component flagged + reserved placeholder step',
+        () {
       final meal = _meal(id: 'm1', components: [
         _comp('r1', 'Dressing', 0),
         _comp('r2', 'Salad', 1),
@@ -151,9 +153,13 @@ void main() {
       expect(plan.components[0].loadFailed, isFalse);
       expect(plan.components[1].loadFailed, isFalse);
       expect(plan.components[2].loadFailed, isTrue);
-      expect(plan.components[2].steps, isEmpty);
-      // totalSteps + boundaries reflect the dropped component.
-      expect(plan.totalSteps, 11);
+      // Failed components reserve exactly 1 placeholder slot so the
+      // user can still navigate INTO the failed range and see Retry.
+      expect(plan.components[2].steps, hasLength(1));
+      expect(isLoadFailedStep(plan.components[2].steps.first), isTrue);
+      expect(plan.hasAnyLoadFailures, isTrue);
+      // totalSteps + boundaries reflect the placeholder slot.
+      expect(plan.totalSteps, 12);
       expect(plan.componentBoundaries, [0, 7, 11]);
     });
 

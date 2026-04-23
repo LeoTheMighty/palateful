@@ -214,10 +214,19 @@ class CookPlan {
           ? mc.displayName
           : 'Component ${i + 1}';
       if (raw == null) {
+        // Reserve a single placeholder step so the user can still
+        // navigate INTO the failed component and see the retry UI
+        // (cmm-2 AC7). Without this, totalSteps would skip over the
+        // failed component entirely and the placeholder would be
+        // unreachable. The instruction sentinel is used by the cook
+        // screen to swap in `ComponentLoadPlaceholder` when rendering
+        // this slot.
         components.add(CookComponent(
           recipeId: mc.recipeId,
           name: compName,
-          steps: const [],
+          steps: const [
+            CookStep(instruction: _kLoadFailedSentinel, timers: []),
+          ],
           ingredients: const [],
           loadFailed: true,
         ));
@@ -287,3 +296,11 @@ class ComponentRatable {
 
   const ComponentRatable({required this.recipeId, required this.displayName});
 }
+
+/// Sentinel instruction string written into the placeholder step of a
+/// `loadFailed` component. The cook screen detects this exact value
+/// and renders [ComponentLoadPlaceholder] instead of regular step text.
+const String _kLoadFailedSentinel = '__cook_plan_load_failed__';
+
+bool isLoadFailedStep(CookStep step) =>
+    step.instruction == _kLoadFailedSentinel;

@@ -331,4 +331,93 @@ void main() {
     final shopInk = tester.widget<InkWell>(shopAncestor.first);
     expect(shopInk.onTap, isNotNull);
   });
+
+  // ------------------------------------------------------------------
+  // cmm-2 AC4 / AC5 — "Start Cooking" FAB visibility rules.
+  // ------------------------------------------------------------------
+
+  group('cmm-2 Start Cooking FAB', () {
+    testWidgets('visible + enabled for a 2-component meal (all available)',
+        (tester) async {
+      await tester.pumpWidget(_harness(service, 'meal-1'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab')),
+        findsOneWidget,
+      );
+      expect(find.text('Start Cooking'), findsOneWidget);
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab_disabled')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('hidden when meal has zero components', (tester) async {
+      service.stubbedMeal =
+          service.stubbedMeal.copyWith(components: const []);
+      await tester.pumpWidget(_harness(service, 'meal-1'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Start Cooking'), findsNothing);
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab_disabled')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('disabled with tooltip when all components unavailable',
+        (tester) async {
+      service.stubbedMeal = service.stubbedMeal.copyWith(components: const [
+        MealComponent(
+          recipeId: 'r1',
+          name: 'Kale',
+          orderIndex: 0,
+          available: false,
+        ),
+        MealComponent(
+          recipeId: 'r2',
+          name: 'Lemon',
+          orderIndex: 1,
+          available: false,
+        ),
+      ]);
+      await tester.pumpWidget(_harness(service, 'meal-1'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab_disabled')),
+        findsOneWidget,
+      );
+      expect(
+        find.byTooltip('Add a recipe to start cooking'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('visible for single-component meal', (tester) async {
+      service.stubbedMeal = service.stubbedMeal.copyWith(components: const [
+        MealComponent(
+          recipeId: 'r1',
+          name: 'Solo',
+          orderIndex: 0,
+        ),
+      ]);
+      await tester.pumpWidget(_harness(service, 'meal-1'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('meal_start_cooking_fab')),
+        findsOneWidget,
+      );
+    });
+  });
 }
