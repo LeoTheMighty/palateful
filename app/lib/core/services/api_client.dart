@@ -1,8 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:get_it/get_it.dart';
 import '../config/environment.dart';
 import 'auth_service.dart';
+import 'client_latency_ingest.dart';
 import 'error_reporter.dart';
+import 'perf_timing_interceptor.dart';
+import 'request_dedup_interceptor.dart';
 
 /// API client for communicating with the Palateful backend.
 class ApiClient {
@@ -24,6 +28,9 @@ class ApiClient {
       },
     ));
 
+    // ffm-7: dedup runs AFTER the auth interceptor injects the
+    // Authorization header so the dedup key can hash it. Order
+    // matters — the auth interceptor must be registered FIRST.
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         if (_authToken != null) {
@@ -106,6 +113,22 @@ class ApiClient {
         return handler.next(error);
       },
     ));
+    _dio.interceptors.add(RequestDedupInterceptor());
+    // cla-6 — pinned chain: `[auth, dedup, firebase_httpMetric,
+    // perf_timing]`. `firebase_httpMetric` is added by cla-11 at boot
+    // time (it requires FirebasePerformance to be initialized first,
+    // which main.dart does). `perf_timing` emits `network_request`
+    // events to the batched ingest service. We look up the ingest
+    // singleton at call-time via getIt so the interceptor can be
+    // installed before the ingest is bootstrapped (which awaits
+    // PackageInfo on a separate future).
+    _dio.interceptors.add(
+      PerfTimingInterceptor(
+        ingestResolver: () => GetIt.I.isRegistered<ClientLatencyIngest>()
+            ? GetIt.I<ClientLatencyIngest>()
+            : null,
+      ),
+    );
   }
 
   /// Set the auth service for automatic token refresh on 401

@@ -1265,7 +1265,7 @@ development_status:
   cla-3-flutter-client-latency-ingest-batched-flush-service: done
   cla-4-flutter-perf-navigator-observer-go-router-aware: done
   cla-5-flutter-cold-start-timing-and-frame-jank-aggregator: done
-  cla-6-dio-interceptor-chain-perf-firebase-dedup-coexistence: backlog
+  cla-6-dio-interceptor-chain-perf-firebase-dedup-coexistence: done
   cla-7-ios-metrickit-receiver-eventchannel-and-dart-handler: backlog
   cla-8-android-jankstats-receiver-eventchannel-and-dart-handler: backlog
   cla-9-flutter-web-navigation-timing-bridge-package-web: backlog
