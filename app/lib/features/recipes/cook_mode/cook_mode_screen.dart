@@ -972,7 +972,7 @@ class _CookModeScreenState extends State<CookModeScreen>
 
   Widget _buildHeader(BuildContext context, CookModeTheme cook) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(8, 4, 12, 4),
       color: cook.cookSurface,
       child: Row(
         children: [
@@ -1051,14 +1051,6 @@ class _CookModeScreenState extends State<CookModeScreen>
                 ),
               ],
             ),
-          ),
-
-          // Close button
-          IconButton(
-            icon: Icon(Icons.close, color: cook.cookOnSurface),
-            onPressed: _exitCookMode,
-            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
-            padding: EdgeInsets.zero,
           ),
 
           // Overflow menu (cmr-4). Rightmost header element. Currently

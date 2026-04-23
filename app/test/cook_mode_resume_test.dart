@@ -259,16 +259,16 @@ void main() {
       expect(find.text('Cook session reset'), findsNothing);
     });
 
-    testWidgets('overflow menu is the rightmost header icon after close',
+    testWidgets('overflow menu is the rightmost header icon',
         (tester) async {
       await pumpCookMode(tester);
-      // Sanity: overflow icon is present.
+      // cmlp-1: the close X was removed; overflow sits rightmost after
+      // the cooking-time badge (Icons.schedule).
       expect(find.byIcon(Icons.more_vert), findsOneWidget);
-      // The header icons are: back (arrow_back), timer_outlined, close,
-      // more_vert. The overflow sits after the close button.
+      expect(find.byIcon(Icons.close), findsNothing);
       final overflowRect = tester.getRect(find.byIcon(Icons.more_vert));
-      final closeRect = tester.getRect(find.byIcon(Icons.close));
-      expect(overflowRect.left, greaterThan(closeRect.right));
+      final scheduleRect = tester.getRect(find.byIcon(Icons.schedule));
+      expect(overflowRect.left, greaterThan(scheduleRect.right));
     });
   });
 

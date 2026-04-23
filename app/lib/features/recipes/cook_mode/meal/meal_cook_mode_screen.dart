@@ -1163,7 +1163,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
 
   Widget _buildHeader(BuildContext context, CookModeTheme cook, CookPlan plan) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(8, 4, 12, 4),
       color: cook.cookSurface,
       child: Row(
         children: [
@@ -1232,12 +1232,6 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
                 ),
               ],
             ),
-          ),
-          IconButton(
-            icon: Icon(Icons.close, color: cook.cookOnSurface),
-            onPressed: _exitCookMode,
-            constraints: const BoxConstraints(minWidth: 64, minHeight: 64),
-            padding: EdgeInsets.zero,
           ),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: cook.cookOnSurface),
