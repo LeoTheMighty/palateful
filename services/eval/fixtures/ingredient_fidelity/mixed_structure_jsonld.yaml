@@ -1,0 +1,39 @@
+# eri-5 — subset-filter + splice-in-order regression. 2 structured rows
+# (indices 1, 3) + 3 text-only rows (indices 0, 2, 4) should end up with
+# the text-only rows parsed and the structured rows passed through
+# untouched.
+source_type: jsonld
+source_strings:
+  - "1 clove garlic, minced"       # text-only index 0
+  - "STRUCTURED:2 tbsp olive oil"   # caller pre-fills index 1 before parse pass
+  - "300 gram of vinegar"           # text-only index 2
+  - "STRUCTURED:1 tsp cumin"        # caller pre-fills index 3 before parse pass
+  - "2 stalks celery, chopped"      # text-only index 4
+pre_structured_indices: [1, 3]
+expected:
+  ingredients:
+    - text: "1 clove garlic, minced"
+      quantity: 1
+      unit: "clove"
+      name: "garlic"
+      notes: "minced"
+    - text: "STRUCTURED:2 tbsp olive oil"
+      quantity: 2
+      unit: "tbsp"
+      name: "olive oil"
+      notes: null
+    - text: "300 gram of vinegar"
+      quantity: 300
+      unit: "g"
+      name: "vinegar"
+      notes: null
+    - text: "STRUCTURED:1 tsp cumin"
+      quantity: 1
+      unit: "tsp"
+      name: "cumin"
+      notes: null
+    - text: "2 stalks celery, chopped"
+      quantity: 2
+      unit: "stalk"
+      name: "celery"
+      notes: "chopped"

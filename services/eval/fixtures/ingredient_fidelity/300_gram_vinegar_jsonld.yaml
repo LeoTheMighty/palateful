@@ -1,0 +1,12 @@
+# eri-5 — JSON-LD source with the "300 gram of vinegar" regression.
+# Exercises the parse pass + normalize_unit_display(gram -> g) alias.
+source_type: jsonld
+source_strings:
+  - "300 gram of vinegar"
+expected:
+  ingredients:
+    - text: "300 gram of vinegar"
+      quantity: 300
+      unit: "g"
+      name: "vinegar"
+      notes: null

@@ -1148,7 +1148,7 @@ development_status:
   eri-3b-mixed-structure-subset-filter-and-splice-in-order: done
   eri-4a-seed-freeform-units-table-rows-preserving-fk: done
   eri-4b-seed-freeform-unit-aliases-and-flutter-cache-refresh-verification: done
-  eri-5-eval-ingredient-field-completeness-metric-and-seven-fixtures: backlog
+  eri-5-eval-ingredient-field-completeness-metric-and-seven-fixtures: done
   eri-6-extractor-flag-rollout-runbook-and-staging-verification: backlog
   epic-extractor-richer-ingredients-retrospective: optional
 

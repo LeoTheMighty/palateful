@@ -1,0 +1,30 @@
+{
+  "_comment": "eri-5 baseline for ingredient_field_completeness and ingredient_hallucination_rate. Populated from the first prod-flagged eval run post-ship; null here until then. Soft-gate in v1 per epic-extractor-richer-ingredients DoD.",
+  "_generated_at": null,
+  "_extractor_flags": {
+    "EXTRACTOR_SOFTEN_UNIT_RULE": "true",
+    "EXTRACTOR_JSON_LD_INGREDIENT_PARSE": "true",
+    "EXTRACTOR_EMIT_CANONICAL_UNITS": "true"
+  },
+  "ingredient_field_completeness": {
+    "overall": null,
+    "sample_count": 0,
+    "per_field": {
+      "quantity": {"score": null, "sample_count": 0},
+      "unit": {"score": null, "sample_count": 0},
+      "name": {"score": null, "sample_count": 0},
+      "notes": {"score": null, "sample_count": 0}
+    },
+    "per_extractor": {}
+  },
+  "ingredient_hallucination_rate": {
+    "overall": null,
+    "sample_count": 0
+  },
+  "thresholds": {
+    "ingredient_field_completeness_overall_min": 0.85,
+    "ingredient_hallucination_rate_overall_max": 0.10,
+    "_enforcement": "soft",
+    "_promotion_criteria": "Hard-gate after 7 days post-ship with (a) overall >= 0.85, (b) 0 IngredientParseFailure audits in 48h, (c) no new UnitAliasMiss tied to the 15 eri-4a seeds. Tracked in eri-hard-gate."
+  }
+}

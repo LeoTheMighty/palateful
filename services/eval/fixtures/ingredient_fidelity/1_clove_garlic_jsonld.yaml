@@ -1,0 +1,26 @@
+# eri-5 — JSON-LD source with the canonical "1 clove garlic, minced"
+# regression case. Exercises the softened prompt rule (clove stays as a
+# unit, doesn't fold into the name) + the parse pass (JSON-LD text-only
+# rescued to structured).
+source_type: jsonld
+source_strings:
+  - "1 clove garlic, minced"
+  - "2 tbsp olive oil"
+  - "1/2 tsp salt"
+expected:
+  ingredients:
+    - text: "1 clove garlic, minced"
+      quantity: 1
+      unit: "clove"
+      name: "garlic"
+      notes: "minced"
+    - text: "2 tbsp olive oil"
+      quantity: 2
+      unit: "tbsp"
+      name: "olive oil"
+      notes: null
+    - text: "1/2 tsp salt"
+      quantity: 0.5
+      unit: "tsp"
+      name: "salt"
+      notes: null

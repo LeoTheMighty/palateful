@@ -1,0 +1,25 @@
+# eri-5 — plain text (text_extractor) exercising the softened prompt
+# rule + eri-4b plural→singular alias (stalks -> stalk).
+source_type: text
+source_text: |
+  Mirepoix:
+  2 stalks celery, chopped
+  1 onion, diced
+  2 carrots, peeled
+expected:
+  ingredients:
+    - text: "2 stalks celery, chopped"
+      quantity: 2
+      unit: "stalk"
+      name: "celery"
+      notes: "chopped"
+    - text: "1 onion, diced"
+      quantity: 1
+      unit: null
+      name: "onion"
+      notes: "diced"
+    - text: "2 carrots, peeled"
+      quantity: 2
+      unit: null
+      name: "carrots"
+      notes: "peeled"

@@ -1,0 +1,20 @@
+# eri-5 — negative case: substring-ambiguity regression.
+# "a pinchful of salt" must NOT coerce to unit: "pinch". The prompt
+# rule "Respect word boundaries" enforces this.
+source_type: text
+source_text: |
+  Seasoning:
+  a pinchful of salt
+  a pinch of black pepper
+expected:
+  ingredients:
+    - text: "a pinchful of salt"
+      quantity: null
+      unit: null
+      name: "salt"
+      notes: "pinchful"
+    - text: "a pinch of black pepper"
+      quantity: null
+      unit: "pinch"
+      name: "black pepper"
+      notes: null

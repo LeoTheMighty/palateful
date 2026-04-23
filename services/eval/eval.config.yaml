@@ -35,6 +35,17 @@ metrics:
     - duration_ms          # Response time
     - tokens_used          # Token consumption
 
+  ingredient_fidelity:
+    # eri-5 — per-field completeness of structured ingredient extraction.
+    # Exercised by the 7 fixtures under
+    # `services/eval/fixtures/ingredient_fidelity/`. Both metrics are
+    # SOFT GATE in v1 — reported only, never CI-blocking — until the
+    # promotion criteria in the baseline file are met (7 days clean
+    # + 0 IngredientParseFailure audits + no new UnitAliasMiss tied
+    # to the 15 eri-4a seeds).
+    - ingredient_field_completeness   # qty/unit/name/notes per-field + overall means
+    - ingredient_hallucination_rate   # anti-metric: guessed when GT was null
+
 # Pass/fail thresholds
 thresholds:
   ocr_character_accuracy: 0.95  # 95% character accuracy to pass
@@ -44,3 +55,5 @@ thresholds:
   chat_agent_pass_rate: 0.80    # 80% LLM-as-judge pass rate
   field_inference_accuracy_min: 0.60   # efi-8, soft gate only in v1
   hallucination_rate_max: 0.15          # efi-8 anti-metric, soft gate only in v1
+  ingredient_field_completeness_min: 0.85  # eri-5, soft gate only in v1
+  ingredient_hallucination_rate_max: 0.10  # eri-5 anti-metric, soft gate only in v1

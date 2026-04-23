@@ -1,0 +1,25 @@
+# eri-5 — negative case: no-hallucinated-notes regression.
+# "2 cups flour" must NOT produce {notes: "sifted"} or similar invented
+# qualifier. notes MUST be null.
+source_type: text
+source_text: |
+  2 cups flour
+  1 cup sugar
+  3 large eggs
+expected:
+  ingredients:
+    - text: "2 cups flour"
+      quantity: 2
+      unit: "cup"
+      name: "flour"
+      notes: null
+    - text: "1 cup sugar"
+      quantity: 1
+      unit: "cup"
+      name: "sugar"
+      notes: null
+    - text: "3 large eggs"
+      quantity: 3
+      unit: null
+      name: "eggs"
+      notes: "large"

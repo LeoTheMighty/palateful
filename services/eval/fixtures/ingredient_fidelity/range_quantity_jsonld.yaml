@@ -1,0 +1,18 @@
+# eri-5 — range-rule regression: "1-2 cups water" emits quantity=1,
+# notes="to 2 cups" so the reviewer keeps the full range in view.
+source_type: jsonld
+source_strings:
+  - "1-2 cups water"
+  - "1 to 2 tsp sugar"
+expected:
+  ingredients:
+    - text: "1-2 cups water"
+      quantity: 1
+      unit: "cup"
+      name: "water"
+      notes: "to 2 cups"
+    - text: "1 to 2 tsp sugar"
+      quantity: 1
+      unit: "tsp"
+      name: "sugar"
+      notes: "to 2 tsp"
