@@ -1,10 +1,13 @@
 """Recipe extractors for importing recipes from various sources."""
 
 import logging
+import os
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
+from utils.logging.ingredient_parse_logging import log_ingredient_field_coverage
 from utils.services.recipe_extractors.ai_extractor import AIExtractor
 from utils.services.recipe_extractors.base import (
     BaseExtractor,
@@ -12,11 +15,104 @@ from utils.services.recipe_extractors.base import (
     ExtractedRecipe,
     ExtractionResult,
 )
+from utils.services.recipe_extractors.ingredient_parse import (
+    parse_ingredient_strings,
+)
 from utils.services.recipe_extractors.json_ld import JsonLdExtractor
 from utils.services.recipe_extractors.text_extractor import extract_recipe_from_text
 from utils.services.recipe_extractors.vision_extractor import extract_recipe_from_image
 
 logger = logging.getLogger(__name__)
+
+
+def _json_ld_parse_enabled() -> bool:
+    """eri-3a: read ``EXTRACTOR_JSON_LD_INGREDIENT_PARSE`` at call time.
+
+    Default-on. Flip via ECS task-def without a redeploy — same
+    pattern as ``EXTRACTOR_SOFTEN_UNIT_RULE`` and ``EMIT_CANONICAL_UNITS``.
+    """
+    raw = os.environ.get("EXTRACTOR_JSON_LD_INGREDIENT_PARSE", "true")
+    return raw.strip().lower() not in ("false", "0", "no", "off")
+
+
+def _text_only_indices(recipe: ExtractedRecipe) -> list[int]:
+    """Return the ordered indices where a JSON-LD ingredient has no
+    structured fields yet — qty/unit/name all None but `text` non-empty.
+    """
+    return [
+        i
+        for i, ing in enumerate(recipe.ingredients)
+        if ing.quantity is None
+        and ing.unit is None
+        and ing.name is None
+        and ing.text
+    ]
+
+
+def _apply_parse_pass(
+    recipe: ExtractedRecipe,
+    *,
+    openai_client: Any,
+    url: str | None,
+) -> str:
+    """Run the ingredient parse pass on the text-only subset of
+    ``recipe.ingredients`` and splice the results back in-order.
+
+    Returns the ``source`` label that should go on the coverage audit
+    row: ``"json_ld_parse_pass"`` if the pass fired, ``"json_ld"`` if
+    the subset was empty / flag off.
+    """
+    if not _json_ld_parse_enabled() or not recipe.ingredients:
+        return "json_ld"
+
+    indices = _text_only_indices(recipe)
+    if not indices:
+        return "json_ld"
+
+    strings = [recipe.ingredients[i].text for i in indices]
+    parsed = parse_ingredient_strings(
+        strings,
+        openai_client,
+        url_sample=url,
+    )
+    for i, parsed_ing in zip(indices, parsed, strict=False):
+        recipe.ingredients[i] = parsed_ing
+    return "json_ld_parse_pass"
+
+
+def _count_presence(recipe: ExtractedRecipe) -> dict[str, int]:
+    """Count how many ingredient rows have each field populated.
+
+    Matches the fields ``log_ingredient_field_coverage`` expects.
+    """
+    total = len(recipe.ingredients)
+    return {
+        "total": total,
+        "qty_present": sum(1 for i in recipe.ingredients if i.quantity is not None),
+        "unit_present": sum(1 for i in recipe.ingredients if i.unit),
+        "name_present": sum(1 for i in recipe.ingredients if i.name),
+        "notes_present": sum(1 for i in recipe.ingredients if i.notes),
+    }
+
+
+def _emit_coverage_audit(
+    recipe: ExtractedRecipe,
+    *,
+    source: str,
+    url: str | None,
+) -> None:
+    """Write one ``IngredientFieldCoverage`` audit row per successful
+    extraction. No-op (and safe) if the recipe has no ingredients.
+    """
+    if not recipe.ingredients:
+        return
+    counts = _count_presence(recipe)
+    host = urlparse(url).hostname if url else None
+    log_ingredient_field_coverage(
+        source=source,
+        url_host=host,
+        **counts,
+    )
 
 __all__ = [
     "BaseExtractor",
@@ -87,6 +183,18 @@ class RecipeExtractorRegistry:
                 result = extractor.extract(html_content, url)
                 if result.success:
                     logger.info("Successfully extracted recipe with %s", extractor.name)
+                    # eri-3a — JSON-LD ingredients are plain strings per
+                    # Schema.org; run a focused parse pass on the
+                    # text-only subset so downstream ingredients are
+                    # structured. Mixed-structure sites get the best
+                    # of both: structured rows pass through untouched.
+                    if extractor.name == "json_ld" and result.recipe:
+                        source = _apply_parse_pass(
+                            result.recipe,
+                            openai_client=self._ai_extractor.client,
+                            url=url,
+                        )
+                        _emit_coverage_audit(result.recipe, source=source, url=url)
                     return result
                 logger.debug(
                     "Extractor %s failed: %s",
@@ -97,7 +205,10 @@ class RecipeExtractorRegistry:
         # Fall back to AI extraction
         if use_ai_fallback and self._ai_extractor.can_extract(html_content, url):
             logger.info("Falling back to AI extraction")
-            return self._ai_extractor.extract(html_content, url)
+            result = self._ai_extractor.extract(html_content, url)
+            if result.success and result.recipe:
+                _emit_coverage_audit(result.recipe, source="ai_extractor", url=url)
+            return result
 
         return ExtractionResult(
             success=False,

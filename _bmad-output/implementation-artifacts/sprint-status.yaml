@@ -1144,7 +1144,7 @@ development_status:
   epic-extractor-richer-ingredients: in-progress
   eri-1-softened-unit-rule-flag-precedence-and-aggressive-capture-prompts: done
   eri-2-ingredient-parse-only-ai-pass-module-with-json-schema-response: done
-  eri-3a-extract-recipe-from-html-parse-pass-invocation-and-coverage-audit: backlog
+  eri-3a-extract-recipe-from-html-parse-pass-invocation-and-coverage-audit: done
   eri-3b-mixed-structure-subset-filter-and-splice-in-order: backlog
   eri-4a-seed-freeform-units-table-rows-preserving-fk: backlog
   eri-4b-seed-freeform-unit-aliases-and-flutter-cache-refresh-verification: backlog
