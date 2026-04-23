@@ -32,9 +32,9 @@ app/lib/features/recipes/services/session_alias_map.dart:101:fall back to hardco
 # prefs entry and log via ErrorReporter.log (best-effort persistence;
 # blocking the Resume gate on a single bad JSON entry would lose the
 # user's session permanently). Parallel to feedback_cache_service.
-app/lib/features/recipes/cook_mode/services/cook_session_persister.dart:272:malformed-state recovery — wipe + ErrorReporter.log
+app/lib/features/recipes/cook_mode/services/cook_session_persister.dart:451:malformed-state recovery — wipe + ErrorReporter.log
 
 # CookSessionPersister 30-day prune — corrupt entries are treated as
 # removable so the prune sweep can still complete. No actionable
 # user-facing failure; the entry is going away anyway.
-app/lib/features/recipes/cook_mode/services/cook_session_persister.dart:333:30-day prune — corrupt entry treated as removable
+app/lib/features/recipes/cook_mode/services/cook_session_persister.dart:512:30-day prune — corrupt entry treated as removable
