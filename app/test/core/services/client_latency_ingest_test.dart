@@ -140,8 +140,11 @@ void main() {
     }
     // `_flushInBackground` schedules `flushNow()` via `unawaited`;
     // poll for queue drain instead of a bare 20ms sleep so slow CI
-    // runners don't flake on microtask scheduling.
-    for (var i = 0; i < 50; i++) {
+    // runners don't flake on microtask scheduling. GitHub Actions
+    // Linux runners occasionally need >500 ms to drain the first
+    // microtask chain (observed on CI run 24846026037), so budget
+    // 2s — still fast on a laptop, survives CI oversubscription.
+    for (var i = 0; i < 200; i++) {
       if (ingest.queuedEventCount == 0 && adapter.requests.isNotEmpty) {
         break;
       }
