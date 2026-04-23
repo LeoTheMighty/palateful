@@ -895,13 +895,37 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     HapticFeedback.heavyImpact();
     _timerNotifService.cancelTimerNotification(timer.notifId);
     _liveActivityService.completeTimerActivity(timer.notifId);
-    setState(() => _activeTimers.remove(timer));
+    // cmmrf-6 — when a timer fires on a non-active recipe, pulse the
+    // source recipe's toggle pill so the user notices without being
+    // yanked out of whatever they're currently doing.
+    final plan = _plan;
+    final sourceId = timer.sourceRecipeId;
+    final sourceName = (plan != null && sourceId != null)
+        ? _componentNameFor(plan, sourceId)
+        : null;
+    final firedOnNonActive =
+        sourceId != null && sourceId != _activeRecipeId;
+    setState(() {
+      _activeTimers.remove(timer);
+      if (firedOnNonActive) _pulsingRecipeIds.add(sourceId);
+    });
     _maybeStopLiveActivityPulse();
     _persistState();
+    // Snackbar copy: `{RecipeName} · {label} done` for meal-mode when
+    // the source recipe resolves; prefixless for recipe-mode and for
+    // v1-restored timers whose `sourceRecipeId` is null.
+    if (sourceName != null && sourceName.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$sourceName · ${timer.label} done'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
     showTimerCompletionOverlay(
       context: context,
       label: timer.label,
-      recipeName: _meal?.name,
+      recipeName: sourceName ?? _meal?.name,
       stepNumber: _flatCurrentStep,
       onAdd2: () =>
           _startTimer(const Duration(minutes: 2), '${timer.label} (+2m)'),
@@ -1398,6 +1422,14 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
                 timers: _activeTimers,
                 onTap: _showTimerDetailSheet,
                 onCancel: _cancelTimer,
+                // cmmrf-6 — resolve `sourceRecipeId` → component name.
+                // Null `sourceRecipeId` (v1-restored timer) returns
+                // null here so the chip renders prefixless.
+                recipeNameForTimer: (t) {
+                  final id = t.sourceRecipeId;
+                  if (id == null) return null;
+                  return _componentNameFor(plan, id);
+                },
               ),
             IngredientStrip(
               ingredients:

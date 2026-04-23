@@ -34,11 +34,20 @@ class ActiveTimersRow<T extends ActiveTimerView> extends StatelessWidget {
   final void Function(T timer) onTap;
   final void Function(T timer) onCancel;
 
+  /// cmmrf-6 — optional per-timer recipe-name builder. When non-null
+  /// and returning a non-empty string, the chip prepends
+  /// `{RecipeName} · ` to the countdown label. Null / empty falls
+  /// back to the prefixless `MM:SS` copy (recipe-mode uses this
+  /// unconditionally; meal-mode returns null for v1-restored timers
+  /// whose `sourceRecipeId` is missing).
+  final String? Function(T timer)? recipeNameForTimer;
+
   const ActiveTimersRow({
     super.key,
     required this.timers,
     required this.onTap,
     required this.onCancel,
+    this.recipeNameForTimer,
   });
 
   @override
@@ -81,13 +90,18 @@ class ActiveTimersRow<T extends ActiveTimerView> extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    _formatDuration(timer.remaining),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: cook.cookTimer,
-                      fontFeatures: const [FontFeature.tabularFigures()],
+                  Flexible(
+                    child: Text(
+                      _labelFor(timer),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.fade,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: cook.cookTimer,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -103,6 +117,13 @@ class ActiveTimersRow<T extends ActiveTimerView> extends StatelessWidget {
         },
       ),
     );
+  }
+
+  String _labelFor(T timer) {
+    final countdown = _formatDuration(timer.remaining);
+    final prefix = recipeNameForTimer?.call(timer);
+    if (prefix == null || prefix.isEmpty) return countdown;
+    return '$prefix · $countdown';
   }
 
   static String _formatDuration(Duration d) {
