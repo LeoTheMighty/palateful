@@ -71,6 +71,10 @@ dependencies:
   # screen + its s3_key suffix. Already transitive via firebase_auth,
   # pinning it directly so the import site is explicit.
   crypto: ^3.0.3
+  # cla-3: read version+build at boot so `ClientLatencyIngest` can tag
+  # every outbound event with the correct `app_version`. Transitive via
+  # firebase_core, pinned explicitly so the import site is obvious.
+  package_info_plus: ^9.0.0
 
 dev_dependencies:
   flutter_test:

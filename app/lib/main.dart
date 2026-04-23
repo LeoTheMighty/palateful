@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'firebase_options.dart';
 import 'core/debug/perf_dio_interceptor.dart';
@@ -21,6 +22,7 @@ import 'core/services/push_notification_service.dart';
 import 'core/services/share_intent_handler.dart';
 import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
+import 'core/services/client_latency_ingest.dart';
 import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
@@ -56,6 +58,14 @@ void main() async {
   // fail-open if the endpoint errors/times out so boot is never blocked
   // on it. Telemetry emitters re-read the cached flag on every enqueue.
   unawaited(getIt<PerfFlagsService>().initialize());
+
+  // cla-3: wire the batched client-latency ingest pipeline. The service
+  // needs `platform` + `appVersion` at construction time, which requires
+  // PackageInfo.fromPlatform(); skip in E2E so the test token flow isn't
+  // held up by an unrelated plugin probe.
+  if (!kE2EMode) {
+    unawaited(_bootstrapClientLatencyIngest());
+  }
 
   // ptd-1: attach the debug-only perf interceptor so the [PerfOverlay]
   // (installed as the MaterialApp builder below) shows live HTTP
@@ -234,6 +244,40 @@ void main() async {
       child: const PalatefulApp(),
     ),
   );
+}
+
+/// cla-3 bootstrap — runs off the main boot path so PackageInfo probing
+/// can't delay the first frame. Registers the singleton with `getIt`
+/// and starts the periodic flush timer. Silent no-op if the probe
+/// throws (shouldn't happen on real devices but shouldn't crash boot
+/// if it does).
+Future<void> _bootstrapClientLatencyIngest() async {
+  try {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final appVersion = packageInfo.buildNumber.isEmpty
+        ? packageInfo.version
+        : '${packageInfo.version}+${packageInfo.buildNumber}';
+    final ClientLatencyPlatform platform;
+    if (kIsWeb) {
+      platform = ClientLatencyPlatform.web;
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      platform = ClientLatencyPlatform.ios;
+    } else {
+      platform = ClientLatencyPlatform.android;
+    }
+    final ingest = ClientLatencyIngest(
+      apiClient: getIt<ApiClient>(),
+      flags: getIt<PerfFlagsService>(),
+      platform: platform,
+      appVersion: appVersion,
+    );
+    getIt.registerSingleton<ClientLatencyIngest>(ingest);
+    ingest.start();
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('ClientLatencyIngest bootstrap failed: $e');
+    }
+  }
 }
 
 /// Returns true for auth-related errors (401/403) where we should reset auth.
