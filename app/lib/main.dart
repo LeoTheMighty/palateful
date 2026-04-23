@@ -23,11 +23,16 @@ import 'core/services/share_intent_handler.dart';
 import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
 import 'core/services/client_latency_ingest.dart';
+import 'core/services/frame_jank_aggregator.dart';
 import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
 import 'features/recipes/cook_mode/services/cook_session_persister.dart';
 import 'providers/theme_mode_provider.dart';
+
+/// cla-5: wall-clock captured at the earliest point in boot. Used to
+/// compute `app_start` duration once the first frame renders.
+final DateTime _bootT0 = DateTime.now();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -251,6 +256,11 @@ void main() async {
 /// and starts the periodic flush timer. Silent no-op if the probe
 /// throws (shouldn't happen on real devices but shouldn't crash boot
 /// if it does).
+///
+/// cla-5: after the ingest service is wired, emits a single `app_start`
+/// event with the wall-clock delta from [_bootT0] to "first frame
+/// scheduled", and attaches a [FrameJankAggregator] that emits one
+/// `frame_jank_p95` event per minute.
 Future<void> _bootstrapClientLatencyIngest() async {
   try {
     final packageInfo = await PackageInfo.fromPlatform();
@@ -273,6 +283,31 @@ Future<void> _bootstrapClientLatencyIngest() async {
     );
     getIt.registerSingleton<ClientLatencyIngest>(ingest);
     ingest.start();
+
+    // Emit the cold-start event once the first frame finishes laying
+    // out. `endOfFrame` resolves after layout + paint for the current
+    // frame — close enough to time-to-first-paint for our purposes.
+    WidgetsBinding.instance.endOfFrame.then((_) {
+      final durationMs = DateTime.now().difference(_bootT0).inMilliseconds;
+      ingest.enqueue(
+        type: ClientLatencyType.appStart,
+        durationMs: durationMs,
+      );
+    });
+
+    // Wire the frame-jank aggregator. Release builds only are
+    // interesting here — debug builds intentionally skip a bunch of
+    // tree-shaking and produce misleading jank numbers — but the
+    // cost of letting it run in debug is a single list append per
+    // frame, so we ship it unconditionally and rely on the server-
+    // side dashboard's `platform`/`app_version` filters to exclude
+    // dev traffic.
+    final jank = FrameJankAggregator(
+      ingest: ingest,
+      currentRouteResolver: () => appRouter.state.fullPath,
+    );
+    getIt.registerSingleton<FrameJankAggregator>(jank);
+    jank.start();
   } catch (e) {
     if (kDebugMode) {
       debugPrint('ClientLatencyIngest bootstrap failed: $e');

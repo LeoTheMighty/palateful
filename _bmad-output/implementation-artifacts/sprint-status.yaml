@@ -1264,7 +1264,7 @@ development_status:
   cla-2-analyze-latency-section-client-and-all: done
   cla-3-flutter-client-latency-ingest-batched-flush-service: done
   cla-4-flutter-perf-navigator-observer-go-router-aware: done
-  cla-5-flutter-cold-start-timing-and-frame-jank-aggregator: backlog
+  cla-5-flutter-cold-start-timing-and-frame-jank-aggregator: done
   cla-6-dio-interceptor-chain-perf-firebase-dedup-coexistence: backlog
   cla-7-ios-metrickit-receiver-eventchannel-and-dart-handler: backlog
   cla-8-android-jankstats-receiver-eventchannel-and-dart-handler: backlog
@@ -1293,7 +1293,7 @@ development_status:
   #   Overlay hit-zone: Profile avatar long-press (visible every screen).
   ptd-1-debug-perf-overlay-profile-avatar-long-press: done
   ptd-2-perf-audit-harness-skeleton-and-home-test: backlog
-  ptd-2-5-dio-mock-adapter-and-auth-bypass-plumbing: backlog
+  ptd-2-5-dio-mock-adapter-and-auth-bypass-plumbing: done
   ptd-3a-per-screen-rollout-first-four-books-detail-activity-meals: backlog
   ptd-3b-per-screen-rollout-remaining-four-calendar-profile-search-cook: backlog
   ptd-4-perf-audit-script-budgets-yaml-and-capture-assert-modes: backlog
