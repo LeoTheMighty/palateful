@@ -8,6 +8,7 @@ show_missing = true
 
 [tool.pytest.ini_options]
 addopts = "--cov --cov-report html:'../../coverage/libraries/utils/html' --cov-report xml:'../../coverage/libraries/utils/coverage.xml' --html='../../reports/libraries/utils/unittests/html/index.html' --junitxml='../../reports/libraries/utils/unittests/junit.xml'"
+asyncio_mode = "auto"
 
 [tool.poetry]
 name = "utils"
@@ -50,6 +51,8 @@ ruff = "^0.11"
 pytest = "^8.0"
 pytest-cov = "^6.0"
 pytest-html = "^4.0"
+# aam-2 (2026-04-23): async test support for AsyncDatabase + AsyncEndpoint
+pytest-asyncio = "^0.25"
 
 [build-system]
 requires = ["poetry-core"]

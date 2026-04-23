@@ -1334,7 +1334,7 @@ development_status:
   epic-api-async-migration: backlog
   # Phase 1 — Foundations
   aam-1-async-engine-and-rds-capacity: done
-  aam-2-async-database-class-and-worker-contract-gate: backlog
+  aam-2-async-database-class-and-worker-contract-gate: done
   aam-3-async-endpoint-base-and-mcp-helper: backlog
   aam-4-async-test-fixtures-and-counter-parity: backlog
   aam-5-migration-runbook: backlog
