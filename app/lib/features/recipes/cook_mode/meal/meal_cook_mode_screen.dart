@@ -723,10 +723,11 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     _persistState();
   }
 
-  /// cmmrf-1 — advances to the next unfinished recipe in plan order
-  /// (wrapping), lands on its first step, and marks it entered. No-op
-  /// if every other non-failed component is complete — cmmrf-5 will
-  /// layer the post-cook-sheet hand-off onto the null-return path.
+  /// cmmrf-1 / cmmrf-5 — advances to the next unfinished recipe in
+  /// plan order (wrapping), lands on its first step, and marks it
+  /// entered. When no unfinished recipe remains, hands off to the
+  /// unified post-cook entry point — same path as "Finish cooking
+  /// now" and the Done button.
   void _autoAdvanceRecipe() {
     final plan = _plan;
     final activeId = _activeRecipeId;
@@ -737,7 +738,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       _completedStepsByRecipe,
     );
     if (next == null) {
-      _persistState();
+      unawaited(_openPostCookForEnteredRecipes());
       return;
     }
     HapticFeedback.selectionClick();
@@ -1157,10 +1158,9 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     context.pop();
   }
 
-  /// cmm-6 — Done at the final flat-step. Marks every started
-  /// component as cooked, opens the multi-row post-cook sheet seeded
-  /// with all components, then on submission clears the persister
-  /// and pops back to meal detail.
+  /// cmmrf-5 — Done button handler. Marks the active recipe's current
+  /// step complete (so the immediate step is reflected in the seed
+  /// set), then hands off to the unified post-cook entry point.
   Future<void> _finishCooking() async {
     final plan = _plan;
     if (plan == null) return;
@@ -1169,16 +1169,28 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       final cur = _currentStepByRecipe[activeId] ?? 0;
       _completedStepsByRecipe.putIfAbsent(activeId, () => <int>{}).add(cur);
     }
+    await _openPostCookForEnteredRecipes();
+  }
+
+  /// cmmrf-5 — single post-cook entry point. Used by the Done button,
+  /// the overflow "Finish cooking now" flow, and the auto-advance
+  /// null-return case. Row seed filters by `_enteredRecipeIds` (any
+  /// component the user has made active) and excludes load-failed
+  /// components so placeholders don't leak into the rating sheet.
+  Future<void> _openPostCookForEnteredRecipes() async {
+    final plan = _plan;
+    if (plan == null) return;
     HapticFeedback.heavyImpact();
     _cookingStopwatch.stop();
-    final ratables = [
-      for (final c in plan.components)
-        if (!c.loadFailed)
-          ComponentRatable(recipeId: c.recipeId, displayName: c.name),
-    ];
+    final ratables = <ComponentRatable>[];
+    for (final c in plan.components) {
+      if (c.loadFailed) continue;
+      if (_enteredRecipeIds.contains(c.recipeId)) {
+        ratables.add(
+            ComponentRatable(recipeId: c.recipeId, displayName: c.name));
+      }
+    }
     if (ratables.isEmpty) {
-      // No started cookable components (every component failed to
-      // load). Just clear and pop.
       _debouncer.discardPending();
       await _persister.clear(_sessionKey);
       if (mounted) context.pop();
@@ -1261,28 +1273,8 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       },
     );
     if (!mounted || confirmed != true) return;
-    HapticFeedback.heavyImpact();
-    _cookingStopwatch.stop();
-    // cmmrf-1 / cmmrf-5 — seed the sheet with components the user has
-    // entered (tapped a pill or advanced into via auto-advance). Pill
-    // taps that never advanced past step 1 still count — the entered
-    // set is the canonical "was touched" record.
-    final ratables = <ComponentRatable>[];
-    for (final c in plan.components) {
-      if (c.loadFailed) continue;
-      if (_enteredRecipeIds.contains(c.recipeId)) {
-        ratables.add(
-            ComponentRatable(recipeId: c.recipeId, displayName: c.name));
-      }
-    }
-    if (ratables.isEmpty) {
-      // User opened "Finish cooking now" before entering any component.
-      _debouncer.discardPending();
-      await _persister.clear(_sessionKey);
-      if (mounted) context.pop();
-      return;
-    }
-    await _openPostCookSheet(ratables);
+    // cmmrf-5 — delegate to the unified entry point.
+    await _openPostCookForEnteredRecipes();
   }
 
   Future<void> _openPostCookSheet(List<ComponentRatable> ratables) async {
