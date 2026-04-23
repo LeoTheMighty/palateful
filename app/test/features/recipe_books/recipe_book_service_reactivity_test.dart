@@ -475,6 +475,19 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(api.getRecipeBookCalls, baseline);
     });
+
+    // ffm-1 — "cache once, share widely" invariant.
+    test('recipeBooksProvider reuses single fetch across many readers',
+        () async {
+      // Ten imperative reads (mirroring the 10-callsite migration) should
+      // result in exactly ONE network round-trip — the whole point of
+      // consolidating every screen onto the shared provider.
+      for (var i = 0; i < 10; i++) {
+        await container.read(recipeBooksProvider.future);
+      }
+      expect(api.getRecipeBooksCalls, 1,
+          reason: 'ffm-1: every callsite shares one session-level fetch');
+    });
   });
 
   group('Service is stateless across instances', () {

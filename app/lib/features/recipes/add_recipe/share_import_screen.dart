@@ -9,6 +9,7 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/error_reporter.dart';
 import '../../../shared/widgets/error_banner.dart';
+import '../../recipe_books/providers/recipe_books_provider.dart';
 
 class ShareImportScreen extends StatefulWidget {
   final String initialUrl;
@@ -54,10 +55,9 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
 
   Future<void> _loadBooksAndStartImport() async {
     try {
-      final response = await _apiClient.getRecipeBooks();
+      final books = await readRecipeBooks(context);
       if (!mounted) return;
 
-      final books = response.data['items'] as List? ?? [];
       if (books.isEmpty) {
         setState(() {
           _isImporting = false;
@@ -67,15 +67,15 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
       }
 
       final defaultId = _authService.defaultRecipeBookId;
-      Map<String, dynamic>? targetBook;
+      Map<String, dynamic> targetBook;
 
       if (defaultId != null) {
-        targetBook = books.cast<Map<String, dynamic>>().firstWhere(
+        targetBook = books.firstWhere(
           (b) => b['id']?.toString() == defaultId,
-          orElse: () => books.first as Map<String, dynamic>,
+          orElse: () => books.first,
         );
       } else {
-        targetBook = books.first as Map<String, dynamic>;
+        targetBook = books.first;
       }
 
       _selectedBookId = targetBook['id']?.toString();

@@ -16,6 +16,7 @@ import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
 import '../recipes/providers/recipe_provider.dart';
 import '../recipes/services/recipe_service.dart';
+import 'providers/recipe_books_provider.dart';
 import 'services/recipe_book_service.dart';
 import 'services/recipe_book_sync_service.dart';
 import '../../core/services/error_reporter.dart';
@@ -422,8 +423,8 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
 
   Future<Map<String, dynamic>?> _showBookPicker({String? excludeBookId}) async {
     try {
-      final response = await _apiClient.getRecipeBooks();
-      final books = ((response.data['items'] as List?) ?? [])
+      final allBooks = await readRecipeBooks(context);
+      final books = allBooks
           .where((b) => b['id']?.toString() != excludeBookId)
           .toList();
 

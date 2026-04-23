@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/di/injection.dart';
-import '../../core/services/api_client.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/theme/theme.dart';
 import '../../core/utils/quantity_formatter.dart';
@@ -16,6 +15,7 @@ import '../../shared/widgets/default_change_sheet.dart';
 import '../../shared/widgets/vibe_chip.dart';
 import '../../shared/widgets/vibe_picker_sheet.dart';
 import '../calendar/widgets/plan_meal_sheet.dart';
+import '../recipe_books/providers/recipe_books_provider.dart';
 import '../shopping_cart/models/shopping_list.dart';
 import '../shopping_cart/services/shopping_cart_service.dart';
 import '../../core/services/error_reporter.dart';
@@ -36,7 +36,6 @@ class RecipeDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
-  final _apiClient = getIt<ApiClient>();
   Map<String, dynamic>? _recipe;
   Map<String, dynamic>? _debug;
   List<dynamic> _ingredients = [];
@@ -341,8 +340,8 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
 
   Future<Map<String, dynamic>?> _showBookPicker({String? excludeBookId}) async {
     try {
-      final response = await _apiClient.getRecipeBooks();
-      final books = ((response.data['items'] as List?) ?? [])
+      final allBooks = await ref.read(recipeBooksProvider.future);
+      final books = allBooks
           .where((b) => b['id']?.toString() != excludeBookId)
           .toList();
 
@@ -464,8 +463,8 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
 
   Future<Map<String, dynamic>?> _showOwnedBookPicker({String? excludeBookId}) async {
     try {
-      final response = await _apiClient.getRecipeBooks();
-      final books = ((response.data['items'] as List?) ?? [])
+      final allBooks = await ref.read(recipeBooksProvider.future);
+      final books = allBooks
           .where((b) =>
               b['id']?.toString() != excludeBookId &&
               b['user_role'] == 'owner')

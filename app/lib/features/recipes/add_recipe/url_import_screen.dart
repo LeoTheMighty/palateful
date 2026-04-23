@@ -9,6 +9,7 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/error_reporter.dart';
 import '../../../shared/widgets/error_banner.dart';
+import '../../recipe_books/providers/recipe_books_provider.dart';
 
 class UrlImportScreen extends StatefulWidget {
   final String? recipeBookId;
@@ -59,10 +60,10 @@ class _UrlImportScreenState extends State<UrlImportScreen> {
 
   Future<void> _loadRecipeBooks() async {
     try {
-      final response = await _apiClient.getRecipeBooks();
+      final books = await readRecipeBooks(context);
       if (mounted) {
         setState(() {
-          _recipeBooks = response.data['items'] ?? [];
+          _recipeBooks = books;
           _isLoadingBooks = false;
           if (_selectedBookId == null && _recipeBooks.isNotEmpty) {
             final defaultId = getIt<AuthService>().defaultRecipeBookId;

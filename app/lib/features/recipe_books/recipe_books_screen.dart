@@ -8,6 +8,7 @@ import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import 'providers/recipe_books_provider.dart';
 import 'services/recipe_book_service.dart';
 
 class RecipeBooksScreen extends StatefulWidget {
@@ -38,10 +39,10 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
     });
 
     try {
-      final response = await _apiClient.getRecipeBooks();
+      final books = await readRecipeBooks(context);
       if (mounted) {
         setState(() {
-          _recipeBooks = response.data['items'] ?? [];
+          _recipeBooks = books;
           _isLoading = false;
         });
       }

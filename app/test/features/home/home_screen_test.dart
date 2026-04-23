@@ -9,6 +9,7 @@ import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/auth_service.dart';
 import 'package:palateful/features/home/home_screen.dart';
 import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
+import 'package:palateful/features/recipe_books/services/recipe_book_service.dart';
 
 Response<dynamic> _fakeResponse(dynamic data) {
   return Response(
@@ -75,6 +76,10 @@ void _registerFakes(_FakeApiClient client) {
   gi.registerSingleton<ApiClient>(client);
   if (gi.isRegistered<BatchParserService>()) gi.unregister<BatchParserService>();
   gi.registerLazySingleton<BatchParserService>(() => BatchParserService());
+  if (gi.isRegistered<RecipeBookService>()) {
+    gi.unregister<RecipeBookService>();
+  }
+  gi.registerLazySingleton<RecipeBookService>(() => RecipeBookService(client));
   if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
   gi.registerSingleton<AuthService>(AuthService());
   // Intentionally NOT registering SharedStateService — the provider

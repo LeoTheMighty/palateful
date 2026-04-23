@@ -4,6 +4,7 @@ import '../../../core/di/injection.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/shared_state_service.dart';
 import '../../../core/state/mutation_bus.dart';
+import '../../recipe_books/providers/recipe_books_provider.dart';
 
 /// Value object produced by [homeContentProvider]. Holds the pristine
 /// (pre-filter, post-favorite-merge) data the Home grid renders from.
@@ -72,7 +73,8 @@ final homeContentProvider =
   });
   ref.onDispose(sub.cancel);
 
-  return _loadHomeContent();
+  final books = await ref.read(recipeBooksProvider.future);
+  return _loadHomeContent(books);
 });
 
 bool _shouldInvalidate(MutationEvent event) => switch (event) {
@@ -91,17 +93,22 @@ bool _shouldInvalidate(MutationEvent event) => switch (event) {
       MealFavorited() ||
       MealComponentAdded() ||
       MealComponentRemoved() ||
-      MealComponentsReordered() =>
+      MealComponentsReordered() ||
+      // ffm-1: book list is read through `recipeBooksProvider`. Re-run
+      // the home fan-out when the set of readable books changes so
+      // newly-added books surface their recipes without a manual
+      // pull-to-refresh.
+      RecipeBookCreated() ||
+      RecipeBookUpdated() ||
+      RecipeBookArchived() ||
+      RecipeBookUnarchived() ||
+      RecipeBookDeleted() =>
         true,
       _ => false,
     };
 
-Future<HomeContent> _loadHomeContent() async {
+Future<HomeContent> _loadHomeContent(List<Map<String, dynamic>> books) async {
   final api = getIt<ApiClient>();
-
-  final booksResponse = await api.getRecipeBooks();
-  final books =
-      List<Map<String, dynamic>>.from(booksResponse.data['items'] ?? []);
 
   // Side-effect: mirror book list into the iOS App Group so the Share
   // Extension's book picker has something to show. Debounced inside

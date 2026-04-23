@@ -10,6 +10,7 @@ import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/state/mutation_failure_copy.dart';
 import '../../../core/state/mutation_snackbar.dart';
+import '../../recipe_books/providers/recipe_books_provider.dart';
 import '../services/recipe_service.dart';
 import '../widgets/structured_ingredient_row.dart';
 import 'ingredient_edits_mapping.dart';
@@ -72,10 +73,10 @@ class _RecipeWizardScreenState extends State<RecipeWizardScreen> {
 
   Future<void> _loadRecipeBooks() async {
     try {
-      final response = await _apiClient.getRecipeBooks();
+      final books = await readRecipeBooks(context);
       if (!mounted) return;
       setState(() {
-        _recipeBooks = response.data['items'] ?? [];
+        _recipeBooks = books;
         // Only auto-select first book if no pre-selected book
         if (_selectedRecipeBookId == null && _recipeBooks.isNotEmpty) {
           final defaultId = getIt<AuthService>().defaultRecipeBookId;

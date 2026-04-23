@@ -28,6 +28,7 @@ import 'package:palateful/core/state/mutation_bus.dart';
 import 'package:palateful/features/home/home_screen.dart';
 import 'package:palateful/features/home/widgets/recipe_card.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
+import 'package:palateful/features/recipe_books/services/recipe_book_service.dart';
 import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
 import 'package:palateful/shared/widgets/shimmer_loading.dart';
 
@@ -114,6 +115,12 @@ void _register(_ReactiveApi client) {
     gi.unregister<SharedStateService>();
   }
   gi.registerSingleton<SharedStateService>(SharedStateService());
+  // ffm-1: home_content_provider now reads recipe-books through the
+  // shared provider, which delegates to RecipeBookService.
+  if (gi.isRegistered<RecipeBookService>()) {
+    gi.unregister<RecipeBookService>();
+  }
+  gi.registerLazySingleton<RecipeBookService>(() => RecipeBookService(client));
 }
 
 void _unregister() {
@@ -126,6 +133,9 @@ void _unregister() {
   if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
   if (gi.isRegistered<SharedStateService>()) {
     gi.unregister<SharedStateService>();
+  }
+  if (gi.isRegistered<RecipeBookService>()) {
+    gi.unregister<RecipeBookService>();
   }
 }
 

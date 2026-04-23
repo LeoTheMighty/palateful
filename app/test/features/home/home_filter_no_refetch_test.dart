@@ -20,6 +20,7 @@ import 'package:palateful/features/home/home_screen.dart';
 import 'package:palateful/features/home/widgets/recipe_card.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
 import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
+import 'package:palateful/features/recipe_books/services/recipe_book_service.dart';
 
 Response<dynamic> _ok(dynamic data) => Response(
       data: data,
@@ -94,6 +95,10 @@ void _registerFakes(_CountingApi client) {
     gi.unregister<BatchParserService>();
   }
   gi.registerLazySingleton<BatchParserService>(() => BatchParserService());
+  if (gi.isRegistered<RecipeBookService>()) {
+    gi.unregister<RecipeBookService>();
+  }
+  gi.registerLazySingleton<RecipeBookService>(() => RecipeBookService(client));
   if (gi.isRegistered<AuthService>()) gi.unregister<AuthService>();
   gi.registerSingleton<AuthService>(AuthService());
   if (gi.isRegistered<SharedStateService>()) {

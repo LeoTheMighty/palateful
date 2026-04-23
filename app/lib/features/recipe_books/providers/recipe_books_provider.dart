@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/injection.dart';
@@ -93,22 +94,33 @@ final activeRecipeBookProvider =
 });
 
 /// Flat list of books the user is a member of but does not own.
-/// Materialized by filtering `listRecipeBooks()` — the endpoint already
-/// returns ownership metadata. Separate provider + filter keeps the
-/// membership surface reactive without a second network round-trip.
+/// Derived from [recipeBooksProvider] — ffm-1 "cache once, share widely":
+/// no independent fetch, just a filter on the canonical list. Invalidation
+/// propagates through Riverpod automatically when the parent updates.
 final sharedRecipeBooksProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.keepAlive();
-  final sub = ref.read(mutationBusProvider).listen((event) {
-    if (_shouldInvalidateBookList(event)) ref.invalidateSelf();
-  });
-  ref.onDispose(sub.cancel);
-
-  final books = await getIt<RecipeBookService>().listRecipeBooks();
+  final books = await ref.watch(recipeBooksProvider.future);
   return books
       .where((book) => book['is_owner'] == false || book['role'] != 'owner')
       .toList();
 });
+
+/// ffm-1 — imperative read for non-Consumer [StatefulWidget] callers
+/// (add-recipe wizards, book picker dialogs). Subscribes through the
+/// shared [recipeBooksProvider], so every call reuses the cached
+/// session-level fetch instead of issuing a fresh `GET /v1/recipe-books`.
+///
+/// Prefer watching [recipeBooksProvider] in [ConsumerWidget]s; this
+/// helper exists so StatefulWidget callers need not convert just to
+/// read the list.
+Future<List<Map<String, dynamic>>> readRecipeBooks(BuildContext context) {
+  // `listen: false` — we only want the container once; imperative
+  // reads must not establish an InheritedWidget dependency (callers
+  // often invoke this from `initState`).
+  return ProviderScope.containerOf(context, listen: false)
+      .read(recipeBooksProvider.future);
+}
 
 /// Members of a single book. Family-keyed by book id.
 final recipeBookMembersProvider =
