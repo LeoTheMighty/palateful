@@ -44,6 +44,7 @@ import '../shared/widgets/timer_completion_overlay.dart';
 import '../widgets/cook_reset_confirm_sheet.dart';
 import '../widgets/cook_resume_gate_sheet.dart';
 import 'widgets/component_load_placeholder.dart';
+import 'widgets/recipe_toggle_bar.dart';
 
 class MealCookModeScreen extends ConsumerStatefulWidget {
   final String mealId;
@@ -87,6 +88,12 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   // inclusion (cmmrf-5) and previousEnteredRecipe (cmmrf-7) both read
   // from this set.
   final Set<String> _enteredRecipeIds = {};
+
+  // cmmrf-3 / cmmrf-6 — recipes whose toggle pill should pulse once
+  // (e.g., a timer fired on a non-active recipe). Populated by the
+  // timer-completion path; auto-cleared on the pill's AnimatedScale
+  // `onEnd` callback.
+  final Set<String> _pulsingRecipeIds = {};
 
   // Stable-key ("componentIndex:orderIndex") set; cmm-4 wires the strip
   // to use these keys directly. cmm-2 only persists checks done while
@@ -1407,6 +1414,25 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
                       return plan.ingredients[i].sourceComponentName;
                     }
                   : null,
+            ),
+            // cmmrf-3 — toggle bar between ingredients and step card.
+            // Hidden for single-component meals (renders SizedBox.shrink).
+            RecipeToggleBar(
+              components: [
+                for (final c in plan.components)
+                  plan.summaryFor(
+                    c.recipeId,
+                    _currentStepByRecipe,
+                    _completedStepsByRecipe,
+                  ),
+              ],
+              activeRecipeId: activeId,
+              pulsingRecipeIds: _pulsingRecipeIds,
+              onTap: _setActiveRecipe,
+              onPulseEnd: (id) {
+                if (!mounted) return;
+                setState(() => _pulsingRecipeIds.remove(id));
+              },
             ),
             Divider(height: 1, color: cook.cookDivider),
             Expanded(
