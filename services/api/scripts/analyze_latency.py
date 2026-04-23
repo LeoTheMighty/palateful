@@ -41,7 +41,15 @@ from sqlalchemy.engine import Connection, Engine
 
 _VALID_WINDOWS = ("1h", "24h", "7d", "all")
 _VALID_FORMATS = ("table", "csv", "json")
-_VALID_SECTIONS = ("endpoints", "tasks", "both")
+_VALID_SECTIONS = ("endpoints", "tasks", "client", "both", "all")
+
+# Client-side perf samples are noisier than server (network variance,
+# device heterogeneity, cold-start pauses), so we require a higher
+# sample floor and a larger baseline delta before flagging a regression.
+# Locked by ptd-6 in epic-perf-debug-tooling (2026-04-23 party-mode).
+_CLIENT_DEFAULT_MIN_SAMPLES = 50
+_CLIENT_REGRESSION_MULTIPLIER = 2.0
+_SERVER_REGRESSION_MULTIPLIER = 1.5
 
 # SQL interval strings keyed by the --window preset. `all` returns None so
 # the WHERE clause is dropped entirely.
@@ -76,6 +84,27 @@ _REGRESSION_COLUMNS = (
     "section",
     "method",
     "normalized_path",
+    "baseline_p95_ms",
+    "recent_p95_ms",
+    "pct_increase",
+    "recent_count",
+)
+_CLIENT_COLUMNS = (
+    "section",
+    "type",
+    "platform",
+    "route",
+    "count",
+    "p50_ms",
+    "p95_ms",
+    "p99_ms",
+    "max_ms",
+)
+_CLIENT_REGRESSION_COLUMNS = (
+    "section",
+    "type",
+    "platform",
+    "route",
     "baseline_p95_ms",
     "recent_p95_ms",
     "pct_increase",
@@ -126,8 +155,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "Swap the default query for a recent-vs-baseline CTE that "
-            "flags endpoints whose recent-24h p95 is >1.5x the "
-            "7-to-30d baseline. Implies --section endpoints."
+            "flags groups whose recent-24h p95 is larger than the "
+            "7-to-30d baseline by a section-specific multiplier "
+            "(1.5x server, 2.0x client). Combine with "
+            "--section endpoints (default), --section client, or "
+            "--section all to scope what gets checked."
         ),
     )
     p.add_argument(
@@ -135,15 +167,29 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=5,
         help=(
-            "Drop groups with fewer than N samples. Default 5. "
-            "Pass 0 to disable the floor."
+            "Drop endpoint/task groups with fewer than N samples. "
+            "Default 5. Pass 0 to disable the floor."
+        ),
+    )
+    p.add_argument(
+        "--client-min-samples",
+        type=int,
+        default=_CLIENT_DEFAULT_MIN_SAMPLES,
+        help=(
+            "Drop client groups with fewer than N samples. Client "
+            "perf is noisier than server so the default is higher. "
+            f"Default {_CLIENT_DEFAULT_MIN_SAMPLES}. Pass 0 to disable."
         ),
     )
     p.add_argument(
         "--section",
         choices=_VALID_SECTIONS,
         default="both",
-        help="Which sections to emit. Default: both.",
+        help=(
+            "Which sections to emit. 'both' = endpoints + tasks "
+            "(backward-compatible default). 'all' adds client on top. "
+            "'client' = client-latencies only."
+        ),
     )
     return p.parse_args(argv)
 
@@ -253,7 +299,82 @@ def _build_regression_query(top: int) -> str:
         " FROM recent LEFT JOIN baseline USING (method, normalized_path)"
         " WHERE recent.cnt >= 10"
         "   AND baseline.p95 IS NOT NULL"
-        "   AND recent.p95 > baseline.p95 * 1.5"
+        f"   AND recent.p95 > baseline.p95 * {_SERVER_REGRESSION_MULTIPLIER}"
+        " ORDER BY pct_increase DESC NULLS LAST"
+        f" LIMIT {top}"
+    )
+
+
+def _build_client_query(window: str, top: int, min_samples: int) -> str:
+    """Top-N client-latency groups by p95 for a given window.
+
+    Groups by `(type, platform, route)` because the same type can
+    land under different routes (e.g. `route_paint` on `/home` vs
+    `/book/:id`) and the baseline + cadence differ per platform.
+    Rows with `route IS NULL` (cold-start `app_start`, MetricKit
+    daily aggregates) collapse into a single `-` group per (type,
+    platform), which is the right behavior — they describe the
+    process, not a screen.
+    """
+    where_sql = _window_where(window)
+    having_sql = (
+        f" HAVING COUNT(*) >= {min_samples}" if min_samples > 0 else ""
+    )
+    return (
+        "SELECT "
+        "type, platform, route, "
+        "COUNT(*) AS count, "
+        "PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY duration_ms) AS p50_ms, "
+        "PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms, "
+        "PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms) AS p99_ms, "
+        "MAX(duration_ms) AS max_ms "
+        "FROM client_latencies"
+        f"{where_sql}"
+        " GROUP BY type, platform, route"
+        f"{having_sql}"
+        " ORDER BY p95_ms DESC NULLS LAST"
+        f" LIMIT {top}"
+    )
+
+
+def _build_client_regression_query(top: int, min_samples: int) -> str:
+    """Client-side recent-vs-baseline CTE.
+
+    Mirrors the server-side shape but:
+      - groups by (type, platform, route) instead of (method, path)
+      - multiplier is 2.0x (vs server 1.5x) — client perf noisier
+      - recent sample-count floor is --client-min-samples (default 50)
+
+    Baseline window (7-to-30d) and recent window (24h) match server
+    so one `--regression-hunt --section all` emission is directly
+    comparable across tables.
+    """
+    return (
+        "WITH recent AS ("
+        "  SELECT type, platform, route, COUNT(*) AS cnt, "
+        "         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95 "
+        "  FROM client_latencies"
+        "  WHERE created_at >= NOW() - INTERVAL '24 hours'"
+        "  GROUP BY type, platform, route"
+        "), baseline AS ("
+        "  SELECT type, platform, route, "
+        "         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95 "
+        "  FROM client_latencies"
+        "  WHERE created_at >= NOW() - INTERVAL '30 days'"
+        "    AND created_at <  NOW() - INTERVAL '7 days'"
+        "  GROUP BY type, platform, route"
+        ")"
+        " SELECT recent.type AS type,"
+        "        recent.platform AS platform,"
+        "        recent.route AS route,"
+        "        baseline.p95 AS baseline_p95_ms,"
+        "        recent.p95 AS recent_p95_ms,"
+        "        ROUND((recent.p95 / NULLIF(baseline.p95, 0) - 1) * 100, 1) AS pct_increase,"
+        "        recent.cnt AS recent_count"
+        " FROM recent LEFT JOIN baseline USING (type, platform, route)"
+        f" WHERE recent.cnt >= {min_samples}"
+        "   AND baseline.p95 IS NOT NULL"
+        f"   AND recent.p95 > baseline.p95 * {_CLIENT_REGRESSION_MULTIPLIER}"
         " ORDER BY pct_increase DESC NULLS LAST"
         f" LIMIT {top}"
     )
@@ -325,19 +446,52 @@ def _coerce_regression_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coerce_client_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "section": "client",
+        "type": row.get("type"),
+        "platform": row.get("platform"),
+        "route": row.get("route"),
+        "count": int(row["count"]) if row.get("count") is not None else 0,
+        "p50_ms": _round_ms(row.get("p50_ms")),
+        "p95_ms": _round_ms(row.get("p95_ms")),
+        "p99_ms": _round_ms(row.get("p99_ms")),
+        "max_ms": int(row["max_ms"]) if row.get("max_ms") is not None else None,
+    }
+
+
+def _coerce_client_regression_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "section": "client_regression",
+        "type": row.get("type"),
+        "platform": row.get("platform"),
+        "route": row.get("route"),
+        "baseline_p95_ms": _round_ms(row.get("baseline_p95_ms")),
+        "recent_p95_ms": _round_ms(row.get("recent_p95_ms")),
+        "pct_increase": _round_ms(row.get("pct_increase")),
+        "recent_count": int(row["recent_count"])
+        if row.get("recent_count") is not None
+        else 0,
+    }
+
+
 def _emit_table(
     *,
-    endpoints: list[dict[str, Any]] | None,
-    tasks: list[dict[str, Any]] | None,
-    regression: list[dict[str, Any]] | None,
+    endpoints: list[dict[str, Any]] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+    client: list[dict[str, Any]] | None = None,
+    regression: list[dict[str, Any]] | None = None,
+    client_regression: list[dict[str, Any]] | None = None,
 ) -> int:
     """Write human-readable table(s) to stdout. Returns total row count."""
     total = 0
+    any_emitted = False
 
     if regression is not None:
+        any_emitted = True
         sys.stdout.write(
-            "regression_hunt (recent 24h p95 > 1.5x baseline p95, "
-            "sorted by % increase)\n"
+            f"regression_hunt (recent 24h p95 > {_SERVER_REGRESSION_MULTIPLIER}x "
+            "baseline p95, sorted by % increase)\n"
         )
         if not regression:
             sys.stdout.write("  (no regressions over threshold)\n")
@@ -356,9 +510,39 @@ def _emit_table(
                     f"{_fmt_num(row.get('pct_increase')):>8} "
                     f"{row.get('recent_count', 0):>8}\n"
                 )
+
+    if client_regression is not None:
+        if any_emitted:
+            sys.stdout.write("\n")
+        any_emitted = True
+        sys.stdout.write(
+            f"client_regression_hunt (recent 24h p95 > "
+            f"{_CLIENT_REGRESSION_MULTIPLIER}x baseline p95, sorted by %)\n"
+        )
+        if not client_regression:
+            sys.stdout.write("  (no client regressions over threshold)\n")
+        else:
+            sys.stdout.write(
+                f"  {'TYPE':<18} {'PLAT':<6} {'ROUTE':<30} "
+                f"{'BASE_P95':>10} {'CUR_P95':>10} {'%':>8} {'COUNT':>8}\n"
+            )
+            for row in client_regression:
+                total += 1
+                sys.stdout.write(
+                    f"  {str(row.get('type') or '-'):<18.18} "
+                    f"{str(row.get('platform') or '-'):<6} "
+                    f"{str(row.get('route') or '-'):<30.30} "
+                    f"{_fmt_num(row.get('baseline_p95_ms')):>10} "
+                    f"{_fmt_num(row.get('recent_p95_ms')):>10} "
+                    f"{_fmt_num(row.get('pct_increase')):>8} "
+                    f"{row.get('recent_count', 0):>8}\n"
+                )
+
+    if regression is not None or client_regression is not None:
         return total
 
     if endpoints is not None:
+        any_emitted = True
         sys.stdout.write("endpoints (top by p95 desc)\n")
         if not endpoints:
             sys.stdout.write("  (no endpoint samples matched the filter)\n")
@@ -380,8 +564,9 @@ def _emit_table(
                 )
 
     if tasks is not None:
-        if endpoints is not None:
+        if any_emitted:
             sys.stdout.write("\n")
+        any_emitted = True
         sys.stdout.write("tasks (top by p95 desc)\n")
         if not tasks:
             sys.stdout.write("  (no task samples matched the filter)\n")
@@ -401,6 +586,31 @@ def _emit_table(
                     f"{_fmt_num(row.get('p99_ms')):>8} "
                     f"{_fmt_num(row.get('max_ms')):>8}\n"
                 )
+
+    if client is not None:
+        if any_emitted:
+            sys.stdout.write("\n")
+        sys.stdout.write("client (top by p95 desc)\n")
+        if not client:
+            sys.stdout.write("  (no client samples matched the filter)\n")
+        else:
+            sys.stdout.write(
+                f"  {'TYPE':<18} {'PLAT':<6} {'ROUTE':<30} "
+                f"{'COUNT':>8} {'P50':>8} {'P95':>8} {'P99':>8} {'MAX':>8}\n"
+            )
+            for row in client:
+                total += 1
+                sys.stdout.write(
+                    f"  {str(row.get('type') or '-'):<18.18} "
+                    f"{str(row.get('platform') or '-'):<6} "
+                    f"{str(row.get('route') or '-'):<30.30} "
+                    f"{row.get('count', 0):>8} "
+                    f"{_fmt_num(row.get('p50_ms')):>8} "
+                    f"{_fmt_num(row.get('p95_ms')):>8} "
+                    f"{_fmt_num(row.get('p99_ms')):>8} "
+                    f"{_fmt_num(row.get('max_ms')):>8}\n"
+                )
+
     return total
 
 
@@ -414,9 +624,11 @@ def _fmt_num(value: Any) -> str:
 
 def _emit_csv(
     *,
-    endpoints: list[dict[str, Any]] | None,
-    tasks: list[dict[str, Any]] | None,
-    regression: list[dict[str, Any]] | None,
+    endpoints: list[dict[str, Any]] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+    client: list[dict[str, Any]] | None = None,
+    regression: list[dict[str, Any]] | None = None,
+    client_regression: list[dict[str, Any]] | None = None,
 ) -> int:
     writer = csv.writer(sys.stdout)
     total = 0
@@ -426,6 +638,16 @@ def _emit_csv(
         for row in regression:
             total += 1
             writer.writerow([_csv_cell(row.get(col)) for col in _REGRESSION_COLUMNS])
+
+    if client_regression is not None:
+        writer.writerow(_CLIENT_REGRESSION_COLUMNS)
+        for row in client_regression:
+            total += 1
+            writer.writerow(
+                [_csv_cell(row.get(col)) for col in _CLIENT_REGRESSION_COLUMNS]
+            )
+
+    if regression is not None or client_regression is not None:
         return total
 
     if endpoints is not None:
@@ -440,6 +662,12 @@ def _emit_csv(
             total += 1
             writer.writerow([_csv_cell(row.get(col)) for col in _TASK_COLUMNS])
 
+    if client is not None:
+        writer.writerow(_CLIENT_COLUMNS)
+        for row in client:
+            total += 1
+            writer.writerow([_csv_cell(row.get(col)) for col in _CLIENT_COLUMNS])
+
     return total
 
 
@@ -451,12 +679,14 @@ def _csv_cell(value: Any) -> str:
 
 def _emit_json(
     *,
-    endpoints: list[dict[str, Any]] | None,
-    tasks: list[dict[str, Any]] | None,
-    regression: list[dict[str, Any]] | None,
+    endpoints: list[dict[str, Any]] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+    client: list[dict[str, Any]] | None = None,
+    regression: list[dict[str, Any]] | None = None,
+    client_regression: list[dict[str, Any]] | None = None,
 ) -> int:
     total = 0
-    for group in (regression, endpoints, tasks):
+    for group in (regression, client_regression, endpoints, tasks, client):
         if not group:
             continue
         for row in group:
@@ -469,50 +699,100 @@ def _emit_json(
 def _emit(
     fmt: str,
     *,
-    endpoints: list[dict[str, Any]] | None,
-    tasks: list[dict[str, Any]] | None,
-    regression: list[dict[str, Any]] | None,
+    endpoints: list[dict[str, Any]] | None = None,
+    tasks: list[dict[str, Any]] | None = None,
+    client: list[dict[str, Any]] | None = None,
+    regression: list[dict[str, Any]] | None = None,
+    client_regression: list[dict[str, Any]] | None = None,
 ) -> int:
     if fmt == "csv":
-        return _emit_csv(endpoints=endpoints, tasks=tasks, regression=regression)
+        return _emit_csv(
+            endpoints=endpoints,
+            tasks=tasks,
+            client=client,
+            regression=regression,
+            client_regression=client_regression,
+        )
     if fmt == "json":
-        return _emit_json(endpoints=endpoints, tasks=tasks, regression=regression)
-    return _emit_table(endpoints=endpoints, tasks=tasks, regression=regression)
+        return _emit_json(
+            endpoints=endpoints,
+            tasks=tasks,
+            client=client,
+            regression=regression,
+            client_regression=client_regression,
+        )
+    return _emit_table(
+        endpoints=endpoints,
+        tasks=tasks,
+        client=client,
+        regression=regression,
+        client_regression=client_regression,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     top = _clamp_top(args.top)
     min_samples = max(0, args.min_samples)
+    client_min_samples = max(0, args.client_min_samples)
 
     engine = _get_engine()
+
+    endpoints: list[dict[str, Any]] | None = None
+    tasks: list[dict[str, Any]] | None = None
+    client: list[dict[str, Any]] | None = None
+    regression: list[dict[str, Any]] | None = None
+    client_regression: list[dict[str, Any]] | None = None
 
     try:
         with engine.connect() as conn:
             if args.regression_hunt:
-                rows = _stream_query(conn, _build_regression_query(top))
-                regression = [_coerce_regression_row(r) for r in rows]
-                endpoints = None
-                tasks = None
+                # Regression-hunt scopes on --section. Historical default
+                # was endpoints-only; "both" keeps that behavior so old
+                # runbooks don't change silently. Client-only + all are
+                # new (ptd-6).
+                run_server = args.section in ("endpoints", "both", "all")
+                run_client = args.section in ("client", "all")
+                if run_server:
+                    rows = _stream_query(
+                        conn, _build_regression_query(top)
+                    )
+                    regression = [_coerce_regression_row(r) for r in rows]
+                if run_client:
+                    rows = _stream_query(
+                        conn,
+                        _build_client_regression_query(top, client_min_samples),
+                    )
+                    client_regression = [
+                        _coerce_client_regression_row(r) for r in rows
+                    ]
             else:
-                regression = None
-                if args.section in ("endpoints", "both"):
+                # Non-regression aggregation. 'both' preserves old shape
+                # (endpoints + tasks). 'all' adds client on top.
+                want_endpoints = args.section in ("endpoints", "both", "all")
+                want_tasks = args.section in ("tasks", "both", "all")
+                want_client = args.section in ("client", "all")
+
+                if want_endpoints:
                     rows = _stream_query(
                         conn,
                         _build_endpoint_query(args.window, top, min_samples),
                     )
                     endpoints = [_coerce_endpoint_row(r) for r in rows]
-                else:
-                    endpoints = None
-
-                if args.section in ("tasks", "both"):
+                if want_tasks:
                     rows = _stream_query(
                         conn,
                         _build_task_query(args.window, top, min_samples),
                     )
                     tasks = [_coerce_task_row(r) for r in rows]
-                else:
-                    tasks = None
+                if want_client:
+                    rows = _stream_query(
+                        conn,
+                        _build_client_query(
+                            args.window, top, client_min_samples,
+                        ),
+                    )
+                    client = [_coerce_client_row(r) for r in rows]
     except Exception as e:  # noqa: BLE001 — surface any DB/query issue on exit-1
         print(
             f"ERROR: failed to analyze latencies: {type(e).__name__}: {e}",
@@ -524,7 +804,9 @@ def main(argv: list[str] | None = None) -> int:
         args.format,
         endpoints=endpoints,
         tasks=tasks,
+        client=client,
         regression=regression,
+        client_regression=client_regression,
     )
 
     if total == 0:
