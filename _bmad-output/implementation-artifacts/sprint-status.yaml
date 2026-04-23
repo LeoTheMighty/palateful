@@ -1146,7 +1146,7 @@ development_status:
   eri-2-ingredient-parse-only-ai-pass-module-with-json-schema-response: done
   eri-3a-extract-recipe-from-html-parse-pass-invocation-and-coverage-audit: done
   eri-3b-mixed-structure-subset-filter-and-splice-in-order: done
-  eri-4a-seed-freeform-units-table-rows-preserving-fk: backlog
+  eri-4a-seed-freeform-units-table-rows-preserving-fk: done
   eri-4b-seed-freeform-unit-aliases-and-flutter-cache-refresh-verification: backlog
   eri-5-eval-ingredient-field-completeness-metric-and-seven-fixtures: backlog
   eri-6-extractor-flag-rollout-runbook-and-staging-verification: backlog
