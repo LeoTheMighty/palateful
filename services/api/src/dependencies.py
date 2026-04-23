@@ -6,6 +6,7 @@ from typing import Annotated
 
 from config import settings
 from fastapi import Depends, Header
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.api.endpoint import APIException
@@ -14,6 +15,7 @@ from utils.constants import LOGGING_LEVEL
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import AsyncSessionLocal, Database, SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -61,16 +63,23 @@ async def get_async_session() -> AsyncGenerator[AsyncSession]:
             await session.close()
 
 
-async def get_async_database() -> AsyncGenerator[AsyncSession]:
-    """Async DB dep (aam-1 stub — aam-2 swaps in AsyncDatabase).
+async def get_async_database() -> AsyncGenerator[AsyncDatabase]:
+    """Async DB dep (aam-6 lifted from aam-1 stub to AsyncDatabase).
 
-    Yields an `AsyncSession` today so a handler can `await` queries.
-    aam-2 replaces the yielded type with `AsyncDatabase` (a mirror of
-    the sync `Database` surface). Keeping the name stable now means no
-    handler has to re-import when the swap lands.
+    Yields an `AsyncDatabase` wrapping a request-scoped `AsyncSession`.
+    Closes the wrapped session via `await database.close()` on dep exit
+    — the wrapper owns the session because it created it.
     """
-    async for session in get_async_session():
-        yield session
+    if AsyncSessionLocal is None:
+        raise RuntimeError(
+            "AsyncSessionLocal is not configured — "
+            "ASYNC_DATABASE_URL is unset. Set DATABASE_URL (or DB_HOST/DB_USERNAME/etc.)."
+        )
+    database = AsyncDatabase()
+    try:
+        yield database
+    finally:
+        await database.close()
 
 
 async def get_current_user(
@@ -227,6 +236,152 @@ def _ensure_default_calendar(database: Database, user: User) -> Calendar | None:
             )
             .first()
         )
+
+
+async def get_current_user_async(
+    authorization: Annotated[str, Header()],
+    database: AsyncDatabase = Depends(get_async_database),
+) -> User:
+    """Async sibling of `get_current_user` (aam-6).
+
+    Resolves the same Auth0 → User → default-calendar flow on the async
+    engine. Phase 3 routers depend on this instead of `get_current_user`
+    after their own conversion lands. Sync version stays for the
+    observation-window dual-dispatch path and for whitelisted sync paths
+    (manage.py REPL).
+    """
+    if not authorization.startswith("Bearer "):
+        raise APIException(
+            status_code=401,
+            detail="Invalid authorization header format",
+            code=ErrorCode.INVALID_TOKEN,
+        )
+
+    token = authorization[7:]
+
+    if (
+        settings.e2e_test_mode
+        and settings.environment in ("development", "test")
+        and token == _E2E_TOKEN
+    ):
+        user = await database.find_or_create_by(
+            User,
+            auth0_id=_E2E_AUTH0_ID,
+            defaults={
+                "email": "e2e@palateful.test",
+                "name": "E2E Test User",
+                "has_completed_onboarding": True,
+            },
+        )
+        if not user.has_completed_onboarding:
+            await database.update(user, has_completed_onboarding=True)
+        await _ensure_default_calendar_async(database, user)
+        return user
+
+    from utils.services.auth0 import get_auth0_verifier
+
+    verifier = get_auth0_verifier()
+    claims = await verifier.verify_token(token)
+
+    logger.info(f"Claims: {claims}")
+    auth0_id = claims["sub"]
+
+    user = await database.find_or_create_by(
+        User,
+        auth0_id=auth0_id,
+        defaults={
+            "email": claims.get("email") or None,
+            "name": claims.get("name"),
+            "picture": claims.get("picture"),
+            "email_verified": claims.get("email_verified", False),
+        },
+    )
+
+    user = await _finalize_auth_async(database, user, claims)
+    await _ensure_default_calendar_async(database, user)
+
+    return user
+
+
+async def _finalize_auth_async(
+    database: AsyncDatabase, user: User, claims: dict
+) -> User:
+    """Async sibling of `_finalize_auth`. Same field-sync logic; the
+    update call is now `await database.update(...)`."""
+    updates = {}
+
+    if not user.email and claims.get("email"):
+        updates["email"] = claims["email"]
+    if not user.name and claims.get("name"):
+        updates["name"] = claims["name"]
+    if not user.picture and claims.get("picture"):
+        updates["picture"] = claims["picture"]
+    if claims.get("email_verified") and not user.email_verified:
+        updates["email_verified"] = True
+
+    auth0_profile = {
+        k: v
+        for k, v in claims.items()
+        if k
+        not in ("sub", "aud", "iss", "iat", "exp", "azp", "scope", "permissions")
+    }
+    if auth0_profile != user.auth0_profile:
+        updates["auth0_profile"] = auth0_profile
+
+    if updates:
+        await database.update(user, **updates)
+
+    return user
+
+
+async def _ensure_default_calendar_async(
+    database: AsyncDatabase, user: User
+) -> Calendar | None:
+    """Async sibling of `_ensure_default_calendar`. Race-safe: relies on
+    the partial unique index on `calendars(owner_id) WHERE is_default =
+    true AND archived_at IS NULL` and catches the IntegrityError raised
+    when a concurrent provisioning wins.
+
+    `async with database.db.begin_nested()` mirrors the sync
+    `with session.begin_nested()` SAVEPOINT — when the inner INSERT
+    races, only the SAVEPOINT rolls back, leaving the outer request
+    transaction usable.
+    """
+    stmt = select(Calendar).where(
+        Calendar.owner_id == user.id,
+        Calendar.is_default.is_(True),
+        Calendar.archived_at.is_(None),
+    )
+    result = await database.db.execute(stmt)
+    active_default = result.scalars().first()
+    if active_default is not None:
+        return active_default
+
+    try:
+        async with database.db.begin_nested():
+            calendar = Calendar(
+                name=_DEFAULT_CALENDAR_NAME,
+                owner_id=user.id,
+                is_default=True,
+                is_shared=False,
+            )
+            database.db.add(calendar)
+            await database.db.flush()
+
+            membership = CalendarUser(
+                user_id=user.id,
+                calendar_id=calendar.id,
+                role="owner",
+            )
+            database.db.add(membership)
+            await database.db.flush()
+        return calendar
+    except IntegrityError:
+        # Concurrent provisioning won the race — re-read the active default.
+        # SAVEPOINT has already rolled back the inner block; the outer
+        # transaction stays usable.
+        result = await database.db.execute(stmt)
+        return result.scalars().first()
 
 
 async def require_admin(

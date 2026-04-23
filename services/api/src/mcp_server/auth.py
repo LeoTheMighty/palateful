@@ -19,6 +19,7 @@ from config import settings
 from starlette.types import ASGIApp, Receive, Scope, Send
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -31,6 +32,14 @@ _E2E_AUTH0_ID = "e2e|test-user"
 
 current_user: ContextVar[User | None] = ContextVar("mcp_current_user", default=None)
 current_database: ContextVar[Database | None] = ContextVar("mcp_current_database", default=None)
+# aam-6: async sibling contextvar populated alongside the sync one when
+# the MCP middleware authenticates a request. Phase 3 MCP-tool stories
+# read from this via `get_current_database_async()` after they swap to
+# `await call_endpoint_async(...)`. Sync `current_database` stays the
+# active source of truth until every MCP tool converts (post-aam-24).
+current_database_async: ContextVar[AsyncDatabase | None] = ContextVar(
+    "mcp_current_database_async", default=None
+)
 
 
 def _unauthorized(message: str, code: int = ErrorCode.INVALID_TOKEN.value) -> dict:
@@ -177,6 +186,26 @@ def get_current_database() -> Database:
         raise APIException(
             status_code=500,
             detail="No database in MCP context",
+            code=ErrorCode.INTERNAL_ERROR,
+        )
+    return database
+
+
+def get_current_database_async() -> AsyncDatabase:
+    """Async sibling of `get_current_database` (aam-6).
+
+    Returns the request-scoped `AsyncDatabase` MCP tools see after their
+    domain story converts (`call_endpoint(...)` → `await
+    call_endpoint_async(...)`). Until any MCP tool actually uses this,
+    the contextvar stays `None` per request; once the middleware
+    populates it (next aam-* MCP story), tools that switched to the
+    async helper resolve the async DB transparently.
+    """
+    database = current_database_async.get()
+    if database is None:
+        raise APIException(
+            status_code=500,
+            detail="No async database in MCP context",
             code=ErrorCode.INTERNAL_ERROR,
         )
     return database

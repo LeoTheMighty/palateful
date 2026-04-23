@@ -120,23 +120,67 @@ def test_get_async_session_yields_from_sessionmaker_and_closes():
     fake_session.close.assert_awaited_once()
 
 
-def test_get_async_database_delegates_to_get_async_session():
-    """get_async_database just re-yields get_async_session's value —
-    landing the name stable so aam-2 can swap the inner type with zero
-    handler-import churn."""
+def test_get_async_database_yields_asyncdatabase_and_closes():
+    """aam-6: `get_async_database` now yields a request-scoped
+    `AsyncDatabase` (not the bare AsyncSession the aam-1 stub yielded).
+    On dep teardown it `await database.close()`s the wrapped session."""
     from dependencies import get_async_database
 
-    sentinel = object()
-
-    async def _fake_session_gen():
-        yield sentinel
+    fake_session = MagicMock()
+    fake_session.close = AsyncMock(return_value=None)
+    fake_sessionmaker = MagicMock(return_value=fake_session)
 
     async def _drive():
-        with patch("dependencies.get_async_session", _fake_session_gen):
+        with (
+            patch("utils.services.database.AsyncSessionLocal", fake_sessionmaker),
+            patch("utils.services.database.async_db_engine", MagicMock()),
+            patch("dependencies.AsyncSessionLocal", fake_sessionmaker),
+        ):
+            from utils.services.async_database import AsyncDatabase
+
             gen = get_async_database()
-            value = await gen.__anext__()
-            assert value is sentinel
+            yielded = await gen.__anext__()
+            assert isinstance(yielded, AsyncDatabase)
+
             with pytest.raises(StopAsyncIteration):
+                await gen.__anext__()
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_drive())
+    finally:
+        loop.close()
+
+    fake_session.close.assert_awaited_once()
+
+
+def test_get_async_database_raises_when_unconfigured():
+    """No AsyncSessionLocal → loud RuntimeError, not silent None yield."""
+    from dependencies import get_async_database
+
+    async def _drive():
+        with patch("dependencies.AsyncSessionLocal", None):
+            gen = get_async_database()
+            with pytest.raises(RuntimeError, match="AsyncSessionLocal"):
+                await gen.__anext__()
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_drive())
+    finally:
+        loop.close()
+
+
+def test_get_async_session_raises_when_unconfigured():
+    """get_async_session also fails loudly when the sessionmaker is unset
+    (low-level entry point — anyone calling it directly gets the same
+    contract as the higher-level get_async_database)."""
+    from dependencies import get_async_session
+
+    async def _drive():
+        with patch("dependencies.AsyncSessionLocal", None):
+            gen = get_async_session()
+            with pytest.raises(RuntimeError, match="AsyncSessionLocal"):
                 await gen.__anext__()
 
     loop = asyncio.new_event_loop()
