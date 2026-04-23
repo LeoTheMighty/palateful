@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -179,10 +180,10 @@ class _MealDetailSheetState extends ConsumerState<MealDetailSheet> {
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: recipe?.imageUrl != null
-                      ? Image.network(
-                          recipe!.imageUrl!,
+                      ? CachedNetworkImage(
+                          imageUrl: recipe!.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
+                          errorWidget: (_, __, ___) => Icon(
                             Icons.restaurant,
                             color: colorScheme.secondary,
                           ),

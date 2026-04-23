@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -437,10 +438,10 @@ class _MealEventDetailScreenState extends State<MealEventDetailScreen> {
               SizedBox(
                 width: 96,
                 height: 96,
-                child: Image.network(
-                  recipe.imageUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: recipe.imageUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
+                  errorWidget: (_, _, _) =>
                       const Icon(Icons.restaurant_menu),
                 ),
               ),

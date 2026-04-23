@@ -346,6 +346,12 @@ jobs:
       - name: No cook-mode chat references (cmrc-2 grep guard)
         run: bash tools/no-cook-chat-check.sh
 
+      - name: No direct Image.network (ffm-11 grep guard)
+        run: bash tools/image-network-check.sh
+
+      - name: No direct getRecipeBooks() (ffm-1 grep guard)
+        run: bash tools/no-direct-get-recipe-books-check.sh
+
       - name: Test
         working-directory: app
         run: flutter test

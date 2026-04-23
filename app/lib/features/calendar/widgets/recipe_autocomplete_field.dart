@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/di/injection.dart';
@@ -343,10 +344,10 @@ class _RecipeRow extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: hit.imageUrl != null
-                  ? Image.network(
-                      hit.imageUrl!,
+                  ? CachedNetworkImage(
+                      imageUrl: hit.imageUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
+                      errorWidget: (_, _, _) =>
                           Icon(Icons.restaurant, color: colorScheme.secondary),
                     )
                   : Icon(Icons.restaurant, color: colorScheme.secondary),

@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -182,20 +183,20 @@ class _DayMealRow extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               child: isMealEvent
                   ? (mealThumbUrl != null
-                      ? Image.network(
-                          mealThumbUrl,
+                      ? CachedNetworkImage(
+                          imageUrl: mealThumbUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Icon(
+                          errorWidget: (_, _, _) => Icon(
                             Icons.layers,
                             color: colorScheme.secondary,
                           ),
                         )
                       : Icon(Icons.layers, color: colorScheme.secondary))
                   : (recipe?.imageUrl != null
-                      ? Image.network(
-                          recipe!.imageUrl!,
+                      ? CachedNetworkImage(
+                          imageUrl: recipe!.imageUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => Icon(
+                          errorWidget: (_, _, _) => Icon(
                             Icons.restaurant,
                             color: colorScheme.secondary,
                           ),

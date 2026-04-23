@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -109,10 +110,10 @@ class _ComponentRow extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: component.imageUrl != null
-                  ? Image.network(
-                      component.imageUrl!,
+                  ? CachedNetworkImage(
+                      imageUrl: component.imageUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Icon(
+                      errorWidget: (_, _, _) => Icon(
                         Icons.restaurant,
                         color: colorScheme.secondary,
                       ),

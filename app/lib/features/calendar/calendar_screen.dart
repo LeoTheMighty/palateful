@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/di/injection.dart';
@@ -749,10 +750,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   clipBehavior: Clip.antiAlias,
                   child: isMealEvent
                       ? (mealThumbUrl != null
-                          ? Image.network(
-                              mealThumbUrl,
+                          ? CachedNetworkImage(
+                              imageUrl: mealThumbUrl,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Icon(
+                              errorWidget: (_, _, _) => Icon(
                                 Icons.layers,
                                 color: colorScheme.secondary,
                                 size: 22,
@@ -764,10 +765,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                               size: 22,
                             ))
                       : (event.recipe?.imageUrl != null
-                          ? Image.network(
-                              event.recipe!.imageUrl!,
+                          ? CachedNetworkImage(
+                              imageUrl: event.recipe!.imageUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) =>
+                              errorWidget: (_, _, _) =>
                                   _mealTypeIcon(event.mealType, colorScheme),
                             )
                           : _mealTypeIcon(event.mealType, colorScheme)),

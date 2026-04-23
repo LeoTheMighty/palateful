@@ -1,0 +1,13 @@
+# ffm-11 — allowlist for `tools/image-network-check.sh`.
+#
+# Every network-loaded image under app/lib/features/ must use
+# CachedNetworkImage so scrolling past the same URL does not trigger a
+# re-download. Sites that intentionally skip the cache live here.
+#
+# Format: `file:lineno:rationale`. Reviewer sign-off required for new
+# entries — add the `why` (e.g. one-shot public-share visitor, no
+# cache benefit; vs. "busy work" to avoid the conversion).
+#
+# No entries as of ffm-8/ffm-11 landing — every callsite converted to
+# CachedNetworkImage. If a future entry is needed (e.g. public share
+# landing), it belongs here with a real rationale.

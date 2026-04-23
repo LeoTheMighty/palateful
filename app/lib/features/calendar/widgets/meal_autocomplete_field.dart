@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/di/injection.dart';
@@ -251,10 +252,10 @@ class _MealRow extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: thumb != null
-                  ? Image.network(
-                      thumb,
+                  ? CachedNetworkImage(
+                      imageUrl: thumb,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
+                      errorWidget: (_, _, _) =>
                           Icon(Icons.layers, color: colorScheme.secondary),
                     )
                   : Icon(Icons.layers, color: colorScheme.secondary),
