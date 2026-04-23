@@ -46,6 +46,13 @@ dependencies:
   firebase_core: ^3.9.0
   firebase_crashlytics: ^4.3.10
   firebase_messaging: ^15.2.0
+  # cla-11: Firebase Performance Monitoring — secondary cross-check
+  # against the custom client_latencies pipeline. Scoped to HTTP +
+  # app-start (cla-12 disables auto screen-rendering traces). 0.10.0+11
+  # is the last 0.10.x line compatible with firebase_core ^3.x; newer
+  # 0.11.x requires firebase_core ^4. flutter_web_release may tree-shake
+  # on dart2js — soft-fail fallback per AC3 (mobile-only is acceptable).
+  firebase_performance: ^0.10.0+11
   image_picker: ^1.0.7
   http: ^1.2.0
   # Riverpod 3.x dev required: stable 2.x depends on build ^2.0.0 which conflicts

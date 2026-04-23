@@ -349,6 +349,91 @@ a widget-tree problem.
 
 ---
 
+## Firebase Performance Monitoring (cla-11 / cla-12)
+
+**Secondary source of truth.** The custom `client_latencies` pipeline
+is primary; Firebase is a cross-check we don't author, don't control the
+sampling of, and never read during an incident.
+
+### What's enabled
+
+- **HTTP tracing** via `FirebaseHttpMetricInterceptor` — every Dio
+  request (except those with `Options.extra['_perf_skip']`) is wrapped
+  in `FirebasePerformance.instance.newHttpMetric(url, method)` so the
+  Firebase console shows the same surface as our `/admin/metrics`
+  **Endpoints** section.
+- **App-start** — Firebase SDK auto-captures and posts this with no
+  code required.
+- **Scope lockdown (cla-12)**: iOS `Info.plist` + Android
+  `AndroidManifest.xml` keys disable the auto screen-rendering traces
+  (`_st_*` in Firebase). We don't want a second route-paint source
+  fighting with our own `route_paint` events, and Firebase's built-in
+  "slow screen" default UX is a surprise we'd rather avoid.
+
+### Platform scope
+
+- **iOS**: enabled (release + debug). Collection toggle via
+  `FirebasePerformance.instance.setPerformanceCollectionEnabled(true)`
+  during app boot.
+- **Android**: enabled (release + debug). Same toggle.
+- **Web**: **disabled** (AC3 soft-fail). `firebase_performance` 0.10.x
+  tree-shakes badly on `dart2js --release` — the `kIsWeb` guard in
+  `main.dart` skips initialization on web entirely. Web users still
+  produce `web_navigation` + `first_paint` + `first_contentful_paint`
+  rows from the custom pipeline (`cla-9`); nothing is lost.
+- **kE2EMode**: **disabled**. Consistent with how we skip Firebase Core
+  initialization in the E2E test token flow.
+
+### Where to find the data
+
+- Firebase Console → Performance → **Network requests**: URL-keyed p50
+  / p95 latency, status code split, payload sizes.
+- Firebase Console → Performance → **App start**: platform-split
+  time-to-first-frame.
+- There is **no** Firebase screen-rendering tab — we disabled that
+  source in cla-12 on purpose (see Scope lockdown above).
+
+### Comparing Firebase vs. custom
+
+If the Firebase HTTP p95 and the custom `/admin/metrics` Client tab
+**Network** p95 disagree by more than ±20% for the same 24 h window:
+
+1. Check the sampling rate on both sides. Firebase samples at ~1-25%
+   by default; our pipeline ships every request when
+   `PerfFlagsService.samplingRate == 1.0`.
+2. Confirm Firebase's URL grouping — it groups by domain + path
+   template; our `endpoint` column is the un-templated literal URL.
+   For parameterized paths the two may diverge.
+3. Check `_perf_skip` — our client-latency POSTs bypass both
+   interceptors, so they don't appear in either source.
+4. Widen the window. Below ~2 h, Firebase's sampling noise dominates.
+
+Never make an incident-response decision from Firebase alone. Open the
+custom dashboard first; if the number there confirms a regression,
+Firebase is there to confirm it wasn't a measurement artifact in our
+client code — not the other way around.
+
+### Disabling at runtime (no deploy)
+
+Firebase Performance can be toggled off from the Firebase console:
+Project settings → Integrations → Performance → Data collection →
+Off. Takes effect on each device's next app-start. Our custom pipeline
+has its own kill-switch (see `cla-1c` above) — use that if you need
+to shed server-side load; the Firebase toggle only affects the
+secondary source.
+
+### Backout / downgrade
+
+- To remove entirely: delete the `firebase_performance` dep from
+  `app/pubspec.yaml`, remove the `FirebaseHttpMetricInterceptor`
+  install block in `main.dart`, revert the `Info.plist` /
+  `AndroidManifest.xml` scope flags (cla-12).
+- To downgrade version: the `^0.10.0+11` pin is the last 0.10.x line
+  compatible with `firebase_core ^3.x`. Moving up to 0.11.x requires
+  `firebase_core ^4.7.0` which is a multi-dep bump.
+
+---
+
 ## Debug perf overlay (ptd-1)
 
 Floating in-app widget that lists the last 100 HTTP requests with

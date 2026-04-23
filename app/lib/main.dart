@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -24,6 +25,7 @@ import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
 import 'core/services/client_latency_ingest.dart';
 import 'core/services/frame_jank_aggregator.dart';
+import 'core/services/firebase_http_metric_interceptor.dart';
 import 'core/services/jankstats_bridge.dart';
 import 'core/services/metrickit_bridge.dart';
 import 'core/services/perf_flags_service.dart';
@@ -60,6 +62,29 @@ void main() async {
   // mirrors into backend error_logs as service="client". Fire-and-forget
   // from the reporter side — a failing mirror POST is swallowed.
   ErrorReporter.bindApiClient(getIt<ApiClient>());
+
+  // cla-11: Firebase Performance Monitoring — secondary cross-check
+  // against the custom client_latencies pipeline. Scope locked to
+  // HTTP + app-start (auto screen-rendering traces disabled in
+  // cla-12). Mobile-only for now; firebase_performance 0.10.x is known
+  // to tree-shake badly on dart2js release builds (AC3 soft-fail).
+  // The Dio chain already leaves a slot for `firebase_http_metric`
+  // between `dedup` (index 1) and `perf_timing` (index 2); we insert
+  // it at index 2.
+  if (!kE2EMode && !kIsWeb) {
+    try {
+      await FirebasePerformance.instance
+          .setPerformanceCollectionEnabled(true);
+      getIt<ApiClient>().dio.interceptors.insert(
+            2,
+            FirebaseHttpMetricInterceptor(),
+          );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Firebase Performance init failed (skipping): $e');
+      }
+    }
+  }
 
   // cla-1c: warm the client-latency kill-switch flag. Fire-and-forget —
   // fail-open if the endpoint errors/times out so boot is never blocked

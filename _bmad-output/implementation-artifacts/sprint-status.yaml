@@ -1277,7 +1277,7 @@ development_status:
   cla-9-flutter-web-navigation-timing-bridge-package-web: done
   cla-10a-admin-aggregation-endpoints: done
   cla-10b-flutter-admin-dashboard-client-tab: done
-  cla-11-firebase-performance-monitoring-scoped-enablement: backlog
+  cla-11-firebase-performance-monitoring-scoped-enablement: done
   cla-12-firebase-performance-scope-lockdown-disable-screen-traces: backlog
   cla-13-privacy-policy-and-data-safety-form-update: backlog
   cla-14-synthetic-load-test-on-ingest-endpoint: backlog
