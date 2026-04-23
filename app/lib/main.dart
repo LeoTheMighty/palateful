@@ -24,6 +24,7 @@ import 'core/services/shared_state_service.dart';
 import 'core/services/pending_imports_reconciler.dart';
 import 'core/services/client_latency_ingest.dart';
 import 'core/services/frame_jank_aggregator.dart';
+import 'core/services/metrickit_bridge.dart';
 import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
@@ -308,6 +309,16 @@ Future<void> _bootstrapClientLatencyIngest() async {
     );
     getIt.registerSingleton<FrameJankAggregator>(jank);
     jank.start();
+
+    // cla-7: iOS MetricKit bridge. Release-only is enforced on the
+    // native side (`#if !DEBUG` in AppDelegate), so the EventChannel
+    // simply delivers no events in dev builds. The Dart bridge can
+    // therefore start unconditionally on iOS without guarding here.
+    if (defaultTargetPlatform == TargetPlatform.iOS && !kIsWeb) {
+      final bridge = MetricKitBridge();
+      getIt.registerSingleton<MetricKitBridge>(bridge);
+      bridge.start();
+    }
   } catch (e) {
     if (kDebugMode) {
       debugPrint('ClientLatencyIngest bootstrap failed: $e');

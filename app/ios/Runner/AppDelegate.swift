@@ -7,6 +7,11 @@ import UserNotifications
 @objc class AppDelegate: FlutterAppDelegate {
   private var pushChannel: FlutterMethodChannel?
   private var apnsRegistrationTimer: Timer?
+  // cla-7: held strong so the MXMetricManagerSubscriber registration
+  // survives past `didFinishLaunchingWithOptions`. Only populated in
+  // release builds (see `#if !DEBUG` below).
+  private var metricKitReceiver: NSObject?
+  private var metricKitChannel: FlutterEventChannel?
 
   override func application(
     _ application: UIApplication,
@@ -25,6 +30,22 @@ import UserNotifications
         name: "palateful/push",
         binaryMessenger: controller.binaryMessenger
       )
+
+      // cla-7: MetricKit bridge. MetricKit only delivers meaningful
+      // payloads from release builds (TestFlight / App Store installs),
+      // so we gate at compile time — no cost and no dev-mode noise.
+      #if !DEBUG
+      if #available(iOS 13.0, *) {
+        let receiver = MetricKitReceiver()
+        let channel = FlutterEventChannel(
+          name: MetricKitReceiver.channelName,
+          binaryMessenger: controller.binaryMessenger
+        )
+        channel.setStreamHandler(receiver)
+        metricKitReceiver = receiver
+        metricKitChannel = channel
+      }
+      #endif
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
