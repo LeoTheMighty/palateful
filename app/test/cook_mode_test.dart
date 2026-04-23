@@ -454,78 +454,12 @@ void main() {
       );
     });
 
-    // cmm-1 AC8 — StepNavigator with componentBoundaries renders rules
-    // before non-zero boundary indices.
-    testWidgets('StepNavigator boundaries render rule keys', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: Scaffold(
-            body: StepNavigator(
-              currentStep: 0,
-              totalSteps: 9,
-              completedSteps: const {},
-              componentBoundaries: const [0, 2, 6],
-              onPrevious: null,
-              onNext: () {},
-              onDone: () {},
-              onStepTap: (_) {},
-              onLongPressStep: () {},
-            ),
-          ),
-        ),
-      );
-      // Boundary at index 0 never renders a rule (first pill).
-      expect(
-        find.byKey(const ValueKey('step_navigator_boundary_0')),
-        findsNothing,
-      );
-      // Boundaries at indices 2 and 6 each render their rule wrapper.
-      expect(
-        find.byKey(const ValueKey('step_navigator_boundary_2')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('step_navigator_boundary_6')),
-        findsOneWidget,
-      );
-    });
-
-    // cmm-1 AC8 — single-component (length-1 boundaries) renders no rules.
-    testWidgets('StepNavigator length-1 boundaries: no rules drawn',
-        (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: AppTheme.light(),
-          home: Scaffold(
-            body: StepNavigator(
-              currentStep: 0,
-              totalSteps: 5,
-              completedSteps: const {},
-              componentBoundaries: const [0],
-              onPrevious: null,
-              onNext: () {},
-              onDone: () {},
-              onStepTap: (_) {},
-              onLongPressStep: () {},
-            ),
-          ),
-        ),
-      );
-      for (var i = 0; i < 5; i++) {
-        expect(
-          find.byKey(ValueKey('step_navigator_boundary_$i')),
-          findsNothing,
-        );
-      }
-    });
-
-    // cmm-1 AC8 — `componentNameForStep` adds the component name to the
-    // pill semantics announcement when boundaries are active.
-    testWidgets('StepNavigator semantics include component name when set',
+    // cmmrf-4 — StepNavigator renders a flat per-recipe pill row.
+    // Pill semantics announce current/completed/upcoming without
+    // per-component names (the toggle bar carries recipe context now).
+    testWidgets('StepNavigator pill semantics announce current/completed/upcoming',
         (tester) async {
       final handle = tester.ensureSemantics();
-      final names = ['Dressing', 'Dressing', 'Salad', 'Salad'];
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
@@ -534,8 +468,6 @@ void main() {
               currentStep: 2,
               totalSteps: 4,
               completedSteps: const {0, 1},
-              componentBoundaries: const [0, 2],
-              componentNameForStep: (i) => names[i],
               onPrevious: () {},
               onNext: () {},
               onDone: () {},
@@ -545,18 +477,16 @@ void main() {
           ),
         ),
       );
-      // The current pill (index 2) should have a Semantics label that
-      // includes both "current" and the component name "Salad".
       expect(
-        find.bySemanticsLabel('Step 3, current, Salad'),
+        find.bySemanticsLabel('Step 3, current'),
         findsOneWidget,
       );
       expect(
-        find.bySemanticsLabel('Step 4, upcoming, Salad'),
+        find.bySemanticsLabel('Step 4, upcoming'),
         findsOneWidget,
       );
       expect(
-        find.bySemanticsLabel('Step 1, completed, Dressing'),
+        find.bySemanticsLabel('Step 1, completed'),
         findsOneWidget,
       );
       handle.dispose();

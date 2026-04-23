@@ -12,22 +12,15 @@ class StepNavigator extends StatelessWidget {
   final ValueChanged<int> onStepTap;
   final VoidCallback onLongPressStep;
 
-  /// Optional flat-step indices where component boundaries fall. Length
-  /// `componentBoundaries.length` equals the number of components in
-  /// the active `CookPlan`; index 0 always equals 0 (the first pill).
-  /// When length > 1, pills at non-zero boundary indices render with a
-  /// 16dp wider left margin + a 1px vertical rule. When null/empty or
-  /// length == 1, rendering matches the recipe-cook layout exactly.
-  final List<int>? componentBoundaries;
-
-  /// Optional name lookup for Semantics announcements. Returns the
-  /// component name a given pill belongs to. Recipe cook passes null;
-  /// meal cook passes a closure that walks `componentBoundaries`.
-  final String? Function(int stepIndex)? componentNameForStep;
-
   /// Override label shown on the primary action button at the end of a
-  /// section. Defaults to "Done" on the last flat step. Meal cook (cmm-6)
-  /// will use this to render "Finish meal".
+  /// section. Defaults to "Done" on the last step. Meal cook (cmm-6)
+  /// uses this to render "Finish meal".
+  ///
+  /// cmmrf-4 — this navigator now renders a single recipe's steps
+  /// locally (in meal mode, the active recipe's steps). The
+  /// previously-present `componentBoundaries` + `componentNameForStep`
+  /// props are gone because cross-recipe pill rows no longer exist —
+  /// the toggle bar (cmmrf-3) carries recipe context.
   final String? doneLabel;
 
   const StepNavigator({
@@ -40,20 +33,17 @@ class StepNavigator extends StatelessWidget {
     this.onDone,
     required this.onStepTap,
     required this.onLongPressStep,
-    this.componentBoundaries,
-    this.componentNameForStep,
     this.doneLabel,
   });
 
-  bool _isBoundary(int index) {
-    final b = componentBoundaries;
-    if (b == null || b.length <= 1 || index == 0) return false;
-    return b.contains(index);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isLastStep = currentStep == totalSteps - 1;
+    // cmmrf-4 — "Done" is shown only when the caller has no more
+    // `Next` to offer (`onNext == null`). Meal cook keeps "Next"
+    // visible on the last local step of an intermediate recipe while
+    // auto-advance can still route to another recipe; "Done" lights
+    // up only when every cross-recipe avenue is exhausted.
+    final showDone = onNext == null;
     final cook = context.cookModeTheme;
     final appColors = context.appColors;
 
@@ -91,11 +81,11 @@ class StepNavigator extends StatelessWidget {
                 // Next/Done
                 Expanded(
                   child: _NavButton(
-                    icon: isLastStep
+                    icon: showDone
                         ? Icons.check_rounded
                         : Icons.arrow_forward_rounded,
-                    label: isLastStep ? (doneLabel ?? 'Done') : 'Next',
-                    onPressed: isLastStep ? onDone : onNext,
+                    label: showDone ? (doneLabel ?? 'Done') : 'Next',
+                    onPressed: showDone ? onDone : onNext,
                     alignment: MainAxisAlignment.end,
                     isPrimary: true,
                   ),
@@ -120,18 +110,13 @@ class StepNavigator extends StatelessWidget {
                     final isCompleted =
                         !isCurrent && completedSteps.contains(index);
 
-                    final compName = componentNameForStep?.call(index);
-                    final baseLabel = isCurrent
+                    final semanticLabel = isCurrent
                         ? 'Step ${index + 1}, current'
                         : isCompleted
                             ? 'Step ${index + 1}, completed'
                             : 'Step ${index + 1}, upcoming';
-                    final semanticLabel = compName != null && compName.isNotEmpty
-                        ? '$baseLabel, $compName'
-                        : baseLabel;
 
-                    final boundary = _isBoundary(index);
-                    final pill = Semantics(
+                    return Semantics(
                       label: semanticLabel,
                       button: true,
                       container: true,
@@ -142,10 +127,7 @@ class StepNavigator extends StatelessWidget {
                         child: Container(
                           width: isCurrent ? 28 : 24,
                           height: 28,
-                          margin: EdgeInsets.only(
-                            left: boundary ? 20 : 4,
-                            right: 4,
-                          ),
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
                           decoration: BoxDecoration(
                             color: isCurrent
                                 ? cook.cookAccent
@@ -182,19 +164,6 @@ class StepNavigator extends StatelessWidget {
                           ),
                         ),
                       ),
-                    );
-                    if (!boundary) return pill;
-                    return Row(
-                      key: ValueKey('step_navigator_boundary_$index'),
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 1,
-                          height: 20,
-                          color: cook.cookDivider,
-                        ),
-                        pill,
-                      ],
                     );
                   }),
                 ),

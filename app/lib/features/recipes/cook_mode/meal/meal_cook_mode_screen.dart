@@ -584,8 +584,8 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   }
 
   // -----------------------------------------------------------------
-  // Step navigation (cmmrf-1 — per-recipe maps; flat indices synthesized
-  // for the StepNavigator + progress bar via _flatCurrentStep / _flatCompletedSteps.)
+  // Step navigation (cmmrf-1 / cmmrf-4 — per-recipe maps; a flat index
+  // is synthesized only for notification telemetry via _flatCurrentStep.)
   // -----------------------------------------------------------------
 
   /// Seed [_currentStepByRecipe] / [_completedStepsByRecipe] with an
@@ -624,46 +624,27 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     return plan.flatIndexFor(ci, clamped);
   }
 
-  Set<int> get _flatCompletedSteps {
+  /// cmmrf-4 — tap handler for a StepNavigator pill. The navigator
+  /// now renders the active recipe's local pills only (cross-recipe
+  /// pill rows are gone), so `localStep` is local to the active
+  /// recipe. Rewinds the active recipe's completed set when moving
+  /// backward within the recipe.
+  void _goToStep(int localStep) {
     final plan = _plan;
-    if (plan == null) return const {};
-    final out = <int>{};
-    for (var ci = 0; ci < plan.components.length; ci++) {
-      final c = plan.components[ci];
-      final local = _completedStepsByRecipe[c.recipeId] ?? const <int>{};
-      for (final si in local) {
-        if (si >= 0 && si < c.steps.length) {
-          out.add(plan.flatIndexFor(ci, si));
-        }
-      }
-    }
-    return out;
-  }
-
-  /// Public tap handler for a StepNavigator pill (still flat-indexed in
-  /// cmmrf-1). Translates the flat index back to (recipeId, localStep)
-  /// and delegates to the per-recipe path. Switches [_activeRecipeId]
-  /// when the pill belongs to a different component and rewinds the
-  /// active recipe's completed set when the tap moves backward within
-  /// the same recipe.
-  void _goToStep(int flatStep) {
-    final plan = _plan;
-    if (plan == null) return;
-    if (flatStep < 0 || flatStep >= plan.totalSteps) return;
-    final at = plan.stepAt(flatStep);
-    final recipeId = plan.components[at.componentIndex].recipeId;
+    final activeId = _activeRecipeId;
+    if (plan == null || activeId == null) return;
+    final ci = plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (ci < 0) return;
+    final len = plan.components[ci].steps.length;
+    if (localStep < 0 || localStep >= len) return;
     HapticFeedback.selectionClick();
     setState(() {
-      if (recipeId == _activeRecipeId) {
-        final cur = _currentStepByRecipe[recipeId] ?? 0;
-        if (at.stepIndex < cur) {
-          _completedStepsByRecipe[recipeId]?.remove(at.stepIndex);
-        }
+      final cur = _currentStepByRecipe[activeId] ?? 0;
+      if (localStep < cur) {
+        _completedStepsByRecipe[activeId]?.remove(localStep);
       }
-      _activeRecipeId = recipeId;
-      _enteredRecipeIds.add(recipeId);
-      _currentStepByRecipe[recipeId] = at.stepIndex;
-      _completedStepsByRecipe.putIfAbsent(recipeId, () => <int>{});
+      _currentStepByRecipe[activeId] = localStep;
+      _completedStepsByRecipe.putIfAbsent(activeId, () => <int>{});
     });
     _persistState();
   }
@@ -1071,6 +1052,33 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     return null;
   }
 
+  /// True when the active recipe has a local next step, or any other
+  /// component has unfinished work reachable via auto-advance.
+  /// Drives `StepNavigator.onNext` enablement (cmmrf-4) — when false,
+  /// the button flips to "Done".
+  bool _canGoNext(CookPlan plan, String activeId) {
+    final ci = plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (ci < 0) return false;
+    final len = plan.components[ci].steps.length;
+    final cur = _currentStepByRecipe[activeId] ?? 0;
+    if (len > 0 && cur < len - 1) return true;
+    return plan.nextUnfinishedRecipeAfter(
+          activeId,
+          _currentStepByRecipe,
+          _completedStepsByRecipe,
+        ) !=
+        null;
+  }
+
+  /// True when Prev within the active recipe is legal, or there is a
+  /// prior entered recipe to rewind to (cmmrf-7 wires the swipe path
+  /// through the same `_previousStep`).
+  bool _canGoPrev(CookPlan plan, String activeId) {
+    final cur = _currentStepByRecipe[activeId] ?? 0;
+    if (cur > 0) return true;
+    return plan.previousEnteredRecipe(activeId, _enteredRecipeIds) != null;
+  }
+
   /// Flat index (for notification telemetry) derived from the active
   /// recipe's local step. Defensive — returns 0 if the active recipe
   /// is missing from the plan.
@@ -1384,8 +1392,8 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
         : currentComponent.steps.length - 1;
     final activeLocalStep =
         (_currentStepByRecipe[activeId] ?? 0).clamp(0, maxLocal);
-    final flatCurrent = _flatCurrentStep;
-    final flatCompleted = _flatCompletedSteps;
+    final canGoNext = _canGoNext(plan, activeId);
+    final canGoPrev = _canGoPrev(plan, activeId);
     return Scaffold(
       backgroundColor: cook.cookSurface,
       body: SafeArea(
@@ -1450,9 +1458,9 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
                   final screenWidth = MediaQuery.of(context).size.width;
                   final tapX = details.localPosition.dx;
                   if (tapX < screenWidth * 0.25) {
-                    if (flatCurrent > 0) _previousStep();
+                    if (canGoPrev) _previousStep();
                   } else if (tapX > screenWidth * 0.75) {
-                    if (flatCurrent < plan.totalSteps - 1) _nextStep();
+                    if (canGoNext) _nextStep();
                   }
                 },
                 child: _buildStepContent(
@@ -1466,16 +1474,14 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
               ),
             ),
             StepNavigator(
-              currentStep: flatCurrent,
-              totalSteps: plan.totalSteps,
-              completedSteps: flatCompleted,
-              componentBoundaries: plan.componentBoundaries,
-              componentNameForStep: (i) {
-                if (i < 0 || i >= plan.totalSteps) return null;
-                return plan.components[plan.stepAt(i).componentIndex].name;
-              },
-              onPrevious: flatCurrent > 0 ? _previousStep : null,
-              onNext: flatCurrent < plan.totalSteps - 1 ? _nextStep : null,
+              // cmmrf-4 — navigator renders the active recipe's local
+              // pills. Cross-recipe context lives in the toggle bar.
+              currentStep: activeLocalStep,
+              totalSteps: currentComponent.steps.length,
+              completedSteps:
+                  _completedStepsByRecipe[activeId] ?? const <int>{},
+              onPrevious: canGoPrev ? _previousStep : null,
+              onNext: canGoNext ? _nextStep : null,
               onDone: _finishCooking,
               onStepTap: _goToStep,
               onLongPressStep: _markAllUpToHere,
@@ -1674,25 +1680,48 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     final timers = step.timers.isNotEmpty
         ? step.timers
         : extractTimers(step.instruction);
+    final activeTotal = currentComponent.steps.length;
+    final progress =
+        activeTotal == 0 ? 0.0 : (stepIndex + 1) / activeTotal;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
-          // Flat-total progress bar — consistent with cmm-3 AC9
-          // (10/20 reads 50%, regardless of component slicing).
+          // cmmrf-4 — progress bar scoped to the active recipe. The
+          // numeric "{cur+1} / {total}" label sits right of the bar
+          // so users always have a discrete read on their position
+          // within the current recipe.
           // cmlp-5: horizontal margin 24 aligns with the step card's
           // 24dp content padding.
-          Container(
-            height: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 24),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: (_flatCurrentStep + 1) / plan.totalSteps,
-                backgroundColor: cook.cookSurfaceDim,
-                color: cook.cookProgress,
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 4,
+                  margin: const EdgeInsets.only(left: 24, right: 12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: cook.cookSurfaceDim,
+                      color: cook.cookProgress,
+                    ),
+                  ),
+                ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.only(right: 24),
+                child: Text(
+                  '${stepIndex + 1} / $activeTotal',
+                  key: const Key('meal_cook_progress_label'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cook.cookOnSurface,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 32),
           Container(
