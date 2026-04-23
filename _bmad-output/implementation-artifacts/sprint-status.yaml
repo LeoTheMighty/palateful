@@ -1112,7 +1112,7 @@ development_status:
   cmm-2-meal-cook-mode-screen-loader-and-route: done
   cmm-3-sectioned-step-traversal-and-header: done
   cmm-4-interlaced-combined-ingredient-strip-with-source-tags: done
-  cmm-5-meal-level-timers-and-label-disambiguation: backlog
+  cmm-5-meal-level-timers-and-label-disambiguation: done
   cmm-6-per-component-post-cook-sheet: backlog
   cmm-7-meal-cook-resume-wiring-and-regression-sweep: backlog
   epic-cook-mode-meal-retrospective: optional

@@ -435,8 +435,21 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     final startTime = DateTime.now();
     final expiresAt = startTime.add(duration);
     final mealName = _meal?.name ?? 'Meal';
+    final plan = _plan;
+    final componentName = plan != null
+        ? plan.components[plan.stepAt(_currentStep).componentIndex].name
+        : null;
+    // cmm-5 — component-name disambiguation. If another active timer
+    // already uses this exact label (typically from a different
+    // component), prefix the NEW timer's display label with the
+    // current component name + " · ". First-come-first-served: the
+    // existing timer's label is NOT retroactively renamed.
+    final displayLabel = _disambiguateMealTimerLabel(
+      requested: label,
+      currentComponentName: componentName,
+    );
     final activeTimer = _ActiveTimer(
-      label: label,
+      label: displayLabel,
       duration: duration,
       remaining: duration,
       startTime: startTime,
@@ -444,7 +457,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     );
     _timerNotifService.scheduleTimerNotification(
       id: notifId,
-      label: label,
+      label: displayLabel,
       expiresAt: expiresAt,
       recipeId: widget.mealId,
       stepIndex: _currentStep,
@@ -452,7 +465,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     );
     _liveActivityService.startTimerActivity(
       notifId: notifId,
-      timerLabel: label,
+      timerLabel: displayLabel,
       recipeName: mealName,
       duration: duration,
     );
@@ -546,11 +559,57 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     );
     if (result == null || !mounted) return;
     final (minutes, rawLabel) = result;
-    final uniqueLabel = disambiguateTimerLabel(
-      rawLabel,
-      _activeTimers.map((t) => t.label),
-    );
-    _startTimer(Duration(minutes: minutes), uniqueLabel);
+    // cmm-5 AC3 — manual-timer label semantics in meal cook:
+    //  * Empty / sheet-default ("Timer") → fall back to the current
+    //    component name (e.g. "Dressing"). Same-component repeats
+    //    pick up the legacy " 2" / " 3" suffix via the shared
+    //    `disambiguateTimerLabel`.
+    //  * Non-empty user labels go straight to `_startTimer`, which
+    //    applies the cmm-5 component-prefix rule on collisions.
+    final plan = _plan;
+    final componentName = plan != null
+        ? plan.components[plan.stepAt(_currentStep).componentIndex].name
+        : null;
+    final trimmed = rawLabel.trim();
+    final isDefaultLabel =
+        trimmed.isEmpty || trimmed == kManualTimerDefaultLabel;
+    if (isDefaultLabel &&
+        componentName != null &&
+        componentName.isNotEmpty) {
+      final uniqueLabel = disambiguateTimerLabel(
+        componentName,
+        _activeTimers.map((t) => t.label),
+      );
+      _startTimer(Duration(minutes: minutes), uniqueLabel);
+      return;
+    }
+    final label = trimmed.isEmpty ? kManualTimerDefaultLabel : trimmed;
+    _startTimer(Duration(minutes: minutes), label);
+  }
+
+  /// cmm-5 AC2 — when starting a new timer whose label collides with
+  /// an existing active timer's label, prefix the NEW timer with the
+  /// current component name + " · ". First-come-first-served: the
+  /// existing timer's label is preserved verbatim. Returns the
+  /// requested label unchanged when no collision exists or when the
+  /// component name isn't known (recipe cook path also returns
+  /// requested unchanged because the prefix would be redundant).
+  String _disambiguateMealTimerLabel({
+    required String requested,
+    required String? currentComponentName,
+  }) {
+    if (currentComponentName == null || currentComponentName.isEmpty) {
+      return requested;
+    }
+    final existingLabels = _activeTimers.map((t) => t.label).toSet();
+    if (!existingLabels.contains(requested)) return requested;
+    var prefixed = '$currentComponentName · $requested';
+    var n = 2;
+    while (existingLabels.contains(prefixed)) {
+      prefixed = '$currentComponentName · $requested $n';
+      n++;
+    }
+    return prefixed;
   }
 
   // -----------------------------------------------------------------
