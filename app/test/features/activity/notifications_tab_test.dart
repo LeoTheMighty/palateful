@@ -21,11 +21,25 @@ class _FakeApiClient extends ApiClient {
   final List<String> unarchiveCalls = [];
   bool failArchive = false;
 
+  /// ffm-4: simulate the list response's `unread_count` snapshot.
+  /// When null (default), simulate an old backend that doesn't
+  /// populate the field — the tab is expected to fall back to
+  /// `refreshUnreadCount()`.
+  int? unreadCountField;
+  int getActivitiesCalls = 0;
+  int getUnreadActivityCountCalls = 0;
+
   _FakeApiClient({required this.activities});
 
   @override
-  Future<Response> getActivities({int limit = 50, int offset = 0}) async =>
-      _fakeResponse({'items': activities, 'total': activities.length});
+  Future<Response> getActivities({int limit = 50, int offset = 0}) async {
+    getActivitiesCalls++;
+    return _fakeResponse({
+      'items': activities,
+      'total': activities.length,
+      if (unreadCountField != null) 'unread_count': unreadCountField,
+    });
+  }
 
   @override
   Future<Response> getActivitiesSeeAllCount() async =>
@@ -46,8 +60,14 @@ class _FakeApiClient extends ApiClient {
       _fakeResponse({'success': true});
 
   @override
-  Future<Response> getUnreadActivityCount() async =>
-      _fakeResponse({'count': 0});
+  Future<Response> getUnreadActivityCount() async {
+    getUnreadActivityCountCalls++;
+    return _fakeResponse({
+      'notifications': 0,
+      'imports_actionable': 0,
+      'count': 0,
+    });
+  }
 
   @override
   Future<Response> archiveActivity(String id) async {
@@ -243,5 +263,97 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text("You're all caught up"), findsOneWidget);
+  });
+
+  // ─── ffm-4: single-fetch-on-mount via embedded `unread_count` ───
+  group('ffm-4 single-fetch', () {
+    testWidgets(
+        'populated unread_count → exactly one network call on mount '
+        '(no follow-up /unread-count)', (tester) async {
+      final api = _FakeApiClient(activities: [
+        {
+          'id': 'a-1',
+          'type': 'partner_action',
+          'title': 'Shared a recipe',
+          'read': false,
+          'created_at': '2026-04-22T10:00:00Z',
+        },
+      ])
+        // Backend populates the field — tab should NOT hit /unread-count.
+        ..unreadCountField = 3;
+      _register(api);
+
+      await tester.pumpWidget(_wrap(const NotificationsTab()));
+      await tester.pumpAndSettle();
+
+      expect(api.getActivitiesCalls, 1);
+      expect(api.getUnreadActivityCountCalls, 0,
+          reason: 'ffm-4: fallback round-trip must not fire when '
+              'unread_count is populated');
+    });
+
+    testWidgets(
+        'null unread_count (old backend) → fallback fires '
+        '/unread-count', (tester) async {
+      final api = _FakeApiClient(activities: [
+        {
+          'id': 'a-1',
+          'type': 'partner_action',
+          'title': 'Legacy backend',
+          'read': false,
+          'created_at': '2026-04-22T10:00:00Z',
+        },
+      ])
+        // Field absent — simulates pre-ffm-4 backend.
+        ..unreadCountField = null;
+      _register(api);
+
+      await tester.pumpWidget(_wrap(const NotificationsTab()));
+      await tester.pumpAndSettle();
+
+      expect(api.getActivitiesCalls, 1);
+      expect(api.getUnreadActivityCountCalls, 1,
+          reason: 'ffm-4: fallback must fire when field is null '
+              '(pre-ffm-4 backend compat path)');
+    });
+
+    testWidgets(
+        'empty list + populated unread_count → one call, no mark, '
+        'provider count synced', (tester) async {
+      final api = _FakeApiClient(activities: [])
+        ..unreadCountField = 5;
+      _register(api);
+
+      await tester.pumpWidget(_wrap(const NotificationsTab()));
+      await tester.pumpAndSettle();
+
+      expect(api.getActivitiesCalls, 1);
+      expect(api.getUnreadActivityCountCalls, 0);
+      expect(api.markReadCalls, isEmpty,
+          reason: 'no unread visible rows → no mark-read POST');
+    });
+
+    testWidgets(
+        'all visible rows already read + populated unread_count → '
+        'no mark, no /unread-count follow-up', (tester) async {
+      final api = _FakeApiClient(activities: [
+        {
+          'id': 'a-1',
+          'type': 'partner_action',
+          'title': 'Already read',
+          'read': true,
+          'created_at': '2026-04-22T10:00:00Z',
+        },
+      ])
+        ..unreadCountField = 0;
+      _register(api);
+
+      await tester.pumpWidget(_wrap(const NotificationsTab()));
+      await tester.pumpAndSettle();
+
+      expect(api.getActivitiesCalls, 1);
+      expect(api.getUnreadActivityCountCalls, 0);
+      expect(api.markReadCalls, isEmpty);
+    });
   });
 }

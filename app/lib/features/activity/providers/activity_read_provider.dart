@@ -253,6 +253,26 @@ class ActivityReadProvider {
     }
   }
 
+  /// ffm-4 — overwrite the notifications contribution to the bell count
+  /// without a network round-trip. Used by the notifications tab when
+  /// the /v1/activities response embeds an `unread_count` snapshot.
+  ///
+  /// Keeps the derived total (`unreadCount`) coherent by recomputing
+  /// it as `notifications + imports_actionable`. Imports count is
+  /// untouched — the notifications tab has no authority over imports.
+  void setNotificationsCount(int count) {
+    if (notificationsCount.value != count) {
+      notificationsCount.value = count;
+    }
+    final sum = count + importsActionableCount.value;
+    if (unreadCount.value != sum) {
+      unreadCount.value = sum;
+    }
+    if (!structuredCountsAvailable.value) {
+      structuredCountsAvailable.value = true;
+    }
+  }
+
   // ───────────────────────────────────────────────────────────────────
   // pfc-1: single-source 30s poll. Shell owns start/stop; tabs register
   // tick listeners. When a listener declares `contributesUnreadCount`,

@@ -174,6 +174,30 @@ class ListActivities(Endpoint):
                 "Link": f'</v1/activities?cursor={next_cursor}>; rel="next"'
             }
 
+        # ffm-4: bell-notification unread count snapshot computed in the
+        # same transaction as the list query so the notifications tab
+        # can drop its follow-up /unread-count round-trip. Uses the bell
+        # filters — independent of this request's include_archived /
+        # include_read / since_days toggles — so the value is always
+        # "count of unread notification-type rows within retention",
+        # regardless of which page the caller is viewing. Old clients
+        # that don't know about the field ignore it; new clients read
+        # it to save one round-trip on mount + every poll tick.
+        unread_cutoff = datetime.now(UTC) - timedelta(
+            days=_DEFAULT_ACTIVITY_RETENTION_DAYS
+        )
+        unread_count = (
+            self.db.query(UserActivity)
+            .filter(
+                UserActivity.user_id == user.id,
+                UserActivity.read.is_(False),
+                UserActivity.archived_at.is_(None),
+                UserActivity.type.in_(NOTIFICATION_TAB_TYPES),
+                UserActivity.created_at >= unread_cutoff,
+            )
+            .count()
+        )
+
         return success(
             data=ListActivities.Response(
                 items=items,
@@ -181,6 +205,7 @@ class ListActivities(Endpoint):
                 limit=limit,
                 offset=offset,
                 next_cursor=next_cursor,
+                unread_count=unread_count,
             ),
             headers=headers,
         )
@@ -199,10 +224,18 @@ class ListActivities(Endpoint):
     class Response(BaseModel):
         """`total` is always 0 (pbq-5 dropped the heavy COUNT). Clients
         that need a count should call `/v1/activities/see-all-count`;
-        cursor pagination uses `items.length` + `next_cursor`."""
+        cursor pagination uses `items.length` + `next_cursor`.
+
+        `unread_count` (ffm-4) is a snapshot of the bell-notification
+        unread count — computed in the same transaction as the list
+        query so clients don't have to issue a second `/unread-count`
+        round-trip. Value is "count accurate as-of this response's
+        rows". Optional / null on old backends for back-compat; new
+        backends always populate it."""
 
         items: list["ListActivities.ActivityItem"]
         total: int
         limit: int
         offset: int
         next_cursor: str | None = None
+        unread_count: int | None = None

@@ -139,12 +139,19 @@ class TestListActivities:
         self, client, mock_db, mock_user
     ):
         """pbq-5 — the initial (cursor-less) render no longer fires the
-        heavy `COUNT(*)` on `user_activities`.
+        heavy `COUNT(*)` on `user_activities` for pagination.
 
-        Pre-fix: cursor-less requests ran a separate `total_query` with
-        `.count()` — on a 10k-row seed this was the dominant cost.
-        Post-fix: `total=0` is returned unconditionally; the main query
-        fires once to fetch `limit + 1` rows for the next-page flag.
+        Pre-pbq-5: cursor-less requests ran a separate `total_query`
+        with `.count()` — on a 10k-row seed this was the dominant cost.
+        Post-pbq-5: `total=0` is returned unconditionally; the main
+        query fires once to fetch `limit + 1` rows for the next-page
+        flag.
+
+        ffm-4 adds a second `UserActivity` query (the `unread_count`
+        snapshot) that is deliberately NOT paginated. It's one indexed
+        filter (`type IN (...) AND read=false AND archived_at IS NULL`)
+        so it stays cheap — the pbq-5 invariant is about avoiding the
+        full-table COUNT, not about keeping the query count at 1.
         """
         from utils.models.user_activity import UserActivity
 
@@ -159,10 +166,81 @@ class TestListActivities:
         assert response.status_code == 200
         assert response.json()["total"] == 0
 
-        # Only one `db.query(UserActivity)`: the main LIST query. The
-        # COUNT-shaped follow-up (a second `db.query(UserActivity)` with
-        # `.count()`) is gone.
-        assert qc.query_count_for(UserActivity) == 1
+        # Two `db.query(UserActivity)`: (1) the main LIST query,
+        # (2) the ffm-4 unread_count snapshot. The pbq-5 full-table
+        # COUNT is still gone.
+        assert qc.query_count_for(UserActivity) == 2
+
+
+class TestListActivitiesUnreadCount:
+    """ffm-4: `unread_count` snapshot on GET /v1/activities."""
+
+    def test_unread_count_present_in_response(
+        self, client, mock_db, mock_user
+    ):
+        """Response ALWAYS populates `unread_count` on new backends.
+
+        The existence of the field (not null) is what gates the
+        Flutter client's "skip the follow-up /unread-count call"
+        optimization."""
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+        body = response.json()
+        assert "unread_count" in body
+        assert body["unread_count"] == 0
+
+    def test_unread_count_matches_snapshot_query(
+        self, client, mock_db, mock_user
+    ):
+        """List query returns items; unread-count query returns a
+        different set whose len() is the expected count. Verifies
+        the unread snapshot is distinct from the list result rather
+        than being `len(items)`."""
+        # 3 items on the LIST page; 7 unread-count rows (post-filter
+        # snapshot).
+        list_items = [MockUserActivity() for _ in range(3)]
+        unread_rows = [MockUserActivity() for _ in range(7)]
+        mock_db.db.query.side_effect = [
+            MockQuery(list_items),
+            MockQuery(unread_rows),
+        ]
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["items"]) == 3
+        assert body["unread_count"] == 7
+
+    def test_unread_count_is_zero_when_no_unread(
+        self, client, mock_db, mock_user
+    ):
+        """Empty unread-count snapshot → 0 (not null, not missing)."""
+        list_items = [MockUserActivity() for _ in range(2)]
+        mock_db.db.query.side_effect = [
+            MockQuery(list_items),
+            MockQuery([]),
+        ]
+        response = client.get("/v1/activities")
+        assert response.status_code == 200
+        assert response.json()["unread_count"] == 0
+
+    def test_unread_count_populated_with_cursor_pagination(
+        self, client, mock_db, mock_user
+    ):
+        """Cursor-less vs cursor-paginated paths both populate the
+        field — it's a snapshot, not per-page."""
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
+        list_items = [MockUserActivity()]
+        unread_rows = [MockUserActivity() for _ in range(4)]
+        mock_db.db.query.side_effect = [
+            MockQuery(list_items),
+            MockQuery(unread_rows),
+        ]
+        response = client.get(f"/v1/activities?cursor={cursor}")
+        assert response.status_code == 200
+        assert response.json()["unread_count"] == 4
 
 
 class TestListActivitiesAllowList:
@@ -259,18 +337,29 @@ class TestListActivitiesAllowList:
     def test_admin_with_include_system_types_skips_allow_list(
         self, client, mock_db, mock_user
     ):
-        """Admin escape hatch: the type allow-list filter is NOT applied."""
+        """Admin escape hatch: the type allow-list filter is NOT applied
+        on the LIST query. The ffm-4 unread_count snapshot query that
+        runs in the same request DOES apply the allow-list — that's
+        correct (the bell count is always over the user-facing types)
+        — so the assertion below is scoped to the first (list) query
+        only."""
         from utils.models.user_activity import UserActivity
 
-        spy = FilterSpyQuery([])
-        mock_db.db.query.return_value = spy
+        list_spy = FilterSpyQuery([])
+        # ffm-4: second query is the unread_count snapshot — it
+        # applies NOTIFICATION_TAB_TYPES by design, so a shared spy
+        # would conflate the two paths. Route each query to its own
+        # spy so the list-path assertion stays meaningful.
+        unread_spy = FilterSpyQuery([])
+        spies = [list_spy, unread_spy]
+        mock_db.db.query.side_effect = lambda _: spies.pop(0)
         mock_user.is_admin = True
 
         response = client.get("/v1/activities?include_system_types=true")
         assert response.status_code == 200
 
         exprs = []
-        for args in spy.filter_args:
+        for args in list_spy.filter_args:
             if args and args[0] == "__join__":
                 continue
             exprs.extend(args)
@@ -282,7 +371,7 @@ class TestListActivitiesAllowList:
             expr_uses_type(e) for e in exprs
         ), (
             "admin include_system_types path must NOT apply the type "
-            "allow-list filter"
+            "allow-list filter on the LIST query"
         )
 
 

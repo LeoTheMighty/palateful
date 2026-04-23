@@ -101,11 +101,34 @@ class _NotificationsTabState extends ConsumerState<NotificationsTab>
         _isLoading = false;
       });
 
+      // ffm-4: prefer the list response's `unread_count` snapshot as
+      // the authoritative bell-notification count. Old backends that
+      // don't populate the field fall through to the legacy 2nd round-
+      // trip via `refreshUnreadCount()` so web + mobile can deploy
+      // independently.
+      final rawUnread = response.data['unread_count'];
+      final embeddedUnreadCount = rawUnread is int ? rawUnread : null;
+
       if (idsToMark.isNotEmpty) {
-        _readProvider.setUnreadCount(0);
-        _readProvider.markIdsRead(idsToMark).then((_) {
-          if (mounted) _readProvider.refreshUnreadCount();
-        });
+        if (embeddedUnreadCount != null) {
+          // Apply the local mark optimistically: snapshot minus the
+          // count we just marked, clamped at zero.
+          final post = (embeddedUnreadCount - idsToMark.length)
+              .clamp(0, 1 << 30);
+          _readProvider.setNotificationsCount(post);
+          // Fire-and-forget the mark — the unread_count snapshot is
+          // authoritative, no need for a round-tripped re-sync.
+          _readProvider.markIdsRead(idsToMark);
+        } else {
+          _readProvider.setUnreadCount(0);
+          _readProvider.markIdsRead(idsToMark).then((_) {
+            if (mounted) _readProvider.refreshUnreadCount();
+          });
+        }
+      } else if (embeddedUnreadCount != null) {
+        // Nothing to mark — still sync the notifications contribution
+        // from the authoritative snapshot.
+        _readProvider.setNotificationsCount(embeddedUnreadCount);
       }
     } catch (_) {
       if (!mounted) return;
