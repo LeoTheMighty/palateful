@@ -35,7 +35,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:palateful/core/di/injection.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/auth_service.dart';
+import 'package:palateful/features/calendar/services/meal_calendar_service.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
+import 'package:palateful/features/profile/services/profile_service.dart';
 import 'package:palateful/features/recipe_books/services/recipe_book_service.dart';
 import 'package:palateful/features/recipes/services/cooking_log_service.dart';
 import 'package:palateful/features/recipes/services/recipe_service.dart';
@@ -147,6 +149,20 @@ AUTH0_AUDIENCE=https://perf-audit.example.com
   } else {
     getIt.registerLazySingleton<CookingLogService>(
       () => CookingLogService(getIt<ApiClient>()),
+    );
+  }
+  if (getIt.isRegistered<ProfileService>()) {
+    getIt.resetLazySingleton<ProfileService>();
+  } else {
+    getIt.registerLazySingleton<ProfileService>(
+      () => ProfileService(getIt<ApiClient>()),
+    );
+  }
+  if (getIt.isRegistered<MealCalendarService>()) {
+    getIt.resetLazySingleton<MealCalendarService>();
+  } else {
+    getIt.registerLazySingleton<MealCalendarService>(
+      () => MealCalendarService(getIt<ApiClient>()),
     );
   }
 

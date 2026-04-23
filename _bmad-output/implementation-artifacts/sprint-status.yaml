@@ -1295,7 +1295,7 @@ development_status:
   ptd-2-perf-audit-harness-skeleton-and-home-test: done
   ptd-2-5-dio-mock-adapter-and-auth-bypass-plumbing: done
   ptd-3a-per-screen-rollout-first-four-books-detail-activity-meals: done
-  ptd-3b-per-screen-rollout-remaining-four-calendar-profile-search-cook: backlog
+  ptd-3b-per-screen-rollout-remaining-four-calendar-profile-search-cook: done
   ptd-4-perf-audit-script-budgets-yaml-and-capture-assert-modes: backlog
   ptd-4-5-budget-waiver-file-and-grep-guard: backlog
   ptd-5-ci-regression-guard-warn-to-strict: backlog
