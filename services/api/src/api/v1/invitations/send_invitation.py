@@ -8,9 +8,10 @@ from api.v1.invitations.helpers import (
     get_resource_name,
     validate_resource_and_role,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.invitation import Invitation
 from utils.models.user import User
@@ -23,17 +24,17 @@ from utils.services.push_notification import (
 MAX_INVITATIONS_PER_DAY = 30
 
 
-class SendInvitation(Endpoint):
+class SendInvitation(AsyncEndpoint):
     """Send an invitation to share a resource."""
 
-    def execute(self, params: "SendInvitation.Params"):
+    async def execute(self, params: "SendInvitation.Params"):
         user: User = self.user
 
         # Validate resource type and role
         validate_resource_and_role(params.resource_type, params.role_offered)
 
         # Check inviter has permission on the resource
-        check_resource_permission(
+        await check_resource_permission(
             self.db, user.id, params.resource_type, params.resource_id
         )
 
@@ -42,9 +43,10 @@ class SendInvitation(Endpoint):
         to_email = None
 
         if params.to_user_id:
-            target_user = self.db.execute(
+            result = await self.db.execute(
                 select(User).where(User.id == params.to_user_id)
-            ).scalar_one_or_none()
+            )
+            target_user = result.scalar_one_or_none()
             if not target_user:
                 raise APIException(
                     status_code=404,
@@ -56,9 +58,10 @@ class SendInvitation(Endpoint):
             username = params.to_username.lower().strip()
             if username.startswith("@"):
                 username = username[1:]
-            target_user = self.db.execute(
+            result = await self.db.execute(
                 select(User).where(User.username == username)
-            ).scalar_one_or_none()
+            )
+            target_user = result.scalar_one_or_none()
             if not target_user:
                 raise APIException(
                     status_code=404,
@@ -69,9 +72,10 @@ class SendInvitation(Endpoint):
         elif params.to_email:
             to_email = params.to_email.lower().strip()
             # Check if a user with this email exists
-            target_user = self.db.execute(
+            result = await self.db.execute(
                 select(User).where(func.lower(User.email) == to_email)
-            ).scalar_one_or_none()
+            )
+            target_user = result.scalar_one_or_none()
 
         else:
             raise APIException(
@@ -89,7 +93,7 @@ class SendInvitation(Endpoint):
             )
 
         # Check if target is already a member
-        if target_user and check_existing_membership(
+        if target_user and await check_existing_membership(
             self.db, target_user.id, params.resource_type, params.resource_id
         ):
             raise APIException(
@@ -114,7 +118,8 @@ class SendInvitation(Endpoint):
         else:  # pragma: no cover — validation above ensures target_user or to_email is set
             pass
 
-        existing = self.db.execute(dup_query).scalar_one_or_none()
+        result = await self.db.execute(dup_query)
+        existing = result.scalar_one_or_none()
         if existing:
             raise APIException(
                 status_code=409,
@@ -124,12 +129,13 @@ class SendInvitation(Endpoint):
 
         # Rate limit
         day_ago = datetime.now(UTC) - timedelta(days=1)
-        sent_today = self.db.execute(
+        result = await self.db.execute(
             select(func.count(Invitation.id)).where(
                 Invitation.from_user_id == user.id,
                 Invitation.created_at >= day_ago,
             )
-        ).scalar()
+        )
+        sent_today = result.scalar()
         if sent_today >= MAX_INVITATIONS_PER_DAY:
             raise APIException(
                 status_code=429,
@@ -150,19 +156,23 @@ class SendInvitation(Endpoint):
             expires_at=datetime.now(UTC) + timedelta(days=30),
         )
         self.db.add(invitation)
-        self.db.commit()
-        self.db.refresh(invitation)
+        await self.db.commit()
+        await self.db.refresh(invitation)
 
         # Send push notification if target user exists
         if target_user:
-            resource_name = get_resource_name(
+            resource_name = await get_resource_name(
                 self.db, params.resource_type, params.resource_id
             )
             display_name = (
                 f"@{user.username}" if user.username else user.name or "Someone"
             )
+            # aam-8 hasn't landed — wrap the sync FCM call in a
+            # threadpool. Fresh sync Database is spun up inside the
+            # push service when `db_session` is omitted.
             push_service = get_push_service()
-            push_service.send_to_user(
+            await run_in_threadpool(
+                push_service.send_to_user,
                 target_user,
                 PushNotification(
                     title="Invitation Received",
@@ -175,7 +185,6 @@ class SendInvitation(Endpoint):
                         "resource_name": resource_name or "",
                     },
                 ),
-                db_session=self.db,
             )
 
         return success(

@@ -3,15 +3,15 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.active_timer import ActiveTimer
 from utils.models.user import User
 
 
-class CreateTimer(Endpoint):
+class CreateTimer(AsyncEndpoint):
     """Create a new timer."""
 
-    def execute(self, params: "CreateTimer.Params"):
+    async def execute(self, params: "CreateTimer.Params"):
         """
         Create a new cooking timer.
 
@@ -34,8 +34,7 @@ class CreateTimer(Endpoint):
             meal_event_id=params.meal_event_id,
             recipe_step_id=params.recipe_step_id,
         )
-        self.database.create(timer)
-        self.database.db.refresh(timer)
+        await self.database.create(timer)
 
         return success(
             data=CreateTimer.Response(

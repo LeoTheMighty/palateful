@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.active_timer import ActiveTimer
 from utils.models.user import User
@@ -11,10 +11,10 @@ from utils.models.user import User
 VALID_STATUSES = ["running", "paused", "completed", "cancelled"]
 
 
-class UpdateTimer(Endpoint):
+class UpdateTimer(AsyncEndpoint):
     """Update a timer (pause, resume, add time, complete, cancel)."""
 
-    def execute(self, timer_id: str, params: "UpdateTimer.Params"):
+    async def execute(self, timer_id: str, params: "UpdateTimer.Params"):
         """
         Update a timer.
 
@@ -28,7 +28,7 @@ class UpdateTimer(Endpoint):
         user: User = self.user
 
         # Find timer
-        timer = self.database.find_by(ActiveTimer, id=timer_id)
+        timer = await self.database.find_by(ActiveTimer, id=timer_id)
         if not timer or timer.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -82,8 +82,8 @@ class UpdateTimer(Endpoint):
         if params.add_seconds and params.add_seconds > 0:
             timer.duration_seconds += params.add_seconds
 
-        self.database.db.commit()
-        self.database.db.refresh(timer)
+        await self.database.db.commit()
+        await self.database.db.refresh(timer)
 
         return success(
             data=UpdateTimer.Response(

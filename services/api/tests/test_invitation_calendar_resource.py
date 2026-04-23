@@ -25,13 +25,13 @@ BOOK_ID = "b0000000-0000-0000-0000-000000000001"
 class TestSendCalendarInvitation:
     """POST /v1/invitations with resource_type='calendar'."""
 
-    def test_send_to_user_id_success(self, client, mock_db, mock_user):
+    def test_send_to_user_id_success(self, client, mock_async_db, mock_user):
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep", owner_id=str(mock_user.id))
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),         # check_resource_permission: load calendar
             MockExecuteResult([owner_membership]), # check_resource_permission: load CalendarUser
             MockExecuteResult([target_user]),      # resolve target_user by id
@@ -56,13 +56,13 @@ class TestSendCalendarInvitation:
         assert data["resource_type"] == "calendar"
         assert data["role_offered"] == "editor"
 
-    def test_send_to_username_success(self, client, mock_db, mock_user):
+    def test_send_to_username_success(self, client, mock_async_db, mock_user):
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep", owner_id=str(mock_user.id))
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([target_user]),
@@ -82,13 +82,13 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 201
 
-    def test_send_to_email_no_account(self, client, mock_db, mock_user):
+    def test_send_to_email_no_account(self, client, mock_async_db, mock_user):
         """Email-only invite (no account exists) creates invitation without to_user_id."""
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep", owner_id=str(mock_user.id))
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([]),                 # email lookup: no user matches
@@ -109,7 +109,7 @@ class TestSendCalendarInvitation:
         assert data["to_email"] == "newperson@example.com"
         assert data["to_user_id"] is None
 
-    def test_send_invalid_role_returns_400(self, client, mock_db, mock_user):
+    def test_send_invalid_role_returns_400(self, client, mock_async_db, mock_user):
         """Calendar invitations only accept role 'editor'."""
         response = client.post(
             "/v1/invitations",
@@ -122,13 +122,13 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_as_editor_forbidden(self, client, mock_db, mock_user):
+    def test_send_as_editor_forbidden(self, client, mock_async_db, mock_user):
         """Editor (non-owner) cannot send calendar invitations."""
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep")
         editor_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([editor_membership]),  # only editor — should 403
         ]
@@ -144,9 +144,9 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 403
 
-    def test_send_calendar_not_found_returns_404(self, client, mock_db, mock_user):
+    def test_send_calendar_not_found_returns_404(self, client, mock_async_db, mock_user):
         """Sending an invite for a non-existent calendar returns 404."""
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),  # check_resource_permission: calendar not found
         ]
         response = client.post(
@@ -160,13 +160,13 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 404
 
-    def test_send_self_invite_returns_400(self, client, mock_db, mock_user):
+    def test_send_self_invite_returns_400(self, client, mock_async_db, mock_user):
         """Owner inviting themselves returns 400 INVITATION_SELF_INVITE."""
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep", owner_id=str(mock_user.id))
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([mock_user]),  # username lookup → self
@@ -182,7 +182,7 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_duplicate_invitation_returns_409(self, client, mock_db, mock_user):
+    def test_send_duplicate_invitation_returns_409(self, client, mock_async_db, mock_user):
         """Duplicate pending invitation returns 409 INVITATION_ALREADY_SENT."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep")
@@ -190,7 +190,7 @@ class TestSendCalendarInvitation:
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
         existing_inv = MockInvitation(status="pending", resource_type="calendar")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([target_user]),
@@ -208,7 +208,7 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 409
 
-    def test_send_already_member_returns_409(self, client, mock_db, mock_user):
+    def test_send_already_member_returns_409(self, client, mock_async_db, mock_user):
         """Inviting an existing active member returns 409 INVITATION_ALREADY_MEMBER."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep")
@@ -218,7 +218,7 @@ class TestSendCalendarInvitation:
         target_membership = MockCalendarUser(
             user_id=target_user.id, calendar_id=CALENDAR_ID, role="editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([target_user]),
@@ -235,7 +235,7 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 409
 
-    def test_send_re_invite_of_archived_member_succeeds(self, client, mock_db, mock_user):
+    def test_send_re_invite_of_archived_member_succeeds(self, client, mock_async_db, mock_user):
         """A previously-removed (archived) member can be re-invited — archived rows are not membership."""
         from datetime import UTC, datetime
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
@@ -246,7 +246,7 @@ class TestSendCalendarInvitation:
         # check_existing_membership filters on archived_at IS NULL — an archived
         # row is invisible, so no MockExecuteResult collision: simulated by an
         # empty result for that step.
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([target_user]),
@@ -269,14 +269,14 @@ class TestSendCalendarInvitation:
         )
         assert response.status_code == 201
 
-    def test_send_includes_resource_name_in_push_data(self, client, mock_db, mock_user):
+    def test_send_includes_resource_name_in_push_data(self, client, mock_async_db, mock_user):
         """The INVITATION_RECEIVED push payload's data dict must include resource_name."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep")
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([target_user]),
@@ -301,14 +301,14 @@ class TestSendCalendarInvitation:
             assert push_arg.data["resource_name"] == "Meal Prep"
             assert push_arg.data["resource_type"] == "calendar"
 
-    def test_rate_limit_applies_across_resource_types(self, client, mock_db, mock_user):
+    def test_rate_limit_applies_across_resource_types(self, client, mock_async_db, mock_user):
         """Rate limit is per-user, not per-resource — calendar invites count toward the same cap."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep")
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
             MockExecuteResult([target_user]),
@@ -336,7 +336,7 @@ class TestSendCalendarInvitation:
 class TestAcceptCalendarInvitation:
     """POST /v1/invitations/{id}/accept on a calendar invitation."""
 
-    def test_accept_calendar_invitation_creates_membership(self, client, mock_db, mock_user):
+    def test_accept_calendar_invitation_creates_membership(self, client, mock_async_db, mock_user):
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Leo", username="leo")
         invitation = MockInvitation(
@@ -351,7 +351,7 @@ class TestAcceptCalendarInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),       # fetch invitation (joinedload)
             MockExecuteResult([]),                 # create_membership: no existing CalendarUser → insert
             MockExecuteResult(["Meal Prep"]),      # get_resource_name
@@ -364,7 +364,7 @@ class TestAcceptCalendarInvitation:
         assert data["resource_type"] == "calendar"
         assert data["role"] == "editor"
 
-    def test_accept_when_already_active_member_is_idempotent(self, client, mock_db, mock_user):
+    def test_accept_when_already_active_member_is_idempotent(self, client, mock_async_db, mock_user):
         """If the row already exists and is active, create_membership is a no-op (idempotent)."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Leo", username="leo")
@@ -387,7 +387,7 @@ class TestAcceptCalendarInvitation:
         )
         original_role = active_row.role
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),    # fetch invitation
             MockExecuteResult([active_row]),    # create_membership: existing active row
             MockExecuteResult(["Meal Prep"]),   # get_resource_name
@@ -398,7 +398,7 @@ class TestAcceptCalendarInvitation:
         assert active_row.role == original_role
         assert active_row.archived_at is None
 
-    def test_accept_re_invite_unarchives_existing_row(self, client, mock_db, mock_user):
+    def test_accept_re_invite_unarchives_existing_row(self, client, mock_async_db, mock_user):
         """Accepting a re-invite when an archived calendar_users row exists un-archives it."""
         from datetime import UTC, datetime
         invitation_id = str(uuid.uuid4())
@@ -421,7 +421,7 @@ class TestAcceptCalendarInvitation:
             archived_at=datetime.now(UTC),
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),       # fetch invitation
             MockExecuteResult([archived_row]),     # create_membership: existing archived row found
             MockExecuteResult(["Meal Prep"]),      # get_resource_name
@@ -443,12 +443,12 @@ class TestAcceptCalendarInvitation:
 class TestCalendarInviteLink:
     """Invite-link endpoints with resource_type='calendar'."""
 
-    def test_create_link_for_calendar_success(self, client, mock_db, mock_user):
+    def test_create_link_for_calendar_success(self, client, mock_async_db, mock_user):
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep", owner_id=str(mock_user.id))
         owner_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([owner_membership]),
         ]
@@ -467,12 +467,12 @@ class TestCalendarInviteLink:
         assert data["deep_link"].startswith("palateful://invite/")
         assert len(data["token"]) > 0
 
-    def test_create_link_as_editor_forbidden(self, client, mock_db, mock_user):
+    def test_create_link_as_editor_forbidden(self, client, mock_async_db, mock_user):
         calendar = MockCalendar(id=CALENDAR_ID, name="Meal Prep")
         editor_membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([calendar]),
             MockExecuteResult([editor_membership]),
         ]
@@ -486,8 +486,8 @@ class TestCalendarInviteLink:
         )
         assert response.status_code == 403
 
-    def test_create_link_calendar_not_found(self, client, mock_db, mock_user):
-        mock_db.db.execute.side_effect = [
+    def test_create_link_calendar_not_found(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),  # check_resource_permission: calendar not found
         ]
         response = client.post(
@@ -500,7 +500,7 @@ class TestCalendarInviteLink:
         )
         assert response.status_code == 404
 
-    def test_preview_calendar_link_returns_name(self, client, mock_db, mock_user):
+    def test_preview_calendar_link_returns_name(self, client, mock_async_db, mock_user):
         token = "cal-token-1234567"
         creator = MockUser(id=str(uuid.uuid4()), name="Leo", username="leo")
         link = MockInviteLink(
@@ -511,7 +511,7 @@ class TestCalendarInviteLink:
             created_by_id=str(creator.id),
             created_by=creator,
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),         # fetch link
             MockExecuteResult([]),             # check_existing_membership → not member
             MockExecuteResult(["Meal Prep"]),  # get_resource_name (calendar branch)
@@ -524,7 +524,7 @@ class TestCalendarInviteLink:
         assert data["role_offered"] == "editor"
         assert data["state"] == "active"
 
-    def test_join_calendar_link_creates_editor_membership(self, client, mock_db, mock_user):
+    def test_join_calendar_link_creates_editor_membership(self, client, mock_async_db, mock_user):
         token = "cal-token-7654321"
         creator = MockUser(id=str(uuid.uuid4()), name="Leo", username="leo")
         link = MockInviteLink(
@@ -535,7 +535,7 @@ class TestCalendarInviteLink:
             created_by_id=str(creator.id),
             created_by=creator,
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),         # fetch link
             MockExecuteResult([]),             # check_existing_membership → not member
             MockExecuteResult([]),             # create_membership: no existing CalendarUser
@@ -557,7 +557,7 @@ class TestCalendarInviteLink:
 class TestClaimCalendarInvitations:
     """POST /v1/invitations/claim picks up calendar invites by email."""
 
-    def test_claim_picks_up_calendar_invitations(self, client, mock_db, mock_user):
+    def test_claim_picks_up_calendar_invitations(self, client, mock_async_db, mock_user):
         """Claim is type-agnostic — calendar email-only invites are claimed alongside others."""
         cal_inv = MockInvitation(
             from_user_id=str(uuid.uuid4()),
@@ -577,7 +577,7 @@ class TestClaimCalendarInvitations:
             role_offered="editor",
             status="pending",
         )
-        mock_db.db.execute.return_value = MockExecuteResult([cal_inv, book_inv])
+        mock_async_db.db.execute.return_value = MockExecuteResult([cal_inv, book_inv])
 
         response = client.post("/v1/invitations/claim")
         assert response.status_code == 200
@@ -594,12 +594,12 @@ class TestClaimCalendarInvitations:
 class TestPushPayloadResourceName:
     """All resource_types now include resource_name in the push data payload."""
 
-    def test_recipe_book_push_includes_resource_name(self, client, mock_db, mock_user):
+    def test_recipe_book_push_includes_resource_name(self, client, mock_async_db, mock_user):
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),

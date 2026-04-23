@@ -6,10 +6,11 @@ from api.v1.invitations.helpers import (
     create_membership,
     get_resource_name,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.activity import Activity
 from utils.models.invitation import Invitation
@@ -21,17 +22,18 @@ from utils.services.push_notification import (
 )
 
 
-class AcceptInvitation(Endpoint):
+class AcceptInvitation(AsyncEndpoint):
     """Accept a received invitation."""
 
-    def execute(self, invitation_id: str):
+    async def execute(self, invitation_id: str):
         user: User = self.user
 
-        invitation = self.db.execute(
+        result = await self.db.execute(
             select(Invitation)
             .options(joinedload(Invitation.from_user))
             .where(Invitation.id == invitation_id)
-        ).scalar_one_or_none()
+        )
+        invitation = result.scalar_one_or_none()
 
         if not invitation:
             raise APIException(
@@ -59,7 +61,7 @@ class AcceptInvitation(Endpoint):
         # Check expiration
         if invitation.expires_at and invitation.expires_at < datetime.now(UTC):
             invitation.status = "expired"
-            self.db.commit()
+            await self.db.commit()
             raise APIException(
                 status_code=410,
                 detail="This invitation has expired",
@@ -67,7 +69,7 @@ class AcceptInvitation(Endpoint):
             )
 
         # Create membership (idempotent)
-        create_membership(
+        await create_membership(
             self.db,
             user_id=user.id,
             resource_type=invitation.resource_type,
@@ -93,18 +95,24 @@ class AcceptInvitation(Endpoint):
             },
         ))
 
-        self.db.commit()
+        await self.db.commit()
 
         # Notify inviter
         from_user = invitation.from_user
-        resource_name = get_resource_name(
+        resource_name = await get_resource_name(
             self.db, invitation.resource_type, invitation.resource_id
         )
         display_name = (
             f"@{user.username}" if user.username else user.name or "Someone"
         )
+        # aam-8 hasn't landed — wrap the sync Firebase call in a
+        # threadpool so the event loop isn't blocked on FCM latency.
+        # Fresh sync Database is created inside the push service when
+        # `db_session` is omitted (can't share the async session across
+        # the threadpool boundary).
         push_service = get_push_service()
-        push_service.send_to_user(
+        await run_in_threadpool(
+            push_service.send_to_user,
             from_user,
             PushNotification(
                 title="Invitation Accepted",
@@ -118,7 +126,6 @@ class AcceptInvitation(Endpoint):
                     "user_id": str(user.id),
                 },
             ),
-            db_session=self.db,
         )
 
         return success(

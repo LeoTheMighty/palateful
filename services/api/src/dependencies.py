@@ -425,3 +425,27 @@ async def get_optional_user(
         # auth; a 500 here would take down client-side perf reporting.
         logger.exception("get_optional_user: auth resolution failed")
         return None
+
+
+async def get_optional_user_async(
+    authorization: Annotated[str | None, Header()] = None,
+    database: AsyncDatabase = Depends(get_async_database),
+) -> User | None:
+    """Async sibling of `get_optional_user` (aam-21).
+
+    Used by the client-latency ingest endpoint after its async conversion.
+    Fail-open semantics are identical: header missing or token invalid →
+    return None so the anonymous path stays reachable.
+    """
+    if authorization is None or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return await get_current_user_async(
+            authorization=authorization,
+            database=database,
+        )
+    except APIException:
+        return None
+    except Exception:
+        logger.exception("get_optional_user_async: auth resolution failed")
+        return None

@@ -2,16 +2,16 @@
 
 from datetime import datetime
 
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.active_timer import ActiveTimer
 from utils.models.user import User
 
 
-class DeleteTimer(Endpoint):
+class DeleteTimer(AsyncEndpoint):
     """Delete (cancel and archive) a timer."""
 
-    def execute(self, timer_id: str):
+    async def execute(self, timer_id: str):
         """
         Delete (cancel and archive) a timer.
 
@@ -24,7 +24,7 @@ class DeleteTimer(Endpoint):
         user: User = self.user
 
         # Find timer
-        timer = self.database.find_by(ActiveTimer, id=timer_id)
+        timer = await self.database.find_by(ActiveTimer, id=timer_id)
         if not timer or timer.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -43,6 +43,6 @@ class DeleteTimer(Endpoint):
         # Cancel and archive
         timer.status = "cancelled"
         timer.archived_at = datetime.utcnow()
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(data={"deleted": True, "id": str(timer_id)})

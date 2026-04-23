@@ -17,19 +17,23 @@ Caller supplies `meal_event_id` XOR `recipe_id`. Both-set is a 422.
 from datetime import datetime
 from decimal import Decimal
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.cooking_log import CookingLog
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
+from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
 
 
-class CreateCookingLog(Endpoint):
+class CreateCookingLog(AsyncEndpoint):
     """Mark a meal_event as cooked (or log a recipe directly)."""
 
-    def execute(self, params: "CreateCookingLog.Params"):
+    async def execute(self, params: "CreateCookingLog.Params"):
         user = self.user
 
         if params.meal_event_id and params.recipe_id:
@@ -49,19 +53,40 @@ class CreateCookingLog(Endpoint):
         scale = params.scale_factor if params.scale_factor is not None else Decimal("1.0")
 
         if params.meal_event_id:
-            event = self.database.find_by(MealEvent, id=params.meal_event_id)
+            event = await self.database.find_by(
+                MealEvent, id=params.meal_event_id
+            )
             if not event:
                 raise APIException(
                     status_code=404,
                     detail=f"Meal event with ID '{params.meal_event_id}' not found",
                     code=ErrorCode.MEAL_EVENT_NOT_FOUND,
                 )
-            require_calendar_access(
+            await require_calendar_access_async(
                 str(event.calendar_id), user, self.database
             )
 
             if event.meal_id is not None:
-                # Meal-event fan-out: 1 parent + N children.
+                # Meal-event fan-out: 1 parent + N children. Eager-load
+                # `meal.components -> recipe` so the children loop walks
+                # the mapping without triggering MissingGreenlet.
+                # Lazy-load audit: access chain is `meal.components[i].recipe`
+                # — covered by `selectinload(Meal.components).selectinload(
+                # MealRecipe.recipe)` (Meal.components is a list of
+                # MealRecipe rows — the model name tracks the join
+                # table, not the UX term "component").
+                meal_stmt = (
+                    select(Meal)
+                    .options(
+                        selectinload(Meal.components).selectinload(
+                            MealRecipe.recipe
+                        )
+                    )
+                    .where(Meal.id == event.meal_id)
+                )
+                meal_result = await self.db.execute(meal_stmt)
+                meal = meal_result.scalars().first()
+
                 parent = CookingLog(
                     meal_id=event.meal_id,
                     recipe_id=None,
@@ -70,11 +95,9 @@ class CreateCookingLog(Endpoint):
                     scale_factor=scale,
                     notes=params.notes,
                 )
-                self.database.create(parent)
-                self.database.db.refresh(parent)
+                await self.database.create(parent)
 
                 children: list[CookingLog] = []
-                meal = event.meal
                 if meal is not None:
                     for component in meal.components:
                         recipe = component.recipe
@@ -88,11 +111,10 @@ class CreateCookingLog(Endpoint):
                             scale_factor=scale,
                             notes=None,
                         )
-                        self.database.create(child)
-                        self.database.db.refresh(child)
+                        await self.database.create(child)
                         children.append(child)
 
-                self.database.db.commit()
+                await self.database.db.commit()
                 return success(
                     data=CreateCookingLog.Response(
                         parent_log_id=str(parent.id),
@@ -119,9 +141,8 @@ class CreateCookingLog(Endpoint):
                 scale_factor=scale,
                 notes=params.notes,
             )
-            self.database.create(log)
-            self.database.db.refresh(log)
-            self.database.db.commit()
+            await self.database.create(log)
+            await self.database.db.commit()
             return success(
                 data=CreateCookingLog.Response(
                     parent_log_id=str(log.id),
@@ -134,7 +155,7 @@ class CreateCookingLog(Endpoint):
             )
 
         # Direct recipe path (no event).
-        recipe = self.database.find_by(Recipe, id=params.recipe_id)
+        recipe = await self.database.find_by(Recipe, id=params.recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -150,9 +171,8 @@ class CreateCookingLog(Endpoint):
             scale_factor=scale,
             notes=params.notes,
         )
-        self.database.create(log)
-        self.database.db.refresh(log)
-        self.database.db.commit()
+        await self.database.create(log)
+        await self.database.db.commit()
         return success(
             data=CreateCookingLog.Response(
                 parent_log_id=str(log.id),

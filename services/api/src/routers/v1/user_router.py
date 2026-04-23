@@ -1,4 +1,11 @@
-"""User endpoints router."""
+"""User endpoints router.
+
+aam-21 partial flip: `feedback`, `client-errors`, and
+`notification-preferences` endpoints now depend on the async auth +
+DB deps and dispatch through `await Foo.call(...)`. The rest of the
+router (profile, push-tokens, search, onboarding, export) stays sync
+— aam-19 owns that conversion.
+"""
 
 from api.v1.user import (
     CheckUsername,
@@ -17,10 +24,16 @@ from api.v1.user import (
     UpdateMe,
     UpdateNotificationPreferences,
 )
-from dependencies import get_current_user, get_database
+from dependencies import (
+    get_async_database,
+    get_current_user,
+    get_current_user_async,
+    get_database,
+)
 from fastapi import APIRouter, Depends, Header, Query
 from schemas.user import OnboardingRequest
 from utils.models.user import User
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 
 user_router = APIRouter(prefix="/users", tags=["users"])
@@ -106,30 +119,38 @@ async def unregister_push_token(
 @user_router.post("/me/client-errors")
 async def record_client_error(
     params: RecordClientError.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
-    """Record a client-side error/breadcrumb as an error_logs row with service='client'."""
-    return RecordClientError.call(params=params, user=user, database=database)
+    """Record a client-side error/breadcrumb as an error_logs row with service='client'.
+
+    aam-21 hot-path flip: baseline server-side p95 was 5931 ms; target
+    is < 200 ms once the async write path settles. The write itself is
+    a single INSERT — the latency came from event-loop contention,
+    not query cost.
+    """
+    return await RecordClientError.call(
+        params=params, user=user, database=database
+    )
 
 
 @user_router.get("/me/notification-preferences")
 async def get_notification_preferences(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get notification preferences."""
-    return GetNotificationPreferences.call(user=user, database=database)
+    return await GetNotificationPreferences.call(user=user, database=database)
 
 
 @user_router.put("/me/notification-preferences")
 async def update_notification_preferences(
     params: UpdateNotificationPreferences.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update notification preferences."""
-    return UpdateNotificationPreferences.call(
+    return await UpdateNotificationPreferences.call(
         params=params, user=user, database=database
     )
 
@@ -196,8 +217,10 @@ async def search_users(
 @user_router.post("/me/feedback")
 async def create_user_feedback(
     params: CreateUserFeedback.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Submit user feedback to the admin inbox."""
-    return CreateUserFeedback.call(params=params, user=user, database=database)
+    return await CreateUserFeedback.call(
+        params=params, user=user, database=database
+    )

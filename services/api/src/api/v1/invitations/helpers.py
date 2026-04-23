@@ -1,9 +1,14 @@
-"""Shared helpers for invitation and invite link endpoints."""
+"""Shared helpers for invitation and invite link endpoints.
+
+aam-21: helpers are now async. Every callsite passes an
+`AsyncSession` and awaits — call chain on the event loop, no
+sync DB work in-handler.
+"""
 
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.models.calendar import Calendar
@@ -46,21 +51,22 @@ def validate_resource_and_role(resource_type: str, role_offered: str) -> None:
         )
 
 
-def check_resource_permission(
-    db: Session,
+async def check_resource_permission(
+    db: AsyncSession,
     user_id: uuid.UUID,
     resource_type: str,
     resource_id: uuid.UUID,
 ) -> None:
     """Check that user has owner/editor permission on the resource. Raises on failure."""
     if resource_type == "recipe_book":
-        membership = db.execute(
+        result = await db.execute(
             select(RecipeBookUser).where(
                 RecipeBookUser.user_id == user_id,
                 RecipeBookUser.recipe_book_id == resource_id,
                 RecipeBookUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        membership = result.scalar_one_or_none()
         if not membership or membership.role not in ("owner", "editor"):
             raise APIException(
                 status_code=403,
@@ -69,13 +75,14 @@ def check_resource_permission(
             )
 
     elif resource_type == "pantry":
-        membership = db.execute(
+        result = await db.execute(
             select(PantryUser).where(
                 PantryUser.user_id == user_id,
                 PantryUser.pantry_id == resource_id,
                 PantryUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        membership = result.scalar_one_or_none()
         if not membership or membership.role not in ("owner", "editor"):
             raise APIException(
                 status_code=403,
@@ -84,12 +91,13 @@ def check_resource_permission(
             )
 
     elif resource_type == "shopping_list":
-        shopping_list = db.execute(
+        result = await db.execute(
             select(ShoppingList).where(
                 ShoppingList.id == resource_id,
                 ShoppingList.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        shopping_list = result.scalar_one_or_none()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -97,13 +105,14 @@ def check_resource_permission(
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
         if shopping_list.owner_id != user_id:
-            membership = db.execute(
+            result = await db.execute(
                 select(ShoppingListUser).where(
                     ShoppingListUser.user_id == user_id,
                     ShoppingListUser.shopping_list_id == resource_id,
                     ShoppingListUser.archived_at.is_(None),
                 )
-            ).scalar_one_or_none()
+            )
+            membership = result.scalar_one_or_none()
             if not membership or membership.role not in ("owner", "editor"):
                 raise APIException(
                     status_code=403,
@@ -112,12 +121,13 @@ def check_resource_permission(
                 )
 
     elif resource_type == "meal_event":
-        meal_event = db.execute(
+        result = await db.execute(
             select(MealEvent).where(
                 MealEvent.id == resource_id,
                 MealEvent.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        meal_event = result.scalar_one_or_none()
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -125,13 +135,14 @@ def check_resource_permission(
                 code=ErrorCode.MEAL_EVENT_NOT_FOUND,
             )
         if meal_event.owner_id != user_id:
-            participant = db.execute(
+            result = await db.execute(
                 select(MealEventParticipant).where(
                     MealEventParticipant.user_id == user_id,
                     MealEventParticipant.meal_event_id == resource_id,
                     MealEventParticipant.archived_at.is_(None),
                 )
-            ).scalar_one_or_none()
+            )
+            participant = result.scalar_one_or_none()
             if not participant or participant.role not in ("host", "cohost"):
                 raise APIException(
                     status_code=403,
@@ -140,25 +151,27 @@ def check_resource_permission(
                 )
 
     elif resource_type == "calendar":
-        calendar = db.execute(
+        result = await db.execute(
             select(Calendar).where(
                 Calendar.id == resource_id,
                 Calendar.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        calendar = result.scalar_one_or_none()
         if not calendar:
             raise APIException(
                 status_code=404,
                 detail="Calendar not found",
                 code=ErrorCode.CALENDAR_NOT_FOUND,
             )
-        membership = db.execute(
+        result = await db.execute(
             select(CalendarUser).where(
                 CalendarUser.user_id == user_id,
                 CalendarUser.calendar_id == resource_id,
                 CalendarUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        membership = result.scalar_one_or_none()
         if not membership or membership.role != "owner":
             raise APIException(
                 status_code=403,
@@ -169,73 +182,80 @@ def check_resource_permission(
         pass
 
 
-def check_existing_membership(
-    db: Session,
+async def check_existing_membership(
+    db: AsyncSession,
     user_id: uuid.UUID,
     resource_type: str,
     resource_id: uuid.UUID,
 ) -> bool:
     """Return True if user is already an active member of the resource."""
     if resource_type == "recipe_book":
-        return db.execute(
+        result = await db.execute(
             select(RecipeBookUser).where(
                 RecipeBookUser.user_id == user_id,
                 RecipeBookUser.recipe_book_id == resource_id,
                 RecipeBookUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none() is not None
+        )
+        return result.scalar_one_or_none() is not None
 
     elif resource_type == "pantry":
-        return db.execute(
+        result = await db.execute(
             select(PantryUser).where(
                 PantryUser.user_id == user_id,
                 PantryUser.pantry_id == resource_id,
                 PantryUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none() is not None
+        )
+        return result.scalar_one_or_none() is not None
 
     elif resource_type == "shopping_list":
-        sl = db.execute(
+        result = await db.execute(
             select(ShoppingList).where(ShoppingList.id == resource_id)
-        ).scalar_one_or_none()
+        )
+        sl = result.scalar_one_or_none()
         if sl and sl.owner_id == user_id:
             return True
-        return db.execute(
+        result = await db.execute(
             select(ShoppingListUser).where(
                 ShoppingListUser.user_id == user_id,
                 ShoppingListUser.shopping_list_id == resource_id,
                 ShoppingListUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none() is not None
+        )
+        return result.scalar_one_or_none() is not None
 
     elif resource_type == "meal_event":
-        me = db.execute(
+        result = await db.execute(
             select(MealEvent).where(MealEvent.id == resource_id)
-        ).scalar_one_or_none()
+        )
+        me = result.scalar_one_or_none()
         if me and me.owner_id == user_id:
             return True
-        return db.execute(
+        result = await db.execute(
             select(MealEventParticipant).where(
                 MealEventParticipant.user_id == user_id,
                 MealEventParticipant.meal_event_id == resource_id,
                 MealEventParticipant.archived_at.is_(None),
             )
-        ).scalar_one_or_none() is not None
+        )
+        return result.scalar_one_or_none() is not None
 
     elif resource_type == "calendar":
-        return db.execute(
+        result = await db.execute(
             select(CalendarUser).where(
                 CalendarUser.user_id == user_id,
                 CalendarUser.calendar_id == resource_id,
                 CalendarUser.archived_at.is_(None),
             )
-        ).scalar_one_or_none() is not None
+        )
+        return result.scalar_one_or_none() is not None
 
     return False  # pragma: no cover — resource_type validated before call
 
 
-def create_membership(
-    db: Session,
+async def create_membership(
+    db: AsyncSession,
     user_id: uuid.UUID,
     resource_type: str,
     resource_id: uuid.UUID,
@@ -248,12 +268,13 @@ def create_membership(
     (does nothing if already an active member).
     """
     if resource_type == "recipe_book":
-        existing = db.execute(
+        result = await db.execute(
             select(RecipeBookUser).where(
                 RecipeBookUser.user_id == user_id,
                 RecipeBookUser.recipe_book_id == resource_id,
             )
-        ).scalar_one_or_none()
+        )
+        existing = result.scalar_one_or_none()
         if existing:
             if existing.archived_at is not None:
                 existing.archived_at = None
@@ -269,12 +290,13 @@ def create_membership(
             ))
 
     elif resource_type == "pantry":
-        existing = db.execute(
+        result = await db.execute(
             select(PantryUser).where(
                 PantryUser.user_id == user_id,
                 PantryUser.pantry_id == resource_id,
             )
-        ).scalar_one_or_none()
+        )
+        existing = result.scalar_one_or_none()
         if existing:
             if existing.archived_at is not None:
                 existing.archived_at = None
@@ -289,12 +311,13 @@ def create_membership(
             ))
 
     elif resource_type == "shopping_list":
-        existing = db.execute(
+        result = await db.execute(
             select(ShoppingListUser).where(
                 ShoppingListUser.user_id == user_id,
                 ShoppingListUser.shopping_list_id == resource_id,
             )
-        ).scalar_one_or_none()
+        )
+        existing = result.scalar_one_or_none()
         if existing:
             if existing.archived_at is not None:
                 existing.archived_at = None
@@ -308,19 +331,21 @@ def create_membership(
                 invited_by_id=invited_by_id,
             ))
         # Mark shopping list as shared
-        shopping_list = db.execute(
+        result = await db.execute(
             select(ShoppingList).where(ShoppingList.id == resource_id)
-        ).scalar_one_or_none()
+        )
+        shopping_list = result.scalar_one_or_none()
         if shopping_list and not shopping_list.is_shared:
             shopping_list.is_shared = True
 
     elif resource_type == "meal_event":
-        existing = db.execute(
+        result = await db.execute(
             select(MealEventParticipant).where(
                 MealEventParticipant.user_id == user_id,
                 MealEventParticipant.meal_event_id == resource_id,
             )
-        ).scalar_one_or_none()
+        )
+        existing = result.scalar_one_or_none()
         if existing:
             if existing.archived_at is not None:
                 existing.archived_at = None
@@ -337,12 +362,13 @@ def create_membership(
             ))
 
     elif resource_type == "calendar":
-        existing = db.execute(
+        result = await db.execute(
             select(CalendarUser).where(
                 CalendarUser.user_id == user_id,
                 CalendarUser.calendar_id == resource_id,
             )
-        ).scalar_one_or_none()
+        )
+        existing = result.scalar_one_or_none()
         if existing:
             if existing.archived_at is not None:
                 existing.archived_at = None
@@ -358,43 +384,43 @@ def create_membership(
     else:  # pragma: no cover — resource_type validated before call
         pass
 
-    db.flush()
+    await db.flush()
 
 
-def get_resource_name(
-    db: Session,
+async def get_resource_name(
+    db: AsyncSession,
     resource_type: str,
     resource_id: uuid.UUID,
 ) -> str | None:
     """Return the display name for a resource."""
     if resource_type == "recipe_book":
-        rb = db.execute(
+        result = await db.execute(
             select(RecipeBook.name).where(RecipeBook.id == resource_id)
-        ).scalar_one_or_none()
-        return rb
+        )
+        return result.scalar_one_or_none()
 
     elif resource_type == "pantry":
-        p = db.execute(
+        result = await db.execute(
             select(Pantry.name).where(Pantry.id == resource_id)
-        ).scalar_one_or_none()
-        return p
+        )
+        return result.scalar_one_or_none()
 
     elif resource_type == "shopping_list":
-        sl = db.execute(
+        result = await db.execute(
             select(ShoppingList.name).where(ShoppingList.id == resource_id)
-        ).scalar_one_or_none()
-        return sl or "Shopping List"
+        )
+        return result.scalar_one_or_none() or "Shopping List"
 
     elif resource_type == "meal_event":
-        me = db.execute(
+        result = await db.execute(
             select(MealEvent.title).where(MealEvent.id == resource_id)
-        ).scalar_one_or_none()
-        return me
+        )
+        return result.scalar_one_or_none()
 
     elif resource_type == "calendar":
-        cal = db.execute(
+        result = await db.execute(
             select(Calendar.name).where(Calendar.id == resource_id)
-        ).scalar_one_or_none()
-        return cal
+        )
+        return result.scalar_one_or_none()
 
     return None

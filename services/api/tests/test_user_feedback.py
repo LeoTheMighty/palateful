@@ -33,7 +33,7 @@ def mock_send_task():
 
 class TestCreateFeedbackHappyPath:
     def test_minimal_valid_body_persists_and_enqueues(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -46,7 +46,7 @@ class TestCreateFeedbackHappyPath:
         assert data["status"] == "unread"
 
         # DB write happened
-        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        added = [c.args[0] for c in mock_async_db.db.add.call_args_list]
         feedback_rows = [
             r for r in added if type(r).__name__ == "UserFeedback"
         ]
@@ -67,7 +67,7 @@ class TestCreateFeedbackHappyPath:
         assert call_kwargs["args"] == [str(feedback_rows[0].id)]
 
     def test_all_optional_fields_populated(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         recipe_id = str(uuid.uuid4())
         response = client.post(
@@ -85,7 +85,7 @@ class TestCreateFeedbackHappyPath:
         )
 
         assert response.status_code == 201
-        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        added = [c.args[0] for c in mock_async_db.db.add.call_args_list]
         feedback_rows = [
             r for r in added if type(r).__name__ == "UserFeedback"
         ]
@@ -100,7 +100,7 @@ class TestCreateFeedbackHappyPath:
         }
 
     def test_enqueue_failure_does_not_break_response(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         """If the Celery broker is flaky, the user still gets 201 —
         the feedback row is durable, fan-out is best-effort."""
@@ -119,7 +119,7 @@ class TestCreateFeedbackHappyPath:
 
 
 class TestCreateFeedbackValidation:
-    def test_empty_body_rejected(self, client, mock_user, mock_db, mock_send_task):
+    def test_empty_body_rejected(self, client, mock_user, mock_async_db, mock_send_task):
         response = client.post(
             "/v1/users/me/feedback",
             json={"body": ""},
@@ -128,7 +128,7 @@ class TestCreateFeedbackValidation:
         mock_send_task.assert_not_called()
 
     def test_whitespace_only_body_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -137,7 +137,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 422
 
     def test_body_over_4000_chars_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -146,7 +146,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 422
 
     def test_body_at_exact_4000_chars_accepted(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -155,7 +155,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 201
 
     def test_invalid_category_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -164,7 +164,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 422
 
     def test_invalid_platform_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -176,7 +176,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 422
 
     def test_unknown_context_key_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         """The tight context schema must reject unknown keys — NFR52
         plus the 'users submit knowing admins see this' design
@@ -194,7 +194,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 422
 
     def test_unknown_top_level_key_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -203,7 +203,7 @@ class TestCreateFeedbackValidation:
         assert response.status_code == 422
 
     def test_invalid_recipe_id_rejected(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         response = client.post(
             "/v1/users/me/feedback",
@@ -222,7 +222,7 @@ class TestCreateFeedbackValidation:
 
 class TestCreateFeedbackAuth:
     def test_unauthenticated_returns_401(
-        self, unauthed_client, mock_db, mock_send_task,
+        self, unauthed_client, mock_async_db, mock_send_task,
     ):
         """Submission requires auth — prevents drive-by spam."""
         response = unauthed_client.post(
@@ -243,7 +243,7 @@ class TestCreateFeedbackAuth:
 
 class TestCreateFeedbackRateLimit:
     def test_11th_request_returns_429_and_does_not_enqueue(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         for _ in range(10):
             resp = client.post(
@@ -252,7 +252,7 @@ class TestCreateFeedbackRateLimit:
             )
             assert resp.status_code == 201
 
-        pre_add_count = len(mock_db.db.add.call_args_list)
+        pre_add_count = len(mock_async_db.db.add.call_args_list)
         pre_send_count = mock_send_task.call_count
 
         # 11th request — over limit
@@ -266,11 +266,11 @@ class TestCreateFeedbackRateLimit:
         assert body["data"]["retry_after_s"] >= 1
 
         # No new row, no new task dispatched
-        assert len(mock_db.db.add.call_args_list) == pre_add_count
+        assert len(mock_async_db.db.add.call_args_list) == pre_add_count
         assert mock_send_task.call_count == pre_send_count
 
     def test_rate_limit_keyed_per_user(
-        self, client, mock_user, mock_db, mock_send_task,
+        self, client, mock_user, mock_async_db, mock_send_task,
     ):
         """One user over the limit does not affect another user."""
         other_user = MagicMock(id=uuid.uuid4())

@@ -25,9 +25,9 @@ Validation:
   silly-large timers are rejected at the Pydantic layer.
 
 Insert:
-- Synchronous bulk insert via `Session.bulk_insert_mappings`. Load math
-  in the epic (125k rows/day, p95 < 100 ms) is comfortably inside single
-  round-trip bounds.
+- Async bulk insert via `session.execute(insert(...), rows)` — aam-21
+  flipped the handler to `AsyncEndpoint` so the write no longer blocks
+  the event loop. Target p95 < 200 ms (baseline: 5931 ms sync).
 
 Response: `{accepted: int}` — number of rows actually inserted.
 """
@@ -41,7 +41,8 @@ from typing import Literal
 
 from api.v1.client_latency.route_redaction import is_route_redacted
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from utils.api.endpoint import Endpoint, failure, success
+from sqlalchemy import insert
+from utils.api.endpoint import AsyncEndpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.models.client_latency import ClientLatency
 
@@ -161,10 +162,10 @@ class ClientLatencyEvent(BaseModel):
         return v
 
 
-class IngestClientLatencies(Endpoint):
+class IngestClientLatencies(AsyncEndpoint):
     """Bulk-ingest client-emitted latency samples."""
 
-    def execute(self, params: IngestClientLatencies.Params):
+    async def execute(self, params: IngestClientLatencies.Params):
         events = params.events
 
         # Over-cap → 413. Must reject BEFORE rate-limit so a client
@@ -242,8 +243,12 @@ class IngestClientLatencies(Endpoint):
             for ev in events
         ]
 
-        self.db.bulk_insert_mappings(ClientLatency, rows)
-        self.db.commit()
+        # Async bulk insert: single round-trip executemany on the
+        # primary statement. `bulk_insert_mappings` is a sync-session-only
+        # helper, so the async path goes through `insert(...).values(...)`
+        # with a list of row dicts — same effect, same count.
+        await self.db.execute(insert(ClientLatency), rows)
+        await self.db.commit()
 
         return success(
             data=IngestClientLatencies.Response(accepted=len(rows))

@@ -9,26 +9,27 @@ from api.v1.invitations.helpers import (
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.invite_link import InviteLink
 from utils.models.user import User
 
 
-class PreviewInviteLink(Endpoint):
+class PreviewInviteLink(AsyncEndpoint):
     """Preview invite link metadata and state."""
 
-    def execute(self, token: str):
+    async def execute(self, token: str):
         user: User = self.user
 
-        invite_link = self.db.execute(
+        result = await self.db.execute(
             select(InviteLink)
             .options(joinedload(InviteLink.created_by))
             .where(
                 InviteLink.token == token,
                 InviteLink.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        invite_link = result.scalar_one_or_none()
 
         if not invite_link:
             raise APIException(
@@ -45,14 +46,14 @@ class PreviewInviteLink(Endpoint):
             state = "expired"
         elif invite_link.max_uses and invite_link.use_count >= invite_link.max_uses:
             state = "full"
-        elif check_existing_membership(
+        elif await check_existing_membership(
             self.db, user.id, invite_link.resource_type, invite_link.resource_id
         ):
             state = "already_member"
         else:
             state = "active"
 
-        resource_name = get_resource_name(
+        resource_name = await get_resource_name(
             self.db, invite_link.resource_type, invite_link.resource_id
         )
         created_by = invite_link.created_by

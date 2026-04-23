@@ -22,13 +22,13 @@ from __future__ import annotations
 
 from config import settings
 from pydantic import BaseModel, Field
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 
 
-class GetPerfFlags(Endpoint):
+class GetPerfFlags(AsyncEndpoint):
     """Emit the current client-latency kill-switch state."""
 
-    def execute(self):
+    async def execute(self):
         return success(
             data=GetPerfFlags.Response(
                 ingest_enabled=settings.client_latency_ingest_enabled,

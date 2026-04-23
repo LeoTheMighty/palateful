@@ -6,19 +6,19 @@ from api.v1.invitations.helpers import get_resource_name
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.invitation import Invitation
 from utils.models.user import User
 
 
-class ListReceivedInvitations(Endpoint):
+class ListReceivedInvitations(AsyncEndpoint):
     """List pending invitations received by the current user."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
         now = datetime.now(UTC)
 
-        invitations = self.db.execute(
+        result = await self.db.execute(
             select(Invitation)
             .options(joinedload(Invitation.from_user))
             .where(
@@ -27,7 +27,8 @@ class ListReceivedInvitations(Endpoint):
                 Invitation.archived_at.is_(None),
             )
             .order_by(Invitation.created_at.desc())
-        ).scalars().unique().all()
+        )
+        invitations = result.scalars().unique().all()
 
         items = []
         for inv in invitations:
@@ -35,7 +36,7 @@ class ListReceivedInvitations(Endpoint):
             if inv.expires_at and inv.expires_at < now:
                 continue
 
-            resource_name = get_resource_name(
+            resource_name = await get_resource_name(
                 self.db, inv.resource_type, inv.resource_id
             )
             from_user = inv.from_user

@@ -3,21 +3,22 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.invitation import Invitation
 from utils.models.user import User
 
 
-class DeclineInvitation(Endpoint):
+class DeclineInvitation(AsyncEndpoint):
     """Decline a received invitation."""
 
-    def execute(self, invitation_id: str):
+    async def execute(self, invitation_id: str):
         user: User = self.user
 
-        invitation = self.db.execute(
+        result = await self.db.execute(
             select(Invitation).where(Invitation.id == invitation_id)
-        ).scalar_one_or_none()
+        )
+        invitation = result.scalar_one_or_none()
 
         if not invitation:
             raise APIException(
@@ -42,6 +43,6 @@ class DeclineInvitation(Endpoint):
 
         invitation.status = "declined"
         invitation.responded_at = datetime.now(UTC)
-        self.db.commit()
+        await self.db.commit()
 
         return success()

@@ -1344,7 +1344,7 @@ development_status:
   aam-8-firebase-threadpool-wrap: backlog
   aam-9-boto3-threadpool-wrap: backlog
   # Phase 3 — Per-domain conversions (parallel after Phase 1)
-  aam-10-meal-domain-async: backlog
+  aam-10-meal-domain-async: done
   aam-11-recipe-book-domain-async: backlog
   aam-12-recipe-domain-async: backlog
   aam-13-shopping-list-domain-async: backlog
@@ -1355,7 +1355,7 @@ development_status:
   aam-18-import-job-domain-async: backlog
   aam-19-user-profile-push-tokens-async: backlog
   aam-20-admin-domain-async: backlog
-  aam-21-misc-small-routers-async: backlog
+  aam-21-misc-small-routers-async: done
   # Phase 4 — Middleware + lifespan
   aam-22-error-tracking-middleware-async: backlog
   aam-23-lifespan-and-pre-warm: backlog

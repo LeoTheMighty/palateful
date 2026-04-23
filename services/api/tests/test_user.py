@@ -1235,10 +1235,13 @@ class TestSetDefaultRecipeBook:
 
 
 class TestRecordClientError:
-    """Tests for POST /v1/users/me/client-errors."""
+    """Tests for POST /v1/users/me/client-errors.
 
-    def test_minimal_payload_writes_row(self, client, mock_user, mock_db):
-        mock_db.db.commit = MagicMock()
+    aam-21: handler is now `AsyncEndpoint`; writes land on
+    `mock_async_db.db.add` + `mock_async_db.db.commit` (AsyncMock).
+    """
+
+    def test_minimal_payload_writes_row(self, client, mock_user, mock_async_db):
         response = client.post(
             "/v1/users/me/client-errors",
             json={
@@ -1250,7 +1253,7 @@ class TestRecordClientError:
         data = response.json()
         assert data["recorded"] is True
 
-        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        added = [c.args[0] for c in mock_async_db.db.add.call_args_list]
         rows = [r for r in added if type(r).__name__ == "ErrorLog"]
         assert len(rows) == 1
         row = rows[0]
@@ -1264,9 +1267,8 @@ class TestRecordClientError:
         assert row.status_code is None
 
     def test_area_operation_extras_serialised_to_stack_trace(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
-        mock_db.db.commit = MagicMock()
         response = client.post(
             "/v1/users/me/client-errors",
             json={
@@ -1280,7 +1282,7 @@ class TestRecordClientError:
         assert response.status_code == 200
 
         rows = [
-            c.args[0] for c in mock_db.db.add.call_args_list
+            c.args[0] for c in mock_async_db.db.add.call_args_list
             if type(c.args[0]).__name__ == "ErrorLog"
         ]
         assert len(rows) == 1
@@ -1294,10 +1296,9 @@ class TestRecordClientError:
         assert envelope["extras"]["auth_status"] == "authorized"
 
     def test_dio_extras_hoisted_to_first_class_columns(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
         """http.method and http.path in extras land as method/path for rollups."""
-        mock_db.db.commit = MagicMock()
         response = client.post(
             "/v1/users/me/client-errors",
             json={
@@ -1316,7 +1317,7 @@ class TestRecordClientError:
         assert response.status_code == 200
 
         rows = [
-            c.args[0] for c in mock_db.db.add.call_args_list
+            c.args[0] for c in mock_async_db.db.add.call_args_list
             if type(c.args[0]).__name__ == "ErrorLog"
         ]
         assert len(rows) == 1
@@ -1325,14 +1326,14 @@ class TestRecordClientError:
         assert row.path == "/v1/users/me/push-tokens"
         assert row.status_code == 500
 
-    def test_missing_required_fields_rejected(self, client, mock_user, mock_db):
+    def test_missing_required_fields_rejected(self, client, mock_user, mock_async_db):
         response = client.post(
             "/v1/users/me/client-errors",
             json={"error_message": "missing error_type"},
         )
         assert response.status_code == 422
 
-    def test_extra_fields_rejected(self, client, mock_user, mock_db):
+    def test_extra_fields_rejected(self, client, mock_user, mock_async_db):
         """extra='forbid' blocks unknown keys (no smuggling arbitrary columns)."""
         response = client.post(
             "/v1/users/me/client-errors",
@@ -1344,9 +1345,8 @@ class TestRecordClientError:
         )
         assert response.status_code == 422
 
-    def test_long_fields_truncated(self, client, mock_user, mock_db):
+    def test_long_fields_truncated(self, client, mock_user, mock_async_db):
         """Fields exceeding Pydantic max_length return 422 (enforced by caller)."""
-        mock_db.db.commit = MagicMock()
         # error_type over 120 chars → 422 at validation
         response = client.post(
             "/v1/users/me/client-errors",
@@ -1354,25 +1354,23 @@ class TestRecordClientError:
         )
         assert response.status_code == 422
 
-    def test_empty_extras_no_stack_trace(self, client, mock_user, mock_db):
+    def test_empty_extras_no_stack_trace(self, client, mock_user, mock_async_db):
         """No area/operation/extras → stack_trace stays None."""
-        mock_db.db.commit = MagicMock()
         response = client.post(
             "/v1/users/me/client-errors",
             json={"error_type": "ClientLog", "error_message": "hello"},
         )
         assert response.status_code == 200
         rows = [
-            c.args[0] for c in mock_db.db.add.call_args_list
+            c.args[0] for c in mock_async_db.db.add.call_args_list
             if type(c.args[0]).__name__ == "ErrorLog"
         ]
         assert rows[0].stack_trace is None
 
     def test_long_error_message_truncated_to_limit(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
         """Valid-but-at-limit message stored, over-limit rejected at validation."""
-        mock_db.db.commit = MagicMock()
         # 2000 chars is the max allowed — should succeed.
         at_limit = "a" * 2000
         response = client.post(
@@ -1381,15 +1379,14 @@ class TestRecordClientError:
         )
         assert response.status_code == 200
         rows = [
-            c.args[0] for c in mock_db.db.add.call_args_list
+            c.args[0] for c in mock_async_db.db.add.call_args_list
             if type(c.args[0]).__name__ == "ErrorLog"
         ]
         assert rows[0].error_message == at_limit
         assert len(rows[0].error_message) == 2000
 
-    def test_non_string_http_extras_ignored(self, client, mock_user, mock_db):
+    def test_non_string_http_extras_ignored(self, client, mock_user, mock_async_db):
         """Garbage types in http.method/http.path don't populate method/path."""
-        mock_db.db.commit = MagicMock()
         response = client.post(
             "/v1/users/me/client-errors",
             json={
@@ -1400,7 +1397,7 @@ class TestRecordClientError:
         )
         assert response.status_code == 200
         rows = [
-            c.args[0] for c in mock_db.db.add.call_args_list
+            c.args[0] for c in mock_async_db.db.add.call_args_list
             if type(c.args[0]).__name__ == "ErrorLog"
         ]
         assert rows[0].method is None

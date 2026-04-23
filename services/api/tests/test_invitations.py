@@ -60,16 +60,16 @@ class MockPantry(MockModel):
 class TestListReceivedInvitations:
     """Tests for GET /v1/invitations."""
 
-    def test_list_received_invitations_empty(self, client, mock_db, mock_user):
+    def test_list_received_invitations_empty(self, client, mock_async_db, mock_user):
         """Listing returns empty list when no invitations exist."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/invitations")
         assert response.status_code == 200
         data = response.json()
         assert data == []
 
-    def test_list_returns_invitation_items(self, client, mock_db, mock_user):
+    def test_list_returns_invitation_items(self, client, mock_async_db, mock_user):
         """GET /v1/invitations returns invitation items with from_user info."""
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice", username="alice")
         invitation = MockInvitation(
@@ -82,7 +82,7 @@ class TestListReceivedInvitations:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),   # fetch invitations list
             MockExecuteResult(["My Book"]),    # get_resource_name
         ]
@@ -95,7 +95,7 @@ class TestListReceivedInvitations:
         assert data[0]["from_user"]["name"] == "Alice"
         assert data[0]["resource_name"] == "My Book"
 
-    def test_list_received_skips_expired(self, client, mock_db, mock_user):
+    def test_list_received_skips_expired(self, client, mock_async_db, mock_user):
         """Expired invitations are filtered out of the received list."""
         from_user = MockUser(id=str(uuid.uuid4()), name="Bob", username="bob")
         expired_inv = MockInvitation(
@@ -108,7 +108,7 @@ class TestListReceivedInvitations:
         )
         expired_inv.from_user = from_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([expired_inv]),  # fetch invitations list
         ]
 
@@ -125,15 +125,15 @@ class TestListReceivedInvitations:
 class TestListSentInvitations:
     """Tests for GET /v1/invitations/sent."""
 
-    def test_list_sent_invitations_empty(self, client, mock_db, mock_user):
+    def test_list_sent_invitations_empty(self, client, mock_async_db, mock_user):
         """Empty sent list returns 200 with no items."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/invitations/sent")
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_list_sent_with_to_user(self, client, mock_db, mock_user):
+    def test_list_sent_with_to_user(self, client, mock_async_db, mock_user):
         """Sent invitation with a resolved to_user returns user info."""
         to_user = MockUser(
             id=str(uuid.uuid4()), name="Jane", username="jane", picture="pic.jpg"
@@ -149,7 +149,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = to_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),  # fetch sent invitations
             MockExecuteResult(["My Book"]),   # get_resource_name (recipe_book)
         ]
@@ -163,7 +163,7 @@ class TestListSentInvitations:
         assert data[0]["resource_name"] == "My Book"
         assert data[0]["message"] == "Please join!"
 
-    def test_list_sent_without_to_user(self, client, mock_db, mock_user):
+    def test_list_sent_without_to_user(self, client, mock_async_db, mock_user):
         """Sent invitation with no resolved to_user returns to_user as null."""
         invitation = MockInvitation(
             from_user_id=mock_user.id,
@@ -176,7 +176,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = None
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),     # fetch sent invitations
             MockExecuteResult(["My Pantry"]),    # get_resource_name (pantry)
         ]
@@ -189,7 +189,7 @@ class TestListSentInvitations:
         assert data[0]["to_email"] == "unknown@example.com"
         assert data[0]["resource_name"] == "My Pantry"
 
-    def test_list_sent_shopping_list_resource_name(self, client, mock_db, mock_user):
+    def test_list_sent_shopping_list_resource_name(self, client, mock_async_db, mock_user):
         """get_resource_name for shopping_list returns name or fallback."""
         invitation = MockInvitation(
             from_user_id=mock_user.id,
@@ -200,7 +200,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = None
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),    # fetch sent invitations
             MockExecuteResult([None]),          # get_resource_name → sl name is None
         ]
@@ -211,7 +211,7 @@ class TestListSentInvitations:
         # When shopping list name is None, fallback is "Shopping List"
         assert data[0]["resource_name"] == "Shopping List"
 
-    def test_list_sent_shopping_list_with_name(self, client, mock_db, mock_user):
+    def test_list_sent_shopping_list_with_name(self, client, mock_async_db, mock_user):
         """get_resource_name for shopping_list with a real name."""
         invitation = MockInvitation(
             from_user_id=mock_user.id,
@@ -222,7 +222,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = None
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),         # fetch sent invitations
             MockExecuteResult(["Weekly Groceries"]), # get_resource_name
         ]
@@ -231,7 +231,7 @@ class TestListSentInvitations:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] == "Weekly Groceries"
 
-    def test_list_sent_meal_event_resource_name(self, client, mock_db, mock_user):
+    def test_list_sent_meal_event_resource_name(self, client, mock_async_db, mock_user):
         """get_resource_name for meal_event returns the title."""
         invitation = MockInvitation(
             from_user_id=mock_user.id,
@@ -242,7 +242,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = None
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),        # fetch sent invitations
             MockExecuteResult(["Friday Dinner"]),   # get_resource_name
         ]
@@ -251,7 +251,7 @@ class TestListSentInvitations:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] == "Friday Dinner"
 
-    def test_list_sent_unknown_resource_type(self, client, mock_db, mock_user):
+    def test_list_sent_unknown_resource_type(self, client, mock_async_db, mock_user):
         """get_resource_name for unknown resource_type returns None."""
         invitation = MockInvitation(
             from_user_id=mock_user.id,
@@ -262,7 +262,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = None
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),  # fetch sent invitations
             # get_resource_name for unknown type doesn't do a query — returns None
         ]
@@ -271,7 +271,7 @@ class TestListSentInvitations:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] is None
 
-    def test_list_sent_resource_not_found(self, client, mock_db, mock_user):
+    def test_list_sent_resource_not_found(self, client, mock_async_db, mock_user):
         """get_resource_name returns None when resource doesn't exist."""
         invitation = MockInvitation(
             from_user_id=mock_user.id,
@@ -282,7 +282,7 @@ class TestListSentInvitations:
         )
         invitation.to_user = None
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),   # fetch sent invitations
             MockExecuteResult([]),             # get_resource_name → no recipe book found
         ]
@@ -300,15 +300,15 @@ class TestListSentInvitations:
 class TestSendInvitation:
     """Tests for POST /v1/invitations."""
 
-    def test_send_invitation_missing_fields(self, client, mock_db, mock_user):
+    def test_send_invitation_missing_fields(self, client, mock_async_db, mock_user):
         """Sending an invitation with missing required fields fails with 422."""
         response = client.post("/v1/invitations", json={})
         assert response.status_code == 422
 
-    def test_send_invitation_no_permission_returns_403(self, client, mock_db, mock_user):
+    def test_send_invitation_no_permission_returns_403(self, client, mock_async_db, mock_user):
         """Sender without membership on the recipe book gets 403."""
         # check_resource_permission -> db.execute returns no membership
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.post(
             "/v1/invitations",
@@ -321,7 +321,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 403
 
-    def test_send_invitation_self_invite_returns_400(self, client, mock_db, mock_user):
+    def test_send_invitation_self_invite_returns_400(self, client, mock_async_db, mock_user):
         """Inviting yourself returns 400."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id),
@@ -329,7 +329,7 @@ class TestSendInvitation:
             role="owner",
         )
         # sequence: 1=check_resource_permission, 2=username lookup -> same as mock_user
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),  # check_resource_permission
             MockExecuteResult([mock_user]),   # User lookup by username -> self
         ]
@@ -345,7 +345,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_invitation_to_username_success(self, client, mock_db, mock_user):
+    def test_send_invitation_to_username_success(self, client, mock_async_db, mock_user):
         """Owner can send invitation by username -- returns 201 with pending status."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="janesmith")
         membership = MockRecipeBookUser(
@@ -360,7 +360,7 @@ class TestSendInvitation:
         # 4. duplicate invitation check
         # 5. rate limit count (scalar)
         # 6. get_resource_name: RecipeBook.name (called in push notification block)
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),   # check_resource_permission
             MockExecuteResult([target_user]),  # User lookup by username
             MockExecuteResult([]),             # check_existing_membership -> not a member
@@ -383,7 +383,7 @@ class TestSendInvitation:
         assert data["status"] == "pending"
         assert data["role_offered"] == "editor"
 
-    def test_send_invitation_to_username_with_at_prefix(self, client, mock_db, mock_user):
+    def test_send_invitation_to_username_with_at_prefix(self, client, mock_async_db, mock_user):
         """Username with @ prefix is stripped and resolved."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="janesmith")
         membership = MockRecipeBookUser(
@@ -391,7 +391,7 @@ class TestSendInvitation:
             recipe_book_id=BOOK_ID,
             role="owner",
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),   # check_resource_permission
             MockExecuteResult([target_user]),  # User lookup by username (after @ strip)
             MockExecuteResult([]),             # check_existing_membership
@@ -411,7 +411,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 201
 
-    def test_send_invitation_to_user_id_success(self, client, mock_db, mock_user):
+    def test_send_invitation_to_user_id_success(self, client, mock_async_db, mock_user):
         """Send invitation by to_user_id resolves the target user."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Jane", username="jane")
         membership = MockRecipeBookUser(
@@ -419,7 +419,7 @@ class TestSendInvitation:
             recipe_book_id=BOOK_ID,
             role="owner",
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),    # check_resource_permission
             MockExecuteResult([target_user]),   # User lookup by id
             MockExecuteResult([]),              # check_existing_membership
@@ -439,7 +439,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 201
 
-    def test_send_invitation_invalid_resource_type(self, client, mock_db, mock_user):
+    def test_send_invitation_invalid_resource_type(self, client, mock_async_db, mock_user):
         """Invalid resource_type returns 400."""
         response = client.post(
             "/v1/invitations",
@@ -452,7 +452,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_invitation_invalid_role_for_resource(self, client, mock_db, mock_user):
+    def test_send_invitation_invalid_role_for_resource(self, client, mock_async_db, mock_user):
         """Invalid role for a valid resource_type returns 400."""
         response = client.post(
             "/v1/invitations",
@@ -465,7 +465,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_invitation_meal_event_valid_role(self, client, mock_db, mock_user):
+    def test_send_invitation_meal_event_valid_role(self, client, mock_async_db, mock_user):
         """meal_event with cohost/guest role passes validation."""
         response = client.post(
             "/v1/invitations",
@@ -478,14 +478,14 @@ class TestSendInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_invitation_no_target(self, client, mock_db, mock_user):
+    def test_send_invitation_no_target(self, client, mock_async_db, mock_user):
         """Omitting all target fields (to_user_id, to_username, to_email) returns 400."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id),
             recipe_book_id=BOOK_ID,
             role="owner",
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),  # check_resource_permission
         ]
 
@@ -499,9 +499,9 @@ class TestSendInvitation:
         )
         assert response.status_code == 400
 
-    def test_send_invitation_pantry_permission_denied(self, client, mock_db, mock_user):
+    def test_send_invitation_pantry_permission_denied(self, client, mock_async_db, mock_user):
         """Sending invitation to pantry without permission returns 403."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.post(
             "/v1/invitations",
@@ -514,12 +514,12 @@ class TestSendInvitation:
         )
         assert response.status_code == 403
 
-    def test_send_invitation_pantry_viewer_role_denied(self, client, mock_db, mock_user):
+    def test_send_invitation_pantry_viewer_role_denied(self, client, mock_async_db, mock_user):
         """Pantry viewer cannot send invitations."""
         viewer = MockPantryUser(
             user_id=str(mock_user.id), pantry_id=PANTRY_ID, role="viewer"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([viewer]),  # check_resource_permission -> viewer
         ]
 
@@ -534,9 +534,9 @@ class TestSendInvitation:
         )
         assert response.status_code == 403
 
-    def test_send_invitation_shopping_list_not_found(self, client, mock_db, mock_user):
+    def test_send_invitation_shopping_list_not_found(self, client, mock_async_db, mock_user):
         """Shopping list not found returns 404."""
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),  # check_resource_permission -> shopping list not found
         ]
 
@@ -551,14 +551,14 @@ class TestSendInvitation:
         )
         assert response.status_code == 404
 
-    def test_send_invitation_shopping_list_owner_allowed(self, client, mock_db, mock_user):
+    def test_send_invitation_shopping_list_owner_allowed(self, client, mock_async_db, mock_user):
         """Shopping list owner can send invitation."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Bob", username="bob")
         sl = MockShoppingList(
             id=SHOPPING_LIST_ID, owner_id=mock_user.id, is_shared=False
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),           # check_resource_permission -> found SL, owner matches
             MockExecuteResult([target_user]),   # User lookup by username
             # check_existing_membership: shopping_list path
@@ -581,7 +581,7 @@ class TestSendInvitation:
         assert response.status_code == 201
 
     def test_send_invitation_shopping_list_non_owner_no_membership(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-owner without membership on shopping list gets 403."""
         other_owner_id = str(uuid.uuid4())
@@ -589,7 +589,7 @@ class TestSendInvitation:
             id=SHOPPING_LIST_ID, owner_id=other_owner_id, is_shared=True
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),   # check_resource_permission -> found SL, not owner
             MockExecuteResult([]),     # ShoppingListUser lookup -> no membership
         ]
@@ -606,7 +606,7 @@ class TestSendInvitation:
         assert response.status_code == 403
 
     def test_send_invitation_shopping_list_viewer_denied(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Viewer on shopping list cannot send invitations."""
         other_owner_id = str(uuid.uuid4())
@@ -619,7 +619,7 @@ class TestSendInvitation:
             role="viewer",
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),       # found SL, not owner
             MockExecuteResult([viewer]),   # ShoppingListUser -> viewer role
         ]
@@ -635,9 +635,9 @@ class TestSendInvitation:
         )
         assert response.status_code == 403
 
-    def test_send_invitation_meal_event_not_found(self, client, mock_db, mock_user):
+    def test_send_invitation_meal_event_not_found(self, client, mock_async_db, mock_user):
         """Meal event not found returns 404."""
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),  # check_resource_permission -> meal event not found
         ]
 
@@ -652,12 +652,12 @@ class TestSendInvitation:
         )
         assert response.status_code == 404
 
-    def test_send_invitation_meal_event_owner_allowed(self, client, mock_db, mock_user):
+    def test_send_invitation_meal_event_owner_allowed(self, client, mock_async_db, mock_user):
         """Meal event owner can send invitation."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Bob", username="bob")
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=mock_user.id)
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),            # check_resource_permission -> found, owner matches
             MockExecuteResult([target_user]),    # User lookup by username
             # check_existing_membership: meal_event path
@@ -680,7 +680,7 @@ class TestSendInvitation:
         assert response.status_code == 201
 
     def test_send_invitation_meal_event_non_owner_guest_denied(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Guest on meal event cannot send invitations (only host/cohost can)."""
         other_owner_id = str(uuid.uuid4())
@@ -691,7 +691,7 @@ class TestSendInvitation:
             role="guest",
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),      # found meal event, not owner
             MockExecuteResult([guest]),   # MealEventParticipant -> guest role
         ]
@@ -708,13 +708,13 @@ class TestSendInvitation:
         assert response.status_code == 403
 
     def test_send_invitation_meal_event_non_owner_no_participant(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-owner with no participant record on meal event gets 403."""
         other_owner_id = str(uuid.uuid4())
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=other_owner_id)
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),   # found meal event, not owner
             MockExecuteResult([]),     # no participant record
         ]
@@ -730,12 +730,12 @@ class TestSendInvitation:
         )
         assert response.status_code == 403
 
-    def test_send_invitation_to_user_id_not_found(self, client, mock_db, mock_user):
+    def test_send_invitation_to_user_id_not_found(self, client, mock_async_db, mock_user):
         """to_user_id that doesn't match any user returns 404."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),  # check_resource_permission
             MockExecuteResult([]),            # User lookup by id -> not found
         ]
@@ -751,7 +751,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 404
 
-    def test_send_invitation_to_email_existing_user(self, client, mock_db, mock_user):
+    def test_send_invitation_to_email_existing_user(self, client, mock_async_db, mock_user):
         """to_email that matches an existing user resolves to that user."""
         target_user = MockUser(
             id=str(uuid.uuid4()), name="EmailUser", email="emailuser@example.com"
@@ -759,7 +759,7 @@ class TestSendInvitation:
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),    # check_resource_permission
             MockExecuteResult([target_user]),   # User lookup by email
             MockExecuteResult([]),              # check_existing_membership
@@ -779,12 +779,12 @@ class TestSendInvitation:
         )
         assert response.status_code == 201
 
-    def test_send_invitation_to_email_no_user(self, client, mock_db, mock_user):
+    def test_send_invitation_to_email_no_user(self, client, mock_async_db, mock_user):
         """to_email with no matching user creates email-only invitation."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),  # check_resource_permission
             MockExecuteResult([]),            # User lookup by email -> no user
             MockExecuteResult([]),            # duplicate invitation check (email branch)
@@ -802,7 +802,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 201
 
-    def test_send_invitation_already_member(self, client, mock_db, mock_user):
+    def test_send_invitation_already_member(self, client, mock_async_db, mock_user):
         """Inviting someone who is already a member returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Member", username="member")
         membership = MockRecipeBookUser(
@@ -812,7 +812,7 @@ class TestSendInvitation:
             user_id=target_user.id, recipe_book_id=BOOK_ID, role="editor"
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),           # check_resource_permission
             MockExecuteResult([target_user]),           # User lookup by username
             MockExecuteResult([existing_membership]),   # check_existing_membership -> already member
@@ -829,7 +829,7 @@ class TestSendInvitation:
         )
         assert response.status_code == 409
 
-    def test_send_invitation_duplicate_pending(self, client, mock_db, mock_user):
+    def test_send_invitation_duplicate_pending(self, client, mock_async_db, mock_user):
         """Sending a duplicate pending invitation returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Dup", username="dup")
         membership = MockRecipeBookUser(
@@ -837,7 +837,7 @@ class TestSendInvitation:
         )
         existing_inv = MockInvitation(status="pending")
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),     # check_resource_permission
             MockExecuteResult([target_user]),     # User lookup by username
             MockExecuteResult([]),                # check_existing_membership -> not member
@@ -855,14 +855,14 @@ class TestSendInvitation:
         )
         assert response.status_code == 409
 
-    def test_send_invitation_rate_limited(self, client, mock_db, mock_user):
+    def test_send_invitation_rate_limited(self, client, mock_async_db, mock_user):
         """Exceeding daily limit returns 429."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Ratelimited", username="rl")
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),    # check_resource_permission
             MockExecuteResult([target_user]),    # User lookup by username
             MockExecuteResult([]),               # check_existing_membership
@@ -881,12 +881,12 @@ class TestSendInvitation:
         )
         assert response.status_code == 429
 
-    def test_send_invitation_username_not_found(self, client, mock_db, mock_user):
+    def test_send_invitation_username_not_found(self, client, mock_async_db, mock_user):
         """to_username not matching any user returns 404."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),  # check_resource_permission
             MockExecuteResult([]),            # User lookup by username -> not found
         ]
@@ -902,14 +902,14 @@ class TestSendInvitation:
         )
         assert response.status_code == 404
 
-    def test_send_invitation_pantry_editor_allowed(self, client, mock_db, mock_user):
+    def test_send_invitation_pantry_editor_allowed(self, client, mock_async_db, mock_user):
         """Pantry editor can send invitations."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Bob", username="bob")
         editor = MockPantryUser(
             user_id=str(mock_user.id), pantry_id=PANTRY_ID, role="editor"
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([editor]),       # check_resource_permission -> editor
             MockExecuteResult([target_user]),   # User lookup
             MockExecuteResult([]),              # check_existing_membership (pantry)
@@ -930,7 +930,7 @@ class TestSendInvitation:
         assert response.status_code == 201
 
     def test_send_invitation_shopping_list_editor_allowed(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Shopping list editor (non-owner) can send invitations."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Bob", username="bob")
@@ -944,7 +944,7 @@ class TestSendInvitation:
             role="editor",
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),           # check_resource_permission -> found SL, not owner
             MockExecuteResult([editor]),        # ShoppingListUser -> editor
             MockExecuteResult([target_user]),   # User lookup
@@ -968,7 +968,7 @@ class TestSendInvitation:
         assert response.status_code == 201
 
     def test_send_invitation_meal_event_cohost_allowed(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Meal event cohost can send invitations."""
         target_user = MockUser(id=str(uuid.uuid4()), name="Bob", username="bob")
@@ -980,7 +980,7 @@ class TestSendInvitation:
             role="cohost",
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),            # check_resource_permission -> found, not owner
             MockExecuteResult([cohost]),         # MealEventParticipant -> cohost
             MockExecuteResult([target_user]),    # User lookup
@@ -1012,13 +1012,13 @@ class TestSendInvitation:
 class TestAcceptInvitation:
     """Tests for POST /v1/invitations/{id}/accept."""
 
-    def test_accept_invitation_not_found(self, client, mock_db, mock_user):
+    def test_accept_invitation_not_found(self, client, mock_async_db, mock_user):
         """Accepting a nonexistent invitation returns 404."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.post("/v1/invitations/nonexistent/accept")
         assert response.status_code in (404, 500)
 
-    def test_accept_invitation_success(self, client, mock_db, mock_user):
+    def test_accept_invitation_success(self, client, mock_async_db, mock_user):
         """Accepting a valid pending invitation returns 200 with accepted status."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1038,7 +1038,7 @@ class TestAcceptInvitation:
         # 1. fetch invitation with joinedload
         # 2. create_membership: check existing RecipeBookUser -> None
         # 3. get_resource_name: RecipeBook.name
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),   # fetch invitation
             MockExecuteResult([]),             # create_membership: check existing
             MockExecuteResult(["My Book"]),    # get_resource_name
@@ -1050,7 +1050,7 @@ class TestAcceptInvitation:
         assert data["status"] == "accepted"
         assert data["role"] == "editor"
 
-    def test_accept_invitation_wrong_user(self, client, mock_db, mock_user):
+    def test_accept_invitation_wrong_user(self, client, mock_async_db, mock_user):
         """Accepting an invitation addressed to someone else returns 403."""
         invitation_id = str(uuid.uuid4())
         other_user_id = str(uuid.uuid4())
@@ -1066,12 +1066,12 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/accept")
         assert response.status_code == 403
 
-    def test_accept_invitation_already_accepted(self, client, mock_db, mock_user):
+    def test_accept_invitation_already_accepted(self, client, mock_async_db, mock_user):
         """Accepting an already-accepted invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1086,12 +1086,12 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/accept")
         assert response.status_code == 400
 
-    def test_accept_invitation_already_declined(self, client, mock_db, mock_user):
+    def test_accept_invitation_already_declined(self, client, mock_async_db, mock_user):
         """Accepting an already-declined invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1106,12 +1106,12 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/accept")
         assert response.status_code == 400
 
-    def test_accept_invitation_expired(self, client, mock_db, mock_user):
+    def test_accept_invitation_expired(self, client, mock_async_db, mock_user):
         """Accepting an expired invitation returns 410."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1127,12 +1127,12 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/accept")
         assert response.status_code == 410
 
-    def test_accept_invitation_pantry(self, client, mock_db, mock_user):
+    def test_accept_invitation_pantry(self, client, mock_async_db, mock_user):
         """Accepting a pantry invitation creates pantry membership."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1148,7 +1148,7 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),       # fetch invitation
             MockExecuteResult([]),                 # create_membership: check existing PantryUser
             MockExecuteResult(["My Pantry"]),      # get_resource_name
@@ -1160,7 +1160,7 @@ class TestAcceptInvitation:
         assert data["status"] == "accepted"
         assert data["resource_type"] == "pantry"
 
-    def test_accept_invitation_shopping_list(self, client, mock_db, mock_user):
+    def test_accept_invitation_shopping_list(self, client, mock_async_db, mock_user):
         """Accepting a shopping list invitation creates membership and marks shared."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1177,7 +1177,7 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),       # fetch invitation
             MockExecuteResult([]),                 # create_membership: check existing ShoppingListUser
             MockExecuteResult([sl]),               # create_membership: select ShoppingList to mark shared
@@ -1190,7 +1190,7 @@ class TestAcceptInvitation:
         assert data["status"] == "accepted"
         assert data["resource_type"] == "shopping_list"
 
-    def test_accept_invitation_meal_event(self, client, mock_db, mock_user):
+    def test_accept_invitation_meal_event(self, client, mock_async_db, mock_user):
         """Accepting a meal event invitation creates participant record."""
         invitation_id = str(uuid.uuid4())
         from_user = MockUser(id=str(uuid.uuid4()), name="Alice")
@@ -1206,7 +1206,7 @@ class TestAcceptInvitation:
         )
         invitation.from_user = from_user
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),        # fetch invitation
             MockExecuteResult([]),                  # create_membership: check existing participant
             MockExecuteResult(["Friday Dinner"]),   # get_resource_name
@@ -1220,7 +1220,7 @@ class TestAcceptInvitation:
         assert data["role"] == "guest"
 
     def test_accept_invitation_reactivates_archived_recipe_book(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting re-activates an archived recipe book membership."""
         invitation_id = str(uuid.uuid4())
@@ -1245,7 +1245,7 @@ class TestAcceptInvitation:
             archived_at=datetime.now(UTC) - timedelta(days=10),
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),            # fetch invitation
             MockExecuteResult([archived_membership]),   # create_membership: found archived
             MockExecuteResult(["My Book"]),             # get_resource_name
@@ -1258,7 +1258,7 @@ class TestAcceptInvitation:
         assert archived_membership.role == "editor"
 
     def test_accept_invitation_reactivates_archived_pantry(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting re-activates an archived pantry membership."""
         invitation_id = str(uuid.uuid4())
@@ -1282,7 +1282,7 @@ class TestAcceptInvitation:
             archived_at=datetime.now(UTC) - timedelta(days=5),
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),  # fetch invitation
             MockExecuteResult([archived]),    # create_membership: found archived
             MockExecuteResult(["Pantry"]),    # get_resource_name
@@ -1294,7 +1294,7 @@ class TestAcceptInvitation:
         assert archived.role == "editor"
 
     def test_accept_invitation_reactivates_archived_shopping_list(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting re-activates an archived shopping list membership."""
         invitation_id = str(uuid.uuid4())
@@ -1319,7 +1319,7 @@ class TestAcceptInvitation:
             archived_at=datetime.now(UTC) - timedelta(days=5),
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),    # fetch invitation
             MockExecuteResult([archived]),      # create_membership: found archived
             MockExecuteResult([sl]),            # create_membership: select ShoppingList
@@ -1333,7 +1333,7 @@ class TestAcceptInvitation:
         assert sl.is_shared is True
 
     def test_accept_invitation_reactivates_archived_meal_event(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting re-activates an archived meal event participant."""
         invitation_id = str(uuid.uuid4())
@@ -1358,7 +1358,7 @@ class TestAcceptInvitation:
             archived_at=datetime.now(UTC) - timedelta(days=5),
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),    # fetch invitation
             MockExecuteResult([archived]),      # create_membership: found archived
             MockExecuteResult(["Dinner"]),      # get_resource_name
@@ -1371,7 +1371,7 @@ class TestAcceptInvitation:
         assert archived.status == "accepted"
 
     def test_accept_invitation_idempotent_active_membership(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting when already an active member is idempotent."""
         invitation_id = str(uuid.uuid4())
@@ -1396,7 +1396,7 @@ class TestAcceptInvitation:
             archived_at=None,
         )
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([invitation]),  # fetch invitation
             MockExecuteResult([active]),      # create_membership: found active -> idempotent
             MockExecuteResult(["My Book"]),   # get_resource_name
@@ -1414,13 +1414,13 @@ class TestAcceptInvitation:
 class TestDeclineInvitation:
     """Tests for POST /v1/invitations/{id}/decline."""
 
-    def test_decline_invitation_not_found(self, client, mock_db, mock_user):
+    def test_decline_invitation_not_found(self, client, mock_async_db, mock_user):
         """Declining a nonexistent invitation returns 404."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.post("/v1/invitations/nonexistent/decline")
         assert response.status_code in (404, 500)
 
-    def test_decline_invitation_success(self, client, mock_db, mock_user):
+    def test_decline_invitation_success(self, client, mock_async_db, mock_user):
         """Successfully declining a pending invitation returns 200."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1433,14 +1433,14 @@ class TestDeclineInvitation:
             status="pending",
         )
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/decline")
         assert response.status_code == 200
         assert invitation.status == "declined"
         assert invitation.responded_at is not None
 
-    def test_decline_invitation_wrong_user(self, client, mock_db, mock_user):
+    def test_decline_invitation_wrong_user(self, client, mock_async_db, mock_user):
         """Declining an invitation addressed to someone else returns 403."""
         invitation_id = str(uuid.uuid4())
         other_user_id = str(uuid.uuid4())
@@ -1454,12 +1454,12 @@ class TestDeclineInvitation:
             status="pending",
         )
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/decline")
         assert response.status_code == 403
 
-    def test_decline_invitation_already_accepted(self, client, mock_db, mock_user):
+    def test_decline_invitation_already_accepted(self, client, mock_async_db, mock_user):
         """Declining an already-accepted invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1472,12 +1472,12 @@ class TestDeclineInvitation:
             status="accepted",
         )
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/decline")
         assert response.status_code == 400
 
-    def test_decline_invitation_already_declined(self, client, mock_db, mock_user):
+    def test_decline_invitation_already_declined(self, client, mock_async_db, mock_user):
         """Declining an already-declined invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1490,12 +1490,12 @@ class TestDeclineInvitation:
             status="declined",
         )
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/decline")
         assert response.status_code == 400
 
-    def test_decline_invitation_already_revoked(self, client, mock_db, mock_user):
+    def test_decline_invitation_already_revoked(self, client, mock_async_db, mock_user):
         """Declining an already-revoked invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1508,7 +1508,7 @@ class TestDeclineInvitation:
             status="revoked",
         )
 
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.post(f"/v1/invitations/{invitation_id}/decline")
         assert response.status_code == 400
@@ -1522,13 +1522,13 @@ class TestDeclineInvitation:
 class TestRevokeInvitation:
     """Tests for DELETE /v1/invitations/{id}."""
 
-    def test_revoke_invitation_not_found(self, client, mock_db, mock_user):
+    def test_revoke_invitation_not_found(self, client, mock_async_db, mock_user):
         """Revoking a nonexistent invitation returns 404."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.delete("/v1/invitations/nonexistent")
         assert response.status_code in (404, 500)
 
-    def test_revoke_success(self, client, mock_db, mock_user):
+    def test_revoke_success(self, client, mock_async_db, mock_user):
         """Owner can revoke a pending invitation they sent."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1536,13 +1536,13 @@ class TestRevokeInvitation:
             from_user_id=mock_user.id,
             status="pending",
         )
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.delete(f"/v1/invitations/{invitation_id}")
         assert response.status_code == 200
         assert invitation.status == "revoked"
 
-    def test_revoke_invitation_wrong_user(self, client, mock_db, mock_user):
+    def test_revoke_invitation_wrong_user(self, client, mock_async_db, mock_user):
         """Revoking an invitation sent by someone else returns 403."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1550,12 +1550,12 @@ class TestRevokeInvitation:
             from_user_id=str(uuid.uuid4()),  # different from mock_user
             status="pending",
         )
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.delete(f"/v1/invitations/{invitation_id}")
         assert response.status_code == 403
 
-    def test_revoke_invitation_already_accepted(self, client, mock_db, mock_user):
+    def test_revoke_invitation_already_accepted(self, client, mock_async_db, mock_user):
         """Revoking an already-accepted invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1563,12 +1563,12 @@ class TestRevokeInvitation:
             from_user_id=mock_user.id,
             status="accepted",
         )
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.delete(f"/v1/invitations/{invitation_id}")
         assert response.status_code == 400
 
-    def test_revoke_invitation_already_declined(self, client, mock_db, mock_user):
+    def test_revoke_invitation_already_declined(self, client, mock_async_db, mock_user):
         """Revoking an already-declined invitation returns 400."""
         invitation_id = str(uuid.uuid4())
         invitation = MockInvitation(
@@ -1576,7 +1576,7 @@ class TestRevokeInvitation:
             from_user_id=mock_user.id,
             status="declined",
         )
-        mock_db.db.execute.return_value = MockExecuteResult([invitation])
+        mock_async_db.db.execute.return_value = MockExecuteResult([invitation])
 
         response = client.delete(f"/v1/invitations/{invitation_id}")
         assert response.status_code == 400
@@ -1590,7 +1590,7 @@ class TestRevokeInvitation:
 class TestClaimInvitations:
     """Tests for POST /v1/invitations/claim."""
 
-    def test_claim_no_email(self, client, mock_db, mock_user):
+    def test_claim_no_email(self, client, mock_async_db, mock_user):
         """User with no email returns empty list."""
         mock_user.email = None
 
@@ -1598,15 +1598,15 @@ class TestClaimInvitations:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_claim_no_matching_invitations(self, client, mock_db, mock_user):
+    def test_claim_no_matching_invitations(self, client, mock_async_db, mock_user):
         """No matching pending invitations returns empty list."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.post("/v1/invitations/claim")
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_claim_invitations_success(self, client, mock_db, mock_user):
+    def test_claim_invitations_success(self, client, mock_async_db, mock_user):
         """Claim matches email-based invitations and sets to_user_id."""
         inv1 = MockInvitation(
             to_email=mock_user.email,
@@ -1625,7 +1625,7 @@ class TestClaimInvitations:
             status="pending",
         )
 
-        mock_db.db.execute.return_value = MockExecuteResult([inv1, inv2])
+        mock_async_db.db.execute.return_value = MockExecuteResult([inv1, inv2])
 
         response = client.post("/v1/invitations/claim")
         assert response.status_code == 200
@@ -1637,11 +1637,11 @@ class TestClaimInvitations:
         assert inv1.to_user_id == mock_user.id
         assert inv2.to_user_id == mock_user.id
         # Verify commit was called
-        mock_db.db.commit.assert_called()
+        mock_async_db.db.commit.assert_called()
 
-    def test_claim_invitations_empty_no_commit(self, client, mock_db, mock_user):
+    def test_claim_invitations_empty_no_commit(self, client, mock_async_db, mock_user):
         """When no invitations match, commit is not called."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.post("/v1/invitations/claim")
         assert response.status_code == 200
@@ -1657,13 +1657,13 @@ class TestClaimInvitations:
 class TestValidateResourceAndRole:
     """Tests for validate_resource_and_role helper."""
 
-    def test_valid_recipe_book_editor(self, client, mock_db, mock_user):
+    def test_valid_recipe_book_editor(self, client, mock_async_db, mock_user):
         """recipe_book + editor is valid (no error on valid send)."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),
@@ -1682,13 +1682,13 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 201
 
-    def test_valid_recipe_book_viewer(self, client, mock_db, mock_user):
+    def test_valid_recipe_book_viewer(self, client, mock_async_db, mock_user):
         """recipe_book + viewer is valid."""
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="owner"
         )
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),
@@ -1707,7 +1707,7 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 201
 
-    def test_invalid_resource_type(self, client, mock_db, mock_user):
+    def test_invalid_resource_type(self, client, mock_async_db, mock_user):
         """Unknown resource_type returns 400."""
         response = client.post(
             "/v1/invitations",
@@ -1720,7 +1720,7 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 400
 
-    def test_invalid_role_for_pantry(self, client, mock_db, mock_user):
+    def test_invalid_role_for_pantry(self, client, mock_async_db, mock_user):
         """pantry + guest is invalid (only editor/viewer allowed)."""
         response = client.post(
             "/v1/invitations",
@@ -1733,7 +1733,7 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 400
 
-    def test_invalid_role_for_shopping_list(self, client, mock_db, mock_user):
+    def test_invalid_role_for_shopping_list(self, client, mock_async_db, mock_user):
         """shopping_list + cohost is invalid."""
         response = client.post(
             "/v1/invitations",
@@ -1746,11 +1746,11 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 400
 
-    def test_valid_meal_event_cohost(self, client, mock_db, mock_user):
+    def test_valid_meal_event_cohost(self, client, mock_async_db, mock_user):
         """meal_event + cohost is valid."""
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=mock_user.id)
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),
@@ -1770,11 +1770,11 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 201
 
-    def test_valid_meal_event_guest(self, client, mock_db, mock_user):
+    def test_valid_meal_event_guest(self, client, mock_async_db, mock_user):
         """meal_event + guest is valid."""
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=mock_user.id)
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),
@@ -1794,7 +1794,7 @@ class TestValidateResourceAndRole:
         )
         assert response.status_code == 201
 
-    def test_invalid_role_for_meal_event(self, client, mock_db, mock_user):
+    def test_invalid_role_for_meal_event(self, client, mock_async_db, mock_user):
         """meal_event + editor is invalid (only cohost/guest allowed)."""
         response = client.post(
             "/v1/invitations",
@@ -1815,7 +1815,7 @@ class TestCheckExistingMembership:
     user is already a member of each resource type.
     """
 
-    def test_existing_membership_recipe_book(self, client, mock_db, mock_user):
+    def test_existing_membership_recipe_book(self, client, mock_async_db, mock_user):
         """Target already a recipe_book member returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         membership = MockRecipeBookUser(
@@ -1824,7 +1824,7 @@ class TestCheckExistingMembership:
         target_membership = MockRecipeBookUser(
             user_id=target_user.id, recipe_book_id=BOOK_ID, role="editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([membership]),          # check_resource_permission
             MockExecuteResult([target_user]),          # User lookup
             MockExecuteResult([target_membership]),    # check_existing_membership -> is member
@@ -1840,7 +1840,7 @@ class TestCheckExistingMembership:
         )
         assert response.status_code == 409
 
-    def test_existing_membership_pantry(self, client, mock_db, mock_user):
+    def test_existing_membership_pantry(self, client, mock_async_db, mock_user):
         """Target already a pantry member returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         owner = MockPantryUser(
@@ -1849,7 +1849,7 @@ class TestCheckExistingMembership:
         target_membership = MockPantryUser(
             user_id=target_user.id, pantry_id=PANTRY_ID, role="editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([owner]),                # check_resource_permission
             MockExecuteResult([target_user]),           # User lookup
             MockExecuteResult([target_membership]),     # check_existing_membership -> is member
@@ -1865,7 +1865,7 @@ class TestCheckExistingMembership:
         )
         assert response.status_code == 409
 
-    def test_existing_membership_shopping_list_owner(self, client, mock_db, mock_user):
+    def test_existing_membership_shopping_list_owner(self, client, mock_async_db, mock_user):
         """Target is the shopping list owner returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         sl = MockShoppingList(
@@ -1874,7 +1874,7 @@ class TestCheckExistingMembership:
         target_sl = MockShoppingList(
             id=SHOPPING_LIST_ID, owner_id=target_user.id
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),            # check_resource_permission -> owner
             MockExecuteResult([target_user]),    # User lookup
             MockExecuteResult([target_sl]),      # check_existing_membership: ShoppingList -> owner match
@@ -1890,7 +1890,7 @@ class TestCheckExistingMembership:
         )
         assert response.status_code == 409
 
-    def test_existing_membership_shopping_list_member(self, client, mock_db, mock_user):
+    def test_existing_membership_shopping_list_member(self, client, mock_async_db, mock_user):
         """Target is an existing shopping list member returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         sl = MockShoppingList(
@@ -1904,7 +1904,7 @@ class TestCheckExistingMembership:
             shopping_list_id=SHOPPING_LIST_ID,
             role="editor",
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),              # check_resource_permission -> owner
             MockExecuteResult([target_user]),      # User lookup
             MockExecuteResult([other_sl]),         # check_existing_membership: ShoppingList -> not owner
@@ -1921,12 +1921,12 @@ class TestCheckExistingMembership:
         )
         assert response.status_code == 409
 
-    def test_existing_membership_meal_event_owner(self, client, mock_db, mock_user):
+    def test_existing_membership_meal_event_owner(self, client, mock_async_db, mock_user):
         """Target is the meal event owner returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=mock_user.id)
         target_me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=target_user.id)
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),             # check_resource_permission -> owner
             MockExecuteResult([target_user]),     # User lookup
             MockExecuteResult([target_me]),       # check_existing_membership: MealEvent -> owner match
@@ -1943,7 +1943,7 @@ class TestCheckExistingMembership:
         assert response.status_code == 409
 
     def test_existing_membership_meal_event_participant(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Target is an existing meal event participant returns 409."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
@@ -1954,7 +1954,7 @@ class TestCheckExistingMembership:
             meal_event_id=MEAL_EVENT_ID,
             role="guest",
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),                   # check_resource_permission -> owner
             MockExecuteResult([target_user]),            # User lookup
             MockExecuteResult([other_me]),               # check_existing_membership: MealEvent -> not owner
@@ -1971,11 +1971,11 @@ class TestCheckExistingMembership:
         )
         assert response.status_code == 409
 
-    def test_no_membership_shopping_list_not_found(self, client, mock_db, mock_user):
+    def test_no_membership_shopping_list_not_found(self, client, mock_async_db, mock_user):
         """check_existing_membership for shopping list when SL not found -> not member."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         sl = MockShoppingList(id=SHOPPING_LIST_ID, owner_id=mock_user.id)
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([sl]),            # check_resource_permission -> owner
             MockExecuteResult([target_user]),    # User lookup
             MockExecuteResult([]),               # check_existing_membership: ShoppingList -> not found
@@ -1995,11 +1995,11 @@ class TestCheckExistingMembership:
         )
         assert response.status_code == 201
 
-    def test_no_membership_meal_event_not_found(self, client, mock_db, mock_user):
+    def test_no_membership_meal_event_not_found(self, client, mock_async_db, mock_user):
         """check_existing_membership for meal event when ME not found -> not member."""
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=mock_user.id)
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),             # check_resource_permission -> owner
             MockExecuteResult([target_user]),     # User lookup
             MockExecuteResult([]),                # check_existing_membership: MealEvent -> not found
@@ -2023,7 +2023,7 @@ class TestCheckExistingMembership:
 class TestGetResourceName:
     """Tests for get_resource_name helper via the list_sent endpoint."""
 
-    def test_recipe_book_name(self, client, mock_db, mock_user):
+    def test_recipe_book_name(self, client, mock_async_db, mock_user):
         """get_resource_name returns recipe book name."""
         inv = MockInvitation(
             from_user_id=mock_user.id,
@@ -2033,7 +2033,7 @@ class TestGetResourceName:
             status="pending",
         )
         inv.to_user = None
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult(["Italian Recipes"]),
         ]
@@ -2041,7 +2041,7 @@ class TestGetResourceName:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] == "Italian Recipes"
 
-    def test_pantry_name(self, client, mock_db, mock_user):
+    def test_pantry_name(self, client, mock_async_db, mock_user):
         """get_resource_name returns pantry name."""
         inv = MockInvitation(
             from_user_id=mock_user.id,
@@ -2051,7 +2051,7 @@ class TestGetResourceName:
             status="pending",
         )
         inv.to_user = None
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult(["Kitchen Pantry"]),
         ]
@@ -2059,7 +2059,7 @@ class TestGetResourceName:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] == "Kitchen Pantry"
 
-    def test_pantry_not_found(self, client, mock_db, mock_user):
+    def test_pantry_not_found(self, client, mock_async_db, mock_user):
         """get_resource_name returns None when pantry doesn't exist."""
         inv = MockInvitation(
             from_user_id=mock_user.id,
@@ -2069,7 +2069,7 @@ class TestGetResourceName:
             status="pending",
         )
         inv.to_user = None
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult([]),  # pantry not found
         ]
@@ -2077,7 +2077,7 @@ class TestGetResourceName:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] is None
 
-    def test_meal_event_not_found(self, client, mock_db, mock_user):
+    def test_meal_event_not_found(self, client, mock_async_db, mock_user):
         """get_resource_name returns None when meal event doesn't exist."""
         inv = MockInvitation(
             from_user_id=mock_user.id,
@@ -2087,7 +2087,7 @@ class TestGetResourceName:
             status="pending",
         )
         inv.to_user = None
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult([]),  # meal event not found
         ]
@@ -2095,7 +2095,7 @@ class TestGetResourceName:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] is None
 
-    def test_shopping_list_name_none_fallback(self, client, mock_db, mock_user):
+    def test_shopping_list_name_none_fallback(self, client, mock_async_db, mock_user):
         """get_resource_name for shopping_list with None name returns 'Shopping List'."""
         inv = MockInvitation(
             from_user_id=mock_user.id,
@@ -2105,7 +2105,7 @@ class TestGetResourceName:
             status="pending",
         )
         inv.to_user = None
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult([None]),  # shopping list name is None
         ]
@@ -2113,7 +2113,7 @@ class TestGetResourceName:
         assert response.status_code == 200
         assert response.json()[0]["resource_name"] == "Shopping List"
 
-    def test_unknown_resource_type_returns_none(self, client, mock_db, mock_user):
+    def test_unknown_resource_type_returns_none(self, client, mock_async_db, mock_user):
         """get_resource_name for an unknown resource_type returns None."""
         inv = MockInvitation(
             from_user_id=mock_user.id,
@@ -2123,7 +2123,7 @@ class TestGetResourceName:
             status="pending",
         )
         inv.to_user = None
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             # No DB call for unknown type
         ]
@@ -2135,13 +2135,13 @@ class TestGetResourceName:
 class TestCheckResourcePermission:
     """Tests for check_resource_permission helper via the send endpoint."""
 
-    def test_recipe_book_editor_allowed(self, client, mock_db, mock_user):
+    def test_recipe_book_editor_allowed(self, client, mock_async_db, mock_user):
         """Recipe book editor has permission to invite."""
         editor = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="editor"
         )
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([editor]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),
@@ -2160,12 +2160,12 @@ class TestCheckResourcePermission:
         )
         assert response.status_code == 201
 
-    def test_recipe_book_viewer_denied(self, client, mock_db, mock_user):
+    def test_recipe_book_viewer_denied(self, client, mock_async_db, mock_user):
         """Recipe book viewer cannot invite."""
         viewer = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=BOOK_ID, role="viewer"
         )
-        mock_db.db.execute.return_value = MockExecuteResult([viewer])
+        mock_async_db.db.execute.return_value = MockExecuteResult([viewer])
         response = client.post(
             "/v1/invitations",
             json={
@@ -2177,9 +2177,9 @@ class TestCheckResourcePermission:
         )
         assert response.status_code == 403
 
-    def test_recipe_book_no_membership(self, client, mock_db, mock_user):
+    def test_recipe_book_no_membership(self, client, mock_async_db, mock_user):
         """No membership on recipe book returns 403."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.post(
             "/v1/invitations",
             json={
@@ -2191,13 +2191,13 @@ class TestCheckResourcePermission:
         )
         assert response.status_code == 403
 
-    def test_pantry_owner_allowed(self, client, mock_db, mock_user):
+    def test_pantry_owner_allowed(self, client, mock_async_db, mock_user):
         """Pantry owner has permission to invite."""
         owner = MockPantryUser(
             user_id=str(mock_user.id), pantry_id=PANTRY_ID, role="owner"
         )
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([owner]),
             MockExecuteResult([target_user]),
             MockExecuteResult([]),
@@ -2216,9 +2216,9 @@ class TestCheckResourcePermission:
         )
         assert response.status_code == 201
 
-    def test_pantry_no_membership(self, client, mock_db, mock_user):
+    def test_pantry_no_membership(self, client, mock_async_db, mock_user):
         """No membership on pantry returns 403."""
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.post(
             "/v1/invitations",
             json={
@@ -2230,7 +2230,7 @@ class TestCheckResourcePermission:
         )
         assert response.status_code == 403
 
-    def test_meal_event_host_participant_allowed(self, client, mock_db, mock_user):
+    def test_meal_event_host_participant_allowed(self, client, mock_async_db, mock_user):
         """Meal event host participant can invite."""
         other_owner = str(uuid.uuid4())
         me = MockMealEvent(id=MEAL_EVENT_ID, owner_id=other_owner)
@@ -2238,7 +2238,7 @@ class TestCheckResourcePermission:
             user_id=str(mock_user.id), meal_event_id=MEAL_EVENT_ID, role="host"
         )
         target_user = MockUser(id=str(uuid.uuid4()), username="t")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([me]),
             MockExecuteResult([host]),
             MockExecuteResult([target_user]),
@@ -2283,10 +2283,10 @@ class TestCreateMembership:
         inv.from_user = from_user
         return inv
 
-    def test_create_new_pantry_membership(self, client, mock_db, mock_user):
+    def test_create_new_pantry_membership(self, client, mock_async_db, mock_user):
         """Accept creates new PantryUser when none exists."""
         inv = self._make_invitation(mock_user, "pantry", PANTRY_ID, "editor")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),          # fetch invitation
             MockExecuteResult([]),             # create_membership: no existing PantryUser
             MockExecuteResult(["Pantry"]),     # get_resource_name
@@ -2294,15 +2294,15 @@ class TestCreateMembership:
         response = client.post(f"/v1/invitations/{inv.id}/accept")
         assert response.status_code == 200
         # db.add was called to create the new membership
-        assert mock_db.db.add.called
+        assert mock_async_db.db.add.called
 
-    def test_create_new_shopping_list_membership(self, client, mock_db, mock_user):
+    def test_create_new_shopping_list_membership(self, client, mock_async_db, mock_user):
         """Accept creates new ShoppingListUser and marks list as shared."""
         sl = MockShoppingList(id=SHOPPING_LIST_ID, is_shared=False)
         inv = self._make_invitation(
             mock_user, "shopping_list", SHOPPING_LIST_ID, "editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),       # fetch invitation
             MockExecuteResult([]),          # create_membership: no existing
             MockExecuteResult([sl]),        # create_membership: select ShoppingList
@@ -2312,13 +2312,13 @@ class TestCreateMembership:
         assert response.status_code == 200
         assert sl.is_shared is True
 
-    def test_create_shopping_list_already_shared(self, client, mock_db, mock_user):
+    def test_create_shopping_list_already_shared(self, client, mock_async_db, mock_user):
         """Accepting on an already-shared shopping list stays shared."""
         sl = MockShoppingList(id=SHOPPING_LIST_ID, is_shared=True)
         inv = self._make_invitation(
             mock_user, "shopping_list", SHOPPING_LIST_ID, "editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult([]),
             MockExecuteResult([sl]),
@@ -2328,19 +2328,19 @@ class TestCreateMembership:
         assert response.status_code == 200
         assert sl.is_shared is True
 
-    def test_create_new_meal_event_participant(self, client, mock_db, mock_user):
+    def test_create_new_meal_event_participant(self, client, mock_async_db, mock_user):
         """Accept creates new MealEventParticipant with status=accepted."""
         inv = self._make_invitation(mock_user, "meal_event", MEAL_EVENT_ID, "guest")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),
             MockExecuteResult([]),
             MockExecuteResult(["Dinner"]),
         ]
         response = client.post(f"/v1/invitations/{inv.id}/accept")
         assert response.status_code == 200
-        assert mock_db.db.add.called
+        assert mock_async_db.db.add.called
 
-    def test_idempotent_active_pantry_membership(self, client, mock_db, mock_user):
+    def test_idempotent_active_pantry_membership(self, client, mock_async_db, mock_user):
         """Accepting with an existing active pantry membership is idempotent."""
         inv = self._make_invitation(mock_user, "pantry", PANTRY_ID, "editor")
         active = MockPantryUser(
@@ -2349,7 +2349,7 @@ class TestCreateMembership:
             role="editor",
             archived_at=None,
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),       # fetch invitation
             MockExecuteResult([active]),    # create_membership: found active -> idempotent
             MockExecuteResult(["Pantry"]),  # get_resource_name
@@ -2358,7 +2358,7 @@ class TestCreateMembership:
         assert response.status_code == 200
 
     def test_idempotent_active_shopping_list_membership(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting with an existing active shopping list membership is idempotent."""
         sl = MockShoppingList(id=SHOPPING_LIST_ID, is_shared=True)
@@ -2371,7 +2371,7 @@ class TestCreateMembership:
             role="editor",
             archived_at=None,
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),        # fetch invitation
             MockExecuteResult([active]),     # create_membership: found active -> idempotent
             MockExecuteResult([sl]),         # create_membership: select ShoppingList
@@ -2381,7 +2381,7 @@ class TestCreateMembership:
         assert response.status_code == 200
 
     def test_idempotent_active_meal_event_participant(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Accepting with an existing active meal event participant is idempotent."""
         inv = self._make_invitation(mock_user, "meal_event", MEAL_EVENT_ID, "guest")
@@ -2392,7 +2392,7 @@ class TestCreateMembership:
             status="accepted",
             archived_at=None,
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),        # fetch invitation
             MockExecuteResult([active]),     # create_membership: found active -> idempotent
             MockExecuteResult(["Dinner"]),   # get_resource_name
@@ -2401,13 +2401,13 @@ class TestCreateMembership:
         assert response.status_code == 200
 
     def test_create_shopping_list_not_found_for_shared_flag(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """create_membership for shopping_list when SL not found skips shared flag."""
         inv = self._make_invitation(
             mock_user, "shopping_list", SHOPPING_LIST_ID, "editor"
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([inv]),     # fetch invitation
             MockExecuteResult([]),        # create_membership: no existing
             MockExecuteResult([]),        # create_membership: ShoppingList not found

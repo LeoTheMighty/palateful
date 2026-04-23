@@ -6,18 +6,18 @@ from api.v1.invitations.helpers import get_resource_name
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.invitation import Invitation
 from utils.models.user import User
 
 
-class ListSentInvitations(Endpoint):
+class ListSentInvitations(AsyncEndpoint):
     """List invitations sent by the current user."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
 
-        invitations = self.db.execute(
+        result = await self.db.execute(
             select(Invitation)
             .options(joinedload(Invitation.to_user))
             .where(
@@ -25,11 +25,12 @@ class ListSentInvitations(Endpoint):
                 Invitation.archived_at.is_(None),
             )
             .order_by(Invitation.created_at.desc())
-        ).scalars().unique().all()
+        )
+        invitations = result.scalars().unique().all()
 
         items = []
         for inv in invitations:
-            resource_name = get_resource_name(
+            resource_name = await get_resource_name(
                 self.db, inv.resource_type, inv.resource_id
             )
             to_user_info = None

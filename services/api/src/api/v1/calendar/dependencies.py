@@ -4,6 +4,11 @@ Every meal_event and recurrence_rule handler routes permission checks
 through `require_calendar_access`. Inline `SELECT FROM calendar_users`
 is forbidden — centralizing the lookup here keeps role semantics in one
 place for the sharing epic's future extensions.
+
+aam-21 added `require_calendar_access_async` so `cooking_log`'s async
+conversion doesn't have to own the full calendar-domain flip — aam-14
+will unify the two once every caller is async and delete the sync
+sibling.
 """
 
 from collections.abc import Iterable
@@ -14,6 +19,39 @@ from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
 
 DEFAULT_WRITE_ROLES: frozenset[str] = frozenset({"owner", "editor"})
+
+
+async def require_calendar_access_async(
+    calendar_id: str,
+    user: User,
+    database,
+    roles: Iterable[str] = DEFAULT_WRITE_ROLES,
+) -> CalendarUser:
+    """Async sibling of `require_calendar_access`.
+
+    Expects an `AsyncDatabase` (or compatible mock). Callers in aam-21
+    use `await require_calendar_access_async(...)` from their async
+    handlers. Sync version kept in place for un-converted callers
+    (aam-14 calendar/meal-event domain) until aam-14 lands.
+    """
+    membership = await database.find_by(
+        CalendarUser,
+        user_id=user.id,
+        calendar_id=calendar_id,
+    )
+    if not membership or membership.archived_at is not None:
+        raise APIException(
+            status_code=403,
+            detail="You do not have access to this calendar",
+            code=ErrorCode.CALENDAR_ACCESS_DENIED,
+        )
+    if membership.role not in roles:
+        raise APIException(
+            status_code=403,
+            detail="Your role does not permit this action",
+            code=ErrorCode.CALENDAR_ACCESS_DENIED,
+        )
+    return membership
 
 
 def require_calendar_access(

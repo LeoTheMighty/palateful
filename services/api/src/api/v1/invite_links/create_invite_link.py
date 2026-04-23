@@ -8,19 +8,19 @@ from api.v1.invitations.helpers import (
     validate_resource_and_role,
 )
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.invite_link import InviteLink
 from utils.models.user import User
 
 
-class CreateInviteLink(Endpoint):
+class CreateInviteLink(AsyncEndpoint):
     """Create a shareable invite link for a resource."""
 
-    def execute(self, params: "CreateInviteLink.Params"):
+    async def execute(self, params: "CreateInviteLink.Params"):
         user: User = self.user
 
         validate_resource_and_role(params.resource_type, params.role_offered)
-        check_resource_permission(
+        await check_resource_permission(
             self.db, user.id, params.resource_type, params.resource_id
         )
 
@@ -40,8 +40,8 @@ class CreateInviteLink(Endpoint):
             expires_at=expires_at,
         )
         self.db.add(invite_link)
-        self.db.commit()
-        self.db.refresh(invite_link)
+        await self.db.commit()
+        await self.db.refresh(invite_link)
 
         return success(
             data=CreateInviteLink.Response(

@@ -65,9 +65,14 @@ class MockChat(MockModel):
 # ---------------------------------------------------------------------------
 
 class TestCreateThread:
-    """Tests for POST /v1/chat/threads."""
+    """Tests for POST /v1/chat/threads.
 
-    def test_create_thread_no_title(self, client, mock_db, mock_user):
+    aam-21: thread CRUD now on `AsyncEndpoint` — fixtures use
+    `mock_async_db`. ListThreads + GetThread stub `db.execute` with an
+    AsyncMock that returns a `MockExecuteResult`-style shim.
+    """
+
+    def test_create_thread_no_title(self, client, mock_async_db, mock_user):
         """Test creating a thread with no title."""
         response = client.post("/v1/chat/threads", json={})
         assert response.status_code == 201
@@ -76,7 +81,7 @@ class TestCreateThread:
         assert data["title"] is None
         assert data["message_count"] == 0
 
-    def test_create_thread_with_title(self, client, mock_db, mock_user):
+    def test_create_thread_with_title(self, client, mock_async_db, mock_user):
         """Test creating a thread with a title."""
         response = client.post("/v1/chat/threads", json={"title": "My Pasta Quest"})
         assert response.status_code == 201
@@ -91,12 +96,12 @@ class TestCreateThread:
 class TestListThreads:
     """Tests for GET /v1/chat/threads."""
 
-    def test_list_threads_empty(self, client, mock_db, mock_user):
+    def test_list_threads_empty(self, client, mock_async_db, mock_user):
         """Test listing threads when user has none."""
-        from utils.models.thread import Thread
-
-        mock_db.db.execute.return_value = MagicMock(
-            scalars=lambda: MagicMock(all=lambda: [])
+        mock_async_db.db.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=lambda: MagicMock(all=lambda: [])
+            )
         )
         response = client.get("/v1/chat/threads")
         assert response.status_code == 200
@@ -104,15 +109,17 @@ class TestListThreads:
         assert data["items"] == []
         assert data["total"] == 0
 
-    def test_list_threads_with_results(self, client, mock_db, mock_user):
+    def test_list_threads_with_results(self, client, mock_async_db, mock_user):
         """Test listing threads returns thread summaries."""
         thread = MockThread(
             user_id=str(mock_user.id),
             title="Dinner Ideas",
             chats=[MockChat(role="user", content="Find me pasta")],
         )
-        mock_db.db.execute.return_value = MagicMock(
-            scalars=lambda: MagicMock(all=lambda: [thread])
+        mock_async_db.db.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=lambda: MagicMock(all=lambda: [thread])
+            )
         )
         response = client.get("/v1/chat/threads")
         assert response.status_code == 200
@@ -127,16 +134,27 @@ class TestListThreads:
 # ---------------------------------------------------------------------------
 
 class TestGetThread:
-    """Tests for GET /v1/chat/threads/{thread_id}."""
+    """Tests for GET /v1/chat/threads/{thread_id}.
 
-    def test_get_thread_success(self, client, mock_db, mock_user):
+    GetThread uses `selectinload(Thread.chats)` via
+    `await db.execute(select(...))`, so the stub is on
+    `mock_async_db.db.execute` returning a MockExecuteResult-style shim.
+    """
+
+    def _stub_execute_to_return(self, mock_async_db, thread):
+        mock_async_db.db.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=lambda: MagicMock(first=lambda: thread)
+            )
+        )
+
+    def test_get_thread_success(self, client, mock_async_db, mock_user):
         """Test getting a thread with messages."""
         thread_id = str(uuid.uuid4())
         chat = MockChat(role="user", content="Hello AI")
         thread = MockThread(id=thread_id, user_id=str(mock_user.id), chats=[chat])
 
-        from utils.models.thread import Thread
-        mock_db.set_find_by(Thread, thread)
+        self._stub_execute_to_return(mock_async_db, thread)
 
         response = client.get(f"/v1/chat/threads/{thread_id}")
         assert response.status_code == 200
@@ -145,20 +163,17 @@ class TestGetThread:
         assert len(data["messages"]) == 1
         assert data["messages"][0]["role"] == "user"
 
-    def test_get_thread_not_found(self, client, mock_db, mock_user):
+    def test_get_thread_not_found(self, client, mock_async_db, mock_user):
         """Test getting a non-existent thread returns 404."""
-        from utils.models.thread import Thread
-        mock_db.set_find_by(Thread, None)
+        self._stub_execute_to_return(mock_async_db, None)
 
         response = client.get(f"/v1/chat/threads/{uuid.uuid4()}")
         assert response.status_code == 404
 
-    def test_get_thread_wrong_user(self, client, mock_db, mock_user):
+    def test_get_thread_wrong_user(self, client, mock_async_db, mock_user):
         """Test getting another user's thread returns 404."""
         thread = MockThread(user_id=str(uuid.uuid4()))  # different user
-
-        from utils.models.thread import Thread
-        mock_db.set_find_by(Thread, thread)
+        self._stub_execute_to_return(mock_async_db, thread)
 
         response = client.get(f"/v1/chat/threads/{thread.id}")
         assert response.status_code == 404
@@ -171,13 +186,13 @@ class TestGetThread:
 class TestDeleteThread:
     """Tests for DELETE /v1/chat/threads/{thread_id}."""
 
-    def test_delete_thread_success(self, client, mock_db, mock_user):
+    def test_delete_thread_success(self, client, mock_async_db, mock_user):
         """Test deleting a thread sets archived_at."""
         thread_id = str(uuid.uuid4())
         thread = MockThread(id=thread_id, user_id=str(mock_user.id))
 
         from utils.models.thread import Thread
-        mock_db.set_find_by(Thread, thread)
+        mock_async_db.set_find_by(Thread, thread)
 
         response = client.delete(f"/v1/chat/threads/{thread_id}")
         assert response.status_code == 200
@@ -185,10 +200,10 @@ class TestDeleteThread:
         assert data["deleted"] is True
         assert thread.archived_at is not None
 
-    def test_delete_thread_not_found(self, client, mock_db, mock_user):
+    def test_delete_thread_not_found(self, client, mock_async_db, mock_user):
         """Test deleting a non-existent thread returns 404."""
         from utils.models.thread import Thread
-        mock_db.set_find_by(Thread, None)
+        mock_async_db.set_find_by(Thread, None)
 
         response = client.delete(f"/v1/chat/threads/{uuid.uuid4()}")
         assert response.status_code == 404

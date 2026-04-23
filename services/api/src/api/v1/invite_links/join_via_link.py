@@ -7,10 +7,11 @@ from api.v1.invitations.helpers import (
     create_membership,
     get_resource_name,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.activity import Activity
 from utils.models.invite_link import InviteLink
@@ -22,20 +23,21 @@ from utils.services.push_notification import (
 )
 
 
-class JoinViaLink(Endpoint):
+class JoinViaLink(AsyncEndpoint):
     """Join a resource via an invite link token."""
 
-    def execute(self, token: str):
+    async def execute(self, token: str):
         user: User = self.user
 
-        invite_link = self.db.execute(
+        result = await self.db.execute(
             select(InviteLink)
             .options(joinedload(InviteLink.created_by))
             .where(
                 InviteLink.token == token,
                 InviteLink.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        invite_link = result.scalar_one_or_none()
 
         if not invite_link:
             raise APIException(
@@ -69,10 +71,10 @@ class JoinViaLink(Endpoint):
             )
 
         # Already a member — succeed silently
-        if check_existing_membership(
+        if await check_existing_membership(
             self.db, user.id, invite_link.resource_type, invite_link.resource_id
         ):
-            resource_name = get_resource_name(
+            resource_name = await get_resource_name(
                 self.db, invite_link.resource_type, invite_link.resource_id
             )
             return success(
@@ -86,7 +88,7 @@ class JoinViaLink(Endpoint):
             )
 
         # Create membership
-        create_membership(
+        await create_membership(
             self.db,
             user_id=user.id,
             resource_type=invite_link.resource_type,
@@ -111,18 +113,22 @@ class JoinViaLink(Endpoint):
             },
         ))
 
-        self.db.commit()
+        await self.db.commit()
 
         # Notify link creator
-        resource_name = get_resource_name(
+        resource_name = await get_resource_name(
             self.db, invite_link.resource_type, invite_link.resource_id
         )
         display_name = (
             f"@{user.username}" if user.username else user.name or "Someone"
         )
         creator = invite_link.created_by
+        # aam-8 hasn't landed — `push_service.send_to_user` still talks
+        # to sync Firebase Admin + sync Database. Wrap in threadpool so
+        # the async event loop isn't blocked on the FCM round-trip.
         push_service = get_push_service()
-        push_service.send_to_user(
+        await run_in_threadpool(
+            push_service.send_to_user,
             creator,
             PushNotification(
                 title="New Member",
@@ -134,7 +140,9 @@ class JoinViaLink(Endpoint):
                     "user_id": str(user.id),
                 },
             ),
-            db_session=self.db,
+            # Note: `db_session` intentionally omitted — threadpool
+            # task can't share the async session. The push service
+            # falls back to a fresh sync Database() when needed.
         )
 
         return success(

@@ -4,18 +4,30 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.thread import Thread
 from utils.models.user import User
 
 
-class GetThread(Endpoint):
+class GetThread(AsyncEndpoint):
     """Get a thread with all its chat messages."""
 
-    def execute(self, thread_id: str):
+    async def execute(self, thread_id: str):
         user: User = self.user
-        thread = self.database.find_by(Thread, id=thread_id)
+        # Eager-load `chats` — async response-builder walks
+        # `thread.chats` which would trigger MissingGreenlet on a lazy
+        # load. Lazy-load audit: `thread.chats` is the only
+        # relationship access in the response path.
+        stmt = (
+            select(Thread)
+            .options(selectinload(Thread.chats))
+            .where(Thread.id == thread_id)
+        )
+        result = await self.db.execute(stmt)
+        thread = result.scalars().first()
         if not thread or str(thread.user_id) != str(user.id):
             raise APIException(
                 status_code=404,

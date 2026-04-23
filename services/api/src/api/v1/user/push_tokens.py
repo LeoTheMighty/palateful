@@ -1,7 +1,13 @@
-"""Push notification token management endpoints."""
+"""Push notification token management endpoints.
+
+aam-21: `GetNotificationPreferences` + `UpdateNotificationPreferences`
+converted to `AsyncEndpoint`. The push-token classes
+(`RegisterPushToken`/`UnregisterPushToken`) stay sync — aam-19 owns
+their conversion alongside the rest of the user profile domain.
+"""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, Endpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.services.push_notification import (
@@ -97,10 +103,10 @@ class UnregisterPushToken(Endpoint):
         token_count: int
 
 
-class UpdateNotificationPreferences(Endpoint):
+class UpdateNotificationPreferences(AsyncEndpoint):
     """Update user notification preferences."""
 
-    def execute(self, params: "UpdateNotificationPreferences.Params"):
+    async def execute(self, params: "UpdateNotificationPreferences.Params"):
         """
         Update notification preferences for the current user.
 
@@ -154,7 +160,7 @@ class UpdateNotificationPreferences(Endpoint):
             prefs["categories"] = merged
 
         user.notification_preferences = prefs
-        self.database.db.commit()
+        await self.database.db.commit()
 
         # Always echo a fully-defaulted categories dict so the client can
         # render the toggles without needing to reapply defaults itself.
@@ -194,10 +200,10 @@ class UpdateNotificationPreferences(Endpoint):
         categories: dict[str, bool]
 
 
-class GetNotificationPreferences(Endpoint):
+class GetNotificationPreferences(AsyncEndpoint):
     """Get user notification preferences."""
 
-    def execute(self):
+    async def execute(self):
         """
         Get current notification preferences for the user.
 

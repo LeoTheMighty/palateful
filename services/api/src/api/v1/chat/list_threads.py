@@ -5,15 +5,15 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.thread import Thread
 from utils.models.user import User
 
 
-class ListThreads(Endpoint):
+class ListThreads(AsyncEndpoint):
     """List all non-archived threads for the current user."""
 
-    def execute(self, limit: int = 20, offset: int = 0):
+    async def execute(self, limit: int = 20, offset: int = 0):
         user: User = self.user
         db = self.database.db
 
@@ -26,7 +26,8 @@ class ListThreads(Endpoint):
             .offset(offset)
             .limit(limit)
         )
-        threads = db.execute(query).scalars().all()
+        result = await db.execute(query)
+        threads = result.scalars().all()
 
         items = []
         for thread in threads:

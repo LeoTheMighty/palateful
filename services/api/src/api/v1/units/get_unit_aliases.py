@@ -13,19 +13,21 @@ on a redeploy, so clients don't need to revalidate.
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.unit import Unit
 from utils.models.unit_alias import UnitAlias
 
 
-class GetUnitAliases(Endpoint):
+class GetUnitAliases(AsyncEndpoint):
     """Return the full alias → canonical map + the canonical token list."""
 
-    def execute(self):
-        alias_rows = self.db.execute(
+    async def execute(self):
+        alias_result = await self.db.execute(
             select(UnitAlias.alias, UnitAlias.canonical_unit)
-        ).all()
-        canonical_rows = self.db.execute(select(Unit.name)).scalars().all()
+        )
+        alias_rows = alias_result.all()
+        canonical_result = await self.db.execute(select(Unit.name))
+        canonical_rows = canonical_result.scalars().all()
 
         aliases = {alias: canonical for alias, canonical in alias_rows}
         canonical = sorted({name for name in canonical_rows if name})

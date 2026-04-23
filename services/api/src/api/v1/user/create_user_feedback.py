@@ -20,7 +20,7 @@ import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from utils.api.endpoint import Endpoint, failure, success
+from utils.api.endpoint import AsyncEndpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_feedback import (
@@ -82,10 +82,10 @@ class FeedbackContext(BaseModel):
     recipe_id: uuid.UUID | None = None
 
 
-class CreateUserFeedback(Endpoint):
+class CreateUserFeedback(AsyncEndpoint):
     """Create a new feedback entry for the current user."""
 
-    def execute(self, params: CreateUserFeedback.Params):
+    async def execute(self, params: CreateUserFeedback.Params):
         user: User = self.user
 
         # Rate-limit FIRST — over-limit calls must not create rows or enqueue
@@ -122,8 +122,8 @@ class CreateUserFeedback(Endpoint):
             status="unread",
         )
         self.db.add(feedback)
-        self.db.commit()
-        self.db.refresh(feedback)
+        await self.db.commit()
+        await self.db.refresh(feedback)
 
         # Fire-and-forget admin fan-out. The task itself is defined in story 2;
         # we dispatch by name so story 1 can land without the task implementation.

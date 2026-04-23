@@ -800,29 +800,29 @@ class TestStartImportExtended:
 
 
 class TestDeactivateInviteLinkExtended:
-    """Cover deactivation path (lines 30-40)."""
+    """Cover deactivation path (lines 30-40). aam-21: async handler."""
 
-    def test_deactivate_success(self, client, mock_db, mock_user):
+    def test_deactivate_success(self, client, mock_async_db, mock_user):
         """Owner deactivates their link."""
         link_id = str(uuid.uuid4())
         link = MockInviteLink(
             id=link_id, is_active=True,
             created_by_id=str(mock_user.id),
         )
-        mock_db.db.execute.return_value = MockExecuteResult([link])
+        mock_async_db.db.execute.return_value = MockExecuteResult([link])
 
         response = client.delete(f"/v1/invite-links/{link_id}")
         assert response.status_code == 200
         assert link.is_active is False
 
-    def test_deactivate_wrong_user(self, client, mock_db, mock_user):
+    def test_deactivate_wrong_user(self, client, mock_async_db, mock_user):
         """Non-creator gets 403."""
         link_id = str(uuid.uuid4())
         link = MockInviteLink(
             id=link_id, is_active=True,
             created_by_id=str(uuid.uuid4()),  # different user
         )
-        mock_db.db.execute.return_value = MockExecuteResult([link])
+        mock_async_db.db.execute.return_value = MockExecuteResult([link])
 
         response = client.delete(f"/v1/invite-links/{link_id}")
         assert response.status_code == 403
@@ -834,21 +834,21 @@ class TestDeactivateInviteLinkExtended:
 
 
 class TestJoinViaLinkExtended:
-    """Cover remaining join-via-link branches."""
+    """Cover remaining join-via-link branches. aam-21: async handler."""
 
-    def test_join_inactive_link(self, client, mock_db, mock_user):
+    def test_join_inactive_link(self, client, mock_async_db, mock_user):
         """Link is deactivated — 410 (line 51)."""
         creator = MockUser(id=str(uuid.uuid4()))
         link = MockInviteLink(
             token="tok-inactive", is_active=False,
             created_by=creator, created_by_id=str(creator.id),
         )
-        mock_db.db.execute.return_value = MockExecuteResult([link])
+        mock_async_db.db.execute.return_value = MockExecuteResult([link])
 
         response = client.post("/v1/invite-links/tok-inactive/join")
         assert response.status_code == 410
 
-    def test_join_expired_link(self, client, mock_db, mock_user):
+    def test_join_expired_link(self, client, mock_async_db, mock_user):
         """Link is expired — 410 (line 58)."""
         creator = MockUser(id=str(uuid.uuid4()))
         link = MockInviteLink(
@@ -856,12 +856,12 @@ class TestJoinViaLinkExtended:
             expires_at=datetime.now(UTC) - timedelta(days=1),
             created_by=creator, created_by_id=str(creator.id),
         )
-        mock_db.db.execute.return_value = MockExecuteResult([link])
+        mock_async_db.db.execute.return_value = MockExecuteResult([link])
 
         response = client.post("/v1/invite-links/tok-expired/join")
         assert response.status_code == 410
 
-    def test_join_max_uses_reached(self, client, mock_db, mock_user):
+    def test_join_max_uses_reached(self, client, mock_async_db, mock_user):
         """Link has reached max uses — 410 (line 65)."""
         creator = MockUser(id=str(uuid.uuid4()))
         link = MockInviteLink(
@@ -869,12 +869,12 @@ class TestJoinViaLinkExtended:
             max_uses=5, use_count=5,
             created_by=creator, created_by_id=str(creator.id),
         )
-        mock_db.db.execute.return_value = MockExecuteResult([link])
+        mock_async_db.db.execute.return_value = MockExecuteResult([link])
 
         response = client.post("/v1/invite-links/tok-maxuse/join")
         assert response.status_code == 410
 
-    def test_join_already_member(self, client, mock_db, mock_user):
+    def test_join_already_member(self, client, mock_async_db, mock_user):
         """User is already a member — returns already_member=True (lines 75-78)."""
         creator = MockUser(id=str(uuid.uuid4()))
         link = MockInviteLink(
@@ -885,7 +885,7 @@ class TestJoinViaLinkExtended:
         )
         existing_membership = MockRecipeBookUser()
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),              # fetch link
             MockExecuteResult([existing_membership]),  # check_existing_membership
             MockExecuteResult(["My Book"]),          # get_resource_name
@@ -903,9 +903,9 @@ class TestJoinViaLinkExtended:
 
 
 class TestPreviewInviteLinkExtended:
-    """Cover all state branches in PreviewInviteLink."""
+    """Cover all state branches in PreviewInviteLink. aam-21: async handler."""
 
-    def test_preview_inactive_state(self, client, mock_db, mock_user):
+    def test_preview_inactive_state(self, client, mock_async_db, mock_user):
         """Inactive link returns state='inactive' (line 43)."""
         creator = MockUser(id=str(uuid.uuid4()), name="C", username="c")
         link = MockInviteLink(
@@ -914,7 +914,7 @@ class TestPreviewInviteLinkExtended:
             resource_id="b0000000-0000-0000-0000-000000000001",
             created_by=creator, created_by_id=str(creator.id),
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),
             MockExecuteResult(["Book Name"]),
         ]
@@ -923,7 +923,7 @@ class TestPreviewInviteLinkExtended:
         assert response.status_code == 200
         assert response.json()["state"] == "inactive"
 
-    def test_preview_expired_state(self, client, mock_db, mock_user):
+    def test_preview_expired_state(self, client, mock_async_db, mock_user):
         """Expired link returns state='expired' (line 45)."""
         creator = MockUser(id=str(uuid.uuid4()), name="C", username="c")
         link = MockInviteLink(
@@ -933,7 +933,7 @@ class TestPreviewInviteLinkExtended:
             resource_id="b0000000-0000-0000-0000-000000000001",
             created_by=creator, created_by_id=str(creator.id),
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),
             MockExecuteResult(["Book"]),
         ]
@@ -942,7 +942,7 @@ class TestPreviewInviteLinkExtended:
         assert response.status_code == 200
         assert response.json()["state"] == "expired"
 
-    def test_preview_full_state(self, client, mock_db, mock_user):
+    def test_preview_full_state(self, client, mock_async_db, mock_user):
         """Max uses reached returns state='full' (line 47)."""
         creator = MockUser(id=str(uuid.uuid4()), name="C", username="c")
         link = MockInviteLink(
@@ -951,7 +951,7 @@ class TestPreviewInviteLinkExtended:
             resource_id="b0000000-0000-0000-0000-000000000001",
             created_by=creator, created_by_id=str(creator.id),
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),
             MockExecuteResult(["Book"]),
         ]
@@ -960,7 +960,7 @@ class TestPreviewInviteLinkExtended:
         assert response.status_code == 200
         assert response.json()["state"] == "full"
 
-    def test_preview_already_member_state(self, client, mock_db, mock_user):
+    def test_preview_already_member_state(self, client, mock_async_db, mock_user):
         """Already a member returns state='already_member' (line 51)."""
         creator = MockUser(id=str(uuid.uuid4()), name="C", username="c")
         link = MockInviteLink(
@@ -970,7 +970,7 @@ class TestPreviewInviteLinkExtended:
             created_by=creator, created_by_id=str(creator.id),
         )
         existing = MockRecipeBookUser()
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([link]),
             MockExecuteResult([existing]),  # check_existing_membership -> found
             MockExecuteResult(["Book"]),
@@ -1179,18 +1179,22 @@ class TestShoppingListRouterWebsocket:
 
 
 class TestListThreadsEmptyChats:
-    """Cover the 'no chats' branch (branch 34->37)."""
+    """Cover the 'no chats' branch (branch 34->37). aam-21: async handler."""
 
-    def test_list_threads_thread_with_no_chats(self, client, mock_db, mock_user):
+    def test_list_threads_thread_with_no_chats(self, client, mock_async_db, mock_user):
         """Thread with empty chats list — last_message should be None."""
+        from unittest.mock import AsyncMock
+
         thread = MockModel(
             id=str(uuid.uuid4()),
             user_id=str(mock_user.id),
             title="Empty Thread",
             chats=[],
         )
-        mock_db.db.execute.return_value = MagicMock(
-            scalars=lambda: MagicMock(all=lambda: [thread])
+        mock_async_db.db.execute = AsyncMock(
+            return_value=MagicMock(
+                scalars=lambda: MagicMock(all=lambda: [thread])
+            )
         )
         response = client.get("/v1/chat/threads")
         assert response.status_code == 200
@@ -1205,54 +1209,69 @@ class TestListThreadsEmptyChats:
 
 
 class TestInvitationHelpersExtended:
-    """Cover uncovered branches in helpers.py."""
+    """Cover uncovered branches in helpers.py.
 
-    def test_check_resource_permission_meal_event_not_found(self):
+    aam-21: helpers are async — tests await the call with an AsyncMock db.
+    """
+
+    async def test_check_resource_permission_meal_event_not_found(self):
         """Meal event not found raises 404 (line 111->exit scenario)."""
+        from unittest.mock import AsyncMock
+
         from api.v1.invitations.helpers import check_resource_permission
         from utils.api.endpoint import APIException
 
         db = MagicMock()
-        db.execute.return_value = MockExecuteResult([])
+        db.execute = AsyncMock(return_value=MockExecuteResult([]))
 
         with pytest.raises(APIException) as exc_info:
-            check_resource_permission(db, uuid.uuid4(), "meal_event", uuid.uuid4())
+            await check_resource_permission(
+                db, uuid.uuid4(), "meal_event", uuid.uuid4()
+            )
         assert exc_info.value.status_code == 404
 
-    def test_create_membership_meal_event_new(self):
+    async def test_create_membership_meal_event_new(self):
         """Create membership for meal_event — new member path (line 276->298)."""
+        from unittest.mock import AsyncMock
+
         from api.v1.invitations.helpers import create_membership
 
         db = MagicMock()
-        db.execute.return_value = MockExecuteResult([])
+        db.execute = AsyncMock(return_value=MockExecuteResult([]))
+        db.flush = AsyncMock()
 
-        create_membership(
+        await create_membership(
             db, uuid.uuid4(), "meal_event", uuid.uuid4(), "guest", uuid.uuid4(),
         )
         db.add.assert_called_once()
         db.flush.assert_called_once()
 
-    def test_create_membership_meal_event_reactivate(self):
+    async def test_create_membership_meal_event_reactivate(self):
         """Reactivate archived meal_event membership."""
+        from unittest.mock import AsyncMock
+
         from api.v1.invitations.helpers import create_membership
 
         existing = MockMealEventParticipant(archived_at=datetime.now(UTC))
         db = MagicMock()
-        db.execute.return_value = MockExecuteResult([existing])
+        db.execute = AsyncMock(return_value=MockExecuteResult([existing]))
+        db.flush = AsyncMock()
 
-        create_membership(
+        await create_membership(
             db, uuid.uuid4(), "meal_event", uuid.uuid4(), "cohost", uuid.uuid4(),
         )
         assert existing.archived_at is None
         assert existing.role == "cohost"
         assert existing.status == "accepted"
 
-    def test_check_existing_membership_unknown_resource_type(self):
+    async def test_check_existing_membership_unknown_resource_type(self):
         """Unknown resource_type returns False (line 193)."""
         from api.v1.invitations.helpers import check_existing_membership
 
         db = MagicMock()
-        result = check_existing_membership(db, uuid.uuid4(), "unknown_type", uuid.uuid4())
+        result = await check_existing_membership(
+            db, uuid.uuid4(), "unknown_type", uuid.uuid4()
+        )
         assert result is False
 
 
@@ -1262,12 +1281,13 @@ class TestInvitationHelpersExtended:
 
 
 class TestSendInvitationExtended:
-    """Cover branch for duplicate email-based invitation (line 110->115)."""
+    """Cover branch for duplicate email-based invitation (line 110->115).
 
-    def test_duplicate_email_invitation(self, client, mock_db, mock_user):
+    aam-21: handler is async — stub the async db.execute instead.
+    """
+
+    def test_duplicate_email_invitation(self, client, mock_async_db, mock_user):
         """Sending a second invitation to the same email returns 409."""
-        from utils.models.invitation import Invitation
-
         # Set up: user has permission, target is by email (no user found)
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), role="owner",
@@ -1285,7 +1305,7 @@ class TestSendInvitationExtended:
                 return MockExecuteResult([existing_invite])  # dup check
             return MockExecuteResult([])
 
-        mock_db.db.execute.side_effect = execute_side
+        mock_async_db.db.execute.side_effect = execute_side
 
         response = client.post(
             "/v1/invitations",
@@ -1500,15 +1520,18 @@ class TestSearchUsersEmptyQuery:
 
 
 class TestCreateInviteLinkExpiresInDays:
-    """Cover expires_in_days branch in CreateInviteLink (line 31)."""
+    """Cover expires_in_days branch in CreateInviteLink (line 31).
 
-    def test_create_invite_link_with_expires_in_days(self, client, mock_db, mock_user):
+    aam-21: handler is async — stub the async db.
+    """
+
+    def test_create_invite_link_with_expires_in_days(self, client, mock_async_db, mock_user):
         """Setting expires_in_days calculates expires_at."""
         book_id = "b0000000-0000-0000-0000-000000000001"
         membership = MockRecipeBookUser(
             user_id=str(mock_user.id), recipe_book_id=book_id, role="owner",
         )
-        mock_db.db.execute.return_value = MockExecuteResult([membership])
+        mock_async_db.db.execute.return_value = MockExecuteResult([membership])
 
         response = client.post(
             "/v1/invite-links",

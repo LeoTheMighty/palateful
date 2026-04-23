@@ -3,15 +3,16 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.active_timer import ActiveTimer
 from utils.models.user import User
 
 
-class GetActiveTimers(Endpoint):
+class GetActiveTimers(AsyncEndpoint):
     """Get all active timers for the current user."""
 
-    def execute(self):
+    async def execute(self):
         """
         Get all active (running or paused) timers for the current user.
 
@@ -21,14 +22,15 @@ class GetActiveTimers(Endpoint):
         user: User = self.user
 
         # Find active timers (running or paused)
-        timers = (
-            self.db.query(ActiveTimer)
-            .filter(ActiveTimer.user_id == user.id)
-            .filter(ActiveTimer.status.in_(["running", "paused"]))
-            .filter(ActiveTimer.archived_at.is_(None))
+        stmt = (
+            select(ActiveTimer)
+            .where(ActiveTimer.user_id == user.id)
+            .where(ActiveTimer.status.in_(["running", "paused"]))
+            .where(ActiveTimer.archived_at.is_(None))
             .order_by(ActiveTimer.created_at.desc())
-            .all()
         )
+        result = await self.db.execute(stmt)
+        timers = result.scalars().all()
 
         items = []
         for timer in timers:

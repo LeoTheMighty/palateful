@@ -18,7 +18,7 @@ import json
 import logging
 
 from pydantic import BaseModel, ConfigDict, Field
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.error_log import ErrorLog
 from utils.models.user import User
 
@@ -29,10 +29,10 @@ _MAX_MESSAGE_LEN = 2000
 _MAX_STACK_LEN = 8000
 
 
-class RecordClientError(Endpoint):
+class RecordClientError(AsyncEndpoint):
     """Record a client-side error or breadcrumb into error_logs."""
 
-    def execute(self, params: RecordClientError.Params):
+    async def execute(self, params: RecordClientError.Params):
         user: User = self.user
 
         envelope: dict = {}
@@ -67,7 +67,7 @@ class RecordClientError(Endpoint):
             path=path,
         )
         self.db.add(row)
-        self.db.commit()
+        await self.db.commit()
 
         return success(data=RecordClientError.Response(recorded=True))
 

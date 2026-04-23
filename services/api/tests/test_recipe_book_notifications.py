@@ -370,41 +370,51 @@ class TestNotifyRecipeAdded:
 # ---------------------------------------------------------------------------
 
 class TestPartnerActivityPreference:
+    """aam-21: GetNotificationPreferences + UpdateNotificationPreferences
+    are now `AsyncEndpoint` — tests await `execute(...)` with an async-aware
+    `db.commit` AsyncMock.
+    """
 
-    def test_update_partner_activity_false(self):
+    async def test_update_partner_activity_false(self):
+        from unittest.mock import AsyncMock
+
         from api.v1.user.push_tokens import UpdateNotificationPreferences
 
         user = MagicMock()
         user.notification_preferences = {"push_enabled": True, "partner_activity": True}
 
         db = MagicMock()
+        db.commit = AsyncMock()
         database = MagicMock()
         database.db = db
 
         endpoint = UpdateNotificationPreferences(user=user, database=database)
         params = UpdateNotificationPreferences.Params(partner_activity=False)
-        result = endpoint.execute(params=params)
+        await endpoint.execute(params=params)
 
         assert user.notification_preferences["partner_activity"] is False
         db.commit.assert_called_once()
 
-    def test_update_partner_activity_true(self):
+    async def test_update_partner_activity_true(self):
+        from unittest.mock import AsyncMock
+
         from api.v1.user.push_tokens import UpdateNotificationPreferences
 
         user = MagicMock()
         user.notification_preferences = {"push_enabled": True, "partner_activity": False}
 
         db = MagicMock()
+        db.commit = AsyncMock()
         database = MagicMock()
         database.db = db
 
         endpoint = UpdateNotificationPreferences(user=user, database=database)
         params = UpdateNotificationPreferences.Params(partner_activity=True)
-        result = endpoint.execute(params=params)
+        await endpoint.execute(params=params)
 
         assert user.notification_preferences["partner_activity"] is True
 
-    def test_get_partner_activity_defaults_true_when_missing(self):
+    async def test_get_partner_activity_defaults_true_when_missing(self):
         from api.v1.user.push_tokens import GetNotificationPreferences
 
         user = MagicMock()
@@ -412,11 +422,11 @@ class TestPartnerActivityPreference:
         user.push_tokens = []
 
         endpoint = GetNotificationPreferences(user=user, database=MagicMock())
-        result = endpoint.execute()
+        result = await endpoint.execute()
         # success() returns a dict directly
         assert result["data"].partner_activity is True
 
-    def test_get_partner_activity_respects_stored_value(self):
+    async def test_get_partner_activity_respects_stored_value(self):
         from api.v1.user.push_tokens import GetNotificationPreferences
 
         user = MagicMock()
@@ -424,7 +434,7 @@ class TestPartnerActivityPreference:
         user.push_tokens = []
 
         endpoint = GetNotificationPreferences(user=user, database=MagicMock())
-        result = endpoint.execute()
+        result = await endpoint.execute()
         assert result["data"].partner_activity is False
 
 

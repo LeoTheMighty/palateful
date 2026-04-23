@@ -1,24 +1,25 @@
 """Deactivate invite link endpoint."""
 
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.invite_link import InviteLink
 from utils.models.user import User
 
 
-class DeactivateInviteLink(Endpoint):
+class DeactivateInviteLink(AsyncEndpoint):
     """Deactivate an invite link."""
 
-    def execute(self, invite_link_id: str):
+    async def execute(self, invite_link_id: str):
         user: User = self.user
 
-        invite_link = self.db.execute(
+        result = await self.db.execute(
             select(InviteLink).where(
                 InviteLink.id == invite_link_id,
                 InviteLink.archived_at.is_(None),
             )
-        ).scalar_one_or_none()
+        )
+        invite_link = result.scalar_one_or_none()
 
         if not invite_link:
             raise APIException(
@@ -35,6 +36,6 @@ class DeactivateInviteLink(Endpoint):
             )
 
         invite_link.is_active = False
-        self.db.commit()
+        await self.db.commit()
 
         return success()

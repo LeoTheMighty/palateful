@@ -1,4 +1,10 @@
-"""Invitations endpoints router."""
+"""Invitations endpoints router.
+
+aam-21: flipped to `get_async_database` + `get_current_user_async`.
+Push-notification fan-out (Firebase Admin) runs through
+`run_in_threadpool` inside the handlers — aam-8 will remove the wrap
+once `push_notification.py` is async itself.
+"""
 
 from api.v1.invitations import (
     AcceptInvitation,
@@ -9,10 +15,10 @@ from api.v1.invitations import (
     RevokeInvitation,
     SendInvitation,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 invitations_router = APIRouter(prefix="/invitations", tags=["invitations"])
 
@@ -25,20 +31,20 @@ invitations_router = APIRouter(prefix="/invitations", tags=["invitations"])
 @invitations_router.post("")
 async def send_invitation(
     params: SendInvitation.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Send an invitation to share a resource."""
-    return SendInvitation.call(params, user=user, database=database)
+    return await SendInvitation.call(params, user=user, database=database)
 
 
 @invitations_router.post("/claim")
 async def claim_invitations(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Claim pending email invitations after signup."""
-    return ClaimInvitations.call(user=user, database=database)
+    return await ClaimInvitations.call(user=user, database=database)
 
 
 # ============================================================
@@ -48,20 +54,20 @@ async def claim_invitations(
 
 @invitations_router.get("")
 async def list_received_invitations(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List pending invitations received by the current user."""
-    return ListReceivedInvitations.call(user=user, database=database)
+    return await ListReceivedInvitations.call(user=user, database=database)
 
 
 @invitations_router.get("/sent")
 async def list_sent_invitations(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List invitations sent by the current user."""
-    return ListSentInvitations.call(user=user, database=database)
+    return await ListSentInvitations.call(user=user, database=database)
 
 
 # ============================================================
@@ -72,28 +78,34 @@ async def list_sent_invitations(
 @invitations_router.post("/{invitation_id}/accept")
 async def accept_invitation(
     invitation_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Accept an invitation."""
-    return AcceptInvitation.call(invitation_id=invitation_id, user=user, database=database)
+    return await AcceptInvitation.call(
+        invitation_id=invitation_id, user=user, database=database
+    )
 
 
 @invitations_router.post("/{invitation_id}/decline")
 async def decline_invitation(
     invitation_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Decline an invitation."""
-    return DeclineInvitation.call(invitation_id=invitation_id, user=user, database=database)
+    return await DeclineInvitation.call(
+        invitation_id=invitation_id, user=user, database=database
+    )
 
 
 @invitations_router.delete("/{invitation_id}")
 async def revoke_invitation(
     invitation_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Revoke a sent invitation."""
-    return RevokeInvitation.call(invitation_id=invitation_id, user=user, database=database)
+    return await RevokeInvitation.call(
+        invitation_id=invitation_id, user=user, database=database
+    )
