@@ -1203,3 +1203,103 @@ development_status:
   cmmrf-5-auto-advance-on-recipe-end: backlog
   cmmrf-6-active-timers-row-recipe-name-prefix-and-cross-recipe-pulse: backlog
   cmmrf-7-cross-recipe-backward-swipe-rewind: backlog
+
+  # === Performance Health v2 (3 epics) — added 2026-04-23 ===
+  # Motivation: user spotted a steady stream of repeated GETs in Chrome
+  # DevTools on Flutter web (notably /v1/import-items). Phase-2 audit found
+  # ~8 concrete frontend fetch wins beyond what epic-perf-flutter-client-
+  # polish closed (2026-04-21), plus a gap in client-side observability
+  # (we measure server-side p95 but nothing route-paint / cold-start /
+  # frame-jank / OS-level hang on the client). Three parallel epics:
+  # fetch minimization (additive backend ?include= + ?job_ids, no new
+  # endpoints on the hot path), client analytics (new client_latencies
+  # table + Postgres-backed pipeline mirroring obs-latency + Firebase
+  # Performance as secondary + iOS MetricKit + Android JankStats + web
+  # Navigation Timing), and debug tooling (in-app debug overlay + bin/
+  # perf-audit Patrol harness + committed budget YAML + CI regression
+  # guard + analyze_latency.py --regression-hunt --section client|all).
+  #
+  # User-locked decisions (2026-04-23):
+  #   - Three-epic split, parallelizable
+  #   - Custom /v1/client-latencies primary + Firebase Performance secondary
+  #   - MetricKit (iOS) + JankStats (Android) both wired now
+  #   - All three platforms (iOS + Android + Flutter web) from day one
+  # No AWS cost delta; Firebase free tier covers projected volume.
+
+  epic-perf-frontend-fetch-minimization: backlog
+  ffm-1-shared-recipe-books-provider-and-callsite-migration: backlog
+  ffm-2-batch-import-items-endpoint-and-flutter-caller: backlog
+  ffm-3-activity-poll-and-mutationbus-dedup: backlog
+  ffm-4-notifications-tab-single-fetch-on-mount: backlog
+  ffm-5-lazy-list-meals-in-book-on-book-detail: backlog
+  ffm-6-session-cache-ttl-helper-and-five-providers: backlog
+  ffm-7-dio-request-dedup-interceptor: backlog
+  ffm-8-image-network-to-cached-network-image-sweep-and-ci-guard: backlog
+  ffm-9a-recipe-detail-include-query-param-lenient-default: backlog
+  ffm-9b-flip-recipes-default-to-lean-one-release-soak: backlog
+  ffm-10-import-item-include-parsed-recipe-trim: backlog
+  # Spawned by party-mode 2026-04-23 — split from ffm-8 because the
+  # original "no CI-workflow changes" claim was wrong; the grep guard
+  # needs explicit workflow wiring alongside silent-catch.
+  ffm-11-ci-wiring-for-image-network-check-script: backlog
+  epic-perf-frontend-fetch-minimization-retrospective: optional
+
+  epic-perf-client-analytics: backlog
+  # Party-mode 2026-04-23 splits + additions:
+  #   cla-1 → cla-1a (table+model+prune) + cla-1b (ingest+server
+  #     redaction + anonymous+IP-rate-limit per user lock 2026-04-23)
+  #     + cla-1c (kill-switch flag endpoint).
+  #   cla-2 → script-only; cla-10a carved out for admin aggregation.
+  #   cla-10 → cla-10a (aggregation endpoints) + cla-10b (Flutter UI).
+  #   NEW cla-12 (Firebase scope lockdown — disable auto screen traces).
+  #   NEW cla-13 (privacy policy + Data Safety form update — cross-epic
+  #     with epic-android-privacy-policy-page + play-console-launch).
+  #   NEW cla-14 (synthetic load test on ingest endpoint).
+  # Locked ordering: cla-1a → cla-1b → cla-1c → cla-3 → (cla-4, cla-5,
+  #   cla-6 parallel) → (cla-7, cla-8, cla-9 parallel) → cla-10a → cla-10b
+  #   → (cla-11, cla-12, cla-13, cla-14 parallel).
+  cla-1a-backend-client-latencies-table-model-and-nightly-prune: done
+  cla-1b-post-client-latencies-ingest-redaction-and-anonymous: done
+  cla-1c-flags-perf-kill-switch-endpoint-and-flutter-fetch: backlog
+  cla-2-analyze-latency-section-client-and-all: backlog
+  cla-3-flutter-client-latency-ingest-batched-flush-service: backlog
+  cla-4-flutter-perf-navigator-observer-go-router-aware: backlog
+  cla-5-flutter-cold-start-timing-and-frame-jank-aggregator: backlog
+  cla-6-dio-interceptor-chain-perf-firebase-dedup-coexistence: backlog
+  cla-7-ios-metrickit-receiver-eventchannel-and-dart-handler: backlog
+  cla-8-android-jankstats-receiver-eventchannel-and-dart-handler: backlog
+  cla-9-flutter-web-navigation-timing-bridge-package-web: backlog
+  cla-10a-admin-aggregation-endpoints: backlog
+  cla-10b-flutter-admin-dashboard-client-tab: backlog
+  cla-11-firebase-performance-monitoring-scoped-enablement: backlog
+  cla-12-firebase-performance-scope-lockdown-disable-screen-traces: backlog
+  cla-13-privacy-policy-and-data-safety-form-update: backlog
+  cla-14-synthetic-load-test-on-ingest-endpoint: backlog
+  epic-perf-client-analytics-retrospective: optional
+
+  epic-perf-debug-tooling: backlog
+  # Party-mode 2026-04-23 changes:
+  #   Patrol dropped — uses existing integration_test + helpers.dart +
+  #     kE2EMode bypass (precedent in error_reporter.dart:81).
+  #   NEW ptd-2.5 (mock Dio adapter + auth bypass plumbing).
+  #   ptd-3 split → ptd-3a (4 screens) + ptd-3b (4 screens).
+  #   NEW ptd-4.5 (budget waiver file + grep guard, mirrors silent-catch
+  #     allowlist).
+  #   ptd-5 gets warn-mode 14d → strict flip, paths: [app/**] filter,
+  #     PR-comment posting, labeler, retry+quarantine policy.
+  #   ptd-6 thresholds 2.0× (not 1.5×) + --min-samples 50 for client.
+  #   ptd-6 hard-depends on cla-1a (client_latencies table).
+  #   NEW ptd-8 (self-test synthetic regression fixture).
+  #   Overlay hit-zone: Profile avatar long-press (visible every screen).
+  ptd-1-debug-perf-overlay-profile-avatar-long-press: done
+  ptd-2-perf-audit-harness-skeleton-and-home-test: backlog
+  ptd-2-5-dio-mock-adapter-and-auth-bypass-plumbing: backlog
+  ptd-3a-per-screen-rollout-first-four-books-detail-activity-meals: backlog
+  ptd-3b-per-screen-rollout-remaining-four-calendar-profile-search-cook: backlog
+  ptd-4-perf-audit-script-budgets-yaml-and-capture-assert-modes: backlog
+  ptd-4-5-budget-waiver-file-and-grep-guard: backlog
+  ptd-5-ci-regression-guard-warn-to-strict: backlog
+  ptd-6-analyze-latency-regression-hunt-section-client-and-all: backlog
+  ptd-7-performance-ops-runbook-doc: backlog
+  ptd-8-self-test-synthetic-regression-fixture: backlog
+  epic-perf-debug-tooling-retrospective: optional

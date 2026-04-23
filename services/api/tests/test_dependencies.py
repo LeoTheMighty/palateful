@@ -270,6 +270,124 @@ class TestFinalizeAuth:
         mock_database.update.assert_not_called()
 
 
+class TestRequireAdmin:
+    """Tests for the `require_admin` dependency (cla-1b coverage fill)."""
+
+    @pytest.mark.asyncio
+    async def test_admin_user_passes_through(self):
+        from dependencies import require_admin
+
+        admin = MagicMock()
+        admin.is_admin = True
+
+        result = await require_admin(user=admin)
+        assert result is admin
+
+    @pytest.mark.asyncio
+    async def test_non_admin_raises_403(self):
+        from dependencies import require_admin
+        from utils.api.endpoint import APIException
+
+        non_admin = MagicMock()
+        non_admin.is_admin = False
+
+        with pytest.raises(APIException) as exc_info:
+            await require_admin(user=non_admin)
+        assert exc_info.value.status_code == 403
+
+
+class TestGetOptionalUser:
+    """Tests for `get_optional_user` — powers anonymous ingest paths
+    like `POST /v1/client-latencies` (cla-1b)."""
+
+    @pytest.mark.asyncio
+    async def test_missing_header_returns_none(self):
+        from dependencies import get_optional_user
+
+        result = await get_optional_user(
+            authorization=None, database=MagicMock()
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_non_bearer_header_returns_none(self):
+        from dependencies import get_optional_user
+
+        result = await get_optional_user(
+            authorization="Token abc", database=MagicMock()
+        )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_valid_bearer_returns_resolved_user(self):
+        from dependencies import get_optional_user
+
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+        mock_database = MagicMock()
+        mock_database.find_or_create_by.return_value = mock_user
+
+        verifier = AsyncMock()
+        verifier.verify_token.return_value = {
+            "sub": "auth0|opt",
+            "email": "opt@example.test",
+        }
+
+        with patch(
+            "utils.services.auth0.get_auth0_verifier", return_value=verifier
+        ):
+            result = await get_optional_user(
+                authorization="Bearer ok-token",
+                database=mock_database,
+            )
+
+        assert result is mock_user
+
+    @pytest.mark.asyncio
+    async def test_invalid_token_falls_back_to_none(self):
+        """APIException from the inner `get_current_user` resolves
+        to anonymous (None) rather than propagating 401."""
+        from dependencies import get_optional_user
+        from utils.api.endpoint import APIException
+        from utils.classes.error_code import ErrorCode
+
+        async def raising_get_current_user(**_):
+            raise APIException(
+                status_code=401,
+                detail="bad token",
+                code=ErrorCode.INVALID_TOKEN,
+            )
+
+        with patch(
+            "dependencies.get_current_user",
+            side_effect=raising_get_current_user,
+        ):
+            result = await get_optional_user(
+                authorization="Bearer bogus",
+                database=MagicMock(),
+            )
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_falls_back_to_none(self):
+        """Any non-APIException also fails open — telemetry ingest must
+        never 500 because auth resolution blew up."""
+        from dependencies import get_optional_user
+
+        async def exploding_get_current_user(**_):
+            raise RuntimeError("auth0 down")
+
+        with patch(
+            "dependencies.get_current_user",
+            side_effect=exploding_get_current_user,
+        ):
+            result = await get_optional_user(
+                authorization="Bearer anything",
+                database=MagicMock(),
+            )
+        assert result is None
+
+
 class TestEnsureDefaultCalendarDepCaching:
     """pbq-8 spike — verify FastAPI's `Depends` cache dedupes
     `_ensure_default_calendar` invocations within a single request.

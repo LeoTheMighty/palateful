@@ -207,3 +207,33 @@ async def require_admin(
             code=ErrorCode.FORBIDDEN,
         )
     return user
+
+
+async def get_optional_user(
+    authorization: Annotated[str | None, Header()] = None,
+    database: Database = Depends(get_database),
+) -> User | None:
+    """Resolve the current user when a JWT is present, else return None.
+
+    Used by endpoints that support anonymous callers — e.g. the
+    client-latency ingest (`POST /v1/client-latencies`, cla-1b), which
+    accepts pre-login cold-start and onboarding events without a JWT.
+    If the header is malformed or the token is invalid we return None
+    (rather than 401) so the anonymous path stays reachable; any
+    downstream rate-limit / validation logic owns abuse protection.
+    """
+    if authorization is None or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return await get_current_user(
+            authorization=authorization,
+            database=database,
+        )
+    except APIException:
+        return None
+    except Exception:
+        # Auth0 verifier / DB / anything unexpected — fail open to
+        # anonymous. Telemetry ingest must never hard-fail on optional
+        # auth; a 500 here would take down client-side perf reporting.
+        logger.exception("get_optional_user: auth resolution failed")
+        return None
