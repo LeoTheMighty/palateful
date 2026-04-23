@@ -1257,6 +1257,88 @@ class TestGetRecipeIncludeParam:
             assert key in data
 
 
+class TestGetRecipeLeanDefault:
+    """ffm-9b: RECIPES_LEAN_DEFAULT env-var controls the no-include
+    default shape. The env-var is the one-line rollback — flip via
+    ECS task-def to restore full-shape without a code change."""
+
+    def _setup(self, mock_db, mock_user, recipe_id="r-lean"):
+        book_id = "b-lean"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_db.db.query.return_value = MockQuery([])
+        return recipe_id
+
+    def test_env_off_returns_full_shape(
+        self, client, mock_db, mock_user, monkeypatch
+    ):
+        """Env var unset (initial safety-default) → full shape."""
+        monkeypatch.delenv("RECIPES_LEAN_DEFAULT", raising=False)
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}")
+        assert response.status_code == 200
+        data = response.json()
+        for key in ("ingredients", "steps", "notes", "version_count"):
+            assert key in data
+
+    def test_env_false_returns_full_shape(
+        self, client, mock_db, mock_user, monkeypatch
+    ):
+        """Env var explicitly ``false`` (documented rollback) →
+        full shape."""
+        monkeypatch.setenv("RECIPES_LEAN_DEFAULT", "false")
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}")
+        assert response.status_code == 200
+        data = response.json()
+        assert "notes" in data
+        assert "version_count" in data
+
+    def test_env_true_drops_notes_and_version_count(
+        self, client, mock_db, mock_user, monkeypatch
+    ):
+        """Env var ``true`` → no-include default omits the heavy
+        fields (``notes``, ``version_count``); ``ingredients`` +
+        ``steps`` remain."""
+        monkeypatch.setenv("RECIPES_LEAN_DEFAULT", "true")
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(f"/v1/recipes/{rid}")
+        assert response.status_code == 200
+        data = response.json()
+        assert "ingredients" in data
+        assert "steps" in data
+        assert "notes" not in data
+        assert "version_count" not in data
+
+    def test_env_true_explicit_include_still_honored(
+        self, client, mock_db, mock_user, monkeypatch
+    ):
+        """Even when env is on, an explicit ``?include=`` takes
+        precedence: caller asks for comments → notes present."""
+        monkeypatch.setenv("RECIPES_LEAN_DEFAULT", "true")
+        rid = self._setup(mock_db, mock_user)
+        response = client.get(
+            f"/v1/recipes/{rid}?include=ingredients,steps,comments"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "notes" in data
+        assert "version_count" not in data
+
+
 class TestMoveRecipe:
     """Tests for POST /v1/recipes/{recipe_id}/move."""
 

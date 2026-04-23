@@ -1,5 +1,6 @@
 """Get recipe endpoint."""
 
+import os
 from datetime import datetime
 from decimal import Decimal
 
@@ -28,6 +29,29 @@ _INCLUDABLE_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 _DEFAULT_INCLUDE = frozenset(_INCLUDABLE_FIELDS.keys())
+
+# ffm-9b: when no ``?include=`` is supplied, what should the default
+# shape be?
+#
+# - With the env var UNSET / false (the initial safety-default), the
+#   response keeps the full ffm-9a shape — every gated field present.
+#   Old clients that still rely on ``versions`` / ``comments`` being
+#   at the root won't notice ffm-9a/9b landing.
+# - Once Flutter builds have shipped with ``?include=ingredients,
+#   steps`` wired on the detail screen and dashboards confirm zero
+#   upstream consumers depend on the full shape, set
+#   ``RECIPES_LEAN_DEFAULT=true`` via ECS task-def. The default then
+#   drops to the lean `ingredients,steps` subset — heavy `versions`
+#   + `comments` fields are absent unless the caller opts in.
+# - Env-var flip is the one-line rollback: change the task-def, no
+#   code change, no re-deploy.
+_LEAN_INCLUDE_ALIASES = frozenset({"ingredients", "steps"})
+
+
+def _lean_default_enabled() -> bool:
+    """Read the env-var flag. Re-checked per request so a task-def
+    flip takes effect without a container recycle."""
+    return os.environ.get("RECIPES_LEAN_DEFAULT", "").lower() == "true"
 
 
 class GetRecipe(Endpoint):
@@ -87,15 +111,21 @@ class GetRecipe(Endpoint):
         )
 
         if include is None:
-            return success(data=response_model)
-
-        # Parse the include CSV. Unknown values are dropped on the
-        # floor — easier than raising 400 when a client sends a new-
-        # world alias against an old server.
-        requested = {
-            s.strip() for s in include.split(",") if s.strip()
-        }
-        known_requested = requested & _DEFAULT_INCLUDE
+            # ffm-9b: when the lean-default flag is OFF (initial safe
+            # state, pre-flip), fall back to ffm-9a's full-shape
+            # default. When the flag is ON, treat the no-include case
+            # as if the caller had asked for the lean subset.
+            if not _lean_default_enabled():
+                return success(data=response_model)
+            known_requested = _LEAN_INCLUDE_ALIASES
+        else:
+            # Parse the include CSV. Unknown values are dropped on
+            # the floor — easier than raising 400 when a client
+            # sends a new-world alias against an old server.
+            requested = {
+                s.strip() for s in include.split(",") if s.strip()
+            }
+            known_requested = requested & _DEFAULT_INCLUDE
 
         # Build a dict and strip the gated fields the caller didn't
         # ask for. Using a dict here (instead of returning the
