@@ -395,5 +395,89 @@ void main() {
         disposeImp();
       },
     );
+
+    // ────────────────────────────────────────────────────────────────
+    // ffm-3: MutationBus reload suppresses the subsequent tick's own
+    // `refreshUnreadCount` for 10 seconds. Tab-listener callbacks are
+    // always invoked — only the bell-count round-trip is coalesced.
+    // ────────────────────────────────────────────────────────────────
+
+    test(
+      'ffm-3: tick short-circuits refreshUnreadCount within 10s of a '
+      'bus-driven reload',
+      () async {
+        final api = _FakeApiClient();
+        final provider = ActivityReadProvider(api);
+
+        // Fake clock at t=0.
+        var now = 1_000_000;
+        provider.debugSetClock(() => now);
+
+        // t=0: tick fires, baseline network fetch.
+        await provider.debugTick();
+        expect(api.unreadCountCalls, 1);
+
+        // t=+2s: MutationBus records a reload (imitated by driving the
+        // timestamp forward and calling refreshUnreadCount directly, as
+        // the bus subscription does).
+        now += 2000;
+        provider.debugSetClock(() => now);
+        provider.debugSetLastMutationReloadAt(now);
+        await provider.refreshUnreadCount();
+        expect(api.unreadCountCalls, 2,
+            reason: 'bus-driven reload always fetches');
+
+        // t=+6s (4s after bus reload): tick should short-circuit.
+        now += 4000;
+        provider.debugSetClock(() => now);
+        await provider.debugTick();
+        expect(api.unreadCountCalls, 2,
+            reason: 'within 10s window, tick suppresses its fetch');
+
+        // t=+13s (11s after bus reload): window elapsed, tick re-runs.
+        now += 7000;
+        provider.debugSetClock(() => now);
+        await provider.debugTick();
+        expect(api.unreadCountCalls, 3,
+            reason: 'past 10s window, tick resumes fetching');
+      },
+    );
+
+    test(
+      'ffm-3: fake-clock matrix — 10 ticks, 3 interleaved bus reloads, '
+      'exactly 7 network round-trips from ticks (plus 3 from bus)',
+      () async {
+        final api = _FakeApiClient();
+        final provider = ActivityReadProvider(api);
+
+        var now = 0;
+        provider.debugSetClock(() => now);
+
+        // Drive 10 ticks spaced 30s apart, and 3 bus reloads scheduled
+        // in the same tick window (so each ought to suppress exactly
+        // the tick it precedes).
+        final busAt = <int>{1, 4, 7}; // tick indices 1, 4, 7 get a bus reload
+        var busCalls = 0;
+        for (var i = 0; i < 10; i++) {
+          if (busAt.contains(i)) {
+            // Bus fires immediately before the tick — within the 10s
+            // floor. Record the timestamp and fetch, as the real bus
+            // handler does.
+            provider.debugSetLastMutationReloadAt(now);
+            await provider.refreshUnreadCount();
+            busCalls++;
+          }
+          await provider.debugTick();
+          now += 30_000; // advance 30s
+          provider.debugSetClock(() => now);
+        }
+
+        expect(busCalls, 3);
+        // Ticks: 10 scheduled, 3 suppressed by bus → 7 tick-driven
+        // fetches. Total calls = 7 tick + 3 bus = 10.
+        expect(api.unreadCountCalls, 10,
+            reason: 'bus + surviving ticks account for every call');
+      },
+    );
   });
 }

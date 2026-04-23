@@ -33,6 +33,10 @@ class ActivityReadProvider {
       if (event is ImportItemDismissed ||
           event is ImportJobDismissed ||
           event is ImportItemRetried) {
+        // ffm-3: record the timestamp BEFORE firing so a tick racing
+        // immediately after sees the bus-driven reload as the
+        // authoritative source within the dedup window.
+        _lastMutationReloadAt = _nowMs();
         refreshUnreadCount();
       }
     });
@@ -40,6 +44,44 @@ class ActivityReadProvider {
 
   final ApiClient _apiClient;
   StreamSubscription<MutationEvent>? _busSub;
+
+  /// ffm-3 — wall-clock (ms since epoch) of the last bus-driven
+  /// `refreshUnreadCount()` call. `0` means "never fired this session".
+  /// Reads go through [_nowMs] so tests can swap in a fake clock.
+  int _lastMutationReloadAt = 0;
+
+  /// ffm-3 — window within which a scheduled tick will short-circuit
+  /// its own unread-count refresh because the bus already produced
+  /// fresh truth. Tuned to comfortably cover one round-trip; a 5s value
+  /// leaves a flicker window on slow networks.
+  static const Duration _mutationReloadFloor = Duration(seconds: 10);
+
+  /// ffm-3 — injectable clock. Production reads `DateTime.now()`; tests
+  /// swap in a monotonic fake via [debugSetClock] to avoid wall-clock
+  /// flakes on CI.
+  int Function() _clock = _defaultClock;
+  static int _defaultClock() => DateTime.now().millisecondsSinceEpoch;
+  int _nowMs() => _clock();
+
+  /// Visible-for-testing clock override. Pass `null` to restore the
+  /// real clock.
+  @visibleForTesting
+  void debugSetClock(int Function()? clock) {
+    _clock = clock ?? _defaultClock;
+  }
+
+  /// Visible-for-testing hook so tests can inspect the dedup state
+  /// directly rather than through wall-clock timing.
+  @visibleForTesting
+  int get lastMutationReloadAt => _lastMutationReloadAt;
+
+  /// Visible-for-testing hook so tests can drive the ffm-3 fake-clock
+  /// matrix without running the real MutationBus. Mirrors what the bus
+  /// subscription does in production.
+  @visibleForTesting
+  void debugSetLastMutationReloadAt(int tsMs) {
+    _lastMutationReloadAt = tsMs;
+  }
 
   /// Release the MutationBus subscription. Tests call this in tearDown;
   /// production getIt lifecycle never calls it (the service lives for
@@ -303,8 +345,24 @@ class ActivityReadProvider {
       }
     }
     if (_activitiesFetchSubscribers == 0) {
+      // ffm-3: if a MutationBus event just drove a `refreshUnreadCount`
+      // within the dedup window, skip the tick's duplicate fetch. The
+      // tab-listener callbacks above still ran — only the bell-count
+      // round-trip is coalesced.
+      if (_isWithinMutationReloadWindow()) {
+        debugPrint(
+          '[activity-read] tick suppressed: bus-driven reload within '
+          '${_mutationReloadFloor.inSeconds}s',
+        );
+        return;
+      }
       await refreshUnreadCount();
     }
+  }
+
+  bool _isWithinMutationReloadWindow() {
+    if (_lastMutationReloadAt == 0) return false;
+    return (_nowMs() - _lastMutationReloadAt) < _mutationReloadFloor.inMilliseconds;
   }
 }
 
