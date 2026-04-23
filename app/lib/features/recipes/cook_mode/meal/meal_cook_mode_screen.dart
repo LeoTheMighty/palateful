@@ -44,7 +44,6 @@ import '../shared/widgets/timer_completion_overlay.dart';
 import '../widgets/cook_reset_confirm_sheet.dart';
 import '../widgets/cook_resume_gate_sheet.dart';
 import 'widgets/component_load_placeholder.dart';
-import 'widgets/recipe_section_header.dart';
 
 class MealCookModeScreen extends ConsumerStatefulWidget {
   final String mealId;
@@ -1341,21 +1340,10 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     final timers = step.timers.isNotEmpty
         ? step.timers
         : extractTimers(step.instruction);
-    final showSectionHeader = plan.components.length > 1;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
-          // cmm-3 — section header is hidden in 1-component plans
-          // (recipe-cook compat). Always shown for N>1 meals.
-          if (showSectionHeader) ...[
-            RecipeSectionHeader(
-              componentName: currentComponent.name,
-              localStep: stepIndex + 1,
-              componentTotal: currentComponent.steps.length,
-            ),
-            const SizedBox(height: 8),
-          ],
           // Flat-total progress bar — consistent with cmm-3 AC9
           // (10/20 reads 50%, regardless of component slicing).
           Container(

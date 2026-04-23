@@ -2,6 +2,7 @@
 // check-state + no-dedup + ingredient-order drift.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/features/meals/models/meal.dart';
@@ -110,6 +111,71 @@ void main() {
       );
       expect(
         find.byKey(const Key('ingredient_group_Salad')),
+        findsOneWidget,
+      );
+    });
+
+    // cmlp-4: meal mode renders component names as typographic group
+    // headers (no more "--- From X ---" dashed text).
+    testWidgets('cmlp-4 — group headers render as "Dressing" / "Salad" '
+        '/ "Grilled Chicken" (no dashed dividers)', (tester) async {
+      final ingredients = [
+        _ingredient('Garlic', '3', 'cloves'),
+        _ingredient('Lettuce', '1', 'head'),
+        _ingredient('Chicken breast', '2', 'lb'),
+      ];
+      await tester.pumpWidget(_wrap(IngredientStrip(
+        ingredients: ingredients,
+        checkedIndices: const {},
+        onToggle: (_) {},
+        sourceTagBuilder: (i) =>
+            ['Dressing', 'Salad', 'Grilled Chicken'][i],
+      )));
+
+      expect(find.text('Dressing'), findsOneWidget);
+      expect(find.text('Salad'), findsOneWidget);
+      expect(find.text('Grilled Chicken'), findsOneWidget);
+      expect(find.textContaining('--- From'), findsNothing);
+      expect(find.textContaining('--- Other'), findsNothing);
+    });
+
+    // cmlp-4: each group header is marked Semantics(header: true) so
+    // VoiceOver / TalkBack announce "Dressing, heading" before the
+    // chips underneath.
+    testWidgets('cmlp-4 — group header is a Semantics header node',
+        (tester) async {
+      final ingredients = [
+        _ingredient('Garlic', '3', 'cloves'),
+      ];
+      await tester.pumpWidget(_wrap(IngredientStrip(
+        ingredients: ingredients,
+        checkedIndices: const {},
+        onToggle: (_) {},
+        sourceTagBuilder: (i) => 'Dressing',
+      )));
+
+      final semantics = tester.getSemantics(find.text('Dressing'));
+      expect(semantics.hasFlag(SemanticsFlag.isHeader), isTrue);
+    });
+
+    // cmlp-4: null-tag bucket labels as "Other" and renders only when
+    // there's at least one untagged ingredient.
+    testWidgets('cmlp-4 — untagged group renders as "Other"',
+        (tester) async {
+      final ingredients = [
+        _ingredient('Garlic', '3', 'cloves'),
+        _ingredient('Olive oil', '2', 'tbsp'),
+      ];
+      await tester.pumpWidget(_wrap(IngredientStrip(
+        ingredients: ingredients,
+        checkedIndices: const {},
+        onToggle: (_) {},
+        sourceTagBuilder: (i) => i == 0 ? 'Dressing' : null,
+      )));
+      expect(find.text('Dressing'), findsOneWidget);
+      expect(find.text('Other'), findsOneWidget);
+      expect(
+        find.byKey(const Key('ingredient_group_untagged')),
         findsOneWidget,
       );
     });

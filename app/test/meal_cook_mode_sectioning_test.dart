@@ -1,4 +1,7 @@
-// cmm-3 — sectioned step traversal + recipe section header tests.
+// cmm-3 — sectioned step traversal + navigator boundary rules +
+// flat-total progress-bar behavior. cmlp-4 removed the
+// RecipeSectionHeader render call; the test that asserted on that
+// widget's fields has been deleted.
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -15,7 +18,6 @@ import 'package:palateful/core/theme/app_theme.dart';
 import 'package:palateful/features/meals/models/meal.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
 import 'package:palateful/features/recipes/cook_mode/meal/meal_cook_mode_screen.dart';
-import 'package:palateful/features/recipes/cook_mode/meal/widgets/recipe_section_header.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/cook_mode_test_harness.dart';
@@ -140,63 +142,7 @@ Future<void> _pump(WidgetTester tester, String mealId) async {
 void main() {
   tearDown(_tearDown);
 
-  group('cmm-3 — recipe section header', () {
-    testWidgets(
-        '[7,4,9] plan: header reads "Dressing · 1 / 7" at flat-step 0',
-        (tester) async {
-      final meal = Meal(
-        id: 'meal-1',
-        name: 'Salad Night',
-        recipeBookId: 'b1',
-        createdAt: DateTime(2026),
-        updatedAt: DateTime(2026),
-        components: const [
-          MealComponent(recipeId: 'r1', name: 'Dressing', orderIndex: 0),
-          MealComponent(recipeId: 'r2', name: 'Salad', orderIndex: 1),
-          MealComponent(
-              recipeId: 'r3', name: 'Grilled Chicken', orderIndex: 2),
-        ],
-      );
-      await _setUp(meal: meal, recipes: {
-        'r1': _recipe('r1', 'Dressing', 7),
-        'r2': _recipe('r2', 'Salad', 4),
-        'r3': _recipe('r3', 'Grilled Chicken', 9),
-      });
-      await _pump(tester, 'meal-1');
-
-      // Section header at flat-step 0.
-      RecipeSectionHeader header() =>
-          tester.widget<RecipeSectionHeader>(find.byType(RecipeSectionHeader));
-      expect(header().componentName, 'Dressing');
-      expect(header().localStep, 1);
-      expect(header().componentTotal, 7);
-
-      // Advance 7 times (now at Salad · 1 / 4).
-      for (var i = 0; i < 7; i++) {
-        await tester.tap(find.text('Next'));
-        await tester.pump();
-      }
-      expect(header().componentName, 'Salad');
-      expect(header().localStep, 1);
-      expect(header().componentTotal, 4);
-
-      // Advance 4 more (now at Grilled Chicken · 1 / 9).
-      for (var i = 0; i < 4; i++) {
-        await tester.tap(find.text('Next'));
-        await tester.pump();
-      }
-      expect(header().componentName, 'Grilled Chicken');
-      expect(header().localStep, 1);
-      expect(header().componentTotal, 9);
-
-      // Go back once → Salad · 4 / 4.
-      await tester.tap(find.text('Prev'));
-      await tester.pump();
-      expect(header().componentName, 'Salad');
-      expect(header().localStep, 4);
-      expect(header().componentTotal, 4);
-    });
-
+  group('cmm-3 — navigator boundaries + flat-total progress bar', () {
     testWidgets('navigator boundary rules render at indices 7 and 11',
         (tester) async {
       final meal = Meal(

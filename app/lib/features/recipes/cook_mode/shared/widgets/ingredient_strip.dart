@@ -63,24 +63,67 @@ class _IngredientStripState extends State<IngredientStrip> {
       );
     }
 
-    // Grouped view: emit "--- From <Component> ---" divider every time
-    // the source tag transitions. cmlp-4 replaces the dashed text with a
-    // typographic group header.
+    // Meal-mode grouped view. Each group renders:
+    //   - A typographic group header (Semantics(header: true) with the
+    //     component name in 13px w600 + a 1dp divider).
+    //   - A `Wrap` of ingredient chips for that group.
+    // Keys `ingredient_group_$rawTag` (and `ingredient_group_untagged`
+    // for the null-tag bucket) live on the outer Column so tests can
+    // scope into a single group.
     //
     // Null contract: if the builder returns null for an index (e.g. a
     // failed-load component with no name yet), the chip is grouped
     // under "Other" so it's never silently merged into the previous
     // group's bucket. Sentinel `_kUntaggedSentinel` differentiates
     // null from a real component named "Other".
-    final children = <Widget>[];
+    final groups = <Widget>[];
     Object? lastTag = _kInitialSentinel;
     final pendingChips = <Widget>[];
-    void flushChips() {
+    Key? currentGroupKey;
+    String? currentGroupName;
+    bool currentGroupIsUntagged = false;
+
+    void flushGroup() {
       if (pendingChips.isEmpty) return;
-      children.add(Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: List<Widget>.from(pendingChips),
+      groups.add(Column(
+        key: currentGroupKey,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Semantics(
+              header: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    currentGroupIsUntagged ? 'Other' : currentGroupName!,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.4,
+                      color: cook.cookOnSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Divider(
+                    height: 1,
+                    color: cook.cookDivider.withValues(alpha: 0.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: List<Widget>.from(pendingChips),
+            ),
+          ),
+        ],
       ));
       pendingChips.clear();
     }
@@ -89,26 +132,12 @@ class _IngredientStripState extends State<IngredientStrip> {
       final rawTag = builder(i);
       final groupKey = rawTag ?? _kUntaggedSentinel;
       if (groupKey != lastTag) {
-        flushChips();
-        final headerText = rawTag == null
-            ? '--- Other ---'
-            : '--- From $rawTag ---';
-        final headerKey = rawTag == null
+        flushGroup();
+        currentGroupIsUntagged = rawTag == null;
+        currentGroupName = rawTag;
+        currentGroupKey = rawTag == null
             ? const Key('ingredient_group_untagged')
             : Key('ingredient_group_$rawTag');
-        children.add(Padding(
-          padding: const EdgeInsets.only(top: 12, bottom: 6),
-          child: Text(
-            headerText,
-            key: headerKey,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.6,
-              color: cook.cookOnSurface.withValues(alpha: 0.55),
-            ),
-          ),
-        ));
         lastTag = groupKey;
       }
       pendingChips.add(_IngredientChip(
@@ -118,12 +147,12 @@ class _IngredientStripState extends State<IngredientStrip> {
         scaleFactor: widget.scaleFactor,
       ));
     }
-    flushChips();
+    flushGroup();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
+        children: groups,
       ),
     );
   }
