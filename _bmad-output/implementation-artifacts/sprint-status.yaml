@@ -1269,7 +1269,7 @@ development_status:
   cla-7-ios-metrickit-receiver-eventchannel-and-dart-handler: backlog
   cla-8-android-jankstats-receiver-eventchannel-and-dart-handler: backlog
   cla-9-flutter-web-navigation-timing-bridge-package-web: backlog
-  cla-10a-admin-aggregation-endpoints: backlog
+  cla-10a-admin-aggregation-endpoints: done
   cla-10b-flutter-admin-dashboard-client-tab: backlog
   cla-11-firebase-performance-monitoring-scoped-enablement: backlog
   cla-12-firebase-performance-scope-lockdown-disable-screen-traces: backlog

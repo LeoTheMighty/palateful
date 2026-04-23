@@ -1,5 +1,11 @@
 """Admin endpoint implementations."""
 
+from api.v1.admin.get_client_metrics import (
+    GetClientEndpointMetrics,
+    GetClientJankMetrics,
+    GetClientRouteMetrics,
+    GetClientSparkline,
+)
 from api.v1.admin.get_endpoint_metrics import GetEndpointMetrics
 from api.v1.admin.get_error_detail import GetErrorDetail
 from api.v1.admin.get_errors import GetErrors
@@ -15,15 +21,19 @@ from api.v1.admin.update_user_admin import UpdateUserAdmin
 
 __all__ = [
     "GetAdminPushHealth",
-    "GetLogs",
-    "GetErrors",
-    "GetErrorDetail",
+    "GetClientEndpointMetrics",
+    "GetClientJankMetrics",
+    "GetClientRouteMetrics",
+    "GetClientSparkline",
     "GetEndpointMetrics",
+    "GetErrorDetail",
+    "GetErrors",
+    "GetLogs",
+    "GetStats",
     "GetTaskMetrics",
     "ListFeedback",
     "ListUsers",
+    "SendTestPush",
     "UpdateFeedbackStatus",
     "UpdateUserAdmin",
-    "GetStats",
-    "SendTestPush",
 ]

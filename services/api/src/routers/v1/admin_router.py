@@ -2,6 +2,10 @@
 
 from api.v1.admin import (
     GetAdminPushHealth,
+    GetClientEndpointMetrics,
+    GetClientJankMetrics,
+    GetClientRouteMetrics,
+    GetClientSparkline,
     GetEndpointMetrics,
     GetErrorDetail,
     GetErrors,
@@ -226,6 +230,95 @@ async def get_task_metrics(
     """Percentile + sparkline per Celery task_name."""
     return GetTaskMetrics.call(
         window=window,
+        user=user,
+        database=database,
+    )
+
+
+# ============================================================
+# Operator Observability — Client-Side Latency Metrics (cla-10a)
+# ============================================================
+
+
+@admin_router.get("/metrics/client/routes")
+async def get_client_route_metrics(
+    window: str = Query("24h", description="1h | 24h | 7d | 30d"),
+    platform: str | None = Query(None, description="ios | android | web"),
+    app_version: str | None = Query(None),
+    route: str | None = Query(None),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Per-route p50/p95/p99 for route_paint events."""
+    return GetClientRouteMetrics.call(
+        window=window,
+        platform=platform,
+        app_version=app_version,
+        route=route,
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.get("/metrics/client/endpoints")
+async def get_client_endpoint_metrics(
+    window: str = Query("24h", description="1h | 24h | 7d | 30d"),
+    platform: str | None = Query(None),
+    app_version: str | None = Query(None),
+    route: str | None = Query(None),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Per-endpoint client-observed network latency."""
+    return GetClientEndpointMetrics.call(
+        window=window,
+        platform=platform,
+        app_version=app_version,
+        route=route,
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.get("/metrics/client/jank")
+async def get_client_jank_metrics(
+    window: str = Query("24h", description="1h | 24h | 7d | 30d"),
+    platform: str | None = Query(None),
+    app_version: str | None = Query(None),
+    route: str | None = Query(None),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Per-route build/raster p95 from frame_jank_p95 events."""
+    return GetClientJankMetrics.call(
+        window=window,
+        platform=platform,
+        app_version=app_version,
+        route=route,
+        user=user,
+        database=database,
+    )
+
+
+@admin_router.get("/metrics/client/sparkline")
+async def get_client_sparkline(
+    metric: str = Query(..., description="route_paint | network_request | frame_jank_p95 | app_start"),
+    window: str = Query("24h"),
+    platform: str | None = Query(None),
+    app_version: str | None = Query(None),
+    route: str | None = Query(None),
+    endpoint: str | None = Query(None),
+    user: User = Depends(require_admin),
+    database: Database = Depends(get_database),
+):
+    """Time-bucketed mean latency for one metric over the window."""
+    return GetClientSparkline.call(
+        metric=metric,
+        window=window,
+        platform=platform,
+        app_version=app_version,
+        route=route,
+        endpoint=endpoint,
         user=user,
         database=database,
     )
