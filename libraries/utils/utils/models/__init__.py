@@ -6,6 +6,7 @@ from utils.models.base import Base
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.chat import Chat
+from utils.models.client_latency import ClientLatency
 from utils.models.cooking_log import CookingLog
 from utils.models.error_log import ErrorLog
 from utils.models.friend_request import FriendRequest
@@ -107,4 +108,5 @@ __all__ = [
     "UserFeedback",
     "RequestLatency",
     "TaskLatency",
+    "ClientLatency",
 ]
