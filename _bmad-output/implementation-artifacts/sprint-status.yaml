@@ -1263,7 +1263,7 @@ development_status:
   cla-1c-flags-perf-kill-switch-endpoint-and-flutter-fetch: done
   cla-2-analyze-latency-section-client-and-all: done
   cla-3-flutter-client-latency-ingest-batched-flush-service: done
-  cla-4-flutter-perf-navigator-observer-go-router-aware: backlog
+  cla-4-flutter-perf-navigator-observer-go-router-aware: done
   cla-5-flutter-cold-start-timing-and-frame-jank-aggregator: backlog
   cla-6-dio-interceptor-chain-perf-firebase-dedup-coexistence: backlog
   cla-7-ios-metrickit-receiver-eventchannel-and-dart-handler: backlog

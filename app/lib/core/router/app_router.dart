@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_it/get_it.dart';
 import '../di/injection.dart';
 import '../services/auth_service.dart';
+import '../services/client_latency_ingest.dart';
 import '../services/error_reporter.dart';
+import '../services/perf_navigator_observer.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/onboarding/onboarding_welcome_screen.dart';
@@ -83,11 +86,30 @@ void resetRouter() {
   _router = null;
 }
 
+/// cla-4: single observer instance reused across the root Navigator and
+/// every branch Navigator. Declared lazily so tests / hot-restart paths
+/// don't pin a stale GoRouter reference.
+PerfNavigatorObserver? _perfObserver;
+
+PerfNavigatorObserver _resolvePerfObserver() {
+  return _perfObserver ??= PerfNavigatorObserver(
+    ingestResolver: () => getIt<ClientLatencyIngest>(),
+    routePathResolver: () => _router?.state.fullPath,
+  );
+}
+
+/// Exposed for `ScaffoldWithBottomNav` (cla-4): bottom-tab swaps don't
+/// fire `didPush` on any Navigator, so the shell calls this when the
+/// branch index changes.
+PerfNavigatorObserver? get perfNavigatorObserver =>
+    GetIt.I.isRegistered<ClientLatencyIngest>() ? _resolvePerfObserver() : null;
+
 GoRouter get appRouter {
+  final perfObserver = _resolvePerfObserver();
   _router ??= GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/login',
-    observers: [CrashlyticsNavObserver()],
+    observers: [CrashlyticsNavObserver(), perfObserver],
     refreshListenable: getIt<AuthService>(),
     redirect: (context, state) {
       final authService = getIt<AuthService>();
@@ -597,6 +619,7 @@ GoRouter get appRouter {
           // Home tab (index 0)
           StatefulShellBranch(
             navigatorKey: _homeNavigatorKey,
+            observers: [perfObserver],
             routes: [
               GoRoute(
                 path: '/',
@@ -630,6 +653,7 @@ GoRouter get appRouter {
           // Cart tab (index 1)
           StatefulShellBranch(
             navigatorKey: _cartNavigatorKey,
+            observers: [perfObserver],
             routes: [
               GoRoute(
                 path: '/cart',
@@ -647,6 +671,7 @@ GoRouter get appRouter {
           // Activity tab (index 2)
           StatefulShellBranch(
             navigatorKey: _activityNavigatorKey,
+            observers: [perfObserver],
             routes: [
               GoRoute(
                 path: '/activity',
@@ -683,6 +708,7 @@ GoRouter get appRouter {
           // Calendar tab (index 3)
           StatefulShellBranch(
             navigatorKey: _calendarNavigatorKey,
+            observers: [perfObserver],
             routes: [
               GoRoute(
                 path: '/calendar',
@@ -704,6 +730,7 @@ GoRouter get appRouter {
           // Profile tab (index 4)
           StatefulShellBranch(
             navigatorKey: _profileNavigatorKey,
+            observers: [perfObserver],
             routes: [
               GoRoute(
                 path: '/profile',

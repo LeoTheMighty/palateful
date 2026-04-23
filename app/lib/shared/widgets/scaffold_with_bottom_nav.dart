@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/di/injection.dart';
+import '../../core/router/app_router.dart';
 import '../../core/utils/responsive.dart';
 import '../../features/activity/providers/activity_read_provider.dart';
 
@@ -49,6 +50,10 @@ class _ScaffoldWithBottomNavState extends State<ScaffoldWithBottomNav> {
     );
     // Refresh badge when switching to Activity tab
     if (index == 2) _readProvider.refreshUnreadCount();
+    // cla-4: StatefulShellRoute swaps don't fire didPush on any
+    // Navigator — report the tab swap through the perf observer so the
+    // route_paint metric tracks branch switches.
+    perfNavigatorObserver?.reportTabSwap();
   }
 
   @override
