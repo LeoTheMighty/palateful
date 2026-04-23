@@ -23,9 +23,10 @@ no audit row.
 | `--window` | `24h` | `1h`, `24h`, `7d`, or `all`. Controls the `created_at >=` filter. |
 | `--top` | `15` | Rows per section. Clamped to `[1, 100]`. |
 | `--format` | `table` | `table` (human-readable), `csv` (RFC-4180), `json` (NDJSON, one object per line). |
-| `--regression-hunt` | off | Swaps the main query for a recent-24h vs 7-to-30d-baseline CTE. Flags endpoints whose recent p95 is > 1.5× baseline p95 with >= 10 recent samples. Implies `--section endpoints`. |
-| `--min-samples` | `5` | `HAVING COUNT(*) >= N` noise floor. `0` disables. |
-| `--section` | `both` | `endpoints`, `tasks`, or `both`. |
+| `--regression-hunt` | off | Swaps the main query for a recent-24h vs 7-to-30d-baseline CTE. Flags endpoints whose recent p95 is > 1.5× baseline p95 with >= 10 recent samples. Default scope: endpoints (`--section endpoints`). Combine with `--section client` / `all` to extend. |
+| `--min-samples` | `5` | `HAVING COUNT(*) >= N` noise floor for endpoints/tasks. `0` disables. |
+| `--client-min-samples` | `50` | Noise floor for the client section. Client perf is noisier (network variance, device heterogeneity) so the default is higher than server. `0` disables. |
+| `--section` | `both` | `endpoints`, `tasks`, `client`, `both` (endpoints + tasks — backward-compatible default), or `all` (endpoints + tasks + client). |
 
 **Default sort**: p95 desc across every shape.
 
@@ -67,6 +68,60 @@ the five hot-path endpoints:
 - `GET /v1/shopping-lists`
 - `GET /v1/activities`
 - `GET /v1/calendars`
+
+#### Is it backend or frontend? (`--section all`)
+
+Once `epic-perf-client-analytics` has 24h of data in `client_latencies`,
+one invocation prints server + client tables together. Use this when
+the app "feels slow" and you don't know which side is to blame:
+
+```bash
+DATABASE_URL=<prod-url> python services/api/scripts/analyze_latency.py \
+    --section all --window 24h --top 20
+```
+
+Example output (abbreviated):
+
+```
+endpoints (top by p95 desc)
+  METHOD  PATH                             COUNT   P50   P95   P99   MAX
+  GET     /v1/recipes/{recipe_id}            450   120   340   920  1800
+
+tasks (top by p95 desc)
+  TASK                     STATUS   COUNT   P50    P95    P99    MAX
+  worker.import.ocr_extract  success  100  40000  55000  85000 120000
+
+client (top by p95 desc)
+  TYPE          PLAT   ROUTE                  COUNT   P50   P95   P99   MAX
+  route_paint    ios   /recipes/:id            180   200  1100  2400  4500
+  first_paint    web   /home                    95   380   820  1200  1600
+```
+
+Compare the client row's p95 against the matching server path — if
+the server-side p95 is stable but the client paint jumped, the
+regression is in Flutter (or network); if both jumped, it's backend.
+
+#### Client-side regression hunt
+
+Once client samples are flowing, extend the regression hunt to the
+client table. Client threshold is **2.0×** (not server's 1.5×) because
+client metrics are noisier; sample floor defaults to 50 instead of 10.
+
+```bash
+# Client only.
+DATABASE_URL=<prod-url> python services/api/scripts/analyze_latency.py \
+    --regression-hunt --section client --format table
+
+# Server + client in one emission.
+DATABASE_URL=<prod-url> python services/api/scripts/analyze_latency.py \
+    --regression-hunt --section all --format json \
+    > /tmp/regressions-$(date +%Y%m%d).jsonl
+```
+
+The client regression block groups by `(type, platform, route)`, so
+an iOS-only `route_paint` regression on `/home` is a distinct row from
+the Android version — useful when a platform-specific bug hits only
+one client.
 
 #### Hunt for regressions
 
