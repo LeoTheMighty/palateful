@@ -1337,7 +1337,7 @@ development_status:
   aam-2-async-database-class-and-worker-contract-gate: done
   aam-3-async-endpoint-base-and-mcp-helper: done
   aam-4-async-test-fixtures-and-counter-parity: done
-  aam-5-migration-runbook: backlog
+  aam-5-migration-runbook: done
   aam-6-async-auth-deps: backlog
   # Phase 2 — External SDK async swaps (parallel after aam-1)
   aam-7-openai-async: backlog
