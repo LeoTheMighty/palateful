@@ -1226,22 +1226,28 @@ development_status:
   #   - All three platforms (iOS + Android + Flutter web) from day one
   # No AWS cost delta; Firebase free tier covers projected volume.
 
-  epic-perf-frontend-fetch-minimization: backlog
-  ffm-1-shared-recipe-books-provider-and-callsite-migration: backlog
-  ffm-2-batch-import-items-endpoint-and-flutter-caller: backlog
-  ffm-3-activity-poll-and-mutationbus-dedup: backlog
-  ffm-4-notifications-tab-single-fetch-on-mount: backlog
-  ffm-5-lazy-list-meals-in-book-on-book-detail: backlog
-  ffm-6-session-cache-ttl-helper-and-five-providers: backlog
-  ffm-7-dio-request-dedup-interceptor: backlog
-  ffm-8-image-network-to-cached-network-image-sweep-and-ci-guard: backlog
-  ffm-9a-recipe-detail-include-query-param-lenient-default: backlog
-  ffm-9b-flip-recipes-default-to-lean-one-release-soak: backlog
-  ffm-10-import-item-include-parsed-recipe-trim: backlog
+  epic-perf-frontend-fetch-minimization: in-progress
+  ffm-1-shared-recipe-books-provider-and-callsite-migration: done
+  ffm-2-batch-import-items-endpoint-and-flutter-caller: done
+  ffm-3-activity-poll-and-mutationbus-dedup: done
+  ffm-4-notifications-tab-single-fetch-on-mount: done
+  # ffm-5 skipped — epic's AC assumes a "Meals tab" on the book
+  # detail screen, but the actual UI renders recipes + meals in a
+  # single mixed grid sorted by updated_at. Deferring meals until
+  # a tab tap would cause a visible pop 200–500ms after recipes
+  # render, a real UX regression. Needs AC rewrite before
+  # implementation; not reworkable as spec'd.
+  ffm-5-lazy-list-meals-in-book-on-book-detail: skipped
+  ffm-6-session-cache-ttl-helper-and-five-providers: done
+  ffm-7-dio-request-dedup-interceptor: done
+  ffm-8-image-network-to-cached-network-image-sweep-and-ci-guard: done
+  ffm-9a-recipe-detail-include-query-param-lenient-default: done
+  ffm-9b-flip-recipes-default-to-lean-one-release-soak: done
+  ffm-10-import-item-include-parsed-recipe-trim: done
   # Spawned by party-mode 2026-04-23 — split from ffm-8 because the
   # original "no CI-workflow changes" claim was wrong; the grep guard
   # needs explicit workflow wiring alongside silent-catch.
-  ffm-11-ci-wiring-for-image-network-check-script: backlog
+  ffm-11-ci-wiring-for-image-network-check-script: done
   epic-perf-frontend-fetch-minimization-retrospective: optional
 
   epic-perf-client-analytics: backlog
