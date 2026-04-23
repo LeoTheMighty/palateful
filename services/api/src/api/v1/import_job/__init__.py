@@ -12,6 +12,7 @@ from api.v1.import_job.get_import_item_telemetry import GetImportItemTelemetry
 from api.v1.import_job.get_import_job import GetImportJob
 from api.v1.import_job.get_upload_url import GetImportUploadUrl
 from api.v1.import_job.list_import_items import ListImportItems
+from api.v1.import_job.list_import_items_batch import ListImportItemsBatch
 from api.v1.import_job.list_import_jobs import ListImportJobs
 from api.v1.import_job.retry_import_item import RetryImportItem
 from api.v1.import_job.see_all_count import ImportSeeAllCount
@@ -26,6 +27,7 @@ __all__ = [
     "GetImportJob",
     "ListImportJobs",
     "ListImportItems",
+    "ListImportItemsBatch",
     "GetImportItem",
     "GetImportItemTelemetry",
     "GetImportUploadUrl",

@@ -664,6 +664,24 @@ class ApiClient {
     });
   }
 
+  /// ffm-2: batch-fetch import items across multiple jobs in one
+  /// round-trip. Response items each carry their `job_id` so callers
+  /// group client-side.
+  ///
+  /// Cap is 50 UUIDs per call (matches backend); the caller is
+  /// responsible for not exceeding it.
+  Future<Response> listImportItemsBatch(
+    List<String> jobIds, {
+    String? status,
+    bool includeArchived = false,
+  }) {
+    return _dio.get('/v1/import-items', queryParameters: {
+      'job_ids': jobIds.join(','),
+      if (status != null) 'status': status,
+      if (includeArchived) 'include_archived': true,
+    });
+  }
+
   Future<Response> getImportItem(String itemId) {
     return _dio.get('/v1/import-items/$itemId');
   }

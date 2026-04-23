@@ -12,6 +12,7 @@ from api.v1.import_job import (
     GetImportUploadUrl,
     ImportSeeAllCount,
     ListImportItems,
+    ListImportItemsBatch,
     ListImportJobs,
     RetryImportItem,
     SkipImportItem,
@@ -151,6 +152,42 @@ async def list_import_items(
         offset=offset,
         include_archived=include_archived,
         cursor=cursor,
+        user=user,
+        database=database,
+    )
+
+
+@import_router.get("/import-items")
+async def list_import_items_batch(
+    job_ids: str = Query(
+        ...,
+        description=(
+            "Comma-separated list of import-job UUIDs (max 50). "
+            "Returns a flat list of items across all accessible jobs; "
+            "each item carries its ``job_id`` for client-side grouping."
+        ),
+    ),
+    status: str | None = Query(None, description="Filter by status"),
+    include_archived: bool = Query(
+        False,
+        description=(
+            "Include archived items (default off so the main Imports "
+            "feed hides archived rows — See-all pagination flips it on)."
+        ),
+    ),
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Batch-list import items across multiple jobs (ffm-2).
+
+    Registered BEFORE ``/import-items/{item_id}`` + ``/see-all-count``
+    so FastAPI's literal-path-first matcher routes the base path here
+    instead of into the ``item_id`` path param.
+    """
+    return ListImportItemsBatch.call(
+        job_ids=job_ids,
+        status=status,
+        include_archived=include_archived,
         user=user,
         database=database,
     )

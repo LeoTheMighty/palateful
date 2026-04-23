@@ -5075,3 +5075,326 @@ class TestSubmitCorrection:
         meta = _json.loads(added[0].error_message)
         assert meta["original"] is None
         assert meta["was_inferred"] is False
+
+
+class TestListImportItemsBatch:
+    """ffm-2: GET /v1/import-items?job_ids=<csv> batch endpoint."""
+
+    def _job(self, mock_user, job_id, book_id="book-1"):
+        return MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+    def test_missing_job_ids_returns_400(
+        self, client, mock_db, mock_user
+    ):
+        # Query param is required → FastAPI 422 before our handler runs.
+        response = client.get("/v1/import-items")
+        assert response.status_code == 422
+
+    def test_empty_csv_returns_400(self, client, mock_db, mock_user):
+        response = client.get("/v1/import-items?job_ids=")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "job_ids_required"
+
+    def test_whitespace_only_csv_returns_400(
+        self, client, mock_db, mock_user
+    ):
+        response = client.get("/v1/import-items?job_ids=%20,%20,%20")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "job_ids_required"
+
+    def test_overflow_returns_400(self, client, mock_db, mock_user):
+        many = ",".join([f"id-{i}" for i in range(51)])
+        response = client.get(f"/v1/import-items?job_ids={many}")
+        assert response.status_code == 400
+        assert "job_ids_over_cap" in response.json()["error_message"]
+
+    def test_cap_accepts_exactly_50(self, client, mock_db, mock_user):
+        fifty = ",".join([f"id-{i}" for i in range(50)])
+        # No jobs match → empty list, 200
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get(f"/v1/import-items?job_ids={fifty}")
+        assert response.status_code == 200
+        assert response.json() == {"items": []}
+
+    def test_no_matching_jobs_returns_empty(
+        self, client, mock_db, mock_user
+    ):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-items?job_ids=a,b,c")
+        assert response.status_code == 200
+        assert response.json() == {"items": []}
+
+    def test_single_job_success(self, client, mock_db, mock_user):
+        job = self._job(mock_user, job_id="job-1")
+        item = MockImportItem(
+            import_job_id="job-1",
+            status="completed",
+            parsed_recipe={"name": "Chili"},
+            created_recipe_id="recipe-7",
+        )
+        # 1) jobs 2) items  (no membership lookup — the caller owns
+        # the job directly, so book_ids is still collected but no
+        # RecipeBookUser rows need to be returned; the membership
+        # query still executes and MUST be stubbed.)
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([item]),
+        ]
+        response = client.get("/v1/import-items?job_ids=job-1")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        # Critical: each item carries its job_id (client groups by it).
+        assert data["items"][0]["job_id"] == "job-1"
+        assert data["items"][0]["recipe_name"] == "Chili"
+        assert data["items"][0]["created_recipe_id"] == "recipe-7"
+
+    def test_multi_job_success_groups_by_job_id(
+        self, client, mock_db, mock_user
+    ):
+        """Flat list with job_id on each item — client groups."""
+        j1 = self._job(mock_user, job_id="job-1", book_id="book-1")
+        j2 = self._job(mock_user, job_id="job-2", book_id="book-1")
+        i1 = MockImportItem(
+            import_job_id="job-1", status="awaiting_review"
+        )
+        i2 = MockImportItem(import_job_id="job-2", status="completed")
+        mock_db.db.query.side_effect = [
+            MockQuery([j1, j2]),
+            MockQuery([]),
+            MockQuery([i1, i2]),
+        ]
+        response = client.get("/v1/import-items?job_ids=job-1,job-2")
+        assert response.status_code == 200
+        grouped: dict[str, list] = {}
+        for item in response.json()["items"]:
+            grouped.setdefault(item["job_id"], []).append(item)
+        assert "job-1" in grouped
+        assert "job-2" in grouped
+
+    def test_inaccessible_jobs_silently_dropped(
+        self, client, mock_db, mock_user
+    ):
+        """A job the caller neither owns nor has book-membership for
+        must not surface any items — and must NOT 403 the whole
+        response (so the batch can't be used as an enumeration oracle)."""
+        owned = self._job(mock_user, job_id="job-mine", book_id="book-1")
+        stranger = MockImportJob(
+            id="job-stranger",
+            user_id="someone-else",
+            recipe_book_id="book-private",
+        )
+        mine = MockImportItem(
+            import_job_id="job-mine", status="completed"
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([owned, stranger]),
+            MockQuery([]),
+            MockQuery([mine]),
+        ]
+        response = client.get(
+            "/v1/import-items?job_ids=job-mine,job-stranger"
+        )
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["job_id"] == "job-mine"
+
+    def test_access_via_book_membership(
+        self, client, mock_db, mock_user
+    ):
+        """Non-owner job + user has book membership → accessible."""
+        other_owned = MockImportJob(
+            id="job-shared",
+            user_id="someone-else",
+            recipe_book_id="book-shared",
+        )
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id="book-shared",
+        )
+        item = MockImportItem(
+            import_job_id="job-shared", status="completed"
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([other_owned]),
+            MockQuery([membership]),
+            MockQuery([item]),
+        ]
+        response = client.get("/v1/import-items?job_ids=job-shared")
+        assert response.status_code == 200
+        assert len(response.json()["items"]) == 1
+
+    def test_status_filter_passes_through(
+        self, client, mock_db, mock_user
+    ):
+        """Status filter reaches the query (MockQuery ignores filters
+        but the query chain must not throw)."""
+        job = self._job(mock_user, job_id="job-1")
+        item = MockImportItem(
+            import_job_id="job-1", status="awaiting_review"
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([item]),
+        ]
+        response = client.get(
+            "/v1/import-items?job_ids=job-1&status=awaiting_review"
+        )
+        assert response.status_code == 200
+        assert response.json()["items"][0]["status"] == "awaiting_review"
+
+    def test_include_archived_true(self, client, mock_db, mock_user):
+        from datetime import UTC, datetime
+
+        job = self._job(mock_user, job_id="job-1")
+        archived_item = MockImportItem(
+            import_job_id="job-1",
+            status="completed",
+            archived_at=datetime.now(UTC),
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([archived_item]),
+        ]
+        response = client.get(
+            "/v1/import-items?job_ids=job-1&include_archived=true"
+        )
+        assert response.status_code == 200
+        assert response.json()["items"][0]["archived_at"] is not None
+
+    def test_duplicate_job_ids_deduped(
+        self, client, mock_db, mock_user
+    ):
+        """Duplicate CSV entries collapse — user isn't penalized
+        against the 50-ID cap for retry-style repeats."""
+        job = self._job(mock_user, job_id="job-1")
+        item = MockImportItem(import_job_id="job-1")
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([item]),
+        ]
+        # 51 duplicates of the same id → dedup to 1, no 400.
+        ids = ",".join(["job-1"] * 51)
+        response = client.get(f"/v1/import-items?job_ids={ids}")
+        # Cap check runs BEFORE dedup — this IS over cap.
+        assert response.status_code == 400
+
+        # But 3 distinct uses of 2 unique IDs should work.
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([item]),
+        ]
+        response = client.get("/v1/import-items?job_ids=job-1,job-1,job-1")
+        assert response.status_code == 200
+
+    def test_item_shape_matches_per_job_endpoint(
+        self, client, mock_db, mock_user
+    ):
+        """Per-item response fields (minus the new job_id) are the
+        same keys the per-job endpoint returns, so client migration
+        is mechanical."""
+        job = self._job(mock_user, job_id="job-1")
+        item = MockImportItem(
+            import_job_id="job-1",
+            status="completed",
+            source_type="url",
+            source_url="https://example.com/r",
+            parsed_recipe={
+                "name": "Tacos",
+                "confidence_score": 0.92,
+                "confidence_source": "model",
+                "inferred_fields": [],
+            },
+            ai_cost_cents=5,
+            last_successful_stage="extraction",
+            awaiting_review_reason=None,
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([item]),
+        ]
+        response = client.get("/v1/import-items?job_ids=job-1")
+        assert response.status_code == 200
+        it = response.json()["items"][0]
+        # Fields shared with the per-job endpoint's ItemSummary:
+        expected_keys = {
+            "id", "status", "source_type", "source_url", "recipe_name",
+            "error_message", "needs_review", "ai_cost_cents",
+            "created_at", "archived_at", "last_successful_stage",
+            "last_retry_at", "awaiting_review_reason",
+            "confidence_score", "confidence_source", "inferred_fields",
+            "created_recipe_id",
+        }
+        assert expected_keys.issubset(it.keys())
+        # Plus the new field:
+        assert "job_id" in it
+
+    def test_trims_whitespace_in_csv(
+        self, client, mock_db, mock_user
+    ):
+        """CSV with spaces after commas still parses cleanly."""
+        job = self._job(mock_user, job_id="job-1")
+        item = MockImportItem(import_job_id="job-1")
+        mock_db.db.query.side_effect = [
+            MockQuery([job]),
+            MockQuery([]),
+            MockQuery([item]),
+        ]
+        response = client.get(
+            "/v1/import-items?job_ids=%20job-1%20"
+        )
+        assert response.status_code == 200
+        assert response.json()["items"][0]["job_id"] == "job-1"
+
+    def test_all_jobs_inaccessible_returns_empty(
+        self, client, mock_db, mock_user
+    ):
+        """Every requested job is owned by someone else with no
+        membership → return empty, not 403. Confirms the batch is
+        never an enumeration oracle."""
+        stranger1 = MockImportJob(
+            id="s1", user_id="other", recipe_book_id="b1"
+        )
+        stranger2 = MockImportJob(
+            id="s2", user_id="other", recipe_book_id="b2"
+        )
+        mock_db.db.query.side_effect = [
+            MockQuery([stranger1, stranger2]),
+            MockQuery([]),  # no memberships
+        ]
+        response = client.get("/v1/import-items?job_ids=s1,s2")
+        assert response.status_code == 200
+        assert response.json() == {"items": []}
+
+    def test_jobs_without_recipe_book_id(
+        self, client, mock_db, mock_user
+    ):
+        """Legacy jobs that predate recipe_book_id (or have it as
+        NULL) → skip the membership probe (book_ids is empty) and
+        access falls back to direct user_id ownership."""
+        orphan = MockImportJob(
+            id="orphan-job",
+            user_id=str(mock_user.id),
+            recipe_book_id=None,
+        )
+        item = MockImportItem(import_job_id="orphan-job")
+        # Only 2 queries: jobs, items. No membership query because
+        # book_ids is empty, so the `if book_ids:` branch is skipped.
+        mock_db.db.query.side_effect = [
+            MockQuery([orphan]),
+            MockQuery([item]),
+        ]
+        response = client.get("/v1/import-items?job_ids=orphan-job")
+        assert response.status_code == 200
+        assert len(response.json()["items"]) == 1

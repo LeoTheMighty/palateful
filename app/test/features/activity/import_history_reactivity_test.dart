@@ -32,6 +32,7 @@ Response<dynamic> _ok(dynamic data) => Response(
 class _FakeApi extends ApiClient {
   int listImportJobsCalls = 0;
   int listImportItemsCalls = 0;
+  int listImportItemsBatchCalls = 0;
   int getUnreadActivityCountCalls = 0;
 
   @override
@@ -74,6 +75,28 @@ class _FakeApi extends ApiClient {
   }
 
   @override
+  Future<Response> listImportItemsBatch(
+    List<String> jobIds, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
+    listImportItemsBatchCalls++;
+    final items = <dynamic>[];
+    for (final jobId in jobIds) {
+      items.add({
+        'id': 'i1',
+        'job_id': jobId,
+        'recipe_name': 'Pasta',
+        'status': 'dismissed',
+        'source_type': 'url',
+        'archived_at': '2026-04-22T10:00:00Z',
+        'created_at': '2026-04-22T09:00:00Z',
+      });
+    }
+    return _ok({'items': items});
+  }
+
+  @override
   Future<Response> getUnreadActivityCount() async {
     getUnreadActivityCountCalls++;
     return _ok({
@@ -109,7 +132,9 @@ void main() {
           .read(importsSeeAllProvider.notifier)
           .loadNextPage();
       expect(api.listImportJobsCalls, 1);
-      expect(api.listImportItemsCalls, 1);
+      // ffm-2: the per-job loop became a single batch call.
+      expect(api.listImportItemsBatchCalls, 1);
+      expect(api.listImportItemsCalls, 0);
       expect(container.read(importsSeeAllProvider).items, hasLength(1));
 
       // Emit dismiss — provider should kick off refreshFromTop.
@@ -125,7 +150,7 @@ void main() {
 
       expect(api.listImportJobsCalls, 2,
           reason: 'dismiss event should trigger exactly one refetch');
-      expect(api.listImportItemsCalls, 2);
+      expect(api.listImportItemsBatchCalls, 2);
     });
 
     test('ImportItemRetried before first load → no-op (section closed)',
@@ -144,7 +169,7 @@ void main() {
 
       // No refetch — the section hasn't been opened yet.
       expect(api.listImportJobsCalls, 0);
-      expect(api.listImportItemsCalls, 0);
+      expect(api.listImportItemsBatchCalls, 0);
     });
 
     test('unrelated event (RecipeCreated) never triggers a refetch',

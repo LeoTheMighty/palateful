@@ -19,7 +19,19 @@ Response<dynamic> _fakeResponse(dynamic data) {
 /// exits its loading state quickly. Nothing about nav depends on payload.
 class _StubApiClient extends ApiClient {
   @override
-  Future<Response> listImportItems(String jobId, {String? status}) async =>
+  Future<Response> listImportItems(
+    String jobId, {
+    String? status,
+    bool includeArchived = false,
+  }) async =>
+      _fakeResponse({'items': []});
+
+  @override
+  Future<Response> listImportItemsBatch(
+    List<String> jobIds, {
+    String? status,
+    bool includeArchived = false,
+  }) async =>
       _fakeResponse({'items': []});
 }
 

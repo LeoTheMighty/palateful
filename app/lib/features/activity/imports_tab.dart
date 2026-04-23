@@ -119,27 +119,38 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     }
 
     try {
-      // One fetch of every non-archived job, then items for each. We
-      // deliberately do NOT pre-filter by job.status: items in a
-      // `completed` job can be `failed` / `awaiting_review` / `skipped`,
-      // and the inverse is also true (an `awaiting_review` job can hold
-      // a `failed` item). Bucketing happens by ``item.status`` below.
+      // One fetch of every non-archived job, then ONE batched fetch of
+      // every item across those jobs (ffm-2). We deliberately do NOT
+      // pre-filter by job.status: items in a `completed` job can be
+      // `failed` / `awaiting_review` / `skipped`, and the inverse is
+      // also true (an `awaiting_review` job can hold a `failed` item).
+      // Bucketing happens by ``item.status`` below.
       final jobsResponse =
           await _apiClient.listImportJobs(limit: 100);
       if (!mounted) return;
       final rawJobs =
           List<dynamic>.from(jobsResponse.data['jobs'] ?? []);
 
-      final itemResults = await Future.wait(
-        rawJobs.map((j) => _apiClient.listImportItems(j['id'].toString())),
-      );
-      if (!mounted) return;
-
       final itemsByJobId = <String, List<dynamic>>{};
-      for (var i = 0; i < rawJobs.length; i++) {
-        final jobId = rawJobs[i]['id'].toString();
-        itemsByJobId[jobId] =
-            List<dynamic>.from(itemResults[i].data['items'] ?? []);
+      if (rawJobs.isNotEmpty) {
+        final jobIds = rawJobs.map((j) => j['id'].toString()).toList();
+        // Backend caps at 50 job_ids per call — `listImportJobs`
+        // limit above is 100, so chunk to stay under the cap on the
+        // rare power-user edge case.
+        for (var start = 0; start < jobIds.length; start += 50) {
+          final chunk =
+              jobIds.sublist(start, (start + 50).clamp(0, jobIds.length));
+          final batchResponse =
+              await _apiClient.listImportItemsBatch(chunk);
+          if (!mounted) return;
+          final rawItems =
+              List<dynamic>.from(batchResponse.data['items'] ?? []);
+          for (final item in rawItems) {
+            final jobId = item['job_id']?.toString();
+            if (jobId == null) continue;
+            itemsByJobId.putIfAbsent(jobId, () => <dynamic>[]).add(item);
+          }
+        }
       }
 
       // Blue — job-granularity. Items in pending/extracting/matching

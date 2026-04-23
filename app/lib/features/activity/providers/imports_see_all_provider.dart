@@ -119,24 +119,33 @@ class ImportsSeeAllNotifier extends Notifier<ImportsSeeAllState> {
           List<dynamic>.from(jobsResponse.data['jobs'] ?? []);
       final nextCursor = jobsResponse.data['next_cursor'] as String?;
 
-      // For each archived job, fetch its items in parallel with
-      // `include_archived=true` so the archived items (which is
-      // exactly what See-all is meant to surface) actually come back
-      // — the default item list hides archived rows to keep the main
-      // tab clean, and we have to opt in here.
-      final itemResults = await Future.wait(rawJobs.map(
-        (j) => client.listImportItems(
-          j['id'].toString(),
-          includeArchived: true,
-        ),
-      ));
+      // ffm-2: one batched fetch for all archived jobs on this page
+      // with `include_archived=true` — that's the whole point of
+      // See-all. Backend caps at 50 job_ids; `listImportJobs` limit
+      // above is 50, so one call per page is safe. A chunk loop is
+      // kept for defensive sanity.
+      final jobsById = <String, dynamic>{
+        for (final j in rawJobs) j['id'].toString(): j,
+      };
       final newRows = <SeeAllImportItemView>[];
-      for (var i = 0; i < rawJobs.length; i++) {
-        final j = rawJobs[i];
-        final rawItems =
-            List<dynamic>.from(itemResults[i].data['items'] ?? []);
-        for (final item in rawItems) {
-          newRows.add(_fromRaw(item, j));
+      if (jobsById.isNotEmpty) {
+        final jobIds = jobsById.keys.toList();
+        for (var start = 0; start < jobIds.length; start += 50) {
+          final chunk =
+              jobIds.sublist(start, (start + 50).clamp(0, jobIds.length));
+          final batchResponse = await client.listImportItemsBatch(
+            chunk,
+            includeArchived: true,
+          );
+          final rawItems =
+              List<dynamic>.from(batchResponse.data['items'] ?? []);
+          for (final item in rawItems) {
+            final jobId = item['job_id']?.toString();
+            if (jobId == null) continue;
+            final parentJob = jobsById[jobId];
+            if (parentJob == null) continue;
+            newRows.add(_fromRaw(item, parentJob));
+          }
         }
       }
 

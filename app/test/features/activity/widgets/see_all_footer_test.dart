@@ -122,13 +122,33 @@ class _FakeApiClient extends ApiClient {
   }
 
   @override
-  Future<Response> listImportItems(String jobId, {String? status}) async {
+  Future<Response> listImportItems(
+    String jobId, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
     // Lookup across all queued pages' items. (Even already-consumed
     // pages keep their items referenced via the fake — simpler than
     // tracking consumed state explicitly.)
     // We keep a shared map built in setup.
     final items = _itemsByJobId[jobId] ?? const <Map<String, dynamic>>[];
     return _fakeResponse({'items': items});
+  }
+
+  @override
+  Future<Response> listImportItemsBatch(
+    List<String> jobIds, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
+    final out = <dynamic>[];
+    for (final jobId in jobIds) {
+      final items = _itemsByJobId[jobId] ?? const <Map<String, dynamic>>[];
+      for (final item in items) {
+        out.add({...item, 'job_id': jobId});
+      }
+    }
+    return _fakeResponse({'items': out});
   }
 
   final Map<String, List<Map<String, dynamic>>> _itemsByJobId = {};

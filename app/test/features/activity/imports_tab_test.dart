@@ -63,8 +63,30 @@ class _FakeApiClient extends ApiClient {
   }
 
   @override
-  Future<Response> listImportItems(String jobId, {String? status}) async {
+  Future<Response> listImportItems(
+    String jobId, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
     return _fakeResponse({'items': itemsByJobId[jobId] ?? const []});
+  }
+
+  @override
+  Future<Response> listImportItemsBatch(
+    List<String> jobIds, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
+    final out = <dynamic>[];
+    for (final jobId in jobIds) {
+      final items = itemsByJobId[jobId] ?? const [];
+      for (final item in items) {
+        // Backend stamps job_id on every row; mirror that here so the
+        // client's grouping logic sees the same shape as production.
+        out.add({...item as Map<String, dynamic>, 'job_id': jobId});
+      }
+    }
+    return _fakeResponse({'items': out});
   }
 
   @override

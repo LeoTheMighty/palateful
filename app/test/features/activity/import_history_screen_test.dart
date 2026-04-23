@@ -48,8 +48,27 @@ class _FakeApiClient extends ApiClient {
           {'archived': 0, 'read_and_old_completed': 0, 'total': 0});
 
   @override
-  Future<Response> listImportItems(String jobId, {String? status}) async {
+  Future<Response> listImportItems(
+    String jobId, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
     return _fakeResponse({'items': failedItems});
+  }
+
+  @override
+  Future<Response> listImportItemsBatch(
+    List<String> jobIds, {
+    String? status,
+    bool includeArchived = false,
+  }) async {
+    final out = <dynamic>[];
+    for (final jobId in jobIds) {
+      for (final item in failedItems) {
+        out.add({...item, 'job_id': jobId});
+      }
+    }
+    return _fakeResponse({'items': out});
   }
 
   @override
