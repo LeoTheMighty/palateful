@@ -346,3 +346,219 @@ one renderer (via `platform=web` + `app_version`) at a time. A
 regression that only moves the FP line on canvas builds is an engine /
 bundle-size issue; one that moves FCP on the HTML renderer is usually
 a widget-tree problem.
+
+---
+
+## Debug perf overlay (ptd-1)
+
+Floating in-app widget that lists the last 100 HTTP requests with
+durations + status codes. `kDebugMode`-gated — zero cost in release
+builds (the `PerfOverlay` widget returns its child unwrapped).
+
+### How to use
+
+1. `cd app && flutter run -d <simulator>` (debug build).
+2. Long-press the top-right 64×64 corner of any screen. The overlay
+   panel slides down, showing the most recent requests newest-first
+   (`GET /v1/recipe-books 142ms 200`, etc.).
+3. Status codes are colour-coded: green 2xx, orange 4xx, red 5xx /
+   network error.
+4. Long-press again — or tap the `×` in the panel — to toggle off.
+
+### Files
+
+- `app/lib/core/debug/perf_overlay.dart`
+- `app/lib/core/debug/perf_request_log.dart`
+- `app/lib/core/debug/perf_dio_interceptor.dart`
+- Installed in `app/lib/main.dart` under `if (kDebugMode)`.
+
+### Why top-right corner?
+
+Palateful has no avatar widget and the bottom `NavigationBar` would
+eat the long-press. Top-right via `MaterialApp.builder` works across
+every top-level screen regardless of nav layout (mobile / tablet /
+web). See the ptd-1 story scope-divergence notes.
+
+---
+
+## Perf audit harness (ptd-2.5 / ptd-2 / ptd-3)
+
+Per-screen integration tests that count attempted GETs on cold start.
+Each screen has a canonical `integration_test/perf_audit/<NN>_perf_audit_<screen>_test.dart`
+that reads the screen's top-level Riverpod provider and asserts the
+exact number of GETs against `tools/perf-budgets.yaml`.
+
+### Running locally
+
+```bash
+# One file at a time — flutter-tester has a log-reader race when
+# multiple integration test files load back-to-back in a single run.
+cd app
+flutter test integration_test/perf_audit/08_perf_audit_home_test.dart -d flutter-tester
+```
+
+The full suite runs via `bin/perf-audit` (below).
+
+### Why provider-level instead of widget-tree pumps?
+
+`app.main()` boots Firebase / Auth0 / dotenv which are wrong-shape for
+`flutter-tester`. Reading the provider directly exercises the actual
+data-layer budget — the thing the CI guard contracts on — without the
+fragile boot path. Each test runs in ~10s on a warm pub cache.
+
+### Fixtures
+
+`tools/perf-audit-fixtures/` holds committed JSON responses served by
+`PerfAuditMockAdapter`. Fixture files are slug-keyed:
+`METHOD_path.json` → `GET_v1_users_me.json`. See
+[`tools/perf-audit-fixtures/README.md`](../tools/perf-audit-fixtures/README.md)
+for format + refresh process.
+
+### Refreshing a fixture
+
+When backend shape drifts (field renamed, payload split):
+
+```bash
+docker compose up api       # or point at your dev deploy
+TOKEN=$(cat ~/.palateful-dev-token)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/v1/users/me \
+  | jq '{status: 200, body: .}' \
+  > tools/perf-audit-fixtures/GET_v1_users_me.json
+```
+
+Commit the refreshed fixture with a one-line PR note naming the
+backend change that caused the drift.
+
+---
+
+## `bin/perf-audit` (ptd-4)
+
+Capture-or-assert driver. Runs every per-screen integration test,
+collects `PERF_AUDIT_CSV` sentinels, pipes to
+`tools/perf-audit-diff.py`.
+
+```bash
+# Regenerate the baseline yaml (use when ffm / perf work lands an
+# intentional new fetch that should shift the budget).
+bin/perf-audit --capture
+
+# Verify observed counts against the committed yaml. Default warn-mode
+# (exits 0 even on violations). Strict-mode via env var:
+bin/perf-audit --assert
+PERF_AUDIT_STRICT=1 bin/perf-audit --assert
+```
+
+### Custom budget file
+
+```bash
+PERF_AUDIT_BUDGET_FILE=tools/perf-audit-test-fixtures/regression.yaml \
+  bin/perf-audit --assert
+```
+
+Used by ptd-8's self-test to feed a known-bad budget.
+
+### Exit codes
+
+- `0` — capture success, or assert within budget, or assert violation
+  in warn-mode.
+- `1` — strict-mode violation, or zero CSV sentinels collected
+  (tests failing?), or diff helper error.
+- `2` — usage / tooling error (missing fixtures dir, diff helper,
+  etc.).
+
+### CI time cost
+
+~2 min wall-clock on GitHub Actions (9 × ~12s flutter-tester cold
+boot + ~30s pub cache hit). Safe in the `flutter-test` job; well
+under the <5 min epic budget.
+
+---
+
+## Raising a perf budget (ptd-4.5)
+
+When a feature legitimately needs a new fetch:
+
+1. Re-capture the baseline to see the effect:
+   `bin/perf-audit --capture`. Inspect the diff to
+   `tools/perf-budgets.yaml`.
+2. If an endpoint's count jumped past 1, add a matching waiver line
+   to `tools/perf-budget-waivers.txt`:
+   ```
+   home:GET /v1/recipe-books:new share-sheet preview needs a second fetch
+   ```
+3. Add a one-sentence rationale to the PR description.
+4. Push. CI runs `tools/no-perf-budget-waiver-check.sh` (waiver
+   matches budget) and `actions/labeler` auto-applies the
+   `perf-budget-change` label. Reviewer now has **four independent
+   cues** in the diff (yaml bump, waiver line, PR description, label).
+
+Totals (`total:`) track the sum of endpoints per screen and are
+asserted alongside per-endpoint counts.
+
+### When a waiver expires / becomes wrong
+
+Waivers are flat text with no expiry. Remove stale lines when the
+paired endpoint drops back to 1 and the yaml is updated to match.
+The grep guard cross-checks only the yaml → waiver direction; a
+leftover waiver is harmless until the corresponding budget entry
+gets bumped again.
+
+---
+
+## Self-test (ptd-8)
+
+```bash
+tools/perf-audit-self-test.sh
+# → "perf-audit-self-test: OK (regression detected, baseline clean)"
+```
+
+Pipes a canned observed CSV into `perf-audit-diff.py` twice:
+
+1. Against `tools/perf-audit-test-fixtures/regression.yaml` (home
+   pinned at total=3) — expects exit 1.
+2. Against `tools/perf-audit-test-fixtures/baseline.yaml` (sized to
+   match observed) — expects exit 0.
+
+If either branch returns the wrong exit code, the comparator has
+regressed and CI fails with a clear diagnostic. Runs in <100ms.
+
+---
+
+## CI regression guard (ptd-5)
+
+Three new steps appended to `.github/workflows/ci.yml`'s
+`flutter-test` job (ordered cheapest first):
+
+1. `No perf-budget waivers missing` — runs `no-perf-budget-waiver-check.sh`.
+2. `Perf audit self-test` — runs `perf-audit-self-test.sh`.
+3. `Perf audit — assert per-screen budgets` — runs
+   `bin/perf-audit --assert` with a retry-once wrapper; tees the
+   per-screen diff table into `$GITHUB_STEP_SUMMARY`.
+
+Plus a new `perf-budget-label` job: `actions/labeler@v5` + `.github/labeler.yml`
+auto-applies `perf-budget-change` on PRs that touch the budget yaml
+or waiver file.
+
+### Warn-mode → strict flip
+
+Grace window ends **2026-05-07**. On or after that date, open a
+one-line PR that:
+
+1. Adds `PERF_AUDIT_STRICT: '1'` to the `env:` of the
+   "Perf audit — assert per-screen budgets" step.
+2. Drops the block comment naming the grace window.
+
+Before flipping, skim a week of warn-mode CI summaries to confirm the
+baseline is stable across real PR traffic. If anyone raised the budget
+intentionally during the window and forgot the waiver, that's what the
+strict flip catches.
+
+### Harness flake / quarantine
+
+Retry-once is automatic. If a specific test proves persistently flaky,
+add its filename (one per line) to a new file
+`tools/perf-audit-quarantine.txt` (not yet auto-implemented) — or
+directly exclude it from the `bin/perf-audit` loop via a skip match.
+Revisit automation if this becomes a real pattern; one story of MVP
+plumbing doesn't justify a persistent flake-count store.

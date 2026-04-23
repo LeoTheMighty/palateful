@@ -1306,6 +1306,6 @@ development_status:
   ptd-4-5-budget-waiver-file-and-grep-guard: done
   ptd-5-ci-regression-guard-warn-to-strict: done
   ptd-6-analyze-latency-regression-hunt-section-client-and-all: done
-  ptd-7-performance-ops-runbook-doc: backlog
+  ptd-7-performance-ops-runbook-doc: done
   ptd-8-self-test-synthetic-regression-fixture: done
   epic-perf-debug-tooling-retrospective: optional
