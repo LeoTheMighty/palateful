@@ -1,0 +1,8 @@
+# ptd-5 — actions/labeler@v5 config. Auto-applies labels to PRs based
+# on changed files. Currently scoped to the perf-audit budget cues;
+# extend as new "reviewer-attention" signals land.
+perf-budget-change:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tools/perf-budgets.yaml
+          - tools/perf-budget-waivers.txt

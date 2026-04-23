@@ -356,6 +356,69 @@ jobs:
         working-directory: app
         run: flutter test
 
+      # ─── ptd-4.5 / ptd-5 / ptd-8 — perf audit guards ─────────────────
+      #
+      # Order of execution:
+      #   1. no-perf-budget-waiver-check — fast (<100 ms).
+      #      Any budget entry > 1 without a matching waiver fails here.
+      #   2. perf-audit-self-test — fast (<100 ms). Proves the
+      #      assert-logic in perf-audit-diff.py still detects a
+      #      synthetic regression.
+      #   3. bin/perf-audit --assert — ~2 min. Runs the 9 per-screen
+      #      integration tests, compares observed vs tools/perf-budgets.yaml.
+      #
+      # Warn-mode until 2026-05-07 (14-day grace window per epic
+      # Locked Decision): PERF_AUDIT_STRICT unset → violations print
+      # to the job summary but don't fail CI. Flip to strict mode by
+      # setting `PERF_AUDIT_STRICT: '1'` on the step below after that
+      # date. Keep this comment updated on the flip PR.
+      - name: No perf-budget waivers missing (ptd-4.5)
+        run: bash tools/no-perf-budget-waiver-check.sh
+
+      - name: Perf audit self-test (ptd-8)
+        run: bash tools/perf-audit-self-test.sh
+
+      - name: Perf audit — assert per-screen budgets (ptd-4 / ptd-5)
+        # Warn-mode: PERF_AUDIT_STRICT unset. Flip to '1' after
+        # 2026-05-07. See the block comment above.
+        #
+        # Retry once on flake — flutter-tester occasionally hiccups
+        # on cold boot. Tees the per-screen diff table into the
+        # GitHub job summary regardless of outcome.
+        run: |
+          set +e
+          {
+            bash bin/perf-audit --assert \
+              || bash bin/perf-audit --assert
+          } | tee perf-audit.out
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "## Perf audit"
+            echo '```'
+            cat perf-audit.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$rc"
+
+  # ptd-5 — `perf-budget-change` label auto-applied when the budget
+  # yaml or waiver file is in the diff. Gives PR reviewers a fourth
+  # independent cue that a budget raise is in flight (yaml diff,
+  # waiver line, PR description rationale, this label).
+  perf-budget-label:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: false
+
   terraform:
     runs-on: ubuntu-latest
     steps:
