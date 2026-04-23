@@ -156,6 +156,111 @@ class CookPlan {
     throw ArgumentError.value(flatIndex, 'flatIndex', 'unreachable');
   }
 
+  /// Steps for the component with the given [recipeId].
+  ///
+  /// Throws [ArgumentError] when no component in the plan matches —
+  /// meal state refactor (cmmrf-1) assumes stored `_activeRecipeId`s
+  /// always reference a live component; the remap-on-rebuild path in
+  /// `_remapAfterPlanRebuild` keeps that invariant.
+  List<CookStep> stepsFor(String recipeId) {
+    for (final c in components) {
+      if (c.recipeId == recipeId) return c.steps;
+    }
+    throw ArgumentError.value(
+      recipeId,
+      'recipeId',
+      'not a component of this plan',
+    );
+  }
+
+  /// Defensive read of [stepByRecipe] for [recipeId] — returns 0 when
+  /// the map has no entry (e.g. a pill the user has not yet entered).
+  /// Used by [summaryFor] so toggle-bar pills render `Name 1/N` for
+  /// unentered recipes without the caller priming the map.
+  int stepIndexFor(String recipeId, Map<String, int> stepByRecipe) =>
+      stepByRecipe[recipeId] ?? 0;
+
+  /// Build a [ComponentSummary] for a single component by id, given
+  /// the current per-recipe step + completed maps. `isComplete` is
+  /// true iff the component's last-step index appears in
+  /// `completedByRecipe[recipeId]`; empty / placeholder components
+  /// are never complete.
+  ComponentSummary summaryFor(
+    String recipeId,
+    Map<String, int> stepByRecipe,
+    Map<String, Set<int>> completedByRecipe,
+  ) {
+    final c = components.firstWhere(
+      (c) => c.recipeId == recipeId,
+      orElse: () => throw ArgumentError.value(
+        recipeId,
+        'recipeId',
+        'not a component of this plan',
+      ),
+    );
+    final total = c.steps.length;
+    final lastIdx = total - 1;
+    final completedForId = completedByRecipe[recipeId];
+    final isComplete = total > 0 &&
+        completedForId != null &&
+        completedForId.contains(lastIdx);
+    return ComponentSummary(
+      recipeId: c.recipeId,
+      name: c.name,
+      currentStep: stepIndexFor(recipeId, stepByRecipe),
+      totalSteps: total,
+      isComplete: isComplete,
+      loadFailed: c.loadFailed,
+    );
+  }
+
+  /// Next recipe in plan order (wrapping) whose last step is not in
+  /// `completedByRecipe[id]`. Skips [activeId] itself and empty-steps
+  /// components. `loadFailed` components are **included** so the user
+  /// can auto-advance into a placeholder and reach the retry UI —
+  /// the failed pill itself stays non-tappable via `_setActiveRecipe`.
+  /// Returns null when every non-self component is complete.
+  ///
+  /// Wrap-around handles the non-linear case where the user toggled
+  /// into a later recipe first (say Chicken), finished it, then
+  /// auto-advance from Chicken needs to route back to the still-
+  /// unfinished Dressing at the front of the plan.
+  String? nextUnfinishedRecipeAfter(
+    String activeId,
+    Map<String, int> stepByRecipe,
+    Map<String, Set<int>> completedByRecipe,
+  ) {
+    final activeIdx = components.indexWhere((c) => c.recipeId == activeId);
+    if (activeIdx < 0) return null;
+    final n = components.length;
+    for (var i = 1; i < n; i++) {
+      final c = components[(activeIdx + i) % n];
+      if (c.recipeId == activeId) continue;
+      final total = c.steps.length;
+      if (total == 0) continue;
+      final lastIdx = total - 1;
+      final completed = completedByRecipe[c.recipeId];
+      if (completed == null || !completed.contains(lastIdx)) {
+        return c.recipeId;
+      }
+    }
+    return null;
+  }
+
+  /// Prior-in-plan-order recipe id that the user has entered
+  /// (appears in `enteredIds`). Used by the backward-swipe / Prev
+  /// button at local step 0 to rewind across recipe boundaries. Returns
+  /// null at step 0 of the first-entered recipe in plan order.
+  String? previousEnteredRecipe(String activeId, Set<String> enteredIds) {
+    final activeIdx = components.indexWhere((c) => c.recipeId == activeId);
+    if (activeIdx <= 0) return null;
+    for (var i = activeIdx - 1; i >= 0; i--) {
+      final id = components[i].recipeId;
+      if (enteredIds.contains(id)) return id;
+    }
+    return null;
+  }
+
   /// Inverse of [stepAt]: (componentIndex, stepIndex) → flat index.
   int flatIndexFor(int componentIndex, int stepIndex) {
     if (componentIndex < 0 || componentIndex >= components.length) {
@@ -286,6 +391,34 @@ class CookPlan {
     }
     return out;
   }
+}
+
+/// Per-recipe toggle-bar pill data (cmmrf-3).
+///
+/// Built by [CookPlan.summaryFor] from the per-recipe maps owned by
+/// `MealCookModeScreen`. Fields:
+///   * `currentStep` / `totalSteps` — local (0-indexed) step counter
+///     surfaced as `{cur+1}/{total}` in the pill label.
+///   * `isComplete` — last step index is in the completed set; drives
+///     the trailing-check affordance (tappable to rewind).
+///   * `loadFailed` — component's recipe fetch failed; pill renders
+///     disabled with a trailing ellipsis.
+class ComponentSummary {
+  final String recipeId;
+  final String name;
+  final int currentStep;
+  final int totalSteps;
+  final bool isComplete;
+  final bool loadFailed;
+
+  const ComponentSummary({
+    required this.recipeId,
+    required this.name,
+    required this.currentStep,
+    required this.totalSteps,
+    required this.isComplete,
+    required this.loadFailed,
+  });
 }
 
 /// One row in the post-cook feedback sheet. Recipe-cook passes a

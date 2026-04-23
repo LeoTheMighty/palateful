@@ -210,6 +210,174 @@ void main() {
     });
   });
 
+  group('cmmrf-1 — per-recipe helpers', () {
+    CookPlan buildThree() {
+      final meal = _meal(id: 'm1', components: [
+        _comp('rD', 'Dressing', 0),
+        _comp('rS', 'Salad', 1),
+        _comp('rC', 'Chicken', 2),
+      ]);
+      return CookPlan.fromMeal(meal, [
+        _recipe(id: 'rD', name: 'Dressing', stepCount: 7),
+        _recipe(id: 'rS', name: 'Salad', stepCount: 4),
+        _recipe(id: 'rC', name: 'Chicken', stepCount: 9),
+      ]);
+    }
+
+    test('stepsFor returns the component\'s step list by recipeId', () {
+      final plan = buildThree();
+      expect(plan.stepsFor('rS'), hasLength(4));
+      expect(plan.stepsFor('rC'), hasLength(9));
+      expect(() => plan.stepsFor('bogus'), throwsArgumentError);
+    });
+
+    test('stepIndexFor returns 0 when map is missing the entry', () {
+      final plan = buildThree();
+      expect(plan.stepIndexFor('rS', const {}), 0);
+      expect(plan.stepIndexFor('rS', {'rS': 3}), 3);
+    });
+
+    test('summaryFor builds ComponentSummary from per-recipe maps', () {
+      final plan = buildThree();
+      final s = plan.summaryFor(
+        'rD',
+        {'rD': 3},
+        {'rD': {0, 1, 2}},
+      );
+      expect(s.recipeId, 'rD');
+      expect(s.name, 'Dressing');
+      expect(s.currentStep, 3);
+      expect(s.totalSteps, 7);
+      expect(s.isComplete, isFalse);
+      expect(s.loadFailed, isFalse);
+    });
+
+    test('summaryFor: isComplete iff last local step is in completed set', () {
+      final plan = buildThree();
+      final notComplete = plan.summaryFor('rS', {'rS': 3}, {'rS': {0, 1, 2}});
+      expect(notComplete.isComplete, isFalse);
+      final complete = plan.summaryFor(
+        'rS',
+        {'rS': 3},
+        {'rS': {0, 1, 2, 3}},
+      );
+      expect(complete.isComplete, isTrue);
+    });
+
+    test('summaryFor: loadFailed flag propagates from the component', () {
+      final meal = _meal(id: 'm1', components: [
+        _comp('rD', 'Dressing', 0),
+        _comp('rS', 'Salad', 1),
+      ]);
+      final plan = CookPlan.fromMeal(meal, [
+        _recipe(id: 'rD', name: 'Dressing', stepCount: 2),
+        null,
+      ]);
+      final s = plan.summaryFor('rS', const {}, const {});
+      expect(s.loadFailed, isTrue);
+    });
+
+    test('nextUnfinishedRecipeAfter: plan-order lookup from Dressing', () {
+      final plan = buildThree();
+      expect(
+        plan.nextUnfinishedRecipeAfter('rD', const {}, const {}),
+        'rS',
+      );
+    });
+
+    test('nextUnfinishedRecipeAfter: skips fully-complete recipe', () {
+      final plan = buildThree();
+      // Salad fully complete — auto-advance after Dressing should hop
+      // over Salad and land on Chicken.
+      expect(
+        plan.nextUnfinishedRecipeAfter(
+          'rD',
+          const {},
+          {
+            'rS': {0, 1, 2, 3},
+          },
+        ),
+        'rC',
+      );
+    });
+
+    test('nextUnfinishedRecipeAfter: wraps around to earlier recipe', () {
+      final plan = buildThree();
+      // User finished Chicken, hit Next: Dressing is unfinished so
+      // auto-advance wraps around to Dressing (not returns null).
+      expect(
+        plan.nextUnfinishedRecipeAfter(
+          'rC',
+          const {},
+          {
+            'rC': {for (var i = 0; i < 9; i++) i},
+          },
+        ),
+        'rD',
+      );
+    });
+
+    test('nextUnfinishedRecipeAfter: null when every other recipe done', () {
+      final plan = buildThree();
+      expect(
+        plan.nextUnfinishedRecipeAfter(
+          'rS',
+          const {},
+          {
+            'rD': {for (var i = 0; i < 7; i++) i},
+            'rC': {for (var i = 0; i < 9; i++) i},
+          },
+        ),
+        isNull,
+      );
+    });
+
+    test('nextUnfinishedRecipeAfter: includes loadFailed components', () {
+      // Auto-advance must be able to land the user on a placeholder
+      // slot so they can reach the retry UI — the failed pill itself
+      // stays untappable via _setActiveRecipe.
+      final meal = _meal(id: 'm1', components: [
+        _comp('rD', 'Dressing', 0),
+        _comp('rF', 'Failed', 1),
+      ]);
+      final plan = CookPlan.fromMeal(meal, [
+        _recipe(id: 'rD', name: 'Dressing', stepCount: 2),
+        null,
+      ]);
+      expect(
+        plan.nextUnfinishedRecipeAfter('rD', const {}, const {}),
+        'rF',
+      );
+    });
+
+    test('previousEnteredRecipe: walks backward through plan order', () {
+      final plan = buildThree();
+      // User entered Dressing + Salad, on Chicken → prev is Salad.
+      expect(
+        plan.previousEnteredRecipe('rC', {'rD', 'rS', 'rC'}),
+        'rS',
+      );
+      // Only entered Dressing + Chicken → prev from Chicken is Dressing.
+      expect(
+        plan.previousEnteredRecipe('rC', {'rD', 'rC'}),
+        'rD',
+      );
+      // At the first plan-order recipe → null.
+      expect(
+        plan.previousEnteredRecipe('rD', {'rD', 'rS'}),
+        isNull,
+      );
+    });
+
+    test('previousEnteredRecipe: returns null for unknown activeId', () {
+      final plan = buildThree();
+      expect(
+        plan.previousEnteredRecipe('bogus', {'rD', 'rS'}),
+        isNull,
+      );
+    });
+  });
+
   group('regression', () {
     test('recipe with empty/missing instruction is filtered', () {
       final raw = <String, dynamic>{

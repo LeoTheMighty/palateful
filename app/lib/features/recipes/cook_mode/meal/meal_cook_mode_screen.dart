@@ -75,8 +75,19 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   // a successful `_retryComponent` patches one entry in place.
   final Map<String, Map<String, dynamic>?> _rawRecipes = {};
 
-  int _currentStep = 0;
-  final Set<int> _completedSteps = {};
+  // cmmrf-1 — per-recipe step state. Keyed by `recipe_id`. Populated in
+  // `_loadMealAndRecipes` once the plan lands (one entry per component,
+  // initial value 0). `_activeRecipeId` is the pointer the UI renders;
+  // the screen stays in a loading state until both are non-null.
+  final Map<String, int> _currentStepByRecipe = {};
+  final Map<String, Set<int>> _completedStepsByRecipe = {};
+  String? _activeRecipeId;
+  // Recipes the user has at any point made active — entered via pill
+  // tap, auto-advance, or cross-recipe swipe. Early-finish row
+  // inclusion (cmmrf-5) and previousEnteredRecipe (cmmrf-7) both read
+  // from this set.
+  final Set<String> _enteredRecipeIds = {};
+
   // Stable-key ("componentIndex:orderIndex") set; cmm-4 wires the strip
   // to use these keys directly. cmm-2 only persists checks done while
   // the screen is mounted (no resume restoration yet — cmm-7).
@@ -228,11 +239,46 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       restoredTimers.add(timer);
     }
 
+    // cmmrf-1 — unpack the v1 flat int + flat completed-set into the
+    // per-recipe maps. Still reads from the v1 wire fields on
+    // CookSessionState; cmmrf-2 swaps this for native v2 deserialization.
+    final unpackedCurrentStep = <String, int>{};
+    final unpackedCompleted = <String, Set<int>>{};
+    final unpackedEntered = <String>{};
+    for (final c in plan.components) {
+      unpackedCurrentStep[c.recipeId] = 0;
+      unpackedCompleted[c.recipeId] = <int>{};
+    }
+    for (final flat in validCompleted) {
+      final at = plan.stepAt(flat);
+      final id = plan.components[at.componentIndex].recipeId;
+      unpackedCompleted[id]!.add(at.stepIndex);
+      unpackedEntered.add(id);
+    }
+    final atRestored = plan.stepAt(restoredStep);
+    final restoredActiveId = plan.components[atRestored.componentIndex].recipeId;
+    unpackedCurrentStep[restoredActiveId] = atRestored.stepIndex;
+    unpackedEntered.add(restoredActiveId);
+    // Back-fill: any component with a flat-step less than the restored
+    // flat position should be treated as "entered" too, so early-finish
+    // row filtering matches v1 semantics (any component the user
+    // advanced past is ratable). This also makes previousEnteredRecipe
+    // (cmmrf-7) work on v1-restored sessions.
+    for (var ci = 0; ci <= atRestored.componentIndex; ci++) {
+      unpackedEntered.add(plan.components[ci].recipeId);
+    }
+
     setState(() {
-      _currentStep = restoredStep;
-      _completedSteps
+      _currentStepByRecipe
         ..clear()
-        ..addAll(validCompleted);
+        ..addAll(unpackedCurrentStep);
+      _completedStepsByRecipe
+        ..clear()
+        ..addAll(unpackedCompleted);
+      _activeRecipeId = restoredActiveId;
+      _enteredRecipeIds
+        ..clear()
+        ..addAll(unpackedEntered);
       _checkedIngredientKeys
         ..clear()
         ..addAll(validChecked);
@@ -308,6 +354,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       setState(() {
         _meal = orderedMeal;
         _plan = plan;
+        _seedPerRecipeMaps(plan);
         _isLoading = false;
       });
     } on DioException catch (e) {
@@ -398,17 +445,15 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
         for (final c in meal.components) _rawRecipes[c.recipeId],
       ];
       final next = CookPlan.fromMeal(meal, raws);
-      // Remap step / completed indices via component identity so a
-      // placeholder (1 step) → N real steps growth doesn't teleport
-      // the user. We pin _currentStep to (oldComponentIndex,
-      // min(oldStepIndex, newCompLen-1)).
-      final remap = _remapAfterPlanRebuild(plan, next);
+      // cmmrf-1 — per-recipe maps are naturally stable across plan
+      // rebuilds (keyed by recipeId). Clamp each recipe's current +
+      // completed step indices to the new component length; drop
+      // entries for components that no longer exist (shouldn't happen
+      // in cmm-2 but defends cmm-7's drift logic).
+      _clampPerRecipeMapsToPlan(next);
       setState(() {
         _plan = next;
-        _currentStep = remap.currentStep;
-        _completedSteps
-          ..clear()
-          ..addAll(remap.completedSteps);
+        _seedPerRecipeMaps(next);
         _retryingRecipeIds.remove(recipeId);
       });
       _persistState();
@@ -417,41 +462,35 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     }
   }
 
-  /// After a plan rebuild (retry), translate flat-index state from the
-  /// old plan into the new plan's flat-index space. Components are
-  /// matched by `recipeId`. Steps within a component clamp to the new
-  /// component length. Completed steps in components that no longer
-  /// exist (shouldn't happen in cmm-2 but defends cmm-7's drift logic)
-  /// are dropped silently.
-  ({int currentStep, Set<int> completedSteps}) _remapAfterPlanRebuild(
-    CookPlan oldPlan,
-    CookPlan newPlan,
-  ) {
-    int translate(int oldFlat) {
-      if (oldFlat < 0 || oldFlat >= oldPlan.totalSteps) return 0;
-      final at = oldPlan.stepAt(oldFlat);
-      final oldComp = oldPlan.components[at.componentIndex];
-      final newCi =
-          newPlan.components.indexWhere((c) => c.recipeId == oldComp.recipeId);
-      if (newCi < 0) return 0;
-      final newCompLen = newPlan.components[newCi].steps.length;
-      if (newCompLen == 0) return 0;
-      final clampedSi =
-          at.stepIndex >= newCompLen ? newCompLen - 1 : at.stepIndex;
-      return newPlan.flatIndexFor(newCi, clampedSi);
-    }
-
-    final newCurrent =
-        _currentStep.clamp(0, newPlan.totalSteps - 1).toInt();
-    final remappedCurrent = translate(newCurrent);
-    final remappedCompleted = <int>{
-      for (final c in _completedSteps)
-        if (c >= 0 && c < oldPlan.totalSteps) translate(c),
+  /// Drop entries for missing recipes + clamp each recipe's current +
+  /// completed step indices to the new component length. Called after
+  /// a plan rebuild (e.g., successful component retry) to keep the
+  /// per-recipe maps in sync with the live plan shape.
+  void _clampPerRecipeMapsToPlan(CookPlan newPlan) {
+    final liveByLen = <String, int>{
+      for (final c in newPlan.components) c.recipeId: c.steps.length,
     };
-    return (
-      currentStep: remappedCurrent,
-      completedSteps: remappedCompleted,
-    );
+    _currentStepByRecipe.removeWhere((id, _) => !liveByLen.containsKey(id));
+    _completedStepsByRecipe.removeWhere((id, _) => !liveByLen.containsKey(id));
+    _enteredRecipeIds.removeWhere((id) => !liveByLen.containsKey(id));
+    for (final entry in liveByLen.entries) {
+      final len = entry.value;
+      if (len == 0) continue;
+      final cur = _currentStepByRecipe[entry.key];
+      if (cur != null && cur >= len) {
+        _currentStepByRecipe[entry.key] = len - 1;
+      }
+      final completed = _completedStepsByRecipe[entry.key];
+      if (completed != null) {
+        completed.removeWhere((si) => si < 0 || si >= len);
+      }
+    }
+    final active = _activeRecipeId;
+    if (active != null && !liveByLen.containsKey(active)) {
+      _activeRecipeId = newPlan.components.isNotEmpty
+          ? newPlan.components.first.recipeId
+          : null;
+    }
   }
 
   @override
@@ -517,44 +556,214 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   }
 
   // -----------------------------------------------------------------
-  // Step navigation (flat-index over CookPlan)
+  // Step navigation (cmmrf-1 — per-recipe maps; flat indices synthesized
+  // for the StepNavigator + progress bar via _flatCurrentStep / _flatCompletedSteps.)
   // -----------------------------------------------------------------
 
-  void _goToStep(int step) {
+  /// Seed [_currentStepByRecipe] / [_completedStepsByRecipe] with an
+  /// entry per component (all starting at 0 / empty), and pin
+  /// [_activeRecipeId] to plan order position 0. Idempotent — safe to
+  /// call again on plan rebuild; existing entries are preserved, new
+  /// components get seeded, and [_activeRecipeId] is only (re)assigned
+  /// when null or stale.
+  void _seedPerRecipeMaps(CookPlan plan) {
+    for (final c in plan.components) {
+      _currentStepByRecipe.putIfAbsent(c.recipeId, () => 0);
+      _completedStepsByRecipe.putIfAbsent(c.recipeId, () => <int>{});
+    }
+    // Drop entries for components no longer in the plan.
+    final liveIds = {for (final c in plan.components) c.recipeId};
+    _currentStepByRecipe.removeWhere((id, _) => !liveIds.contains(id));
+    _completedStepsByRecipe.removeWhere((id, _) => !liveIds.contains(id));
+    _enteredRecipeIds.removeWhere((id) => !liveIds.contains(id));
+    final active = _activeRecipeId;
+    if (active == null || !liveIds.contains(active)) {
+      _activeRecipeId =
+          plan.components.isNotEmpty ? plan.components.first.recipeId : null;
+    }
+    final pinned = _activeRecipeId;
+    if (pinned != null) _enteredRecipeIds.add(pinned);
+  }
+
+  int get _flatCurrentStep {
+    final plan = _plan;
+    final activeId = _activeRecipeId;
+    if (plan == null || activeId == null) return 0;
+    final ci = plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (ci < 0) return 0;
+    final local = _currentStepByRecipe[activeId] ?? 0;
+    final clamped = local.clamp(0, plan.components[ci].steps.length - 1);
+    return plan.flatIndexFor(ci, clamped);
+  }
+
+  Set<int> get _flatCompletedSteps {
+    final plan = _plan;
+    if (plan == null) return const {};
+    final out = <int>{};
+    for (var ci = 0; ci < plan.components.length; ci++) {
+      final c = plan.components[ci];
+      final local = _completedStepsByRecipe[c.recipeId] ?? const <int>{};
+      for (final si in local) {
+        if (si >= 0 && si < c.steps.length) {
+          out.add(plan.flatIndexFor(ci, si));
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Public tap handler for a StepNavigator pill (still flat-indexed in
+  /// cmmrf-1). Translates the flat index back to (recipeId, localStep)
+  /// and delegates to the per-recipe path. Switches [_activeRecipeId]
+  /// when the pill belongs to a different component and rewinds the
+  /// active recipe's completed set when the tap moves backward within
+  /// the same recipe.
+  void _goToStep(int flatStep) {
     final plan = _plan;
     if (plan == null) return;
-    if (step >= 0 && step < plan.totalSteps) {
-      HapticFeedback.selectionClick();
-      setState(() {
-        if (step < _currentStep) {
-          _completedSteps.remove(step);
+    if (flatStep < 0 || flatStep >= plan.totalSteps) return;
+    final at = plan.stepAt(flatStep);
+    final recipeId = plan.components[at.componentIndex].recipeId;
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (recipeId == _activeRecipeId) {
+        final cur = _currentStepByRecipe[recipeId] ?? 0;
+        if (at.stepIndex < cur) {
+          _completedStepsByRecipe[recipeId]?.remove(at.stepIndex);
         }
-        _currentStep = step;
-      });
-      _persistState();
-    }
+      }
+      _activeRecipeId = recipeId;
+      _enteredRecipeIds.add(recipeId);
+      _currentStepByRecipe[recipeId] = at.stepIndex;
+      _completedStepsByRecipe.putIfAbsent(recipeId, () => <int>{});
+    });
+    _persistState();
   }
 
   void _nextStep() {
     final plan = _plan;
-    if (plan == null) return;
-    _completedSteps.add(_currentStep);
-    if (_currentStep < plan.totalSteps - 1) {
-      _goToStep(_currentStep + 1);
-    } else {
+    final activeId = _activeRecipeId;
+    if (plan == null || activeId == null) return;
+    final activeCi =
+        plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (activeCi < 0) return;
+    final steps = plan.components[activeCi].steps;
+    if (steps.isEmpty) return;
+    final cur = _currentStepByRecipe[activeId] ?? 0;
+    _completedStepsByRecipe.putIfAbsent(activeId, () => <int>{}).add(cur);
+    if (cur < steps.length - 1) {
+      HapticFeedback.selectionClick();
+      setState(() {
+        _currentStepByRecipe[activeId] = cur + 1;
+      });
       _persistState();
+    } else {
+      _autoAdvanceRecipe();
     }
   }
 
   void _previousStep() {
-    _goToStep(_currentStep - 1);
+    final plan = _plan;
+    final activeId = _activeRecipeId;
+    if (plan == null || activeId == null) return;
+    final cur = _currentStepByRecipe[activeId] ?? 0;
+    if (cur > 0) {
+      HapticFeedback.selectionClick();
+      setState(() {
+        _currentStepByRecipe[activeId] = cur - 1;
+        _completedStepsByRecipe[activeId]?.remove(cur - 1);
+      });
+      _persistState();
+      return;
+    }
+    // Local step 0 — cross-recipe rewind to the prior entered recipe
+    // at its last-visited step (cmmrf-7 wires the swipe path through
+    // this same method).
+    final prior = plan.previousEnteredRecipe(activeId, _enteredRecipeIds);
+    if (prior == null) return;
+    final priorSteps = plan.stepsFor(prior);
+    if (priorSteps.isEmpty) return;
+    final priorLastVisited = (_currentStepByRecipe[prior] ?? 0)
+        .clamp(0, priorSteps.length - 1);
+    HapticFeedback.selectionClick();
+    setState(() {
+      _activeRecipeId = prior;
+      _currentStepByRecipe[prior] = priorLastVisited;
+    });
+    _persistState();
+  }
+
+  /// Toggle-bar pill tap handler (cmmrf-3 mount site; cmmrf-1 logic).
+  /// Same-recipe taps are swallowed silently; load-failed components
+  /// are no-ops. Otherwise switches [_activeRecipeId], marks the
+  /// recipe as entered, and persists.
+  void _setActiveRecipe(String recipeId) {
+    final plan = _plan;
+    if (plan == null) return;
+    if (recipeId == _activeRecipeId) return;
+    final ci = plan.components.indexWhere((c) => c.recipeId == recipeId);
+    if (ci < 0) return;
+    if (plan.components[ci].loadFailed) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _activeRecipeId = recipeId;
+      _enteredRecipeIds.add(recipeId);
+      _currentStepByRecipe.putIfAbsent(recipeId, () => 0);
+      _completedStepsByRecipe.putIfAbsent(recipeId, () => <int>{});
+    });
+    _persistState();
+  }
+
+  /// cmmrf-1 — advances to the next unfinished recipe in plan order
+  /// (wrapping), lands on its first step, and marks it entered. No-op
+  /// if every other non-failed component is complete — cmmrf-5 will
+  /// layer the post-cook-sheet hand-off onto the null-return path.
+  void _autoAdvanceRecipe() {
+    final plan = _plan;
+    final activeId = _activeRecipeId;
+    if (plan == null || activeId == null) return;
+    final next = plan.nextUnfinishedRecipeAfter(
+      activeId,
+      _currentStepByRecipe,
+      _completedStepsByRecipe,
+    );
+    if (next == null) {
+      _persistState();
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() {
+      _activeRecipeId = next;
+      _enteredRecipeIds.add(next);
+      _currentStepByRecipe[next] = 0;
+      _completedStepsByRecipe.putIfAbsent(next, () => <int>{});
+    });
+    _persistState();
   }
 
   void _markAllUpToHere() {
+    final plan = _plan;
+    final activeId = _activeRecipeId;
+    if (plan == null || activeId == null) return;
+    final activeCi =
+        plan.components.indexWhere((c) => c.recipeId == activeId);
+    if (activeCi < 0) return;
+    // Same intent as the legacy flat-index version: mark every step up
+    // to and including the current flat position as complete. Per
+    // recipe that means: all steps of every prior component, plus the
+    // active component's steps up to its current local index.
     HapticFeedback.mediumImpact();
     setState(() {
-      for (int i = 0; i <= _currentStep; i++) {
-        _completedSteps.add(i);
+      for (var ci = 0; ci <= activeCi; ci++) {
+        final comp = plan.components[ci];
+        final target =
+            _completedStepsByRecipe.putIfAbsent(comp.recipeId, () => <int>{});
+        final upTo = ci < activeCi
+            ? comp.steps.length - 1
+            : (_currentStepByRecipe[activeId] ?? 0);
+        for (var si = 0; si <= upTo; si++) {
+          target.add(si);
+        }
       }
     });
     _persistState();
@@ -600,8 +809,9 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     final expiresAt = startTime.add(duration);
     final mealName = _meal?.name ?? 'Meal';
     final plan = _plan;
-    final componentName = plan != null
-        ? plan.components[plan.stepAt(_currentStep).componentIndex].name
+    final activeId = _activeRecipeId;
+    final componentName = (plan != null && activeId != null)
+        ? _componentNameFor(plan, activeId)
         : null;
     // cmm-5 — component-name disambiguation. If another active timer
     // already uses this exact label (typically from a different
@@ -624,7 +834,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       label: displayLabel,
       expiresAt: expiresAt,
       recipeId: widget.mealId,
-      stepIndex: _currentStep,
+      stepIndex: _flatCurrentStep,
       originalDurationSeconds: duration.inSeconds,
     );
     _liveActivityService.startTimerActivity(
@@ -681,7 +891,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       context: context,
       label: timer.label,
       recipeName: _meal?.name,
-      stepNumber: _currentStep,
+      stepNumber: _flatCurrentStep,
       onAdd2: () =>
           _startTimer(const Duration(minutes: 2), '${timer.label} (+2m)'),
       onAdd5: () =>
@@ -731,8 +941,9 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     //  * Non-empty user labels go straight to `_startTimer`, which
     //    applies the cmm-5 component-prefix rule on collisions.
     final plan = _plan;
-    final componentName = plan != null
-        ? plan.components[plan.stepAt(_currentStep).componentIndex].name
+    final activeId = _activeRecipeId;
+    final componentName = (plan != null && activeId != null)
+        ? _componentNameFor(plan, activeId)
         : null;
     final trimmed = rawLabel.trim();
     final isDefaultLabel =
@@ -778,6 +989,9 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
 
   // -----------------------------------------------------------------
   // Persistence
+  //
+  // cmmrf-1 keeps the v1 wire format via the flatten-on-save shim
+  // below; cmmrf-2 swaps this for native v2 serialization.
   // -----------------------------------------------------------------
 
   void _persistState() {
@@ -787,16 +1001,20 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   CookSessionState _buildSnapshot() {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     _startedAtMs ??= nowMs;
-    final completed = _completedSteps.toList()..sort();
     final checked = _checkedIngredientKeys.toList()..sort();
+    final plan = _plan;
+    final flatCurrent = plan == null ? 0 : _flatCurrentStep;
+    final flatCompleted = plan == null
+        ? const <int>[]
+        : (_flatCompletedSteps.toList()..sort());
     return CookSessionState(
       targetKind: CookTargetKind.meal,
       targetId: widget.mealId,
       startedAtMs: _startedAtMs!,
       cumulativeElapsedMs:
           _restoredElapsedMs + _cookingStopwatch.elapsedMilliseconds,
-      currentStep: _currentStep,
-      completedSteps: completed,
+      currentStep: flatCurrent,
+      completedSteps: flatCompleted,
       checkedIngredients: checked,
       activeTimers: _activeTimers
           .map(
@@ -810,6 +1028,16 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
           .toList(),
       updatedAtMs: nowMs,
     );
+  }
+
+  /// Lookup helper for a component's display name by recipe id. Used
+  /// by timer-start / manual-timer / post-cook paths that read the
+  /// "current component" context.
+  String? _componentNameFor(CookPlan plan, String recipeId) {
+    for (final c in plan.components) {
+      if (c.recipeId == recipeId) return c.name;
+    }
+    return null;
   }
 
   // -----------------------------------------------------------------
@@ -829,8 +1057,24 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     await _persister.clear(_sessionKey);
     if (!mounted) return;
     setState(() {
-      _currentStep = 0;
-      _completedSteps.clear();
+      final plan = _plan;
+      _currentStepByRecipe
+        ..clear()
+        ..addEntries([
+          if (plan != null)
+            for (final c in plan.components) MapEntry(c.recipeId, 0),
+        ]);
+      _completedStepsByRecipe
+        ..clear()
+        ..addEntries([
+          if (plan != null)
+            for (final c in plan.components) MapEntry(c.recipeId, <int>{}),
+        ]);
+      _enteredRecipeIds.clear();
+      if (plan != null && plan.components.isNotEmpty) {
+        _activeRecipeId = plan.components.first.recipeId;
+        _enteredRecipeIds.add(plan.components.first.recipeId);
+      }
       _checkedIngredientKeys.clear();
       _activeTimers.clear();
       _cookingStopwatch.stop();
@@ -849,8 +1093,10 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
 
   void _exitCookMode() {
     _cookingStopwatch.stop();
-    if (_plan != null) {
-      _completedSteps.add(_currentStep);
+    final activeId = _activeRecipeId;
+    if (_plan != null && activeId != null) {
+      final cur = _currentStepByRecipe[activeId] ?? 0;
+      _completedStepsByRecipe.putIfAbsent(activeId, () => <int>{}).add(cur);
     }
     context.pop();
   }
@@ -862,7 +1108,11 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   Future<void> _finishCooking() async {
     final plan = _plan;
     if (plan == null) return;
-    _completedSteps.add(_currentStep);
+    final activeId = _activeRecipeId;
+    if (activeId != null) {
+      final cur = _currentStepByRecipe[activeId] ?? 0;
+      _completedStepsByRecipe.putIfAbsent(activeId, () => <int>{}).add(cur);
+    }
     HapticFeedback.heavyImpact();
     _cookingStopwatch.stop();
     final ratables = [
@@ -882,8 +1132,9 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   }
 
   /// cmm-6 — overflow "Finish cooking now" item. Confirmation sheet
-  /// then opens post-cook seeded with components the user actually
-  /// reached (`_currentStep >= flatIndexFor(componentIndex, 0)`).
+  /// then opens post-cook seeded with components in
+  /// `_enteredRecipeIds` (any component the user has made active, via
+  /// pill tap / auto-advance / cross-recipe rewind).
   Future<void> _finishCookingEarly() async {
     final plan = _plan;
     if (plan == null) return;
@@ -956,13 +1207,14 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
     if (!mounted || confirmed != true) return;
     HapticFeedback.heavyImpact();
     _cookingStopwatch.stop();
-    // Seed the sheet with components the user has at least entered.
+    // cmmrf-1 / cmmrf-5 — seed the sheet with components the user has
+    // entered (tapped a pill or advanced into via auto-advance). Pill
+    // taps that never advanced past step 1 still count — the entered
+    // set is the canonical "was touched" record.
     final ratables = <ComponentRatable>[];
-    for (var ci = 0; ci < plan.components.length; ci++) {
-      final c = plan.components[ci];
+    for (final c in plan.components) {
       if (c.loadFailed) continue;
-      final firstFlat = plan.flatIndexFor(ci, 0);
-      if (_currentStep >= firstFlat) {
+      if (_enteredRecipeIds.contains(c.recipeId)) {
         ratables.add(
             ComponentRatable(recipeId: c.recipeId, displayName: c.name));
       }
@@ -1069,8 +1321,23 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
       );
     }
     final plan = _plan!;
-    final at = plan.stepAt(_currentStep);
-    final currentComponent = plan.components[at.componentIndex];
+    // Guard: `_loadMealAndRecipes` always seeds `_activeRecipeId` and
+    // per-recipe maps when the plan lands, so these should never be
+    // null at this point. Fall back to the first component defensively
+    // in case of an unexpected race.
+    final activeId =
+        _activeRecipeId ?? plan.components.first.recipeId;
+    final activeCi =
+        plan.components.indexWhere((c) => c.recipeId == activeId);
+    final safeCi = activeCi < 0 ? 0 : activeCi;
+    final currentComponent = plan.components[safeCi];
+    final maxLocal = currentComponent.steps.isEmpty
+        ? 0
+        : currentComponent.steps.length - 1;
+    final activeLocalStep =
+        (_currentStepByRecipe[activeId] ?? 0).clamp(0, maxLocal);
+    final flatCurrent = _flatCurrentStep;
+    final flatCompleted = _flatCompletedSteps;
     return Scaffold(
       backgroundColor: cook.cookSurface,
       body: SafeArea(
@@ -1116,32 +1383,32 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
                   final screenWidth = MediaQuery.of(context).size.width;
                   final tapX = details.localPosition.dx;
                   if (tapX < screenWidth * 0.25) {
-                    if (_currentStep > 0) _previousStep();
+                    if (flatCurrent > 0) _previousStep();
                   } else if (tapX > screenWidth * 0.75) {
-                    if (_currentStep < plan.totalSteps - 1) _nextStep();
+                    if (flatCurrent < plan.totalSteps - 1) _nextStep();
                   }
                 },
                 child: _buildStepContent(
                   context,
                   cook,
                   plan,
-                  at.componentIndex,
-                  at.stepIndex,
+                  safeCi,
+                  activeLocalStep,
                   currentComponent,
                 ),
               ),
             ),
             StepNavigator(
-              currentStep: _currentStep,
+              currentStep: flatCurrent,
               totalSteps: plan.totalSteps,
-              completedSteps: _completedSteps,
+              completedSteps: flatCompleted,
               componentBoundaries: plan.componentBoundaries,
               componentNameForStep: (i) {
                 if (i < 0 || i >= plan.totalSteps) return null;
                 return plan.components[plan.stepAt(i).componentIndex].name;
               },
-              onPrevious: _currentStep > 0 ? _previousStep : null,
-              onNext: _currentStep < plan.totalSteps - 1 ? _nextStep : null,
+              onPrevious: flatCurrent > 0 ? _previousStep : null,
+              onNext: flatCurrent < plan.totalSteps - 1 ? _nextStep : null,
               onDone: _finishCooking,
               onStepTap: _goToStep,
               onLongPressStep: _markAllUpToHere,
@@ -1354,7 +1621,7 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(
-                value: (_currentStep + 1) / plan.totalSteps,
+                value: (_flatCurrentStep + 1) / plan.totalSteps,
                 backgroundColor: cook.cookSurfaceDim,
                 color: cook.cookProgress,
               ),
