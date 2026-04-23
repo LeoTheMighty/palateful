@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "body": {
+    "id": "perf-audit-user",
+    "email": "perf-audit@example.com",
+    "has_completed_onboarding": true,
+    "default_recipe_book_id": "perf-audit-book-1",
+    "previous_recipe_book_id": null,
+    "default_shopping_list_id": "perf-audit-list-1",
+    "previous_shopping_list_id": null,
+    "is_admin": false
+  }
+}
