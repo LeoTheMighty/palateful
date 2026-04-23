@@ -726,6 +726,16 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
                   plan.ingredients.map((i) => i.raw).toList(growable: false),
               checkedIndices: _checkedFlatIndices,
               onToggle: _toggleIngredient,
+              // cmm-4 — every chip carries a tag chip (compact view) /
+              // group divider (expanded view) bearing its source
+              // component name. 1-component plans skip the builder
+              // entirely (recipe cook keeps `null`).
+              sourceTagBuilder: plan.components.length > 1
+                  ? (i) {
+                      if (i < 0 || i >= plan.ingredients.length) return null;
+                      return plan.ingredients[i].sourceComponentName;
+                    }
+                  : null,
             ),
             Divider(height: 1, color: cook.cookDivider),
             Expanded(
