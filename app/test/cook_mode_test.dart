@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/theme/app_colors.dart';
 import 'package:palateful/core/theme/app_theme.dart';
+import 'package:palateful/core/theme/cook_mode_theme.dart';
 import 'package:palateful/features/recipes/cook_mode/shared/widgets/ingredient_strip.dart';
 import 'package:palateful/features/recipes/cook_mode/shared/widgets/step_navigator.dart';
 
@@ -91,10 +92,9 @@ void main() {
         ),
       );
 
-      // cmlp-2: chip renders as a single Text of "quantity unit name".
-      // cmlp-3 will split name + quantity into separate Text widgets.
-      expect(find.textContaining('Garlic'), findsOneWidget);
-      expect(find.textContaining('Olive oil'), findsOneWidget);
+      // cmlp-3: chip renders name + quantity as separate Text widgets.
+      expect(find.text('Garlic'), findsOneWidget);
+      expect(find.text('Olive oil'), findsOneWidget);
     });
 
     testWidgets('StepNavigator renders Next and Done buttons', (tester) async {
@@ -319,6 +319,113 @@ void main() {
         ),
       );
       expect(find.byKey(const Key('ingredient_group_Dressing')), findsNothing);
+    });
+
+    // cmlp-3: quantity Text uses cookAccent + 14px w600 in unchecked
+    // state; name Text uses 14px w500. Verified via tester.widget<Text>.
+    testWidgets(
+        'IngredientStrip chip renders 14px w500 name + 14px w600 quantity '
+        'in cookAccent', (tester) async {
+      final ingredients = [
+        {
+          'ingredient': {'canonical_name': 'Garlic'},
+          'quantity_display': '3',
+          'unit_display': 'cloves',
+        },
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: IngredientStrip(
+              ingredients: ingredients,
+              checkedIndices: const {},
+              onToggle: (_) {},
+            ),
+          ),
+        ),
+      );
+
+      final nameText = tester.widget<Text>(find.text('Garlic'));
+      expect(nameText.style?.fontSize, 14);
+      expect(nameText.style?.fontWeight, FontWeight.w500);
+
+      final qtyText = tester.widget<Text>(find.text('3 cloves'));
+      expect(qtyText.style?.fontSize, 14);
+      expect(qtyText.style?.fontWeight, FontWeight.w600);
+      // The color is the theme's cookAccent — identity-compare against
+      // the token to keep the assertion theme-driven.
+      final cookAccent = AppTheme.light()
+          .extension<CookModeTheme>()!
+          .cookAccent;
+      expect(qtyText.style?.color, cookAccent);
+    });
+
+    // cmlp-3: chip uses ConstrainedBox, not IntrinsicWidth — IntrinsicWidth
+    // inside a Wrap is a known perf trap at 30+ ingredients.
+    testWidgets('IngredientStrip chip tree contains no IntrinsicWidth',
+        (tester) async {
+      final ingredients = [
+        {
+          'ingredient': {'canonical_name': 'Garlic'},
+          'quantity_display': '3',
+          'unit_display': 'cloves',
+        },
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: IngredientStrip(
+              ingredients: ingredients,
+              checkedIndices: const {},
+              onToggle: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.descendant(
+          of: find.byType(IngredientStrip),
+          matching: find.byType(IntrinsicWidth),
+        ),
+        findsNothing,
+      );
+    });
+
+    // cmlp-3: Dynamic Type 2.0 + a long ingredient name doesn't blow
+    // out the chip (2-line wrap + ellipsis + 160 maxWidth).
+    testWidgets(
+        'IngredientStrip with long name at TextScaler 2.0 does not overflow',
+        (tester) async {
+      final ingredients = [
+        {
+          'ingredient': {
+            'canonical_name': 'Freshly ground black peppercorns',
+          },
+          'quantity_display': '1',
+          'unit_display': 'tsp',
+        },
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: MediaQuery(
+              data: const MediaQueryData(
+                textScaler: TextScaler.linear(2.0),
+              ),
+              child: IngredientStrip(
+                ingredients: ingredients,
+                checkedIndices: const {},
+                onToggle: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      // No overflow exception raised during layout.
+      expect(tester.takeException(), isNull);
     });
 
     // cmlp-2: empty-ingredient edge case — the strip renders nothing.

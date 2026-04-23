@@ -56,7 +56,6 @@ class _IngredientStripState extends State<IngredientStrip> {
               ingredient: entry.value,
               isChecked: widget.checkedIndices.contains(entry.key),
               onTap: () => widget.onToggle(entry.key),
-              isCompact: false,
               scaleFactor: widget.scaleFactor,
             );
           }).toList(),
@@ -64,9 +63,9 @@ class _IngredientStripState extends State<IngredientStrip> {
       );
     }
 
-    // Grouped expanded view: emit "--- From <Component> ---" divider
-    // every time the source tag transitions. cmlp-4 will replace the
-    // dashed text with a typographic group header.
+    // Grouped view: emit "--- From <Component> ---" divider every time
+    // the source tag transitions. cmlp-4 replaces the dashed text with a
+    // typographic group header.
     //
     // Null contract: if the builder returns null for an index (e.g. a
     // failed-load component with no name yet), the chip is grouped
@@ -116,7 +115,6 @@ class _IngredientStripState extends State<IngredientStrip> {
         ingredient: widget.ingredients[i],
         isChecked: widget.checkedIndices.contains(i),
         onTap: () => widget.onToggle(i),
-        isCompact: false,
         scaleFactor: widget.scaleFactor,
       ));
     }
@@ -135,14 +133,12 @@ class _IngredientChip extends StatelessWidget {
   final dynamic ingredient;
   final bool isChecked;
   final VoidCallback onTap;
-  final bool isCompact;
   final double scaleFactor;
 
   const _IngredientChip({
     required this.ingredient,
     required this.isChecked,
     required this.onTap,
-    required this.isCompact,
     this.scaleFactor = 1.0,
   });
 
@@ -153,14 +149,53 @@ class _IngredientChip extends StatelessWidget {
     final quantity = scaleQuantityDisplay(
         ingredient['quantity_display'] as String?, scaleFactor);
     final unit = ingredient['unit_display'] ?? '';
+    final quantityText = '$quantity $unit'.trim();
 
-    // Expanded horizontal chip — the only remaining layout after cmlp-2.
+    // cmlp-3 width strategy: ConstrainedBox (not IntrinsicWidth) — the
+    // chip hugs short content up to 160dp, then wraps the name to 2
+    // lines. IntrinsicWidth inside a Wrap forces a layout pass per
+    // child and bloats cost at 30+ ingredient meals.
+    final nameColor =
+        isChecked ? cook.cookOnCompleted : cook.cookOnSurface;
+    final quantityColor =
+        isChecked ? cook.cookOnCompleted : cook.cookAccent;
+
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (quantityText.isNotEmpty)
+          Text(
+            quantityText,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: quantityColor,
+              decoration: isChecked ? TextDecoration.lineThrough : null,
+            ),
+          ),
+        Text(
+          name,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: nameColor,
+            decoration: isChecked ? TextDecoration.lineThrough : null,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          softWrap: true,
+        ),
+      ],
+    );
+
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
         onTap();
       },
       child: Container(
+        constraints: const BoxConstraints(minWidth: 72, maxWidth: 160),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: isChecked ? cook.cookCompleted : cook.cookSurfaceDim,
@@ -172,16 +207,13 @@ class _IngredientChip extends StatelessWidget {
             if (isChecked)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
-                child: Icon(Icons.check, size: 16, color: cook.cookOnCompleted),
+                child: Icon(
+                  Icons.check,
+                  size: 16,
+                  color: cook.cookOnCompleted,
+                ),
               ),
-            Text(
-              '$quantity $unit $name'.trim(),
-              style: TextStyle(
-                fontSize: 13,
-                color: isChecked ? cook.cookOnCompleted : cook.cookOnSurface,
-                decoration: isChecked ? TextDecoration.lineThrough : null,
-              ),
-            ),
+            Flexible(child: body),
           ],
         ),
       ),

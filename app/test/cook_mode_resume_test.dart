@@ -85,10 +85,9 @@ void main() {
       await tester.tap(find.text('Next'));
       await tester.pump();
 
-      // Check the first ingredient. cmlp-2: the chip now renders its
-      // quantity + unit + name as a single Text ("1 cup Ingredient 1"),
-      // so match on textContaining.
-      await tester.tap(find.textContaining('Ingredient 1'));
+      // Check the first ingredient. cmlp-3: the chip renders name as
+      // its own Text widget, so find.text matches directly.
+      await tester.tap(find.text('Ingredient 1'));
       await tester.pump();
       tester.takeException();
 
