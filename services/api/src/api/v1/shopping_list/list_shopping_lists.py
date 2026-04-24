@@ -60,7 +60,7 @@ class ListShoppingLists(AsyncEndpoint):
 
         count_stmt = select(func.count()).select_from(ShoppingList).where(*conditions)
         total_result = await self.db.execute(count_stmt)
-        total = int(total_result.scalar_one())
+        total = int(total_result.scalar() or 0)
 
         lists_stmt = (
             select(ShoppingList)

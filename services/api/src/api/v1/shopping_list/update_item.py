@@ -203,7 +203,7 @@ class UpdateShoppingListItem(AsyncEndpoint):
                     ShoppingListItem.archived_at.is_(None),
                 )
             )
-            unchecked_count = int(unchecked_count_result.scalar_one())
+            unchecked_count = int(unchecked_count_result.scalar() or 0)
             if unchecked_count == 0:
                 await notify_via_threadpool(
                     notify_list_complete, shopping_list, user
