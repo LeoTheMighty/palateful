@@ -37,13 +37,13 @@ from conftest import (
 class TestSendMessageSSEGenerator:
     """Cover the SSE event_generator inside send_message_stream (lines 28-42)."""
 
-    def test_send_message_streams_sse_events(self, client, mock_db, mock_user):
+    def test_send_message_streams_sse_events(self, client, mock_db, mock_async_db, mock_user):
         """Hit the SSE streaming path — exercises the event_generator function body."""
         from utils.models.thread import Thread
 
         thread_id = str(uuid.uuid4())
         thread = MockModel(id=thread_id, user_id=str(mock_user.id))
-        mock_db.set_find_by(Thread, thread, id=thread_id)
+        mock_async_db.set_find_by(Thread, thread, id=thread_id)
 
         # Patch run_chat_agent to yield one event then finish
         async def fake_agent(**kwargs):
@@ -60,13 +60,13 @@ class TestSendMessageSSEGenerator:
         # Body should contain SSE data lines
         assert "data:" in response.text
 
-    def test_send_message_sse_error_path(self, client, mock_db, mock_user):
+    def test_send_message_sse_error_path(self, client, mock_db, mock_async_db, mock_user):
         """Cover the except branch in event_generator (lines 38-40)."""
         from utils.models.thread import Thread
 
         thread_id = str(uuid.uuid4())
         thread = MockModel(id=thread_id, user_id=str(mock_user.id))
-        mock_db.set_find_by(Thread, thread, id=thread_id)
+        mock_async_db.set_find_by(Thread, thread, id=thread_id)
 
         async def exploding_agent(**kwargs):
             raise RuntimeError("boom")
@@ -97,7 +97,7 @@ class TestUpdateShoppingListMember:
 
         _owner_id = owner_id or str(mock_user.id)
         sl = MockShoppingList(id=list_id, owner_id=_owner_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         member_user = MockUser(id=member_user_id, email="member@test.com", name="Member")
         membership = MockShoppingListUser(
@@ -109,13 +109,13 @@ class TestUpdateShoppingListMember:
             notify_on_deadline=True,
             user=member_user,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=member_user_id,
         )
         return sl, membership
 
-    def test_update_member_role_as_owner(self, client, mock_db, mock_user):
+    def test_update_member_role_as_owner(self, client, mock_db, mock_async_db, mock_user):
         """Owner updates another member's role (success path)."""
         list_id = "sl-update-member"
         member_id = str(uuid.uuid4())
@@ -129,7 +129,7 @@ class TestUpdateShoppingListMember:
         data = response.json()
         assert data["role"] == "viewer"
 
-    def test_update_member_notify_settings(self, client, mock_db, mock_user):
+    def test_update_member_notify_settings(self, client, mock_db, mock_async_db, mock_user):
         """Self-update notification settings."""
         list_id = "sl-notify-update"
         self._setup(mock_db, mock_user, list_id, str(mock_user.id), target_role="editor")
@@ -144,7 +144,7 @@ class TestUpdateShoppingListMember:
         )
         assert response.status_code == 200
 
-    def test_update_member_list_not_found(self, client, mock_db, mock_user):
+    def test_update_member_list_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.put(
             "/v1/shopping-lists/missing/members/someone",
@@ -152,13 +152,13 @@ class TestUpdateShoppingListMember:
         )
         assert response.status_code == 404
 
-    def test_update_member_not_found(self, client, mock_db, mock_user):
+    def test_update_member_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when target membership doesn't exist."""
         from utils.models.shopping_list import ShoppingList
 
         list_id = "sl-mem-nf"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/members/{uuid.uuid4()}",
@@ -166,7 +166,7 @@ class TestUpdateShoppingListMember:
         )
         assert response.status_code == 404
 
-    def test_update_member_archived_returns_404(self, client, mock_db, mock_user):
+    def test_update_member_archived_returns_404(self, client, mock_db, mock_async_db, mock_user):
         """404 when target membership is archived."""
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
@@ -174,14 +174,14 @@ class TestUpdateShoppingListMember:
         list_id = "sl-mem-arch"
         member_id = str(uuid.uuid4())
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         membership = MockShoppingListUser(
             shopping_list_id=list_id,
             user_id=member_id,
             archived_at=datetime.now(UTC),
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=member_id,
         )
@@ -192,7 +192,7 @@ class TestUpdateShoppingListMember:
         )
         assert response.status_code == 404
 
-    def test_update_member_role_not_owner_returns_403(self, client, mock_db, mock_user):
+    def test_update_member_role_not_owner_returns_403(self, client, mock_db, mock_async_db, mock_user):
         """Non-owner trying to change another member's role gets 403."""
         list_id = "sl-mem-notown"
         other_owner = str(uuid.uuid4())
@@ -205,7 +205,7 @@ class TestUpdateShoppingListMember:
         )
         assert response.status_code == 403
 
-    def test_update_member_cannot_change_owner_role(self, client, mock_db, mock_user):
+    def test_update_member_cannot_change_owner_role(self, client, mock_db, mock_async_db, mock_user):
         """Cannot change the owner's role."""
         list_id = "sl-mem-ownrole"
         target_id = str(uuid.uuid4())
@@ -240,8 +240,8 @@ class TestUpdateShoppingListItemExtended:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}",
@@ -284,8 +284,8 @@ class TestUpdateShoppingListItemExtended:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}",
@@ -304,7 +304,7 @@ class TestUpdateShoppingListItemExtended:
 class TestGetShoppingListExtended:
     """Cover missing branches in GetShoppingList."""
 
-    def test_get_as_member_updates_last_seen(self, client, mock_db, mock_user):
+    def test_get_as_member_updates_last_seen(self, client, mock_db, mock_async_db, mock_user):
         """Non-owner member — updates last_seen_at (lines 52-53), also 403 branch."""
         list_id = "sl-mem-view"
         other_owner = str(uuid.uuid4())
@@ -321,8 +321,8 @@ class TestGetShoppingListExtended:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -331,19 +331,19 @@ class TestGetShoppingListExtended:
         assert response.status_code == 200
         assert membership.last_seen_at is not None
 
-    def test_get_not_owner_no_member_returns_403(self, client, mock_db, mock_user):
+    def test_get_not_owner_no_member_returns_403(self, client, mock_db, mock_async_db, mock_user):
         """Non-owner without membership returns 403 (line 44)."""
         list_id = "sl-no-access"
         sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()), items=[], members=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 403
 
-    def test_get_with_items_and_all_fields(self, client, mock_db, mock_user):
+    def test_get_with_items_and_all_fields(self, client, mock_db, mock_async_db, mock_user):
         """Cover item serialization branches (lines 58-59 — archived item skipped)."""
         list_id = "sl-items-full"
         active_item = MockShoppingListItem(
@@ -370,14 +370,14 @@ class TestGetShoppingListExtended:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 1  # archived item skipped
 
-    def test_get_shared_list_counts_members(self, client, mock_db, mock_user):
+    def test_get_shared_list_counts_members(self, client, mock_db, mock_async_db, mock_user):
         """Shared list counts active (non-archived) members (line 104)."""
         list_id = "sl-shared-cnt"
         active_member = MockShoppingListUser(
@@ -394,7 +394,7 @@ class TestGetShoppingListExtended:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 200
@@ -410,36 +410,36 @@ class TestGetShoppingListExtended:
 class TestDeleteShoppingListItemExtended:
     """Cover missing branches in DeleteShoppingListItem."""
 
-    def test_delete_item_list_not_found(self, client, mock_db, mock_user):
+    def test_delete_item_list_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list not found (line 31)."""
         response = client.delete("/v1/shopping-lists/missing/items/item1")
         assert response.status_code == 404
 
-    def test_delete_item_no_permission(self, client, mock_db, mock_user):
+    def test_delete_item_no_permission(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no edit permission (line 49)."""
         list_id = "sl-noedit"
         sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.delete(f"/v1/shopping-lists/{list_id}/items/item1")
         assert response.status_code == 403
 
-    def test_delete_item_not_found(self, client, mock_db, mock_user):
+    def test_delete_item_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when item not found (line 60)."""
         list_id = "sl-del-nf"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.delete(f"/v1/shopping-lists/{list_id}/items/nonexistent")
         assert response.status_code == 404
 
-    def test_delete_item_success(self, client, mock_db, mock_user):
+    def test_delete_item_success(self, client, mock_db, mock_async_db, mock_user):
         """Successful item deletion."""
         list_id = "sl-del-ok"
         item_id = "item-del-ok"
@@ -448,8 +448,8 @@ class TestDeleteShoppingListItemExtended:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.delete(f"/v1/shopping-lists/{list_id}/items/{item_id}")
         assert response.status_code == 200
@@ -464,7 +464,7 @@ class TestDeleteShoppingListItemExtended:
 class TestCreateShoppingListWithItems:
     """Cover the items loop in CreateShoppingList (lines 40-51)."""
 
-    def test_create_with_items(self, client, mock_db, mock_user):
+    def test_create_with_items(self, client, mock_db, mock_async_db, mock_user):
         """Create list with initial items."""
         response = client.post(
             "/v1/shopping-lists",
@@ -511,7 +511,7 @@ class TestRestoreRecipeVersionExtended:
         result = _parse_quantity_display("3.5")
         assert float(result) == pytest.approx(3.5)
 
-    def test_restore_version_success(self, client, mock_db, mock_user):
+    def test_restore_version_success(self, client, mock_db, mock_async_db, mock_user):
         """Full restore flow covering lines 103, 110-111, 115-116, 137."""
         recipe_id = "recipe-restore"
         version_id = "version-restore"
@@ -560,10 +560,10 @@ class TestRestoreRecipeVersionExtended:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
 
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
         assert response.status_code == 200
@@ -607,10 +607,10 @@ class TestRestoreRecipeVersionExtended:
         from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
         mock_db.set_where(RecipeIngredient, existing_ingredients or [])
         mock_db.set_where(RecipeStep, existing_steps or [])
         mock_db.set_where(RecipeNote, [])
@@ -618,7 +618,7 @@ class TestRestoreRecipeVersionExtended:
 
         return recipe_id, version_id
 
-    def test_restore_with_existing_items_to_delete(self, client, mock_db, mock_user):
+    def test_restore_with_existing_items_to_delete(self, client, mock_db, mock_async_db, mock_user):
         """Existing ingredients/steps are deleted before restore (lines 103, 137)."""
         existing_ing = MockRecipeIngredient(recipe_id="recipe-restore")
         existing_step = MockRecipeStep(recipe_id="recipe-restore", step_number=1)
@@ -638,7 +638,7 @@ class TestRestoreRecipeVersionExtended:
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
         assert response.status_code == 200
 
-    def test_restore_empty_snapshot_no_updates(self, client, mock_db, mock_user):
+    def test_restore_empty_snapshot_no_updates(self, client, mock_db, mock_async_db, mock_user):
         """Snapshot without name/instructions skips update (branches 93->95, 95->97, 97->101)."""
         recipe_id, version_id = self._setup_restore(
             mock_db, mock_user,
@@ -647,7 +647,7 @@ class TestRestoreRecipeVersionExtended:
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
         assert response.status_code == 200
 
-    def test_restore_parse_quantity_failure_in_ingredient(self, client, mock_db, mock_user):
+    def test_restore_parse_quantity_failure_in_ingredient(self, client, mock_db, mock_async_db, mock_user):
         """Unparseable quantity falls back to Decimal('1') (lines 110-111)."""
         recipe_id, version_id = self._setup_restore(
             mock_db, mock_user,
@@ -669,7 +669,7 @@ class TestRestoreRecipeVersionExtended:
 class TestForkRecipeCloning:
     """Cover ingredient and step cloning loops (lines 104-133)."""
 
-    def test_fork_clones_ingredients_and_steps(self, client, mock_db, mock_user):
+    def test_fork_clones_ingredients_and_steps(self, client, mock_db, mock_async_db, mock_user):
         """Fork with source ingredients and steps."""
         recipe_id = "13000000-0000-0000-0000-000000000001"
         book_id = "b0000000-0000-0000-0000-000000000001"
@@ -699,13 +699,13 @@ class TestForkRecipeCloning:
         from utils.models.recipe_ingredient import RecipeIngredient
         from utils.models.recipe_step import RecipeStep
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_mem,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_mem,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_mem,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, dest_mem,
                             user_id=str(mock_user.id), recipe_book_id=dest_book_id)
-        mock_db.set_find_by(RecipeBook, src_book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, src_book, id=book_id)
 
         # where() returns ingredients and steps
         mock_db.set_where(RecipeIngredient, [ingredient])
@@ -726,7 +726,7 @@ class TestForkRecipeCloning:
 class TestStartImportExtended:
     """Cover missing branches in StartImport."""
 
-    def test_book_not_found(self, client, mock_db, mock_user):
+    def test_book_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Book exists check returns 404 (line 48)."""
         book_id = "missing-book"
         membership = MockRecipeBookUser(
@@ -735,7 +735,7 @@ class TestStartImportExtended:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
         # Book not found — no set_find_by for RecipeBook
 
@@ -745,7 +745,7 @@ class TestStartImportExtended:
         )
         assert response.status_code == 404
 
-    def test_url_source_missing_url(self, client, mock_db, mock_user):
+    def test_url_source_missing_url(self, client, mock_db, mock_async_db, mock_user):
         """URL source type without url field (line 57)."""
         book_id = "test-book"
         membership = MockRecipeBookUser(
@@ -756,9 +756,9 @@ class TestStartImportExtended:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -778,9 +778,9 @@ class TestStartImportExtended:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -1107,19 +1107,19 @@ class TestListMealEventsExtended:
 class TestRecipeBookRouterWebsocket:
     """Cover the websocket handler in recipe_book_router (lines 230-238)."""
 
-    def test_websocket_missing_token(self, client, mock_db):
+    def test_websocket_missing_token(self, client, mock_db, mock_async_db):
         """WS without token closes with 4001 (line 223)."""
         with pytest.raises(Exception):
             with client.websocket_connect("/v1/recipe-books/ws/book1"):
                 pass
 
-    def test_websocket_auth_failed(self, client, mock_db):
+    def test_websocket_auth_failed(self, client, mock_db, mock_async_db):
         """WS with invalid token closes (lines 234-236)."""
         with pytest.raises(Exception):
             with client.websocket_connect("/v1/recipe-books/ws/book1?token=badtoken"):
                 pass
 
-    def test_add_member_notify_branch(self, client, mock_db, mock_user):
+    def test_add_member_notify_branch(self, client, mock_db, mock_async_db, mock_user):
         """add_recipe_book_member notifies the target user (line 156)."""
         book_id = "b-notify"
         membership = MockRecipeBookUser(
@@ -1132,10 +1132,10 @@ class TestRecipeBookRouterWebsocket:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.user import User
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(User, target_user, id="target-user")
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(User, target_user, id="target-user")
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         with patch("routers.v1.recipe_book_router.notify_book_shared") as mock_notify:
             response = client.post(
@@ -1155,13 +1155,13 @@ class TestRecipeBookRouterWebsocket:
 class TestShoppingListRouterWebsocket:
     """Cover WebSocket handler in shopping_list_router (lines 485-504)."""
 
-    def test_ws_missing_token(self, client, mock_db):
+    def test_ws_missing_token(self, client, mock_db, mock_async_db):
         """WS without token closes with 4001."""
         with pytest.raises(Exception):
             with client.websocket_connect("/v1/ws/shopping-lists/list1"):
                 pass
 
-    def test_ws_auth_failed(self, client, mock_db):
+    def test_ws_auth_failed(self, client, mock_db, mock_async_db):
         """WS with invalid token closes."""
         with pytest.raises(Exception):
             with client.websocket_connect("/v1/ws/shopping-lists/list1?token=bad"):
@@ -1318,7 +1318,7 @@ class TestSendInvitationExtended:
 class TestBulkMoveRecipesExtended:
     """Cover recipe-not-found branch (line 50)."""
 
-    def test_bulk_move_recipe_not_found(self, client, mock_db, mock_user):
+    def test_bulk_move_recipe_not_found(self, client, mock_db, mock_async_db, mock_user):
         """One recipe not found returns 404."""
         dest_book = MockRecipeBook(id="dest-b")
         dest_mem = MockRecipeBookUser(
@@ -1328,8 +1328,8 @@ class TestBulkMoveRecipesExtended:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBook, dest_book, id="dest-b")
-        mock_db.set_find_by(RecipeBookUser, dest_mem,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id="dest-b")
+        mock_async_db.set_find_by(RecipeBookUser, dest_mem,
                             user_id=str(mock_user.id), recipe_book_id="dest-b")
         # Recipe not found - no set_find_by
 
@@ -1348,7 +1348,7 @@ class TestBulkMoveRecipesExtended:
 class TestBulkUpdateTagsExtended:
     """Cover missing branches in BulkUpdateTags."""
 
-    def test_no_tag_changes(self, client, mock_db, mock_user):
+    def test_no_tag_changes(self, client, mock_db, mock_async_db, mock_user):
         """No add_tags or remove_tags returns 400 (line 35)."""
         response = client.post(
             "/v1/recipes/bulk/tags",
@@ -1356,7 +1356,7 @@ class TestBulkUpdateTagsExtended:
         )
         assert response.status_code == 400
 
-    def test_add_duplicate_tag(self, client, mock_db, mock_user):
+    def test_add_duplicate_tag(self, client, mock_db, mock_async_db, mock_user):
         """Adding a tag that already exists is deduplicated (branch 58->57)."""
         recipe = MockRecipe(
             id="r-dup-tag", recipe_book_id="b1", tags=["italian"],
@@ -1368,8 +1368,8 @@ class TestBulkUpdateTagsExtended:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id="r-dup-tag")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id="r-dup-tag")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id="b1")
 
         response = client.post(
@@ -1391,7 +1391,7 @@ class TestBulkUpdateTagsExtended:
 class TestCreateRecipeExtended:
     """Cover normalization failure branch in CreateRecipe (lines 98-99)."""
 
-    def test_create_recipe_normalization_failure(self, client, mock_db, mock_user):
+    def test_create_recipe_normalization_failure(self, client, mock_db, mock_async_db, mock_user):
         """When normalize_quantity raises, fallback to display values (lines 98-99)."""
         book_id = "book-norm-fail"
         membership = MockRecipeBookUser(
@@ -1404,10 +1404,10 @@ class TestCreateRecipeExtended:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.set_find_by(Ingredient, ingredient, id="ing-norm")
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(Ingredient, ingredient, id="ing-norm")
 
         with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None), \
              patch("utils.services.units.conversion.normalize_quantity", side_effect=Exception("fail")):
@@ -1431,7 +1431,7 @@ class TestCreateRecipeExtended:
 class TestDeleteRecipeNoteExtended:
     """Cover recipe-not-found branch (line 26)."""
 
-    def test_delete_note_recipe_not_found(self, client, mock_db, mock_user):
+    def test_delete_note_recipe_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Recipe not found returns 404."""
         response = client.delete("/v1/recipes/missing/notes/note1")
         assert response.status_code == 404
@@ -1445,7 +1445,7 @@ class TestDeleteRecipeNoteExtended:
 class TestUpdateRecipeExtended:
     """Cover missing branches in UpdateRecipe."""
 
-    def test_update_recipe_not_found(self, client, mock_db, mock_user):
+    def test_update_recipe_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Recipe not found returns 404 (line 44)."""
         response = client.put(
             "/v1/recipes/missing",
@@ -1453,7 +1453,7 @@ class TestUpdateRecipeExtended:
         )
         assert response.status_code == 404
 
-    def test_update_recipe_normalization_failure(self, client, mock_db, mock_user):
+    def test_update_recipe_normalization_failure(self, client, mock_db, mock_async_db, mock_user):
         """Ingredient normalization failure uses display values (lines 139-140)."""
         recipe_id = "r-upd-norm"
         book_id = "b-upd-norm"
@@ -1467,10 +1467,10 @@ class TestUpdateRecipeExtended:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(Ingredient, ingredient, id="ing-upd")
+        mock_async_db.set_find_by(Ingredient, ingredient, id="ing-upd")
 
         with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None), \
              patch("utils.services.units.conversion.normalize_quantity", side_effect=Exception("fail")):
@@ -1556,7 +1556,7 @@ class TestAddShoppingListItemEdgeCases:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items",
@@ -1568,14 +1568,14 @@ class TestAddShoppingListItemEdgeCases:
 class TestDeleteShoppingListAccessDenied:
     """Cover non-owner delete denial (line 39)."""
 
-    def test_delete_shopping_list_non_owner(self, client, mock_db, mock_user):
+    def test_delete_shopping_list_non_owner(self, client, mock_db, mock_async_db, mock_user):
         """Non-owner gets 403."""
         list_id = "sl-notowner"
         sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.delete(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 403
@@ -1584,13 +1584,13 @@ class TestDeleteShoppingListAccessDenied:
 class TestListShoppingListsExtended:
     """Cover status filter (line 61) and shared member count (line 84)."""
 
-    def test_list_shopping_lists_with_status_filter(self, client, mock_db, mock_user):
+    def test_list_shopping_lists_with_status_filter(self, client, mock_db, mock_async_db, mock_user):
         """Status filter branch (line 61)."""
         mock_db.db.query.return_value = MockQuery([])
         response = client.get("/v1/shopping-lists?status=active")
         assert response.status_code == 200
 
-    def test_list_shopping_lists_shared_with_members(self, client, mock_db, mock_user):
+    def test_list_shopping_lists_shared_with_members(self, client, mock_db, mock_async_db, mock_user):
         """Shared list counts members (line 84)."""
         member = MockShoppingListUser(
             user_id=str(mock_user.id), archived_at=None,
@@ -1610,7 +1610,7 @@ class TestListShoppingListsExtended:
 class TestBulkUpdateTagsNoChanges:
     """Cover the no-tag-changes branch missed in line 35."""
 
-    def test_empty_recipe_ids_returns_400(self, client, mock_db, mock_user):
+    def test_empty_recipe_ids_returns_400(self, client, mock_db, mock_async_db, mock_user):
         """Empty recipe_ids returns 400."""
         response = client.post(
             "/v1/recipes/bulk/tags",
@@ -1622,7 +1622,7 @@ class TestBulkUpdateTagsNoChanges:
 class TestRestoreRecipeNormalizationSuccess:
     """Cover normalize_quantity success path in restore (lines 115-116)."""
 
-    def test_restore_with_mocked_normalize_success(self, client, mock_db, mock_user):
+    def test_restore_with_mocked_normalize_success(self, client, mock_db, mock_async_db, mock_user):
         """When normalize_quantity succeeds, uses normalized values (lines 115-116)."""
         recipe_id = "recipe-norm-ok"
         version_id = "version-norm-ok"
@@ -1657,10 +1657,10 @@ class TestRestoreRecipeNormalizationSuccess:
         from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
         mock_db.set_where(RecipeIngredient, [])
         mock_db.set_where(RecipeStep, [])
         mock_db.set_where(RecipeNote, [])
@@ -1680,7 +1680,7 @@ class TestRestoreRecipeNormalizationSuccess:
 class TestUpdateRecipeEmbeddingBranch:
     """Cover line 120 in update_recipe — ingredient not found during update."""
 
-    def test_update_recipe_ingredient_not_found(self, client, mock_db, mock_user):
+    def test_update_recipe_ingredient_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Ingredient not found returns 400 (line 120)."""
         recipe_id = "r-upd-ing-nf"
         book_id = "b-upd-ing-nf"
@@ -1692,8 +1692,8 @@ class TestUpdateRecipeEmbeddingBranch:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
         # Ingredient not found (no set_find_by for Ingredient)
 
@@ -1712,7 +1712,7 @@ class TestUpdateRecipeEmbeddingBranch:
 class TestPopulateFromRecipeMissing:
     """Cover populate_from_recipe.py line 95."""
 
-    def test_populate_from_recipe_ingredient_with_no_ingredient_obj(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_ingredient_with_no_ingredient_obj(self, client, mock_db, mock_async_db, mock_user):
         """RecipeIngredient where .ingredient is None is skipped (line 95)."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -1737,9 +1737,9 @@ class TestPopulateFromRecipeMissing:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id="b1")
 
         response = client.post(
@@ -1759,7 +1759,7 @@ class TestPopulateFromRecipeMissing:
 class TestBulkUpdateTagsRecipeNotFound:
     """Cover recipe-not-found in bulk_update_tags loop (line 35)."""
 
-    def test_recipe_not_found_returns_404(self, client, mock_db, mock_user):
+    def test_recipe_not_found_returns_404(self, client, mock_db, mock_async_db, mock_user):
         """Recipe not found in bulk tag update returns 404."""
         response = client.post(
             "/v1/recipes/bulk/tags",
@@ -1771,7 +1771,7 @@ class TestBulkUpdateTagsRecipeNotFound:
 class TestUpdateRecipeIngNotFound:
     """Cover update_recipe line 120 (delete existing ingredients) and ingredient not found."""
 
-    def test_update_recipe_deletes_existing_ingredients(self, client, mock_db, mock_user):
+    def test_update_recipe_deletes_existing_ingredients(self, client, mock_db, mock_async_db, mock_user):
         """Updating with ingredients deletes existing ones first (line 120)."""
         recipe_id = "r-del-existing"
         book_id = "b-del-existing"
@@ -1790,10 +1790,10 @@ class TestUpdateRecipeIngNotFound:
         from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(Ingredient, ingredient, id="ing-ok")
+        mock_async_db.set_find_by(Ingredient, ingredient, id="ing-ok")
 
         # Set up existing items for deletion
         mock_db.set_where(RecipeIngredient, [existing_ri])
@@ -1828,9 +1828,9 @@ class TestRecipeRouterNotifySharedBook:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         with patch("routers.v1.recipe_router.notify_recipe_added") as mock_notify:
             response = client.post(

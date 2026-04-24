@@ -56,11 +56,11 @@ class TestPantryHookFires:
         from utils.models.pantry_user import PantryUser
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListItem, item, id=item_id, shopping_list_id=list_id
         )
-        mock_db.set_find_by(Pantry, pantry, id=pantry.id)
+        mock_async_db.set_find_by(Pantry, pantry, id=pantry.id)
         _query_router(
             mock_db,
             {
@@ -89,7 +89,7 @@ class TestPantryHookFires:
         assert event_name == "ShoppingListItemPurchased"
         assert str(payload.ingredient_id) == ingredient_id
 
-    def test_check_without_ingredient_skips_hook(self, client, mock_db, mock_user):
+    def test_check_without_ingredient_skips_hook(self, client, mock_db, mock_async_db, mock_user):
         """Free-text items (no ingredient_id) do not trigger the pantry hook."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -104,8 +104,8 @@ class TestPantryHookFires:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListItem, item, id=item_id, shopping_list_id=list_id
         )
         mock_db.db.query.return_value = MockQuery([])
@@ -126,7 +126,7 @@ class TestPantryHookFires:
         assert data["pantry_id"] is None
         assert not dispatch_mock.called
 
-    def test_uncheck_does_not_fire_hook(self, client, mock_db, mock_user):
+    def test_uncheck_does_not_fire_hook(self, client, mock_db, mock_async_db, mock_user):
         """Unchecking an already-checked item does not touch the pantry."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -142,8 +142,8 @@ class TestPantryHookFires:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListItem, item, id=item_id, shopping_list_id=list_id
         )
 
@@ -178,8 +178,8 @@ class TestPantryHookFires:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListItem, item, id=item_id, shopping_list_id=list_id
         )
         mock_db.db.query.return_value = MockQuery([])
