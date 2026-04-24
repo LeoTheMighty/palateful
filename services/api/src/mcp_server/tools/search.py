@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from api.v1.search.unified_search import UnifiedSearch
-from mcp_server.server import call_endpoint, mcp
+from mcp_server.server import call_endpoint_async, mcp
 
 
 @mcp.tool()
-def unified_search(
+async def unified_search(
     q: str,
     limit: int = 20,
     book_id: str | None = None,
@@ -32,4 +32,4 @@ def unified_search(
         kwargs["max_prep_time"] = max_prep_time
     if max_cook_time is not None:
         kwargs["max_cook_time"] = max_cook_time
-    return call_endpoint(UnifiedSearch, **kwargs)
+    return await call_endpoint_async(UnifiedSearch, **kwargs)

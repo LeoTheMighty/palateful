@@ -1,9 +1,10 @@
 """Unified search endpoint - recipes (my + public), meals, and users."""
 
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
 from utils.models.friendship import Friendship
@@ -17,10 +18,10 @@ from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.user import User
 
 
-class UnifiedSearch(Endpoint):
+class UnifiedSearch(AsyncEndpoint):
     """Unified search across recipes and users."""
 
-    def execute(
+    async def execute(
         self,
         q: str,
         limit: int = 20,
@@ -52,7 +53,7 @@ class UnifiedSearch(Endpoint):
         limit = min(limit, 50)
 
         # Cache book IDs — reused by exact, fuzzy, and semantic tiers
-        my_book_ids = self._get_my_book_ids(user)
+        my_book_ids = await self._get_my_book_ids(user)
         # Validate book_id belongs to the user before using it as a filter.
         # Without this check, any authenticated user could pass an arbitrary book_id
         # and access recipes from books they are not a member of.
@@ -65,18 +66,18 @@ class UnifiedSearch(Endpoint):
 
         # Tier 1: exact ILIKE search (name, description, ingredient, tag)
         my_exact = (
-            self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
+            await self._search_my_recipes(query, limit, user, effective_book_ids, filter_conditions)
             if include_recipes
             else []
         )
         pub_exact = (
-            self._search_public_recipes(query, limit, user, filter_conditions)
+            await self._search_public_recipes(query, limit, user, filter_conditions)
             if include_recipes
             else []
         )
-        users = self._search_users(query, limit, user) if include_users else []
+        users = await self._search_users(query, limit, user) if include_users else []
         my_meals = (
-            self._search_my_meals(query, limit, user, my_book_ids)
+            await self._search_my_meals(query, limit, user, my_book_ids)
             if include_meals
             else []
         )
@@ -87,7 +88,7 @@ class UnifiedSearch(Endpoint):
 
         my_fuzzy: list = []
         if include_recipes and len(my_exact) < limit:
-            my_fuzzy = self._search_my_recipes_fuzzy(
+            my_fuzzy = await self._search_my_recipes_fuzzy(
                 query, limit - len(my_exact), user, effective_book_ids,
                 exclude_ids=my_exact_ids,
                 filter_tags=filter_tags,
@@ -97,7 +98,7 @@ class UnifiedSearch(Endpoint):
 
         pub_fuzzy: list = []
         if include_recipes and len(pub_exact) < limit:
-            pub_fuzzy = self._search_public_recipes_fuzzy(
+            pub_fuzzy = await self._search_public_recipes_fuzzy(
                 query, limit - len(pub_exact), user,
                 exclude_ids=pub_exact_ids,
                 filter_tags=filter_tags,
@@ -112,11 +113,11 @@ class UnifiedSearch(Endpoint):
         pub_total = len(pub_exact) + len(pub_fuzzy)
 
         if include_recipes and (my_total < limit or pub_total < limit):
-            query_embedding = self._generate_query_embedding(query)
+            query_embedding = await self._generate_query_embedding(query)
             if query_embedding is not None:
                 if my_total < limit:
                     all_my_ids = my_exact_ids | {r.id for r in my_fuzzy}
-                    my_semantic = self._search_my_recipes_semantic(
+                    my_semantic = await self._search_my_recipes_semantic(
                         query_embedding,
                         limit - my_total,
                         user,
@@ -126,7 +127,7 @@ class UnifiedSearch(Endpoint):
                     )
                 if pub_total < limit:
                     all_pub_ids = pub_exact_ids | {r.id for r in pub_fuzzy}
-                    pub_semantic = self._search_public_recipes_semantic(
+                    pub_semantic = await self._search_public_recipes_semantic(
                         query_embedding,
                         limit - pub_total,
                         user,
@@ -168,7 +169,7 @@ class UnifiedSearch(Endpoint):
         # everything so legacy callers keep their results.
         return (True, True, True)
 
-    def _get_my_book_ids(self, user: User) -> list:
+    async def _get_my_book_ids(self, user: User) -> list:
         """Return recipe book IDs the user is a member of.
 
         pbq-4a: memoized on the request-scoped endpoint instance so
@@ -181,14 +182,11 @@ class UnifiedSearch(Endpoint):
         cached = getattr(self, "_my_book_ids", None)
         if cached is not None:
             return cached
-        rows = (
-            self.db.execute(
-                select(RecipeBookUser.recipe_book_id)
-                .where(RecipeBookUser.user_id == user.id)
-            )
-            .scalars()
-            .all()
+        result = await self.db.execute(
+            select(RecipeBookUser.recipe_book_id)
+            .where(RecipeBookUser.user_id == user.id)
         )
+        rows = result.scalars().all()
         self._my_book_ids = rows
         return rows
 
@@ -236,39 +234,37 @@ class UnifiedSearch(Endpoint):
 
     # ── Tier 1: exact ILIKE ──────────────────────────────────────────────────
 
-    def _search_my_recipes(
+    async def _search_my_recipes(
         self, query: str, limit: int, user: User, book_ids: list | None = None, filter_conditions: list | None = None
     ):
         """Search recipes in books the user has access to (exact ILIKE)."""
-        my_book_ids = book_ids if book_ids is not None else self._get_my_book_ids(user)
+        my_book_ids = book_ids if book_ids is not None else await self._get_my_book_ids(user)
         filter_conditions = filter_conditions or []
 
         if not my_book_ids:
             return []
 
-        results = (
-            self.db.execute(
-                select(Recipe, RecipeBook.name.label("book_name"))
-                .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
-                .options(
-                    selectinload(Recipe.ingredients)
-                    .selectinload(RecipeIngredient.ingredient)
-                )
-                .where(
-                    Recipe.recipe_book_id.in_(my_book_ids),
-                    Recipe.archived_at.is_(None),
-                    self._recipe_matches(query),
-                    *filter_conditions,
-                )
-                .order_by(
-                    (Recipe.name.ilike(query)).desc(),
-                    (Recipe.name.ilike(f"{query}%")).desc(),
-                    Recipe.updated_at.desc(),
-                )
-                .limit(limit)
+        result = await self.db.execute(
+            select(Recipe, RecipeBook.name.label("book_name"))
+            .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
+            .options(
+                selectinload(Recipe.ingredients)
+                .selectinload(RecipeIngredient.ingredient)
             )
-            .all()
+            .where(
+                Recipe.recipe_book_id.in_(my_book_ids),
+                Recipe.archived_at.is_(None),
+                self._recipe_matches(query),
+                *filter_conditions,
+            )
+            .order_by(
+                (Recipe.name.ilike(query)).desc(),
+                (Recipe.name.ilike(f"{query}%")).desc(),
+                Recipe.updated_at.desc(),
+            )
+            .limit(limit)
         )
+        results = result.all()
 
         return [
             UnifiedSearch.RecipeResult(
@@ -289,7 +285,7 @@ class UnifiedSearch(Endpoint):
             for recipe, book_name in results
         ]
 
-    def _search_public_recipes(self, query: str, limit: int, user: User, filter_conditions: list | None = None):
+    async def _search_public_recipes(self, query: str, limit: int, user: User, filter_conditions: list | None = None):
         """Search recipes in public books the user is NOT a member of (exact ILIKE)."""
         filter_conditions = filter_conditions or []
         owner_subq = (
@@ -304,43 +300,41 @@ class UnifiedSearch(Endpoint):
             .subquery()
         )
 
-        results = (
-            self.db.execute(
-                select(
-                    Recipe,
-                    RecipeBook.name.label("book_name"),
-                    owner_subq.c.owner_id,
-                    owner_subq.c.owner_username,
-                    owner_subq.c.owner_picture,
-                )
-                .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
-                .options(
-                    selectinload(Recipe.ingredients)
-                    .selectinload(RecipeIngredient.ingredient)
-                )
-                .outerjoin(
-                    owner_subq,
-                    owner_subq.c.recipe_book_id == RecipeBook.id,
-                )
-                .where(
-                    RecipeBook.is_public == True,  # noqa: E712
-                    Recipe.archived_at.is_(None),
-                    Recipe.recipe_book_id.notin_(
-                        select(RecipeBookUser.recipe_book_id)
-                        .where(RecipeBookUser.user_id == user.id)
-                    ),
-                    self._recipe_matches(query),
-                    *filter_conditions,
-                )
-                .order_by(
-                    (Recipe.name.ilike(query)).desc(),
-                    (Recipe.name.ilike(f"{query}%")).desc(),
-                    Recipe.updated_at.desc(),
-                )
-                .limit(limit)
+        result = await self.db.execute(
+            select(
+                Recipe,
+                RecipeBook.name.label("book_name"),
+                owner_subq.c.owner_id,
+                owner_subq.c.owner_username,
+                owner_subq.c.owner_picture,
             )
-            .all()
+            .join(RecipeBook, Recipe.recipe_book_id == RecipeBook.id)
+            .options(
+                selectinload(Recipe.ingredients)
+                .selectinload(RecipeIngredient.ingredient)
+            )
+            .outerjoin(
+                owner_subq,
+                owner_subq.c.recipe_book_id == RecipeBook.id,
+            )
+            .where(
+                RecipeBook.is_public == True,  # noqa: E712
+                Recipe.archived_at.is_(None),
+                Recipe.recipe_book_id.notin_(
+                    select(RecipeBookUser.recipe_book_id)
+                    .where(RecipeBookUser.user_id == user.id)
+                ),
+                self._recipe_matches(query),
+                *filter_conditions,
+            )
+            .order_by(
+                (Recipe.name.ilike(query)).desc(),
+                (Recipe.name.ilike(f"{query}%")).desc(),
+                Recipe.updated_at.desc(),
+            )
+            .limit(limit)
         )
+        results = result.all()
 
         return [
             UnifiedSearch.PublicRecipeResult(
@@ -367,7 +361,7 @@ class UnifiedSearch(Endpoint):
 
     # ── Tier 2: fuzzy pg_trgm ────────────────────────────────────────────────
 
-    def _search_my_recipes_fuzzy(
+    async def _search_my_recipes_fuzzy(
         self,
         query: str,
         limit: int,
@@ -409,7 +403,7 @@ class UnifiedSearch(Endpoint):
             for i, tag in enumerate(filter_tags):
                 params[f"filter_tag_{i}"] = f"%{tag}%"
 
-            rows = self.db.execute(
+            result = await self.db.execute(
                 text(f"""
                     SELECT r.id, r.name, r.description, r.image_url,
                            r.prep_time, r.cook_time, r.recipe_book_id,
@@ -431,7 +425,8 @@ class UnifiedSearch(Endpoint):
                     LIMIT :limit
                 """),
                 params,
-            ).all()
+            )
+            rows = result.all()
 
             return [
                 UnifiedSearch.RecipeResult(
@@ -450,7 +445,7 @@ class UnifiedSearch(Endpoint):
         except Exception:
             return []
 
-    def _search_public_recipes_fuzzy(
+    async def _search_public_recipes_fuzzy(
         self,
         query: str,
         limit: int,
@@ -485,7 +480,7 @@ class UnifiedSearch(Endpoint):
             for i, tag in enumerate(filter_tags):
                 params[f"filter_tag_{i}"] = f"%{tag}%"
 
-            rows = self.db.execute(
+            result = await self.db.execute(
                 text(f"""
                     SELECT r.id, r.name, r.description, r.image_url,
                            r.prep_time, r.cook_time, r.recipe_book_id,
@@ -517,7 +512,8 @@ class UnifiedSearch(Endpoint):
                     LIMIT :limit
                 """),
                 params,
-            ).all()
+            )
+            rows = result.all()
 
             return [
                 UnifiedSearch.PublicRecipeResult(
@@ -543,12 +539,21 @@ class UnifiedSearch(Endpoint):
 
     # ── Tier 3: semantic pgvector ────────────────────────────────────────────
 
-    def _generate_query_embedding(self, query: str) -> list[float] | None:
+    async def _generate_query_embedding(self, query: str) -> list[float] | None:
         """Generate a 384-dim embedding for the query via OpenAI.
 
-        Returns None if the OpenAI call fails or the key is not set,
-        so the semantic tier degrades gracefully.
+        The OpenAI client is still sync (aam-7 swaps to AsyncOpenAI in Phase 2),
+        so the network call is dispatched through `run_in_threadpool` to keep the
+        event loop free. Returns None if the OpenAI call fails or the key is not
+        set, so the semantic tier degrades gracefully.
         """
+        try:
+            return await run_in_threadpool(self._sync_generate_query_embedding, query)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _sync_generate_query_embedding(query: str) -> list[float] | None:
         try:
             from openai import OpenAI
 
@@ -562,7 +567,7 @@ class UnifiedSearch(Endpoint):
         except Exception:
             return None
 
-    def _search_my_recipes_semantic(
+    async def _search_my_recipes_semantic(
         self,
         query_embedding: list[float],
         limit: int,
@@ -601,7 +606,8 @@ class UnifiedSearch(Endpoint):
             if exclude_ids:
                 stmt = stmt.where(Recipe.id.notin_(list(exclude_ids)))
 
-            results = self.db.execute(stmt).all()
+            result = await self.db.execute(stmt)
+            results = result.all()
             return [
                 UnifiedSearch.RecipeResult(
                     id=str(recipe.id),
@@ -623,7 +629,7 @@ class UnifiedSearch(Endpoint):
         except Exception:
             return []
 
-    def _search_public_recipes_semantic(
+    async def _search_public_recipes_semantic(
         self,
         query_embedding: list[float],
         limit: int,
@@ -680,7 +686,8 @@ class UnifiedSearch(Endpoint):
             if exclude_ids:
                 stmt = stmt.where(Recipe.id.notin_(list(exclude_ids)))
 
-            results = self.db.execute(stmt).all()
+            result = await self.db.execute(stmt)
+            results = result.all()
             return [
                 UnifiedSearch.PublicRecipeResult(
                     id=str(recipe.id),
@@ -708,7 +715,7 @@ class UnifiedSearch(Endpoint):
 
     # ── meals ────────────────────────────────────────────────────────────────
 
-    def _search_my_meals(
+    async def _search_my_meals(
         self,
         query: str,
         limit: int,
@@ -727,7 +734,7 @@ class UnifiedSearch(Endpoint):
         if not book_ids:
             return []
 
-        direct_rows = self.db.execute(
+        direct_result = await self.db.execute(
             select(Meal, RecipeBook.name.label("book_name"))
             .join(RecipeBook, Meal.recipe_book_id == RecipeBook.id)
             .options(
@@ -749,7 +756,8 @@ class UnifiedSearch(Endpoint):
                 Meal.updated_at.desc(),
             )
             .limit(limit)
-        ).all()
+        )
+        direct_rows = direct_result.all()
 
         direct_meal_ids = {meal.id for meal, _ in direct_rows}
 
@@ -783,7 +791,8 @@ class UnifiedSearch(Endpoint):
                 comp_stmt = comp_stmt.where(
                     Meal.id.notin_(list(direct_meal_ids))
                 )
-            component_rows = self.db.execute(comp_stmt).all()
+            component_result = await self.db.execute(comp_stmt)
+            component_rows = component_result.all()
 
         results: list[UnifiedSearch.MealSearchResult] = []
         for meal, book_name in direct_rows:
@@ -855,71 +864,65 @@ class UnifiedSearch(Endpoint):
 
     # ── users ────────────────────────────────────────────────────────────────
 
-    def _search_users(self, query: str, limit: int, user: User):
+    async def _search_users(self, query: str, limit: int, user: User):
         """Search users, friends first."""
         search_query = query.lower()
         if search_query.startswith("@"):
             search_query = search_query[1:]
 
-        search_results = (
-            self.db.execute(
-                select(User)
-                .outerjoin(
-                    Friendship,
-                    (Friendship.user_id == user.id) & (Friendship.friend_id == User.id),
-                )
-                .where(
-                    User.id != user.id,
-                    User.username.isnot(None),
-                    or_(
-                        User.username.ilike(f"%{search_query}%"),
-                        User.name.ilike(f"%{search_query}%"),
-                    ),
-                )
-                .order_by(
-                    (Friendship.friend_id.isnot(None)).desc(),
-                    (User.username == search_query).desc(),
-                    (User.username.startswith(search_query)).desc(),
-                    User.username,
-                )
-                .limit(limit)
+        search_result = await self.db.execute(
+            select(User)
+            .outerjoin(
+                Friendship,
+                (Friendship.user_id == user.id) & (Friendship.friend_id == User.id),
             )
-            .scalars()
-            .all()
+            .where(
+                User.id != user.id,
+                User.username.isnot(None),
+                or_(
+                    User.username.ilike(f"%{search_query}%"),
+                    User.name.ilike(f"%{search_query}%"),
+                ),
+            )
+            .order_by(
+                (Friendship.friend_id.isnot(None)).desc(),
+                (User.username == search_query).desc(),
+                (User.username.startswith(search_query)).desc(),
+                User.username,
+            )
+            .limit(limit)
         )
+        search_results = search_result.scalars().all()
 
         # Get friendship/request status in bulk
         user_ids = [u.id for u in search_results]
 
-        friendships = set(
-            self.db.execute(
-                select(Friendship.friend_id).where(
-                    Friendship.user_id == user.id,
-                    Friendship.friend_id.in_(user_ids),
-                )
-            ).scalars().all()
+        friendships_result = await self.db.execute(
+            select(Friendship.friend_id).where(
+                Friendship.user_id == user.id,
+                Friendship.friend_id.in_(user_ids),
+            )
         )
+        friendships = set(friendships_result.scalars().all())
 
-        sent_requests = {
-            r.to_user_id: r.id
-            for r in self.db.execute(
-                select(FriendRequest).where(
-                    FriendRequest.from_user_id == user.id,
-                    FriendRequest.to_user_id.in_(user_ids),
-                    FriendRequest.status == "pending",
-                )
-            ).scalars().all()
-        }
+        sent_result = await self.db.execute(
+            select(FriendRequest).where(
+                FriendRequest.from_user_id == user.id,
+                FriendRequest.to_user_id.in_(user_ids),
+                FriendRequest.status == "pending",
+            )
+        )
+        sent_requests = {r.to_user_id: r.id for r in sent_result.scalars().all()}
 
+        received_result = await self.db.execute(
+            select(FriendRequest).where(
+                FriendRequest.to_user_id == user.id,
+                FriendRequest.from_user_id.in_(user_ids),
+                FriendRequest.status == "pending",
+            )
+        )
         received_requests = {
-            r.from_user_id: r.id
-            for r in self.db.execute(
-                select(FriendRequest).where(
-                    FriendRequest.to_user_id == user.id,
-                    FriendRequest.from_user_id.in_(user_ids),
-                    FriendRequest.status == "pending",
-                )
-            ).scalars().all()
+            r.from_user_id: r.id for r in received_result.scalars().all()
         }
 
         results = []

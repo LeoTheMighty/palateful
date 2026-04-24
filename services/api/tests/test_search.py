@@ -1,15 +1,17 @@
-"""Tests for search endpoints."""
+"""Tests for search endpoints.
+
+aam-17: UnifiedSearch is now `AsyncEndpoint`; HTTP tests pre-configure
+`mock_async_db.db.execute` instead of the legacy `mock_db.db.query`.
+Direct endpoint tests are `async def` and `await endpoint.execute(...)`.
+The standalone helpers (`generate_recipe_embedding`, `assign_vibes_for_recipe`)
+remain sync and their tests are unchanged.
+"""
 
 from unittest.mock import MagicMock, patch
 
 from conftest import (
     MockExecuteResult,
     MockFriendRequest,
-    MockFriendship,
-    MockIngredient,
-    MockQuery,
-    MockRecipe,
-    MockRecipeIngredient,
     MockUser,
     count_queries,
 )
@@ -18,24 +20,22 @@ from conftest import (
 class TestUnifiedSearch:
     """Tests for GET /v1/search."""
 
-    def test_search_success(self, client, mock_db, mock_user):
+    def test_search_success(self, client, mock_async_db, mock_user):
         """Test searching."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/search?q=pasta")
         assert response.status_code == 200
 
     def test_search_scope_recipes_returns_empty_users(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """scope=recipes must skip the user-results tier entirely (bugs-cal-2).
 
         The plan-meal autocomplete field relies on this: a typed query must
         never surface accidentally matching users as suggestions.
         """
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/search?q=pasta&scope=recipes")
         assert response.status_code == 200
@@ -43,11 +43,10 @@ class TestUnifiedSearch:
         assert data["users"] == [], "scope=recipes must drop user results"
 
     def test_search_scope_unknown_falls_back_to_default(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Unknown scope values fall back to default behavior (backwards compat)."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/search?q=pasta&scope=bogus")
         assert response.status_code == 200
@@ -55,18 +54,18 @@ class TestUnifiedSearch:
         # users list still exists (may be empty due to mocks, but key present)
         assert "users" in data
 
-    def test_search_short_query(self, client, mock_db, mock_user):
+    def test_search_short_query(self, client, mock_async_db, mock_user):
         """Test search with query shorter than min_length."""
         response = client.get("/v1/search?q=a")
         assert response.status_code == 422
 
-    def test_search_missing_query(self, client, mock_db, mock_user):
+    def test_search_missing_query(self, client, mock_async_db, mock_user):
         """Test search without query parameter."""
         response = client.get("/v1/search")
         assert response.status_code == 422
 
-    def test_get_my_book_ids_memoized_across_tiers(
-        self, client, mock_db, mock_user
+    async def test_get_my_book_ids_memoized_across_tiers(
+        self, mock_async_db, mock_user
     ):
         """pbq-4a — `_get_my_book_ids` caches on the endpoint instance.
 
@@ -79,19 +78,19 @@ class TestUnifiedSearch:
         """
         from api.v1.search.unified_search import UnifiedSearch
 
-        mock_db.db.execute.return_value = MockExecuteResult([("book-1",)])
-        ep = UnifiedSearch(user=mock_user, database=mock_db)
+        mock_async_db.db.execute.return_value = MockExecuteResult([("book-1",)])
+        ep = UnifiedSearch(user=mock_user, database=mock_async_db)
 
-        with count_queries(mock_db) as qc:
-            first = ep._get_my_book_ids(mock_user)
-            second = ep._get_my_book_ids(mock_user)
-            third = ep._get_my_book_ids(mock_user)
+        with count_queries(mock_async_db) as qc:
+            first = await ep._get_my_book_ids(mock_user)
+            second = await ep._get_my_book_ids(mock_user)
+            third = await ep._get_my_book_ids(mock_user)
 
         assert first == second == third  # same cached result
         assert qc.select == 1  # exactly one round-trip across 3 calls
 
-    def test_semantic_tier_eager_loads_recipe_ingredients(
-        self, mock_db, mock_user
+    async def test_semantic_tier_eager_loads_recipe_ingredients(
+        self, mock_async_db, mock_user
     ):
         """pbq-4b — both semantic-tier `select()` statements attach
         `selectinload(Recipe.ingredients).selectinload(RecipeIngredient
@@ -109,22 +108,22 @@ class TestUnifiedSearch:
 
         import api.v1.search.unified_search as search_module
 
-        mock_db.db.execute.return_value = MockExecuteResult([])
-        ep = search_module.UnifiedSearch(user=mock_user, database=mock_db)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        ep = search_module.UnifiedSearch(user=mock_user, database=mock_async_db)
 
         with patch.object(
             search_module,
             "selectinload",
             wraps=search_module.selectinload,
         ) as spy:
-            ep._search_my_recipes_semantic(
+            await ep._search_my_recipes_semantic(
                 query_embedding=[0.0] * 384,
                 limit=10,
                 user=mock_user,
                 book_ids=["book-1"],
                 exclude_ids=set(),
             )
-            ep._search_public_recipes_semantic(
+            await ep._search_public_recipes_semantic(
                 query_embedding=[0.0] * 384,
                 limit=10,
                 user=mock_user,
@@ -151,7 +150,7 @@ class TestUnifiedSearch:
             assert "selectinload(Recipe.ingredients)" in src
             assert ".selectinload(RecipeIngredient.ingredient)" in src
 
-    def test_search_by_tag(self, client, mock_db, mock_user):
+    def test_search_by_tag(self, client, mock_async_db, mock_user):
         """Test searching by tag term returns 200 with expected response shape.
 
         Due to mock abstraction the tag-match SQL expression cannot be
@@ -160,9 +159,8 @@ class TestUnifiedSearch:
         (c) the DB execute path was actually invoked (proving _recipe_matches
         and _search_users ran their query logic, not just returning early).
         """
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
-        mock_db.db.execute.reset_mock()
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=vegetarian")
 
@@ -172,18 +170,17 @@ class TestUnifiedSearch:
         assert "public_recipes" in data
         assert "users" in data
         # Verify DB was actually queried (not a no-op early return)
-        assert mock_db.db.execute.call_count >= 1
+        assert mock_async_db.db.execute.call_count >= 1
 
-    def test_search_filter_book_id(self, client, mock_db, mock_user):
+    def test_search_filter_book_id(self, client, mock_async_db, mock_user):
         """Test that book_id filter param is accepted and returns 200 with correct shape.
 
         book_id must be validated against user's books -- an unrecognized book_id
         is silently ignored (returns all my-recipes instead of 401/400).
         The execute path is still invoked (DB queried, not early return).
         """
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
-        mock_db.db.execute.reset_mock()
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=pasta&book_id=00000000-0000-0000-0000-000000000001")
 
@@ -192,13 +189,12 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
-        assert mock_db.db.execute.call_count >= 1
+        assert mock_async_db.db.execute.call_count >= 1
 
-    def test_search_filter_max_prep_time(self, client, mock_db, mock_user):
+    def test_search_filter_max_prep_time(self, client, mock_async_db, mock_user):
         """Test that max_prep_time filter param is accepted and returns 200 with correct shape."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
-        mock_db.db.execute.reset_mock()
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=pasta&max_prep_time=30")
 
@@ -207,13 +203,12 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
-        assert mock_db.db.execute.call_count >= 1
+        assert mock_async_db.db.execute.call_count >= 1
 
-    def test_search_filter_tags(self, client, mock_db, mock_user):
+    def test_search_filter_tags(self, client, mock_async_db, mock_user):
         """Test that tags filter param is accepted and returns 200 with correct shape."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
-        mock_db.db.execute.reset_mock()
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.reset_mock()
 
         response = client.get("/v1/search?q=pasta&tags=vegetarian")
 
@@ -222,9 +217,9 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
-        assert mock_db.db.execute.call_count >= 1
+        assert mock_async_db.db.execute.call_count >= 1
 
-    def test_search_fuzzy_returns_200(self, client, mock_db, mock_user):
+    def test_search_fuzzy_returns_200(self, client, mock_async_db, mock_user):
         """Test that a misspelled query returns 200 and preserves the query string.
 
         The pg_trgm fuzzy tier is wrapped in try/except so the mock DB (which
@@ -233,9 +228,8 @@ class TestUnifiedSearch:
         - data["query"] must equal the original misspelled string (not autocorrected)
         - The fuzzy tier must not crash the endpoint even without real pg_trgm
         """
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
-        mock_db.db.execute.reset_mock()
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.reset_mock()
 
         # 'chiken' is an intentional typo -- fuzzy tier should not crash
         response = client.get("/v1/search?q=chiken")
@@ -247,56 +241,56 @@ class TestUnifiedSearch:
         assert "my_recipes" in data
         assert "public_recipes" in data
         assert "users" in data
-        assert mock_db.db.execute.call_count >= 1
+        assert mock_async_db.db.execute.call_count >= 1
 
 
 class TestUnifiedSearchDirect:
     """Direct tests for UnifiedSearch endpoint class to cover all branches."""
 
-    def _make_endpoint(self, mock_db, mock_user):
+    def _make_endpoint(self, mock_async_db, mock_user):
         """Create an UnifiedSearch instance with mocked dependencies."""
         from api.v1.search.unified_search import UnifiedSearch
 
-        endpoint = UnifiedSearch(user=mock_user, database=mock_db)
+        endpoint = UnifiedSearch(user=mock_user, database=mock_async_db)
         return endpoint
 
-    def test_query_too_short_raises(self, mock_db, mock_user):
+    async def test_query_too_short_raises(self, mock_async_db, mock_user):
         """Test query shorter than 2 chars raises APIException."""
         from utils.api.endpoint import APIException
 
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         try:
-            endpoint.execute(q=" x ")
+            await endpoint.execute(q=" x ")
             assert False, "Should have raised APIException"
         except APIException as e:
             assert e.status_code == 400
             assert "at least 2 characters" in e.detail
 
-    def test_limit_capped_at_50(self, mock_db, mock_user):
+    async def test_limit_capped_at_50(self, mock_async_db, mock_user):
         """Test that limit is capped at 50."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        result = endpoint.execute(q="pasta", limit=100)
+        result = await endpoint.execute(q="pasta", limit=100)
         assert result["success"] is True
 
-    def test_book_id_ignored_when_not_in_user_books(self, mock_db, mock_user):
+    async def test_book_id_ignored_when_not_in_user_books(self, mock_async_db, mock_user):
         """Test that an unauthorized book_id is silently ignored."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         # book_id not in user's books -> should be ignored
-        result = endpoint.execute(
+        result = await endpoint.execute(
             q="pasta", book_id="00000000-0000-0000-0000-000000000099"
         )
         assert result["success"] is True
         assert result["data"].my_recipes == []
 
-    def test_book_id_accepted_when_in_user_books(self, mock_db, mock_user):
+    async def test_book_id_accepted_when_in_user_books(self, mock_async_db, mock_user):
         """Test that a valid book_id is accepted and used as filter."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
         book_id = "b0000000-0000-0000-0000-000000000001"
 
         call_count = [0]
@@ -308,22 +302,22 @@ class TestUnifiedSearchDirect:
                 return MockExecuteResult([book_id])
             return MockExecuteResult([])
 
-        mock_db.db.execute.side_effect = execute_side_effect
+        mock_async_db.db.execute.side_effect = execute_side_effect
 
-        result = endpoint.execute(q="pasta", book_id=book_id)
+        result = await endpoint.execute(q="pasta", book_id=book_id)
         assert result["success"] is True
 
-    def test_tags_filter_parsing(self, mock_db, mock_user):
+    async def test_tags_filter_parsing(self, mock_async_db, mock_user):
         """Test that comma-separated tags are parsed and empty strings removed."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        result = endpoint.execute(q="pasta", tags="vegetarian, , quick")
+        result = await endpoint.execute(q="pasta", tags="vegetarian, , quick")
         assert result["success"] is True
 
-    def test_filter_conditions_with_all_params(self, mock_db, mock_user):
+    def test_filter_conditions_with_all_params(self, mock_async_db, mock_user):
         """Test _filter_conditions builds conditions for tags, prep time, cook time."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
         conditions = endpoint._filter_conditions(
             filter_tags=["italian", "quick"],
@@ -333,9 +327,9 @@ class TestUnifiedSearchDirect:
         # Should have 2 tag conditions + prep_time + cook_time = 4 conditions
         assert len(conditions) == 4
 
-    def test_filter_conditions_empty(self, mock_db, mock_user):
+    def test_filter_conditions_empty(self, mock_async_db, mock_user):
         """Test _filter_conditions with no filters returns empty list."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
         conditions = endpoint._filter_conditions(
             filter_tags=[],
@@ -344,9 +338,9 @@ class TestUnifiedSearchDirect:
         )
         assert conditions == []
 
-    def test_filter_conditions_only_prep_time(self, mock_db, mock_user):
+    def test_filter_conditions_only_prep_time(self, mock_async_db, mock_user):
         """Test _filter_conditions with only max_prep_time."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
         conditions = endpoint._filter_conditions(
             filter_tags=[],
@@ -355,9 +349,9 @@ class TestUnifiedSearchDirect:
         )
         assert len(conditions) == 1
 
-    def test_filter_conditions_only_cook_time(self, mock_db, mock_user):
+    def test_filter_conditions_only_cook_time(self, mock_async_db, mock_user):
         """Test _filter_conditions with only max_cook_time."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
         conditions = endpoint._filter_conditions(
             filter_tags=[],
@@ -366,37 +360,37 @@ class TestUnifiedSearchDirect:
         )
         assert len(conditions) == 1
 
-    def test_search_my_recipes_empty_book_ids(self, mock_db, mock_user):
+    async def test_search_my_recipes_empty_book_ids(self, mock_async_db, mock_user):
         """Test _search_my_recipes returns [] when no book IDs."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
-        result = endpoint._search_my_recipes("pasta", 20, mock_user, book_ids=[])
+        result = await endpoint._search_my_recipes("pasta", 20, mock_user, book_ids=[])
         assert result == []
 
-    def test_search_my_recipes_semantic_empty_book_ids(self, mock_db, mock_user):
+    async def test_search_my_recipes_semantic_empty_book_ids(self, mock_async_db, mock_user):
         """Test _search_my_recipes_semantic returns [] when no book IDs."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
-        result = endpoint._search_my_recipes_semantic(
+        result = await endpoint._search_my_recipes_semantic(
             [0.1] * 384, 20, mock_user, book_ids=[], exclude_ids=set()
         )
         assert result == []
 
-    def test_search_my_recipes_fuzzy_empty_book_ids(self, mock_db, mock_user):
+    async def test_search_my_recipes_fuzzy_empty_book_ids(self, mock_async_db, mock_user):
         """Test _search_my_recipes_fuzzy returns [] when no book IDs."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
-        result = endpoint._search_my_recipes_fuzzy(
+        result = await endpoint._search_my_recipes_fuzzy(
             "pasta", 20, mock_user, book_ids=[], exclude_ids=set()
         )
         assert result == []
 
-    def test_search_my_recipes_fuzzy_exception_degrades(self, mock_db, mock_user):
+    async def test_search_my_recipes_fuzzy_exception_degrades(self, mock_async_db, mock_user):
         """Test _search_my_recipes_fuzzy returns [] on db exception."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pg_trgm not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pg_trgm not available")
 
-        result = endpoint._search_my_recipes_fuzzy(
+        result = await endpoint._search_my_recipes_fuzzy(
             "pasta", 20, mock_user,
             book_ids=["book1"],
             exclude_ids={"id1"},
@@ -405,14 +399,14 @@ class TestUnifiedSearchDirect:
             max_cook_time=60,
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_public_recipes_fuzzy_exception_degrades(self, mock_db, mock_user):
+    async def test_search_public_recipes_fuzzy_exception_degrades(self, mock_async_db, mock_user):
         """Test _search_public_recipes_fuzzy returns [] on db exception."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pg_trgm not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pg_trgm not available")
 
-        result = endpoint._search_public_recipes_fuzzy(
+        result = await endpoint._search_public_recipes_fuzzy(
             "pasta", 20, mock_user,
             exclude_ids={"id1"},
             filter_tags=["italian"],
@@ -420,133 +414,133 @@ class TestUnifiedSearchDirect:
             max_cook_time=60,
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_public_recipes_fuzzy_no_exclude_ids(self, mock_db, mock_user):
+    async def test_search_public_recipes_fuzzy_no_exclude_ids(self, mock_async_db, mock_user):
         """Test _search_public_recipes_fuzzy with empty exclude_ids."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pg_trgm not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pg_trgm not available")
 
-        result = endpoint._search_public_recipes_fuzzy(
+        result = await endpoint._search_public_recipes_fuzzy(
             "pasta", 20, mock_user,
             exclude_ids=set(),
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_my_recipes_fuzzy_no_exclude_ids(self, mock_db, mock_user):
+    async def test_search_my_recipes_fuzzy_no_exclude_ids(self, mock_async_db, mock_user):
         """Test _search_my_recipes_fuzzy with empty exclude_ids."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pg_trgm not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pg_trgm not available")
 
-        result = endpoint._search_my_recipes_fuzzy(
+        result = await endpoint._search_my_recipes_fuzzy(
             "pasta", 20, mock_user,
             book_ids=["book1"],
             exclude_ids=set(),
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_my_recipes_semantic_exception_degrades(self, mock_db, mock_user):
+    async def test_search_my_recipes_semantic_exception_degrades(self, mock_async_db, mock_user):
         """Test _search_my_recipes_semantic returns [] on db exception."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pgvector not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pgvector not available")
 
-        result = endpoint._search_my_recipes_semantic(
+        result = await endpoint._search_my_recipes_semantic(
             [0.1] * 384, 20, mock_user,
             book_ids=["book1"],
             exclude_ids={"id1"},
             filter_conditions=[],
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_public_recipes_semantic_exception_degrades(self, mock_db, mock_user):
+    async def test_search_public_recipes_semantic_exception_degrades(self, mock_async_db, mock_user):
         """Test _search_public_recipes_semantic returns [] on db exception."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pgvector not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pgvector not available")
 
-        result = endpoint._search_public_recipes_semantic(
+        result = await endpoint._search_public_recipes_semantic(
             [0.1] * 384, 20, mock_user,
             exclude_ids={"id1"},
             filter_conditions=[],
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_public_recipes_semantic_no_exclude_ids(self, mock_db, mock_user):
+    async def test_search_public_recipes_semantic_no_exclude_ids(self, mock_async_db, mock_user):
         """Test _search_public_recipes_semantic with empty exclude_ids."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pgvector not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pgvector not available")
 
-        result = endpoint._search_public_recipes_semantic(
+        result = await endpoint._search_public_recipes_semantic(
             [0.1] * 384, 20, mock_user,
             exclude_ids=set(),
             filter_conditions=[],
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_search_my_recipes_semantic_no_exclude_ids(self, mock_db, mock_user):
+    async def test_search_my_recipes_semantic_no_exclude_ids(self, mock_async_db, mock_user):
         """Test _search_my_recipes_semantic with empty exclude_ids does not add notin clause."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.side_effect = Exception("pgvector not available")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.side_effect = Exception("pgvector not available")
 
-        result = endpoint._search_my_recipes_semantic(
+        result = await endpoint._search_my_recipes_semantic(
             [0.1] * 384, 20, mock_user,
             book_ids=["book1"],
             exclude_ids=set(),
             filter_conditions=[],
         )
         assert result == []
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
-    def test_generate_query_embedding_exception_returns_none(self, mock_db, mock_user):
+    async def test_generate_query_embedding_exception_returns_none(self, mock_async_db, mock_user):
         """Test _generate_query_embedding returns None on exception."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
         with patch("api.v1.search.unified_search.UnifiedSearch._generate_query_embedding") as mock_embed:
             mock_embed.return_value = None
-            result = mock_embed("test query")
+            result = await mock_embed("test query")
             assert result is None
 
     @patch("api.v1.search.unified_search.UnifiedSearch._generate_query_embedding")
-    def test_semantic_tier_skipped_when_embedding_none(self, mock_embed, mock_db, mock_user):
+    async def test_semantic_tier_skipped_when_embedding_none(self, mock_embed, mock_async_db, mock_user):
         """Test semantic tier is skipped when embedding generation returns None."""
         mock_embed.return_value = None
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        result = endpoint.execute(q="pasta")
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        result = await endpoint.execute(q="pasta")
 
         assert result["success"] is True
         assert result["data"].my_recipes == []
         assert result["data"].public_recipes == []
 
     @patch("api.v1.search.unified_search.UnifiedSearch._generate_query_embedding")
-    def test_semantic_tier_called_when_exact_fuzzy_dont_fill(self, mock_embed, mock_db, mock_user):
+    async def test_semantic_tier_called_when_exact_fuzzy_dont_fill(self, mock_embed, mock_async_db, mock_user):
         """Test semantic tier is invoked when exact+fuzzy results don't fill limit."""
         mock_embed.return_value = [0.1] * 384
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
         # With empty results from exact and fuzzy, semantic tier should be attempted
-        result = endpoint.execute(q="pasta", limit=5)
+        result = await endpoint.execute(q="pasta", limit=5)
 
         assert result["success"] is True
         mock_embed.assert_called_once_with("pasta")
 
-    def test_search_users_at_prefix_stripped(self, mock_db, mock_user):
+    async def test_search_users_at_prefix_stripped(self, mock_async_db, mock_user):
         """Test that @ prefix is stripped from user search query."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        result = endpoint._search_users("@john", 20, mock_user)
+        result = await endpoint._search_users("@john", 20, mock_user)
         assert result == []
 
-    def test_search_users_returns_friendship_statuses(self, mock_db, mock_user):
+    async def test_search_users_returns_friendship_statuses(self, mock_async_db, mock_user):
         """Test _search_users returns correct friendship statuses."""
-        endpoint = self._make_endpoint(mock_db, mock_user)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
 
         friend_user = MockUser(username="friend1", name="Friend One")
         sent_user = MockUser(username="sent1", name="Sent One")
@@ -584,9 +578,9 @@ class TestUnifiedSearchDirect:
                 return MockExecuteResult([received_req])
             return MockExecuteResult([])
 
-        mock_db.db.execute.side_effect = execute_side_effect
+        mock_async_db.db.execute.side_effect = execute_side_effect
 
-        result = endpoint._search_users("user", 20, mock_user)
+        result = await endpoint._search_users("user", 20, mock_user)
 
         assert len(result) == 4
         statuses = {r.username: r.friendship_status for r in result}
@@ -595,7 +589,7 @@ class TestUnifiedSearchDirect:
         assert statuses["recv1"] == "request_received"
         assert statuses["stranger1"] == "none"
 
-        mock_db.db.execute.side_effect = None
+        mock_async_db.db.execute.side_effect = None
 
     def _make_recipe_result(self, rid="r1"):
         """Helper to build a valid RecipeResult."""
@@ -615,18 +609,18 @@ class TestUnifiedSearchDirect:
     @patch("api.v1.search.unified_search.UnifiedSearch._search_users")
     @patch("api.v1.search.unified_search.UnifiedSearch._search_public_recipes")
     @patch("api.v1.search.unified_search.UnifiedSearch._search_my_recipes")
-    def test_exact_fills_limit_skips_fuzzy_and_semantic(
-        self, mock_my, mock_pub, mock_users, mock_db, mock_user
+    async def test_exact_fills_limit_skips_fuzzy_and_semantic(
+        self, mock_my, mock_pub, mock_users, mock_async_db, mock_user
     ):
         """Test that when exact results fill the limit, fuzzy and semantic tiers are skipped."""
         # Return exactly `limit` results for both my and public
         mock_my.return_value = [self._make_recipe_result(f"r{i}") for i in range(3)]
         mock_pub.return_value = [self._make_pub_recipe_result(f"p{i}") for i in range(3)]
         mock_users.return_value = []
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        result = endpoint.execute(q="pasta", limit=3)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        result = await endpoint.execute(q="pasta", limit=3)
 
         assert result["success"] is True
         # my_exact has 3, limit is 3 -> no fuzzy or semantic needed
@@ -637,8 +631,8 @@ class TestUnifiedSearchDirect:
     @patch("api.v1.search.unified_search.UnifiedSearch._search_users")
     @patch("api.v1.search.unified_search.UnifiedSearch._search_public_recipes")
     @patch("api.v1.search.unified_search.UnifiedSearch._search_my_recipes")
-    def test_my_exact_fills_but_pub_doesnt_runs_pub_semantic(
-        self, mock_my, mock_pub, mock_users, mock_embed, mock_db, mock_user
+    async def test_my_exact_fills_but_pub_doesnt_runs_pub_semantic(
+        self, mock_my, mock_pub, mock_users, mock_embed, mock_async_db, mock_user
     ):
         """Test that when my_exact fills limit but pub doesn't, only pub semantic runs."""
         # my fills the limit, pub doesn't
@@ -646,10 +640,10 @@ class TestUnifiedSearchDirect:
         mock_pub.return_value = []
         mock_users.return_value = []
         mock_embed.return_value = [0.1] * 384
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        result = endpoint.execute(q="pasta", limit=3)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        result = await endpoint.execute(q="pasta", limit=3)
 
         assert result["success"] is True
         mock_embed.assert_called_once()
@@ -658,8 +652,8 @@ class TestUnifiedSearchDirect:
     @patch("api.v1.search.unified_search.UnifiedSearch._search_users")
     @patch("api.v1.search.unified_search.UnifiedSearch._search_public_recipes")
     @patch("api.v1.search.unified_search.UnifiedSearch._search_my_recipes")
-    def test_pub_exact_fills_but_my_doesnt_runs_my_semantic(
-        self, mock_my, mock_pub, mock_users, mock_embed, mock_db, mock_user
+    async def test_pub_exact_fills_but_my_doesnt_runs_my_semantic(
+        self, mock_my, mock_pub, mock_users, mock_embed, mock_async_db, mock_user
     ):
         """Test that when pub_exact fills limit but my doesn't, only my semantic runs."""
         # pub fills the limit, my doesn't
@@ -667,18 +661,17 @@ class TestUnifiedSearchDirect:
         mock_pub.return_value = [self._make_pub_recipe_result(f"p{i}") for i in range(3)]
         mock_users.return_value = []
         mock_embed.return_value = [0.1] * 384
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
-        endpoint = self._make_endpoint(mock_db, mock_user)
-        result = endpoint.execute(q="pasta", limit=3)
+        endpoint = self._make_endpoint(mock_async_db, mock_user)
+        result = await endpoint.execute(q="pasta", limit=3)
 
         assert result["success"] is True
         mock_embed.assert_called_once()
 
-    def test_full_search_response_shape(self, client, mock_db, mock_user):
+    def test_full_search_response_shape(self, client, mock_async_db, mock_user):
         """Test that the full search response has query, my_recipes, public_recipes, users."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/search?q=pasta")
         assert response.status_code == 200
@@ -689,18 +682,16 @@ class TestUnifiedSearchDirect:
         assert "public_recipes" in data
         assert "users" in data
 
-    def test_search_max_cook_time_filter(self, client, mock_db, mock_user):
+    def test_search_max_cook_time_filter(self, client, mock_async_db, mock_user):
         """Test that max_cook_time filter param is accepted and returns 200."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/search?q=pasta&max_cook_time=45")
         assert response.status_code == 200
 
-    def test_search_multiple_tags(self, client, mock_db, mock_user):
+    def test_search_multiple_tags(self, client, mock_async_db, mock_user):
         """Test that multiple comma-separated tags are accepted."""
-        mock_db.db.query.return_value = MockQuery([])
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.get("/v1/search?q=pasta&tags=vegetarian,quick,easy")
         assert response.status_code == 200
@@ -835,7 +826,7 @@ class TestUnifiedSearchQueryEmbedding:
     """Tests for the _generate_query_embedding method on the endpoint."""
 
     @patch("openai.OpenAI")
-    def test_generate_query_embedding_success(self, mock_openai_cls, mock_db, mock_user):
+    async def test_generate_query_embedding_success(self, mock_openai_cls, mock_async_db, mock_user):
         """Test successful query embedding generation."""
         from api.v1.search.unified_search import UnifiedSearch
 
@@ -845,19 +836,37 @@ class TestUnifiedSearchQueryEmbedding:
         mock_resp.data = [MagicMock(embedding=[0.5] * 384)]
         mock_client.embeddings.create.return_value = mock_resp
 
-        endpoint = UnifiedSearch(user=mock_user, database=mock_db)
-        result = endpoint._generate_query_embedding("pasta recipe")
+        endpoint = UnifiedSearch(user=mock_user, database=mock_async_db)
+        result = await endpoint._generate_query_embedding("pasta recipe")
 
         assert result == [0.5] * 384
 
     @patch("openai.OpenAI")
-    def test_generate_query_embedding_failure(self, mock_openai_cls, mock_db, mock_user):
+    async def test_generate_query_embedding_failure(self, mock_openai_cls, mock_async_db, mock_user):
         """Test query embedding generation failure returns None."""
         from api.v1.search.unified_search import UnifiedSearch
 
         mock_openai_cls.side_effect = Exception("No API key")
 
-        endpoint = UnifiedSearch(user=mock_user, database=mock_db)
-        result = endpoint._generate_query_embedding("pasta recipe")
+        endpoint = UnifiedSearch(user=mock_user, database=mock_async_db)
+        result = await endpoint._generate_query_embedding("pasta recipe")
 
+        assert result is None
+
+    async def test_generate_query_embedding_threadpool_failure_returns_none(
+        self, mock_async_db, mock_user
+    ):
+        """Threadpool dispatch itself raising (e.g. cancelled task) degrades
+        the semantic tier to None rather than propagating."""
+        from api.v1.search.unified_search import UnifiedSearch
+
+        async def _boom(*_a, **_k):
+            raise RuntimeError("threadpool cancelled")
+
+        endpoint = UnifiedSearch(user=mock_user, database=mock_async_db)
+        with patch(
+            "api.v1.search.unified_search.run_in_threadpool",
+            side_effect=_boom,
+        ):
+            result = await endpoint._generate_query_embedding("pasta recipe")
         assert result is None

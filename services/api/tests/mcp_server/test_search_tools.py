@@ -1,6 +1,10 @@
-"""Tests for MCP search tools (MCP.6)."""
+"""Tests for MCP search tools (MCP.6).
 
-from unittest.mock import MagicMock, patch
+aam-17: `unified_search` tool is `async def` and dispatches through
+`await call_endpoint_async(...)`. Tests are async and await the tool.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,20 +25,26 @@ def mcp_context():
 
 
 class TestUnifiedSearch:
-    def test_bare_call_only_q(self, mcp_context):
+    async def test_bare_call_only_q(self, mcp_context):
         from mcp_server.tools.search import unified_search
 
-        with patch("mcp_server.tools.search.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.search.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            unified_search(q="pasta")
+            await unified_search(q="pasta")
         assert mock_call.call_args.kwargs == {"q": "pasta", "limit": 20}
 
-    def test_with_all_filters(self, mcp_context):
+    async def test_with_all_filters(self, mcp_context):
         from mcp_server.tools.search import unified_search
 
-        with patch("mcp_server.tools.search.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.search.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            unified_search(
+            await unified_search(
                 q="curry",
                 limit=5,
                 book_id="b1",
