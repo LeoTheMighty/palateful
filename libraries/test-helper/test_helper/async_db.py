@@ -37,15 +37,23 @@ def async_postgres_engine():
     from the same `DATABASE_URL` the sync engine reads. Skips the test if
     the URL is unset so the worker test image (no asyncpg) keeps passing.
     """
-    from utils.constants import ASYNC_DATABASE_URL
+    from utils.constants import ASYNC_DATABASE_URL, ASYNC_DB_CONNECT_ARGS
 
     if not ASYNC_DATABASE_URL:
         pytest.skip("ASYNC_DATABASE_URL not set — skipping async DB fixture")
 
+    # Mirrors the prod engine in `utils.services.database` — passes
+    # `connect_args=ASYNC_DB_CONNECT_ARGS` so sslmode intent is
+    # translated to asyncpg's `ssl` param the same way prod does.
+    # Without this, a test DATABASE_URL with `sslmode=require` would
+    # drop out of the connect-arg translation and either fail on the
+    # verifying default context or connect without TLS — either way,
+    # drift from prod behavior.
     engine = create_async_engine(
         ASYNC_DATABASE_URL,
         pool_size=5,
         max_overflow=10,
+        connect_args=ASYNC_DB_CONNECT_ARGS,
     )
     yield engine
 
