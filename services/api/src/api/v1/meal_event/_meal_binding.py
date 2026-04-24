@@ -13,11 +13,16 @@ caller matches the existing `_access.py` convention in both directories.
 The parallel `api/v1/meal/_access.py` that already owns
 `require_meal_read` is deliberately NOT extended here — this module
 layers an extra archive-guard on top without widening that shared API.
+
+aam-14 added `require_meal_available_async` so converted meal_event
+handlers can stay fully async. The sync version stays for
+recurrence_rule callers (aam-30 flips those).
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
@@ -35,9 +40,6 @@ class MealSummary(BaseModel):
     id: str
     name: str
     component_count: int
-    # Top-4 component image URLs, in component order_index ordering.
-    # `None` entries preserved so the Flutter collage layout can render
-    # placeholders in-place rather than rebalancing.
     image_urls: list[str | None]
 
 
@@ -60,17 +62,7 @@ def validate_recipe_meal_xor(
 
 
 def require_meal_available(db, meal_id: str, user) -> Meal:
-    """Load a Meal + authorize the user, rejecting archived meals.
-
-    aam-10: previously delegated to `api.v1.meal._access.require_meal_read`,
-    but that helper became `async` when the meal domain converted. The
-    meal_event + recurrence_rule handlers stay sync (they're scoped to a
-    later domain story), so this helper inlines the sync Meal load + the
-    book-read membership check + the archive guard. Mirrors the same
-    selectinload chain (`Meal.components → MealRecipe.recipe → Recipe.recipe_book`)
-    so callers that walk component attributes for `build_meal_summary`
-    don't trip MissingGreenlet on the sync path either.
-    """
+    """Load a Meal + authorize the user, rejecting archived meals."""
     meal = (
         db.query(Meal)
         .options(
@@ -96,6 +88,54 @@ def require_meal_available(db, meal_id: str, user) -> Meal:
         )
         .first()
     )
+    if membership is None:
+        raise APIException(
+            status_code=403,
+            detail="You don't have access to this meal",
+            code=ErrorCode.MEAL_ACCESS_DENIED,
+        )
+    if meal.archived_at is not None:
+        raise APIException(
+            status_code=404,
+            detail="Meal not found",
+            code=ErrorCode.MEAL_NOT_FOUND,
+        )
+    return meal
+
+
+async def require_meal_available_async(db, meal_id: str, user) -> Meal:
+    """Async sibling of `require_meal_available` (aam-14).
+
+    Same selectinload chain so build_meal_summary reads don't trigger
+    MissingGreenlet on the async session. `db` is the AsyncSession
+    (typically `self.database.db`).
+    """
+    meal = (
+        await db.execute(
+            select(Meal)
+            .options(
+                selectinload(Meal.components)
+                .selectinload(MealRecipe.recipe)
+                .selectinload(Recipe.recipe_book)
+            )
+            .where(Meal.id == meal_id)
+        )
+    ).scalars().first()
+    if meal is None:
+        raise APIException(
+            status_code=404,
+            detail="Meal not found",
+            code=ErrorCode.MEAL_NOT_FOUND,
+        )
+    membership = (
+        await db.execute(
+            select(RecipeBookUser).where(
+                RecipeBookUser.user_id == user.id,
+                RecipeBookUser.recipe_book_id == meal.recipe_book_id,
+                RecipeBookUser.archived_at.is_(None),
+            )
+        )
+    ).scalars().first()
     if membership is None:
         raise APIException(
             status_code=403,

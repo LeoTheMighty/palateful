@@ -3,19 +3,25 @@
 from datetime import date, datetime, time
 from typing import Optional
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from api.v1.meal_event._meal_binding import MealSummary, build_meal_summary
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
+from utils.models.meal_event_participant import MealEventParticipant
+from utils.models.meal_recipe import MealRecipe
+from utils.models.recipe import Recipe
 from utils.models.user import User
 
 
-class GetMealEvent(Endpoint):
+class GetMealEvent(AsyncEndpoint):
     """Get a meal event by ID."""
 
-    def execute(self, event_id: str):
+    async def execute(self, event_id: str):
         """
         Get a meal event by ID.
 
@@ -27,11 +33,24 @@ class GetMealEvent(Endpoint):
         """
         user: User = self.user
 
-        # Find meal event. Meal hydration is lazy-loaded via the
-        # SQLAlchemy relationship — for a single-row GET the N+1 cost is
-        # bounded (one Meal row + one components fetch) and the
-        # request-scoped session caches both.
-        meal_event = self.database.find_by(MealEvent, id=event_id)
+        # Eager-load every relationship the response builder reads —
+        # async sessions can't lazy-load, so any implicit attribute
+        # access after the fetch would MissingGreenlet.
+        meal_event = (
+            await self.db.execute(
+                select(MealEvent)
+                .options(
+                    selectinload(MealEvent.recipe),
+                    selectinload(MealEvent.meal)
+                    .selectinload(Meal.components)
+                    .selectinload(MealRecipe.recipe)
+                    .selectinload(Recipe.recipe_book),
+                    selectinload(MealEvent.participants)
+                    .selectinload(MealEventParticipant.user),
+                )
+                .where(MealEvent.id == event_id)
+            )
+        ).scalars().first()
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -43,7 +62,7 @@ class GetMealEvent(Endpoint):
         # participant rows no longer grant read access — a guest who
         # isn't a calendar member sees a 404 (no existence leak).
         try:
-            require_calendar_access(
+            await require_calendar_access_async(
                 str(meal_event.calendar_id), user, self.database
             )
         except APIException as exc:
@@ -53,7 +72,7 @@ class GetMealEvent(Endpoint):
                     detail=f"Meal event with ID '{event_id}' not found",
                     code=ErrorCode.MEAL_EVENT_NOT_FOUND,
                 ) from exc
-            raise  # pragma: no cover — require_calendar_access only raises 403
+            raise  # pragma: no cover — require_calendar_access_async only raises 403
 
         # Build recipe summary if present
         recipe_summary = None
@@ -149,8 +168,6 @@ class GetMealEvent(Endpoint):
         prep_start_offset_minutes: int
         notify_cook_start: bool
         cook_start_offset_minutes: int
-        # User's per-meal override (may be null). `reminder_time` is the
-        # resolved value — always populated, falls back to slot default.
         meal_reminder_time: time | None = None
         reminder_time: time
         is_shared: bool

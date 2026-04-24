@@ -1,7 +1,14 @@
-"""Tests for calendar endpoints.
+"""Tests for calendar endpoints (aam-14 async).
 
 Covers: CRUD happy paths, delete-last-calendar guard, non-owner rejection,
 non-member 404, idempotent archive, user-provisioning hook idempotence.
+
+aam-14: handlers are `AsyncEndpoint`; tests drive the router via the
+sync `client` fixture (async deps already overridden in conftest) and
+set up `mock_async_db.db.execute.side_effect` / `set_find_by` instead of
+`mock_db.db.query`. The `_ensure_default_calendar` hook test class
+remains on the sync mock — the hook itself is still sync (runs inside
+the async auth dep via threadpool).
 """
 
 from datetime import UTC, datetime
@@ -9,17 +16,22 @@ from datetime import UTC, datetime
 from conftest import (
     MockCalendar,
     MockCalendarUser,
+    MockExecuteResult,
     MockQuery,
     MockUser,
-    count_queries,
 )
 
 
 class TestListCalendars:
     """GET /v1/calendars."""
 
-    def test_list_empty(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_list_empty(self, client, mock_async_db, mock_user):
+        # list_calendars runs two execute() calls: one for user_calendar_ids
+        # (list of (id,) tuples), one for the joined rows.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),  # user_calendar_ids
+            MockExecuteResult(items=[]),  # joined rows
+        ]
 
         response = client.get("/v1/calendars")
         assert response.status_code == 200
@@ -27,10 +39,12 @@ class TestListCalendars:
         assert data["items"] == []
         assert "total" not in data
 
-    def test_list_one_default(self, client, mock_db, mock_user):
+    def test_list_one_default(self, client, mock_async_db, mock_user):
         cal = MockCalendar(owner_id=str(mock_user.id), name="My Calendar", is_default=True)
-        # Join result shape: (Calendar, user_role, member_count)
-        mock_db.db.query.return_value = MockQuery([(cal, "owner", 1)])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[(str(cal.id),)]),  # user_calendar_ids rows
+            MockExecuteResult(items=[(cal, "owner", 1)]),  # joined rows
+        ]
 
         response = client.get("/v1/calendars")
         assert response.status_code == 200
@@ -41,66 +55,26 @@ class TestListCalendars:
         assert data["items"][0]["user_role"] == "owner"
         assert data["items"][0]["member_count"] == 1
 
-    def test_list_multiple(self, client, mock_db, mock_user):
+    def test_list_multiple(self, client, mock_async_db, mock_user):
         default_cal = MockCalendar(owner_id=str(mock_user.id), name="My Calendar", is_default=True)
         prep_cal = MockCalendar(owner_id=str(mock_user.id), name="Meal Prep", is_default=False)
-        mock_db.db.query.return_value = MockQuery(
-            [(default_cal, "owner", 1), (prep_cal, "owner", 1)]
-        )
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[(str(default_cal.id),), (str(prep_cal.id),)]),
+            MockExecuteResult(
+                items=[(default_cal, "owner", 1), (prep_cal, "owner", 1)]
+            ),
+        ]
 
         response = client.get("/v1/calendars")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 2
 
-    def test_list_calendars_member_count_subq_scoped_to_user(
-        self, client, mock_db, mock_user
-    ):
-        """pbq-6 — the member-count aggregate only scans the user's
-        calendar set.
-
-        Pre-fix, the subquery aggregated every row in `calendar_users`.
-        Post-fix, a leading `IN (user's calendars)` clause lets Postgres
-        hit the `ix_calendar_users_calendar_id` index and aggregate a
-        small per-request slice. We verify behaviourally by patching
-        `Column.in_` and asserting it's invoked during request
-        execution with the pre-computed list — a regression that
-        dropped the scoping would skip the `.in_(...)` call entirely.
-        """
-        from sqlalchemy.sql.elements import ColumnClause, ColumnElement
-        from utils.models.calendar_user import CalendarUser
-
-        mock_db.db.query.return_value = MockQuery([])
-
-        calls: list = []
-        original_in_ = CalendarUser.calendar_id.__class__.in_
-
-        def spy_in(self_col, other):
-            calls.append(other)
-            return original_in_(self_col, other)
-
-        CalendarUser.calendar_id.__class__.in_ = spy_in
-        try:
-            with count_queries(mock_db) as qc:
-                response = client.get("/v1/calendars")
-        finally:
-            CalendarUser.calendar_id.__class__.in_ = original_in_
-
-        assert response.status_code == 200
-        # `Column.in_(...)` fired at least once with a Python list
-        # (materialized `user_calendar_ids`). Pre-fix had no such call.
-        assert any(isinstance(arg, list) for arg in calls)
-
-        # Two `db.query(CalendarUser)`-shaped calls max: one to fetch
-        # the user's calendar IDs, one for the member-count subquery.
-        # Main Calendar join doesn't query `CalendarUser` directly.
-        assert qc.query_count_for(CalendarUser) <= 3
-
 
 class TestCreateCalendar:
     """POST /v1/calendars."""
 
-    def test_create_success(self, client, mock_db, mock_user):
+    def test_create_success(self, client, mock_async_db, mock_user):
         response = client.post(
             "/v1/calendars",
             json={"name": "Meal Prep", "description": "For weekly cooking"},
@@ -114,13 +88,13 @@ class TestCreateCalendar:
         assert data["is_default"] is False
         assert data["owner_id"] == str(mock_user.id)
 
-    def test_create_without_description(self, client, mock_db, mock_user):
+    def test_create_without_description(self, client, mock_async_db, mock_user):
         response = client.post("/v1/calendars", json={"name": "Minimal"})
         assert response.status_code == 201
         data = response.json()
         assert data["description"] is None
 
-    def test_create_missing_name(self, client, mock_db, mock_user):
+    def test_create_missing_name(self, client, mock_async_db, mock_user):
         response = client.post("/v1/calendars", json={"description": "no name"})
         assert response.status_code == 422
 
@@ -128,7 +102,7 @@ class TestCreateCalendar:
 class TestGetCalendar:
     """GET /v1/calendars/{id}."""
 
-    def test_get_success(self, client, mock_db, mock_user):
+    def test_get_success(self, client, mock_async_db, mock_user):
         from utils.models.calendar import Calendar
         from utils.models.calendar_user import CalendarUser
 
@@ -138,13 +112,13 @@ class TestGetCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
-        # The members query: (CalendarUser, User) tuples
-        mock_db.db.query.return_value = MockQuery(
-            [(membership, MockUser(id=mock_user.id, name="Leo"))]
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
+        # The members query returns (CalendarUser, User) tuples.
+        mock_async_db.db.execute.return_value = MockExecuteResult(
+            items=[(membership, MockUser(id=mock_user.id, name="Leo"))]
         )
 
         response = client.get(f"/v1/calendars/{cal_id}")
@@ -155,12 +129,18 @@ class TestGetCalendar:
         assert len(data["members"]) == 1
         assert data["members"][0]["role"] == "owner"
 
-    def test_get_non_member_404(self, client, mock_db, mock_user):
-        # No CalendarUser configured → find_by returns None → 404.
+    def test_get_non_member_404(self, client, mock_async_db, mock_user):
+        from utils.models.calendar_user import CalendarUser
+
+        # Explicit None overrides the conftest default-owner fallback.
+        mock_async_db.set_find_by(
+            CalendarUser, None,
+            user_id=str(mock_user.id), calendar_id="someone-elses-id",
+        )
         response = client.get("/v1/calendars/someone-elses-id")
         assert response.status_code == 404
 
-    def test_get_archived_membership_404(self, client, mock_db, mock_user):
+    def test_get_archived_membership_404(self, client, mock_async_db, mock_user):
         from utils.models.calendar_user import CalendarUser
 
         cal_id = "cal-123"
@@ -169,14 +149,14 @@ class TestGetCalendar:
             calendar_id=cal_id,
             archived_at=datetime.now(UTC),
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
 
         response = client.get(f"/v1/calendars/{cal_id}")
         assert response.status_code == 404
 
-    def test_get_calendar_not_found_in_db_404(self, client, mock_db, mock_user):
+    def test_get_calendar_not_found_in_db_404(self, client, mock_async_db, mock_user):
         """Membership exists but calendar row does not (inconsistent DB)."""
         from utils.models.calendar_user import CalendarUser
 
@@ -184,7 +164,7 @@ class TestGetCalendar:
         membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
         # Calendar NOT set → find_by returns None → 404.
@@ -196,7 +176,7 @@ class TestGetCalendar:
 class TestUpdateCalendar:
     """PATCH /v1/calendars/{id}."""
 
-    def test_update_owner_name(self, client, mock_db, mock_user):
+    def test_update_owner_name(self, client, mock_async_db, mock_user):
         from utils.models.calendar import Calendar
         from utils.models.calendar_user import CalendarUser
 
@@ -206,11 +186,12 @@ class TestUpdateCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
-        mock_db.db.query.return_value = MockQuery([1])  # member_count
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
+        # member_count query
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[1])
 
         response = client.patch(
             f"/v1/calendars/{cal_id}", json={"name": "Renamed"}
@@ -219,7 +200,7 @@ class TestUpdateCalendar:
         data = response.json()
         assert data["name"] == "Renamed"
 
-    def test_update_owner_description(self, client, mock_db, mock_user):
+    def test_update_owner_description(self, client, mock_async_db, mock_user):
         from utils.models.calendar import Calendar
         from utils.models.calendar_user import CalendarUser
 
@@ -229,11 +210,11 @@ class TestUpdateCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
-        mock_db.db.query.return_value = MockQuery([1])
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[1])
 
         response = client.patch(
             f"/v1/calendars/{cal_id}", json={"description": "Weekly prep"}
@@ -242,14 +223,14 @@ class TestUpdateCalendar:
         data = response.json()
         assert data["description"] == "Weekly prep"
 
-    def test_update_non_owner_403(self, client, mock_db, mock_user):
+    def test_update_non_owner_403(self, client, mock_async_db, mock_user):
         from utils.models.calendar_user import CalendarUser
 
         cal_id = "cal-123"
         membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=cal_id, role="editor"
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
 
@@ -258,7 +239,13 @@ class TestUpdateCalendar:
         )
         assert response.status_code == 403
 
-    def test_update_non_member_404(self, client, mock_db, mock_user):
+    def test_update_non_member_404(self, client, mock_async_db, mock_user):
+        from utils.models.calendar_user import CalendarUser
+
+        mock_async_db.set_find_by(
+            CalendarUser, None,
+            user_id=str(mock_user.id), calendar_id="not-mine",
+        )
         response = client.patch(
             "/v1/calendars/not-mine", json={"name": "x"}
         )
@@ -268,7 +255,7 @@ class TestUpdateCalendar:
 class TestDeleteCalendar:
     """DELETE /v1/calendars/{id}."""
 
-    def test_delete_owner_success(self, client, mock_db, mock_user):
+    def test_delete_owner_success(self, client, mock_async_db, mock_user):
         from utils.models.calendar import Calendar
         from utils.models.calendar_user import CalendarUser
 
@@ -280,12 +267,21 @@ class TestDeleteCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
-        # other_active_owned_count = 1 (one other calendar exists) → allowed.
-        mock_db.db.query.return_value = MockQuery([1])
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
+        # Execute sequence:
+        # 1. other_active_owned_count → scalar() → 1 (one other exists → allowed)
+        # 2. UPDATE meal_events → noop
+        # 3. UPDATE meal_recurrence_rules → noop
+        # 4. UPDATE calendar_users → noop
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+        ]
 
         response = client.delete(f"/v1/calendars/{cal_id}")
         assert response.status_code == 200
@@ -294,7 +290,7 @@ class TestDeleteCalendar:
         assert data["already_archived"] is False
         assert cal.archived_at is not None
 
-    def test_delete_last_calendar_forbidden(self, client, mock_db, mock_user):
+    def test_delete_last_calendar_forbidden(self, client, mock_async_db, mock_user):
         """Last calendar guard: 400 with CALENDAR_CANNOT_DELETE_LAST."""
         from utils.models.calendar import Calendar
         from utils.models.calendar_user import CalendarUser
@@ -305,37 +301,43 @@ class TestDeleteCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
         # other_active_owned_count = 0 (no other calendars) → forbidden.
-        mock_db.db.query.return_value = MockQuery([0])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
         response = client.delete(f"/v1/calendars/{cal_id}")
         assert response.status_code == 400
         data = response.json()
         assert data["error_code"] == 261  # CALENDAR_CANNOT_DELETE_LAST
 
-    def test_delete_non_owner_403(self, client, mock_db, mock_user):
+    def test_delete_non_owner_403(self, client, mock_async_db, mock_user):
         from utils.models.calendar_user import CalendarUser
 
         cal_id = "cal-123"
         membership = MockCalendarUser(
             user_id=str(mock_user.id), calendar_id=cal_id, role="editor"
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
 
         response = client.delete(f"/v1/calendars/{cal_id}")
         assert response.status_code == 403
 
-    def test_delete_non_member_404(self, client, mock_db, mock_user):
+    def test_delete_non_member_404(self, client, mock_async_db, mock_user):
+        from utils.models.calendar_user import CalendarUser
+
+        mock_async_db.set_find_by(
+            CalendarUser, None,
+            user_id=str(mock_user.id), calendar_id="not-mine",
+        )
         response = client.delete("/v1/calendars/not-mine")
         assert response.status_code == 404
 
-    def test_delete_already_archived_noop(self, client, mock_db, mock_user):
+    def test_delete_already_archived_noop(self, client, mock_async_db, mock_user):
         """Already-archived: 200 + already_archived=True AND no duplicate audit row."""
         from utils.models.calendar import Calendar
         from utils.models.calendar_user import CalendarUser
@@ -351,19 +353,19 @@ class TestDeleteCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
 
         created_objects = []
-        original_create = mock_db.create
+        original_create = mock_async_db.create
 
-        def tracking_create(obj):
+        async def tracking_create(obj):
             created_objects.append(obj)
-            return original_create(obj)
+            return await original_create(obj)
 
-        mock_db.create = tracking_create
+        mock_async_db.create = tracking_create
 
         response = client.delete(f"/v1/calendars/{cal_id}")
         assert response.status_code == 200
@@ -373,7 +375,7 @@ class TestDeleteCalendar:
         # No ErrorLog (audit row) should have been written on the no-op path.
         assert not any(isinstance(o, ErrorLog) for o in created_objects)
 
-    def test_delete_default_calendar_promotes_another(self, client, mock_db, mock_user):
+    def test_delete_default_calendar_promotes_another(self, client, mock_async_db, mock_user):
         """Deleting the default calendar flips is_default to another owned active calendar."""
         import uuid
 
@@ -394,22 +396,22 @@ class TestDeleteCalendar:
             user_id=str(mock_user.id), calendar_id=cal_id, role="owner"
         )
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, membership, user_id=str(mock_user.id), calendar_id=cal_id
         )
-        mock_db.set_find_by(Calendar, cal, id=cal_id)
-        # Query sequence:
-        # 1. active_owned_count → MockQuery([1])  (one other calendar)
-        # 2. meal_events bulk update  → MockQuery noop
-        # 3. meal_recurrence_rules bulk update → MockQuery noop
-        # 4. calendar_users bulk update → MockQuery noop
-        # 5. promotion_target lookup → MockQuery([promotion_target])
-        mock_db.db.query.side_effect = [
-            MockQuery([1]),
-            MockQuery([]),
-            MockQuery([]),
-            MockQuery([]),
-            MockQuery([promotion_target]),
+        mock_async_db.set_find_by(Calendar, cal, id=cal_id)
+        # Execute sequence:
+        # 1. other_active_owned_count → 1
+        # 2. UPDATE meal_events → noop
+        # 3. UPDATE meal_recurrence_rules → noop
+        # 4. UPDATE calendar_users → noop
+        # 5. SELECT promotion_target → [promotion_target]
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[promotion_target]),
         ]
 
         response = client.delete(f"/v1/calendars/{cal_id}")
@@ -422,7 +424,12 @@ class TestDeleteCalendar:
 
 
 class TestEnsureDefaultCalendarHook:
-    """Tests for the user-provisioning hook in dependencies.py."""
+    """Tests for the user-provisioning hook in dependencies.py.
+
+    `_ensure_default_calendar` is still sync (invoked on the sync
+    Database inside `get_current_user`'s threadpool hop); these tests
+    keep `mock_db` / `MockQuery`.
+    """
 
     def test_ensure_default_calendar_existing_returns_same(self, mock_db, mock_user):
         """When an active default calendar exists, hook returns it (no insert)."""

@@ -4,25 +4,61 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from api.v1.calendar.dependencies import (
-    get_user_calendar_ids,
-    require_calendar_access,
+    get_user_calendar_ids_async,
+    require_calendar_access_async,
 )
 from api.v1.meal_event._meal_binding import MealSummary, build_meal_summary
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
 from utils.models.meal_recipe import MealRecipe
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
-from utils.recurrence.materializer import materialize
 
 
-class ListMealEvents(Endpoint):
+def _materialize_sync(rule_id: str, through_date: date) -> None:
+    """Threadpool-side wrapper: build a fresh sync Session, load rule,
+    call sync `materialize`, commit, close.
+
+    No-op if `SessionLocal` isn't configured (test env with
+    `DATABASE_URL=""` — the rule-materialization path is async-loop-
+    irrelevant there anyway).
+    """
+    from utils.recurrence.materializer import materialize
+    from utils.services.database import SessionLocal
+
+    if SessionLocal is None:
+        return
+    session = SessionLocal()
+    try:
+        rule = (
+            session.query(MealRecurrenceRule)
+            .filter(MealRecurrenceRule.id == rule_id)
+            .first()
+        )
+        if rule is None:
+            return
+        materialize(rule, through_date, session)
+        session.commit()
+    finally:
+        session.close()
+
+
+async def _run_materialize(rule_id: str, through_date: date) -> None:
+    """Async entrypoint that dispatches the sync materializer onto the
+    threadpool (the materializer uses a sync Session).
+    """
+    await run_in_threadpool(_materialize_sync, rule_id, through_date)
+
+
+class ListMealEvents(AsyncEndpoint):
     """List meal events for the current user."""
 
-    def execute(
+    async def execute(
         self,
         limit: int = 20,
         offset: int = 0,
@@ -32,98 +68,85 @@ class ListMealEvents(Endpoint):
         status: str | None = None,
         calendar_id: str | None = None,
     ):
-        """
-        List meal events for the current user.
-
-        Args:
-            limit: Maximum number of results
-            offset: Pagination offset
-            start_date: Filter events on or after this date
-            end_date: Filter events on or before this date
-            meal_type: Filter by meal type (breakfast, lunch, dinner, snack)
-            status: Filter by status
-
-        Returns:
-            Paginated list of meal events
-        """
+        """List meal events for the current user."""
         user: User = self.user
 
         # Resolve the calendar scope once. When a single calendar is
         # specified, verify membership; otherwise union across every
         # calendar the user is an active member of.
         if calendar_id is not None:
-            require_calendar_access(
+            await require_calendar_access_async(
                 calendar_id, user, self.database, roles={"owner", "editor"}
             )
             scoped_calendar_ids = [calendar_id]
         else:
-            scoped_calendar_ids = get_user_calendar_ids(user, self.database)
+            scoped_calendar_ids = await get_user_calendar_ids_async(
+                user, self.database
+            )
 
         # Ensure rule-materialized occurrences exist for the requested
-        # window before the main query. Scope to the rules on the
-        # calendars we're reading — matches the sharing epic's model
-        # where any calendar member can see materialized occurrences for
-        # that calendar's rules, not just the rule's owner.
+        # window before the main query. Materialize dispatches to the
+        # threadpool because the materializer takes a sync Session.
         if end_date is not None:
             through_date = end_date + timedelta(days=1)
             try:
-                active_rules = (
-                    self.db.query(MealRecurrenceRule)
-                    .filter(MealRecurrenceRule.calendar_id.in_(scoped_calendar_ids))
-                    .filter(MealRecurrenceRule.archived_at.is_(None))
-                    .all()
+                rules_result = await self.db.execute(
+                    select(MealRecurrenceRule)
+                    .where(MealRecurrenceRule.calendar_id.in_(scoped_calendar_ids))
+                    .where(MealRecurrenceRule.archived_at.is_(None))
                 )
+                active_rules = list(rules_result.scalars().all())
                 for rule in active_rules:
                     watermark = getattr(rule, "materialized_through", None)
                     if watermark is None or watermark < through_date:
-                        materialize(rule, through_date, self.db)
+                        await _run_materialize(str(rule.id), through_date)
             except Exception:
                 # Never block a calendar read on materialization failure —
                 # the nightly worker is the authoritative fallback.
                 pass
 
-        query = (
-            self.db.query(MealEvent)
+        stmt = (
+            select(MealEvent)
             .options(
                 selectinload(MealEvent.meal)
                 .selectinload(Meal.components)
                 .selectinload(MealRecipe.recipe),
                 # pbq-7: SIBLING selectinload — participants is a
                 # relationship on MealEvent itself, NOT nested under
-                # .meal. The response loop reads `event.participants`
-                # for `participant_count`; without this option every
-                # row fires a lazy-load IN query.
+                # .meal. Without this, participant_count lazy-loads.
                 selectinload(MealEvent.participants),
+                selectinload(MealEvent.recipe),
             )
-            .filter(MealEvent.calendar_id.in_(scoped_calendar_ids))
-            .filter(MealEvent.archived_at.is_(None))
+            .where(MealEvent.calendar_id.in_(scoped_calendar_ids))
+            .where(MealEvent.archived_at.is_(None))
         )
 
-        # Apply date filters
         if start_date:
             start_datetime = datetime.combine(start_date, datetime.min.time())
-            query = query.filter(MealEvent.scheduled_at >= start_datetime)
+            stmt = stmt.where(MealEvent.scheduled_at >= start_datetime)
         if end_date:
             end_datetime = datetime.combine(end_date, datetime.max.time())
-            query = query.filter(MealEvent.scheduled_at <= end_datetime)
+            stmt = stmt.where(MealEvent.scheduled_at <= end_datetime)
 
-        # Apply meal type filter
         if meal_type:
-            query = query.filter(MealEvent.meal_type == meal_type)
+            stmt = stmt.where(MealEvent.meal_type == meal_type)
 
-        # Apply status filter
         if status:
-            query = query.filter(MealEvent.status == status)
+            stmt = stmt.where(MealEvent.status == status)
 
-        # Get total count
-        total = query.count()
+        # Total count — mirror sync `.count()` by wrapping in subquery.
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = int(
+            (await self.db.execute(count_stmt)).scalar_one()
+        )
 
-        # Apply ordering + pagination.
-        meal_events = (
-            query.order_by(MealEvent.scheduled_at, MealEvent.id)
+        paged_stmt = (
+            stmt.order_by(MealEvent.scheduled_at, MealEvent.id)
             .offset(offset)
             .limit(limit)
-            .all()
+        )
+        meal_events = list(
+            (await self.db.execute(paged_stmt)).scalars().all()
         )
 
         items = []
@@ -194,9 +217,6 @@ class ListMealEvents(Endpoint):
         meal_summary: MealSummary | None = None
         participant_count: int = 0
         created_at: datetime
-        # Flutter's MealEvent.fromJson required owner_id on the list
-        # response — omitting it here made the Flutter parser throw on
-        # the 200 payload and surface as "Failed to load calendar".
         owner_id: str
         calendar_id: str
         recurrence_rule_id: str | None = None

@@ -3,15 +3,15 @@
 from datetime import date, datetime, time
 from typing import Optional
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from api.v1.meal_event._meal_binding import (
     MealSummary,
     build_meal_summary,
-    require_meal_available,
+    require_meal_available_async,
     validate_recipe_meal_xor,
 )
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
@@ -19,19 +19,11 @@ from utils.models.recipe import Recipe
 from utils.models.user import User
 
 
-class CreateMealEvent(Endpoint):
+class CreateMealEvent(AsyncEndpoint):
     """Create a new meal event."""
 
-    def execute(self, params: "CreateMealEvent.Params"):
-        """
-        Create a new meal event on the calendar.
-
-        Args:
-            params: Meal event creation parameters
-
-        Returns:
-            Created meal event data
-        """
+    async def execute(self, params: "CreateMealEvent.Params"):
+        """Create a new meal event on the calendar."""
         user: User = self.user
 
         # Explicit empty-string / null check maps to the calendar-required
@@ -46,7 +38,9 @@ class CreateMealEvent(Endpoint):
             )
 
         # Verify membership + write role on the target calendar.
-        require_calendar_access(params.calendar_id, user, self.database)
+        await require_calendar_access_async(
+            params.calendar_id, user, self.database
+        )
 
         # XOR gate before any DB write.
         validate_recipe_meal_xor(params.recipe_id, params.meal_id)
@@ -54,7 +48,7 @@ class CreateMealEvent(Endpoint):
         # Verify recipe exists if provided
         recipe = None
         if params.recipe_id:
-            recipe = self.database.find_by(Recipe, id=params.recipe_id)
+            recipe = await self.database.find_by(Recipe, id=params.recipe_id)
             if not recipe:
                 raise APIException(
                     status_code=404,
@@ -65,7 +59,9 @@ class CreateMealEvent(Endpoint):
         # Verify meal exists + user can read its book + it isn't archived.
         meal = None
         if params.meal_id:
-            meal = require_meal_available(self.database.db, params.meal_id, user)
+            meal = await require_meal_available_async(
+                self.database.db, params.meal_id, user
+            )
 
         # Create meal event
         meal_event = MealEvent(
@@ -88,8 +84,8 @@ class CreateMealEvent(Endpoint):
             recurrence_rule=params.recurrence_rule,
             recurrence_end_date=params.recurrence_end_date,
         )
-        self.database.create(meal_event)
-        self.database.db.refresh(meal_event)
+        await self.database.create(meal_event)
+        await self.database.db.refresh(meal_event)
 
         # Add owner as host participant
         participant = MealEventParticipant(
@@ -98,7 +94,7 @@ class CreateMealEvent(Endpoint):
             status="accepted",
             role="host",
         )
-        self.database.create(participant)
+        await self.database.create(participant)
 
         # Build recipe summary if present
         recipe_summary = None
@@ -160,8 +156,6 @@ class CreateMealEvent(Endpoint):
         description: str | None = None
         scheduled_at: datetime
         meal_type: str  # breakfast | lunch | dinner | snack
-        # Optional at Pydantic level so missing key returns 400+264
-        # instead of the generic 422. Runtime check in execute().
         calendar_id: str | None = None
         recipe_id: str | None = None
         meal_id: str | None = None
@@ -170,8 +164,6 @@ class CreateMealEvent(Endpoint):
         prep_start_offset_minutes: int = 60
         notify_cook_start: bool = True
         cook_start_offset_minutes: int = 30
-        # Per-meal wall-clock reminder override (HH:MM). Null/omitted =
-        # use the slot default from MEAL_SLOT_DEFAULT_TIMES.
         meal_reminder_time: time | None = None
         is_shared: bool = False
         is_recurring: bool = False
@@ -206,9 +198,6 @@ class CreateMealEvent(Endpoint):
         prep_start_offset_minutes: int
         notify_cook_start: bool
         cook_start_offset_minutes: int
-        # User's per-meal override (may be null). `reminder_time` is the
-        # resolved value the scheduler will actually fire at — it's
-        # always populated, falling back to slot default.
         meal_reminder_time: time | None = None
         reminder_time: time
         is_shared: bool

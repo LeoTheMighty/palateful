@@ -3,17 +3,17 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.user import User
 
 
-class SkipMealEvent(Endpoint):
+class SkipMealEvent(AsyncEndpoint):
     """Skip a meal event (mark as skipped to dismiss notifications)."""
 
-    def execute(self, event_id: str):
+    async def execute(self, event_id: str):
         """
         Skip a meal event.
 
@@ -26,7 +26,7 @@ class SkipMealEvent(Endpoint):
         user: User = self.user
 
         # Find meal event
-        meal_event = self.database.find_by(MealEvent, id=event_id)
+        meal_event = await self.database.find_by(MealEvent, id=event_id)
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -36,7 +36,7 @@ class SkipMealEvent(Endpoint):
 
         # Check access - must be owner or cohost
         is_owner = meal_event.owner_id == user.id
-        participant = self.database.find_by(
+        participant = await self.database.find_by(
             MealEventParticipant, meal_event_id=event_id, user_id=user.id
         )
         is_cohost = participant and participant.role in ("host", "cohost")
@@ -49,7 +49,7 @@ class SkipMealEvent(Endpoint):
 
         # Update status to skipped
         meal_event.status = "skipped"
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=SkipMealEvent.Response(

@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
@@ -12,10 +12,10 @@ from utils.models.user import User
 VALID_RESPONSES = ["accepted", "declined", "maybe"]
 
 
-class RespondToInvite(Endpoint):
+class RespondToInvite(AsyncEndpoint):
     """Respond to a meal event invitation."""
 
-    def execute(self, event_id: str, params: "RespondToInvite.Params"):
+    async def execute(self, event_id: str, params: "RespondToInvite.Params"):
         """
         Respond to a meal event invitation.
 
@@ -37,7 +37,7 @@ class RespondToInvite(Endpoint):
             )
 
         # Find meal event
-        meal_event = self.database.find_by(MealEvent, id=event_id)
+        meal_event = await self.database.find_by(MealEvent, id=event_id)
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -46,7 +46,7 @@ class RespondToInvite(Endpoint):
             )
 
         # Find participant record for current user
-        participant = self.database.find_by(
+        participant = await self.database.find_by(
             MealEventParticipant, meal_event_id=event_id, user_id=user.id
         )
         if not participant:
@@ -58,8 +58,8 @@ class RespondToInvite(Endpoint):
 
         # Update status
         participant.status = params.status
-        self.database.db.commit()
-        self.database.db.refresh(participant)
+        await self.database.db.commit()
+        await self.database.db.refresh(participant)
 
         return success(
             data=RespondToInvite.Response(

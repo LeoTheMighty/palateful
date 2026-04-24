@@ -1,4 +1,8 @@
-"""MCP tools for the meal calendar."""
+"""MCP tools for the meal calendar.
+
+aam-14: tools flipped to `async def` + `await call_endpoint_async(...)`
+when the meal_event domain converted.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ from datetime import date, datetime
 from api.v1.meal_event.create_meal_event import CreateMealEvent
 from api.v1.meal_event.get_meal_event import GetMealEvent
 from api.v1.meal_event.list_meal_events import ListMealEvents
-from mcp_server.server import call_endpoint, mcp
+from mcp_server.server import call_endpoint_async, mcp
 
 _VALID_MEAL_TYPES = {"breakfast", "lunch", "dinner", "snack"}
 
@@ -31,7 +35,7 @@ def _parse_iso_date(value: str, field: str) -> date:
 
 
 @mcp.tool()
-def list_meal_events(
+async def list_meal_events(
     start_date: str | None = None,
     end_date: str | None = None,
     meal_type: str | None = None,
@@ -54,11 +58,11 @@ def list_meal_events(
                 f"meal_type must be one of: {', '.join(sorted(_VALID_MEAL_TYPES))}"
             )
         kwargs["meal_type"] = meal_type
-    return call_endpoint(ListMealEvents, **kwargs)
+    return await call_endpoint_async(ListMealEvents, **kwargs)
 
 
 @mcp.tool()
-def create_meal_event(
+async def create_meal_event(
     title: str,
     scheduled_at: str,
     meal_type: str,
@@ -82,12 +86,12 @@ def create_meal_event(
         recipe_id=recipe_id,
         description=description,
     )
-    return call_endpoint(CreateMealEvent, params=params)
+    return await call_endpoint_async(CreateMealEvent, params=params)
 
 
 @mcp.tool()
-def get_meal_event(event_id: str) -> str:
+async def get_meal_event(event_id: str) -> str:
     """Get the details of a scheduled meal, including recipe info and
     participants. Use when the user asks "what am I making Thursday?"
     """
-    return call_endpoint(GetMealEvent, event_id=event_id)
+    return await call_endpoint_async(GetMealEvent, event_id=event_id)

@@ -4,21 +4,27 @@ import logging
 from datetime import date, datetime, time
 from typing import Optional
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from api.v1.meal_event._meal_binding import (
     MealSummary,
     build_meal_summary,
-    require_meal_available,
+    require_meal_available_async,
     validate_recipe_meal_xor,
 )
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.events import MealEventCompleted, dispatch
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
+from utils.models.meal_event_participant import MealEventParticipant
+from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
 from utils.models.user import User
 from utils.services.meal_event_notifications import notify_meal_event_updated
+from utils.services.notifications_bridge import notify_via_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +59,7 @@ def _compute_changed_fields(
 
 
 def _format_new_time(scheduled_at: datetime) -> str:
-    """Human-friendly 12h time for the "moved to X" notification title.
-    Uses UTC (server tz) — recipient tz localization happens on-device
-    when the deep-link opens the detail screen. For the body text
-    that's fine; the precise wall-clock is in the detail view."""
+    """Human-friendly 12h time for the "moved to X" notification title."""
     hour24 = scheduled_at.hour
     hour12 = 12 if hour24 == 0 else (hour24 - 12 if hour24 > 12 else hour24)
     ampm = "AM" if hour24 < 12 else "PM"
@@ -64,24 +67,58 @@ def _format_new_time(scheduled_at: datetime) -> str:
     return f"{hour12}:{minute_str} {ampm}"
 
 
-class UpdateMealEvent(Endpoint):
+def _notify_updated_on_threadpool(
+    meal_event_id: str,
+    actor_id: str,
+    changed_fields: list[str],
+    new_time: str | None,
+    *,
+    database,
+) -> None:
+    """Threadpool-side re-fetch + fan-out for notify_meal_event_updated.
+
+    The async handler can't hand a sync `Session` to the sync notify
+    helper, so the bridge (`notify_via_threadpool`) injects a fresh sync
+    `database`; we re-fetch the event + actor on that session and
+    invoke the sync notifier with `db_session=database.db`.
+    """
+    meal_event = database.find_by(MealEvent, id=meal_event_id)
+    actor = database.find_by(User, id=actor_id)
+    if meal_event is None or actor is None:
+        return
+    notify_meal_event_updated(
+        meal_event,
+        actor,
+        changed_fields=changed_fields,
+        new_time=new_time,
+        db_session=database.db,
+    )
+
+
+class UpdateMealEvent(AsyncEndpoint):
     """Update a meal event."""
 
-    def execute(self, event_id: str, params: "UpdateMealEvent.Params"):
-        """
-        Update a meal event.
-
-        Args:
-            event_id: The meal event's ID
-            params: Update parameters
-
-        Returns:
-            Updated meal event data
-        """
+    async def execute(self, event_id: str, params: "UpdateMealEvent.Params"):
+        """Update a meal event."""
         user: User = self.user
 
-        # Find meal event
-        meal_event = self.database.find_by(MealEvent, id=event_id)
+        # Eager-load everything the response builder touches so async
+        # reads post-commit don't lazy-load (MissingGreenlet).
+        meal_event = (
+            await self.db.execute(
+                select(MealEvent)
+                .options(
+                    selectinload(MealEvent.recipe),
+                    selectinload(MealEvent.meal)
+                    .selectinload(Meal.components)
+                    .selectinload(MealRecipe.recipe)
+                    .selectinload(Recipe.recipe_book),
+                    selectinload(MealEvent.participants)
+                    .selectinload(MealEventParticipant.user),
+                )
+                .where(MealEvent.id == event_id)
+            )
+        ).scalars().first()
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -89,20 +126,13 @@ class UpdateMealEvent(Endpoint):
                 code=ErrorCode.MEAL_EVENT_NOT_FOUND,
             )
 
-        # Calendar membership gates edit authorization; host/cohost/guest
-        # participants are NOT consulted. Non-member → 403 (PATCH is a
-        # write — existence leak is less concerning than GET, and 403
-        # signals "you can't do this" more usefully here).
-        require_calendar_access(
+        # Calendar membership gates edit authorization. Non-member → 403
+        # (PATCH is a write — existence leak is less concerning than GET).
+        await require_calendar_access_async(
             str(meal_event.calendar_id), user, self.database
         )
 
-        # Move-to-calendar: optional field on PATCH. Different calendar →
-        # verify editor on destination, then flip calendar_id. Same
-        # calendar is a silent no-op. Empty string is treated as "no
-        # calendar_id supplied" via the calendar-required error so older
-        # clients that send "" don't land in a membership query with an
-        # empty UUID.
+        # Move-to-calendar: optional field on PATCH.
         if params.calendar_id == "":
             raise APIException(
                 status_code=400,
@@ -113,7 +143,9 @@ class UpdateMealEvent(Endpoint):
             params.calendar_id is not None
             and params.calendar_id != str(meal_event.calendar_id)
         ):
-            require_calendar_access(params.calendar_id, user, self.database)
+            await require_calendar_access_async(
+                params.calendar_id, user, self.database
+            )
             meal_event.calendar_id = params.calendar_id
 
         # Validate status if provided
@@ -132,10 +164,7 @@ class UpdateMealEvent(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
-        # Mode-switch gate: callers supplying both ids get rejected. The
-        # effective post-patch state must honor the XOR invariant too —
-        # if the client only supplies `meal_id`, clear the prior
-        # `recipe_id` to avoid a both-set row; same for the reverse.
+        # XOR + mode-switch resolution
         resolved_recipe_id = (
             params.recipe_id
             if params.recipe_id is not None
@@ -146,10 +175,6 @@ class UpdateMealEvent(Endpoint):
             if params.meal_id is not None
             else (str(meal_event.meal_id) if meal_event.meal_id else None)
         )
-        # Client may set one FK and clear the other implicitly by supplying
-        # only the one they want. We reject cases where the client explicitly
-        # sets both; but if they set only meal_id and the row already has a
-        # recipe_id, we interpret that as a mode switch and clear the recipe.
         if params.recipe_id is not None and params.meal_id is None:
             resolved_meal_id = None
         if params.meal_id is not None and params.recipe_id is None:
@@ -158,7 +183,7 @@ class UpdateMealEvent(Endpoint):
 
         # Verify recipe exists if updating
         if params.recipe_id:
-            recipe = self.database.find_by(Recipe, id=params.recipe_id)
+            recipe = await self.database.find_by(Recipe, id=params.recipe_id)
             if not recipe:
                 raise APIException(
                     status_code=404,
@@ -168,15 +193,12 @@ class UpdateMealEvent(Endpoint):
 
         # Verify meal exists + readable + not archived if switching modes.
         if params.meal_id:
-            require_meal_available(self.database.db, params.meal_id, user)
+            await require_meal_available_async(
+                self.database.db, params.meal_id, user
+            )
 
-        # Capture pre-update state for pantry-4 event dispatch.
+        # Capture pre-update state.
         previous_status = meal_event.status
-        # Capture pre-update state for meal-4 MEAL_EVENT_UPDATED
-        # dispatch. We diff the request payload against these snapshots
-        # AFTER commit to decide which recipients (if any) should be
-        # notified. Holding primitives, not the loaded row, avoids any
-        # subtle "was this column re-bound?" issues.
         before = {
             "title": meal_event.title,
             "scheduled_at": meal_event.scheduled_at,
@@ -186,7 +208,7 @@ class UpdateMealEvent(Endpoint):
         }
         was_shared = bool(meal_event.is_shared)
 
-        # Update fields
+        # Apply updates
         if params.title is not None:
             meal_event.title = params.title
         if params.description is not None:
@@ -199,11 +221,9 @@ class UpdateMealEvent(Endpoint):
             meal_event.status = params.status
         if params.recipe_id is not None:
             meal_event.recipe_id = params.recipe_id
-            # Mode-switch: setting recipe_id clears meal_id.
             meal_event.meal_id = None
         if params.meal_id is not None:
             meal_event.meal_id = params.meal_id
-            # Mode-switch: setting meal_id clears recipe_id.
             meal_event.recipe_id = None
         if params.pantry_id is not None:
             meal_event.pantry_id = params.pantry_id
@@ -215,10 +235,8 @@ class UpdateMealEvent(Endpoint):
             meal_event.notify_cook_start = params.notify_cook_start
         if params.cook_start_offset_minutes is not None:
             meal_event.cook_start_offset_minutes = params.cook_start_offset_minutes
-        # `meal_reminder_time` needs field-presence semantics, not null-
-        # means-leave-alone: sending `null` explicitly is how the client
-        # clears a per-meal override back to the slot default. Use
-        # model_fields_set to distinguish "omitted" from "sent as null".
+        # `meal_reminder_time` needs field-presence semantics (explicit-null
+        # clears the override). Use model_fields_set to distinguish.
         if "meal_reminder_time" in params.model_fields_set:
             meal_event.meal_reminder_time = params.meal_reminder_time
         if params.is_shared is not None:
@@ -230,14 +248,10 @@ class UpdateMealEvent(Endpoint):
         if params.recurrence_end_date is not None:
             meal_event.recurrence_end_date = params.recurrence_end_date
 
-        self.database.db.commit()
-        self.database.db.refresh(meal_event)
+        await self.database.db.commit()
+        await self.database.db.refresh(meal_event)
 
-        # meal-4: fan MEAL_EVENT_UPDATED to accepted participants when a
-        # SHARED event's user-visible fields changed. We skip when the
-        # event wasn't shared before AND isn't shared now — the
-        # notification only makes sense between co-cooks. Per-recipient
-        # prefs + quiet hours apply inside the notify function.
+        # meal-4 fan-out to accepted participants of shared events.
         changed_fields = _compute_changed_fields(before, meal_event)
         should_notify_update = (
             (was_shared or meal_event.is_shared)
@@ -250,12 +264,12 @@ class UpdateMealEvent(Endpoint):
                     if "scheduled_at" in changed_fields
                     else None
                 )
-                notify_meal_event_updated(
-                    meal_event,
-                    user,
+                await notify_via_threadpool(
+                    _notify_updated_on_threadpool,
+                    meal_event_id=str(meal_event.id),
+                    actor_id=str(user.id),
                     changed_fields=changed_fields,
                     new_time=new_time_display,
-                    db_session=self.database.db,
                 )
             except Exception:
                 # Best-effort — a push-fanout failure must never 500 the
@@ -266,9 +280,7 @@ class UpdateMealEvent(Endpoint):
                 )
 
         # Pantry decrement hook (pantry-4). Only fires on the transition
-        # into "completed" — re-submitting completed→completed is a no-op
-        # and skipped→completed still triggers (a skipped meal that later
-        # flips to cooked should consume the pantry).
+        # into "completed".
         if (
             meal_event.status == "completed"
             and previous_status != "completed"
@@ -285,7 +297,6 @@ class UpdateMealEvent(Endpoint):
                     ),
                 )
             except Exception:
-                # Best-effort: never block the mark-as-cooked action.
                 logger.exception(
                     "meal_event_completed_dispatch_failed meal_event_id=%s",
                     meal_event.id,
@@ -366,19 +377,11 @@ class UpdateMealEvent(Endpoint):
         recipe_id: str | None = None
         meal_id: str | None = None
         pantry_id: str | None = None
-        # Move-to-calendar: set to a different calendar to move the meal.
-        # Must be a calendar the user has editor access on.
         calendar_id: str | None = None
         notify_prep_start: bool | None = None
         prep_start_offset_minutes: int | None = None
         notify_cook_start: bool | None = None
         cook_start_offset_minutes: int | None = None
-        # Per-meal wall-clock reminder override. Semantics:
-        #   - key omitted  → leave unchanged
-        #   - key = "HH:MM" → persist the override
-        #   - key = null   → clear the override (revert to slot default)
-        # The endpoint uses `model_fields_set` to distinguish omit from
-        # explicit-null (standard None-means-skip pattern can't clear).
         meal_reminder_time: time | None = None
         is_shared: bool | None = None
         is_recurring: bool | None = None
@@ -413,9 +416,6 @@ class UpdateMealEvent(Endpoint):
         prep_start_offset_minutes: int
         notify_cook_start: bool
         cook_start_offset_minutes: int
-        # User's per-meal override (may be null). `reminder_time` is the
-        # resolved value the scheduler fires at — always populated,
-        # falls back to slot default when override is null.
         meal_reminder_time: time | None = None
         reminder_time: time
         is_shared: bool

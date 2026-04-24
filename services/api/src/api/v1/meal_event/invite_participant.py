@@ -4,31 +4,44 @@ from datetime import datetime
 
 from api.v1.meal_event.utils.notifications import notify_meal_event_invite
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.user import User
+from utils.services.notifications_bridge import notify_via_threadpool
 
 
-class InviteParticipant(Endpoint):
+def _notify_invite_on_threadpool(
+    meal_event_id: str,
+    invited_user_id: str,
+    invited_by_id: str,
+    message: str | None,
+    *,
+    database,
+) -> None:
+    """Threadpool-side re-fetch + fan-out for notify_meal_event_invite.
+
+    `notify_meal_event_invite` takes model instances, not ids, so we
+    re-read them on the fresh sync session the bridge injects.
+    """
+    meal_event = database.find_by(MealEvent, id=meal_event_id)
+    invited_user = database.find_by(User, id=invited_user_id)
+    invited_by = database.find_by(User, id=invited_by_id)
+    if meal_event is None or invited_user is None or invited_by is None:
+        return
+    notify_meal_event_invite(meal_event, invited_user, invited_by, message)
+
+
+class InviteParticipant(AsyncEndpoint):
     """Invite a participant to a meal event."""
 
-    def execute(self, event_id: str, params: "InviteParticipant.Params"):
-        """
-        Invite a participant to a meal event.
-
-        Args:
-            event_id: The meal event's ID
-            params: Invitation parameters
-
-        Returns:
-            Participant data
-        """
+    async def execute(self, event_id: str, params: "InviteParticipant.Params"):
+        """Invite a participant to a meal event."""
         user: User = self.user
 
         # Find meal event
-        meal_event = self.database.find_by(MealEvent, id=event_id)
+        meal_event = await self.database.find_by(MealEvent, id=event_id)
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -38,7 +51,7 @@ class InviteParticipant(Endpoint):
 
         # Check access - must be owner or cohost
         is_owner = meal_event.owner_id == user.id
-        current_participant = self.database.find_by(
+        current_participant = await self.database.find_by(
             MealEventParticipant, meal_event_id=event_id, user_id=user.id
         )
         is_cohost = current_participant and current_participant.role in ("host", "cohost")
@@ -52,9 +65,9 @@ class InviteParticipant(Endpoint):
         # Find the user to invite
         invited_user = None
         if params.user_id:
-            invited_user = self.database.find_by(User, id=params.user_id)
+            invited_user = await self.database.find_by(User, id=params.user_id)
         elif params.email:
-            invited_user = self.database.find_by(User, email=params.email)
+            invited_user = await self.database.find_by(User, email=params.email)
 
         if not invited_user:
             raise APIException(
@@ -64,7 +77,7 @@ class InviteParticipant(Endpoint):
             )
 
         # Check if already a participant
-        existing = self.database.find_by(
+        existing = await self.database.find_by(
             MealEventParticipant, meal_event_id=event_id, user_id=invited_user.id
         )
         if existing:
@@ -82,16 +95,22 @@ class InviteParticipant(Endpoint):
             role=params.role,
             assigned_tasks=[],
         )
-        self.database.create(participant)
-        self.database.db.refresh(participant)
+        await self.database.create(participant)
+        await self.database.db.refresh(participant)
 
         # Mark event as shared
         if not meal_event.is_shared:
             meal_event.is_shared = True
-            self.database.db.commit()
+            await self.database.db.commit()
 
-        # Send notification to invited user
-        notify_meal_event_invite(meal_event, invited_user, user, params.message)
+        # Send notification to invited user (fire-and-forget via threadpool).
+        await notify_via_threadpool(
+            _notify_invite_on_threadpool,
+            meal_event_id=str(meal_event.id),
+            invited_user_id=str(invited_user.id),
+            invited_by_id=str(user.id),
+            message=params.message,
+        )
 
         return success(
             data=InviteParticipant.Response(

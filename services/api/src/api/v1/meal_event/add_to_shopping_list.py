@@ -17,27 +17,55 @@ from the shop-without-scheduling path.
 from datetime import datetime
 from decimal import Decimal
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.meal import Meal
 from utils.models.meal_event import MealEvent
+from utils.models.meal_recipe import MealRecipe
+from utils.models.recipe import Recipe
+from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.services.meal_service import aggregate_meal_ingredients
 
 
-class AddMealEventToShoppingList(Endpoint):
+class AddMealEventToShoppingList(AsyncEndpoint):
     """Append a single calendar event's ingredients to a shopping list."""
 
-    def execute(
+    async def execute(
         self,
         event_id: str,
         params: "AddMealEventToShoppingList.Params",
     ):
         user = self.user
 
-        event = self.database.find_by(MealEvent, id=event_id)
+        # Eager-load EVERY relationship aggregate_meal_ingredients /
+        # recipe-expansion will touch — a lazy-load on the async session
+        # would MissingGreenlet.
+        event = (
+            await self.db.execute(
+                select(MealEvent)
+                .options(
+                    selectinload(MealEvent.recipe)
+                    .selectinload(Recipe.ingredients)
+                    .selectinload(RecipeIngredient.ingredient),
+                    selectinload(MealEvent.meal)
+                    .selectinload(Meal.components)
+                    .selectinload(MealRecipe.recipe)
+                    .selectinload(Recipe.ingredients)
+                    .selectinload(RecipeIngredient.ingredient),
+                    selectinload(MealEvent.meal)
+                    .selectinload(Meal.components)
+                    .selectinload(MealRecipe.recipe)
+                    .selectinload(Recipe.recipe_book),
+                )
+                .where(MealEvent.id == event_id)
+            )
+        ).scalars().first()
         if not event:
             raise APIException(
                 status_code=404,
@@ -46,7 +74,9 @@ class AddMealEventToShoppingList(Endpoint):
             )
 
         # Calendar membership gates the read on the event.
-        require_calendar_access(str(event.calendar_id), user, self.database)
+        await require_calendar_access_async(
+            str(event.calendar_id), user, self.database
+        )
 
         if not event.recipe_id and not event.meal_id:
             raise APIException(
@@ -55,9 +85,15 @@ class AddMealEventToShoppingList(Endpoint):
                 code=ErrorCode.VALIDATION_ERROR,
             )
 
-        shopping_list = self.database.find_by(
-            ShoppingList, id=params.shopping_list_id
-        )
+        # Eager-load the shopping list + its items so `.items` iteration
+        # in existing_keys doesn't lazy-load under async.
+        shopping_list = (
+            await self.db.execute(
+                select(ShoppingList)
+                .options(selectinload(ShoppingList.items))
+                .where(ShoppingList.id == params.shopping_list_id)
+            )
+        ).scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -66,7 +102,7 @@ class AddMealEventToShoppingList(Endpoint):
             )
 
         is_owner = shopping_list.owner_id == user.id
-        list_membership = self.database.find_by(
+        list_membership = await self.database.find_by(
             ShoppingListUser,
             shopping_list_id=params.shopping_list_id,
             user_id=user.id,
@@ -95,6 +131,10 @@ class AddMealEventToShoppingList(Endpoint):
         items_skipped = 0
 
         if event.meal_id is not None:
+            # aggregate_meal_ingredients is sync and accepts an AsyncSession
+            # on read paths because it only walks pre-loaded relationships
+            # (see meal_service.py docstring). The selectinload chain above
+            # guarantees no lazy-load fires.
             aggregates = aggregate_meal_ingredients(event.meal, self.database.db)
             for agg in aggregates:
                 if (agg.ingredient_id, event.id) in existing_keys:
@@ -117,13 +157,13 @@ class AddMealEventToShoppingList(Endpoint):
                     source_meal_id=event.meal_id,
                     added_by_user_id=user.id,
                 )
-                self.database.create(item)
-                self.database.db.refresh(item)
+                await self.database.create(item)
+                await self.database.db.refresh(item)
                 added_items.append(_to_item_response(item))
         else:
             # Recipe-linked event: expand via the recipe's RecipeIngredient
             # rows. Mirrors PopulateFromRecipe but keyed on the per-event
-            # dedupe — `recipe_id` carried for downstream activity logging.
+            # dedupe.
             recipe = event.recipe
             if recipe is None:
                 raise APIException(
@@ -152,11 +192,11 @@ class AddMealEventToShoppingList(Endpoint):
                     source_meal_id=None,
                     added_by_user_id=user.id,
                 )
-                self.database.create(item)
-                self.database.db.refresh(item)
+                await self.database.create(item)
+                await self.database.db.refresh(item)
                 added_items.append(_to_item_response(item))
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=AddMealEventToShoppingList.Response(
