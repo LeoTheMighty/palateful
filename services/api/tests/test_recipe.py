@@ -2036,7 +2036,7 @@ class TestBulkUpdateTags:
 class TestGetRecipeVersion:
     """Tests for GET /v1/recipes/{recipe_id}/versions/{version_id}."""
 
-    def test_get_recipe_version_success(self, client, mock_db, mock_user):
+    def test_get_recipe_version_success(self, client, mock_async_db, mock_user):
         """Test getting a specific recipe version snapshot."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2058,11 +2058,11 @@ class TestGetRecipeVersion:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
 
         response = client.get(f"/v1/recipes/{recipe_id}/versions/{version_id}")
         assert response.status_code == 200
@@ -2073,24 +2073,24 @@ class TestGetRecipeVersion:
         assert data["snapshot"]["name"] == "Old Name"
         assert data["changed_fields"] == ["name"]
 
-    def test_get_recipe_version_recipe_not_found(self, client, mock_db, mock_user):
+    def test_get_recipe_version_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test getting a version for a non-existent recipe."""
         response = client.get("/v1/recipes/nonexistent/versions/some-version")
         assert response.status_code == 404
 
-    def test_get_recipe_version_access_denied(self, client, mock_db, mock_user):
+    def test_get_recipe_version_access_denied(self, client, mock_async_db, mock_user):
         """Test getting a version without recipe book access."""
         recipe_id = "test-recipe-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         response = client.get(f"/v1/recipes/{recipe_id}/versions/some-version")
         assert response.status_code == 403
 
-    def test_get_recipe_version_not_found(self, client, mock_db, mock_user):
+    def test_get_recipe_version_not_found(self, client, mock_async_db, mock_user):
         """Test getting a version that doesn't exist."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2103,8 +2103,8 @@ class TestGetRecipeVersion:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
         # RecipeVersion not set — find_by returns None
@@ -2842,7 +2842,7 @@ class TestUpdateRecipeMissingBranches:
 class TestGetRecipeVersionsMissingBranches:
     """Tests for missing branches in get_recipe_versions.py."""
 
-    def test_get_recipe_versions_success(self, client, mock_db, mock_user):
+    def test_get_recipe_versions_success(self, client, mock_async_db, mock_user):
         """Test getting version history for a recipe (full success path)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2866,11 +2866,11 @@ class TestGetRecipeVersionsMissingBranches:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_where(RecipeVersion, [version2, version1])
+        mock_async_db.set_where(RecipeVersion, [version2, version1])
 
         response = client.get(f"/v1/recipes/{recipe_id}/versions")
         assert response.status_code == 200
@@ -2879,25 +2879,25 @@ class TestGetRecipeVersionsMissingBranches:
         assert data["total"] == 2
         assert len(data["versions"]) == 2
 
-    def test_get_recipe_versions_recipe_not_found(self, client, mock_db, mock_user):
+    def test_get_recipe_versions_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test getting versions for a nonexistent recipe."""
         response = client.get("/v1/recipes/nonexistent/versions")
         assert response.status_code == 404
 
-    def test_get_recipe_versions_access_denied(self, client, mock_db, mock_user):
+    def test_get_recipe_versions_access_denied(self, client, mock_async_db, mock_user):
         """Test getting versions without membership."""
         recipe_id = "test-recipe-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
         # No membership -> find_by returns None -> 403
 
         response = client.get(f"/v1/recipes/{recipe_id}/versions")
         assert response.status_code == 403
 
-    def test_get_recipe_versions_empty(self, client, mock_db, mock_user):
+    def test_get_recipe_versions_empty(self, client, mock_async_db, mock_user):
         """Test getting versions when there are no versions."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2911,11 +2911,11 @@ class TestGetRecipeVersionsMissingBranches:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_where(RecipeVersion, [])
+        mock_async_db.set_where(RecipeVersion, [])
 
         response = client.get(f"/v1/recipes/{recipe_id}/versions")
         assert response.status_code == 200
