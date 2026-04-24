@@ -209,3 +209,76 @@ def test_async_database_url_rewrites_scheme():
         assert constants._build_async_database_url() is None
     finally:
         constants.DATABASE_URL = original
+
+
+def test_async_database_url_strips_sslmode():
+    """sslmode must be stripped from the URL — asyncpg rejects it as
+    an unknown kwarg (prod regression: 188 TypeErrors/day before fix)."""
+    from utils import constants
+
+    original = constants.DATABASE_URL
+    try:
+        # Bare sslmode — stripped, no trailing `?`.
+        constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=require"
+        assert (
+            constants._build_async_database_url()
+            == "postgresql+asyncpg://u:p@h:5432/d"
+        )
+
+        # psycopg2 scheme + sslmode — both transformed.
+        constants.DATABASE_URL = (
+            "postgresql+psycopg2://u:p@h:5432/d?sslmode=verify-full"
+        )
+        assert (
+            constants._build_async_database_url()
+            == "postgresql+asyncpg://u:p@h:5432/d"
+        )
+
+        # Non-sslmode query params must survive.
+        constants.DATABASE_URL = (
+            "postgresql://u:p@h:5432/d?sslmode=require&application_name=api"
+        )
+        assert (
+            constants._build_async_database_url()
+            == "postgresql+asyncpg://u:p@h:5432/d?application_name=api"
+        )
+    finally:
+        constants.DATABASE_URL = original
+
+
+def test_async_connect_args_translates_sslmode():
+    """require / verify-* → ssl=True; disable / unset → {}. The sync
+    side keeps its `DB_SSLMODE=require` env-var contract; this function
+    rematerializes that intent for asyncpg."""
+    import os
+
+    from utils import constants
+
+    original_url = constants.DATABASE_URL
+    original_env = os.environ.get("DB_SSLMODE")
+    try:
+        # sslmode from URL wins.
+        constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=require"
+        assert constants._build_async_connect_args() == {"ssl": True}
+
+        constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=verify-full"
+        assert constants._build_async_connect_args() == {"ssl": True}
+
+        constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=disable"
+        os.environ.pop("DB_SSLMODE", None)
+        assert constants._build_async_connect_args() == {}
+
+        # No sslmode in URL → fall through to DB_SSLMODE env.
+        constants.DATABASE_URL = "postgresql://u:p@h:5432/d"
+        os.environ["DB_SSLMODE"] = "require"
+        assert constants._build_async_connect_args() == {"ssl": True}
+
+        # Nothing set anywhere → {}.
+        os.environ.pop("DB_SSLMODE", None)
+        assert constants._build_async_connect_args() == {}
+    finally:
+        constants.DATABASE_URL = original_url
+        if original_env is None:
+            os.environ.pop("DB_SSLMODE", None)
+        else:
+            os.environ["DB_SSLMODE"] = original_env

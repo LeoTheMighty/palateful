@@ -15,6 +15,7 @@ from sqlalchemy.orm.exc import ObjectDeletedError
 from utils import models as models_package
 from utils.constants import (
     ASYNC_DATABASE_URL,
+    ASYNC_DB_CONNECT_ARGS,
     DATABASE_URL,
     DB_ASYNC_MAX_OVERFLOW,
     DB_ASYNC_POOL_SIZE,
@@ -68,6 +69,7 @@ if ASYNC_DATABASE_URL:
         max_overflow=DB_ASYNC_MAX_OVERFLOW,
         pool_pre_ping=True,
         pool_recycle=3600,
+        connect_args=ASYNC_DB_CONNECT_ARGS,
     )
     AsyncSessionLocal = async_sessionmaker(
         bind=async_db_engine,

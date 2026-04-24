@@ -1,6 +1,6 @@
 import logging
 import os
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT")
 
@@ -47,9 +47,11 @@ def _build_async_database_url() -> str | None:
     Rewrites the `postgresql://` or `postgresql+psycopg2://` scheme to
     `postgresql+asyncpg://` so SQLAlchemy picks the asyncpg driver
     without us maintaining a second env var (single source of truth).
-    asyncpg does NOT accept libpq-style `sslmode` query params; strip
-    them and translate the common `require`/`verify-*` modes into
-    asyncpg's `ssl` connect-arg instead.
+    Strips the libpq-style `sslmode` query param from the URL — asyncpg
+    doesn't recognize it and SQLAlchemy passes it straight through as a
+    kwarg to `asyncpg.connect` (TypeError). The sslmode *intent* is
+    translated into asyncpg's `ssl` connect-arg by
+    `_build_async_connect_args`.
     """
     url = DATABASE_URL
     if not url:
@@ -58,10 +60,42 @@ def _build_async_database_url() -> str | None:
         url = "postgresql+asyncpg://" + url[len("postgresql+psycopg2://"):]
     elif url.startswith("postgresql://"):
         url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+    parsed = urlparse(url)
+    if parsed.query:
+        kept = [
+            (k, v)
+            for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+            if k != "sslmode"
+        ]
+        url = urlunparse(parsed._replace(query=urlencode(kept)))
     return url
 
 
+def _build_async_connect_args() -> dict:
+    """Translate libpq `sslmode` into asyncpg's `ssl` connect-arg.
+
+    `_build_async_database_url` strips sslmode from the URL; this
+    function rematerializes the intent so `create_async_engine` still
+    enforces TLS in prod. `require` / `verify-ca` / `verify-full` all
+    map to `ssl=True` (TLS, no cert verification — matches libpq
+    `require` semantics; RDS uses AWS's CA which isn't trusted by
+    default Python, so `verify-*` would need a cert bundle we don't
+    currently ship — escalate if we ever need it). `disable` / `allow`
+    / `prefer` / unset → empty dict (plain TCP).
+    """
+    sslmode: str | None = None
+    if DATABASE_URL:
+        q = dict(parse_qsl(urlparse(DATABASE_URL).query, keep_blank_values=True))
+        sslmode = q.get("sslmode")
+    if sslmode is None:
+        sslmode = os.environ.get("DB_SSLMODE")
+    if sslmode in ("require", "verify-ca", "verify-full"):
+        return {"ssl": True}
+    return {}
+
+
 ASYNC_DATABASE_URL = _build_async_database_url()
+ASYNC_DB_CONNECT_ARGS = _build_async_connect_args()
 # pim-4b (2026-04-21): defaults bumped 10→20 / 20→40. Gated on pim-2's
 # static param reboot setting max_connections=80 (20 reserved for
 # beat/worker/migrator/psql). Env-overridable so local dev can stay on
