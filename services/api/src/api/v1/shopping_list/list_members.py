@@ -3,17 +3,19 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class ListShoppingListMembers(Endpoint):
+class ListShoppingListMembers(AsyncEndpoint):
     """Get all members of a shopping list."""
 
-    def execute(self, list_id: str):
+    async def execute(self, list_id: str):
         """
         Get all members of a shopping list.
 
@@ -25,8 +27,17 @@ class ListShoppingListMembers(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(
+                selectinload(ShoppingList.members).selectinload(
+                    ShoppingListUser.user
+                ),
+                selectinload(ShoppingList.owner),
+            )
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -34,9 +45,8 @@ class ListShoppingListMembers(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - must be owner or member
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         if not is_owner and not membership:
@@ -46,7 +56,6 @@ class ListShoppingListMembers(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Build members list
         members = []
         for member in shopping_list.members:
             if member.archived_at is None:
@@ -66,7 +75,6 @@ class ListShoppingListMembers(Endpoint):
                     )
                 )
 
-        # Also include owner if not in members list
         owner_in_members = any(m.user_id == shopping_list.owner_id for m in members)
         if not owner_in_members:  # pragma: no cover — owner usually has membership record
             owner = shopping_list.owner
