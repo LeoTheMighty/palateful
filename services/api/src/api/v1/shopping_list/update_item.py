@@ -8,25 +8,26 @@ from api.v1.shopping_list.utils.notifications import (
     notify_item_checked,
     notify_list_complete,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.events import ShoppingListItemPurchased, dispatch
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
-from utils.services.pantry_service import (
-    get_or_create_default_pantry,
-    upsert_pantry_ingredient,
-)
+from utils.services.notifications_bridge import notify_via_threadpool
 
 logger = logging.getLogger(__name__)
 
 
-class UpdateShoppingListItem(Endpoint):
+class UpdateShoppingListItem(AsyncEndpoint):
     """Update a shopping list item."""
 
-    def execute(self, list_id: str, item_id: str, params: "UpdateShoppingListItem.Params"):
+    async def execute(
+        self, list_id: str, item_id: str, params: "UpdateShoppingListItem.Params"
+    ):
         """
         Update a shopping list item.
 
@@ -40,8 +41,7 @@ class UpdateShoppingListItem(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -49,9 +49,8 @@ class UpdateShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member with edit permission
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -67,8 +66,7 @@ class UpdateShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Find item
-        item = self.database.find_by(
+        item = await self.database.find_by(
             ShoppingListItem, id=item_id, shopping_list_id=list_id
         )
         if not item or item.archived_at is not None:
@@ -81,7 +79,6 @@ class UpdateShoppingListItem(Endpoint):
         # Capture pre-update state for event dispatch (pantry-3 hook).
         previous_is_checked = item.is_checked
 
-        # Update basic fields
         if params.name is not None:
             item.name = params.name
         if params.quantity is not None:
@@ -91,7 +88,6 @@ class UpdateShoppingListItem(Endpoint):
         if params.category is not None:
             item.category = params.category
 
-        # Handle check/uncheck with timestamp
         if params.is_checked is not None:
             item.is_checked = params.is_checked
             if params.is_checked:
@@ -101,7 +97,6 @@ class UpdateShoppingListItem(Endpoint):
                 item.checked_by_user_id = None
                 item.checked_at = None
 
-        # Update new deadline/collaboration fields
         if params.due_at is not None:
             item.due_at = params.due_at
         if params.meal_event_id is not None:
@@ -119,12 +114,17 @@ class UpdateShoppingListItem(Endpoint):
         if params.store_order is not None:
             item.store_order = params.store_order
 
-        self.database.db.commit()
-        self.database.db.refresh(item)
+        await self.database.db.commit()
+        await self.database.db.refresh(item)
 
         # Pantry auto-add hook (pantry-3): only fire on the false → true
         # transition AND when we have a resolved ingredient. Free-text items
         # skip entirely. A failure here must not break the user's check-off.
+        #
+        # pantry_service is still sync (aam-15 in progress); bridge through
+        # run_in_threadpool on a fresh short-lived sync session. Snapshot
+        # the scalar attrs the sync helpers need so the sync session never
+        # accesses the async ORM instance.
         pantry_ingredient_id: str | None = None
         pantry_id: str | None = None
         if (
@@ -132,22 +132,43 @@ class UpdateShoppingListItem(Endpoint):
             and previous_is_checked is False
             and item.ingredient_id is not None
         ):
+            user_id_snapshot = user.id
+            ingredient_id_snapshot = item.ingredient_id
+            quantity_snapshot = item.quantity
+            unit_snapshot = item.unit
+
+            def _pantry_sync_add() -> tuple[str | None, str | None]:
+                from utils.services.database import Database, SessionLocal
+                from utils.services.pantry_service import (
+                    get_or_create_default_pantry,
+                    upsert_pantry_ingredient,
+                )
+
+                sync_db = Database(db=SessionLocal())
+                try:
+                    pantry, _m = get_or_create_default_pantry(
+                        user_id_snapshot, sync_db
+                    )
+                    result = upsert_pantry_ingredient(
+                        sync_db,
+                        pantry_id=pantry.id,
+                        ingredient_id=ingredient_id_snapshot,
+                        quantity_display=quantity_snapshot,
+                        unit_display=unit_snapshot,
+                        quantity_normalized=quantity_snapshot,
+                        unit_normalized=unit_snapshot,
+                    )
+                    if result.skipped_reason is None:  # pragma: no branch
+                        return (str(pantry.id), str(ingredient_id_snapshot))
+                    return (None, None)
+                finally:
+                    sync_db.close()
+
             try:
-                pantry, _membership = get_or_create_default_pantry(
-                    user.id, self.database
+                pantry_id, pantry_ingredient_id = await run_in_threadpool(
+                    _pantry_sync_add
                 )
-                result = upsert_pantry_ingredient(
-                    self.database,
-                    pantry_id=pantry.id,
-                    ingredient_id=item.ingredient_id,
-                    quantity_display=item.quantity,
-                    unit_display=item.unit,
-                    quantity_normalized=item.quantity,
-                    unit_normalized=item.unit,
-                )
-                if result.skipped_reason is None:  # pragma: no branch
-                    pantry_ingredient_id = str(item.ingredient_id)
-                    pantry_id = str(pantry.id)
+                # Domain dispatcher stays sync — in-memory only.
                 dispatch(
                     "ShoppingListItemPurchased",
                     ShoppingListItemPurchased(
@@ -168,22 +189,25 @@ class UpdateShoppingListItem(Endpoint):
                     "pantry_auto_add_failed user_id=%s item_id=%s", user.id, item_id
                 )
 
-        # Send notification when item is checked off
         if params.is_checked is True:
-            notify_item_checked(shopping_list, item, user, self.database)
+            await notify_via_threadpool(
+                notify_item_checked, shopping_list, item, user
+            )
 
-            # Check if all items are now complete
-            unchecked_count = (
-                self.database.db.query(ShoppingListItem)
-                .filter(
+            unchecked_count_result = await self.db.execute(
+                select(func.count())
+                .select_from(ShoppingListItem)
+                .where(
                     ShoppingListItem.shopping_list_id == shopping_list.id,
                     ShoppingListItem.is_checked.is_(False),
                     ShoppingListItem.archived_at.is_(None),
                 )
-                .count()
             )
+            unchecked_count = int(unchecked_count_result.scalar_one())
             if unchecked_count == 0:
-                notify_list_complete(shopping_list, user, self.database)
+                await notify_via_threadpool(
+                    notify_list_complete, shopping_list, user
+                )
 
         return success(
             data=UpdateShoppingListItem.Response(
@@ -198,7 +222,6 @@ class UpdateShoppingListItem(Endpoint):
                 category=item.category,
                 ingredient_id=str(item.ingredient_id) if item.ingredient_id else None,
                 recipe_id=str(item.recipe_id) if item.recipe_id else None,
-                # New fields
                 due_at=item.due_at,
                 meal_event_id=str(item.meal_event_id) if item.meal_event_id else None,
                 due_reason=item.due_reason,
@@ -226,7 +249,6 @@ class UpdateShoppingListItem(Endpoint):
         unit: str | None = None
         is_checked: bool | None = None
         category: str | None = None
-        # New deadline/collaboration fields
         due_at: datetime | None = None
         meal_event_id: str | None = None
         due_reason: str | None = None
@@ -246,7 +268,6 @@ class UpdateShoppingListItem(Endpoint):
         category: str | None = None
         ingredient_id: str | None = None
         recipe_id: str | None = None
-        # New fields
         due_at: datetime | None = None
         meal_event_id: str | None = None
         due_reason: str | None = None
