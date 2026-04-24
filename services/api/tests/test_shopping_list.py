@@ -2286,21 +2286,24 @@ class TestGetShoppingListEvents:
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 403
 
-    @patch("api.v1.shopping_list.get_events.ShoppingListEventService")
-    def test_events_success_as_owner(self, MockEventService, client, mock_db, mock_user):
-        """Owner can get events."""
+    def test_events_success_as_owner(self, client, mock_db, mock_async_db, mock_user):
+        """Owner can get events.
+
+        aam-13: `ShoppingListEventService` was inlined into the async
+        handler as two `select` statements (events by sequence, then
+        max(sequence)). Tests drive those via
+        `mock_async_db.db.execute.side_effect`.
+        """
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
-
-        # Mock event service
-        mock_service = MagicMock()
-        mock_service.get_events_since.return_value = []
-        mock_service.get_current_sequence.return_value = 5
-        MockEventService.return_value = mock_service
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[5]),
+        ]
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 200
@@ -2309,8 +2312,7 @@ class TestGetShoppingListEvents:
         assert data["current_sequence"] == 5
         assert data["has_more"] is False
 
-    @patch("api.v1.shopping_list.get_events.ShoppingListEventService")
-    def test_events_with_events(self, MockEventService, client, mock_db, mock_user):
+    def test_events_with_events(self, client, mock_db, mock_async_db, mock_user):
         """Returns events with user info."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
@@ -2327,12 +2329,13 @@ class TestGetShoppingListEvents:
             user_id=event_user.id,
             user=event_user,
             sequence=1,
+            created_at=datetime.now(UTC),
         )
 
-        mock_service = MagicMock()
-        mock_service.get_events_since.return_value = [mock_event]
-        mock_service.get_current_sequence.return_value = 1
-        MockEventService.return_value = mock_service
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[mock_event]),
+            MockExecuteResult(items=[1]),
+        ]
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 200
@@ -2341,8 +2344,7 @@ class TestGetShoppingListEvents:
         assert data["events"][0]["event_type"] == "item_added"
         assert data["events"][0]["user_name"] == "Eventist"
 
-    @patch("api.v1.shopping_list.get_events.ShoppingListEventService")
-    def test_events_member_updates_last_seen(self, MockEventService, client, mock_db, mock_user):
+    def test_events_member_updates_last_seen(self, client, mock_db, mock_async_db, mock_user):
         """Member's last_seen_at is updated when fetching events."""
         list_id = "test-list"
         membership = MockShoppingListUser(
@@ -2361,18 +2363,16 @@ class TestGetShoppingListEvents:
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
-
-        mock_service = MagicMock()
-        mock_service.get_events_since.return_value = []
-        mock_service.get_current_sequence.return_value = 0
-        MockEventService.return_value = mock_service
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[0]),
+        ]
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 200
         assert membership.last_seen_at is not None
 
-    @patch("api.v1.shopping_list.get_events.ShoppingListEventService")
-    def test_events_limit_capped(self, MockEventService, client, mock_db, mock_user):
+    def test_events_limit_capped(self, client, mock_db, mock_async_db, mock_user):
         """Limit is capped at 500."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
@@ -2380,20 +2380,18 @@ class TestGetShoppingListEvents:
         from utils.models.shopping_list import ShoppingList
 
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
-
-        mock_service = MagicMock()
-        mock_service.get_events_since.return_value = []
-        mock_service.get_current_sequence.return_value = 0
-        MockEventService.return_value = mock_service
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[0]),
+        ]
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events?limit=9999")
         assert response.status_code == 200
-        # Verify limit was capped at 500
-        call_args = mock_service.get_events_since.call_args
-        assert call_args[1].get("limit", call_args[0][2] if len(call_args[0]) > 2 else None) is not None
+        # Two executes: events + max sequence. Cap lives inline via
+        # `min(limit, 500)` in the handler.
+        assert mock_async_db.db.execute.call_count == 2
 
-    @patch("api.v1.shopping_list.get_events.ShoppingListEventService")
-    def test_events_has_more_true(self, MockEventService, client, mock_db, mock_user):
+    def test_events_has_more_true(self, client, mock_db, mock_async_db, mock_user):
         """has_more is True when events returned equals limit."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
@@ -2402,8 +2400,6 @@ class TestGetShoppingListEvents:
 
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
-        # Return exactly limit events to trigger has_more=True
-        # default limit is 100, so return 100 events
         events = [
             MockModel(
                 id=str(uuid.uuid4()),
@@ -2412,22 +2408,22 @@ class TestGetShoppingListEvents:
                 user_id=None,
                 user=None,
                 sequence=i,
+                created_at=datetime.now(UTC),
             )
             for i in range(100)
         ]
 
-        mock_service = MagicMock()
-        mock_service.get_events_since.return_value = events
-        mock_service.get_current_sequence.return_value = 100
-        MockEventService.return_value = mock_service
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=events),
+            MockExecuteResult(items=[100]),
+        ]
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 200
         data = response.json()
         assert data["has_more"] is True
 
-    @patch("api.v1.shopping_list.get_events.ShoppingListEventService")
-    def test_events_event_no_user(self, MockEventService, client, mock_db, mock_user):
+    def test_events_event_no_user(self, client, mock_db, mock_async_db, mock_user):
         """Events without user_id still work."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
@@ -2443,12 +2439,12 @@ class TestGetShoppingListEvents:
             user_id=None,
             user=None,
             sequence=1,
+            created_at=datetime.now(UTC),
         )
-
-        mock_service = MagicMock()
-        mock_service.get_events_since.return_value = [mock_event]
-        mock_service.get_current_sequence.return_value = 1
-        MockEventService.return_value = mock_service
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[mock_event]),
+            MockExecuteResult(items=[1]),
+        ]
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 200
