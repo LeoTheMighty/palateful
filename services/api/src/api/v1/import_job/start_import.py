@@ -243,11 +243,17 @@ class StartImport(Endpoint):
                 code=ErrorCode.IMPORT_INVALID_SOURCE_TYPE,
             )
 
-        # Create import job
+        # NYT / Substack / mailer-tracking URLs routinely exceed
+        # ImportJob.source_filename's VARCHAR(255) and crashed the
+        # insert with StringDataRightTruncation. source_filename is a
+        # display label; the canonical URL lives on ImportItem, so
+        # truncation is lossy only for UI labels and keeps imports
+        # succeeding.
+        stored_filename = source_filename[:255] if source_filename else None
         job = ImportJob(
             status="pending",
             source_type=params.source_type,
-            source_filename=source_filename,
+            source_filename=stored_filename,
             user_id=user.id,
             recipe_book_id=book_id,
             idempotency_key=params.idempotency_key,

@@ -573,6 +573,56 @@ class TestStartImport:
         )
         assert response.status_code == 201
 
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_start_import_url_truncates_long_source_filename(
+        self, mock_task, client, mock_db, mock_user
+    ):
+        """NYT/Substack tracking URLs overflow ImportJob.source_filename's
+        VARCHAR(255). Truncation must happen before insert so the job
+        persists; display labels lose the tail, not correctness."""
+        from unittest.mock import MagicMock
+
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_book import RecipeBook
+
+        mock_db.set_find_by(RecipeBookUser, membership,
+                            user_id=str(mock_user.id),
+                            recipe_book_id=book_id)
+        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_task.delay.return_value = None
+
+        long_url = "https://nl.nytimes.com/f/cooking/" + ("x" * 500)
+        assert len(long_url) > 255
+
+        created: list = []
+
+        def _capture(model):
+            created.append(model)
+            return model
+
+        mock_db.create = MagicMock(side_effect=_capture)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "url", "url": long_url},
+        )
+        assert response.status_code == 201
+        # URL import creates an ImportJob + one ImportItem — pick the
+        # ImportJob and assert truncation on source_filename.
+        from utils.models.import_job import ImportJob
+        jobs = [m for m in created if isinstance(m, ImportJob)]
+        assert len(jobs) == 1
+        assert len(jobs[0].source_filename) == 255
+        assert jobs[0].source_filename == long_url[:255]
+
     def test_start_import_idempotency_replay_returns_existing(
         self, client, mock_db, mock_user
     ):
@@ -1649,6 +1699,97 @@ class TestImportSeeAllCount:
         assert body["archived"] == 3
         assert body["read_and_old_completed"] == 3
         assert body["total"] == 6
+
+
+class TestListSeeAllImportItems:
+    """GET /v1/import-items/see-all — paginated See-all feed."""
+
+    def test_empty(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-items/see-all")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["items"] == []
+        assert body["next_cursor"] is None
+
+    def test_items_surface_with_job_source_type_fallback(
+        self, client, mock_db, mock_user
+    ):
+        from datetime import UTC, datetime
+
+        item = MockImportItem(
+            id=str(uuid.uuid4()),
+            source_type=None,  # empty → fall back to job.source_type
+            status="completed",
+            parsed_recipe={
+                "name": "Old Recipe",
+                "ingredients": [{"needs_review": False}],
+            },
+            archived_at=datetime(2025, 6, 1, tzinfo=UTC),
+        )
+        # Endpoint selects (ImportItem, ImportJob.source_type) — mock the
+        # tuple shape the ORM returns.
+        mock_db.db.query.return_value = MockQuery([(item, "url")])
+
+        response = client.get("/v1/import-items/see-all?limit=5")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["items"]) == 1
+        row = body["items"][0]
+        assert row["id"] == str(item.id)
+        assert row["recipe_name"] == "Old Recipe"
+        assert row["source_type"] == "url"
+        assert row["status"] == "completed"
+        assert row["archived_at"] is not None
+
+    def test_next_cursor_when_page_full(self, client, mock_db, mock_user):
+        from datetime import UTC, datetime
+
+        rows = [
+            (
+                MockImportItem(
+                    id=str(uuid.uuid4()),
+                    source_type="url",
+                    status="completed",
+                    archived_at=datetime(2025, 6, (i % 28) + 1, tzinfo=UTC),
+                ),
+                "url",
+            )
+            for i in range(6)
+        ]
+        mock_db.db.query.return_value = MockQuery(rows)
+        response = client.get("/v1/import-items/see-all?limit=5")
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["items"]) == 5
+        assert body["next_cursor"] is not None
+
+    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get("/v1/import-items/see-all?cursor=%21%21%21%21")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
+    def test_cursor_decodes_and_is_applied(self, client, mock_db, mock_user):
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(
+            1_750_000_000_000, 1_700_000_000_000, str(uuid.uuid4())
+        )
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get(
+            f"/v1/import-items/see-all?cursor={cursor}&limit=10"
+        )
+        assert response.status_code == 200
+        assert response.json()["items"] == []
+
+    def test_cursor_with_null_archived_at(self, client, mock_db, mock_user):
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
+        mock_db.db.query.return_value = MockQuery([])
+        response = client.get(f"/v1/import-items/see-all?cursor={cursor}")
+        assert response.status_code == 200
 
 
 class TestGetImportItem:
