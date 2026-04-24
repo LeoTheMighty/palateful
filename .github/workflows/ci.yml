@@ -324,15 +324,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: app
-        run: |
-          # Write dummy env values so assert() guards don't fire in tests
-          cat > .env << 'EOF'
-          API_BASE_URL=http://localhost:8000
-          AUTH0_DOMAIN=test.palateful.us.auth0.com
-          AUTH0_CLIENT_ID=test-client-id
-          AUTH0_AUDIENCE=https://api.palateful.app
-          EOF
-          flutter pub get
+        run: flutter pub get
 
       - name: Analyze
         working-directory: app
@@ -457,10 +449,10 @@ jobs:
 
   deploy-web:
     # Flutter web → Cloudflare Pages (palateful.app). Independent of the ECS
-    # pipeline, so it runs in parallel with detect-changes. `.env.prod` is
-    # gitignored — we materialize it inline from the known public values
-    # (client IDs and public URLs end up in the JS bundle anyway, so they
-    # don't warrant secret storage). Only CLOUDFLARE_* are true secrets.
+    # pipeline, so it runs in parallel with detect-changes. Config values
+    # (API_BASE_URL, AUTH0_*) are compiled into the JS bundle via defaults
+    # in app/lib/core/config/environment.dart, so `flutter build web` needs
+    # no flags. Only CLOUDFLARE_* are true secrets.
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [setup, lint, test, check-models, flutter-test, terraform]
@@ -481,26 +473,13 @@ jobs:
           restore-keys: |
             pub-${{ runner.os }}-
 
-      - name: Write prod env file
-        working-directory: app
-        run: |
-          cat > .env.prod << 'EOF'
-          API_BASE_URL=https://api.palateful.app
-          AUTH0_DOMAIN=auth.palateful.app
-          AUTH0_CLIENT_ID=Kge8bTdbfZ9rVQdCcTxDZLsF2YJ2I2Mc
-          AUTH0_AUDIENCE=https://api.palateful.app
-          EOF
-          # flutter_dotenv requires the default asset to exist too (declared
-          # in pubspec.yaml assets). Keep it empty — prod build reads .env.prod.
-          touch .env
-
       - name: Install Flutter dependencies
         working-directory: app
         run: flutter pub get
 
       - name: Build Flutter web (prod)
         working-directory: app
-        run: flutter build web --release --dart-define=ENV=prod
+        run: flutter build web --release
 
       - name: Deploy to Cloudflare Pages
         working-directory: app

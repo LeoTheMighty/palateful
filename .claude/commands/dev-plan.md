@@ -1,6 +1,6 @@
 ---
 name: 'dev-plan'
-description: 'Autonomous BMAD planning loop: research → PRD → chunk into epics → YOLO-draft all epics → party-mode refine each chunk sequentially → emit artifacts consumable by /dev. Use when the user says "plan this" or "dev-plan <requirements>".'
+description: 'Thorough BMAD planning loop: research → PRD → chunk into epics → draft all epics → party-mode refine each chunk sequentially → emit artifacts consumable by /dev. Autonomous on clearly simple decisions; halts and asks on deferrals, net-new surfaces, or non-trivial trade-offs. Use when the user says "plan this" or "dev-plan <requirements>".'
 ---
 
 # /dev-plan — Autonomous BMAD Planning Loop
@@ -9,9 +9,16 @@ You are an autonomous planning agent that turns a raw pile of requirements into 
 
 **End-user experience at the forefront.** Every epic must start with the question "what does the user see and do?" and trace that answer all the way through — the UI they tap, the API it calls, the data model it touches, the infrastructure that serves it. A plan that stops at any layer short of end-to-end is incomplete. Frontend, backend, and infrastructure are all first-class considerations; silent gaps in any layer are blockers.
 
-**Draft-then-refine discipline:** every epic is written twice. First a YOLO draft in Phase 5 gives the full set of chunks shape quickly; then Phase 6 sequentially runs party-mode on each chunk to cross-examine it, propagating locked decisions forward. Party-mode is **mandatory for every epic, no exceptions** — even single-story ones get a short workshop. If you are tempted to skip it, don't.
+**Draft-then-refine discipline:** every epic is written twice. First a draft in Phase 5 gives the full set of chunks shape quickly; then Phase 6 sequentially runs party-mode on each chunk to cross-examine it, propagating locked decisions forward. Party-mode is **mandatory for every epic, no exceptions** — even single-story ones get a short workshop. If you are tempted to skip it, don't.
 
-**Mode: fully autonomous (YOLO), with one exception.** Do not pause for approval between phases. The single exception: if the plan requires a component that doesn't exist today (a service, screen, integration, schema, infra resource, external account, etc.) and the user hasn't told you how it should look or behave, stop and ask once — don't invent it silently. Other halts are only for hard blockers or the final summary.
+**Mode: autonomous when it's simple, ask when it's not.** Don't pause for approval on clear-cut moves — if the requirements already pin down the shape and there's one obvious path, take it. But the default posture when anything is unclear is **ask**, not **invent**. Specifically, halt and ask when:
+
+- A net-new surface (screen, service, schema, infra resource, external integration) isn't fully specified by the requirements or the existing repo.
+- You're considering **deferring** anything — scoping a story out, marking something "later", punting a layer, splitting an epic across releases. Never silently defer.
+- A decision has non-trivial trade-offs (cost, naming, UX direction, dependency order) and you don't have a clear signal which way the user wants it.
+- You find yourself about to pick the "sensible default" for anything that touches what the user will see or how the system will behave.
+
+Batch questions where possible (end of Phase 2 and end of Phase 5 are the natural gates), but don't hoard them to the point of blocking progress — if a question is needed to move forward, ask it. Asking an extra clarifying question is cheap; silently inventing behavior or silently deferring work is expensive.
 
 ## Arguments
 
@@ -28,10 +35,12 @@ Parse from the user's message after `/dev-plan`:
 3. **Three-layer coverage is required** — every plan must explicitly address frontend (Flutter screens, nav, state), backend (FastAPI routes, services, data model, jobs), and infrastructure (AWS, migrations, env vars, deploy). If an epic doesn't touch a layer, say so explicitly with one line — don't leave it silent.
 4. **Chunk by user value, not by layer** — epics should each ship a vertical slice (UI + API + data + infra as needed), not "all the backend" then "all the frontend". Every epic must trace a user journey end-to-end.
 5. **Party-mode every epic, but after the YOLO draft** — draft all epics fast first (Phase 5), then run `/bmad-party-mode` sequentially on each chunk (Phase 6) to refine it. This ordering lets later workshops see the whole plan and inherit locked decisions from earlier ones, while still giving every epic its own cross-examination pass. **No epic ships from `/dev-plan` without its own party-mode pass.**
-6. **Ask when something doesn't exist** — if the plan requires a capability, screen, service, or resource that isn't in the repo today and isn't specified in the requirements, stop and ask the user one focused question ("What should the user see when X?"). Don't silently invent UX, naming, or behavior for net-new surfaces.
-7. **Emit what `/dev` expects** — `_bmad-output/planning-artifacts/epic-<slug>.md` and entries in `_bmad-output/implementation-artifacts/sprint-status.yaml`. Nothing ad hoc.
-8. **YOLO mode for BMAD menus** — no interactive menus, no "waiting for user selection". If a BMAD workflow halts for a stylistic/default choice, pick the sensible default and continue. This does NOT override principle 6 — structural gaps still surface as questions.
-9. **Append, don't overwrite** — if PRD/architecture/sprint-status already exist, extend them. Never clobber prior planning work.
+6. **Ask when something doesn't exist or isn't pinned down** — if the plan requires a capability, screen, service, or resource that isn't in the repo today and isn't specified in the requirements, stop and ask the user one focused question ("What should the user see when X?"). Don't silently invent UX, naming, or behavior for net-new surfaces.
+7. **Never silently defer** — if you're about to scope something out, mark it "later", punt a layer, or split an epic across releases, surface it as a question first. Deferrals are a user decision, not a planning shortcut.
+8. **Ask when it's non-trivial, YOLO when it's clear** — on stylistic defaults (bullet vs. numbered, section ordering, doc verbosity), take the sensible default and keep going. On anything touching user-visible behavior, cost, scope, naming of net-new things, or trade-offs without an obvious winner, ask.
+9. **Emit what `/dev` expects** — `_bmad-output/planning-artifacts/epic-<slug>.md` and entries in `_bmad-output/implementation-artifacts/sprint-status.yaml`. Nothing ad hoc.
+10. **Bypass BMAD interactive menus only for stylistic choices** — no interactive menus, no "waiting for user selection" for presentation defaults. If a BMAD workflow halts for a stylistic/default choice, pick the sensible default and continue. This does NOT override principles 6–8 — structural gaps, deferrals, and non-trivial trade-offs still surface as questions.
+11. **Append, don't overwrite** — if PRD/architecture/sprint-status already exist, extend them. Never clobber prior planning work.
 
 ## Execution Loop
 
@@ -87,9 +96,9 @@ Collect all research reports into an in-memory synthesis — do NOT write a sepa
 3. Write the epic list to `_bmad-output/planning-artifacts/epics.md` (append under a dated heading if the file exists). For each epic, include a one-line "user sees:" statement.
 4. For each new epic, pick a slug (kebab-case, prefix with nothing — follow existing naming: `epic-<slug>.md`).
 
-### Phase 5: YOLO Draft — All Epics + Sprint Status
+### Phase 5: Draft — All Epics + Sprint Status
 
-Draft all epics fast, no party-mode yet. This gives every downstream step a shared picture to critique.
+Draft all epics fast, no party-mode yet. This gives every downstream step a shared picture to critique. Drafting is fine to do without halting — it's cheap, you'll refine it in Phase 6, and any unresolved questions end up in the "Open questions for the user" section of each epic file rather than being silently invented.
 
 For **each** new epic identified in Phase 4:
 
@@ -132,7 +141,13 @@ For **each** draft epic (in dependency order, foundational epics first):
 3. **Rewrite the epic file in place**: Update `epic-<slug>.md` with the refined content. Every required section (end-user flow, frontend, backend, infrastructure) must remain present and non-empty (or explicitly marked "None — <reason>"). Remove the `<!-- draft: pre-party-mode -->` marker and add a `<!-- refined via party-mode YYYY-MM-DD -->` marker. Preserve the file's overall shape.
 4. **Reconcile sprint-status.yaml**: If party-mode split, merged, renamed, or dropped stories, update the yaml to match. Never silently drop an entry — if a story was cut, mark it `deleted` with a one-line comment; don't delete the line.
 5. **Propagate cross-epic decisions**: If party-mode surfaces a decision that affects a *later* epic in the queue (e.g., "we'll share an ingredient-resolver service across cal and import epics"), write it into an in-memory "locked decisions" list that gets fed into every subsequent party-mode prompt.
-6. **Escalate net-new unknowns**: If party-mode surfaces a net-new user-visible surface whose shape wasn't specified (e.g., a new empty state, a new error recovery UI, a missing screen), pause and ask the user one focused question before continuing to the next epic — don't invent UX silently.
+6. **Escalate unknowns, deferrals, and non-trivial trade-offs**: Before continuing to the next epic, pause and ask the user if party-mode surfaces any of the following — don't invent UX silently, and don't silently carry forward:
+   - A net-new user-visible surface whose shape wasn't specified (a new empty state, a new error recovery UI, a missing screen, an onboarding step).
+   - A candidate deferral — a story, layer, or behavior the workshop suggests punting to later. All deferrals are user calls.
+   - A non-trivial trade-off where the workshop didn't converge (two plausible UX directions, competing data models, cost-vs-ergonomics splits, ordering dependencies with real downstream impact).
+   - A scope cut the workshop is recommending against the requirements as written.
+
+   Batch these across the epic if you can (one pause, several questions) rather than interrupting multiple times for the same epic.
 
 **Party-mode is non-negotiable for every epic.** Single-story epics get a shorter workshop but they still get one. The discipline of cross-examining every chunk — from PM through to infra — is what keeps the plan honest end-to-end. If you ever find yourself thinking "this one is small, I'll skip it," you are violating this command's contract.
 
@@ -159,23 +174,31 @@ Output, in order:
 
 Do NOT push, commit, or run `/dev`. `/dev-plan` produces artifacts; `/dev` consumes them. Keep the separation clean — committing planning artifacts is the user's call.
 
-## YOLO Rules for BMAD Workflows
+## When to YOLO vs. When to Ask
 
-BMAD workflows love interactive menus. You must bypass them autonomously:
+The posture is **asymmetric**: YOLO cheap, reversible, stylistic choices; ask on anything that shapes what the user will see, what gets built, or what gets cut. When the path is obvious *and* the trade-offs are trivial, keep moving. When either is in doubt, ask.
 
-- If a menu offers `C) Continue` → pick `C`.
-- If a menu asks for a stylistic choice (e.g., "brief vs. detailed") → pick detailed.
-- If a menu asks whether to include an optional section → include it.
-- If a workflow prompts for a missing config value → infer from `_bmad/bmm/config.yaml`, then from CLAUDE.md, then pick a sensible default and note it in the final summary.
+**YOLO through (don't interrupt the user):**
 
-**When NOT to YOLO — halt and ask the user:**
+- BMAD interactive menus for presentation choices. `C) Continue` → pick `C`. "Brief vs. detailed" → detailed. Optional section include? → include it.
+- Missing BMAD config values → infer from `_bmad/bmm/config.yaml`, then CLAUDE.md, then a sensible default (note it in the final summary).
+- Naming of internal-only artifacts (epic slugs, story IDs) that follow existing conventions.
+- Ordering of sections within a doc, bullet vs. numbered lists, and other rendering choices.
+- Research-axis scoping choices (which files an Explore agent reads) as long as coverage is preserved.
+
+**Halt and ask the user:**
 
 - A plan requires a net-new user-visible surface (screen, empty state, error recovery, notification, onboarding flow) and the requirements don't specify its shape. Ask "What should the user see when X?" — not "Which database should we use?"
 - A plan requires a net-new service, integration, or external account that doesn't exist in the repo and wasn't named in the requirements. Ask whether to build it, stub it, or descope the feature that needs it.
 - A plan requires a net-new infrastructure resource (new Lambda, new RDS instance, new queue) that will incur cost or ops load. Confirm before planning it in.
+- **Any candidate deferral** — punting a story, a layer, an AC, or a capability to "later". Deferrals are a user decision, full stop. Offer the option plus a recommended default, then wait.
+- Non-trivial trade-offs without an obvious winner: two plausible UX directions, competing data models, ordering dependencies with real downstream impact, scope cuts vs. timeline, buy vs. build.
+- Open questions surfaced by research or party-mode that weren't in the original requirements.
 - Hard blockers: missing source file, corrupt config, write failure. Report and stop.
 
-Batch these questions whenever possible — surface them at the end of Phase 2 or the end of Phase 5 — rather than asking ad hoc mid-phase.
+**If you're unsure whether to ask:** ask. The cost of one extra question is a few seconds; the cost of a silent wrong assumption propagates through the whole plan.
+
+**Batch rule:** prefer grouping questions at the natural gates — end of Phase 2 (after research) and end of Phase 5 (after the epic draft pass) — rather than interrupting multiple times per phase. Within Phase 6, batch per-epic. But don't hoard questions across phases if the answer is needed to draft the next phase correctly.
 
 ## Hand-off to /dev
 

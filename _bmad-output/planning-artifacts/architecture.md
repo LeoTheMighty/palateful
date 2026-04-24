@@ -1118,3 +1118,154 @@ All three tables live alongside existing models in `libraries/utils/utils/models
 - **Auth**: every Meal mutation checks `recipe_book_user` membership on the Meal's book. Read endpoints respect the same rule. Public `share_token` endpoint is unauthenticated and returns only the limited public shape (name, description, component names, thumbnails; no ingredients/steps unless the component recipe also has its own share token).
 - **Audit**: Meal archive/restore writes to `error_logs` with `service="audit"` (matches existing recipe archive pattern).
 - **Coverage**: every handler has happy-path, auth-fail, not-found, component-unavailable, and XOR-constraint-violation branches covered to maintain the 100% API coverage bar.
+
+## Addendum — 2026-04-20 — Ingredient canonicalization retired (`epic-ingredients-string-simplification`)
+
+The following sections in the architecture above are **SUPERSEDED** as of 2026-04-20. The ingredient subsystem is rewritten to "glorified string" semantics. See `_bmad-output/planning-artifacts/epic-ingredients-string-simplification.md` for the full design, rationale, and retirement plan.
+
+### Retired architectural claims
+
+- **"Smart matching (ingredient deduplication via pg_trgm fuzzy + pgvector semantic search)"** — retired. No write-time matching at any layer (Flutter import, recipe CRUD, MCP tools). Every ingredient name becomes a fresh `ingredients` row.
+- **"pgvector 384-dim embeddings on ingredients"** — retired. The `ingredients.embedding` column and its `idx_ingredients_embedding` HNSW index are dropped. pgvector is retained for recipe-level embeddings (`recipes.embedding`), which is a live feature.
+- **"pg_trgm fuzzy search on ingredient canonical names"** — retired. The `idx_ingredients_canonical_name_trgm` GIN index and the `search_ingredients_fuzzy(text)` PL/pgSQL function are dropped. pg_trgm remains in use for recipe-level search.
+- **"Embedding pipeline: Generate on ingredient creation/update via OpenAI"** — retired for ingredients. Recipe embedding pipeline stands.
+- **"Tiered ingredient matching (cached / exact / fuzzy / semantic / AI)"** — retired. No tiering; every parsed ingredient name is a fresh INSERT.
+- **"Substitution graph"** — retired. `ingredient_substitutions` table dropped (was empty in prod).
+- **"Ingredient hierarchy via `parent_id` self-FK"** — retired. `ingredients.parent_id` dropped (was unused in prod).
+- **"Ingredient-matching evaluator"** in `services/eval/` — retired; evaluator and its eval.config.yaml registration are dropped.
+- **"Pending-review canonical workflow"** — retired. `ingredients.pending_review`, `ingredients.is_canonical`, `ingredients.aliases`, `ingredients.category` columns dropped.
+- **"`POST /v1/shopping-lists/{id}/populate-from-meal-event` `check_pantry` parameter"** — retired. Parameter rejected with 422 post-deploy (via Pydantic `extra="forbid"`).
+- **"`aggregate_meal_ingredients(meal_id)` sum-within-meal dedup"** — retired. Function returns one `AggregatedIngredient` per `recipe_ingredients` row, in stable `components × ingredients` order. Duplicate (name, unit) pairs are adjacent entries, not summed.
+- **"MCP server `_resolve_ingredient` pg_trgm matcher"** — retired. `services/api/src/mcp_server/tools/recipes.py` `_resolve_ingredient` and `INGREDIENT_MATCH_THRESHOLD` deleted.
+- **"`ingredient-scraper` service seeding the canonical ingredients table"** — retired. Scraper source parked (untouched); its CSV-output consumer `services/migrator/seeds/ingredients.py` is deleted. Scraper has no live consumer as of 2026-04-20.
+
+### Current architecture (post-epic)
+
+- **Ingredients table** is a bag of rows: `(id, canonical_name, created_at, updated_at)`. No uniqueness on `canonical_name`. No canonical semantics. Every write path INSERTs a fresh row.
+- **FKs remain** from `recipe_ingredients`, `pantry_ingredients`, `shopping_list_items`, `pantry_ingredient_events` → `ingredients.id`. They carry referential integrity and cheap display-name lookup; they carry no cross-row identity.
+- **`shopping_list_items.already_have_quantity`** is retained as a permanent-NULL placeholder for a possible future pantry-check revival.
+- **Recipe-level features keep their matching stacks.** Recipe fuzzy-search + semantic-search remain live. pgvector + pg_trgm are still part of the stack, just not for ingredients.
+- **Similarity / substitution, if ever needed, is read-time inference**, not a persistent graph.
+
+Future planners: do not re-introduce canonicalization without re-evaluating the 2026-04-20 retirement rationale.
+
+## Addendum — 2026-04-21 — Performance Health Initiative
+
+### RDS tuning
+
+- **Instance class**: upgrade `db.t4g.micro` → `db.t4g.small` (2 vCPU, 2 GB RAM). Removes burst-credit exhaustion as a failure mode. Net delta ≈ +$10/mo.
+- **Parameter group** (new `aws_db_parameter_group` keyed to `postgres16`): `shared_buffers=256MB`, `effective_cache_size=1500MB`, `work_mem=8MB`, `maintenance_work_mem=128MB`, `log_min_duration_statement=100` (slow-query log). `max_connections=60` so `pool_size=20`, `max_overflow=40` fits with room for beat/migrator.
+- **Performance Insights**: enable (`performance_insights_enabled=true`, `performance_insights_retention_period=7`) — free tier for first 6 months on t4g.small. Exposes per-query wait breakdown.
+- **`enabled_cloudwatch_logs_exports=["postgresql"]`** — streams slow-query log to an existing log group. No new alarms, no metric filters. Query-time debugging via CloudWatch Insights.
+
+### ECS task sizing
+
+- **API**: 256 CPU / 512 MB → 512 CPU / 1024 MB. Removes CPU-starvation during Auth0 JWT verify + concurrent DB queries; GC pauses on startup drop. ≈ +$5/mo.
+- **Worker**: unchanged.
+- **ALB health check**: interval 30s → 60s, timeout 5s → 3s. Reduces health-check volume on the hot path without weakening the liveness signal (hung tasks still detected within 2 min).
+
+### Redis (new infrastructure)
+
+- **Resource**: `aws_elasticache_replication_group` of one `cache.t4g.micro` node in the same VPC/private subnets as the API task. No multi-AZ, no replicas. ≈ +$1/mo.
+- **Sole use case in this initiative**: Auth0 JWKS cache — currently per-task in-memory, cold on every task restart. Moving to Redis makes it warm across deploys and shared across tasks.
+- **Access pattern**: read-through cache with a 1h TTL; a background task refreshes 10 min before expiry. No user data touches Redis.
+- **Connection pool**: `redis.asyncio.ConnectionPool(max_connections=10, decode_responses=True)`. Timeouts: 100ms connect, 50ms op. Redis unreachable → fall through to in-memory cache (current behavior) — request never fails because of Redis.
+- **Out-of-initiative**: generic caching of `list_shopping_lists`, `list_meals` responses, etc. — not in scope; revisit only if backend-query-tuning fails to hit the 300ms target.
+
+### Connection pool
+
+- `DB_POOL_SIZE`: 10 → 20
+- `DB_MAX_OVERFLOW`: 20 → 40
+- Fits under `max_connections=60` with 20 reserved for beat / worker / migrator.
+- Configurable via env var so local dev can stay at 10/20.
+
+### `analyze_latency.py` ops script
+
+New file: `services/api/scripts/analyze_latency.py`. Read-only, mirrors `fetch_feedback.py`. Flags: `--window {1h|24h|7d|all}`, `--format {table|csv|json}`, `--top <int>`, `--regression-hunt` (switches to baseline-vs-recent comparison). Two SQL sections per call (endpoints + tasks) using `PERCENTILE_CONT` with a `HAVING COUNT(*) >= 5` noise floor. Exit codes: 0 rows emitted, 2 empty (informational), 1 DB error. No audit row (read-only).
+
+Regression-hunt query body (for reference):
+
+```sql
+WITH recent AS (
+  SELECT method, normalized_path, COUNT(*) AS cnt,
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95
+  FROM request_latencies
+  WHERE created_at >= NOW() - INTERVAL '24 hours'
+  GROUP BY method, normalized_path
+), baseline AS (
+  SELECT method, normalized_path,
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95
+  FROM request_latencies
+  WHERE created_at >= NOW() - INTERVAL '30 days'
+    AND created_at <  NOW() - INTERVAL '7 days'
+  GROUP BY method, normalized_path
+)
+SELECT recent.method, recent.normalized_path,
+       baseline.p95 AS baseline_p95, recent.p95 AS recent_p95,
+       ROUND((recent.p95 / NULLIF(baseline.p95, 0) - 1) * 100, 1) AS pct_increase
+FROM recent LEFT JOIN baseline USING (method, normalized_path)
+WHERE recent.cnt >= 10
+  AND baseline.p95 IS NOT NULL
+  AND recent.p95 > baseline.p95 * 1.5
+ORDER BY pct_increase DESC;
+```
+
+Ships as part of `epic-perf-infra-and-measurement` story 1 so the rest of the initiative can be grounded in real numbers.
+
+### Index audit
+
+No new indexes known-required at draft time beyond what the code-level fix stories add as part of their own ACs. Each query-tuning story verifies via `EXPLAIN ANALYZE` and names the chosen index (existing or newly added). Any newly added index uses `CREATE INDEX CONCURRENTLY` inside `op.execute()` wrapped in an autocommit block (pattern from `20260420000001_add_activity_partial_index.py`).
+
+### Locked decisions (propagate to all three perf epics)
+
+- Every perf story's QA walkthrough captures p50/p95 for the target `normalized_path` before and after, from `analyze_latency.py --window 24h`.
+- Infra changes land via terraform in `epic-perf-infra-and-measurement`; no downstream epic modifies terraform.
+- Redis is available but only used for Auth0 JWKS in this initiative. Later epics that want application-layer caching open their own scope.
+- Flutter polling cadences are preserved; only the **redundant** shell-vs-tab poll on `GET /v1/activities` is merged.
+
+## Addendum — 2026-04-23 — API Async SQLAlchemy Migration
+
+### Root cause (observed 2026-04-23)
+
+Every router handler in `services/api/src/routers/**/*.py` is declared `async def` but calls a **synchronous** `Endpoint.call(...)` inline. Because `.call()` executes sync SQLAlchemy queries on the event loop, any long-running handler blocks **every other in-flight request** for its duration. Evidence from `analyze_latency.py --window 24h` on 2026-04-23:
+
+- `GET /v1/meals/{meal_id}` server-side p95 = 188ms (handler itself is fast).
+- Client-observed latency for the same endpoint = **5192ms** (`client_latencies`, iOS, cla-14 ingest).
+- `POST /v1/recipe-books/{book_id}/import` p50 = 5421ms (long OpenAI + DB fan-out).
+- `POST /v1/users/me/client-errors` p50 = 50ms but p95 = **5931ms** — the classic "fast work, but queued behind a slow handler" signature of event-loop starvation.
+
+The ~5s gap between handler time and wire time is queue-wait on the event loop. Wrapping handlers in `run_in_threadpool` (option 1) would solve this for single-user scale but doesn't unlock parallel DB fan-out or proper async-native SDK usage. We are taking **option 2 — full async SQLAlchemy + async handlers** — tracked under `epic-api-async-migration.md`.
+
+### Architectural decisions (locked 2026-04-23)
+
+1. **Scope is `services/api` only.** `services/worker`, `services/parser`, `services/migrator` stay sync. Their DB access is through their own sessions and their perf profile is queue-driven, not request-driven. No event-loop starvation risk.
+2. **Dual session surface, permanently.** `libraries/utils/utils/services/database.py` (`Database`, sync) stays alive for ops scripts, `bin/prod-script` prelude, `bin/prod-console`, `services/api/src/manage.py`, and the `BatchedLatencyWriter`/`BatchedTaskWriter` daemon threads (those intentionally run off the event loop). A new `libraries/utils/utils/services/async_database.py` (`AsyncDatabase`) is added with a mirror surface for the API's request path.
+3. **Dual engine, same database.** One `sqlalchemy.create_engine(...)` (sync driver `psycopg2`) and one `sqlalchemy.ext.asyncio.create_async_engine(...)` (async driver `asyncpg`) coexist in the API process. Both point at the same Postgres. Connection-pool budgets split: sync pool stays 10/20, async pool starts at 20/40 (matches today's primary budget).
+4. **Dual Endpoint surface, staged removal.** `Endpoint` (sync) stays until every handler has migrated. A new `AsyncEndpoint` is added. Every `services/api/src/api/v1/**/*.py` handler is converted one-at-a-time. After cutover, `AsyncEndpoint` is renamed to `Endpoint` and the sync class is deleted from `services/api`'s import graph (but survives in ops scripts).
+5. **Error logging stays sync.** `Endpoint._log_error_to_db` runs in a separate session, cares about "write this error even if the main transaction is rolling back", and is already slightly fire-and-forget. It keeps its sync engine and gets called via `starlette.concurrency.run_in_threadpool` when invoked from the async path. Error-log writes are rare by definition — threadpool overhead is acceptable.
+6. **Latency writers stay threaded, stay sync.** `BatchedLatencyWriter` / `BatchedTaskWriter` / `BatchedClientLatencyWriter` already use a daemon thread with their own `Database()` instance. The daemon is explicitly off the event loop; it does not benefit from async. Enqueue side is already non-blocking to the hot path.
+7. **Domain event subscribers convert to async.** `pantry_meal_subscriber`, `shopping_list_subscriber`, and any future subscribers run in the request's async context and must be async so they use the request's AsyncSession (and roll back with it on handler failure).
+8. **External SDKs:**
+   - **OpenAI** — swap to `AsyncOpenAI` (3 callsites under `services/api/src/api/v1/search/`).
+   - **Firebase Admin SDK** — sync-only; wrap in `run_in_threadpool` at the push-notification fan-out (28 callsites, `libraries/utils/utils/services/push_notification.py`).
+   - **boto3** — sync; wrap in `run_in_threadpool` at the 22 callsites (mostly presign URLs + one CloudWatch Logs read).
+   - **Auth0 verifier** — already `httpx.AsyncClient`, no change.
+   - **Redis (JWKS cache)** — already `redis.asyncio`, no change.
+9. **SAVEPOINT pattern (`_ensure_default_calendar`) moves to async cleanly.** SQLAlchemy 2.0 async `session.begin_nested()` + `IntegrityError` catch is a drop-in port.
+10. **Advisory lock (`find_or_create_by` path)** uses `AsyncSession.execute(text("SELECT pg_advisory_lock(:k)"), {"k": key})` in an async context manager. The 130+ `find_or_create_by` callsites get a new async signature.
+11. **No canary; big-bang cutover with revert-commit rollback.** No traffic-splitting infra exists (no weighted target groups, no Lambda@Edge). Rollback is `git revert + bin/prod-deploy` → ~10 min. This is acceptable because (a) single-user scale, (b) each per-router story lands incrementally so the cutover story's blast radius is small, (c) every story has a QA walkthrough in staging, (d) every story includes its rollback commit hash.
+12. **Per-router incremental rollout.** FastAPI allows mixing sync and async dependencies across routers. Each per-router story flips that router's handlers + its `get_database` dep → `get_async_database` atomically. Meaning: at any mid-migration commit, some routers are async and some are sync, both in prod. This is safe — sync and async engines share only the database, not any in-process state.
+13. **100% API coverage gate stays on.** Per-story PRs keep coverage at 100%. If a story can't, it stops and the gap is fixed before merge (no temporary exemptions). `count_queries` test helper is rewritten once at the start of Phase 1 to use SQLAlchemy `before_cursor_execute` event listener (works on both sync and async engines) so existing query-count tests keep running across the migration.
+14. **Test infra: `AsyncClient` + `ASGITransport` for converted handlers; `TestClient` (sync) for not-yet-converted.** Both work against the same FastAPI app instance. Per-router stories convert their own tests.
+15. **Greenlet bridge is forbidden.** Any remaining sync SQLAlchemy call inside an async context is a bug. Post-cutover, an import-time guard in `main.py` verifies no sync `Session` is opened in the API process (excluding the known-sync error-log + batched-writer paths).
+
+### Rollout sequencing (per `epic-api-async-migration.md`)
+
+Phase 1 (foundations) → Phase 2 (async services) + Phase 3 (async SDK swaps, parallel) → Phase 4 (per-router conversion, parallel, ~12 stories) → Phase 5 (middleware) → Phase 6 (cutover, serial, single PR flipping the last holdouts + deleting sync shims) → Phase 7 (cleanup) → Phase 8 (verification). Full detail in the epic.
+
+### No new infrastructure
+
+- No Terraform changes. No new env vars beyond possibly `DB_ASYNC_POOL_SIZE` / `DB_ASYNC_MAX_OVERFLOW` (same budget as sync today; configurable via env).
+- No new secrets, no new IAM, no new queues, no new Lambdas.
+- `asyncpg` ships as a new pip dep alongside existing `psycopg2`. Both coexist permanently.
+- Healthcheck (`/v1/health`) stays stateless; no behavior change.

@@ -1,5 +1,18 @@
 Bugs/Improvements:
 
+* Creating a Meal breaks
+* PUSH NOTIFICATIONS
+* Logging out shows a weird auth0 page
+* Change language to be "dismiss" in imports/notifs instead of archive (for successful ones it's weird language)
+* Shopping cart still broken
+    * Can't open at all because of "Import all from calendar" bug
+    * Also still seeing the Websocket errors in crashlytics
+* When token needs a refresh sometimes get very strange errors in the app, should detect "need to refresh auth" errors everywhere
+
+
+
+=================== old =======
+
 * Still experiencing bug on the current shopping cart after trying to import all ingredients from the calendar.
 * **Calendar reminder — 2026-10-08 (day 170 of PI free tier)**: Performance Insights on `palateful-db-prod` switches off free tier around this date. Either keep it (~$2/mo, stays under NFR29's $50 cap) or toggle `performance_insights_enabled=false` in `terraform/modules/rds/main.tf`. Decide before the date so we don't get a surprise bill.
 * 

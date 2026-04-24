@@ -14,6 +14,7 @@ from api.v1.import_job import (
     ListImportItems,
     ListImportItemsBatch,
     ListImportJobs,
+    ListSeeAllImportItems,
     RetryImportItem,
     SkipImportItem,
     StartImport,
@@ -205,6 +206,32 @@ async def import_see_all_count(
     ``item_id`` path param.
     """
     return ImportSeeAllCount.call(user=user, database=database)
+
+
+@import_router.get("/import-items/see-all")
+async def list_see_all_import_items(
+    limit: int = Query(50, ge=1, le=100),
+    cursor: str | None = Query(
+        None,
+        description=(
+            "Opaque cursor from a prior page's next_cursor. Omit for "
+            "the first page."
+        ),
+    ),
+    user: User = Depends(get_current_user),
+    database: Database = Depends(get_database),
+):
+    """Paginated See-all items (same predicate as /see-all-count).
+
+    Registered BEFORE ``/import-items/{item_id}`` so FastAPI's
+    literal-path-first matcher routes ``see-all`` here.
+    """
+    return ListSeeAllImportItems.call(
+        limit=limit,
+        cursor=cursor,
+        user=user,
+        database=database,
+    )
 
 
 @import_router.get("/import-items/{item_id}")

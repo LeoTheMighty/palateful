@@ -3,6 +3,11 @@
 #
 # Usage:
 #   bin/prod-ios-deploy          # Build, archive, upload to TestFlight
+#
+# Config (API_BASE_URL, AUTH0_*) is baked into the binary via
+# compile-time constants in app/lib/core/config/environment.dart.
+# Defaults are prod values, so `flutter build ios --release` needs no
+# flags to produce a prod-pointing IPA.
 
 set -euo pipefail
 
@@ -16,37 +21,10 @@ cd app
 CURRENT=$(grep '^version:' pubspec.yaml | awk '{print $2}')
 echo "  Version: $CURRENT"
 
-# Stage prod env as .env for the duration of the build.
-#
-# envFileName in app/lib/core/config/environment.dart defaults to `.env`
-# unless --dart-define=ENV=prod is passed — and that flag doesn't always
-# propagate cleanly through `xcodebuild archive`'s Flutter build phase.
-# Copying .env.prod over .env guarantees the bundled asset has prod
-# config (API_BASE_URL, Auth0, etc.), matching what ci_post_clone.sh
-# does for Xcode Cloud builds. .env is gitignored, so we back it up and
-# restore it on exit so local dev state is untouched.
-ENV_BACKUP=""
-if [ -f .env ]; then
-  ENV_BACKUP=$(mktemp)
-  cp .env "$ENV_BACKUP"
-fi
-restore_env() {
-  if [ -n "$ENV_BACKUP" ] && [ -f "$ENV_BACKUP" ]; then
-    mv "$ENV_BACKUP" .env
-  else
-    rm -f .env
-  fi
-}
-trap restore_env EXIT
-
-echo ""
-echo "Staging .env.prod as .env for the build..."
-cp .env.prod .env
-
 # Build iOS release
 echo ""
 echo "Building iOS release..."
-flutter build ios --release --dart-define=ENV=prod
+flutter build ios --release
 
 # Archive
 echo ""

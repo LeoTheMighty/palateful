@@ -3,21 +3,28 @@
 #
 # Usage:
 #   bin/prod-web-deploy              # Build prod and deploy
-#   bin/prod-web-deploy --dev        # Build dev and deploy
+#   bin/prod-web-deploy --dev        # Build against local API at :8000
+#
+# Prod config (API_BASE_URL, AUTH0_*) is compiled in via defaults in
+# app/lib/core/config/environment.dart. No flags needed for prod. The
+# --dev path overrides API_BASE_URL to localhost:8000 for local testing.
 
 set -euo pipefail
 
-ENV="prod"
+BUILD_FLAGS=""
+LABEL="prod"
 if [ "${1:-}" = "--dev" ]; then
-  ENV="dev"
+  BUILD_FLAGS="--dart-define=API_BASE_URL=http://localhost:8000"
+  LABEL="dev"
 fi
 
-echo "=== Deploying Flutter Web ($ENV) ==="
+echo "=== Deploying Flutter Web ($LABEL) ==="
 
 cd app
 
 echo "Building Flutter web..."
-flutter build web --release --dart-define=ENV=$ENV
+# shellcheck disable=SC2086
+flutter build web --release $BUILD_FLAGS
 
 echo "Deploying to Cloudflare Pages..."
 npx wrangler pages deploy build/web --project-name palateful --commit-dirty=true

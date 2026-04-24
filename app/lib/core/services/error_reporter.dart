@@ -316,32 +316,91 @@ class ErrorReporter {
     String? operation,
     Map<String, Object?>? extras,
   }) {
+    final payload = buildMirrorPayload(error, seedExtras: extras);
+    _mirrorToBackend(
+      errorType: payload.errorType,
+      errorMessage: payload.errorMessage,
+      area: area,
+      operation: operation,
+      extras: payload.extras.isEmpty ? null : payload.extras,
+      statusCode: payload.statusCode,
+    );
+  }
+
+  /// Pure, side-effect-free DioException → mirror-payload parse.
+  ///
+  /// Exposed for tests. Unit tests can't exercise [_mirrorReportToBackend]
+  /// end-to-end because the mirror POST is suppressed under
+  /// [kDebugMode]/[kE2EMode] (flutter test runs in debug), and that
+  /// guard is load-bearing — enabling backend mirrors in tests would
+  /// spam the prod `/client-errors` endpoint from every CI run. Keeping
+  /// the parse pure lets us assert on its output directly without
+  /// fighting the mirror's env guard.
+  ///
+  /// FastAPI failure envelope shape: `{error_code: int, error_message:
+  /// str, data: {...}}`. Response bodies in the wild can also be
+  /// strings (load-balancer HTML), null (connection aborts), or shapes
+  /// we don't recognize — the parse is purely defensive.
+  @visibleForTesting
+  static MirrorPayload buildMirrorPayload(
+    Object error, {
+    Map<String, Object?>? seedExtras,
+  }) {
     String mirrorType;
     String mirrorMessage;
     int? statusCode;
-    final mirrorExtras = <String, Object?>{...?extras};
+    final mirrorExtras = <String, Object?>{...?seedExtras};
     if (error is DioException) {
       mirrorType = 'DioException';
       statusCode = error.response?.statusCode;
       final req = error.requestOptions;
       mirrorExtras['http.method'] = req.method;
       mirrorExtras['http.path'] = req.path;
+      int? serverErrorCode;
+      String? serverErrorMessage;
+      final data = error.response?.data;
+      if (data is Map) {
+        final code = data['error_code'];
+        if (code is int) serverErrorCode = code;
+        final msg = data['error_message'];
+        if (msg is String && msg.isNotEmpty) serverErrorMessage = msg;
+      }
+      if (serverErrorCode != null) {
+        mirrorExtras['server.error_code'] = serverErrorCode;
+      }
       final suffix = statusCode != null ? ' → $statusCode' : '';
-      final detailPart = error.message != null ? ': ${error.message}' : '';
-      mirrorMessage = '${req.method} ${req.path}$suffix$detailPart';
+      final codePart = serverErrorCode != null ? ' [code=$serverErrorCode]' : '';
+      final detailPart = serverErrorMessage != null
+          ? ': $serverErrorMessage'
+          : (error.message != null ? ': ${error.message}' : '');
+      mirrorMessage = '${req.method} ${req.path}$suffix$codePart$detailPart';
     } else {
       mirrorType = error.runtimeType.toString();
       mirrorMessage = error.toString();
     }
-    _mirrorToBackend(
+    return MirrorPayload(
       errorType: mirrorType,
       errorMessage: mirrorMessage,
-      area: area,
-      operation: operation,
-      extras: mirrorExtras.isEmpty ? null : mirrorExtras,
+      extras: mirrorExtras,
       statusCode: statusCode,
     );
   }
+}
+
+/// Immutable value type carrying the computed mirror-POST shape. Kept
+/// public (not prefixed with _) only so [ErrorReporter.buildMirrorPayload]
+/// has a named return type; production callers never construct one.
+class MirrorPayload {
+  const MirrorPayload({
+    required this.errorType,
+    required this.errorMessage,
+    required this.extras,
+    required this.statusCode,
+  });
+  final String errorType;
+  final String errorMessage;
+  final Map<String, Object?> extras;
+  final int? statusCode;
 }
 
 /// Test-only callback signature for capturing [ErrorReporter.report] invocations.

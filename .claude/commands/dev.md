@@ -99,19 +99,96 @@ working" until all of these pass:
 
 - If more stories remain (and `stop_after` not reached): go back to Phase 1
 - If all stories done or `stop_after` reached: proceed to Finalization
+- If you decide to halt early (context budget, quality risk, blocker): emit the **Handoff Snippet** (below) and stop — do NOT push.
+
+## Handoff Snippet (when stopping before the full run completes)
+
+Emit this snippet whenever you stop short of finishing every story — `stop_after` reached, user asked to halt, or you decided to stop for context/quality reasons. The purpose is to let the user `/clear` and invoke `/dev` again in a fresh conversation **without that next agent having to rediscover anything**.
+
+Rules:
+- Only emit the snippet when stopping early. If the full run finished and pushed, skip it.
+- Do NOT push. Unpushed commits are part of the handoff — the next agent will push them as part of its finalization after it finishes the remaining stories.
+- Be concrete. Every fact a fresh agent would otherwise have to grep for belongs in the snippet.
+
+Format the snippet exactly like this (inside a fenced ```` ```text ```` block so the user can copy-paste the whole thing as the next `/dev` input):
+
+````text
+/dev <epic-key>
+
+RESUMING from prior session. Do not redo work below.
+
+## Already done (do not rerun)
+- <story-key>: <one-line summary> — commit <short-sha>
+- <story-key>: <one-line summary> — commit <short-sha>
+(Local commits unpushed; push in your finalization step.)
+
+## Next up (in order)
+- <next-story-key>: <one-line from epic file>
+- <story-key>: ...
+- <story-key>: ...
+
+## State to trust
+- `_bmad-output/planning-artifacts/<epic-file>.md` — current epic spec.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `<story-keys done>` marked `done`, rest `backlog`.
+- `_bmad-output/implementation-artifacts/<done-story-key>.md` + `<done-story-key>-qa-walkthrough.md` — what shipped per story.
+- Branch is ahead of origin by N commits; do `git log --oneline origin/main..HEAD` first to confirm.
+
+## Gotchas from prior session (save time — don't rediscover)
+- <concrete fact the next agent would otherwise waste context learning>
+- <parallel-session / untracked-WIP collision note, if any>
+- <framework/version quirk that bit us (e.g. "Riverpod 3.0-dev removed StateProvider — use NotifierProvider")>
+- <any API/endpoint decision that deviated from the epic text and why>
+
+## Do NOT
+- Re-create story files that already exist under `_bmad-output/implementation-artifacts/`.
+- Re-run migrations / re-stage commits that are already in `git log origin/main..HEAD`.
+- Touch files outside this epic's File List unless a review finding requires it.
+
+Continue from <next-story-key>. Full run expected to cover <remaining-story-keys>.
+````
+
+Fill every placeholder. The "Gotchas" list is the highest-value part — put anything concrete here that cost you more than a minute to figure out. Examples of good gotchas:
+
+- "Router prefix is `/v1/activities`, not `/v1/user-activities` — epic text is wrong."
+- "Untracked `services/migrator/migrations/versions/20260418030000_create_unit_aliases.py` is riip-1 WIP from a parallel agent; leave it alone, it'll chain off our migration once they rebase."
+- "`migrator:check-models` fails locally due to the riip-1 untracked WIP (UnitAlias model without migration). CI on a clean checkout will pass."
+- "Flutter tests that pump screens using Riverpod need `ProviderScope` — update legacy `MaterialApp(home: Screen())` test harnesses."
+
+After emitting the snippet, say one sentence to the user summarizing why you stopped and then stop. Do not keep working.
 
 ## Finalization (After All Stories)
 
-### Step 1: pubspec.yaml Commit (if needed)
+### Step 1: pubspec.yaml bump (if any app changes)
 
-Check if any Flutter/app files were modified across all stories:
-- If YES: Stage `app/pubspec.yaml` and `app/pubspec.lock` in a **separate commit**:
-  ```
-  chore(app): bump dependencies for MCP integration
+Inspect the changes on this branch:
+```
+git diff --name-only origin/main..HEAD
+```
 
-  Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-  ```
-- If NO: skip this step
+If any path under `app/lib/`, `app/test/`, `app/ios/`, `app/android/`,
+`app/pubspec.yaml`, or `app/pubspec.lock` shows up in that diff — i.e. the
+Flutter app will be rebuilt — you MUST bump `app/pubspec.yaml` before the
+push.
+
+1. Read the current `version: X.Y.Z+B` line.
+2. Bump the **patch** and the **build number** by one (e.g., `1.0.7+20` →
+   `1.0.8+21`). Keep them aligned; never skip either. (Major/minor bumps
+   are only for user-visible release coordination — ask the user if it
+   feels like that kind of ship.)
+3. If `app/pubspec.lock` also changed during dev (new deps), stage it
+   too.
+4. Commit as a **single final commit** separate from the story commits:
+   ```
+   chore(app): bump to <new version> to ship <short epic summary>
+
+   <1–2 sentences describing the user-visible outcome of the epic>
+
+   Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+   ```
+   (match existing convention: see `git log --oneline` for `chore(app): bump to…`)
+
+If the diff has NO app-path changes (pure backend / infra / docs): skip
+this step entirely — no version bump needed.
 
 ### Step 2: Push Everything
 

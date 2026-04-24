@@ -149,6 +149,7 @@ class Endpoint:
         except APIException as e:
             logger.error("Endpoint %s failed with api error: %s",
                          self.__class__.__name__, str(e), exc_info=True)
+            self._log_api_error_to_db(e)
             return failure(
                 error_code=e.code,
                 error_message=e.detail,
@@ -165,6 +166,102 @@ class Endpoint:
                 error_message=str(e),
                 error=e
             )
+
+    def _extract_body_keys(self) -> list[str] | None:
+        """Collect Pydantic-set field names from any BaseModel args.
+
+        Returns only field NAMES that the caller explicitly set on any
+        BaseModel positional or keyword argument. Values are never
+        inspected — callers put auth-scoped query strings in recipe URLs
+        (`?utm_source=<token>`) and share-extension payloads embed raw
+        user text. The sorted list is JSON-encoded into the audit row's
+        stack_trace column so `audit_errors.py --drill api:APIException`
+        can see which fields the client actually submitted without ever
+        persisting their contents.
+        """
+        keys: set[str] = set()
+        for arg in list(self.args) + list(self.kwargs.values()):
+            if isinstance(arg, BaseModel):
+                keys.update(arg.model_fields_set)
+        return sorted(keys) if keys else None
+
+    def _log_api_error_to_db(self, error: "APIException") -> None:
+        """Persist a 4xx APIException to error_logs (prod only).
+
+        5xx responses are already captured — by the sibling 500-path in
+        `run()` and by `middleware.error_tracking` on unhandled
+        exceptions. This writer handles the gap: 4xx responses whose
+        `APIException.code` carries the real diagnostic signal (which
+        validator branch fired, which access check failed) but which
+        currently leave no durable row behind. Writing them lets
+        `audit_errors.py --drill api:APIException` surface the
+        error_code + body_keys + user/path tuple that triage needs.
+
+        Strict env gate: writes only when `ENVIRONMENT == "prod"`. The
+        test suite runs thousands of 4xx assertions and the dev stack
+        hits a lot of access-denied paths during iteration; mirroring
+        all of them into error_logs would drown the real prod signal.
+
+        Swallows every exception — audit must never fail a response.
+        Matches the 5xx writer's contract.
+        """
+        try:
+            status = getattr(error, "status_code", None)
+            if not isinstance(status, int) or status < 400 or status >= 500:
+                return
+            from utils.constants import ENVIRONMENT
+            if ENVIRONMENT != "prod":
+                return
+
+            method = None
+            path = None
+            request_id = None
+            user_id = None
+            if self.request:
+                method = getattr(self.request, "method", None)
+                if method:
+                    method = method[:10]
+                url = getattr(self.request, "url", None)
+                if url:
+                    path = str(url.path)[:2000]
+                state = getattr(self.request, "state", None)
+                if state:
+                    request_id = getattr(state, "request_id", None)
+            if self.user:
+                user_id = getattr(self.user, "id", None)
+
+            body_keys = self._extract_body_keys()
+            stack_payload = (
+                json.dumps({"body_keys": body_keys})
+                if body_keys is not None
+                else None
+            )
+
+            from utils.models.error_log import ErrorLog
+            from utils.services.database import Database, ErrorLogSessionLocal
+
+            if ErrorLogSessionLocal is not None:
+                database = Database(db=ErrorLogSessionLocal())
+            else:
+                database = Database()
+            try:
+                error_log = ErrorLog(
+                    error_type="APIException",
+                    error_message=str(error.detail)[:4000],
+                    stack_trace=stack_payload,
+                    error_code=error.code,
+                    method=method,
+                    path=path,
+                    status_code=status,
+                    user_id=user_id,
+                    service="api",
+                    request_id=request_id,
+                )
+                database.create(error_log)
+            finally:
+                database.close()
+        except Exception:
+            logger.exception("Failed to log API 4xx error to error_logs table")
 
     def _log_error_to_db(self, error: Exception) -> None:
         """Persist an unhandled endpoint error to the error_logs table.
@@ -296,6 +393,7 @@ class AsyncEndpoint(Endpoint):
                 str(e),
                 exc_info=True,
             )
+            await self._log_api_error_to_db_async(e)
             return failure(
                 error_code=e.code,
                 error_message=e.detail,
@@ -332,6 +430,23 @@ class AsyncEndpoint(Endpoint):
             await run_in_threadpool(self._log_error_to_db, error)
         except Exception:
             logger.exception("Failed to dispatch error log write to threadpool")
+
+    async def _log_api_error_to_db_async(self, error: "APIException") -> None:
+        """Async counterpart of `_log_api_error_to_db` (4xx audit).
+
+        Same threadpool-dispatch strategy as `_log_error_to_db_async`:
+        the sync writer runs on the dedicated `error_log_engine`
+        sub-pool so a main async-pool starvation incident can never
+        silence 4xx audit rows.
+        """
+        from fastapi.concurrency import run_in_threadpool
+
+        try:
+            await run_in_threadpool(self._log_api_error_to_db, error)
+        except Exception:
+            logger.exception(
+                "Failed to dispatch API 4xx error log write to threadpool"
+            )
 
     async def execute(self, *args, **kwargs):  # type: ignore[override]
         raise NotImplementedError(

@@ -42,10 +42,24 @@ echo "Connecting to task: $TASK_ARN"
 echo "Running $SCRIPT..."
 echo ""
 
+# Generate a per-invocation end-of-output sentinel. The PRELUDE prints
+# this line to stdout via atexit when the user script finishes (normal
+# return OR unhandled exception); the local awk filter below stops
+# reading real output once it sees the sentinel, silently dropping
+# anything aws / session-manager-plugin writes afterward (e.g. the
+# "Cannot perform start session: EOF" line). This replaces timing-based
+# drain hacks — correctness no longer depends on how long the script
+# runs or how slow stdout drains.
+SENTINEL="__PROD_SCRIPT_END_$(openssl rand -hex 8)__"
+
 # Prelude: mirrors services/api/src/manage.py — dynamically imports every
 # SQLAlchemy model and enum, and exposes `db` + `database` helpers so the
 # user's script can reference models directly without their own imports.
-read -r -d '' PRELUDE <<'PY' || true
+# The literal `__PROD_SCRIPT_SENTINEL__` placeholder is substituted with
+# $SENTINEL below — keep the heredoc quoted so Python source isn't
+# shell-expanded.
+read -r -d '' PRELUDE_TEMPLATE <<'PY' || true
+import atexit
 import enum
 import importlib
 import inspect
@@ -81,6 +95,22 @@ def _keepalive() -> None:
 threading.Thread(target=_keepalive, daemon=True).start()
 
 
+# End-of-output sentinel. atexit runs after main script return (and
+# after unhandled exceptions), before interpreter shutdown reaps daemon
+# threads. Printing a unique line to stdout gives the local shell a
+# precise "output is complete" signal — no sleeps, no timing races.
+# Bytes flush immediately because `python -u` disables stdout buffering.
+def _emit_sentinel() -> None:
+    try:
+        sys.stdout.write("__PROD_SCRIPT_SENTINEL__\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
+atexit.register(_emit_sentinel)
+
+
 def _import_all(package, predicate, context):
     for _, module_name, is_pkg in pkgutil.walk_packages(
         package.__path__, f"{package.__name__}."
@@ -106,24 +136,48 @@ _import_all(_models_pkg, lambda o: hasattr(o, "__table__"), globals())
 _import_all(_enums_pkg, lambda o: issubclass(o, enum.Enum), globals())
 PY
 
+# Substitute the placeholder with the real per-run sentinel. Using a
+# distinctive placeholder (rather than shell-expanding inside the
+# heredoc) keeps the Python source readable and avoids accidental
+# expansion of unrelated `$` sequences.
+PRELUDE="${PRELUDE_TEMPLATE//__PROD_SCRIPT_SENTINEL__/$SENTINEL}"
+
 # Concatenate prelude + user script, base64 so the payload survives
 # shell quoting and Session Manager transport.
 COMBINED="$PRELUDE"$'\n'"$(cat "$SCRIPT")"
 ENCODED=$(printf '%s' "$COMBINED" | base64 | tr -d '\n')
 
-# Notes on the shell wrapping:
-# - `python -u` forces unbuffered stdout so output streams back as it is
-#   written, instead of being lost when Session Manager closes the pipe.
-# - Trailing `sleep 1` gives Session Manager time to drain the final
-#   output before the container command exits.
-# - The PRELUDE starts a daemon keepalive thread that writes an invisible
-#   escape to stderr every 500ms. That continuous output keeps Session
-#   Manager's `--interactive` stream open during slow DB queries — it
-#   otherwise terminates with "Cannot perform start session: EOF" after
-#   ~1s of stdout silence.
+# Shell wrapping:
+# - `python -u` forces unbuffered stdout so bytes stream back as they
+#   are written.
+# - The PRELUDE starts a daemon keepalive thread that writes an
+#   invisible escape to stderr every 500ms. That continuous output
+#   keeps Session Manager's `--interactive` stream open during slow DB
+#   queries — it otherwise terminates after ~1s of stdout silence.
+# - On the local side, awk reads the merged stdout, prints every line
+#   up to the sentinel, then silently discards everything after. This
+#   includes aws's cosmetic "Cannot perform start session: EOF" close
+#   message. If the sentinel never arrives (Python segfaulted, or the
+#   script called os._exit before atexit could run), awk prints
+#   everything aws emits — the user still sees all real output plus
+#   the EOF line, i.e. the old pre-fix behavior as a safe fallback.
+# - PIPESTATUS[0] preserves aws's real exit code through the awk pipe.
+set +o pipefail
 aws ecs execute-command \
   --cluster "$CLUSTER" \
   --task "$TASK_ARN" \
   --container "$CONTAINER" \
   --interactive \
-  --command "sh -c 'python -u -c \"import base64; exec(base64.b64decode(\\\"$ENCODED\\\").decode())\"; sleep 1'"
+  --command "sh -c 'python -u -c \"import base64; exec(base64.b64decode(\\\"$ENCODED\\\").decode())\"'" \
+  | awk -v sentinel="$SENTINEL" '
+      # Session Manager TTY-ifies output as CRLF; strip the trailing
+      # CR so the sentinel equality check (and user-visible lines)
+      # match cleanly.
+      { sub(/\r$/, "") }
+      done { next }
+      $0 == sentinel { done=1; next }
+      { print; fflush() }
+    '
+aws_exit=${PIPESTATUS[0]}
+set -o pipefail
+exit "$aws_exit"

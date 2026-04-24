@@ -64,9 +64,7 @@ jobs:
 
       - name: Install Flutter dependencies
         working-directory: app
-        run: |
-          touch .env
-          flutter pub get
+        run: flutter pub get
 
       - name: Cache CocoaPods
         uses: actions/cache@v4
@@ -150,17 +148,7 @@ jobs:
 
       - name: Install Flutter dependencies
         working-directory: app
-        run: |
-          # Dummy .env so assert() guards on required env vars don't fire during
-          # analyze + test. Real values are not needed for static analysis or
-          # the unit-test suite. Matches ci.yml's flutter-test job.
-          cat > .env << 'EOF'
-          API_BASE_URL=http://localhost:8000
-          AUTH0_DOMAIN=test.palateful.us.auth0.com
-          AUTH0_CLIENT_ID=test-client-id
-          AUTH0_AUDIENCE=https://api.palateful.app
-          EOF
-          flutter pub get
+        run: flutter pub get
 
       - name: Flutter analyze
         working-directory: app

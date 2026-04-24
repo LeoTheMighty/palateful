@@ -290,6 +290,16 @@ development_status:
   bugs-imp-pho-7-vision-extraction-eval-suite: backlog
   epic-bugs-import-photo-pipeline-retrospective: optional
 
+  # Standalone bug from /audit triage 2026-04-24: 86-event DioException
+  # cluster (single user, all status=400 on /v1/recipe-books/…/import)
+  # with no durable server-side detail and no parsed server error_code
+  # on the client side. Adds 4xx APIException persistence to
+  # error_logs (body KEYS only, no values; gated on ENVIRONMENT=prod)
+  # and lets Flutter's DioException mirror carry the server envelope's
+  # error_code + error_message. Observability story — actual 400
+  # root-cause diagnosis is downstream once this lands.
+  bugs-import-400-retries: done
+
   # Epic Bugs — Recipe-Images Bucket Migration (planned 2026-04-17, placeholder)
   # Deferred from epic-bugs-import-photo-pipeline workshop. Today recipe hero
   # photos (Story 2.3 + new FR87 source-photo promotion) piggyback on

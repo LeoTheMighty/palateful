@@ -17,7 +17,7 @@ These tests are intentionally shape-focused (not behavior-focused) —
 behavior-level coverage is in test_import.py / test_recipe.py.
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from conftest import (
     MockImportItem,
@@ -215,11 +215,15 @@ class TestFavoriteMealResponseShape:
         )()
         return meal_mock
 
-    @patch("utils.services.meal_service.MealService.is_favorited")
-    @patch("utils.services.meal_service.MealService.hydrate_components")
-    @patch("utils.services.meal_service.MealService.set_favorite")
-    @patch("utils.services.meal_service.MealService.user_has_book_read")
-    @patch("utils.services.meal_service.MealService.get_with_components")
+    # aam-10: MealService methods are now async; patches need AsyncMock so
+    # `await service.<method>(...)` resolves to `return_value` instead of
+    # returning a plain MagicMock and tripping `TypeError: object MagicMock
+    # can't be used in 'await' expression`.
+    @patch("utils.services.meal_service.MealService.is_favorited", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.hydrate_components", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.set_favorite", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.user_has_book_read", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.get_with_components", new_callable=AsyncMock)
     def test_favorite_returns_full_meal_response(
         self,
         mock_get,
@@ -250,11 +254,11 @@ class TestFavoriteMealResponseShape:
         assert "components" in data
         assert isinstance(data["components"], list)
 
-    @patch("utils.services.meal_service.MealService.is_favorited")
-    @patch("utils.services.meal_service.MealService.hydrate_components")
-    @patch("utils.services.meal_service.MealService.set_favorite")
-    @patch("utils.services.meal_service.MealService.user_has_book_read")
-    @patch("utils.services.meal_service.MealService.get_with_components")
+    @patch("utils.services.meal_service.MealService.is_favorited", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.hydrate_components", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.set_favorite", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.user_has_book_read", new_callable=AsyncMock)
+    @patch("utils.services.meal_service.MealService.get_with_components", new_callable=AsyncMock)
     def test_unfavorite_returns_full_meal_response(
         self,
         mock_get,
