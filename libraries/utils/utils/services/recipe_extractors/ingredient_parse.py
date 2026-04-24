@@ -102,13 +102,25 @@ Return a JSON object with this shape — EXACTLY ONE entry per input, in input o
 }}
 
 Rules:
-- "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here.
+- "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here. Extract quantity INDEPENDENTLY of unit — if a number is present, always capture it, even when unit is null. Count items like "3 scallions, diced" must emit quantity: 3 with unit: null; do not drop the number because there is no unit word.
 {unit_rule(freeform_fallback=_FREEFORM_UNIT_RULE)}
 - "name": the canonical ingredient name, stripped of quantity, unit, and prep notes (e.g. "garlic" not "1 clove garlic, minced"; "vinegar" not "300 gram of vinegar").
 - "notes": preparation/state qualifiers ("minced", "chopped", "room temperature", "to taste", "divided") or null. Do NOT hallucinate notes — if the source has no qualifier, notes MUST be null.
 
 For ranges ("1-2 cups" / "1 to 2 cups"): emit "quantity" as the first value and capture the full range in "notes" (e.g. quantity=1, notes="to 2 cups").
 Respect word boundaries: "a pinchful" is NOT "pinch" (unit: null, notes="pinchful").
+
+Worked examples (source -> parsed fields):
+- "9 tablespoons butter" -> {{"quantity": 9, "unit": "tbsp", "name": "butter", "notes": null}}
+- "1/2 cup diced onion" -> {{"quantity": 0.5, "unit": "cup", "name": "onion", "notes": "diced"}}
+- "3 large eggs" -> {{"quantity": 3, "unit": null, "name": "eggs", "notes": "large"}}
+- "3 scallions, diced" -> {{"quantity": 3, "unit": null, "name": "scallion", "notes": "diced"}}
+- "1 clove garlic, minced" -> {{"quantity": 1, "unit": "clove", "name": "garlic", "notes": "minced"}}
+- "Pinch nutmeg" -> {{"quantity": null, "unit": "pinch", "name": "nutmeg", "notes": null}}
+- "Salt to taste" -> {{"quantity": null, "unit": null, "name": "salt", "notes": "to taste"}}
+
+BAD — do NOT produce:
+- {{"quantity": null, "unit": null, "name": "scallion", "notes": "diced"}}   # never drop quantity just because unit is null
 
 Ingredient strings:
 {numbered}

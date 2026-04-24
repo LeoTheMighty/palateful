@@ -97,7 +97,7 @@ Ingredient rules — CRITICAL: quantity, unit, and text are rendered together do
 
 For every ingredient line, always extract `quantity`, `unit`, and `notes` when they appear in the source, even if the quantity is a fraction, a range, or implied by context. Notes capture preparation hints ("minced", "melted", "room temperature", "to taste"). If the source gives a range like "1-2 cups" or "1 to 2 cups", emit `quantity` as the first value and capture the full range in `notes` (e.g. `{{"quantity": 1, "notes": "to 2 cups"}}`). Respect word boundaries for units: "a pinchful" is NOT "pinch" (unit: null).
 
-- "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here.
+- "quantity": a number ONLY. Convert fractions ("1/2" -> 0.5, "1 1/2" -> 1.5). Use null for non-numeric amounts ("a pinch", "to taste"). Never include the unit or name here. Extract quantity INDEPENDENTLY of unit — if a number is present, always capture it, even when unit is null. Count items like "3 scallions, diced" must emit quantity: 3 with unit: null; do not drop the number because there is no unit word.
 {unit_rule(freeform_fallback=_FREEFORM_UNIT_RULE)}
 - "name": the canonical ingredient name, stripped of quantity, unit, and prep notes (e.g. "onion" not "diced yellow onion"; "butter" not "9 tbsp butter").
 - "notes": preparation/state qualifiers ("minced", "sauteed", "room temperature", "to taste", "divided") or null. Do NOT hallucinate notes — if the source has no qualifier, notes MUST be null.
@@ -113,6 +113,7 @@ Worked examples (source line -> extracted fields):
 - "Salt to taste" -> {{"text": "salt, to taste", "quantity": null, "unit": null, "name": "salt", "notes": "to taste", "is_optional": false}}
 - "1 clove garlic, minced" -> {{"text": "garlic, minced", "quantity": 1, "unit": "clove", "name": "garlic", "notes": "minced", "is_optional": false}}
 - "2 stalks celery, chopped" -> {{"text": "celery, chopped", "quantity": 2, "unit": "stalk", "name": "celery", "notes": "chopped", "is_optional": false}}
+- "3 scallions, diced" -> {{"text": "scallions, diced", "quantity": 3, "unit": null, "name": "scallion", "notes": "diced", "is_optional": false}}
 - "300 gram of vinegar" -> {{"text": "vinegar", "quantity": 300, "unit": "g", "name": "vinegar", "notes": null, "is_optional": false}}
 - "1-2 cups water" -> {{"text": "water", "quantity": 1, "unit": "cup", "name": "water", "notes": "to 2 cups", "is_optional": false}}
 - "a pinchful of salt" -> {{"text": "salt", "quantity": null, "unit": null, "name": "salt", "notes": "pinchful", "is_optional": false}}
@@ -122,6 +123,7 @@ BAD examples — do NOT produce these:
 - {{"text": "9 tbsp butter", "quantity": 9, "unit": "tbsp", ...}}   # text repeats quantity+unit
 - {{"text": "tbsp butter", "quantity": 9, "unit": "tbsp", ...}}     # text repeats unit
 - {{"quantity": "9 tbsp", ...}}                                     # quantity must be a number
+- {{"text": "scallions, diced", "quantity": null, "unit": null, ...}} # never drop quantity just because unit is null
 
 Step rules (cmt-1) — if you can identify discrete steps, prefer emitting `steps` over a joined `instructions` string. When you emit `steps`, it supersedes `instructions` downstream.
 - `order`: 1-indexed.
