@@ -1359,7 +1359,7 @@ development_status:
   aam-12-recipe-domain-async: superseded  # split into 12a (read) + 12b (write)
   aam-12a-recipe-reads-async: in-progress
   aam-12b-recipe-writes-async: backlog
-  aam-13-shopping-list-domain-async: backlog
+  aam-13-shopping-list-domain-async: done
   aam-14-calendar-and-meal-event-domain-async: done
   aam-15-pantry-domain-async: done
   aam-16-activity-domain-async: done
