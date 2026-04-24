@@ -37,11 +37,17 @@ from api.v1.recipe_book.notifications import (
     notify_recipe_note_added,
 )
 from api.v1.recipe_book.websocket import broadcast_event_to_recipe_book
-from dependencies import get_current_user, get_database
+from dependencies import (
+    get_async_database,
+    get_current_user,
+    get_current_user_async,
+    get_database,
+)
 from fastapi import APIRouter, Depends
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 
 recipe_router = APIRouter(tags=["recipes"])
@@ -365,11 +371,11 @@ async def revoke_recipe_share(
 @recipe_router.get("/recipes/{recipe_id}/meals")
 async def list_meals_using_recipe(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """md-2: List Meals that reference this recipe as a component."""
-    return ListMealsUsingRecipe.call(
+    return await ListMealsUsingRecipe.call(
         recipe_id=recipe_id,
         user=user,
         database=database,
@@ -392,11 +398,11 @@ async def toggle_favorite(
 
 @recipe_router.get("/favorites")
 async def list_favorites(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List the current user's favorite recipes."""
-    return ListFavorites.call(
+    return await ListFavorites.call(
         user=user,
         database=database,
     )
