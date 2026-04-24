@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 
 from config import settings
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.parser_job import ParserJob
 from utils.services.aws import AWSService
 
 
-class GetParserJob(Endpoint):
+class GetParserJob(AsyncEndpoint):
     """Get parser job status and results."""
 
-    def execute(self, job_id: str):
+    async def execute(self, job_id: str):
         """
         Get parser job status, syncing from AWS Batch if needed.
 
@@ -23,8 +23,7 @@ class GetParserJob(Endpoint):
         Returns:
             Parser job status and extracted text if completed.
         """
-        # Find job
-        parser_job = self.database.find_by(ParserJob, id=job_id)
+        parser_job = await self.database.find_by(ParserJob, id=job_id)
         if not parser_job:
             raise APIException(
                 status_code=404,
@@ -32,7 +31,6 @@ class GetParserJob(Endpoint):
                 code=ErrorCode.NOT_FOUND,
             )
 
-        # Verify ownership
         if parser_job.user_id != self.user.id:
             raise APIException(
                 status_code=403,
@@ -40,9 +38,8 @@ class GetParserJob(Endpoint):
                 code=ErrorCode.FORBIDDEN,
             )
 
-        # If job is not complete, sync status from AWS Batch
         if parser_job.status not in ("succeeded", "failed") and parser_job.batch_job_id:
-            self._sync_batch_status(parser_job)
+            await self._sync_batch_status_async(parser_job)
 
         return success(
             data=GetParserJob.Response(
@@ -59,7 +56,7 @@ class GetParserJob(Endpoint):
             )
         )
 
-    def _sync_batch_status(self, parser_job: ParserJob) -> None:
+    async def _sync_batch_status_async(self, parser_job: ParserJob) -> None:
         """Sync parser job status from AWS Batch."""
         aws = AWSService(
             region=settings.aws_region,
@@ -69,18 +66,15 @@ class GetParserJob(Endpoint):
             batch_job_definition=settings.batch_job_definition,
         )
 
-        # Get Batch job status
-        batch_job = aws.describe_batch_job(parser_job.batch_job_id)
+        batch_job = await aws.describe_batch_job_async(parser_job.batch_job_id)
         batch_status = batch_job.get("status", "UNKNOWN")
         new_status = aws.map_batch_status_to_parser_status(batch_status)
 
-        # Update status
         parser_job.status = new_status
 
-        # If succeeded, fetch results from S3
         if new_status == "succeeded" and parser_job.output_s3_key:
             try:
-                result = aws.get_s3_object(parser_job.output_s3_key)
+                result = await aws.get_s3_object_async(parser_job.output_s3_key)
                 parser_job.extracted_text = result.get("extracted_markdown", "")
                 parser_job.completed_at = datetime.now(UTC)
             except Exception as e:
@@ -88,13 +82,12 @@ class GetParserJob(Endpoint):
                 parser_job.status = "failed"
                 parser_job.completed_at = datetime.now(UTC)
 
-        # If failed, capture error message
         elif new_status == "failed":
             status_reason = batch_job.get("statusReason", "Unknown error")
             parser_job.error_message = status_reason
             parser_job.completed_at = datetime.now(UTC)
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
     class Response(BaseModel):
         id: str

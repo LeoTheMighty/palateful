@@ -5,15 +5,15 @@ from datetime import UTC, datetime
 
 from config import settings
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.parser_job import ParserJob
 from utils.services.aws import AWSService
 
 
-class SubmitBatchParserJob(Endpoint):
+class SubmitBatchParserJob(AsyncEndpoint):
     """Submit a batch OCR parsing job to AWS Batch for multiple images."""
 
-    def execute(self, params: "SubmitBatchParserJob.Params"):
+    async def execute(self, params: "SubmitBatchParserJob.Params"):
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         batch_id = str(uuid.uuid4())[:8]
 
@@ -25,7 +25,6 @@ class SubmitBatchParserJob(Endpoint):
             batch_job_definition=settings.batch_job_definition,
         )
 
-        # Create a ParserJob record and manifest item for each image
         items = []
         parser_jobs = []
         for _i, s3_key in enumerate(params.s3_keys):
@@ -38,7 +37,7 @@ class SubmitBatchParserJob(Endpoint):
                 input_s3_key=s3_key,
                 output_s3_key=output_s3_key,
             )
-            self.database.create(parser_job)
+            self.database.db.add(parser_job)
             parser_jobs.append(parser_job)
 
             items.append({
@@ -46,25 +45,23 @@ class SubmitBatchParserJob(Endpoint):
                 "output_s3_key": output_s3_key,
             })
 
-        self.database.db.commit()
+        await self.database.db.commit()
         for pj in parser_jobs:
-            self.database.db.refresh(pj)
+            await self.database.db.refresh(pj)
 
-        # Submit as a single Batch job with a manifest
         manifest_s3_key = f"manifests/{self.user.id}/{timestamp}_{batch_id}.json"
         job_name = f"parser-batch-{batch_id}"
 
-        batch_job_id = aws.submit_batch_manifest_job(
+        batch_job_id = await aws.submit_batch_manifest_job_async(
             job_name=job_name,
             items=items,
             manifest_s3_key=manifest_s3_key,
         )
 
-        # Update all parser jobs with the shared Batch job ID
         for pj in parser_jobs:
             pj.batch_job_id = batch_job_id
             pj.status = "submitted"
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=SubmitBatchParserJob.Response(

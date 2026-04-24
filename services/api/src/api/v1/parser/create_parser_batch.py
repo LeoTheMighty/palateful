@@ -5,17 +5,17 @@ from datetime import UTC, datetime
 
 from config import settings
 from pydantic import BaseModel, Field
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.parser_batch import ParserBatch
 from utils.models.parser_job import ParserJob
 from utils.services.aws import AWSService
 
 
-class CreateParserBatch(Endpoint):
+class CreateParserBatch(AsyncEndpoint):
     """Create a parser batch and submit a single AWS Batch job for all images."""
 
-    def execute(self, params: "CreateParserBatch.Params"):
+    async def execute(self, params: "CreateParserBatch.Params"):
         if not params.items:
             raise APIException(
                 status_code=400,
@@ -26,10 +26,8 @@ class CreateParserBatch(Endpoint):
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         batch_short_id = str(uuid.uuid4())[:8]
 
-        # Distinct group_index values determine the recipe count
         group_count = len({item.group_index for item in params.items})
 
-        # Create the parent batch first so we can FK parser jobs to it
         parser_batch = ParserBatch(
             user_id=self.user.id,
             recipe_book_id=uuid.UUID(params.recipe_book_id)
@@ -38,11 +36,8 @@ class CreateParserBatch(Endpoint):
             status="pending",
             group_count=group_count,
         )
-        self.database.create(parser_batch)
-        self.database.db.commit()
-        self.database.db.refresh(parser_batch)
+        await self.database.create(parser_batch)
 
-        # Create one ParserJob per image, all linked to the batch
         manifest_items = []
         parser_jobs: list[ParserJob] = []
         for item in params.items:
@@ -59,17 +54,16 @@ class CreateParserBatch(Endpoint):
                 parser_batch_id=parser_batch.id,
                 group_index=item.group_index,
             )
-            self.database.create(parser_job)
+            self.database.db.add(parser_job)
             parser_jobs.append(parser_job)
             manifest_items.append(
                 {"input_s3_key": item.s3_key, "output_s3_key": output_s3_key}
             )
 
-        self.database.db.commit()
+        await self.database.db.commit()
         for pj in parser_jobs:
-            self.database.db.refresh(pj)
+            await self.database.db.refresh(pj)
 
-        # Submit a single AWS Batch job for the whole manifest
         aws = AWSService(
             region=settings.aws_region,
             parser_inputs_bucket=settings.parser_inputs_bucket,
@@ -93,21 +87,19 @@ class CreateParserBatch(Endpoint):
             )
             extra_env["API_CALLBACK_URL"] = callback_url
 
-        batch_job_id = aws.submit_batch_manifest_job(
+        batch_job_id = await aws.submit_batch_manifest_job_async(
             job_name=job_name,
             items=manifest_items,
             manifest_s3_key=manifest_s3_key,
             extra_environment=extra_env,
         )
 
-        # Update all parser jobs and the batch to "submitted"
         for pj in parser_jobs:
             pj.batch_job_id = batch_job_id
             pj.status = "submitted"
         parser_batch.status = "submitted"
-        self.database.db.commit()
+        await self.database.db.commit()
 
-        # Dispatch the watcher task that fans out to ImportJobs on completion
         from utils.tasks.import_tasks.watch_parser_batch_task import (
             watch_parser_batch_task,
         )

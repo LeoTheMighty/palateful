@@ -1366,7 +1366,7 @@ development_status:
   aam-17-search-domain-async: done
   aam-18-import-job-domain-async: in-progress
   aam-19-user-profile-push-tokens-async: done
-  aam-20-admin-domain-async: backlog
+  aam-20-admin-domain-async: done
   aam-21-misc-small-routers-async: done
   # Phase 4 — Middleware + lifespan
   aam-22-error-tracking-middleware-async: backlog
@@ -1382,6 +1382,6 @@ development_status:
   # domains + the notify-via-threadpool helper every converted endpoint uses.
   aam-foundations-notify-threadpool-helper: done
   aam-28-friends-domain-async: done
-  aam-29-parser-domain-async: in-progress
+  aam-29-parser-domain-async: done
   aam-30-recurrence-rule-domain-async: in-progress
   epic-api-async-migration-retrospective: optional

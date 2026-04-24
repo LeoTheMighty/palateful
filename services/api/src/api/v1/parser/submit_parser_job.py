@@ -5,15 +5,15 @@ from datetime import UTC, datetime
 
 from config import settings
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.parser_job import ParserJob
 from utils.services.aws import AWSService
 
 
-class SubmitParserJob(Endpoint):
+class SubmitParserJob(AsyncEndpoint):
     """Submit an OCR parsing job to AWS Batch."""
 
-    def execute(self, params: "SubmitParserJob.Params"):
+    async def execute(self, params: "SubmitParserJob.Params"):
         """
         Submit a parser job to AWS Batch.
 
@@ -23,12 +23,10 @@ class SubmitParserJob(Endpoint):
         Returns:
             Created parser job with job ID and status.
         """
-        # Generate output S3 key
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         output_s3_key = f"results/{self.user.id}/{timestamp}_{unique_id}.json"
 
-        # Create parser job record
         parser_job = ParserJob(
             user_id=self.user.id,
             status="pending",
@@ -36,11 +34,8 @@ class SubmitParserJob(Endpoint):
             output_s3_key=output_s3_key,
             recipe_book_id=params.recipe_book_id,
         )
-        self.database.create(parser_job)
-        self.database.db.commit()
-        self.database.db.refresh(parser_job)
+        await self.database.create(parser_job)
 
-        # Submit to AWS Batch
         aws = AWSService(
             region=settings.aws_region,
             parser_inputs_bucket=settings.parser_inputs_bucket,
@@ -50,18 +45,16 @@ class SubmitParserJob(Endpoint):
         )
 
         job_name = f"parser-{str(parser_job.id)[:8]}"
-        batch_job_id = aws.submit_batch_job(
+        batch_job_id = await aws.submit_batch_job_async(
             job_name=job_name,
             input_s3_key=params.s3_key,
             output_s3_key=output_s3_key,
         )
 
-        # Update job with Batch job ID and status
         parser_job.batch_job_id = batch_job_id
         parser_job.status = "submitted"
-        self.database.db.commit()
+        await self.database.db.commit()
 
-        # Dispatch watcher task to automatically continue the pipeline when OCR completes
         from utils.tasks.import_tasks.watch_parser_job_task import watch_parser_job_task
         watch_parser_job_task.apply_async(
             args=[str(parser_job.id)],

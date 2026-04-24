@@ -2,35 +2,36 @@
 
 from api.v1.parser.get_parser_batch import _serialize_batch
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.import_job import ImportJob
 from utils.models.parser_batch import ParserBatch
 
 ACTIVE_STATUSES = ("pending", "submitted", "running", "partial")
 
 
-class ListParserBatches(Endpoint):
+class ListParserBatches(AsyncEndpoint):
     """List parser batches for the current user."""
 
-    def execute(
+    async def execute(
         self,
         active: bool = False,
         limit: int = 20,
     ):
         limit = max(1, min(limit, 100))
 
-        query = (
-            self.database.db.query(ParserBatch)
+        stmt = (
+            select(ParserBatch)
             .options(selectinload(ParserBatch.parser_jobs))
-            .filter(ParserBatch.user_id == self.user.id)
+            .where(ParserBatch.user_id == self.user.id)
         )
         if active:
-            query = query.filter(ParserBatch.status.in_(ACTIVE_STATUSES))
+            stmt = stmt.where(ParserBatch.status.in_(ACTIVE_STATUSES))
+        stmt = stmt.order_by(ParserBatch.created_at.desc()).limit(limit)
 
-        batches = (
-            query.order_by(ParserBatch.created_at.desc()).limit(limit).all()
-        )
+        result = await self.database.db.execute(stmt)
+        batches = list(result.scalars().all())
 
         # Single round-trip for related ImportJobs. Dismissed jobs are
         # excluded so the UI doesn't keep showing them on the strip.
@@ -40,11 +41,12 @@ class ListParserBatches(Endpoint):
         # can filter out batches whose jobs have all been dismissed.
         batches_with_any_jobs: set = set()
         if batch_ids:
-            for ij in (
-                self.database.db.query(ImportJob)
-                .filter(ImportJob.parser_batch_id.in_(batch_ids))
-                .all()
-            ):
+            ij_result = await self.database.db.execute(
+                select(ImportJob).where(
+                    ImportJob.parser_batch_id.in_(batch_ids)
+                )
+            )
+            for ij in ij_result.scalars().all():
                 batches_with_any_jobs.add(ij.parser_batch_id)
                 if ij.dismissed_at is None:
                     import_jobs_by_batch.setdefault(

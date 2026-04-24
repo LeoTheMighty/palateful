@@ -7,23 +7,57 @@ re-queries AWS Batch as the source of truth before mutating any state. A caller
 cannot cause a status transition unless AWS Batch itself already reports the
 job as SUCCEEDED/FAILED. Idempotent: calling twice for the same batch is a
 no-op on the second call.
+
+aam-29: outer `AsyncEndpoint` dispatches the sync `complete_parser_batch`
+helper via `run_in_threadpool` with a fresh `Database(db=SessionLocal())`.
+The helper is shared with `WatchParserBatchTask` in the celery worker and
+stays sync for that caller; this endpoint bridges async → sync rather than
+duplicating the logic async-side.
 """
 
 from config import settings
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.parser_batch import ParserBatch
 from utils.services.aws import AWSService
+from utils.services.database import Database, SessionLocal
 from utils.services.parser_batch_completion import complete_parser_batch
 
 
-class CompleteParserBatch(Endpoint):
+class CompleteParserBatch(AsyncEndpoint):
     """Handle parser-batch-completion callback from the Batch container."""
 
-    def execute(self, batch_id: str, params: "CompleteParserBatch.Params"):
+    async def execute(self, batch_id: str, params: "CompleteParserBatch.Params"):
+        return await run_in_threadpool(_run_complete_sync, batch_id)
+
+    class Params(BaseModel):
+        # Reserved for future caller-provided context (e.g. succeeded/failed
+        # counts). The server does not trust these values — state is always
+        # verified against AWS Batch. Making this optional avoids a 422 when
+        # the container posts an empty body.
+        succeeded: int | None = None
+        failed: int | None = None
+
+    class Response(BaseModel):
+        id: str
+        status: str
+
+
+def _run_complete_sync(batch_id: str):
+    """Threadpool body: open a fresh sync Database, run the completion helper.
+
+    Returns the standard `success(...)` envelope so the outer
+    `AsyncEndpoint.run` wrapping treats it identically to any other
+    endpoint result. Raises `APIException(404)` when the batch id does
+    not resolve — caught by `AsyncEndpoint.run` and converted to the
+    normal error response.
+    """
+    database = Database(db=SessionLocal())
+    try:
         parser_batch = (
-            self.database.db.query(ParserBatch)
+            database.db.query(ParserBatch)
             .filter(ParserBatch.id == batch_id)
             .first()
         )
@@ -42,7 +76,7 @@ class CompleteParserBatch(Endpoint):
             batch_job_definition=settings.batch_job_definition,
         )
 
-        final_status = complete_parser_batch(self.database, aws, parser_batch)
+        final_status = complete_parser_batch(database, aws, parser_batch)
 
         return success(
             data=CompleteParserBatch.Response(
@@ -50,15 +84,5 @@ class CompleteParserBatch(Endpoint):
                 status=final_status,
             )
         )
-
-    class Params(BaseModel):
-        # Reserved for future caller-provided context (e.g. succeeded/failed
-        # counts). The server does not trust these values — state is always
-        # verified against AWS Batch. Making this optional avoids a 422 when
-        # the container posts an empty body.
-        succeeded: int | None = None
-        failed: int | None = None
-
-    class Response(BaseModel):
-        id: str
-        status: str
+    finally:
+        database.close()

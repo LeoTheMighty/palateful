@@ -1,4 +1,11 @@
-"""Parser endpoints router."""
+"""Parser endpoints router.
+
+aam-29: router flipped to `get_async_database` + `get_current_user_async`.
+Every endpoint dispatches through `await X.call(...)` on an
+`AsyncEndpoint` subclass. The `complete_parser_batch` handler stays
+unauthenticated (intentional — the Batch container calls it; safety
+comes from re-querying AWS Batch as source-of-truth).
+"""
 
 from api.v1.parser import (
     CompleteParserBatch,
@@ -10,22 +17,22 @@ from api.v1.parser import (
     SubmitBatchParserJob,
     SubmitParserJob,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends, Query
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 parser_router = APIRouter(prefix="/parser", tags=["parser"])
 
 
 @parser_router.post("/upload-url")
-def get_upload_url(
+async def get_upload_url(
     params: GetUploadUrl.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Generate a presigned URL for uploading an image."""
-    return GetUploadUrl.call(
+    return await GetUploadUrl.call(
         params=params,
         user=user,
         database=database,
@@ -33,13 +40,13 @@ def get_upload_url(
 
 
 @parser_router.post("/jobs")
-def submit_parser_job(
+async def submit_parser_job(
     params: SubmitParserJob.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Submit a single-image parser job to AWS Batch."""
-    return SubmitParserJob.call(
+    return await SubmitParserJob.call(
         params=params,
         user=user,
         database=database,
@@ -47,13 +54,13 @@ def submit_parser_job(
 
 
 @parser_router.post("/jobs/batch")
-def submit_batch_parser_job(
+async def submit_batch_parser_job(
     params: SubmitBatchParserJob.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Submit a multi-image parser job to AWS Batch."""
-    return SubmitBatchParserJob.call(
+    return await SubmitBatchParserJob.call(
         params=params,
         user=user,
         database=database,
@@ -61,13 +68,13 @@ def submit_batch_parser_job(
 
 
 @parser_router.get("/jobs/{job_id}")
-def get_parser_job(
+async def get_parser_job(
     job_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get parser job status and results."""
-    return GetParserJob.call(
+    return await GetParserJob.call(
         job_id=job_id,
         user=user,
         database=database,
@@ -75,13 +82,13 @@ def get_parser_job(
 
 
 @parser_router.post("/batches")
-def create_parser_batch(
+async def create_parser_batch(
     params: CreateParserBatch.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Create a parser batch and submit a single AWS Batch job for all images."""
-    return CreateParserBatch.call(
+    return await CreateParserBatch.call(
         params=params,
         user=user,
         database=database,
@@ -89,14 +96,14 @@ def create_parser_batch(
 
 
 @parser_router.get("/batches")
-def list_parser_batches(
+async def list_parser_batches(
     active: bool = Query(False),
     limit: int = Query(20),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List parser batches for the current user."""
-    return ListParserBatches.call(
+    return await ListParserBatches.call(
         active=active,
         limit=limit,
         user=user,
@@ -105,13 +112,13 @@ def list_parser_batches(
 
 
 @parser_router.get("/batches/{batch_id}")
-def get_parser_batch(
+async def get_parser_batch(
     batch_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a parser batch with nested job state."""
-    return GetParserBatch.call(
+    return await GetParserBatch.call(
         batch_id=batch_id,
         user=user,
         database=database,
@@ -119,10 +126,10 @@ def get_parser_batch(
 
 
 @parser_router.post("/batches/{batch_id}/complete")
-def complete_parser_batch(
+async def complete_parser_batch(
     batch_id: str,
     params: CompleteParserBatch.Params,
-    database: Database = Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Callback invoked by the parser Batch container when it finishes.
 
@@ -130,7 +137,7 @@ def complete_parser_batch(
     authoritative job state before mutating anything, so untrusted callers
     cannot force a status transition.
     """
-    return CompleteParserBatch.call(
+    return await CompleteParserBatch.call(
         batch_id=batch_id,
         params=params,
         database=database,

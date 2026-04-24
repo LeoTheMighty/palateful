@@ -1,23 +1,25 @@
 """Get parser batch endpoint."""
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_job import ImportJob
 from utils.models.parser_batch import ParserBatch
 
 
-class GetParserBatch(Endpoint):
+class GetParserBatch(AsyncEndpoint):
     """Get a parser batch with nested job + import job state."""
 
-    def execute(self, batch_id: str):
-        parser_batch = (
-            self.database.db.query(ParserBatch)
+    async def execute(self, batch_id: str):
+        stmt = (
+            select(ParserBatch)
             .options(selectinload(ParserBatch.parser_jobs))
-            .filter(ParserBatch.id == batch_id)
-            .first()
+            .where(ParserBatch.id == batch_id)
         )
+        result = await self.database.db.execute(stmt)
+        parser_batch = result.scalars().first()
         if not parser_batch:
             raise APIException(
                 status_code=404,
@@ -32,11 +34,10 @@ class GetParserBatch(Endpoint):
                 code=ErrorCode.FORBIDDEN,
             )
 
-        import_jobs = (
-            self.database.db.query(ImportJob)
-            .filter(ImportJob.parser_batch_id == parser_batch.id)
-            .all()
+        ij_result = await self.database.db.execute(
+            select(ImportJob).where(ImportJob.parser_batch_id == parser_batch.id)
         )
+        import_jobs = list(ij_result.scalars().all())
 
         return success(data=_serialize_batch(parser_batch, import_jobs))
 

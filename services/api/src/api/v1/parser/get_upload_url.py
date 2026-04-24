@@ -5,14 +5,14 @@ from datetime import UTC, datetime
 
 from config import settings
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.services.aws import AWSService
 
 
-class GetUploadUrl(Endpoint):
+class GetUploadUrl(AsyncEndpoint):
     """Generate a presigned S3 URL for uploading an image."""
 
-    def execute(self, params: "GetUploadUrl.Params"):
+    async def execute(self, params: "GetUploadUrl.Params"):
         """
         Generate a presigned URL for uploading an image to S3.
 
@@ -22,13 +22,11 @@ class GetUploadUrl(Endpoint):
         Returns:
             Presigned upload URL and S3 key.
         """
-        # Generate unique S3 key
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         extension = params.filename.split(".")[-1] if "." in params.filename else "jpg"
         s3_key = f"uploads/{self.user.id}/{timestamp}_{unique_id}.{extension}"
 
-        # Determine content type
         content_type_map = {
             "jpg": "image/jpeg",
             "jpeg": "image/jpeg",
@@ -40,7 +38,6 @@ class GetUploadUrl(Endpoint):
         }
         content_type = content_type_map.get(extension.lower(), "image/jpeg")
 
-        # Generate presigned URL
         aws = AWSService(
             region=settings.aws_region,
             parser_inputs_bucket=settings.parser_inputs_bucket,
@@ -49,10 +46,10 @@ class GetUploadUrl(Endpoint):
             batch_job_definition=settings.batch_job_definition,
         )
 
-        upload_url = aws.generate_presigned_upload_url(
+        upload_url = await aws.generate_presigned_upload_url_async(
             s3_key=s3_key,
             content_type=content_type,
-            expires_in=3600,  # 1 hour
+            expires_in=3600,
         )
 
         return success(
