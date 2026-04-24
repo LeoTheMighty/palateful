@@ -4,18 +4,22 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
+from utils.models.recipe import Recipe
+from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.user import User
 
 
-class GenerateFromMealEvent(Endpoint):
+class GenerateFromMealEvent(AsyncEndpoint):
     """Generate a shopping list from a meal event's recipe."""
 
-    def execute(self, event_id: str, params: "GenerateFromMealEvent.Params"):
+    async def execute(self, event_id: str, params: "GenerateFromMealEvent.Params"):
         """
         Generate a shopping list from a meal event's recipe.
 
@@ -28,8 +32,17 @@ class GenerateFromMealEvent(Endpoint):
         """
         user: User = self.user
 
-        # Find meal event
-        meal_event = self.database.find_by(MealEvent, id=event_id)
+        meal_event_result = await self.db.execute(
+            select(MealEvent)
+            .options(
+                selectinload(MealEvent.recipe)
+                .selectinload(Recipe.ingredients)
+                .selectinload(RecipeIngredient.ingredient),
+                selectinload(MealEvent.shopping_list),
+            )
+            .where(MealEvent.id == event_id)
+        )
+        meal_event = meal_event_result.scalars().first()
         if not meal_event:
             raise APIException(
                 status_code=404,
@@ -37,9 +50,8 @@ class GenerateFromMealEvent(Endpoint):
                 code=ErrorCode.MEAL_EVENT_NOT_FOUND,
             )
 
-        # Check access
         is_owner = meal_event.owner_id == user.id
-        participant = self.database.find_by(
+        participant = await self.database.find_by(
             MealEventParticipant, meal_event_id=event_id, user_id=user.id
         )
         if not is_owner and not participant:
@@ -49,7 +61,6 @@ class GenerateFromMealEvent(Endpoint):
                 code=ErrorCode.MEAL_EVENT_ACCESS_DENIED,
             )
 
-        # Check if recipe exists
         if not meal_event.recipe:
             raise APIException(
                 status_code=400,
@@ -57,7 +68,6 @@ class GenerateFromMealEvent(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
-        # Check if shopping list already exists
         if meal_event.shopping_list:
             raise APIException(
                 status_code=400,
@@ -65,15 +75,13 @@ class GenerateFromMealEvent(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
-        # Create shopping list
         shopping_list = ShoppingList(
             name=f"Shopping for {meal_event.title}",
             meal_event_id=meal_event.id,
             pantry_id=meal_event.pantry_id,
             owner_id=user.id,
         )
-        self.database.create(shopping_list)
-        self.database.db.refresh(shopping_list)
+        await self.database.create(shopping_list)
 
         # Add recipe ingredients to shopping list. Pantry cross-check was
         # retired in epic-ingredients-string-simplification; every row
@@ -93,8 +101,7 @@ class GenerateFromMealEvent(Endpoint):
                 recipe_id=meal_event.recipe.id,
                 already_have_quantity=None,
             )
-            self.database.create(item)
-            self.database.db.refresh(item)
+            await self.database.create(item)
 
             item_responses.append(
                 GenerateFromMealEvent.ItemResponse(

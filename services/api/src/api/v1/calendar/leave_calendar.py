@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.activity import Activity
 from utils.models.calendar_user import CalendarUser
@@ -11,7 +11,7 @@ from utils.models.error_log import ErrorLog
 from utils.models.user import User
 
 
-class LeaveCalendar(Endpoint):
+class LeaveCalendar(AsyncEndpoint):
     """POST /calendars/{id}/leave.
 
     Archives the caller's own `calendar_users` row. Owners cannot
@@ -19,10 +19,10 @@ class LeaveCalendar(Endpoint):
     Same error code as remove-self-as-owner: `CALENDAR_OWNER_CANNOT_LEAVE`.
     """
 
-    def execute(self, calendar_id: str):
+    async def execute(self, calendar_id: str):
         user: User = self.user
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             CalendarUser,
             user_id=user.id,
             calendar_id=calendar_id,
@@ -56,7 +56,7 @@ class LeaveCalendar(Endpoint):
             details={},
         ))
 
-        self.database.create(ErrorLog(
+        await self.database.create(ErrorLog(
             error_type="CalendarMemberAudit",
             error_message=(
                 f"User {user.id} left calendar {calendar_id}"
@@ -65,7 +65,7 @@ class LeaveCalendar(Endpoint):
             user_id=user.id,
         ))
 
-        self.db.flush()
+        await self.db.flush()
 
         return success(data=LeaveCalendar.Response(success=True))
 

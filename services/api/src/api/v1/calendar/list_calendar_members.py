@@ -4,24 +4,24 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.calendar_user import CalendarUser
 from utils.models.invitation import Invitation
 from utils.models.user import User
 
 
-class ListCalendarMembers(Endpoint):
+class ListCalendarMembers(AsyncEndpoint):
     """Return active members + pending calendar invitations.
 
     Read-only — owner OR editor can call. Non-members 404 (matches
     `get_calendar` existence-leak guard).
     """
 
-    def execute(self, calendar_id: str):
+    async def execute(self, calendar_id: str):
         user: User = self.user
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             CalendarUser,
             user_id=user.id,
             calendar_id=calendar_id,
@@ -34,14 +34,15 @@ class ListCalendarMembers(Endpoint):
             )
 
         active_rows = (
-            self.db.query(CalendarUser, User)
-            .join(User, CalendarUser.user_id == User.id)
-            .filter(
-                CalendarUser.calendar_id == calendar_id,
-                CalendarUser.archived_at.is_(None),
+            await self.db.execute(
+                select(CalendarUser, User)
+                .join(User, CalendarUser.user_id == User.id)
+                .where(
+                    CalendarUser.calendar_id == calendar_id,
+                    CalendarUser.archived_at.is_(None),
+                )
             )
-            .all()
-        )
+        ).all()
         members = [
             ListCalendarMembers.MemberItem(
                 user_id=str(cu.user_id),
@@ -55,12 +56,14 @@ class ListCalendarMembers(Endpoint):
             for cu, u in active_rows
         ]
 
-        pending = self.db.execute(
-            select(Invitation).where(
-                Invitation.resource_type == "calendar",
-                Invitation.resource_id == calendar_id,
-                Invitation.status == "pending",
-                Invitation.archived_at.is_(None),
+        pending = (
+            await self.db.execute(
+                select(Invitation).where(
+                    Invitation.resource_type == "calendar",
+                    Invitation.resource_id == calendar_id,
+                    Invitation.status == "pending",
+                    Invitation.archived_at.is_(None),
+                )
             )
         ).scalars().all()
 

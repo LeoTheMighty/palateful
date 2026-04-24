@@ -1,17 +1,17 @@
 """List calendars endpoint."""
 
 from schemas.calendar import CalendarListResponse, CalendarResponse
-from sqlalchemy import func
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
 
 
-class ListCalendars(Endpoint):
+class ListCalendars(AsyncEndpoint):
     """List every calendar the authenticated user is an active member of."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
 
         # pbq-6: scope the member-count aggregate to the user's calendar
@@ -20,21 +20,22 @@ class ListCalendars(Endpoint):
         # ``calendar_id IN (the user's calendars)`` lets Postgres hit
         # the `ix_calendar_users_calendar_id` index and aggregate a
         # small per-request slice instead.
-        user_calendar_ids = [
-            row[0]
-            for row in self.db.query(CalendarUser.calendar_id)
-            .filter(
-                CalendarUser.user_id == user.id,
-                CalendarUser.archived_at.is_(None),
+        user_calendar_rows = (
+            await self.db.execute(
+                select(CalendarUser.calendar_id).where(
+                    CalendarUser.user_id == user.id,
+                    CalendarUser.archived_at.is_(None),
+                )
             )
-            .all()
-        ]
+        ).all()
+        user_calendar_ids = [row[0] for row in user_calendar_rows]
+
         member_count_subq = (
-            self.db.query(
+            select(
                 CalendarUser.calendar_id,
                 func.count(CalendarUser.user_id).label("member_count"),
             )
-            .filter(
+            .where(
                 CalendarUser.archived_at.is_(None),
                 CalendarUser.calendar_id.in_(user_calendar_ids),
             )
@@ -43,24 +44,28 @@ class ListCalendars(Endpoint):
         )
 
         rows = (
-            self.db.query(
-                Calendar,
-                CalendarUser.role.label("user_role"),
-                func.coalesce(member_count_subq.c.member_count, 1).label("member_count"),
+            await self.db.execute(
+                select(
+                    Calendar,
+                    CalendarUser.role.label("user_role"),
+                    func.coalesce(member_count_subq.c.member_count, 1).label(
+                        "member_count"
+                    ),
+                )
+                .join(
+                    CalendarUser,
+                    (Calendar.id == CalendarUser.calendar_id)
+                    & (CalendarUser.user_id == user.id)
+                    & (CalendarUser.archived_at.is_(None)),
+                )
+                .outerjoin(
+                    member_count_subq,
+                    Calendar.id == member_count_subq.c.calendar_id,
+                )
+                .where(Calendar.archived_at.is_(None))
+                .order_by(Calendar.is_default.desc(), Calendar.created_at.desc())
             )
-            .join(
-                CalendarUser,
-                (Calendar.id == CalendarUser.calendar_id)
-                & (CalendarUser.user_id == user.id)
-                & (CalendarUser.archived_at.is_(None)),
-            )
-            .outerjoin(
-                member_count_subq, Calendar.id == member_count_subq.c.calendar_id
-            )
-            .filter(Calendar.archived_at.is_(None))
-            .order_by(Calendar.is_default.desc(), Calendar.created_at.desc())
-            .all()
-        )
+        ).all()
 
         items = [
             CalendarResponse(

@@ -3,8 +3,9 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
@@ -14,16 +15,16 @@ from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
 
 
-class DeleteCalendar(Endpoint):
+class DeleteCalendar(AsyncEndpoint):
     """Archive a calendar (soft-delete) and cascade archived_at to its
     meal_events, recurrence rules, and membership rows. Owner-only.
     Forbids deleting the user's last calendar.
     """
 
-    def execute(self, calendar_id: str):
+    async def execute(self, calendar_id: str):
         user: User = self.user
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             CalendarUser,
             user_id=user.id,
             calendar_id=calendar_id,
@@ -42,7 +43,7 @@ class DeleteCalendar(Endpoint):
                 code=ErrorCode.CALENDAR_ACCESS_DENIED,
             )
 
-        calendar = self.database.find_by(Calendar, id=calendar_id)
+        calendar = await self.database.find_by(Calendar, id=calendar_id)
         if not calendar:
             raise APIException(
                 status_code=404,
@@ -55,25 +56,23 @@ class DeleteCalendar(Endpoint):
             return success(data=DeleteCalendar.Response(success=True, already_archived=True))
 
         # Last-calendar guard — count active calendars the user owns OTHER
-        # than the one being deleted. If zero remain, refuse. Counting
-        # "other than target" instead of "<= 1 total" makes the intent
-        # explicit and avoids an off-by-one if a concurrent archive
-        # lands between the count and the update.
+        # than the one being deleted. If zero remain, refuse.
         other_active_owned_count = (
-            self.db.query(func.count(Calendar.id))
-            .join(
-                CalendarUser,
-                (CalendarUser.calendar_id == Calendar.id)
-                & (CalendarUser.user_id == user.id)
-                & (CalendarUser.role == "owner")
-                & (CalendarUser.archived_at.is_(None)),
+            await self.db.execute(
+                select(func.count(Calendar.id))
+                .join(
+                    CalendarUser,
+                    (CalendarUser.calendar_id == Calendar.id)
+                    & (CalendarUser.user_id == user.id)
+                    & (CalendarUser.role == "owner")
+                    & (CalendarUser.archived_at.is_(None)),
+                )
+                .where(
+                    Calendar.archived_at.is_(None),
+                    Calendar.id != calendar.id,
+                )
             )
-            .filter(
-                Calendar.archived_at.is_(None),
-                Calendar.id != calendar.id,
-            )
-            .scalar()
-        ) or 0
+        ).scalar() or 0
 
         if other_active_owned_count < 1:
             raise APIException(
@@ -85,11 +84,6 @@ class DeleteCalendar(Endpoint):
         now = datetime.now(UTC)
         db = self.db
 
-        # If deleting the user's default, promote another owned active
-        # calendar to default so the user still has exactly one active
-        # default afterwards. Archive flips archived_at first, so the
-        # partial unique index does NOT see two active defaults during
-        # the transition.
         was_default = calendar.is_default
 
         # Cascade archive: calendar → its meal_events → its recurrence_rules →
@@ -98,49 +92,59 @@ class DeleteCalendar(Endpoint):
         calendar.is_default = False
         db.add(calendar)
 
-        db.query(MealEvent).filter(
-            MealEvent.calendar_id == calendar_id,
-            MealEvent.archived_at.is_(None),
-        ).update({MealEvent.archived_at: now}, synchronize_session=False)
+        await db.execute(
+            sa_update(MealEvent)
+            .where(
+                MealEvent.calendar_id == calendar_id,
+                MealEvent.archived_at.is_(None),
+            )
+            .values(archived_at=now)
+        )
 
-        db.query(MealRecurrenceRule).filter(
-            MealRecurrenceRule.calendar_id == calendar_id,
-            MealRecurrenceRule.archived_at.is_(None),
-        ).update({MealRecurrenceRule.archived_at: now}, synchronize_session=False)
+        await db.execute(
+            sa_update(MealRecurrenceRule)
+            .where(
+                MealRecurrenceRule.calendar_id == calendar_id,
+                MealRecurrenceRule.archived_at.is_(None),
+            )
+            .values(archived_at=now)
+        )
 
-        db.query(CalendarUser).filter(
-            CalendarUser.calendar_id == calendar_id,
-            CalendarUser.archived_at.is_(None),
-        ).update({CalendarUser.archived_at: now}, synchronize_session=False)
+        await db.execute(
+            sa_update(CalendarUser)
+            .where(
+                CalendarUser.calendar_id == calendar_id,
+                CalendarUser.archived_at.is_(None),
+            )
+            .values(archived_at=now)
+        )
 
         if was_default:
             # Promote the most-recently-created remaining owned active
-            # calendar to default. Matches the Flutter fallback policy
-            # in cal-found-4 AC #6, and keeps the
-            # `_ensure_default_calendar` hook from re-seeding a second
-            # "My Calendar" on the user's next request.
+            # calendar to default.
             promotion_target = (
-                self.db.query(Calendar)
-                .join(
-                    CalendarUser,
-                    (CalendarUser.calendar_id == Calendar.id)
-                    & (CalendarUser.user_id == user.id)
-                    & (CalendarUser.role == "owner")
-                    & (CalendarUser.archived_at.is_(None)),
+                await db.execute(
+                    select(Calendar)
+                    .join(
+                        CalendarUser,
+                        (CalendarUser.calendar_id == Calendar.id)
+                        & (CalendarUser.user_id == user.id)
+                        & (CalendarUser.role == "owner")
+                        & (CalendarUser.archived_at.is_(None)),
+                    )
+                    .where(
+                        Calendar.archived_at.is_(None),
+                        Calendar.id != calendar.id,
+                    )
+                    .order_by(Calendar.created_at.desc())
+                    .limit(1)
                 )
-                .filter(
-                    Calendar.archived_at.is_(None),
-                    Calendar.id != calendar.id,
-                )
-                .order_by(Calendar.created_at.desc())
-                .first()
-            )
+            ).scalar_one_or_none()
             if promotion_target is not None:  # pragma: no branch — last-calendar guard above ensures another active calendar exists when was_default
                 promotion_target.is_default = True
                 db.add(promotion_target)
 
-        # Audit row — service="audit" keeps it out of api-error dashboards
-        # (which filter service="api"). Matches promote_admin.py precedent.
+        # Audit row — service="audit" keeps it out of api-error dashboards.
         audit = ErrorLog(
             error_type="CalendarArchiveAudit",
             error_message=(
@@ -150,9 +154,9 @@ class DeleteCalendar(Endpoint):
             service="audit",
             user_id=user.id,
         )
-        self.database.create(audit)
+        await self.database.create(audit)
 
-        db.flush()
+        await db.flush()
 
         return success(data=DeleteCalendar.Response(success=True, already_archived=False))
 

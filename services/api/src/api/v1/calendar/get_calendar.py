@@ -3,20 +3,21 @@
 from datetime import UTC, datetime
 
 from schemas.calendar import CalendarDetailResponse, CalendarMemberResponse
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
 
 
-class GetCalendar(Endpoint):
+class GetCalendar(AsyncEndpoint):
     """Get calendar details plus its members. 404 for non-members."""
 
-    def execute(self, calendar_id: str):
+    async def execute(self, calendar_id: str):
         user: User = self.user
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             CalendarUser,
             user_id=user.id,
             calendar_id=calendar_id,
@@ -29,7 +30,7 @@ class GetCalendar(Endpoint):
                 code=ErrorCode.CALENDAR_NOT_FOUND,
             )
 
-        calendar = self.database.find_by(Calendar, id=calendar_id)
+        calendar = await self.database.find_by(Calendar, id=calendar_id)
         if not calendar or calendar.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -40,18 +41,19 @@ class GetCalendar(Endpoint):
         # Recency tracking for switcher ordering.
         membership.last_opened_at = datetime.now(UTC)
         self.database.db.add(membership)
-        self.database.db.flush()
+        await self.database.db.flush()
 
         # Fetch every active membership for this calendar + the corresponding user.
         all_memberships = (
-            self.db.query(CalendarUser, User)
-            .join(User, CalendarUser.user_id == User.id)
-            .filter(
-                CalendarUser.calendar_id == calendar_id,
-                CalendarUser.archived_at.is_(None),
+            await self.db.execute(
+                select(CalendarUser, User)
+                .join(User, CalendarUser.user_id == User.id)
+                .where(
+                    CalendarUser.calendar_id == calendar_id,
+                    CalendarUser.archived_at.is_(None),
+                )
             )
-            .all()
-        )
+        ).all()
         members = [
             CalendarMemberResponse(
                 user_id=str(cu.user_id),

@@ -3,8 +3,9 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.activity import Activity
 from utils.models.calendar_user import CalendarUser
@@ -12,7 +13,7 @@ from utils.models.error_log import ErrorLog
 from utils.models.user import User
 
 
-class UpdateCalendarMember(Endpoint):
+class UpdateCalendarMember(AsyncEndpoint):
     """PATCH /calendars/{id}/members/{user_id}.
 
     Owner-only. The only supported role transition is `editor → owner`
@@ -24,7 +25,12 @@ class UpdateCalendarMember(Endpoint):
     — otherwise the calendar would be ownerless.
     """
 
-    def execute(self, calendar_id: str, target_user_id: str, params: "UpdateCalendarMember.Params"):
+    async def execute(
+        self,
+        calendar_id: str,
+        target_user_id: str,
+        params: "UpdateCalendarMember.Params",
+    ):
         user: User = self.user
 
         if params.role not in ("owner", "editor"):
@@ -35,7 +41,7 @@ class UpdateCalendarMember(Endpoint):
             )
 
         # Caller must be an active owner.
-        caller_row = self.database.find_by(
+        caller_row = await self.database.find_by(
             CalendarUser,
             user_id=user.id,
             calendar_id=calendar_id,
@@ -65,7 +71,7 @@ class UpdateCalendarMember(Endpoint):
             )
 
         # Target must be an active member.
-        target_row = self.database.find_by(
+        target_row = await self.database.find_by(
             CalendarUser,
             user_id=target_user_id,
             calendar_id=calendar_id,
@@ -101,27 +107,37 @@ class UpdateCalendarMember(Endpoint):
         db = self.db
         try:
             # Re-fetch with FOR UPDATE so concurrent transfers serialize.
-            db.query(CalendarUser).filter(
-                CalendarUser.calendar_id == calendar_id,
-                CalendarUser.user_id == user.id,
-                CalendarUser.archived_at.is_(None),
-            ).with_for_update().first()
-            db.query(CalendarUser).filter(
-                CalendarUser.calendar_id == calendar_id,
-                CalendarUser.user_id == target_user_id,
-                CalendarUser.archived_at.is_(None),
-            ).with_for_update().first()
+            await db.execute(
+                select(CalendarUser)
+                .where(
+                    CalendarUser.calendar_id == calendar_id,
+                    CalendarUser.user_id == user.id,
+                    CalendarUser.archived_at.is_(None),
+                )
+                .with_for_update()
+                .limit(1)
+            )
+            await db.execute(
+                select(CalendarUser)
+                .where(
+                    CalendarUser.calendar_id == calendar_id,
+                    CalendarUser.user_id == target_user_id,
+                    CalendarUser.archived_at.is_(None),
+                )
+                .with_for_update()
+                .limit(1)
+            )
 
             # Demote caller first to keep the partial unique index satisfied
             # at every intermediate state.
             caller_row.role = "editor"
             db.add(caller_row)
-            db.flush()
+            await db.flush()
             target_row.role = "owner"
             db.add(target_row)
-            db.flush()
+            await db.flush()
         except IntegrityError as exc:
-            db.rollback()
+            await db.rollback()
             raise APIException(
                 status_code=409,
                 detail="Another ownership transfer raced with this one — please refresh",
@@ -143,7 +159,7 @@ class UpdateCalendarMember(Endpoint):
         ))
 
         # Audit log — service="audit" keeps it out of api-error dashboards.
-        self.database.create(ErrorLog(
+        await self.database.create(ErrorLog(
             error_type="CalendarMemberAudit",
             error_message=(
                 f"Ownership of calendar {calendar_id} transferred "
@@ -153,7 +169,7 @@ class UpdateCalendarMember(Endpoint):
             user_id=user.id,
         ))
 
-        db.commit()
+        await db.commit()
 
         return success(data=UpdateCalendarMember.Response(
             user_id=str(target_user_id),

@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.activity import Activity
 from utils.models.calendar_user import CalendarUser
@@ -11,7 +11,7 @@ from utils.models.error_log import ErrorLog
 from utils.models.user import User
 
 
-class RemoveCalendarMember(Endpoint):
+class RemoveCalendarMember(AsyncEndpoint):
     """DELETE /calendars/{id}/members/{user_id}.
 
     Owner-only. Archives the target's `calendar_users` row. Owner
@@ -21,10 +21,10 @@ class RemoveCalendarMember(Endpoint):
     orthogonal primitive (per cal-share principle #7).
     """
 
-    def execute(self, calendar_id: str, target_user_id: str):
+    async def execute(self, calendar_id: str, target_user_id: str):
         user: User = self.user
 
-        caller_row = self.database.find_by(
+        caller_row = await self.database.find_by(
             CalendarUser,
             user_id=user.id,
             calendar_id=calendar_id,
@@ -53,7 +53,7 @@ class RemoveCalendarMember(Endpoint):
                 code=ErrorCode.CALENDAR_OWNER_CANNOT_LEAVE,
             )
 
-        target_row = self.database.find_by(
+        target_row = await self.database.find_by(
             CalendarUser,
             user_id=target_user_id,
             calendar_id=calendar_id,
@@ -79,7 +79,7 @@ class RemoveCalendarMember(Endpoint):
             details={"removed_by_id": str(user.id)},
         ))
 
-        self.database.create(ErrorLog(
+        await self.database.create(ErrorLog(
             error_type="CalendarMemberAudit",
             error_message=(
                 f"User {target_user_id} removed from calendar "
@@ -89,7 +89,7 @@ class RemoveCalendarMember(Endpoint):
             user_id=user.id,
         ))
 
-        self.db.flush()
+        await self.db.flush()
 
         return success(data=RemoveCalendarMember.Response(success=True))
 

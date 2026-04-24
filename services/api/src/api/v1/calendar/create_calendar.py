@@ -4,16 +4,16 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from schemas.calendar import CalendarResponse
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.user import User
 
 
-class CreateCalendar(Endpoint):
+class CreateCalendar(AsyncEndpoint):
     """Create a new calendar owned by the authenticated user."""
 
-    def execute(self, params: "CreateCalendar.Params"):
+    async def execute(self, params: "CreateCalendar.Params"):
         user: User = self.user
 
         calendar = Calendar(
@@ -23,8 +23,8 @@ class CreateCalendar(Endpoint):
             is_default=False,
             is_shared=False,
         )
-        self.database.create(calendar)
-        self.database.db.refresh(calendar)
+        await self.database.create(calendar)
+        await self.database.db.refresh(calendar)
 
         membership = CalendarUser(
             user_id=user.id,
@@ -32,8 +32,8 @@ class CreateCalendar(Endpoint):
             role="owner",
             last_opened_at=datetime.now(UTC),
         )
-        self.database.create(membership)
-        self.database.db.refresh(membership)
+        await self.database.create(membership)
+        await self.database.db.refresh(membership)
 
         return success(
             data=CalendarResponse(

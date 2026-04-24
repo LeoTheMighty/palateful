@@ -101,3 +101,22 @@ def get_user_calendar_ids(user: User, database) -> list:
         .all()
     )
     return [row.calendar_id for row in rows]
+
+
+async def get_user_calendar_ids_async(user: User, database) -> list:
+    """Async sibling of `get_user_calendar_ids` (aam-14).
+
+    Issues one SELECT against the async session and materializes the
+    list of calendar_ids the caller is an active member of. Callers
+    scope meal_events / recurrence_rules via
+    `.filter(Model.calendar_id.in_(calendar_ids))`.
+    """
+    from sqlalchemy import select
+
+    result = await database.db.execute(
+        select(CalendarUser.calendar_id).where(
+            CalendarUser.user_id == user.id,
+            CalendarUser.archived_at.is_(None),
+        )
+    )
+    return [row[0] for row in result.all()]

@@ -1,4 +1,11 @@
-"""Calendar endpoints router."""
+"""Calendar endpoints router.
+
+aam-14: flipped to `get_async_database` + `get_current_user_async`.
+Every endpoint dispatches through `await Foo.call(...)` on an
+`AsyncEndpoint` subclass. `_ensure_default_calendar` stays sync —
+`get_current_user_async` already runs it inside the async auth dep
+via threadpool.
+"""
 
 from api.v1.calendar import (
     CreateCalendar,
@@ -11,92 +18,92 @@ from api.v1.calendar import (
     UpdateCalendar,
     UpdateCalendarMember,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 calendar_router = APIRouter(prefix="/calendars", tags=["calendars"])
 
 
 @calendar_router.get("")
-def list_calendars(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def list_calendars(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List all calendars the user is an active member of."""
-    return ListCalendars.call(user=user, database=database)
+    return await ListCalendars.call(user=user, database=database)
 
 
 @calendar_router.post("")
-def create_calendar(
+async def create_calendar(
     params: CreateCalendar.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Create a new calendar owned by the authenticated user."""
-    return CreateCalendar.call(params, user=user, database=database)
+    return await CreateCalendar.call(params, user=user, database=database)
 
 
 @calendar_router.get("/{calendar_id}")
-def get_calendar(
+async def get_calendar(
     calendar_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a single calendar plus its members."""
-    return GetCalendar.call(
+    return await GetCalendar.call(
         calendar_id=calendar_id, user=user, database=database
     )
 
 
 @calendar_router.patch("/{calendar_id}")
-def update_calendar(
+async def update_calendar(
     calendar_id: str,
     params: UpdateCalendar.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update a calendar's name or description (owner-only)."""
-    return UpdateCalendar.call(
+    return await UpdateCalendar.call(
         calendar_id=calendar_id, params=params, user=user, database=database
     )
 
 
 @calendar_router.delete("/{calendar_id}")
-def delete_calendar(
+async def delete_calendar(
     calendar_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Archive a calendar (soft-delete)."""
-    return DeleteCalendar.call(
+    return await DeleteCalendar.call(
         calendar_id=calendar_id, user=user, database=database
     )
 
 
 @calendar_router.get("/{calendar_id}/members")
-def list_calendar_members(
+async def list_calendar_members(
     calendar_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List active members + pending invitations for a calendar."""
-    return ListCalendarMembers.call(
+    return await ListCalendarMembers.call(
         calendar_id=calendar_id, user=user, database=database
     )
 
 
 @calendar_router.patch("/{calendar_id}/members/{target_user_id}")
-def update_calendar_member(
+async def update_calendar_member(
     calendar_id: str,
     target_user_id: str,
     params: UpdateCalendarMember.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Change a member's role — owner-only. Promote-to-owner transfers atomically."""
-    return UpdateCalendarMember.call(
+    return await UpdateCalendarMember.call(
         calendar_id=calendar_id,
         target_user_id=target_user_id,
         params=params,
@@ -106,14 +113,14 @@ def update_calendar_member(
 
 
 @calendar_router.delete("/{calendar_id}/members/{target_user_id}")
-def remove_calendar_member(
+async def remove_calendar_member(
     calendar_id: str,
     target_user_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Remove a member from a calendar — owner-only."""
-    return RemoveCalendarMember.call(
+    return await RemoveCalendarMember.call(
         calendar_id=calendar_id,
         target_user_id=target_user_id,
         user=user,
@@ -122,12 +129,12 @@ def remove_calendar_member(
 
 
 @calendar_router.post("/{calendar_id}/leave")
-def leave_calendar(
+async def leave_calendar(
     calendar_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Leave a calendar (caller's own row archived). Owners cannot leave."""
-    return LeaveCalendar.call(
+    return await LeaveCalendar.call(
         calendar_id=calendar_id, user=user, database=database
     )
