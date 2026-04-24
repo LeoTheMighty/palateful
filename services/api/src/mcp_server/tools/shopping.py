@@ -12,7 +12,7 @@ from api.v1.shopping_list.list_shopping_lists import ListShoppingLists
 from api.v1.shopping_list.populate_from_recipe import PopulateFromRecipe
 from api.v1.shopping_list.update_item import UpdateShoppingListItem
 from mcp_server.auth import get_current_user
-from mcp_server.server import call_endpoint, mcp
+from mcp_server.server import call_endpoint_async, mcp
 
 
 def _decimal_or_none(value: Any) -> Decimal | None:
@@ -35,35 +35,35 @@ def _require_default_list(user) -> str:
 
 
 @mcp.tool()
-def list_shopping_lists(limit: int = 20, offset: int = 0) -> str:
+async def list_shopping_lists(limit: int = 20, offset: int = 0) -> str:
     """List the user's shopping lists with item counts and checked status.
     Great for a quick overview: "what lists are we working with?"
     """
-    return call_endpoint(ListShoppingLists, limit=limit, offset=offset)
+    return await call_endpoint_async(ListShoppingLists, limit=limit, offset=offset)
 
 
 @mcp.tool()
-def get_shopping_list(list_id: str | None = None) -> str:
+async def get_shopping_list(list_id: str | None = None) -> str:
     """Fetch a shopping list and all its items. If `list_id` is omitted, uses
     the user's default shopping list. Use this before adding/checking items.
     """
     user = get_current_user()
     resolved = list_id or _require_default_list(user)
-    return call_endpoint(GetShoppingList, list_id=resolved)
+    return await call_endpoint_async(GetShoppingList, list_id=resolved)
 
 
 @mcp.tool()
-def create_shopping_list(name: str) -> str:
+async def create_shopping_list(name: str) -> str:
     """Create a new shopping list named `name`. The user can then add items or
     populate it from a recipe. No default-list magic here — this always makes
     a fresh list.
     """
     params = CreateShoppingList.Params(name=name)
-    return call_endpoint(CreateShoppingList, params=params)
+    return await call_endpoint_async(CreateShoppingList, params=params)
 
 
 @mcp.tool()
-def add_shopping_list_item(
+async def add_shopping_list_item(
     name: str,
     list_id: str | None = None,
     quantity: str | None = None,
@@ -82,11 +82,13 @@ def add_shopping_list_item(
         unit=unit,
         category=category,
     )
-    return call_endpoint(AddShoppingListItem, list_id=resolved, params=params)
+    return await call_endpoint_async(
+        AddShoppingListItem, list_id=resolved, params=params
+    )
 
 
 @mcp.tool()
-def update_shopping_list_item(
+async def update_shopping_list_item(
     list_id: str,
     item_id: str,
     is_checked: bool | None = None,
@@ -112,13 +114,13 @@ def update_shopping_list_item(
         params_kwargs["name"] = name
 
     params = UpdateShoppingListItem.Params(**params_kwargs)
-    return call_endpoint(
+    return await call_endpoint_async(
         UpdateShoppingListItem, list_id=list_id, item_id=item_id, params=params
     )
 
 
 @mcp.tool()
-def populate_from_recipe(
+async def populate_from_recipe(
     recipe_id: str,
     list_id: str | None = None,
     scale_factor: float = 1.0,
@@ -133,4 +135,6 @@ def populate_from_recipe(
     params = PopulateFromRecipe.Params(
         recipe_id=recipe_id, scale_factor=scale_factor
     )
-    return call_endpoint(PopulateFromRecipe, list_id=resolved, params=params)
+    return await call_endpoint_async(
+        PopulateFromRecipe, list_id=resolved, params=params
+    )
