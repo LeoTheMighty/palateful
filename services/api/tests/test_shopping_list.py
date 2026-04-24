@@ -2024,12 +2024,19 @@ class TestGetStoreSections:
     class directly rather than through the HTTP route.
     """
 
-    def test_get_store_sections(self, mock_db, mock_user):
-        """Returns list of all store sections."""
+    async def test_get_store_sections(self, mock_db, mock_async_db, mock_user):
+        """Returns list of all store sections.
+
+        aam-13: `GetStoreSections` is now an `AsyncEndpoint`. Written
+        as `async def` so pytest-asyncio (auto mode) manages the event
+        loop — avoids any ad-hoc `asyncio.run` that would close the
+        default loop and break later sync tests.
+        """
         from api.v1.shopping_list.organize_by_store import GetStoreSections
 
-        result = GetStoreSections.call(user=mock_user, database=mock_db)
-        # handle_result wraps in CustomJSONResponse
+        result = await GetStoreSections.call(
+            user=mock_user, database=mock_async_db
+        )
         import json
         data = json.loads(result.body)
         assert "sections" in data
