@@ -30,7 +30,7 @@ def _query_router(mock_db, by_model: dict):
 
 class TestPantryHookFires:
     def test_check_with_ingredient_populates_pantry_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -161,7 +161,7 @@ class TestPantryHookFires:
         assert not dispatch_mock.called
 
     def test_pantry_hook_failure_does_not_break_request(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """A crash inside the pantry side-effect is swallowed."""
         list_id = str(uuid.uuid4())
