@@ -3,14 +3,12 @@
 Each section corresponds to a source file with missing lines or branches.
 """
 
-import json
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from conftest import (
     MockExecuteResult,
     MockIngredient,
@@ -23,16 +21,13 @@ from conftest import (
     MockRecipeBook,
     MockRecipeBookUser,
     MockRecipeIngredient,
-    MockRecipeNote,
     MockRecipeStep,
     MockRecipeVersion,
     MockShoppingList,
     MockShoppingListItem,
     MockShoppingListUser,
     MockUser,
-    MockUserFavorite,
 )
-
 
 # ===========================================================================
 # 1. send_message.py — lines 28-42 (SSE generator body)
@@ -1183,7 +1178,6 @@ class TestListThreadsEmptyChats:
 
     def test_list_threads_thread_with_no_chats(self, client, mock_async_db, mock_user):
         """Thread with empty chats list — last_message should be None."""
-        from unittest.mock import AsyncMock
 
         thread = MockModel(
             id=str(uuid.uuid4()),
@@ -1216,7 +1210,6 @@ class TestInvitationHelpersExtended:
 
     async def test_check_resource_permission_meal_event_not_found(self):
         """Meal event not found raises 404 (line 111->exit scenario)."""
-        from unittest.mock import AsyncMock
 
         from api.v1.invitations.helpers import check_resource_permission
         from utils.api.endpoint import APIException
@@ -1232,7 +1225,6 @@ class TestInvitationHelpersExtended:
 
     async def test_create_membership_meal_event_new(self):
         """Create membership for meal_event — new member path (line 276->298)."""
-        from unittest.mock import AsyncMock
 
         from api.v1.invitations.helpers import create_membership
 
@@ -1248,7 +1240,6 @@ class TestInvitationHelpersExtended:
 
     async def test_create_membership_meal_event_reactivate(self):
         """Reactivate archived meal_event membership."""
-        from unittest.mock import AsyncMock
 
         from api.v1.invitations.helpers import create_membership
 

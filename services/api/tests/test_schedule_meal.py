@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from conftest import (
     MockExecuteResult,
     MockMealEvent,
-    MockQuery,
     MockRecipe,
 )
 

@@ -23,6 +23,7 @@ from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
+from utils.models.user import User
 from utils.services.meal_event_notifications import notify_meal_event_updated
 
 logger = logging.getLogger(__name__)

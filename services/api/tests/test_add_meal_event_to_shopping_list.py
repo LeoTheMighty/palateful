@@ -7,7 +7,6 @@ from conftest import (
     MockExecuteResult,
     MockMealEvent,
     MockModel,
-    MockQuery,
     MockRecipe,
 )
 

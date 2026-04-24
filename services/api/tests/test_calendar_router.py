@@ -465,9 +465,8 @@ class TestEnsureDefaultCalendarHook:
         """Concurrent provisioning race: SAVEPOINT rolls back, hook re-reads."""
         from unittest.mock import MagicMock
 
-        from sqlalchemy.exc import IntegrityError
-
         from dependencies import _ensure_default_calendar
+        from sqlalchemy.exc import IntegrityError
 
         # First query (initial lookup): no default yet.
         # Second query (retry after IntegrityError): returns the row the

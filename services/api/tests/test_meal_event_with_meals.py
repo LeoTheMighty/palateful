@@ -11,14 +11,13 @@ Covers:
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from conftest import (
-    MockExecuteResult,
     MockCalendar,
+    MockExecuteResult,
     MockMealEvent,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBookUser,
 )
@@ -76,7 +75,7 @@ def _make_meal_with_components(*, user_id, archived=False):
     meal_id = str(uuid.uuid4())
     meal = MockMeal(id=meal_id, name="Kale Salad Meal", components=components, recipe_book_id=book_id)
     if archived:
-        meal.archived_at = datetime.now(timezone.utc)
+        meal.archived_at = datetime.now(UTC)
     return meal, book_id, MealModel, RecipeBookUser
 
 
@@ -429,7 +428,7 @@ class TestBuildMealSummaryEdges:
         r1 = MockRecipe(id=str(uuid.uuid4()), image_url="https://cdn/a.jpg")
         r1.recipe_book = None
         r2 = MockRecipe(id=str(uuid.uuid4()), image_url="https://cdn/b.jpg")
-        r2.archived_at = datetime.now(timezone.utc)
+        r2.archived_at = datetime.now(UTC)
         r2.recipe_book = None
         meal = MockMeal(
             id=str(uuid.uuid4()),
@@ -449,7 +448,7 @@ class TestBuildMealSummaryEdges:
         r = MockRecipe(id=str(uuid.uuid4()), image_url="https://cdn/a.jpg")
 
         class _ArchivedBook:
-            archived_at = datetime.now(timezone.utc)
+            archived_at = datetime.now(UTC)
 
         r.recipe_book = _ArchivedBook()
         meal = MockMeal(

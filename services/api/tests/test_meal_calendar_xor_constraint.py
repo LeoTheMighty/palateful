@@ -12,7 +12,6 @@ diff compares against.
 """
 
 from sqlalchemy import CheckConstraint, Index
-
 from utils.models.cooking_log import CookingLog
 from utils.models.meal_event import MealEvent
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
@@ -22,9 +21,8 @@ from utils.models.shopping_list import ShoppingListItem
 def _constraint_names(table_args) -> set[str]:
     names: set[str] = set()
     for ta in table_args:
-        if isinstance(ta, CheckConstraint):
-            if ta.name is not None:
-                names.add(str(ta.name))
+        if isinstance(ta, CheckConstraint) and ta.name is not None:
+            names.add(str(ta.name))
     return names
 
 

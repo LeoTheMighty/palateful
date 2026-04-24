@@ -302,6 +302,7 @@ class TestUpdateRecurrenceRuleMoveToCalendar:
         the sync `mock_db` fixture.
         """
         import uuid as _uuid
+
         from test_recurrence_rule import MockMealRecurrenceRule
         from utils.models.calendar_user import CalendarUser as RealCalendarUser
         from utils.models.meal_recurrence_rule import (

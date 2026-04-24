@@ -1,14 +1,13 @@
 """Tests for meal event endpoints."""
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from conftest import (
     MockExecuteResult,
     MockMealEvent,
     MockMealEventParticipant,
-    MockQuery,
     MockRecipe,
     MockUser,
     count_queries,
@@ -78,9 +77,8 @@ class TestListMealEvents:
             handler_module,
             "selectinload",
             wraps=handler_module.selectinload,
-        ) as spy:
-            with count_queries(mock_async_db) as qc:
-                response = client.get("/v1/meal-events")
+        ) as spy, count_queries(mock_async_db) as qc:
+            response = client.get("/v1/meal-events")
         assert response.status_code == 200
 
         # Outer `selectinload(...)` was called for BOTH `MealEvent.meal`
@@ -1743,7 +1741,7 @@ class TestNotifyMealEventInvite:
             mock_service.send_to_user.return_value = {"success_count": 1, "failure_count": 0}
             mock_get.return_value = mock_service
 
-            result = notify_meal_event_invite(meal_event, invited_user, invited_by)
+            notify_meal_event_invite(meal_event, invited_user, invited_by)
 
         mock_service.send_to_user.assert_called_once()
         notification = mock_service.send_to_user.call_args[0][1]
@@ -1847,7 +1845,7 @@ class TestNotifyMealEventReminder:
             mock_service.send_to_user.return_value = {"success_count": 1}
             mock_get.return_value = mock_service
 
-            result = notify_meal_event_reminder(meal_event, user, 30)
+            notify_meal_event_reminder(meal_event, user, 30)
 
         notification = mock_service.send_to_user.call_args[0][1]
         assert "30 minutes" in notification.title
@@ -1986,7 +1984,7 @@ class TestNotifyMealEventUpdated:
             mock_service.send_to_users.return_value = {"success_count": 2}
             mock_get.return_value = mock_service
 
-            result = notify_meal_event_updated(
+            notify_meal_event_updated(
                 meal_event, updated_by, [updated_by, user_a, user_b], db_session,
             )
 
