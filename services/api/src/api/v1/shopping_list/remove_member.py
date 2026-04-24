@@ -1,19 +1,19 @@
 """Remove shopping list member endpoint."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class RemoveShoppingListMember(Endpoint):
+class RemoveShoppingListMember(AsyncEndpoint):
     """Remove a member from a shopping list (or leave)."""
 
-    def execute(self, list_id: str, member_user_id: str):
+    async def execute(self, list_id: str, member_user_id: str):
         """
         Remove a member from a shopping list.
 
@@ -29,8 +29,7 @@ class RemoveShoppingListMember(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -38,8 +37,7 @@ class RemoveShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Find the membership to remove
-        target_membership = self.database.find_by(
+        target_membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=member_user_id
         )
         if not target_membership or target_membership.archived_at:
@@ -49,7 +47,6 @@ class RemoveShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_MEMBER_NOT_FOUND,
             )
 
-        # Check if this is a self-removal (leaving)
         is_leaving = str(user.id) == member_user_id
         is_owner = shopping_list.owner_id == user.id
 
@@ -61,7 +58,6 @@ class RemoveShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_CANNOT_LEAVE_AS_OWNER,
             )
 
-        # Non-owners can only remove themselves
         if not is_leaving and not is_owner:
             raise APIException(
                 status_code=403,
@@ -69,7 +65,6 @@ class RemoveShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Cannot remove the owner
         if target_membership.role == "owner" and not is_leaving:
             raise APIException(
                 status_code=400,
@@ -77,11 +72,8 @@ class RemoveShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_CANNOT_REMOVE_OWNER,
             )
 
-        # Soft delete the membership
-        target_membership.archived_at = datetime.now(datetime.UTC)
-        self.database.db.commit()
-
-        # TODO: Create ShoppingListEvent for member_left
+        target_membership.archived_at = datetime.now(UTC)
+        await self.database.db.commit()
 
         action = "left" if is_leaving else "removed"
         return success(
