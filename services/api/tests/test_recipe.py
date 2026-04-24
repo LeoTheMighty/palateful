@@ -3215,7 +3215,14 @@ class TestRecipeInferredFields:
     """efi-3 — GetRecipe surfaces + UpdateRecipe shrink-only for
     ``recipes.inferred_fields``."""
 
-    def _setup(self, mock_db, mock_user, *, stored):
+    def _setup(self, mock_db, mock_async_db, mock_user, *, stored):
+        """Configure both sync + async mocks.
+
+        aam-12a converted `GetRecipe` to `AsyncEndpoint` (async mocks),
+        but `UpdateRecipe` is still sync (aam-12b scope). The test class
+        covers both — one helper sets up both databases so GET vs PUT
+        tests work unchanged.
+        """
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
@@ -3229,21 +3236,23 @@ class TestRecipeInferredFields:
             recipe_book_id=book_id,
             role="owner",
         )
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(
-            RecipeBookUser,
-            membership,
-            user_id=str(mock_user.id),
-            recipe_book_id=book_id,
-        )
+        for db in (mock_db, mock_async_db):
+            db.set_find_by(Recipe, recipe, id=recipe_id)
+            db.set_find_by(
+                RecipeBookUser,
+                membership,
+                user_id=str(mock_user.id),
+                recipe_book_id=book_id,
+            )
         mock_db.db.query.return_value = MockQuery([])
         return recipe_id, recipe
 
     def test_get_recipe_surfaces_inferred_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         recipe_id, _ = self._setup(
             mock_db,
+            mock_async_db,
             mock_user,
             stored=["cook_time_minutes", "servings"],
         )
@@ -3253,28 +3262,29 @@ class TestRecipeInferredFields:
         assert data["inferred_fields"] == ["cook_time_minutes", "servings"]
 
     def test_get_recipe_empty_list_when_not_inferred(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
-        recipe_id, _ = self._setup(mock_db, mock_user, stored=[])
+        recipe_id, _ = self._setup(mock_db, mock_async_db, mock_user, stored=[])
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         assert response.json()["inferred_fields"] == []
 
     def test_get_recipe_tolerates_null_column(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """Legacy rows with a null column decode to `[]` defensively."""
-        recipe_id, recipe = self._setup(mock_db, mock_user, stored=[])
+        recipe_id, recipe = self._setup(mock_db, mock_async_db, mock_user, stored=[])
         recipe.inferred_fields = None  # simulate a pre-migration row
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         assert response.json()["inferred_fields"] == []
 
     def test_update_recipe_shrinks_inferred_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         recipe_id, _ = self._setup(
             mock_db,
+            mock_async_db,
             mock_user,
             stored=["cook_time_minutes", "servings", "cuisine"],
         )
@@ -3287,12 +3297,12 @@ class TestRecipeInferredFields:
         assert data["inferred_fields"] == ["servings", "cuisine"]
 
     def test_update_recipe_empty_list_shrinks_to_none(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """Sending `[]` is a valid shrink — user has edited every
         inferred field, nothing left to sparkle."""
         recipe_id, _ = self._setup(
-            mock_db, mock_user, stored=["cook_time_minutes"]
+            mock_db, mock_async_db, mock_user, stored=["cook_time_minutes"]
         )
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -3302,12 +3312,12 @@ class TestRecipeInferredFields:
         assert response.json()["inferred_fields"] == []
 
     def test_update_recipe_rejects_expansion(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """Adding a field not in the stored set → 400 with the current
         stored set in `data.allowed`."""
         recipe_id, _ = self._setup(
-            mock_db, mock_user, stored=["cook_time_minutes"]
+            mock_db, mock_async_db, mock_user, stored=["cook_time_minutes"]
         )
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -3324,12 +3334,12 @@ class TestRecipeInferredFields:
         assert body["data"]["allowed"] == ["cook_time_minutes"]
 
     def test_update_recipe_rejects_non_inferable_field(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """A name not in INFERABLE_FIELDS → 400, even if it happens to
         be a subset of the stored set (can't happen legitimately; the
         stored set is bounded by the allow-list)."""
-        recipe_id, _ = self._setup(mock_db, mock_user, stored=[])
+        recipe_id, _ = self._setup(mock_db, mock_async_db, mock_user, stored=[])
         response = client.put(
             f"/v1/recipes/{recipe_id}",
             json={"inferred_fields": ["name"]},
@@ -3339,13 +3349,13 @@ class TestRecipeInferredFields:
         assert body["data"]["allowed"] == []
 
     def test_update_recipe_rejects_non_string_entry(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """FastAPI rejects non-string entries at the pydantic layer
         with a 422 — exercise the branch so the full Params schema is
         validated end-to-end."""
         recipe_id, _ = self._setup(
-            mock_db, mock_user, stored=["cook_time_minutes"]
+            mock_db, mock_async_db, mock_user, stored=["cook_time_minutes"]
         )
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -3355,11 +3365,12 @@ class TestRecipeInferredFields:
         # expected outer error.
         assert response.status_code in (400, 422)
 
-    def test_update_recipe_dedupes_shrink(self, client, mock_db, mock_user):
+    def test_update_recipe_dedupes_shrink(self, client, mock_db, mock_async_db, mock_user):
         """Client-sent duplicates are deduped server-side before
         persistence (order preserved from first-seen)."""
         recipe_id, _ = self._setup(
             mock_db,
+            mock_async_db,
             mock_user,
             stored=["cook_time_minutes", "servings"],
         )
