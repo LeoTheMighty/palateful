@@ -3,25 +3,29 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.ingredient import Ingredient
 from utils.models.user import User
 from utils.services.shelf_life_service import estimate_expires_at
 
-from .helpers import require_pantry_access
+from .helpers import require_pantry_access_async
 from .schemas import StorageLocation
 
 
-class EstimateExpiry(Endpoint):
+class EstimateExpiry(AsyncEndpoint):
     """POST /pantries/{pantry_id}/estimate-expiry — thin wrapper over shelf_life_service."""
 
-    def execute(self, pantry_id: str, params: "EstimateExpiry.Params"):
+    async def execute(self, pantry_id: str, params: "EstimateExpiry.Params"):
         user: User = self.user
         # Any pantry member can estimate (read-only).
-        require_pantry_access(user.id, pantry_id, self.database, mutate=False)
+        await require_pantry_access_async(
+            user.id, pantry_id, self.database, mutate=False
+        )
 
-        ingredient = self.database.find_by(Ingredient, id=params.ingredient_id)
+        ingredient = await self.database.find_by(
+            Ingredient, id=params.ingredient_id
+        )
         if not ingredient:
             raise APIException(
                 status_code=404,

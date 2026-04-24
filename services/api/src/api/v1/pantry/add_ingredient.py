@@ -1,16 +1,16 @@
 """Add or upsert a pantry ingredient."""
 
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.ingredient import Ingredient
 from utils.models.user import User
-from utils.services.pantry_service import upsert_pantry_ingredient
+from utils.services.pantry_service import upsert_pantry_ingredient_async
 
-from .helpers import format_pantry_ingredient, require_pantry_access
+from .helpers import format_pantry_ingredient, require_pantry_access_async
 from .schemas import PantryIngredientCreate
 
 
-class AddPantryIngredient(Endpoint):
+class AddPantryIngredient(AsyncEndpoint):
     """POST /pantries/{pantry_id}/ingredients — insert or upsert-by-quantity.
 
     Accepts either `ingredient_id` (look up existing row) or `name`
@@ -18,12 +18,16 @@ class AddPantryIngredient(Endpoint):
     names are never deduped across rows.
     """
 
-    def execute(self, pantry_id: str, params: PantryIngredientCreate):
+    async def execute(self, pantry_id: str, params: PantryIngredientCreate):
         user: User = self.user
-        require_pantry_access(user.id, pantry_id, self.database, mutate=True)
+        await require_pantry_access_async(
+            user.id, pantry_id, self.database, mutate=True
+        )
 
         if params.ingredient_id:
-            ingredient = self.database.find_by(Ingredient, id=params.ingredient_id)
+            ingredient = await self.database.find_by(
+                Ingredient, id=params.ingredient_id
+            )
             if not ingredient:
                 raise APIException(
                     status_code=404,
@@ -34,7 +38,7 @@ class AddPantryIngredient(Endpoint):
             canonical = params.name.strip().lower()
             ingredient = Ingredient(canonical_name=canonical)
             self.database.db.add(ingredient)
-            self.database.db.flush()
+            await self.database.db.flush()
         else:
             raise APIException(
                 status_code=400,
@@ -42,7 +46,7 @@ class AddPantryIngredient(Endpoint):
                 code=ErrorCode.INGREDIENT_INPUT_REQUIRED,
             )
 
-        result = upsert_pantry_ingredient(
+        result = await upsert_pantry_ingredient_async(
             self.database,
             pantry_id=pantry_id,
             ingredient_id=str(ingredient.id),

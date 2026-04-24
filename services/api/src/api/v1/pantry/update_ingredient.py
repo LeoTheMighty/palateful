@@ -3,31 +3,43 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.pantry_ingredient import PantryIngredient
 from utils.models.user import User
 
-from .helpers import format_pantry_ingredient, require_pantry_access
+from .helpers import format_pantry_ingredient, require_pantry_access_async
 from .schemas import PantryIngredientUpdate
 
 
-class UpdatePantryIngredient(Endpoint):
+class UpdatePantryIngredient(AsyncEndpoint):
     """PATCH /pantries/{pantry_id}/ingredients/{ingredient_id}."""
 
-    def execute(self, pantry_id: str, ingredient_id: str, params: PantryIngredientUpdate):
+    async def execute(
+        self, pantry_id: str, ingredient_id: str, params: PantryIngredientUpdate
+    ):
         user: User = self.user
-        require_pantry_access(user.id, pantry_id, self.database, mutate=True)
+        await require_pantry_access_async(
+            user.id, pantry_id, self.database, mutate=True
+        )
 
-        row = (
-            self.database.db.query(PantryIngredient)
-            .filter(
+        # Eager-load `ingredient` — `format_pantry_ingredient(row)` below
+        # reads `row.ingredient.canonical_name` / `.category`, which on
+        # an AsyncSession raises `MissingGreenlet` if the relationship
+        # isn't loaded at query time.
+        stmt = (
+            select(PantryIngredient)
+            .options(selectinload(PantryIngredient.ingredient))
+            .where(
                 PantryIngredient.pantry_id == pantry_id,
                 PantryIngredient.ingredient_id == ingredient_id,
                 PantryIngredient.archived_at.is_(None),
             )
-            .first()
+            .limit(1)
         )
+        row = (await self.db.execute(stmt)).scalars().first()
         if not row:
             raise APIException(
                 status_code=404,
@@ -54,6 +66,6 @@ class UpdatePantryIngredient(Endpoint):
         if params.expires_at is not None:
             row.expires_at = params.expires_at
 
-        self.database.db.commit()
-        self.database.db.refresh(row)
+        await self.db.commit()
+        await self.db.refresh(row)
         return success(data=format_pantry_ingredient(row))

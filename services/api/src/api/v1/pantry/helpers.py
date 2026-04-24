@@ -2,15 +2,22 @@
 
 Core mutation logic lives in ``utils.services.pantry_service``; this module
 adds HTTP-specific concerns (permission checks, response shaping).
+
+aam-15 added async twins alongside the sync helpers; sync versions stay
+because shopping_list (aam-13) and the pantry-meal subscriber still dispatch
+synchronously.
 """
 
+from sqlalchemy import select
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.models.pantry import Pantry
 from utils.models.pantry_user import PantryUser
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 from utils.services.pantry_service import (
     get_or_create_default_pantry,
+    get_or_create_default_pantry_async,
 )
 
 from .schemas import PantryIngredientRead
@@ -18,7 +25,9 @@ from .schemas import PantryIngredientRead
 __all__ = [
     "format_pantry_ingredient",
     "get_or_create_default_pantry",
+    "get_or_create_default_pantry_async",
     "require_pantry_access",
+    "require_pantry_access_async",
 ]
 
 
@@ -52,6 +61,53 @@ def require_pantry_access(
         )
         .first()
     )
+
+    if not membership:
+        raise APIException(
+            status_code=403,
+            detail="You don't have access to this pantry",
+            code=ErrorCode.PANTRY_ACCESS_DENIED,
+        )
+
+    if mutate and membership.role not in ("owner", "editor"):
+        raise APIException(
+            status_code=403,
+            detail="You don't have permission to modify this pantry",
+            code=ErrorCode.PANTRY_ACCESS_DENIED,
+        )
+
+    return membership
+
+
+async def require_pantry_access_async(
+    user_id,
+    pantry_id,
+    database: AsyncDatabase,
+    *,
+    mutate: bool,
+) -> PantryUser:
+    """Async mirror of ``require_pantry_access``.
+
+    Preserves the 404 / 403 split and the owner/editor write-gate.
+    """
+    pantry = await database.find_by(Pantry, id=pantry_id)
+    if not pantry:
+        raise APIException(
+            status_code=404,
+            detail=f"Pantry with ID '{pantry_id}' not found",
+            code=ErrorCode.PANTRY_NOT_FOUND,
+        )
+
+    stmt = (
+        select(PantryUser)
+        .where(
+            PantryUser.user_id == user_id,
+            PantryUser.pantry_id == pantry.id,
+            PantryUser.archived_at.is_(None),
+        )
+        .limit(1)
+    )
+    membership = (await database.db.execute(stmt)).scalars().first()
 
     if not membership:
         raise APIException(

@@ -1,9 +1,18 @@
 """Pantry mutation primitives usable from any context (HTTP, event subscribers, MCP).
 
-These helpers operate on the synchronous SQLAlchemy session exposed by
-``utils.services.database.Database``. They do NOT perform permission checks —
-callers that receive untrusted input should gate access through the API
-layer's ``require_pantry_access`` before calling here.
+Two parallel surfaces live here:
+
+* The historic synchronous helpers operate on
+  ``utils.services.database.Database`` and remain the surface used by
+  ``services/api/src/api/subscribers/pantry_meal_subscriber.py`` and
+  ``services/api/src/api/v1/shopping_list/update_item.py`` (both still
+  synchronous at time of writing — aam-13 / aam-14 backlog).
+* The ``*_async`` mirrors operate on ``AsyncDatabase`` (aam-15 added,
+  used by the ``AsyncEndpoint`` pantry handlers).
+
+Neither path performs permission checks — callers that receive untrusted
+input should gate access through the API layer's ``require_pantry_access``
+(or ``require_pantry_access_async``) before calling here.
 """
 
 from __future__ import annotations
@@ -14,12 +23,15 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from sqlalchemy import select
+
 from utils.models.pantry import Pantry
 from utils.models.pantry_ingredient import PantryIngredient
 from utils.models.pantry_ingredient_event import PantryIngredientEvent
 from utils.models.pantry_user import PantryUser
 
 if TYPE_CHECKING:
+    from utils.services.async_database import AsyncDatabase
     from utils.services.database import Database
 
 logger = logging.getLogger(__name__)
@@ -198,6 +210,13 @@ def decrement_pantry_from_recipe(
     audit row to ``pantry_ingredient_events`` for each actual decrement.
     Quantities clamp at zero; a decrement that reaches zero also archives
     the pantry row.
+
+    **Sync-only.** No async twin exists because the only caller today is
+    ``pantry_meal_subscriber`` (sync event dispatcher). Async handlers
+    that need this logic must dispatch via ``run_in_threadpool`` with a
+    fresh ``Database(db=SessionLocal())`` — the query loop here holds a
+    sync session across many mutations and a greenlet bridge would be
+    the wrong fix.
     """
     decremented: list[PantryIngredientEvent] = []
     skipped_unit_mismatch = 0
@@ -287,3 +306,154 @@ def decrement_pantry_from_recipe(
         skipped_missing_pantry_row=skipped_missing_pantry_row,
         skipped_invalid_recipe_data=skipped_invalid_recipe_data,
     )
+
+
+# ─────────────────────────────── Async mirrors (aam-15) ─────────────────────
+#
+# `*_async` twins of the mutation helpers, for `AsyncEndpoint` handlers.
+# Semantics are preserved 1:1 with their sync counterparts above; any
+# behavior change must land in both halves until the sync variants
+# retire in the post-cutover cleanup epic.
+
+
+async def _find_default_membership_async(
+    user_id, database: AsyncDatabase
+) -> PantryUser | None:
+    stmt = (
+        select(PantryUser)
+        .where(
+            PantryUser.user_id == user_id,
+            PantryUser.archived_at.is_(None),
+        )
+        .order_by(PantryUser.created_at.asc())
+        .limit(1)
+    )
+    result = await database.db.execute(stmt)
+    return result.scalars().first()
+
+
+async def get_or_create_default_pantry_async(
+    user_id, database: AsyncDatabase
+) -> tuple[Pantry, PantryUser]:
+    """Async mirror of ``get_or_create_default_pantry``."""
+    membership = await _find_default_membership_async(user_id, database)
+    if membership:
+        pantry = await database.find_by(Pantry, id=membership.pantry_id)
+        if pantry:
+            return pantry, membership
+
+    async with database.lock(f"default_pantry_{user_id}"):
+        membership = await _find_default_membership_async(user_id, database)
+        if membership:
+            pantry = await database.find_by(Pantry, id=membership.pantry_id)
+            if pantry:
+                return pantry, membership
+
+        pantry = Pantry(name="My Pantry")
+        await database.create(pantry)
+        membership = PantryUser(
+            user_id=user_id,
+            pantry_id=pantry.id,
+            role="owner",
+        )
+        await database.create(membership)
+        return pantry, membership
+
+
+async def upsert_pantry_ingredient_async(
+    database: AsyncDatabase,
+    *,
+    pantry_id,
+    ingredient_id,
+    quantity_display: Decimal | float | int | None,
+    unit_display: str | None,
+    quantity_normalized: Decimal | float | int | None,
+    unit_normalized: str | None,
+    storage_location: str | None = None,
+    expires_at: datetime | None = None,
+) -> UpsertResult:
+    """Async mirror of ``upsert_pantry_ingredient``."""
+    existing_stmt = (
+        select(PantryIngredient)
+        .where(
+            PantryIngredient.pantry_id == pantry_id,
+            PantryIngredient.ingredient_id == ingredient_id,
+            PantryIngredient.archived_at.is_(None),
+        )
+        .limit(1)
+    )
+    existing = (await database.db.execute(existing_stmt)).scalars().first()
+
+    quantity_normalized = (
+        Decimal(quantity_normalized) if quantity_normalized is not None else Decimal(0)
+    )
+    quantity_display = (
+        Decimal(quantity_display) if quantity_display is not None else quantity_normalized
+    )
+
+    if existing is not None:
+        if (
+            existing.unit_normalized
+            and unit_normalized
+            and existing.unit_normalized != unit_normalized
+        ):
+            logger.warning(
+                "pantry_upsert_unit_mismatch pantry_id=%s ingredient_id=%s existing=%r incoming=%r",
+                pantry_id,
+                ingredient_id,
+                existing.unit_normalized,
+                unit_normalized,
+            )
+            return UpsertResult(
+                row=existing, created=False, skipped_reason="unit_mismatch"
+            )
+
+        existing.quantity_normalized = (
+            Decimal(existing.quantity_normalized) + quantity_normalized
+        )
+        existing.quantity_display = quantity_display
+        if unit_display is not None:
+            existing.unit_display = unit_display
+        if unit_normalized is not None:
+            existing.unit_normalized = unit_normalized
+        if storage_location is not None:
+            existing.storage_location = storage_location
+        if expires_at is not None:
+            existing.expires_at = expires_at
+        await database.db.commit()
+        await database.db.refresh(existing)
+        return UpsertResult(row=existing, created=False)
+
+    row = PantryIngredient(
+        pantry_id=pantry_id,
+        ingredient_id=ingredient_id,
+        quantity_display=quantity_display,
+        unit_display=unit_display or "",
+        quantity_normalized=quantity_normalized,
+        unit_normalized=unit_normalized or "",
+        storage_location=storage_location,
+        expires_at=expires_at,
+    )
+    await database.create(row)
+    return UpsertResult(row=row, created=True)
+
+
+async def soft_delete_pantry_ingredient_async(
+    database: AsyncDatabase, *, pantry_id, ingredient_id
+) -> PantryIngredient | None:
+    """Async mirror of ``soft_delete_pantry_ingredient``."""
+    stmt = (
+        select(PantryIngredient)
+        .where(
+            PantryIngredient.pantry_id == pantry_id,
+            PantryIngredient.ingredient_id == ingredient_id,
+        )
+        .limit(1)
+    )
+    row = (await database.db.execute(stmt)).scalars().first()
+    if row is None:
+        return None
+    if row.archived_at is None:
+        row.archived_at = datetime.now(UTC)
+        await database.db.commit()
+    return row
