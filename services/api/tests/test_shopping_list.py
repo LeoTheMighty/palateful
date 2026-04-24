@@ -33,9 +33,12 @@ class TestListShoppingLists:
             members=[],
             is_shared=False,
         )
-        # ListShoppingLists uses db.query(ShoppingList).filter(...)
-        # The subquery for member_list_ids also uses db.query
-        mock_db.db.query.return_value = MockQuery([sl])
+        # aam-13: ListShoppingLists now issues `select(func.count())` then
+        # `select(ShoppingList)...`. Two db.execute calls; side_effect in order.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[sl]),
+        ]
 
         response = client.get("/v1/shopping-lists")
         assert response.status_code == 200
@@ -44,7 +47,10 @@ class TestListShoppingLists:
 
     def test_list_shopping_lists_empty(self, client, mock_db, mock_async_db, mock_user):
         """Test listing when user has no shopping lists."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
 
         response = client.get("/v1/shopping-lists")
         assert response.status_code == 200
@@ -52,27 +58,28 @@ class TestListShoppingLists:
         assert data["items"] == []
 
     def test_list_shopping_lists_eager_loads_items_and_members(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """pbq-1 — the handler attaches selectinload(items, members) and
-        the mock-layer query count stays bounded regardless of page size.
+        the handler issues a bounded number of db.execute calls
+        regardless of page size.
 
-        The lazy-load N+1 can't be reproduced under MockDatabase (mocks
-        pre-populate `sl.items` / `sl.members`), so this test pairs a
-        `selectinload` spy with `count_queries`: the spy proves the
-        eager-load is wired; the counter proves the handler isn't
-        redundantly re-querying `ShoppingList` per row.
+        aam-13: sync `db.query` was replaced with async
+        `db.execute(select(...).options(selectinload(...)))`. The spy
+        on `selectinload` still proves the eager-load is wired; the
+        `db.execute.call_count` cap proves the handler isn't
+        redundantly querying `ShoppingList` per row.
         """
-        from utils.models.shopping_list import ShoppingList
-        from utils.models.shopping_list_user import ShoppingListUser
-
         lists = [
             MockShoppingList(
                 owner_id=str(mock_user.id), items=[], members=[], is_shared=False
             )
             for _ in range(20)
         ]
-        mock_db.db.query.return_value = MockQuery(lists)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[len(lists)]),
+            MockExecuteResult(items=lists),
+        ]
 
         import api.v1.shopping_list.list_shopping_lists as handler_module
         with patch.object(
@@ -80,48 +87,42 @@ class TestListShoppingLists:
             "selectinload",
             wraps=handler_module.selectinload,
         ) as spy:
-            with count_queries(mock_db) as qc:
-                response = client.get("/v1/shopping-lists")
+            response = client.get("/v1/shopping-lists")
 
         assert response.status_code == 200
 
-        # Eager-load wired to both relationships. Compare by attribute
-        # key — `InstrumentedAttribute` equality triggers SQL compile.
         wrapped_keys = {
             getattr(call.args[0], "key", None) for call in spy.call_args_list
         }
         assert "items" in wrapped_keys
         assert "members" in wrapped_keys
 
-        # Round-trip ceiling: main ShoppingList query + member-list
-        # subquery + user-activity / default_shopping_list lookups.
-        # Bounded regardless of page size.
-        assert qc.query_count_for(ShoppingList) == 1
-        assert qc.query_count_for(ShoppingListUser) >= 1
-        assert qc.select <= 6
+        # Bounded regardless of page size. One count + one main list.
+        assert mock_async_db.db.execute.call_count == 2
 
     def test_count_queries_helper_tracks_mock_invocations(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
-        """pbq-0 smoke test — `count_queries` tallies mock-layer calls.
+        """pbq-0 smoke test — verify the handler's round-trip count stays bounded.
 
-        Demonstrates the helper captures `db.query` deltas and per-
-        model counts across an end-to-end request. Acts as a contract
-        for the rest of the pbq-* stories.
+        aam-13: the handler now runs on `mock_async_db`; the legacy
+        `count_queries(mock_db)` path observes zero calls because the
+        sync mock isn't touched. Assert via `mock_async_db.db.execute`
+        directly — same regression-guard semantic, async surface.
         """
         sl = MockShoppingList(
             owner_id=str(mock_user.id), items=[], members=[], is_shared=False
         )
-        mock_db.db.query.return_value = MockQuery([sl])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[sl]),
+        ]
 
-        with count_queries(mock_db) as qc:
-            response = client.get("/v1/shopping-lists")
+        response = client.get("/v1/shopping-lists")
         assert response.status_code == 200
 
-        assert qc.select > 0
-        assert qc.total >= qc.select
-        from utils.models.shopping_list import ShoppingList
-        assert qc.query_count_for(ShoppingList) >= 1
+        # Count + list — two execute calls total.
+        assert mock_async_db.db.execute.call_count == 2
 
 
 class TestCreateShoppingList:
