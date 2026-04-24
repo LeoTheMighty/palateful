@@ -269,9 +269,11 @@ class TestAddShoppingListItem:
         assert data["name"] == "Milk"
 
     @patch("api.v1.shopping_list.add_item.notify_item_added")
-    @patch("api.v1.shopping_list.add_item.create_activity")
-    def test_add_item_to_shared_list_creates_activity(self, mock_create_activity, mock_notify, client, mock_db, mock_async_db, mock_user):
-        """Test adding item to a shared list creates activity for other members (lines 87-97)."""
+    def test_add_item_to_shared_list_creates_activity(self, mock_notify, client, mock_db, mock_async_db, mock_user):
+        """aam-13: create_activity is inlined as `self.db.add(UserActivity(...))`
+        on the AsyncSession (sync create_activity only takes a sync Session).
+        Assert on the inlined add() call instead of a patch.
+        """
         list_id = "shared-list-add"
         member = MockShoppingListUser(
             shopping_list_id=list_id,
@@ -285,17 +287,23 @@ class TestAddShoppingListItem:
         )
 
         from utils.models.shopping_list import ShoppingList
+        from utils.models.user_activity import UserActivity
 
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
-        # db.query for members returns our mock member
-        mock_db.db.query.return_value = MockQuery([member])
+        # Members-lookup (one db.execute call returning the single member).
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[member])
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items",
             json={"name": "Shared Item"},
         )
         assert response.status_code == 201
-        mock_create_activity.assert_called_once()
+        activity_adds = [
+            call for call in mock_async_db.db.add.call_args_list
+            if isinstance(call.args[0], UserActivity)
+        ]
+        assert len(activity_adds) == 1
+        assert str(activity_adds[0].args[0].user_id) == str(member.user_id)
 
 
 # =============================================================================
