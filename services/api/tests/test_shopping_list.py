@@ -1771,7 +1771,7 @@ class TestGenerateFromMealEvent:
         assert len(data["items"]) == 0
 
     def test_generate_rejects_check_pantry_field(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """Stale `check_pantry` field is rejected by Pydantic extra='forbid'
         (epic-ingredients-string-simplification). Old clients that still
@@ -1797,7 +1797,7 @@ class TestGenerateFromMealEvent:
         assert response.status_code == 422
 
     def test_generate_from_meal_event_ignores_pantry_stock(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """Positive test that pantry cross-check is truly gone, not just
         tests deleted. Pantry stocked with flour; meal event needs flour;
