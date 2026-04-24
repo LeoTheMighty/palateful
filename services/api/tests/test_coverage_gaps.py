@@ -228,7 +228,7 @@ class TestUpdateShoppingListItemExtended:
 
     @patch("api.v1.shopping_list.update_item.notify_item_checked")
     @patch("api.v1.shopping_list.update_item.notify_list_complete")
-    def test_update_all_fields(self, mock_complete, mock_checked, client, mock_db, mock_user):
+    def test_update_all_fields(self, mock_complete, mock_checked, client, mock_db, mock_async_db, mock_user):
         """Set every optional field to cover all if-branches."""
         list_id = "sl-upd-all"
         item_id = "item-upd-all"
@@ -271,7 +271,7 @@ class TestUpdateShoppingListItemExtended:
 
     @patch("api.v1.shopping_list.update_item.notify_item_checked")
     @patch("api.v1.shopping_list.update_item.notify_list_complete")
-    def test_uncheck_item(self, mock_complete, mock_checked, client, mock_db, mock_user):
+    def test_uncheck_item(self, mock_complete, mock_checked, client, mock_db, mock_async_db, mock_user):
         """Uncheck item — clears checked_by and checked_at (lines 90-91)."""
         list_id = "sl-uncheck"
         item_id = "item-uncheck"
@@ -1819,7 +1819,7 @@ class TestRecipeRouterNotifySharedBook:
     """Cover recipe_router.py line 87 (notify_recipe_added for shared book)."""
 
     @patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None)
-    def test_create_recipe_in_shared_book_notifies(self, mock_embed, client, mock_db, mock_user):
+    def test_create_recipe_in_shared_book_notifies(self, mock_embed, client, mock_db, mock_async_db, mock_user):
         """Creating recipe in shared book triggers notification (line 87)."""
         book_id = "shared-book"
         membership = MockRecipeBookUser(
