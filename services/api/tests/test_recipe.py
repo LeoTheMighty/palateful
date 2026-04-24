@@ -520,11 +520,11 @@ class TestRestoreRecipe:
 class TestListArchivedRecipes:
     """Tests for GET /v1/recipes/archived."""
 
-    def test_list_archived_empty(self, client, mock_db, mock_user):
+    def test_list_archived_empty(self, client, mock_async_db, mock_user):
         """Test listing archived recipes when none exist."""
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_where(RecipeBookUser, [])
+        mock_async_db.set_where(RecipeBookUser, [])
 
         response = client.get("/v1/recipes/archived")
         assert response.status_code == 200
@@ -532,7 +532,7 @@ class TestListArchivedRecipes:
         assert data["items"] == []
         assert data["total"] == 0
 
-    def test_list_archived_with_results(self, client, mock_db, mock_user):
+    def test_list_archived_with_results(self, client, mock_async_db, mock_user):
         """Test listing archived recipes returns archived recipe data."""
         from datetime import UTC, datetime
 
@@ -543,14 +543,16 @@ class TestListArchivedRecipes:
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.set_where(RecipeBookUser, [membership])
+        mock_async_db.set_where(RecipeBookUser, [membership])
 
         archived_recipe = MockRecipe(
             name="Old Recipe",
             recipe_book_id=book_id,
             archived_at=datetime.now(UTC),
         )
-        mock_db.db.query.return_value = MockQuery([archived_recipe])
+        mock_async_db.db.execute.return_value = MockExecuteResult(
+            items=[archived_recipe]
+        )
 
         response = client.get("/v1/recipes/archived")
         assert response.status_code == 200
@@ -559,7 +561,7 @@ class TestListArchivedRecipes:
         assert data["items"][0]["name"] == "Old Recipe"
         assert data["items"][0]["archived_at"] is not None
 
-    def test_list_archived_requires_auth(self, unauthed_client, mock_db):
+    def test_list_archived_requires_auth(self, unauthed_client, mock_async_db):
         """Test that archived endpoint requires authentication."""
         response = unauthed_client.get("/v1/recipes/archived")
         assert response.status_code in (401, 403, 422)
@@ -776,7 +778,7 @@ class TestUpdateRecipeStepsAndTags:
         # tags should still be the existing ones
         assert data["tags"] == ["existing"]
 
-    def test_get_recipe_returns_tags(self, client, mock_db, mock_user):
+    def test_get_recipe_returns_tags(self, client, mock_async_db, mock_user):
         """Test that get recipe includes tags in response."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -793,18 +795,17 @@ class TestUpdateRecipeStepsAndTags:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["tags"] == ["italian", "pasta"]
 
-    def test_get_recipe_returns_steps(self, client, mock_db, mock_user):
+    def test_get_recipe_returns_steps(self, client, mock_async_db, mock_user):
         """Test that get recipe includes steps in order."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -824,12 +825,11 @@ class TestUpdateRecipeStepsAndTags:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_step import RecipeStep
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_where(RecipeStep, [step1, step2])
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_where(RecipeStep, [step1, step2])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
@@ -840,7 +840,7 @@ class TestUpdateRecipeStepsAndTags:
         assert data["steps"][1]["step_number"] == 2
         assert data["steps"][1]["instruction"] == "Add garlic"
 
-    def test_list_recipes_returns_tags(self, client, mock_db, mock_user):
+    def test_list_recipes_returns_tags(self, client, mock_async_db, mock_user):
         """Test that list recipes includes tags."""
         book_id = "test-book-id"
         membership = MockRecipeBookUser(
@@ -855,10 +855,14 @@ class TestUpdateRecipeStepsAndTags:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.side_effect = [MockQuery([recipe]), MockQuery([])]
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
+        ]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes")
         assert response.status_code == 200
