@@ -4,7 +4,7 @@ import secrets
 import string
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
@@ -19,10 +19,10 @@ def generate_share_code(length: int = 6) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
-class ShareShoppingList(Endpoint):
+class ShareShoppingList(AsyncEndpoint):
     """Generate or retrieve a share code for a shopping list."""
 
-    def execute(self, list_id: str, params: "ShareShoppingList.Params"):
+    async def execute(self, list_id: str, params: "ShareShoppingList.Params"):
         """
         Generate a share code for a shopping list.
 
@@ -35,8 +35,7 @@ class ShareShoppingList(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -44,7 +43,6 @@ class ShareShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - must be owner
         if shopping_list.owner_id != user.id:
             raise APIException(
                 status_code=403,
@@ -52,12 +50,10 @@ class ShareShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Generate share code if not already shared
         if not shopping_list.share_code:
-            # Ensure unique code
-            for _ in range(10):  # Try up to 10 times
+            for _ in range(10):
                 code = generate_share_code()
-                existing = self.database.find_by(ShoppingList, share_code=code)
+                existing = await self.database.find_by(ShoppingList, share_code=code)
                 if not existing:
                     break
             else:
@@ -69,11 +65,10 @@ class ShareShoppingList(Endpoint):
 
             shopping_list.share_code = code
             shopping_list.is_shared = True
-            self.database.db.commit()
-            self.database.db.refresh(shopping_list)
+            await self.database.db.commit()
+            await self.database.db.refresh(shopping_list)
 
-        # Ensure owner has membership record
-        owner_membership = self.database.find_by(
+        owner_membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=shopping_list.id, user_id=user.id
         )
         if not owner_membership:  # pragma: no cover — owner record usually exists
@@ -82,7 +77,7 @@ class ShareShoppingList(Endpoint):
                 user_id=user.id,
                 role="owner",
             )
-            self.database.create(owner_membership)
+            await self.database.create(owner_membership)
 
         return success(
             data=ShareShoppingList.Response(
