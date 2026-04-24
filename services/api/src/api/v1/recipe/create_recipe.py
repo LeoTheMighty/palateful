@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
@@ -17,10 +17,10 @@ from utils.services.units import normalize_unit_display
 from utils.services.units.conversion import normalize_quantity
 
 
-class CreateRecipe(Endpoint):
+class CreateRecipe(AsyncEndpoint):
     """Create a new recipe."""
 
-    def execute(self, book_id: str, params: "CreateRecipe.Params"):
+    async def execute(self, book_id: str, params: "CreateRecipe.Params"):
         """
         Create a new recipe in a recipe book.
 
@@ -34,7 +34,7 @@ class CreateRecipe(Endpoint):
         user: User = self.user
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=book_id
@@ -47,7 +47,7 @@ class CreateRecipe(Endpoint):
             )
 
         # Verify recipe book exists
-        recipe_book = self.database.find_by(RecipeBook, id=book_id)
+        recipe_book = await self.database.find_by(RecipeBook, id=book_id)
         if not recipe_book:
             raise APIException(
                 status_code=404,
@@ -68,8 +68,7 @@ class CreateRecipe(Endpoint):
             tags=params.tags or [],
             recipe_book_id=book_id
         )
-        self.database.create(recipe)
-        self.database.db.refresh(recipe)
+        await self.database.create(recipe)
 
         # Assign vibes and generate embedding for semantic search (non-blocking)
         from api.v1.search.generate_recipe_embedding import (
@@ -87,7 +86,7 @@ class CreateRecipe(Endpoint):
         )
         if embedding is not None:
             recipe.embedding = embedding
-        self.database.db.commit()
+        await self.database.db.commit()
 
         # Create recipe ingredients. Input accepts either `ingredient_id`
         # (look up existing row) or `name` (create a fresh row). No
@@ -96,7 +95,7 @@ class CreateRecipe(Endpoint):
         ingredient_responses = []
         for idx, ing_input in enumerate(params.ingredients):
             if ing_input.ingredient_id:
-                ingredient = self.database.find_by(
+                ingredient = await self.database.find_by(
                     Ingredient, id=ing_input.ingredient_id
                 )
                 if not ingredient:
@@ -109,7 +108,7 @@ class CreateRecipe(Endpoint):
                 canonical = ing_input.name.strip().lower()
                 ingredient = Ingredient(canonical_name=canonical)
                 self.database.db.add(ingredient)
-                self.database.db.flush()
+                await self.database.db.flush()
             else:
                 raise APIException(
                     status_code=400,
@@ -119,6 +118,10 @@ class CreateRecipe(Endpoint):
 
             quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
             # Coerce LLM/user freeform unit to canonical (riip-2).
+            # `normalize_unit_display` stays sync (worker contract) and
+            # hits a pre-warmed module cache — safe to pass the async
+            # session since the cache-miss path is never reached in a
+            # healthy API process.
             unit = normalize_unit_display(
                 ing_input.unit or "",
                 self.database.db,
@@ -146,8 +149,7 @@ class CreateRecipe(Endpoint):
                 is_optional=ing_input.is_optional,
                 order_index=idx
             )
-            self.database.create(recipe_ingredient)
-            self.database.db.refresh(recipe_ingredient)
+            await self.database.create(recipe_ingredient)
 
             ingredient_responses.append(
                 CreateRecipe.IngredientResponse(
@@ -179,8 +181,7 @@ class CreateRecipe(Endpoint):
                 can_prep_ahead=step_input.can_prep_ahead,
                 is_optional=step_input.is_optional,
             )
-            self.database.create(step)
-            self.database.db.refresh(step)
+            await self.database.create(step)
             step_responses.append(
                 CreateRecipe.StepResponse(
                     id=str(step.id),

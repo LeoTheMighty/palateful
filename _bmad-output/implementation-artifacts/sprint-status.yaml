@@ -1358,13 +1358,13 @@ development_status:
   aam-11-recipe-book-domain-async: done
   aam-12-recipe-domain-async: superseded  # split into 12a (read) + 12b (write)
   aam-12a-recipe-reads-async: in-progress
-  aam-12b-recipe-writes-async: backlog
+  aam-12b-recipe-writes-async: in-progress
   aam-13-shopping-list-domain-async: done
   aam-14-calendar-and-meal-event-domain-async: done
   aam-15-pantry-domain-async: done
   aam-16-activity-domain-async: done
   aam-17-search-domain-async: done
-  aam-18-import-job-domain-async: backlog
+  aam-18-import-job-domain-async: in-progress
   aam-19-user-profile-push-tokens-async: done
   aam-20-admin-domain-async: backlog
   aam-21-misc-small-routers-async: done
@@ -1382,6 +1382,6 @@ development_status:
   # domains + the notify-via-threadpool helper every converted endpoint uses.
   aam-foundations-notify-threadpool-helper: done
   aam-28-friends-domain-async: backlog
-  aam-29-parser-domain-async: backlog
-  aam-30-recurrence-rule-domain-async: backlog
+  aam-29-parser-domain-async: in-progress
+  aam-30-recurrence-rule-domain-async: in-progress
   epic-api-async-migration-retrospective: optional

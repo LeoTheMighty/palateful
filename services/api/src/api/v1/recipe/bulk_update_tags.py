@@ -1,17 +1,17 @@
 """Bulk update tags on recipes endpoint."""
 
 from pydantic import BaseModel, Field
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class BulkUpdateTags(Endpoint):
+class BulkUpdateTags(AsyncEndpoint):
     """Add or remove tags on multiple recipes at once."""
 
-    def execute(self, params: "BulkUpdateTags.Params"):
+    async def execute(self, params: "BulkUpdateTags.Params"):
         user: User = self.user
 
         if not params.recipe_ids:
@@ -30,14 +30,14 @@ class BulkUpdateTags(Endpoint):
         # Load and validate all recipes
         recipes = []
         for recipe_id in params.recipe_ids:
-            recipe = self.database.find_by(Recipe, id=recipe_id)
+            recipe = await self.database.find_by(Recipe, id=recipe_id)
             if not recipe:
                 raise APIException(
                     status_code=404,
                     detail=f"Recipe not found: {recipe_id}",
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
-            membership = self.database.find_by(
+            membership = await self.database.find_by(
                 RecipeBookUser,
                 user_id=str(user.id),
                 recipe_book_id=recipe.recipe_book_id,
@@ -60,7 +60,7 @@ class BulkUpdateTags(Endpoint):
             # Remove tags
             current_tags = [t for t in current_tags if t not in params.remove_tags]
             recipe.tags = current_tags
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=BulkUpdateTags.Response(updated_count=len(recipes))

@@ -1,7 +1,7 @@
 """Bulk move recipes to another book endpoint."""
 
 from pydantic import BaseModel, Field
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -9,10 +9,10 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class BulkMoveRecipes(Endpoint):
+class BulkMoveRecipes(AsyncEndpoint):
     """Move multiple recipes to a different recipe book."""
 
-    def execute(self, params: "BulkMoveRecipes.Params"):
+    async def execute(self, params: "BulkMoveRecipes.Params"):
         user: User = self.user
 
         if not params.recipe_ids:
@@ -23,14 +23,14 @@ class BulkMoveRecipes(Endpoint):
             )
 
         # Validate destination book exists and user has editor/owner access
-        dest_book = self.database.find_by(RecipeBook, id=params.destination_book_id)
+        dest_book = await self.database.find_by(RecipeBook, id=params.destination_book_id)
         if not dest_book:
             raise APIException(
                 status_code=404,
                 detail="Destination book not found",
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND,
             )
-        dest_membership = self.database.find_by(
+        dest_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=params.destination_book_id,
@@ -45,7 +45,7 @@ class BulkMoveRecipes(Endpoint):
         # Load and validate all recipes
         recipes = []
         for recipe_id in params.recipe_ids:
-            recipe = self.database.find_by(Recipe, id=recipe_id)
+            recipe = await self.database.find_by(Recipe, id=recipe_id)
             if not recipe:
                 raise APIException(
                     status_code=404,
@@ -55,7 +55,7 @@ class BulkMoveRecipes(Endpoint):
             # Skip recipes already in destination (idempotent)
             if str(recipe.recipe_book_id) == params.destination_book_id:
                 continue
-            src_membership = self.database.find_by(
+            src_membership = await self.database.find_by(
                 RecipeBookUser,
                 user_id=str(user.id),
                 recipe_book_id=recipe.recipe_book_id,
@@ -71,7 +71,7 @@ class BulkMoveRecipes(Endpoint):
         # Perform moves
         for recipe in recipes:
             recipe.recipe_book_id = params.destination_book_id
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=BulkMoveRecipes.Response(moved_count=len(recipes))

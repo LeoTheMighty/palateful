@@ -22,9 +22,13 @@ from api.v1.recipe.list_recipes import ListRecipes
 from api.v1.recipe.toggle_favorite import ToggleFavorite
 from api.v1.recipe.update_recipe import UpdateRecipe
 from fastapi.encoders import jsonable_encoder
-from mcp_server.auth import get_current_database, get_current_user
-from mcp_server.server import call_endpoint, call_endpoint_async, mcp
+from mcp_server.auth import (
+    get_current_database_async,
+    get_current_user,
+)
+from mcp_server.server import call_endpoint_async, mcp
 from utils.models.ingredient import Ingredient
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 
 
@@ -40,6 +44,25 @@ def _create_ingredient_for_name(name: str, database: Database) -> str:
     ingredient = Ingredient(canonical_name=cleaned.lower())
     database.db.add(ingredient)
     database.db.flush()
+    return str(ingredient.id)
+
+
+async def _create_ingredient_for_name_async(
+    name: str, database: AsyncDatabase
+) -> str:
+    """Async mirror of `_create_ingredient_for_name` (aam-12b).
+
+    Same contract — insert a fresh `ingredients` row and return its
+    UUID — but awaits the session flush so the INSERT lands before the
+    caller reads `ingredient.id`. Used by the async write-side MCP
+    tools (`create_recipe`, `update_recipe`).
+    """
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise ValueError("Ingredient name cannot be empty")
+    ingredient = Ingredient(canonical_name=cleaned.lower())
+    database.db.add(ingredient)
+    await database.db.flush()
     return str(ingredient.id)
 
 
@@ -100,7 +123,7 @@ async def list_recipes(
 
 
 @mcp.tool()
-def create_recipe(
+async def create_recipe(
     name: str,
     ingredients: list[dict] | None = None,
     steps: list[dict] | None = None,
@@ -119,9 +142,12 @@ def create_recipe(
     ingredient name doesn't closely match an existing one, a new ingredient
     is created automatically. Use this after `suggest_recipe` if the user
     wants to save the suggestion, or any time they dictate a recipe.
+
+    aam-12b: CreateRecipe converted to AsyncEndpoint, so this tool
+    dispatches through `await call_endpoint_async(...)`.
     """
     user = get_current_user()
-    database = get_current_database()
+    database = get_current_database_async()
     resolved_book_id = book_id or _require_default_book_id(user)
 
     ingredient_inputs: list[CreateRecipe.IngredientInput] = []
@@ -137,7 +163,7 @@ def create_recipe(
         unit = entry.get("unit")
         if not unit:
             raise ValueError(f"Ingredient '{ing_name}' is missing a unit")
-        ingredient_id = _create_ingredient_for_name(ing_name, database)
+        ingredient_id = await _create_ingredient_for_name_async(ing_name, database)
         ingredient_inputs.append(
             CreateRecipe.IngredientInput(
                 ingredient_id=ingredient_id,
@@ -178,11 +204,11 @@ def create_recipe(
         ingredients=ingredient_inputs,
         steps=step_inputs,
     )
-    return call_endpoint(CreateRecipe, book_id=resolved_book_id, params=params)
+    return await call_endpoint_async(CreateRecipe, book_id=resolved_book_id, params=params)
 
 
 @mcp.tool()
-def update_recipe(
+async def update_recipe(
     recipe_id: str,
     name: str | None = None,
     description: str | None = None,
@@ -198,9 +224,12 @@ def update_recipe(
     update). Replacing `ingredients` or `steps` replaces the full list — pass
     the whole set you want. Ingredient names auto-resolve the same way as in
     `create_recipe`.
+
+    aam-12b: UpdateRecipe converted to AsyncEndpoint, so this tool
+    dispatches through `await call_endpoint_async(...)`.
     """
     get_current_user()  # ensure auth; caller is not used downstream
-    database = get_current_database()
+    database = get_current_database_async()
 
     params_kwargs: dict[str, Any] = {}
     if name is not None:
@@ -231,7 +260,7 @@ def update_recipe(
             unit = entry.get("unit")
             if not unit:
                 raise ValueError(f"Ingredient '{ing_name}' is missing a unit")
-            ingredient_id = _create_ingredient_for_name(ing_name, database)
+            ingredient_id = await _create_ingredient_for_name_async(ing_name, database)
             resolved.append(
                 UpdateRecipe.IngredientInput(
                     ingredient_id=ingredient_id,
@@ -266,16 +295,19 @@ def update_recipe(
         params_kwargs["steps"] = resolved_steps
 
     params = UpdateRecipe.Params(**params_kwargs)
-    return call_endpoint(UpdateRecipe, recipe_id=recipe_id, params=params)
+    return await call_endpoint_async(UpdateRecipe, recipe_id=recipe_id, params=params)
 
 
 @mcp.tool()
-def delete_recipe(recipe_id: str) -> str:
+async def delete_recipe(recipe_id: str) -> str:
     """Archive (soft-delete) a recipe. The recipe is hidden from lists but can
     be restored later via the app. Use when the user says "delete", "archive",
     or "remove" a recipe.
+
+    aam-12b: DeleteRecipe converted to AsyncEndpoint, so this tool
+    dispatches through `await call_endpoint_async(...)`.
     """
-    return call_endpoint(DeleteRecipe, recipe_id=recipe_id)
+    return await call_endpoint_async(DeleteRecipe, recipe_id=recipe_id)
 
 
 @mcp.tool()
@@ -302,14 +334,17 @@ async def list_favorites() -> str:
 
 
 @mcp.tool()
-def fork_recipe(recipe_id: str, destination_book_id: str | None = None) -> str:
+async def fork_recipe(recipe_id: str, destination_book_id: str | None = None) -> str:
     """Fork a recipe (typically a shared or public one) into a book the user
     owns, preserving lineage. Defaults to the user's default book.
+
+    aam-12b: ForkRecipe converted to AsyncEndpoint, so this tool
+    dispatches through `await call_endpoint_async(...)`.
     """
     user = get_current_user()
     dest = destination_book_id or _require_default_book_id(user)
     params = ForkRecipe.Params(destination_book_id=dest)
-    return call_endpoint(ForkRecipe, recipe_id=recipe_id, params=params)
+    return await call_endpoint_async(ForkRecipe, recipe_id=recipe_id, params=params)
 
 
 __all__ = [

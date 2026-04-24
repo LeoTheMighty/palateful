@@ -1,17 +1,17 @@
 """Restore archived recipe endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class RestoreRecipe(Endpoint):
+class RestoreRecipe(AsyncEndpoint):
     """Restore an archived recipe."""
 
-    def execute(self, recipe_id: str):
+    async def execute(self, recipe_id: str):
         """
         Restore an archived recipe by clearing archived_at.
 
@@ -24,7 +24,7 @@ class RestoreRecipe(Endpoint):
         user: User = self.user
 
         # Must use include_archived=True to find archived recipes
-        recipe = self.database.find_by(Recipe, id=recipe_id, include_archived=True)
+        recipe = await self.database.find_by(Recipe, id=recipe_id, include_archived=True)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -40,7 +40,7 @@ class RestoreRecipe(Endpoint):
             )
 
         # Check ownership via RecipeBookUser
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=recipe.recipe_book_id,
@@ -53,7 +53,7 @@ class RestoreRecipe(Endpoint):
             )
 
         recipe.archived_at = None
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(data=RestoreRecipe.Response(id=str(recipe.id)))
 

@@ -1,7 +1,7 @@
 """Fork recipe to another book endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -12,10 +12,10 @@ from utils.models.user import User
 from utils.services.units import normalize_unit_display
 
 
-class ForkRecipe(Endpoint):
+class ForkRecipe(AsyncEndpoint):
     """Fork a recipe into a book you own, preserving lineage."""
 
-    def execute(self, recipe_id: str, params: "ForkRecipe.Params"):
+    async def execute(self, recipe_id: str, params: "ForkRecipe.Params"):
         """
         Fork a recipe to an owned book, cloning all ingredients and steps with lineage.
 
@@ -29,7 +29,7 @@ class ForkRecipe(Endpoint):
         user: User = self.user
 
         # Get source recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -38,7 +38,7 @@ class ForkRecipe(Endpoint):
             )
 
         # Check source book access (any role — read access suffices for fork)
-        src_membership = self.database.find_by(
+        src_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=recipe.recipe_book_id,
@@ -51,7 +51,7 @@ class ForkRecipe(Endpoint):
             )
 
         # Check destination book exists
-        dest_book = self.database.find_by(RecipeBook, id=params.destination_book_id)
+        dest_book = await self.database.find_by(RecipeBook, id=params.destination_book_id)
         if not dest_book:
             raise APIException(
                 status_code=404,
@@ -60,7 +60,7 @@ class ForkRecipe(Endpoint):
             )
 
         # Check destination book access (owner only — fork is a personal copy)
-        dest_membership = self.database.find_by(
+        dest_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=params.destination_book_id,
@@ -73,7 +73,7 @@ class ForkRecipe(Endpoint):
             )
 
         # Get source book name for lineage snapshot
-        src_book = self.database.find_by(RecipeBook, id=recipe.recipe_book_id)
+        src_book = await self.database.find_by(RecipeBook, id=recipe.recipe_book_id)
         src_book_name = src_book.name if src_book else "Unknown Book"
 
         # Clone recipe with lineage fields
@@ -94,11 +94,10 @@ class ForkRecipe(Endpoint):
             forked_from_recipe_name=recipe.name,
             forked_from_book_name=src_book_name,
         )
-        self.database.create(new_recipe)
-        self.database.db.refresh(new_recipe)
+        await self.database.create(new_recipe)
 
         # Clone ingredients
-        source_ingredients = self.database.where(
+        source_ingredients = await self.database.where(
             RecipeIngredient, recipe_id=str(recipe.id)
         ).all()
         for ing in source_ingredients:
@@ -109,7 +108,11 @@ class ForkRecipe(Endpoint):
                 # The forked row is a fresh write — coerce the source's
                 # unit_display through the canonical normalizer so any
                 # historically-freeform units get cleaned up on fork
-                # (riip-2 design principle 7).
+                # (riip-2 design principle 7). `normalize_unit_display`
+                # stays sync (worker contract) and hits a pre-warmed
+                # module cache — safe to pass the async session since
+                # the cache-miss path (which would `.execute` on the
+                # session) doesn't fire in a healthy API process.
                 unit_display=normalize_unit_display(
                     ing.unit_display,
                     self.database.db,
@@ -121,10 +124,10 @@ class ForkRecipe(Endpoint):
                 is_optional=ing.is_optional,
                 order_index=ing.order_index,
             )
-            self.database.create(new_ing)
+            await self.database.create(new_ing)
 
         # Clone steps
-        source_steps = self.database.where(
+        source_steps = await self.database.where(
             RecipeStep, recipe_id=str(recipe.id)
         ).all()
         for step in source_steps:
@@ -139,7 +142,7 @@ class ForkRecipe(Endpoint):
                 can_prep_ahead=step.can_prep_ahead,
                 is_optional=step.is_optional,
             )
-            self.database.create(new_step)
+            await self.database.create(new_step)
 
         return success(
             data=ForkRecipe.Response(

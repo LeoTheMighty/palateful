@@ -5,8 +5,8 @@ from decimal import Decimal
 from fractions import Fraction
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
@@ -43,18 +43,18 @@ def _parse_quantity_display(s: str) -> Decimal:
         return Decimal(s)
 
 
-class RestoreRecipeVersion(Endpoint):
+class RestoreRecipeVersion(AsyncEndpoint):
     """Restore a recipe to a previous version snapshot.
 
     Creates a new version capturing the current state (never destroys history),
     then applies the selected snapshot to the recipe.
     """
 
-    def execute(self, recipe_id: str, version_id: str):
+    async def execute(self, recipe_id: str, version_id: str):
         user: User = self.user
 
         # Load recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -63,7 +63,7 @@ class RestoreRecipeVersion(Endpoint):
             )
 
         # Owner or editor required
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id,
@@ -76,7 +76,7 @@ class RestoreRecipeVersion(Endpoint):
             )
 
         # Load the version to restore
-        version = self.database.find_by(RecipeVersion, id=version_id)
+        version = await self.database.find_by(RecipeVersion, id=version_id)
         if not version or str(version.recipe_id) != str(recipe_id):
             raise APIException(
                 status_code=404,
@@ -87,7 +87,7 @@ class RestoreRecipeVersion(Endpoint):
         snapshot = version.snapshot
 
         # Snapshot current state BEFORE overwriting (append-only — never destroy history)
-        self._create_restore_snapshot(recipe, recipe_id, version.version_number, user)
+        await self._create_restore_snapshot(recipe, recipe_id, version.version_number, user)
 
         # Apply snapshot: update recipe scalar fields
         updates = {}
@@ -96,18 +96,21 @@ class RestoreRecipeVersion(Endpoint):
         if "instructions" in snapshot:
             updates["instructions"] = snapshot["instructions"]
         if updates:
-            self.database.update(recipe, **updates)
+            await self.database.update(recipe, **updates)
 
         # Recreate ingredients from snapshot
-        existing_ingredients = self.database.where(RecipeIngredient, recipe_id=recipe_id).all()
+        existing_ingredients = await self.database.where(
+            RecipeIngredient, recipe_id=recipe_id
+        ).all()
         for ri in existing_ingredients:
-            self.database.delete(ri)
+            await self.database.delete(ri)
 
         for ing_data in snapshot.get("ingredients", []):
             qty_str = ing_data.get("quantity_display", "1")
             # Snapshots preserve history (un-normalized), but restoring a
             # row to live state runs the unit through the canonical
-            # normalizer (riip-2 design principle 5).
+            # normalizer (riip-2 design principle 5). `normalize_unit_display`
+            # stays sync; pre-warmed module cache avoids session I/O.
             unit = normalize_unit_display(
                 ing_data.get("unit_display", ""),
                 self.database.db,
@@ -137,12 +140,14 @@ class RestoreRecipeVersion(Endpoint):
                 is_optional=ing_data.get("is_optional", False),
                 order_index=ing_data.get("order_index", 0),
             )
-            self.database.create(new_ri)
+            await self.database.create(new_ri)
 
         # Recreate steps from snapshot
-        existing_steps = self.database.where(RecipeStep, recipe_id=recipe_id).all()
+        existing_steps = await self.database.where(
+            RecipeStep, recipe_id=recipe_id
+        ).all()
         for step in existing_steps:
-            self.database.delete(step)
+            await self.database.delete(step)
 
         for step_data in snapshot.get("steps", []):
             new_step = RecipeStep(
@@ -156,10 +161,10 @@ class RestoreRecipeVersion(Endpoint):
                 can_prep_ahead=step_data.get("can_prep_ahead", False),
                 is_optional=step_data.get("is_optional", False),
             )
-            self.database.create(new_step)
+            await self.database.create(new_step)
 
         # Fetch updated data for response
-        updated_steps = self.database.where(
+        updated_steps = await self.database.where(
             RecipeStep,
             asc="step_number",
             recipe_id=recipe_id,
@@ -180,13 +185,13 @@ class RestoreRecipeVersion(Endpoint):
             for s in updated_steps
         ]
 
-        updated_ingredients = (
-            self.db.query(RecipeIngredient, Ingredient)
+        ri_result = await self.database.db.execute(
+            select(RecipeIngredient, Ingredient)
             .join(Ingredient, RecipeIngredient.ingredient_id == Ingredient.id)
-            .filter(RecipeIngredient.recipe_id == recipe_id)
+            .where(RecipeIngredient.recipe_id == recipe_id)
             .order_by(RecipeIngredient.order_index)
-            .all()
         )
+        updated_ingredients = list(ri_result.all())
 
         ingredient_responses = [
             RestoreRecipeVersion.IngredientResponse(
@@ -204,7 +209,7 @@ class RestoreRecipeVersion(Endpoint):
             for ri, ing in updated_ingredients
         ]
 
-        version_count = self.database.where(
+        version_count = await self.database.where(
             RecipeVersion,
             recipe_id=recipe_id,
         ).count()
@@ -229,13 +234,15 @@ class RestoreRecipeVersion(Endpoint):
             )
         )
 
-    def _create_restore_snapshot(self, recipe, recipe_id, restored_from_version_number, user):
+    async def _create_restore_snapshot(self, recipe, recipe_id, restored_from_version_number, user):
         """Snapshot the current state with changed_fields indicating a restore operation."""
-        current_ingredients = self.database.where(RecipeIngredient, recipe_id=recipe_id).all()
-        current_steps = self.database.where(
+        current_ingredients = await self.database.where(
+            RecipeIngredient, recipe_id=recipe_id
+        ).all()
+        current_steps = await self.database.where(
             RecipeStep, asc="step_number", recipe_id=recipe_id
         ).all()
-        current_notes = self.database.where(
+        current_notes = await self.database.where(
             RecipeNote, recipe_id=recipe_id, asc="created_at"
         ).all()
 
@@ -276,11 +283,11 @@ class RestoreRecipeVersion(Endpoint):
             ],
         }
 
-        max_version = (
-            self.database.db.query(func.max(RecipeVersion.version_number))
-            .filter(RecipeVersion.recipe_id == recipe_id)
-            .scalar()
-        ) or 0
+        max_version_result = await self.database.db.execute(
+            select(func.max(RecipeVersion.version_number))
+            .where(RecipeVersion.recipe_id == recipe_id)
+        )
+        max_version = max_version_result.scalar() or 0
 
         version = RecipeVersion(
             recipe_id=recipe_id,

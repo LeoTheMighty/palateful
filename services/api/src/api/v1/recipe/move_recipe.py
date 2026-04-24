@@ -1,7 +1,7 @@
 """Move recipe to another book endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -9,10 +9,10 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class MoveRecipe(Endpoint):
+class MoveRecipe(AsyncEndpoint):
     """Move a recipe to a different recipe book."""
 
-    def execute(self, recipe_id: str, params: "MoveRecipe.Params"):
+    async def execute(self, recipe_id: str, params: "MoveRecipe.Params"):
         """
         Move a recipe to a different book by updating recipe_book_id.
 
@@ -26,7 +26,7 @@ class MoveRecipe(Endpoint):
         user: User = self.user
 
         # Get recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -43,7 +43,7 @@ class MoveRecipe(Endpoint):
             )
 
         # Check source book access (owner/editor)
-        src_membership = self.database.find_by(
+        src_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=recipe.recipe_book_id,
@@ -56,7 +56,7 @@ class MoveRecipe(Endpoint):
             )
 
         # Check destination book exists
-        dest_book = self.database.find_by(RecipeBook, id=params.destination_book_id)
+        dest_book = await self.database.find_by(RecipeBook, id=params.destination_book_id)
         if not dest_book:
             raise APIException(
                 status_code=404,
@@ -65,7 +65,7 @@ class MoveRecipe(Endpoint):
             )
 
         # Check destination book access (owner/editor)
-        dest_membership = self.database.find_by(
+        dest_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=params.destination_book_id,
@@ -79,7 +79,7 @@ class MoveRecipe(Endpoint):
 
         # Move recipe
         recipe.recipe_book_id = params.destination_book_id
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=MoveRecipe.Response(

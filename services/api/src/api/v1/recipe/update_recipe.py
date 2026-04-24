@@ -4,8 +4,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, failure, success
+from sqlalchemy import func, select
+from utils.api.endpoint import APIException, AsyncEndpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
@@ -24,10 +24,10 @@ from utils.services.units.conversion import normalize_quantity
 VERSION_TRIGGERING_FIELDS = {"name", "instructions", "ingredients", "steps"}
 
 
-class UpdateRecipe(Endpoint):
+class UpdateRecipe(AsyncEndpoint):
     """Update a recipe."""
 
-    def execute(self, recipe_id: str, params: "UpdateRecipe.Params"):
+    async def execute(self, recipe_id: str, params: "UpdateRecipe.Params"):
         """
         Update a recipe.
 
@@ -41,7 +41,7 @@ class UpdateRecipe(Endpoint):
         user: User = self.user
 
         # Get recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -50,7 +50,7 @@ class UpdateRecipe(Endpoint):
             )
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id
@@ -75,7 +75,7 @@ class UpdateRecipe(Endpoint):
 
         # Create version snapshot BEFORE applying updates
         if changed_fields:
-            self._create_version_snapshot(recipe, recipe_id, changed_fields, user)
+            await self._create_version_snapshot(recipe, recipe_id, changed_fields, user)
 
         # efi-3 — inferred_fields can only SHRINK. Validated before any
         # other write so a rejected expansion doesn't partially persist
@@ -149,7 +149,7 @@ class UpdateRecipe(Endpoint):
 
         # Update recipe if there are changes
         if updates:
-            self.database.update(recipe, **updates)
+            await self.database.update(recipe, **updates)
 
         # Regenerate embedding only when searchable content actually changed
         embedding_fields = {"name", "description", "tags"}
@@ -164,24 +164,24 @@ class UpdateRecipe(Endpoint):
                 embedding = generate_recipe_embedding(recipe.name, recipe.description, recipe.tags, recipe.primary_vibe)
                 if embedding is not None:
                     recipe.embedding = embedding
-                    self.database.db.commit()
+                    await self.database.db.commit()
 
         # Update ingredients if provided
         if params.ingredients is not None:
             # Delete existing ingredients
-            existing = self.database.where(
+            existing = await self.database.where(
                 RecipeIngredient,
                 recipe_id=recipe_id
             ).all()
             for ri in existing:
-                self.database.delete(ri)
+                await self.database.delete(ri)
 
             # Create new ingredients. Input accepts either `ingredient_id`
             # (look up existing row, preserved when editing) or `name`
             # (create a fresh row). No find-or-create.
             for idx, ing_input in enumerate(params.ingredients):
                 if ing_input.ingredient_id:
-                    ingredient = self.database.find_by(
+                    ingredient = await self.database.find_by(
                         Ingredient, id=ing_input.ingredient_id
                     )
                     if not ingredient:
@@ -194,7 +194,7 @@ class UpdateRecipe(Endpoint):
                     canonical = ing_input.name.strip().lower()
                     ingredient = Ingredient(canonical_name=canonical)
                     self.database.db.add(ingredient)
-                    self.database.db.flush()
+                    await self.database.db.flush()
                 else:
                     raise APIException(
                         status_code=400,
@@ -204,6 +204,10 @@ class UpdateRecipe(Endpoint):
 
                 quantity = ing_input.quantity if ing_input.quantity is not None else Decimal("0")
                 # Coerce LLM/user freeform unit to canonical (riip-2).
+                # `normalize_unit_display` stays sync; pre-warmed cache
+                # means the cache-miss `.execute(session)` path is never
+                # hit in a healthy API process — safe to pass the
+                # async session.
                 unit = normalize_unit_display(
                     ing_input.unit or "",
                     self.database.db,
@@ -230,17 +234,16 @@ class UpdateRecipe(Endpoint):
                     is_optional=ing_input.is_optional,
                     order_index=idx
                 )
-                self.database.create(recipe_ingredient)
-                self.database.db.refresh(recipe_ingredient)
+                await self.database.create(recipe_ingredient)
 
         # Update steps if provided (delete-and-recreate)
         if params.steps is not None:
-            existing_steps = self.database.where(
+            existing_steps = await self.database.where(
                 RecipeStep,
                 recipe_id=recipe_id
             ).all()
             for step in existing_steps:
-                self.database.delete(step)
+                await self.database.delete(step)
 
             for idx, step_input in enumerate(params.steps):
                 new_step = RecipeStep(
@@ -254,10 +257,10 @@ class UpdateRecipe(Endpoint):
                     can_prep_ahead=step_input.can_prep_ahead,
                     is_optional=step_input.is_optional,
                 )
-                self.database.create(new_step)
+                await self.database.create(new_step)
 
         # Fetch updated steps
-        steps = self.database.where(
+        steps = await self.database.where(
             RecipeStep,
             asc="step_number",
             recipe_id=recipe_id
@@ -279,13 +282,13 @@ class UpdateRecipe(Endpoint):
         ]
 
         # Fetch updated ingredients
-        recipe_ingredients = (
-            self.database.db.query(RecipeIngredient, Ingredient)
+        ri_result = await self.database.db.execute(
+            select(RecipeIngredient, Ingredient)
             .join(Ingredient, RecipeIngredient.ingredient_id == Ingredient.id)
-            .filter(RecipeIngredient.recipe_id == recipe_id)
+            .where(RecipeIngredient.recipe_id == recipe_id)
             .order_by(RecipeIngredient.order_index)
-            .all()
         )
+        recipe_ingredients = list(ri_result.all())
 
         ingredient_responses = [
             UpdateRecipe.IngredientResponse(
@@ -305,7 +308,7 @@ class UpdateRecipe(Endpoint):
         ]
 
         # Get version count
-        version_count = self.database.where(
+        version_count = await self.database.where(
             RecipeVersion,
             recipe_id=recipe_id,
         ).count()
@@ -333,23 +336,23 @@ class UpdateRecipe(Endpoint):
             )
         )
 
-    def _create_version_snapshot(self, recipe, recipe_id, changed_fields, user):
+    async def _create_version_snapshot(self, recipe, recipe_id, changed_fields, user):
         """Snapshot the current recipe state before applying updates."""
         # Fetch current ingredients
-        current_ingredients = self.database.where(
+        current_ingredients = await self.database.where(
             RecipeIngredient,
             recipe_id=recipe_id
         ).all()
 
         # Fetch current steps
-        current_steps = self.database.where(
+        current_steps = await self.database.where(
             RecipeStep,
             asc="step_number",
             recipe_id=recipe_id
         ).all()
 
         # Fetch current notes
-        current_notes = self.database.where(
+        current_notes = await self.database.where(
             RecipeNote,
             recipe_id=recipe_id,
             asc="created_at",
@@ -400,11 +403,11 @@ class UpdateRecipe(Endpoint):
         }
 
         # Get next version number
-        max_version = (
-            self.database.db.query(func.max(RecipeVersion.version_number))
-            .filter(RecipeVersion.recipe_id == recipe_id)
-            .scalar()
-        ) or 0
+        max_version_result = await self.database.db.execute(
+            select(func.max(RecipeVersion.version_number))
+            .where(RecipeVersion.recipe_id == recipe_id)
+        )
+        max_version = max_version_result.scalar() or 0
 
         version = RecipeVersion(
             recipe_id=recipe_id,

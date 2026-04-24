@@ -3,17 +3,17 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class BulkArchiveRecipes(Endpoint):
+class BulkArchiveRecipes(AsyncEndpoint):
     """Archive multiple recipes at once."""
 
-    def execute(self, params: "BulkArchiveRecipes.Params"):
+    async def execute(self, params: "BulkArchiveRecipes.Params"):
         user: User = self.user
 
         if not params.recipe_ids:
@@ -26,14 +26,14 @@ class BulkArchiveRecipes(Endpoint):
         # Load and validate all recipes
         recipes = []
         for recipe_id in params.recipe_ids:
-            recipe = self.database.find_by(Recipe, id=recipe_id)
+            recipe = await self.database.find_by(Recipe, id=recipe_id)
             if not recipe:
                 raise APIException(
                     status_code=404,
                     detail=f"Recipe not found: {recipe_id}",
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
-            membership = self.database.find_by(
+            membership = await self.database.find_by(
                 RecipeBookUser,
                 user_id=str(user.id),
                 recipe_book_id=recipe.recipe_book_id,
@@ -50,7 +50,7 @@ class BulkArchiveRecipes(Endpoint):
         now = datetime.now(UTC)
         for recipe in recipes:
             recipe.archived_at = now
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=BulkArchiveRecipes.Response(archived_count=len(recipes))

@@ -39,7 +39,6 @@ from api.v1.recipe_book.notifications import (
 from api.v1.recipe_book.websocket import broadcast_event_to_recipe_book
 from dependencies import (
     get_async_database,
-    get_current_user,
     get_current_user_async,
     get_database,
 )
@@ -49,6 +48,7 @@ from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
 from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
+from utils.services.notifications_bridge import notify_via_threadpool
 
 recipe_router = APIRouter(tags=["recipes"])
 
@@ -80,30 +80,32 @@ async def list_recipes(
 async def create_recipe(
     book_id: str,
     params: CreateRecipe.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database)
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Create a new recipe in a recipe book."""
-    result = CreateRecipe.call(
+    result = await CreateRecipe.call(
         book_id=book_id,
         params=params,
         user=user,
-        database=database
+        database=database,
     )
     await broadcast_event_to_recipe_book(
         book_id, "recipe_added",
         {"name": params.name},
         user_id=str(user.id),
     )
-    # Push notification to other book members (shared books only)
-    book = database.find_by(RecipeBook, id=book_id)
+    # Push notification to other book members (shared books only). The
+    # sync `notify_recipe_added` helper still takes `database: Database`
+    # so it runs on a fresh sync session inside the threadpool thread.
+    book = await database.find_by(RecipeBook, id=book_id)
     if book and book.is_shared:
-        notify_recipe_added(
+        await notify_via_threadpool(
+            notify_recipe_added,
             recipe_book_id=str(book_id),
             recipe_book_name=book.name or "Shared Recipe Book",
             recipe_name=params.name,
             added_by_user=user,
-            database=database,
             image_url=params.image_url,
         )
     return result
@@ -133,13 +135,13 @@ async def list_archived_recipes(
 
 # Bulk recipe operations (must be before /recipes/{recipe_id} to avoid path collision)
 @recipe_router.post("/recipes/bulk/move")
-def bulk_move_recipes(
+async def bulk_move_recipes(
     params: BulkMoveRecipes.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Move multiple recipes to a different book."""
-    return BulkMoveRecipes.call(
+    return await BulkMoveRecipes.call(
         params=params,
         user=user,
         database=database,
@@ -147,13 +149,13 @@ def bulk_move_recipes(
 
 
 @recipe_router.post("/recipes/bulk/archive")
-def bulk_archive_recipes(
+async def bulk_archive_recipes(
     params: BulkArchiveRecipes.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Archive multiple recipes at once."""
-    return BulkArchiveRecipes.call(
+    return await BulkArchiveRecipes.call(
         params=params,
         user=user,
         database=database,
@@ -161,13 +163,13 @@ def bulk_archive_recipes(
 
 
 @recipe_router.post("/recipes/bulk/tags")
-def bulk_update_tags(
+async def bulk_update_tags(
     params: BulkUpdateTags.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Add or remove tags on multiple recipes."""
-    return BulkUpdateTags.call(
+    return await BulkUpdateTags.call(
         params=params,
         user=user,
         database=database,
@@ -213,17 +215,17 @@ async def get_recipe(
 async def update_recipe(
     recipe_id: str,
     params: UpdateRecipe.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database)
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update a recipe."""
-    existing = database.find_by(Recipe, id=recipe_id)
+    existing = await database.find_by(Recipe, id=recipe_id)
     book_id = str(existing.recipe_book_id) if existing else None
-    result = UpdateRecipe.call(
+    result = await UpdateRecipe.call(
         recipe_id=recipe_id,
         params=params,
         user=user,
-        database=database
+        database=database,
     )
     if book_id:
         await broadcast_event_to_recipe_book(
@@ -265,14 +267,14 @@ async def get_recipe_version(
 
 
 @recipe_router.post("/recipes/{recipe_id}/versions/{version_id}/restore")
-def restore_recipe_version(
+async def restore_recipe_version(
     recipe_id: str,
     version_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Restore a recipe to a previous version snapshot."""
-    return RestoreRecipeVersion.call(
+    return await RestoreRecipeVersion.call(
         recipe_id=recipe_id,
         version_id=version_id,
         user=user,
@@ -281,11 +283,11 @@ def restore_recipe_version(
 
 
 @recipe_router.post("/recipes/{recipe_id}/notes", status_code=201)
-def add_recipe_note(
+async def add_recipe_note(
     recipe_id: str,
     params: AddRecipeNote.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Add a note to a recipe."""
     # `Endpoint.call()` wraps into a CustomJSONResponse; we need the raw
@@ -298,33 +300,33 @@ def add_recipe_note(
         user=user,
         database=database,
     )
-    result = endpoint.run()
+    result = await endpoint.run()
     # Back-fan: ping the recipe's book owner when a partner notes their
     # recipe in a shared book. Self-notes and solo-book notes are silent.
     if result.get("success") and result.get("data") is not None:
-        recipe = database.find_by(Recipe, id=recipe_id)
+        recipe = await database.find_by(Recipe, id=recipe_id)
         if recipe is not None:  # pragma: no branch — defensive; success path implies recipe exists
             note_data = result["data"]
             note_id = getattr(note_data, "id", None) or ""
-            notify_recipe_note_added(
+            await notify_via_threadpool(
+                notify_recipe_note_added,
                 recipe=recipe,
                 note_id=str(note_id),
                 note_body=params.body,
                 actor=user,
-                database=database,
             )
     return AddRecipeNote.handle_result(result)
 
 
 @recipe_router.delete("/recipes/{recipe_id}/notes/{note_id}")
-def delete_recipe_note(
+async def delete_recipe_note(
     recipe_id: str,
     note_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Delete a recipe note (soft delete)."""
-    return DeleteRecipeNote.call(
+    return await DeleteRecipeNote.call(
         recipe_id=recipe_id,
         note_id=note_id,
         user=user,
@@ -411,16 +413,16 @@ async def list_favorites(
 @recipe_router.delete("/recipes/{recipe_id}")
 async def delete_recipe(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database)
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Delete (archive) a recipe."""
-    existing = database.find_by(Recipe, id=recipe_id)
+    existing = await database.find_by(Recipe, id=recipe_id)
     book_id = str(existing.recipe_book_id) if existing else None
-    result = DeleteRecipe.call(
+    result = await DeleteRecipe.call(
         recipe_id=recipe_id,
         user=user,
-        database=database
+        database=database,
     )
     if book_id:
         await broadcast_event_to_recipe_book(
@@ -432,13 +434,13 @@ async def delete_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/restore")
-def restore_recipe(
+async def restore_recipe(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Restore an archived recipe."""
-    return RestoreRecipe.call(
+    return await RestoreRecipe.call(
         recipe_id=recipe_id,
         user=user,
         database=database,
@@ -446,14 +448,14 @@ def restore_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/move")
-def move_recipe(
+async def move_recipe(
     recipe_id: str,
     params: MoveRecipe.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Move a recipe to a different book."""
-    return MoveRecipe.call(
+    return await MoveRecipe.call(
         recipe_id=recipe_id,
         params=params,
         user=user,
@@ -465,8 +467,8 @@ def move_recipe(
 async def fork_recipe(
     recipe_id: str,
     params: ForkRecipe.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Fork a recipe into a book you own, preserving lineage."""
     # `Endpoint.call()` wraps into a CustomJSONResponse; we need the raw
@@ -476,37 +478,42 @@ async def fork_recipe(
     endpoint = ForkRecipe(
         recipe_id=recipe_id, params=params, user=user, database=database
     )
-    result = endpoint.run()
+    result = await endpoint.run()
     await broadcast_event_to_recipe_book(
         params.destination_book_id, "recipe_added",
         {"forked_from_recipe_id": recipe_id},
         user_id=str(user.id),
     )
     # Notify the source recipe's book owner that their recipe was forked.
-    # Self-forks are no-ops inside `notify_recipe_forked`.
+    # Self-forks are no-ops inside `notify_recipe_forked`. The sync
+    # helper runs on a fresh sync `Database(db=SessionLocal())` inside
+    # the threadpool — it re-fetches the source recipe + target book by
+    # id so we only need to hand it the ids here.
     if result.get("success") and result.get("data") is not None:
-        source_recipe = database.find_by(Recipe, id=recipe_id)
-        target_book = database.find_by(RecipeBook, id=params.destination_book_id)
+        source_recipe = await database.find_by(Recipe, id=recipe_id)
+        target_book = await database.find_by(
+            RecipeBook, id=params.destination_book_id
+        )
         if source_recipe is not None:  # pragma: no branch — defensive; success path implies source exists
-            notify_recipe_forked(
+            await notify_via_threadpool(
+                notify_recipe_forked,
                 source_recipe=source_recipe,
                 forked_recipe_id=str(result["data"].id),
                 target_book=target_book,
                 actor=user,
-                database=database,
             )
     return ForkRecipe.handle_result(result)
 
 
 @recipe_router.post("/recipes/{recipe_id}/copy")
-def copy_recipe(
+async def copy_recipe(
     recipe_id: str,
     params: CopyRecipe.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Copy a recipe to a different book."""
-    return CopyRecipe.call(
+    return await CopyRecipe.call(
         recipe_id=recipe_id,
         params=params,
         user=user,
