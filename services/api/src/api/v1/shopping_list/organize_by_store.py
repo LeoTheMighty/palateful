@@ -1,7 +1,9 @@
 """Organize shopping list by store sections endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
@@ -15,10 +17,10 @@ from .utils.store_sections import (
 )
 
 
-class OrganizeByStore(Endpoint):
+class OrganizeByStore(AsyncEndpoint):
     """Organize shopping list items by store sections."""
 
-    def execute(
+    async def execute(
         self,
         list_id: str,
         params: "OrganizeByStore.Params",
@@ -40,8 +42,15 @@ class OrganizeByStore(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(
+                selectinload(ShoppingList.items),
+                selectinload(ShoppingList.members),
+            )
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -49,9 +58,8 @@ class OrganizeByStore(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -66,22 +74,18 @@ class OrganizeByStore(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Get unchecked items
         items = [item for item in shopping_list.items if not item.is_checked]
 
-        # Auto-assign sections if requested
         if params.auto_assign_sections:
             for item in items:
                 if not item.store_section and item.category:
                     item.store_section = get_section_for_category(item.category)
 
-        # Set store order based on section
         for item in items:
             item.store_order = get_section_order(item.store_section)
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
-        # Group items by section
         sections_dict: dict[str, list[ShoppingListItem]] = {}
         for item in items:
             section = item.store_section or "other"
@@ -89,16 +93,13 @@ class OrganizeByStore(Endpoint):
                 sections_dict[section] = []
             sections_dict[section].append(item)
 
-        # Sort sections by store order
         sorted_sections = sorted(
             sections_dict.items(),
             key=lambda x: get_section_order(x[0]),
         )
 
-        # Build response
         sections_response = []
         for section_key, section_items in sorted_sections:
-            # Sort items within section by name
             section_items.sort(key=lambda x: x.name.lower())
 
             sections_response.append(
@@ -155,10 +156,10 @@ class OrganizeByStore(Endpoint):
         sections_used: int
 
 
-class GetStoreSections(Endpoint):
+class GetStoreSections(AsyncEndpoint):
     """Get available store sections."""
 
-    def execute(self):
+    async def execute(self):
         """
         Get the list of available store sections with display names.
 
