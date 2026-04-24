@@ -1,24 +1,25 @@
 """Set default recipe book endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class SetDefaultRecipeBook(Endpoint):
+class SetDefaultRecipeBook(AsyncEndpoint):
     """Set the user's default recipe book."""
 
-    def execute(self, params: "SetDefaultRecipeBook.Params"):
+    async def execute(self, params: "SetDefaultRecipeBook.Params"):
         user: User = self.user
 
         if params.recipe_book_id is None:
             user.default_recipe_book_id = None
             user.previous_recipe_book_id = None
-            self.db.commit()
-            self.db.refresh(user)
+            await self.db.commit()
+            await self.db.refresh(user)
             return success(
                 data=SetDefaultRecipeBook.Response(
                     default_recipe_book_id=None,
@@ -26,7 +27,7 @@ class SetDefaultRecipeBook(Endpoint):
                 )
             )
 
-        recipe_book = self.database.find_by(
+        recipe_book = await self.database.find_by(
             RecipeBook, id=params.recipe_book_id
         )
         if not recipe_book or recipe_book.archived_at is not None:
@@ -37,15 +38,16 @@ class SetDefaultRecipeBook(Endpoint):
             )
 
         # Check user owns or is a member of the book
-        is_member = (
-            self.db.query(RecipeBookUser)
-            .filter(
+        membership = (await self.db.execute(
+            select(RecipeBookUser)
+            .where(
                 RecipeBookUser.recipe_book_id == recipe_book.id,
                 RecipeBookUser.user_id == user.id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .first()
-        ) is not None
+            .limit(1)
+        )).scalars().first()
+        is_member = membership is not None
 
         if not is_member:
             raise APIException(
@@ -59,8 +61,8 @@ class SetDefaultRecipeBook(Endpoint):
             user.previous_recipe_book_id = user.default_recipe_book_id
 
         user.default_recipe_book_id = recipe_book.id
-        self.db.commit()
-        self.db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
 
         return success(
             data=SetDefaultRecipeBook.Response(
