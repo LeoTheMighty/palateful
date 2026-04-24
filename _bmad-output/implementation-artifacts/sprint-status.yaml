@@ -1360,7 +1360,7 @@ development_status:
   aam-13-shopping-list-domain-async: backlog
   aam-14-calendar-and-meal-event-domain-async: backlog
   aam-15-pantry-domain-async: backlog
-  aam-16-activity-domain-async: backlog
+  aam-16-activity-domain-async: done
   aam-17-search-domain-async: backlog
   aam-18-import-job-domain-async: backlog
   aam-19-user-profile-push-tokens-async: backlog

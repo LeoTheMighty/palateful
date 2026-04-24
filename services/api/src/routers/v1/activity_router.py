@@ -1,4 +1,11 @@
-"""Activity feed endpoints router."""
+"""Activity feed endpoints router.
+
+aam-16: router flipped to `get_async_database` + `get_current_user_async`.
+Every endpoint dispatches through `await Foo.call(...)` on an
+`AsyncEndpoint` subclass. Rollback during the observation window is a
+`git revert <aam-16-commit>` + `bin/prod-deploy` (~10 min) — see the
+story notes for the precedent set by aam-10.
+"""
 
 from api.v1.user_activity import (
     ArchiveActivity,
@@ -9,18 +16,18 @@ from api.v1.user_activity import (
     UnarchiveActivity,
     UnreadCount,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends, HTTPException, Query
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 activity_router = APIRouter(prefix="/activities", tags=["activities"])
 
 
 @activity_router.get("")
-def list_activities(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def list_activities(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
     limit: int = 50,
     offset: int = 0,
     include_archived: bool = Query(
@@ -73,7 +80,7 @@ def list_activities(
             raise HTTPException(
                 status_code=400, detail="since_days must be an integer or empty"
             ) from exc
-    return ListActivities.call(
+    return await ListActivities.call(
         limit=limit,
         offset=offset,
         include_archived=include_archived,
@@ -87,31 +94,31 @@ def list_activities(
 
 
 @activity_router.get("/unread-count")
-def unread_count(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def unread_count(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get count of unread activities for badge display."""
-    return UnreadCount.call(user=user, database=database)
+    return await UnreadCount.call(user=user, database=database)
 
 
 @activity_router.get("/see-all-count")
-def see_all_count(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def see_all_count(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Notifications See-all triple (archived, read_and_older, total)."""
-    return SeeAllCount.call(user=user, database=database)
+    return await SeeAllCount.call(user=user, database=database)
 
 
 @activity_router.put("/{activity_id}/read")
-def mark_activity_read(
+async def mark_activity_read(
     activity_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Mark a single activity as read."""
-    return MarkActivityRead.call(
+    return await MarkActivityRead.call(
         activity_id=activity_id,
         user=user,
         database=database,
@@ -119,22 +126,22 @@ def mark_activity_read(
 
 
 @activity_router.put("/read-all")
-def mark_all_read(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def mark_all_read(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Mark all user activities as read."""
-    return MarkAllRead.call(user=user, database=database)
+    return await MarkAllRead.call(user=user, database=database)
 
 
 @activity_router.post("/{activity_id}/archive")
-def archive_activity(
+async def archive_activity(
     activity_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Archive a single activity (hide from default feed, keep in See-all)."""
-    return ArchiveActivity.call(
+    return await ArchiveActivity.call(
         activity_id=activity_id,
         user=user,
         database=database,
@@ -142,13 +149,13 @@ def archive_activity(
 
 
 @activity_router.post("/{activity_id}/unarchive")
-def unarchive_activity(
+async def unarchive_activity(
     activity_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Restore an archived activity to the default feed."""
-    return UnarchiveActivity.call(
+    return await UnarchiveActivity.call(
         activity_id=activity_id,
         user=user,
         database=database,

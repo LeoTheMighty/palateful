@@ -1,7 +1,7 @@
 """Unread activity count endpoint — structured payload for the bell badge.
 
 The bell badge = `notifications + imports_actionable`. The two count
-queries execute back-to-back on the same sync SQLAlchemy session
+queries execute back-to-back on the same async SQLAlchemy session
 (no `asyncio.gather`) — single-request session + shared pool make
 parallel gather false economy here. Both counts are cheap enough that
 dispatching them serially beats paying two session-acquisition costs.
@@ -14,7 +14,8 @@ two). It keeps pinned old clients rendering the bell during the abi-1
 from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, Field
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.import_item import ACTIONABLE_IMPORT_STATUSES, ImportItem
 from utils.models.import_job import ImportJob
 from utils.models.user import User
@@ -23,36 +24,38 @@ from utils.models.user_activity import NOTIFICATION_TAB_TYPES, UserActivity
 _NOTIFICATION_RETENTION_DAYS = 30
 
 
-class UnreadCount(Endpoint):
+class UnreadCount(AsyncEndpoint):
     """Get unread activity count for badge display."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
         cutoff = datetime.now(UTC) - timedelta(days=_NOTIFICATION_RETENTION_DAYS)
 
-        notifications = (
-            self.db.query(UserActivity)
-            .filter(
+        notifications_result = await self.db.execute(
+            select(func.count())
+            .select_from(UserActivity)
+            .where(
                 UserActivity.user_id == user.id,
                 UserActivity.read.is_(False),
                 UserActivity.archived_at.is_(None),
                 UserActivity.type.in_(NOTIFICATION_TAB_TYPES),
                 UserActivity.created_at >= cutoff,
             )
-            .count()
         )
+        notifications = int(notifications_result.scalar_one())
 
-        imports_actionable = (
-            self.db.query(ImportItem)
+        imports_actionable_result = await self.db.execute(
+            select(func.count())
+            .select_from(ImportItem)
             .join(ImportJob, ImportItem.import_job_id == ImportJob.id)
-            .filter(
+            .where(
                 ImportJob.user_id == user.id,
                 ImportItem.archived_at.is_(None),
                 ImportItem.dismissed_at.is_(None),
                 ImportItem.status.in_(ACTIONABLE_IMPORT_STATUSES),
             )
-            .count()
         )
+        imports_actionable = int(imports_actionable_result.scalar_one())
 
         return success(
             data=UnreadCount.Response(

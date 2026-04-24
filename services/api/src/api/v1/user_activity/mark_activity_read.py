@@ -1,18 +1,18 @@
 """Mark single activity as read endpoint."""
 
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
 
 
-class MarkActivityRead(Endpoint):
+class MarkActivityRead(AsyncEndpoint):
     """Mark a single activity as read."""
 
-    def execute(self, activity_id: str):
+    async def execute(self, activity_id: str):
         user: User = self.user
 
-        activity = self.database.find_by(
+        activity = await self.database.find_by(
             UserActivity,
             id=activity_id,
             user_id=user.id,
@@ -31,6 +31,6 @@ class MarkActivityRead(Endpoint):
         # commit() is required to actually persist the read state —
         # without it, GET /v1/activities always returns the same
         # unread items. Reported bug: Activity tab always shows unread.
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success()

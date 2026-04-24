@@ -5,19 +5,19 @@ Idempotent: calling it on an already-active row is a 200 no-op.
 """
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
 
 
-class UnarchiveActivity(Endpoint):
+class UnarchiveActivity(AsyncEndpoint):
     """Unarchive a user_activity row."""
 
-    def execute(self, activity_id: str):
+    async def execute(self, activity_id: str):
         user: User = self.user
 
-        activity = self.database.find_by(
+        activity = await self.database.find_by(
             UserActivity,
             id=activity_id,
             user_id=user.id,
@@ -32,7 +32,7 @@ class UnarchiveActivity(Endpoint):
         if activity.archived_at is not None:
             activity.archived_at = None
             self.database.db.add(activity)
-            self.database.db.commit()
+            await self.database.db.commit()
 
         return success(data=UnarchiveActivity.Response(id=str(activity.id)))
 

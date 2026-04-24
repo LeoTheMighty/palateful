@@ -12,41 +12,44 @@ archived (they've "aged out" of the active list but aren't deleted).
 from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.user import User
 from utils.models.user_activity import NOTIFICATION_TAB_TYPES, UserActivity
 
 _OLDER_THAN_DAYS = 30
 
 
-class SeeAllCount(Endpoint):
+class SeeAllCount(AsyncEndpoint):
     """Notifications See-all triple (archived, read_and_older, total)."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
         cutoff = datetime.now(UTC) - timedelta(days=_OLDER_THAN_DAYS)
 
-        archived = (
-            self.db.query(UserActivity)
-            .filter(
+        archived_result = await self.db.execute(
+            select(func.count())
+            .select_from(UserActivity)
+            .where(
                 UserActivity.user_id == user.id,
                 UserActivity.archived_at.isnot(None),
                 UserActivity.type.in_(NOTIFICATION_TAB_TYPES),
             )
-            .count()
         )
+        archived = int(archived_result.scalar_one())
 
-        read_and_older = (
-            self.db.query(UserActivity)
-            .filter(
+        read_and_older_result = await self.db.execute(
+            select(func.count())
+            .select_from(UserActivity)
+            .where(
                 UserActivity.user_id == user.id,
                 UserActivity.archived_at.is_(None),
                 UserActivity.read.is_(True),
                 UserActivity.created_at < cutoff,
                 UserActivity.type.in_(NOTIFICATION_TAB_TYPES),
             )
-            .count()
         )
+        read_and_older = int(read_and_older_result.scalar_one())
 
         return success(
             data=SeeAllCount.Response(

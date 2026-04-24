@@ -1,35 +1,23 @@
-"""Tests for user activity endpoints."""
+"""Tests for user activity endpoints.
+
+aam-16: handlers are `AsyncEndpoint`; tests drive the router via the
+sync `client` fixture (async deps already overridden in conftest) and
+set up `mock_async_db.db.execute.side_effect` lists instead of the
+legacy `mock_db.db.query`. Count-based handlers seed
+`MockExecuteResult(items=[N])` — `MockExecuteResult.scalar_one()`
+returns `items[0]`, so a seed of `[5]` reads as "count = 5".
+
+The behavioural-filter assertions that were previously implemented via
+`FilterSpyQuery` now inspect the compiled `select(...)` statement that
+was the first positional arg to the captured `execute` call. Same
+invariant (tenant isolation, allow-list, retention window), new
+capture surface.
+"""
 
 import uuid
 from datetime import UTC, datetime
 
-from conftest import MockModel, MockQuery, count_queries
-
-
-class FilterSpyQuery(MockQuery):
-    """MockQuery that records every `.filter()` call so tests can assert
-    specific filter expressions were applied.
-
-    The base `MockQuery.filter` swallows its args, so tests that rely on
-    a filter predicate being present (e.g. user_id isolation or the
-    NOTIFICATION_TAB_TYPES allow-list) silently pass when the predicate
-    is deleted. `FilterSpyQuery` exposes the raw args so behavioural
-    assertions become load-bearing.
-    """
-
-    def __init__(self, items=None):
-        super().__init__(items)
-        self.filter_args: list[tuple] = []
-
-    def filter(self, *args, **kwargs):
-        self.filter_args.append(args)
-        return self
-
-    def join(self, *args, **kwargs):
-        # Record joins as well so the imports_actionable join-to-jobs can
-        # be asserted.
-        self.filter_args.append(("__join__", args))
-        return self
+from conftest import MockExecuteResult, MockModel
 
 
 class MockUserActivityForArchive(MockModel):
@@ -66,31 +54,25 @@ class MockUserActivity(MockModel):
         super().__init__(**defaults)
 
 
-def _dual_query_side_effect(notif_items, import_items):
-    """Dispatch db.query(Model) to the right MockQuery by class name.
+def _list_side_effect(list_items, unread_count=0):
+    """Side-effect list for GET /v1/activities.
 
-    abi-1 `unread_count` makes two queries on one session — one against
-    UserActivity, one against ImportItem. Tests that exercise the
-    endpoint set both lists and this helper routes each call to the
-    matching MockQuery so argument order is irrelevant.
+    Two `execute` calls in order:
+      1. Main list query — returns rows via `result.scalars().all()`.
+      2. ffm-4 unread_count snapshot — returns int via `.scalar_one()`.
     """
-
-    def _side_effect(model):
-        if getattr(model, "__name__", None) == "UserActivity":
-            return MockQuery(notif_items)
-        if getattr(model, "__name__", None) == "ImportItem":
-            return MockQuery(import_items)
-        return MockQuery([])
-
-    return _side_effect
+    return [
+        MockExecuteResult(items=list_items),
+        MockExecuteResult(items=[unread_count]),
+    ]
 
 
 class TestListActivities:
     """Tests for GET /v1/activities."""
 
-    def test_list_activities_empty(self, client, mock_db, mock_user):
+    def test_list_activities_empty(self, client, mock_async_db, mock_user):
         """Test listing activities when there are none."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities")
         assert response.status_code == 200
@@ -100,7 +82,9 @@ class TestListActivities:
         assert data["limit"] == 50
         assert data["offset"] == 0
 
-    def test_list_activities_with_results(self, client, mock_db, mock_user):
+    def test_list_activities_with_results(
+        self, client, mock_async_db, mock_user
+    ):
         """Test listing activities with results."""
         activity = MockUserActivity(
             user_id=str(mock_user.id),
@@ -110,7 +94,7 @@ class TestListActivities:
             metadata_json={"actor_user_id": "alice"},
             action_url="/shopping-lists/abc",
         )
-        mock_db.db.query.return_value = MockQuery([activity])
+        mock_async_db.db.execute.side_effect = _list_side_effect([activity])
 
         response = client.get("/v1/activities")
         assert response.status_code == 200
@@ -125,9 +109,11 @@ class TestListActivities:
         assert data["items"][0]["action_url"] == "/shopping-lists/abc"
         assert data["items"][0]["read"] is False
 
-    def test_list_activities_with_pagination(self, client, mock_db, mock_user):
+    def test_list_activities_with_pagination(
+        self, client, mock_async_db, mock_user
+    ):
         """Test listing activities with pagination params."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities?limit=10&offset=5")
         assert response.status_code == 200
@@ -136,7 +122,7 @@ class TestListActivities:
         assert data["offset"] == 5
 
     def test_list_activities_skips_count_query_on_cursor_less_path(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """pbq-5 — the initial (cursor-less) render no longer fires the
         heavy `COUNT(*)` on `user_activities` for pagination.
@@ -147,43 +133,42 @@ class TestListActivities:
         query fires once to fetch `limit + 1` rows for the next-page
         flag.
 
-        ffm-4 adds a second `UserActivity` query (the `unread_count`
-        snapshot) that is deliberately NOT paginated. It's one indexed
-        filter (`type IN (...) AND read=false AND archived_at IS NULL`)
-        so it stays cheap — the pbq-5 invariant is about avoiding the
-        full-table COUNT, not about keeping the query count at 1.
+        ffm-4 adds a second query (the `unread_count` snapshot) that is
+        deliberately NOT a full-table COUNT. It's one indexed filter
+        (`type IN (...) AND read=false AND archived_at IS NULL`) so it
+        stays cheap — the pbq-5 invariant is about avoiding the full-
+        table COUNT, not about keeping the query count at 1.
         """
-        from utils.models.user_activity import UserActivity
-
         activities = [
             MockUserActivity(type="partner_action", title=f"r{i}")
             for i in range(3)
         ]
-        mock_db.db.query.return_value = MockQuery(activities)
+        mock_async_db.db.execute.side_effect = _list_side_effect(activities, 0)
 
-        with count_queries(mock_db) as qc:
-            response = client.get("/v1/activities")
+        response = client.get("/v1/activities")
         assert response.status_code == 200
         assert response.json()["total"] == 0
 
-        # Two `db.query(UserActivity)`: (1) the main LIST query,
-        # (2) the ffm-4 unread_count snapshot. The pbq-5 full-table
-        # COUNT is still gone.
-        assert qc.query_count_for(UserActivity) == 2
+        # Two `execute` calls total: (1) main LIST select,
+        # (2) ffm-4 unread_count snapshot. Both hit UserActivity; the
+        # pbq-5 full-table COUNT(*) is still gone.
+        assert mock_async_db.db.execute.call_count == 2
+        list_stmt = mock_async_db.db.execute.call_args_list[0].args[0]
+        assert "user_activities" in str(list_stmt).lower()
 
 
 class TestListActivitiesUnreadCount:
     """ffm-4: `unread_count` snapshot on GET /v1/activities."""
 
     def test_unread_count_present_in_response(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Response ALWAYS populates `unread_count` on new backends.
 
         The existence of the field (not null) is what gates the
         Flutter client's "skip the follow-up /unread-count call"
         optimization."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([], 0)
         response = client.get("/v1/activities")
         assert response.status_code == 200
         body = response.json()
@@ -191,20 +176,15 @@ class TestListActivitiesUnreadCount:
         assert body["unread_count"] == 0
 
     def test_unread_count_matches_snapshot_query(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """List query returns items; unread-count query returns a
-        different set whose len() is the expected count. Verifies
+        different count whose value is the expected count. Verifies
         the unread snapshot is distinct from the list result rather
         than being `len(items)`."""
-        # 3 items on the LIST page; 7 unread-count rows (post-filter
-        # snapshot).
+        # 3 items on the LIST page; 7 unread-count rows.
         list_items = [MockUserActivity() for _ in range(3)]
-        unread_rows = [MockUserActivity() for _ in range(7)]
-        mock_db.db.query.side_effect = [
-            MockQuery(list_items),
-            MockQuery(unread_rows),
-        ]
+        mock_async_db.db.execute.side_effect = _list_side_effect(list_items, 7)
         response = client.get("/v1/activities")
         assert response.status_code == 200
         body = response.json()
@@ -212,20 +192,17 @@ class TestListActivitiesUnreadCount:
         assert body["unread_count"] == 7
 
     def test_unread_count_is_zero_when_no_unread(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Empty unread-count snapshot → 0 (not null, not missing)."""
         list_items = [MockUserActivity() for _ in range(2)]
-        mock_db.db.query.side_effect = [
-            MockQuery(list_items),
-            MockQuery([]),
-        ]
+        mock_async_db.db.execute.side_effect = _list_side_effect(list_items, 0)
         response = client.get("/v1/activities")
         assert response.status_code == 200
         assert response.json()["unread_count"] == 0
 
     def test_unread_count_populated_with_cursor_pagination(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Cursor-less vs cursor-paginated paths both populate the
         field — it's a snapshot, not per-page."""
@@ -233,11 +210,7 @@ class TestListActivitiesUnreadCount:
 
         cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
         list_items = [MockUserActivity()]
-        unread_rows = [MockUserActivity() for _ in range(4)]
-        mock_db.db.query.side_effect = [
-            MockQuery(list_items),
-            MockQuery(unread_rows),
-        ]
+        mock_async_db.db.execute.side_effect = _list_side_effect(list_items, 4)
         response = client.get(f"/v1/activities?cursor={cursor}")
         assert response.status_code == 200
         assert response.json()["unread_count"] == 4
@@ -247,17 +220,17 @@ class TestListActivitiesAllowList:
     """Tests for abi-1 NOTIFICATION_TAB_TYPES allow-list on GET /v1/activities."""
 
     def test_default_returns_only_allow_listed_types(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Default call returns rows (filter enforced server-side).
 
-        MockQuery doesn't actually evaluate the type filter — we assert
+        `MockExecuteResult` doesn't evaluate the type filter — we assert
         the endpoint returns 200 and the items it was given. Server-side
         filter construction is the real surface; combined with the
-        include-system-types branch below, this covers both paths.
+        stmt-inspection behavioural check below, this covers both paths.
         """
         allowed = MockUserActivity(type="partner_action", title="OK")
-        mock_db.db.query.return_value = MockQuery([allowed])
+        mock_async_db.db.execute.side_effect = _list_side_effect([allowed])
 
         response = client.get("/v1/activities")
         assert response.status_code == 200
@@ -267,7 +240,7 @@ class TestListActivitiesAllowList:
         assert body["items"][0]["type"] == "partner_action"
 
     def test_include_system_types_requires_admin(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-admin passing ?include_system_types=true gets 403."""
         mock_user.is_admin = False
@@ -277,12 +250,16 @@ class TestListActivitiesAllowList:
         assert response.json()["error_message"] == "Admin access required"
 
     def test_include_system_types_admin_succeeds(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Admin passing the flag gets the unfiltered list back."""
         mock_user.is_admin = True
-        import_started = MockUserActivity(type="import_started", title="Importing")
-        mock_db.db.query.return_value = MockQuery([import_started])
+        import_started = MockUserActivity(
+            type="import_started", title="Importing"
+        )
+        mock_async_db.db.execute.side_effect = _list_side_effect(
+            [import_started]
+        )
 
         response = client.get("/v1/activities?include_system_types=true")
         assert response.status_code == 200
@@ -292,50 +269,48 @@ class TestListActivitiesAllowList:
         assert body["items"][0]["type"] == "import_started"
 
     def test_default_without_flag_does_not_require_admin(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-admin can still hit the default (allow-listed) path."""
         mock_user.is_admin = False
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities")
         assert response.status_code == 200
 
     def test_default_applies_allow_list_filter_behaviourally(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        """Filter spy verifies the UserActivity.type IN (...) filter lands.
+        """Compiled-stmt spy verifies the UserActivity.type IN (...)
+        filter lands on the default path.
 
-        MockQuery.filter is a no-op, so a regression that dropped the
-        allow-list branch in `list_activities.py` would silently keep
-        tests green. This spy asserts the type-column filter is in the
-        chain on the default path AND is absent when admin passes
-        ?include_system_types=true.
+        A regression that dropped the allow-list branch in
+        `list_activities.py` would silently keep tests green if we
+        only checked mock results. This assertion inspects the select
+        statement's compiled SQL and asserts the type column is
+        referenced.
         """
-        from utils.models.user_activity import UserActivity
-
-        spy = FilterSpyQuery([])
-        mock_db.db.query.return_value = spy
         mock_user.is_admin = False
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities")
         assert response.status_code == 200
 
-        exprs = []
-        for args in spy.filter_args:
-            if args and args[0] == "__join__":
-                continue
-            exprs.extend(args)
-
-        def expr_uses_type(e) -> bool:
-            return f"{UserActivity.__tablename__}.type" in str(e)
-
-        assert any(
-            expr_uses_type(e) for e in exprs
-        ), "default list_activities must filter UserActivity.type to the allow-list"
+        # First execute = main LIST query. Compiled SQL includes
+        # `user_activities.type IN (...)` on the default path. Check
+        # for the IN predicate rather than the bare column name — the
+        # column appears in the SELECT projection too, so a bare-name
+        # check would silently pass even if the WHERE clause branch
+        # were deleted.
+        list_stmt = mock_async_db.db.execute.call_args_list[0].args[0]
+        rendered = str(list_stmt.compile(compile_kwargs={"literal_binds": False}))
+        assert "user_activities.type IN" in rendered, (
+            "default list_activities must filter UserActivity.type to the "
+            f"allow-list (compiled SQL: {rendered})"
+        )
 
     def test_admin_with_include_system_types_skips_allow_list(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Admin escape hatch: the type allow-list filter is NOT applied
         on the LIST query. The ffm-4 unread_count snapshot query that
@@ -343,44 +318,36 @@ class TestListActivitiesAllowList:
         correct (the bell count is always over the user-facing types)
         — so the assertion below is scoped to the first (list) query
         only."""
-        from utils.models.user_activity import UserActivity
-
-        list_spy = FilterSpyQuery([])
-        # ffm-4: second query is the unread_count snapshot — it
-        # applies NOTIFICATION_TAB_TYPES by design, so a shared spy
-        # would conflate the two paths. Route each query to its own
-        # spy so the list-path assertion stays meaningful.
-        unread_spy = FilterSpyQuery([])
-        spies = [list_spy, unread_spy]
-        mock_db.db.query.side_effect = lambda _: spies.pop(0)
         mock_user.is_admin = True
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities?include_system_types=true")
         assert response.status_code == 200
 
-        exprs = []
-        for args in list_spy.filter_args:
-            if args and args[0] == "__join__":
-                continue
-            exprs.extend(args)
-
-        def expr_uses_type(e) -> bool:
-            return f"{UserActivity.__tablename__}.type" in str(e)
-
-        assert not any(
-            expr_uses_type(e) for e in exprs
-        ), (
+        list_stmt = mock_async_db.db.execute.call_args_list[0].args[0]
+        rendered = str(list_stmt.compile(compile_kwargs={"literal_binds": False}))
+        # Bare `user_activities.type` appears in the SELECT projection,
+        # so check specifically for the IN predicate instead.
+        assert "user_activities.type IN" not in rendered, (
             "admin include_system_types path must NOT apply the type "
-            "allow-list filter on the LIST query"
+            f"allow-list filter on the LIST query (compiled SQL: {rendered})"
+        )
+        # Sanity: the unread snapshot (second execute) still applies it.
+        unread_stmt = mock_async_db.db.execute.call_args_list[1].args[0]
+        assert "user_activities.type IN" in str(
+            unread_stmt.compile(compile_kwargs={"literal_binds": False})
         )
 
 
 class TestUnreadCount:
     """Tests for GET /v1/activities/unread-count — abi-1 structured payload."""
 
-    def test_unread_count_zero(self, client, mock_db, mock_user):
+    def test_unread_count_zero(self, client, mock_async_db, mock_user):
         """Test unread count returns zero when nothing is pending."""
-        mock_db.db.query.side_effect = _dual_query_side_effect([], [])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
+        ]
 
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
@@ -392,16 +359,13 @@ class TestUnreadCount:
         }
 
     def test_unread_count_sums_notifications_and_imports(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Combined payload: 3 partner_action + 2 actionable imports = 5."""
-        notifications = [
-            MockUserActivity(type="partner_action") for _ in range(3)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[3]),
+            MockExecuteResult(items=[2]),
         ]
-        imports_actionable = [object(), object()]  # MockQuery.count = len
-        mock_db.db.query.side_effect = _dual_query_side_effect(
-            notifications, imports_actionable
-        )
 
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
@@ -413,12 +377,13 @@ class TestUnreadCount:
         }
 
     def test_unread_count_backward_compat_wrapper(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """count = notifications + imports_actionable, always."""
-        mock_db.db.query.side_effect = _dual_query_side_effect(
-            [MockUserActivity()] * 4, [object()]
-        )
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[4]),
+            MockExecuteResult(items=[1]),
+        ]
 
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
@@ -426,11 +391,14 @@ class TestUnreadCount:
         assert data["count"] == data["notifications"] + data["imports_actionable"]
         assert data["count"] == 5
 
-    def test_unread_count_imports_only(self, client, mock_db, mock_user):
+    def test_unread_count_imports_only(
+        self, client, mock_async_db, mock_user
+    ):
         """Notifications empty; imports_actionable populated."""
-        mock_db.db.query.side_effect = _dual_query_side_effect(
-            [], [object(), object(), object()]
-        )
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[3]),
+        ]
 
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
@@ -442,117 +410,84 @@ class TestUnreadCount:
         }
 
     def test_unread_count_applies_tenant_and_window_filters(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Every critical filter (user_id, allow-list, 30d, join) lands.
 
-        MockQuery.filter is a no-op, so coverage-only tests would pass
-        even if a tenant-isolation filter were deleted. This test uses
-        FilterSpyQuery to capture .filter() / .join() args and asserts:
-          1. UserActivity query filters by user_id, read, archived_at,
-             type (allow-list), created_at (30d window).
-          2. ImportItem query joins to ImportJob and filters by
-             ImportJob.user_id (NOT import_items.user_id — the item
-             table has no such column), plus archived_at, dismissed_at,
-             status.
+        Inspects the compiled `select` statements for each of the two
+        counts:
+          1. Notifications `select(func.count()).select_from(UserActivity)`
+             filters by user_id, read, archived_at, type (allow-list),
+             created_at (30d window).
+          2. Imports `select(func.count()).select_from(ImportItem)` joins
+             to ImportJob and filters by ImportJob.user_id (NOT
+             import_items.user_id — no such column), plus archived_at,
+             dismissed_at, status.
         Any regression that removes a clause here fails loudly.
         """
-        from sqlalchemy.sql.elements import BinaryExpression
-
-        from utils.models.import_item import ImportItem
-        from utils.models.import_job import ImportJob
-        from utils.models.user_activity import UserActivity
-
-        notif_spy = FilterSpyQuery([])
-        imports_spy = FilterSpyQuery([])
-
-        def dispatch(model):
-            if getattr(model, "__name__", None) == "UserActivity":
-                return notif_spy
-            if getattr(model, "__name__", None) == "ImportItem":
-                return imports_spy
-            return MockQuery([])
-
-        mock_db.db.query.side_effect = dispatch
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
+        ]
 
         response = client.get("/v1/activities/unread-count")
         assert response.status_code == 200
 
-        # Flatten captured filter expressions (skip the "__join__" tuples).
-        notif_exprs = []
-        for args in notif_spy.filter_args:
-            if args and args[0] == "__join__":
-                continue
-            notif_exprs.extend(args)
+        notif_stmt = mock_async_db.db.execute.call_args_list[0].args[0]
+        imports_stmt = mock_async_db.db.execute.call_args_list[1].args[0]
 
-        imports_exprs = []
-        imports_joins = []
-        for args in imports_spy.filter_args:
-            if args and args[0] == "__join__":
-                imports_joins.append(args[1])
-                continue
-            imports_exprs.extend(args)
+        notif_sql = str(
+            notif_stmt.compile(compile_kwargs={"literal_binds": False})
+        )
+        imports_sql = str(
+            imports_stmt.compile(compile_kwargs={"literal_binds": False})
+        )
 
-        def expr_uses(expr, column_attr) -> bool:
-            # SQLAlchemy `str()` renders the compiled SQL including
-            # `tablename.columnname` for the involved columns. `repr()`
-            # is a memory-address string, so don't use it. Matching by
-            # string fragment is brittler than `.compare()` but
-            # sufficient for "did the filter reference this column at
-            # all."
-            rendered = str(expr)
-            table = column_attr.class_.__tablename__
-            key = column_attr.key
-            return f"{table}.{key}" in rendered
-
-        # UserActivity filters — all five AC predicates present.
-        assert any(
-            expr_uses(e, UserActivity.user_id) for e in notif_exprs
-        ), "notifications query must filter by UserActivity.user_id"
-        assert any(
-            expr_uses(e, UserActivity.read) for e in notif_exprs
-        ), "notifications query must filter by UserActivity.read"
-        assert any(
-            expr_uses(e, UserActivity.archived_at) for e in notif_exprs
-        ), "notifications query must filter by UserActivity.archived_at"
-        assert any(
-            expr_uses(e, UserActivity.type) for e in notif_exprs
-        ), "notifications query must filter by UserActivity.type (allow-list)"
-        assert any(
-            expr_uses(e, UserActivity.created_at) for e in notif_exprs
-        ), "notifications query must apply the 30-day created_at cutoff"
+        # Notifications filters — all five AC predicates present.
+        assert "user_activities.user_id" in notif_sql, (
+            "notifications query must filter by UserActivity.user_id"
+        )
+        assert "user_activities.read" in notif_sql, (
+            "notifications query must filter by UserActivity.read"
+        )
+        assert "user_activities.archived_at" in notif_sql, (
+            "notifications query must filter by UserActivity.archived_at"
+        )
+        assert "user_activities.type IN" in notif_sql, (
+            "notifications query must filter by UserActivity.type "
+            "(allow-list)"
+        )
+        assert "user_activities.created_at" in notif_sql, (
+            "notifications query must apply the 30-day created_at cutoff"
+        )
 
         # ImportItem filters — user_id lives on ImportJob, join must happen.
-        assert imports_joins, (
+        assert "import_jobs" in imports_sql, (
             "imports_actionable query MUST join ImportJob (import_items "
             "has no user_id column)"
         )
-        assert any(
-            expr_uses(e, ImportJob.user_id) for e in imports_exprs
-        ), "imports query must filter by ImportJob.user_id (tenant isolation)"
-        assert any(
-            expr_uses(e, ImportItem.archived_at) for e in imports_exprs
-        ), "imports query must filter by ImportItem.archived_at"
-        assert any(
-            expr_uses(e, ImportItem.dismissed_at) for e in imports_exprs
-        ), "imports query must filter by ImportItem.dismissed_at"
-        assert any(
-            expr_uses(e, ImportItem.status) for e in imports_exprs
-        ), "imports query must filter by ImportItem.status (actionable set)"
-
-        # Sanity: the test harness asserts BinaryExpression came through
-        # at all — otherwise the `expr_uses` matcher would silently
-        # return False for every predicate.
-        assert any(
-            isinstance(e, BinaryExpression)
-            for e in notif_exprs + imports_exprs
-        ), "spy captured no BinaryExpression — filter() argument capture is broken"
+        assert "import_jobs.user_id" in imports_sql, (
+            "imports query must filter by ImportJob.user_id "
+            "(tenant isolation)"
+        )
+        assert "import_items.archived_at" in imports_sql, (
+            "imports query must filter by ImportItem.archived_at"
+        )
+        assert "import_items.dismissed_at" in imports_sql, (
+            "imports query must filter by ImportItem.dismissed_at"
+        )
+        assert "import_items.status" in imports_sql, (
+            "imports query must filter by ImportItem.status "
+            "(actionable set)"
+        )
 
 
 class TestMarkActivityRead:
     """Tests for PUT /v1/activities/{activity_id}/read."""
 
-    def test_mark_activity_read_success(self, client, mock_db, mock_user):
+    def test_mark_activity_read_success(
+        self, client, mock_async_db, mock_user
+    ):
         """Test marking a single activity as read."""
         activity_id = str(uuid.uuid4())
         activity = MockUserActivity(
@@ -562,7 +497,7 @@ class TestMarkActivityRead:
         )
         from utils.models.user_activity import UserActivity
 
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             UserActivity, activity,
             id=activity_id, user_id=mock_user.id,
         )
@@ -571,7 +506,9 @@ class TestMarkActivityRead:
         assert response.status_code == 200
         assert activity.read is True
 
-    def test_mark_activity_read_not_found(self, client, mock_db, mock_user):
+    def test_mark_activity_read_not_found(
+        self, client, mock_async_db, mock_user
+    ):
         """Test marking a nonexistent activity as read returns 404."""
         response = client.put(f"/v1/activities/{uuid.uuid4()}/read")
         assert response.status_code == 404
@@ -580,18 +517,28 @@ class TestMarkActivityRead:
 class TestMarkAllRead:
     """Tests for PUT /v1/activities/read-all."""
 
-    def test_mark_all_read_success(self, client, mock_db, mock_user):
+    def test_mark_all_read_success(self, client, mock_async_db, mock_user):
         """Test marking all activities as read."""
-        mock_db.db.query.return_value = MockQuery([])
-
         response = client.put("/v1/activities/read-all")
         assert response.status_code == 200
+        # One UPDATE statement was dispatched.
+        assert mock_async_db.db.execute.call_count == 1
+        stmt = mock_async_db.db.execute.call_args_list[0].args[0]
+        rendered = str(stmt.compile(compile_kwargs={"literal_binds": False}))
+        # Verify it's an UPDATE targeting the allow-list + archive-free
+        # + unread predicate (tenant isolation, soft-archive ignore).
+        assert "UPDATE user_activities" in rendered
+        assert "user_activities.user_id" in rendered
+        assert "user_activities.read" in rendered
+        assert "user_activities.archived_at" in rendered
 
 
 class TestArchiveActivity:
     """Tests for POST /v1/activities/{activity_id}/archive."""
 
-    def test_archive_active_row_sets_archived_at(self, client, mock_db, mock_user):
+    def test_archive_active_row_sets_archived_at(
+        self, client, mock_async_db, mock_user
+    ):
         from utils.models.user_activity import UserActivity
 
         activity_id = str(uuid.uuid4())
@@ -600,7 +547,7 @@ class TestArchiveActivity:
             user_id=str(mock_user.id),
             archived_at=None,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             UserActivity, activity, id=activity_id, user_id=mock_user.id
         )
 
@@ -611,7 +558,9 @@ class TestArchiveActivity:
         assert body["archived_at"] is not None
         assert activity.archived_at is not None
 
-    def test_archive_already_archived_is_noop(self, client, mock_db, mock_user):
+    def test_archive_already_archived_is_noop(
+        self, client, mock_async_db, mock_user
+    ):
         from utils.models.user_activity import UserActivity
 
         activity_id = str(uuid.uuid4())
@@ -621,7 +570,7 @@ class TestArchiveActivity:
             user_id=str(mock_user.id),
             archived_at=fixed_ts,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             UserActivity, activity, id=activity_id, user_id=mock_user.id
         )
 
@@ -630,7 +579,7 @@ class TestArchiveActivity:
         # Unchanged — no-op.
         assert activity.archived_at == fixed_ts
 
-    def test_archive_not_found(self, client, mock_db, mock_user):
+    def test_archive_not_found(self, client, mock_async_db, mock_user):
         response = client.post(f"/v1/activities/{uuid.uuid4()}/archive")
         assert response.status_code == 404
 
@@ -639,7 +588,7 @@ class TestUnarchiveActivity:
     """Tests for POST /v1/activities/{activity_id}/unarchive."""
 
     def test_unarchive_archived_row_clears_archived_at(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.user_activity import UserActivity
 
@@ -649,7 +598,7 @@ class TestUnarchiveActivity:
             user_id=str(mock_user.id),
             archived_at=datetime(2026, 4, 1, tzinfo=UTC),
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             UserActivity, activity, id=activity_id, user_id=mock_user.id
         )
 
@@ -657,7 +606,9 @@ class TestUnarchiveActivity:
         assert response.status_code == 200
         assert activity.archived_at is None
 
-    def test_unarchive_active_row_is_noop(self, client, mock_db, mock_user):
+    def test_unarchive_active_row_is_noop(
+        self, client, mock_async_db, mock_user
+    ):
         from utils.models.user_activity import UserActivity
 
         activity_id = str(uuid.uuid4())
@@ -666,7 +617,7 @@ class TestUnarchiveActivity:
             user_id=str(mock_user.id),
             archived_at=None,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             UserActivity, activity, id=activity_id, user_id=mock_user.id
         )
 
@@ -674,7 +625,7 @@ class TestUnarchiveActivity:
         assert response.status_code == 200
         assert activity.archived_at is None
 
-    def test_unarchive_not_found(self, client, mock_db, mock_user):
+    def test_unarchive_not_found(self, client, mock_async_db, mock_user):
         response = client.post(f"/v1/activities/{uuid.uuid4()}/unarchive")
         assert response.status_code == 404
 
@@ -682,16 +633,18 @@ class TestUnarchiveActivity:
 class TestListActivitiesIncludeArchived:
     """Tests for GET /v1/activities?include_archived=<bool>."""
 
-    def test_default_excludes_archived(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_default_excludes_archived(
+        self, client, mock_async_db, mock_user
+    ):
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities")
         assert response.status_code == 200
 
     def test_include_archived_true_accepts_query_param(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get("/v1/activities?include_archived=true")
         assert response.status_code == 200
@@ -701,9 +654,9 @@ class TestListActivitiesCursor:
     """afh-1a: cursor pagination + include_read + since_days See-all mode."""
 
     def test_cursor_and_offset_both_present_returns_400(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
         response = client.get("/v1/activities?cursor=abc&offset=5")
         assert response.status_code == 400
         assert (
@@ -711,14 +664,16 @@ class TestListActivitiesCursor:
             == "cursor_and_offset_mutually_exclusive"
         )
 
-    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_invalid_cursor_returns_400(
+        self, client, mock_async_db, mock_user
+    ):
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
         response = client.get("/v1/activities?cursor=%21%21%21%21%21%21")
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
     def test_cursor_default_mode_decodes_and_returns_items(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """A valid cursor in default (non-See-all) mode builds the
         two-key ``(created_at, id) < (cursor_ts, cursor_id)`` WHERE
@@ -728,7 +683,7 @@ class TestListActivitiesCursor:
 
         cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
         activity = MockUserActivity(type="partner_action", title="X")
-        mock_db.db.query.return_value = MockQuery([activity])
+        mock_async_db.db.execute.side_effect = _list_side_effect([activity])
 
         response = client.get(f"/v1/activities?cursor={cursor}")
         assert response.status_code == 200
@@ -738,7 +693,7 @@ class TestListActivitiesCursor:
         assert len(body["items"]) == 1
 
     def test_cursor_see_all_mode_decodes_with_archived_at_value(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """See-all mode with an archived_at value exercises the
         three-key row-value WHERE clause and ordering.
@@ -753,7 +708,7 @@ class TestListActivitiesCursor:
             title="X",
             archived_at=datetime(2025, 6, 1, tzinfo=UTC),
         )
-        mock_db.db.query.return_value = MockQuery([activity])
+        mock_async_db.db.execute.side_effect = _list_side_effect([activity])
 
         response = client.get(
             "/v1/activities?include_archived=true&include_read=true"
@@ -762,7 +717,7 @@ class TestListActivitiesCursor:
         assert response.status_code == 200
 
     def test_cursor_see_all_mode_with_null_archived_at_cursor(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """See-all mode with ``archived_at_ms=None`` in the cursor
         builds the row-value comparison with the ``'-infinity'`` sentinel.
@@ -770,7 +725,7 @@ class TestListActivitiesCursor:
         from pagination import encode_cursor
 
         cursor = encode_cursor(None, 1_699_000_000_000, str(uuid.uuid4()))
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
 
         response = client.get(
             "/v1/activities?include_archived=true&include_read=true"
@@ -779,16 +734,17 @@ class TestListActivitiesCursor:
         assert response.status_code == 200
 
     def test_response_includes_next_cursor_when_more_results(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        """MockQuery ignores the LIMIT, so seeding > limit items surfaces
-        the has_more → next_cursor path and the Link header.
+        """Seeding > limit items surfaces the has_more → next_cursor path
+        and the Link header. `MockExecuteResult` returns all rows; the
+        handler slices to `limit + 1` / `limit`.
         """
         items = [
             MockUserActivity(type="partner_action", title=f"row{i}")
             for i in range(60)
         ]
-        mock_db.db.query.return_value = MockQuery(items)
+        mock_async_db.db.execute.side_effect = _list_side_effect(items)
 
         response = client.get("/v1/activities?limit=50")
         assert response.status_code == 200
@@ -799,7 +755,7 @@ class TestListActivitiesCursor:
         assert 'rel="next"' in link
 
     def test_see_all_mode_next_cursor_encodes_archived_at(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """See-all mode encodes ``archived_at`` in the cursor so the
         client can resume at the archived/non-archived boundary.
@@ -812,7 +768,7 @@ class TestListActivitiesCursor:
             )
             for i in range(60)
         ]
-        mock_db.db.query.return_value = MockQuery(items)
+        mock_async_db.db.execute.side_effect = _list_side_effect(items)
 
         response = client.get(
             "/v1/activities?include_archived=true&include_read=true"
@@ -823,50 +779,51 @@ class TestListActivitiesCursor:
         assert body["next_cursor"] is not None
 
     def test_legacy_offset_path_still_returns_items(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """AC9: ``offset=`` still works for one release alongside cursor."""
         items = [
             MockUserActivity(type="partner_action", title=f"r{i}")
             for i in range(20)
         ]
-        mock_db.db.query.return_value = MockQuery(items)
+        mock_async_db.db.execute.side_effect = _list_side_effect(items)
         response = client.get("/v1/activities?limit=5&offset=5")
         assert response.status_code == 200
         body = response.json()
         # pbq-5: total is always 0 — COUNT removed, even on legacy
         # offset path.
         assert body["total"] == 0
-        # Legacy path slices rows[5:10]; MockQuery returns all rows.
+        # Legacy path slices rows[5:10]; the seed returns all rows so
+        # the slice contains 5 items.
         assert len(body["items"]) == 5
 
-    def test_limit_is_clamped_to_100(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_limit_is_clamped_to_100(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
         response = client.get("/v1/activities?limit=9999")
         assert response.status_code == 200
         body = response.json()
         assert body["limit"] == 100
 
     def test_since_days_null_sentinel_empty_value(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """``?since_days=`` with no value opts out of the retention window."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
         response = client.get("/v1/activities?since_days=")
         assert response.status_code == 200
 
     def test_since_days_non_numeric_returns_400(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-empty non-integer ``since_days`` is a client error."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
         response = client.get("/v1/activities?since_days=yesterday")
         assert response.status_code == 400
 
     def test_since_days_numeric_overrides_default(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
         response = client.get("/v1/activities?since_days=7")
         assert response.status_code == 200
 
@@ -874,8 +831,11 @@ class TestListActivitiesCursor:
 class TestSeeAllCount:
     """afh-2: GET /v1/activities/see-all-count."""
 
-    def test_zero_when_no_rows(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_zero_when_no_rows(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
+        ]
         response = client.get("/v1/activities/see-all-count")
         assert response.status_code == 200
         assert response.json() == {
@@ -885,21 +845,17 @@ class TestSeeAllCount:
         }
 
     def test_sums_archived_and_read_and_older(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        """MockQuery.count = len(items). First call returns archived
-        rows, second returns read-and-older rows, and ``total`` is
-        their sum.
-        """
-        # Both .count() calls hit the same MockQuery; in MockQuery,
-        # .filter chains return self and .count returns len(items).
-        # So if we seed 5 items, both counts read 5 → total = 10.
-        mock_db.db.query.return_value = MockQuery(
-            [MockUserActivity() for _ in range(5)]
-        )
+        """First execute = archived count; second = read-and-older count.
+        Response ``total`` is their sum."""
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[5]),
+            MockExecuteResult(items=[3]),
+        ]
         response = client.get("/v1/activities/see-all-count")
         assert response.status_code == 200
         body = response.json()
         assert body["archived"] == 5
-        assert body["read_and_older"] == 5
-        assert body["total"] == 10
+        assert body["read_and_older"] == 3
+        assert body["total"] == 8

@@ -9,8 +9,8 @@ from pagination import (
     encode_cursor,
 )
 from pydantic import BaseModel
-from sqlalchemy import text, tuple_
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select, text, tuple_
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_activity import NOTIFICATION_TAB_TYPES, UserActivity
@@ -24,10 +24,10 @@ _MAX_LIMIT = 100
 _NEG_INF = text("'-infinity'::timestamptz")
 
 
-class ListActivities(Endpoint):
+class ListActivities(AsyncEndpoint):
     """List activities for the current user."""
 
-    def execute(
+    async def execute(
         self,
         limit: int = 50,
         offset: int = 0,
@@ -63,19 +63,17 @@ class ListActivities(Endpoint):
         # so recently-archived rows land at the top.
         see_all_mode = include_archived and include_read and since_days is None
 
-        query = self.db.query(UserActivity).filter(
-            UserActivity.user_id == user.id,
-        )
+        stmt = select(UserActivity).where(UserActivity.user_id == user.id)
         if since_days is not None:
             cutoff = datetime.now(UTC) - timedelta(days=since_days)
-            query = query.filter(UserActivity.created_at >= cutoff)
+            stmt = stmt.where(UserActivity.created_at >= cutoff)
         if not include_archived:
-            query = query.filter(UserActivity.archived_at.is_(None))
+            stmt = stmt.where(UserActivity.archived_at.is_(None))
         if not include_system_types:
             # abi-1: default path returns only types on the Notifications
             # allow-list. Admin callers opt in via ?include_system_types=
             # true for debug (router enforces the admin gate).
-            query = query.filter(UserActivity.type.in_(NOTIFICATION_TAB_TYPES))
+            stmt = stmt.where(UserActivity.type.in_(NOTIFICATION_TAB_TYPES))
 
         if cursor is not None:
             try:
@@ -93,7 +91,7 @@ class ListActivities(Endpoint):
                     if cur_arch_ms is None
                     else datetime.fromtimestamp(cur_arch_ms / 1000, tz=UTC)
                 )
-                query = query.filter(
+                stmt = stmt.where(
                     tuple_(
                         text(
                             "COALESCE(user_activities.archived_at, "
@@ -105,13 +103,13 @@ class ListActivities(Endpoint):
                     < tuple_(cur_arch_ts, cur_created, cur_id)
                 )
             else:
-                query = query.filter(
+                stmt = stmt.where(
                     tuple_(UserActivity.created_at, UserActivity.id)
                     < tuple_(cur_created, cur_id)
                 )
 
         if see_all_mode:
-            query = query.order_by(
+            stmt = stmt.order_by(
                 text(
                     "COALESCE(user_activities.archived_at, '-infinity'::timestamptz) "
                     "DESC"
@@ -120,13 +118,14 @@ class ListActivities(Endpoint):
                 UserActivity.id.desc(),
             )
         else:
-            query = query.order_by(
+            stmt = stmt.order_by(
                 UserActivity.created_at.desc(),
                 UserActivity.id.desc(),
             )
 
         # Fetch limit + 1 to detect a next page without a second count.
-        rows = query.limit(limit + 1).all()
+        result = await self.db.execute(stmt.limit(limit + 1))
+        rows = list(result.scalars().all())
         has_more = len(rows) > limit
         results = rows[:limit]
 
@@ -186,17 +185,18 @@ class ListActivities(Endpoint):
         unread_cutoff = datetime.now(UTC) - timedelta(
             days=_DEFAULT_ACTIVITY_RETENTION_DAYS
         )
-        unread_count = (
-            self.db.query(UserActivity)
-            .filter(
+        unread_result = await self.db.execute(
+            select(func.count())
+            .select_from(UserActivity)
+            .where(
                 UserActivity.user_id == user.id,
                 UserActivity.read.is_(False),
                 UserActivity.archived_at.is_(None),
                 UserActivity.type.in_(NOTIFICATION_TAB_TYPES),
                 UserActivity.created_at >= unread_cutoff,
             )
-            .count()
         )
+        unread_count = int(unread_result.scalar_one())
 
         return success(
             data=ListActivities.Response(

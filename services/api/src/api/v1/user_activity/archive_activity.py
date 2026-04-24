@@ -8,19 +8,19 @@ returns the existing timestamp.
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_activity import UserActivity
 
 
-class ArchiveActivity(Endpoint):
+class ArchiveActivity(AsyncEndpoint):
     """Archive a user_activity row."""
 
-    def execute(self, activity_id: str):
+    async def execute(self, activity_id: str):
         user: User = self.user
 
-        activity = self.database.find_by(
+        activity = await self.database.find_by(
             UserActivity,
             id=activity_id,
             user_id=user.id,
@@ -35,7 +35,7 @@ class ArchiveActivity(Endpoint):
         if activity.archived_at is None:
             activity.archived_at = datetime.now(UTC)
             self.database.db.add(activity)
-            self.database.db.commit()
+            await self.database.db.commit()
 
         return success(
             data=ArchiveActivity.Response(
