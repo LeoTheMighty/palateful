@@ -1378,7 +1378,7 @@ development_status:
   # Phase 7 — added 2026-04-24 after Phase 0 emergency patch (commit 2243928)
   # flipped 150 `async def` → `def` handlers. Stories below cover the remaining
   # domains + the notify-via-threadpool helper every converted endpoint uses.
-  aam-foundations-notify-threadpool-helper: backlog
+  aam-foundations-notify-threadpool-helper: done
   aam-28-friends-domain-async: backlog
   aam-29-parser-domain-async: backlog
   aam-30-recurrence-rule-domain-async: backlog
