@@ -1282,6 +1282,7 @@ class MockAsyncDatabase:
         self.db.execute = AsyncMock(return_value=MockExecuteResult())
         self.db.commit = AsyncMock()
         self.db.flush = AsyncMock()
+        self.db.rollback = AsyncMock()
         self.db.refresh = AsyncMock(side_effect=_apply_column_defaults)
         self.db.add = MagicMock()
         self.db.add_all = MagicMock()

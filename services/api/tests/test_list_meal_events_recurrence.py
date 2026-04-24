@@ -4,7 +4,7 @@ import uuid
 from datetime import date, timedelta
 from unittest.mock import patch
 
-from conftest import MockMealEvent, MockModel, MockQuery
+from conftest import MockMealEvent, MockModel, MockQuery, MockExecuteResult
 
 
 class MockMealRecurrenceRule(MockModel):
@@ -32,7 +32,7 @@ class MockMealRecurrenceRule(MockModel):
 
 class TestListMealEventsMaterializeHook:
     def test_hook_calls_materialize_when_watermark_behind(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
         from utils.models.meal_recurrence_rule import MealRecurrenceRule
@@ -44,12 +44,12 @@ class TestListMealEventsMaterializeHook:
 
         def _query(model):
             if model is MealRecurrenceRule:
-                return MockQuery([rule])
+                return MockExecuteResult(items=[rule])
             if model is MealEvent:
-                return MockQuery([])
-            return MockQuery([])
+                return MockExecuteResult(items=[])
+            return MockExecuteResult(items=[])
 
-        mock_db.db.query.side_effect = _query
+        mock_async_db.db.execute.side_effect = _query
 
         with patch(
             "api.v1.meal_event.list_meal_events.materialize"
@@ -64,7 +64,7 @@ class TestListMealEventsMaterializeHook:
             assert mock_materialize.called
 
     def test_hook_skips_when_watermark_sufficient(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
         from utils.models.meal_recurrence_rule import MealRecurrenceRule
@@ -77,12 +77,12 @@ class TestListMealEventsMaterializeHook:
 
         def _query(model):
             if model is MealRecurrenceRule:
-                return MockQuery([rule])
+                return MockExecuteResult(items=[rule])
             if model is MealEvent:
-                return MockQuery([])
-            return MockQuery([])
+                return MockExecuteResult(items=[])
+            return MockExecuteResult(items=[])
 
-        mock_db.db.query.side_effect = _query
+        mock_async_db.db.execute.side_effect = _query
 
         with patch(
             "api.v1.meal_event.list_meal_events.materialize"
@@ -94,7 +94,7 @@ class TestListMealEventsMaterializeHook:
             assert not mock_materialize.called
 
     def test_list_response_includes_recurrence_rule_id(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
 
@@ -108,10 +108,10 @@ class TestListMealEventsMaterializeHook:
 
         def _query(model):
             if model is MealEvent:
-                return MockQuery([event])
-            return MockQuery([])
+                return MockExecuteResult(items=[event])
+            return MockExecuteResult(items=[])
 
-        mock_db.db.query.side_effect = _query
+        mock_async_db.db.execute.side_effect = _query
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200

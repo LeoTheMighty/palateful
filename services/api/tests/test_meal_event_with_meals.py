@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 
 from conftest import (
+    MockExecuteResult,
     MockCalendar,
     MockMealEvent,
     MockModel,
@@ -85,7 +86,7 @@ def _make_meal_with_components(*, user_id, archived=False):
 
 
 class TestXorRejection:
-    def test_create_rejects_both_recipe_id_and_meal_id(self, client, mock_db, mock_user):
+    def test_create_rejects_both_recipe_id_and_meal_id(self, client, mock_async_db, mock_user):
         body = {
             "title": "Tuesday Dinner",
             "scheduled_at": "2026-05-01T19:00:00Z",
@@ -98,7 +99,7 @@ class TestXorRejection:
         assert response.status_code == 422
         assert response.json()["error_code"] == 135
 
-    def test_patch_rejects_both_recipe_id_and_meal_id(self, client, mock_db, mock_user):
+    def test_patch_rejects_both_recipe_id_and_meal_id(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
 
         event_id = str(uuid.uuid4())
@@ -106,7 +107,8 @@ class TestXorRejection:
         event = MockMealEvent(
             id=event_id, owner_id=mock_user.id, calendar_id=calendar.id
         )
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         body = {
             "recipe_id": str(uuid.uuid4()),
@@ -124,14 +126,14 @@ class TestXorRejection:
 
 class TestCreateMealMode:
     def test_create_meal_event_with_meal_id_hydrates_meal_summary(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         meal, book_id, MealModel, RecipeBookUser = _make_meal_with_components(
             user_id=mock_user.id
         )
         # MealService.get_with_components uses db.query(Meal) — configure that.
-        mock_db.db.query.return_value = MockQuery([meal])
-        mock_db.set_find_by(
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[meal])
+        mock_async_db.set_find_by(
             RecipeBookUser, MockRecipeBookUser(user_id=mock_user.id, recipe_book_id=book_id),
             user_id=mock_user.id, recipe_book_id=book_id,
         )
@@ -154,9 +156,9 @@ class TestCreateMealMode:
             "https://cdn/b.jpg",
         ]
 
-    def test_create_with_missing_meal_returns_404(self, client, mock_db, mock_user):
+    def test_create_with_missing_meal_returns_404(self, client, mock_async_db, mock_user):
         # MealService.get_with_components returns None for missing meal.
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         body = {
             "title": "Dinner",
             "scheduled_at": "2026-05-01T19:00:00Z",
@@ -167,12 +169,12 @@ class TestCreateMealMode:
         response = client.post("/v1/meal-events", json=body)
         assert response.status_code == 404
 
-    def test_create_with_archived_meal_returns_404(self, client, mock_db, mock_user):
+    def test_create_with_archived_meal_returns_404(self, client, mock_async_db, mock_user):
         meal, book_id, MealModel, RecipeBookUser = _make_meal_with_components(
             user_id=mock_user.id, archived=True
         )
-        mock_db.db.query.return_value = MockQuery([meal])
-        mock_db.set_find_by(
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[meal])
+        mock_async_db.set_find_by(
             RecipeBookUser, MockRecipeBookUser(user_id=mock_user.id, recipe_book_id=book_id),
             user_id=mock_user.id, recipe_book_id=book_id,
         )
@@ -186,7 +188,7 @@ class TestCreateMealMode:
         response = client.post("/v1/meal-events", json=body)
         assert response.status_code == 404
 
-    def test_create_when_user_lacks_book_read_returns_403(self, client, mock_db, mock_user):
+    def test_create_when_user_lacks_book_read_returns_403(self, client, mock_async_db, mock_user):
         meal, book_id, MealModel, RecipeBookUser = _make_meal_with_components(
             user_id=mock_user.id
         )
@@ -196,10 +198,10 @@ class TestCreateMealMode:
         # db.query(RecipeBookUser). Route them by argument type.
         def _query_router(model):
             if model is MealModel:
-                return MockQuery([meal])
-            return MockQuery([])  # RecipeBookUser → empty → 403
+                return MockExecuteResult(items=[meal])
+            return MockExecuteResult(items=[])  # RecipeBookUser → empty → 403
 
-        mock_db.db.query.side_effect = _query_router
+        mock_async_db.db.execute.side_effect = _query_router
 
         body = {
             "title": "Dinner",
@@ -218,12 +220,12 @@ class TestCreateMealMode:
 
 
 class TestRecipeOnlyRegression:
-    def test_create_recipe_only_event_still_works(self, client, mock_db, mock_user):
+    def test_create_recipe_only_event_still_works(self, client, mock_async_db, mock_user):
         """mcal-3 must not regress the Recipe-only path."""
         from utils.models.recipe import Recipe
 
         recipe = MockRecipe(id=str(uuid.uuid4()), name="Pizza")
-        mock_db.set_find_by(Recipe, recipe, id=recipe.id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe.id)
 
         body = {
             "title": "Friday Dinner",
@@ -239,7 +241,7 @@ class TestRecipeOnlyRegression:
         assert data["meal_id"] is None
         assert data["meal_summary"] is None
 
-    def test_create_freetext_event_still_works(self, client, mock_db, mock_user):
+    def test_create_freetext_event_still_works(self, client, mock_async_db, mock_user):
         body = {
             "title": "Takeout",
             "scheduled_at": "2026-05-01T19:00:00Z",
@@ -260,7 +262,7 @@ class TestRecipeOnlyRegression:
 
 
 class TestUpdateMealMode:
-    def _setup_event(self, mock_db, mock_user, *, recipe_id=None, meal_id=None):
+    def _setup_event(self, mock_async_db, mock_user, *, recipe_id=None, meal_id=None):
         from utils.models.meal_event import MealEvent
 
         event_id = str(uuid.uuid4())
@@ -271,22 +273,23 @@ class TestUpdateMealMode:
             recipe_id=recipe_id,
             meal_id=meal_id,
         )
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
         return event_id, event
 
     def test_switch_recipe_event_to_meal_clears_recipe_id(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         meal, book_id, MealModel, RecipeBookUser = _make_meal_with_components(
             user_id=mock_user.id
         )
-        mock_db.db.query.return_value = MockQuery([meal])
-        mock_db.set_find_by(
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[meal])
+        mock_async_db.set_find_by(
             RecipeBookUser, MockRecipeBookUser(user_id=mock_user.id, recipe_book_id=book_id),
             user_id=mock_user.id, recipe_book_id=book_id,
         )
         event_id, event = self._setup_event(
-            mock_db, mock_user, recipe_id=str(uuid.uuid4())
+            mock_async_db, mock_user, recipe_id=str(uuid.uuid4())
         )
         # After the patch the hydration accesses event.meal directly (lazy);
         # fixture it so meal_summary populates without a DB roundtrip.
@@ -302,14 +305,14 @@ class TestUpdateMealMode:
         assert data["meal_summary"]["name"] == "Kale Salad Meal"
 
     def test_switch_meal_event_to_recipe_clears_meal_id(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.recipe import Recipe
 
         recipe = MockRecipe(id=str(uuid.uuid4()), name="Pizza")
-        mock_db.set_find_by(Recipe, recipe, id=recipe.id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe.id)
         event_id, event = self._setup_event(
-            mock_db, mock_user, meal_id=str(uuid.uuid4())
+            mock_async_db, mock_user, meal_id=str(uuid.uuid4())
         )
         event.recipe = recipe
 
@@ -330,7 +333,7 @@ class TestUpdateMealMode:
 
 class TestHydrationOnReads:
     def test_list_hydrates_meal_summary_on_meal_events(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         meal, book_id, MealModel, _ = _make_meal_with_components(user_id=mock_user.id)
         recipe_event = MockMealEvent(
@@ -346,7 +349,7 @@ class TestHydrationOnReads:
             meal_id=str(meal.id),
             meal=meal,
         )
-        mock_db.db.query.return_value = MockQuery([recipe_event, meal_event])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[recipe_event, meal_event])
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200
@@ -359,13 +362,14 @@ class TestHydrationOnReads:
         assert by_has_meal[meal_event.id]["meal_summary"]["component_count"] == 2
 
     def test_get_meal_event_without_meal_has_null_meal_summary(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
 
         event_id = str(uuid.uuid4())
         event = MockMealEvent(id=event_id, owner_id=mock_user.id)
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200
@@ -374,7 +378,7 @@ class TestHydrationOnReads:
         assert data["meal_summary"] is None
 
     def test_get_meal_event_with_meal_hydrates_summary(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
 
@@ -387,7 +391,8 @@ class TestHydrationOnReads:
             meal_id=str(meal.id),
             meal=meal,
         )
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200

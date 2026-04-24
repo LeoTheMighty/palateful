@@ -4,14 +4,14 @@ import uuid
 from unittest.mock import patch
 
 from conftest import (
+    MockExecuteResult,
     MockMealEvent,
-    MockQuery,
 )
 
 
 class TestMealEventCompletedDispatch:
     def test_planned_to_completed_dispatches_event(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         meal_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -23,10 +23,7 @@ class TestMealEventCompletedDispatch:
             recipe_id=recipe_id,
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, me, id=meal_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[me])
 
         with patch(
             "api.v1.meal_event.update_meal_event.dispatch"
@@ -43,7 +40,7 @@ class TestMealEventCompletedDispatch:
         assert str(payload.recipe_id) == recipe_id
 
     def test_completed_to_completed_does_not_dispatch(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         meal_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -55,10 +52,7 @@ class TestMealEventCompletedDispatch:
             recipe_id=recipe_id,
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, me, id=meal_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[me])
 
         with patch(
             "api.v1.meal_event.update_meal_event.dispatch"
@@ -71,7 +65,7 @@ class TestMealEventCompletedDispatch:
         assert response.status_code == 200
         assert not dispatch_mock.called
 
-    def test_skipped_does_not_dispatch(self, client, mock_db, mock_user):
+    def test_skipped_does_not_dispatch(self, client, mock_async_db, mock_user):
         meal_id = str(uuid.uuid4())
         me = MockMealEvent(
             id=meal_id,
@@ -80,10 +74,7 @@ class TestMealEventCompletedDispatch:
             recipe_id=str(uuid.uuid4()),
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, me, id=meal_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[me])
 
         with patch(
             "api.v1.meal_event.update_meal_event.dispatch"
@@ -96,7 +87,7 @@ class TestMealEventCompletedDispatch:
         assert response.status_code == 200
         assert not dispatch_mock.called
 
-    def test_no_recipe_does_not_dispatch(self, client, mock_db, mock_user):
+    def test_no_recipe_does_not_dispatch(self, client, mock_async_db, mock_user):
         meal_id = str(uuid.uuid4())
         me = MockMealEvent(
             id=meal_id,
@@ -105,10 +96,7 @@ class TestMealEventCompletedDispatch:
             recipe_id=None,
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, me, id=meal_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[me])
 
         with patch(
             "api.v1.meal_event.update_meal_event.dispatch"
@@ -122,7 +110,7 @@ class TestMealEventCompletedDispatch:
         assert not dispatch_mock.called
 
     def test_dispatch_failure_does_not_break_request(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         meal_id = str(uuid.uuid4())
         me = MockMealEvent(
@@ -132,10 +120,7 @@ class TestMealEventCompletedDispatch:
             recipe_id=str(uuid.uuid4()),
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, me, id=meal_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[me])
 
         with patch(
             "api.v1.meal_event.update_meal_event.dispatch",

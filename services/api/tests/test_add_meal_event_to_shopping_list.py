@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 from conftest import (
+    MockExecuteResult,
     MockMealEvent,
     MockModel,
     MockQuery,
@@ -86,7 +87,7 @@ class MockRecipeIngredient(MockModel):
 
 class TestRecipeLinkedEvent:
     def test_recipe_event_expands_via_recipe_ingredients(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
         from utils.models.shopping_list import ShoppingList
@@ -103,8 +104,12 @@ class TestRecipeLinkedEvent:
             meal=None,
         )
         list_obj = MockShoppingList(id=str(uuid.uuid4()), owner_id=mock_user.id)
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
 
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
@@ -119,7 +124,7 @@ class TestRecipeLinkedEvent:
 
 
 class TestMealLinkedEvent:
-    def test_meal_event_expands_via_aggregate(self, client, mock_db, mock_user):
+    def test_meal_event_expands_via_aggregate(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
         from utils.models.shopping_list import ShoppingList
 
@@ -146,8 +151,12 @@ class TestMealLinkedEvent:
             meal=meal,
         )
         list_obj = MockShoppingList(id=str(uuid.uuid4()), owner_id=mock_user.id)
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
 
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
@@ -170,14 +179,14 @@ class TestMealLinkedEvent:
 
 
 class TestEdges:
-    def test_404_when_event_missing(self, client, mock_db, mock_user):
+    def test_404_when_event_missing(self, client, mock_async_db, mock_user):
         response = client.post(
             f"/v1/meal-events/{uuid.uuid4()}/add-to-shopping-list",
             json={"shopping_list_id": str(uuid.uuid4())},
         )
         assert response.status_code == 404
 
-    def test_422_for_freetext_event(self, client, mock_db, mock_user):
+    def test_422_for_freetext_event(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
 
         event = MockMealEvent(
@@ -186,14 +195,15 @@ class TestEdges:
             recipe_id=None,
             meal_id=None,
         )
-        mock_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
             json={"shopping_list_id": str(uuid.uuid4())},
         )
         assert response.status_code == 422
 
-    def test_404_when_shopping_list_missing(self, client, mock_db, mock_user):
+    def test_404_when_shopping_list_missing(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
 
         olive = MockIngredient(id=str(uuid.uuid4()))
@@ -203,14 +213,15 @@ class TestEdges:
             id=str(uuid.uuid4()), owner_id=mock_user.id,
             recipe=recipe, recipe_id=recipe.id,
         )
-        mock_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
             json={"shopping_list_id": str(uuid.uuid4())},
         )
         assert response.status_code == 404
 
-    def test_403_when_no_write_access_to_list(self, client, mock_db, mock_user):
+    def test_403_when_no_write_access_to_list(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
@@ -223,9 +234,13 @@ class TestEdges:
             recipe=recipe, recipe_id=recipe.id,
         )
         list_obj = MockShoppingList(id=str(uuid.uuid4()), owner_id=str(uuid.uuid4()))
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(
             ShoppingListUser, None,
             shopping_list_id=list_obj.id, user_id=mock_user.id,
         )
@@ -236,7 +251,7 @@ class TestEdges:
         )
         assert response.status_code == 403
 
-    def test_re_tap_skips_already_added_items(self, client, mock_db, mock_user):
+    def test_re_tap_skips_already_added_items(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
         from utils.models.shopping_list import ShoppingList
 
@@ -253,8 +268,12 @@ class TestEdges:
         list_obj = MockShoppingList(
             id=str(uuid.uuid4()), owner_id=mock_user.id, items=[existing_item],
         )
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
 
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
@@ -266,7 +285,7 @@ class TestEdges:
         assert data["items_skipped"] == 1
 
     def test_404_when_recipe_relationship_unexpectedly_null(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_event import MealEvent
         from utils.models.shopping_list import ShoppingList
@@ -276,8 +295,12 @@ class TestEdges:
             recipe=None, recipe_id=str(uuid.uuid4()),
         )
         list_obj = MockShoppingList(id=str(uuid.uuid4()), owner_id=mock_user.id)
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
 
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
@@ -285,7 +308,7 @@ class TestEdges:
         )
         assert response.status_code == 404
 
-    def test_meal_event_re_tap_skips_already_added(self, client, mock_db, mock_user):
+    def test_meal_event_re_tap_skips_already_added(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent
         from utils.models.shopping_list import ShoppingList
 
@@ -308,8 +331,12 @@ class TestEdges:
         list_obj = MockShoppingList(
             id=str(uuid.uuid4()), owner_id=mock_user.id, items=[existing_item],
         )
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
 
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
@@ -319,7 +346,7 @@ class TestEdges:
         assert response.json()["items_skipped"] == 1
 
     def test_archived_or_orphan_recipe_ingredient_skipped(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Archived RecipeIngredient + null-ingredient row must be skipped
         without crashing the per-event expansion."""
@@ -339,8 +366,12 @@ class TestEdges:
             recipe=recipe, recipe_id=recipe.id,
         )
         list_obj = MockShoppingList(id=str(uuid.uuid4()), owner_id=mock_user.id)
-        mock_db.set_find_by(MealEvent, event, id=event.id)
-        mock_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
+        mock_async_db.set_find_by(MealEvent, event, id=event.id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[list_obj]),
+        ]
+        mock_async_db.set_find_by(ShoppingList, list_obj, id=list_obj.id)
 
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",

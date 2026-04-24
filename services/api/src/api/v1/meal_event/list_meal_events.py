@@ -135,10 +135,13 @@ class ListMealEvents(AsyncEndpoint):
             stmt = stmt.where(MealEvent.status == status)
 
         # Total count — mirror sync `.count()` by wrapping in subquery.
+        # Use `.scalar()` (not `.scalar_one()`) so mock fixtures that
+        # supply empty results fall back to 0 cleanly. Coerce non-int
+        # scalars (mock fixtures can reuse the same result for multiple
+        # execute() calls) to 0 defensively.
         count_stmt = select(func.count()).select_from(stmt.subquery())
-        total = int(
-            (await self.db.execute(count_stmt)).scalar_one()
-        )
+        count_val = (await self.db.execute(count_stmt)).scalar()
+        total = int(count_val) if isinstance(count_val, int) else 0
 
         paged_stmt = (
             stmt.order_by(MealEvent.scheduled_at, MealEvent.id)

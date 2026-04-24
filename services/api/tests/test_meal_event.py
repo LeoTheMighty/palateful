@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import MagicMock, patch
 
 from conftest import (
+    MockExecuteResult,
     MockMealEvent,
     MockMealEventParticipant,
     MockQuery,
@@ -17,7 +18,7 @@ from conftest import (
 class TestListMealEvents:
     """Tests for GET /v1/meal-events."""
 
-    def test_list_meal_events_success(self, client, mock_db, mock_user):
+    def test_list_meal_events_success(self, client, mock_async_db, mock_user):
         """Test listing meal events."""
         event = MockMealEvent(
             owner_id=str(mock_user.id),
@@ -26,7 +27,7 @@ class TestListMealEvents:
         )
         # ListMealEvents uses db.query(MealEvent).outerjoin(...).filter(...)
         # Returns MealEvent objects directly
-        mock_db.db.query.return_value = MockQuery([event])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200
@@ -34,9 +35,9 @@ class TestListMealEvents:
         assert data["total"] == 1
         assert len(data["items"]) == 1
 
-    def test_list_meal_events_empty(self, client, mock_db, mock_user):
+    def test_list_meal_events_empty(self, client, mock_async_db, mock_user):
         """Test listing when no meal events exist."""
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200
@@ -45,7 +46,7 @@ class TestListMealEvents:
         assert data["total"] == 0
 
     def test_list_meal_events_eager_loads_participants_as_sibling_option(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """pbq-7 — `selectinload(MealEvent.participants)` lands as a
         SIBLING `.options()` entry alongside the existing
@@ -65,14 +66,14 @@ class TestListMealEvents:
             MockMealEvent(owner_id=str(mock_user.id), participants=[], recipe=None)
             for _ in range(10)
         ]
-        mock_db.db.query.return_value = MockQuery(events)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=events)
 
         with patch.object(
             handler_module,
             "selectinload",
             wraps=handler_module.selectinload,
         ) as spy:
-            with count_queries(mock_db) as qc:
+            with count_queries(mock_async_db) as qc:
                 response = client.get("/v1/meal-events")
         assert response.status_code == 200
 
@@ -94,7 +95,7 @@ class TestListMealEvents:
 class TestCreateMealEvent:
     """Tests for POST /v1/meal-events."""
 
-    def test_create_meal_event_success(self, client, mock_db, mock_user):
+    def test_create_meal_event_success(self, client, mock_async_db, mock_user):
         """Test creating a meal event."""
         response = client.post(
             "/v1/meal-events",
@@ -110,7 +111,7 @@ class TestCreateMealEvent:
         assert data["title"] == "Sunday Dinner"
         assert data["meal_type"] == "dinner"
 
-    def test_create_meal_event_missing_title(self, client, mock_db):
+    def test_create_meal_event_missing_title(self, client, mock_async_db):
         """Test creating a meal event without title fails."""
         response = client.post(
             "/v1/meal-events",
@@ -122,7 +123,7 @@ class TestCreateMealEvent:
         )
         assert response.status_code == 422
 
-    def test_create_meal_event_missing_calendar_id(self, client, mock_db, mock_user):
+    def test_create_meal_event_missing_calendar_id(self, client, mock_async_db, mock_user):
         """Missing calendar_id → 400 with MEAL_EVENT_CALENDAR_REQUIRED."""
         response = client.post(
             "/v1/meal-events",
@@ -136,7 +137,7 @@ class TestCreateMealEvent:
         assert response.json()["error_code"] == 264
 
     def test_create_with_meal_reminder_time_persists_value(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """meal-1 AC 7 Test A: create with explicit meal_reminder_time →
         value reaches the row + Response, `reminder_time` echoes it."""
@@ -157,7 +158,7 @@ class TestCreateMealEvent:
         assert data["reminder_time"].startswith("11:45")
 
     def test_create_without_reminder_override_resolves_slot_default(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """meal-1 AC 7 Test B: omit meal_reminder_time → DB column stays
         null and `reminder_time` resolves to the lunch slot default."""
@@ -177,7 +178,7 @@ class TestCreateMealEvent:
         assert data["reminder_time"].startswith("12:00")
 
     def test_create_with_invalid_reminder_time_string_is_422(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """meal-1 AC 7 Test D: malformed time string → 422 (Pydantic
         catches at parse time before the handler runs)."""
@@ -197,7 +198,7 @@ class TestCreateMealEvent:
 class TestGetMealEvent:
     """Tests for GET /v1/meal-events/{event_id}."""
 
-    def test_get_meal_event_success(self, client, mock_db, mock_user):
+    def test_get_meal_event_success(self, client, mock_async_db, mock_user):
         """Test getting a meal event."""
         event_id = "test-event-id"
         event = MockMealEvent(
@@ -209,14 +210,15 @@ class TestGetMealEvent:
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == event_id
 
-    def test_get_meal_event_not_found(self, client, mock_db, mock_user):
+    def test_get_meal_event_not_found(self, client, mock_async_db, mock_user):
         """Test getting a nonexistent meal event."""
         response = client.get("/v1/meal-events/nonexistent")
         assert response.status_code == 404
@@ -225,19 +227,20 @@ class TestGetMealEvent:
 class TestDeleteMealEvent:
     """Tests for DELETE /v1/meal-events/{event_id}."""
 
-    def test_delete_meal_event_success(self, client, mock_db, mock_user):
+    def test_delete_meal_event_success(self, client, mock_async_db, mock_user):
         """Test deleting a meal event as owner."""
         event_id = "test-event-id"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.delete(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200
 
-    def test_delete_meal_event_not_calendar_member(self, client, mock_db, mock_user):
+    def test_delete_meal_event_not_calendar_member(self, client, mock_async_db, mock_user):
         """Non-member of the event's calendar → 404 (no existence leak)."""
         event_id = "test-event-id"
         event = MockMealEvent(id=event_id, owner_id="other-user-id")
@@ -245,10 +248,11 @@ class TestDeleteMealEvent:
         from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
         # Explicitly deny calendar membership — overrides the default
         # auto-grant in MockDatabase.find_by.
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             CalendarUser, None,
             user_id=mock_user.id, calendar_id=event.calendar_id,
         )
@@ -266,7 +270,7 @@ class TestInviteParticipant:
     """Tests for POST /v1/meal-events/{event_id}/invite."""
 
     @patch("api.v1.meal_event.invite_participant.notify_meal_event_invite")
-    def test_invite_as_owner_by_user_id(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_as_owner_by_user_id(self, mock_notify, client, mock_async_db, mock_user):
         """Test inviting a participant as the event owner via user_id."""
         event_id = "evt-001"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id), is_shared=False)
@@ -276,15 +280,16 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
         # current_participant lookup for access check (owner, so not needed)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, id="invited-user-id")
+        mock_async_db.set_find_by(User, invited, id="invited-user-id")
         # No existing participant
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id="invited-user-id",
         )
@@ -303,7 +308,7 @@ class TestInviteParticipant:
         mock_notify.assert_called_once()
 
     @patch("api.v1.meal_event.invite_participant.notify_meal_event_invite")
-    def test_invite_as_cohost(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_as_cohost(self, mock_notify, client, mock_async_db, mock_user):
         """Test inviting as a cohost (not owner)."""
         event_id = "evt-002"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id", is_shared=True)
@@ -316,13 +321,14 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, cohost_participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, id="invited-user-2")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(User, invited, id="invited-user-2")
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id="invited-user-2",
         )
@@ -334,7 +340,7 @@ class TestInviteParticipant:
         assert response.status_code == 201
 
     @patch("api.v1.meal_event.invite_participant.notify_meal_event_invite")
-    def test_invite_as_host_role(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_as_host_role(self, mock_notify, client, mock_async_db, mock_user):
         """Test inviting as a participant with host role (not owner)."""
         event_id = "evt-host"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id", is_shared=True)
@@ -347,13 +353,14 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, host_participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, id="invited-host-user")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(User, invited, id="invited-host-user")
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id="invited-host-user",
         )
@@ -365,7 +372,7 @@ class TestInviteParticipant:
         assert response.status_code == 201
 
     @patch("api.v1.meal_event.invite_participant.notify_meal_event_invite")
-    def test_invite_by_email(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_by_email(self, mock_notify, client, mock_async_db, mock_user):
         """Test inviting a participant by email instead of user_id."""
         event_id = "evt-003"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id), is_shared=False)
@@ -375,13 +382,14 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, email="byemail@example.com")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(User, invited, email="byemail@example.com")
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id="email-user-id",
         )
@@ -395,7 +403,7 @@ class TestInviteParticipant:
         assert data["user_email"] == "byemail@example.com"
 
     @patch("api.v1.meal_event.invite_participant.notify_meal_event_invite")
-    def test_invite_with_custom_message(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_with_custom_message(self, mock_notify, client, mock_async_db, mock_user):
         """Test inviting with a custom notification message."""
         event_id = "evt-msg"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id), is_shared=False)
@@ -405,13 +413,14 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, id="msg-user-id")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(User, invited, id="msg-user-id")
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id="msg-user-id",
         )
@@ -425,7 +434,7 @@ class TestInviteParticipant:
         call_args = mock_notify.call_args
         assert call_args[0][3] == "Join us!"
 
-    def test_invite_event_not_found(self, client, mock_db, mock_user):
+    def test_invite_event_not_found(self, client, mock_async_db, mock_user):
         """Test inviting when event doesn't exist."""
         response = client.post(
             "/v1/meal-events/nonexistent/invite",
@@ -433,7 +442,7 @@ class TestInviteParticipant:
         )
         assert response.status_code == 404
 
-    def test_invite_access_denied_not_owner_not_cohost(self, client, mock_db, mock_user):
+    def test_invite_access_denied_not_owner_not_cohost(self, client, mock_async_db, mock_user):
         """Test inviting when user is not owner and not a cohost."""
         event_id = "evt-004"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id")
@@ -445,8 +454,9 @@ class TestInviteParticipant:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, guest_participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -457,7 +467,7 @@ class TestInviteParticipant:
         )
         assert response.status_code == 403
 
-    def test_invite_access_denied_no_participant_record(self, client, mock_db, mock_user):
+    def test_invite_access_denied_no_participant_record(self, client, mock_async_db, mock_user):
         """Test inviting when user is not owner and has no participant record."""
         event_id = "evt-noaccess"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id")
@@ -465,8 +475,9 @@ class TestInviteParticipant:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -477,7 +488,7 @@ class TestInviteParticipant:
         )
         assert response.status_code == 403
 
-    def test_invite_user_not_found_by_id(self, client, mock_db, mock_user):
+    def test_invite_user_not_found_by_id(self, client, mock_async_db, mock_user):
         """Test inviting a nonexistent user by user_id."""
         event_id = "evt-005"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
@@ -485,8 +496,9 @@ class TestInviteParticipant:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -498,7 +510,7 @@ class TestInviteParticipant:
         )
         assert response.status_code == 404
 
-    def test_invite_user_not_found_by_email(self, client, mock_db, mock_user):
+    def test_invite_user_not_found_by_email(self, client, mock_async_db, mock_user):
         """Test inviting a nonexistent user by email."""
         event_id = "evt-006"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
@@ -506,8 +518,9 @@ class TestInviteParticipant:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -518,7 +531,7 @@ class TestInviteParticipant:
         )
         assert response.status_code == 404
 
-    def test_invite_user_not_found_no_id_or_email(self, client, mock_db, mock_user):
+    def test_invite_user_not_found_no_id_or_email(self, client, mock_async_db, mock_user):
         """Test inviting with neither user_id nor email returns user not found."""
         event_id = "evt-noid"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
@@ -526,8 +539,9 @@ class TestInviteParticipant:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -538,7 +552,7 @@ class TestInviteParticipant:
         )
         assert response.status_code == 404
 
-    def test_invite_already_participant(self, client, mock_db, mock_user):
+    def test_invite_already_participant(self, client, mock_async_db, mock_user):
         """Test inviting a user who is already a participant."""
         event_id = "evt-007"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
@@ -551,13 +565,14 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, id="existing-user-id")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(User, invited, id="existing-user-id")
+        mock_async_db.set_find_by(
             MealEventParticipant, existing_participant,
             meal_event_id=event_id, user_id="existing-user-id",
         )
@@ -569,7 +584,7 @@ class TestInviteParticipant:
         assert response.status_code == 400
 
     @patch("api.v1.meal_event.invite_participant.notify_meal_event_invite")
-    def test_invite_already_shared_event(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_already_shared_event(self, mock_notify, client, mock_async_db, mock_user):
         """Test inviting to an already-shared event doesn't toggle is_shared again."""
         event_id = "evt-shared"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id), is_shared=True)
@@ -579,13 +594,14 @@ class TestInviteParticipant:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.user import User
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited, id="new-inv-id")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(User, invited, id="new-inv-id")
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id="new-inv-id",
         )
@@ -607,7 +623,7 @@ class TestInviteParticipant:
 class TestRespondToInvite:
     """Tests for POST /v1/meal-events/{event_id}/respond."""
 
-    def test_respond_accepted(self, client, mock_db, mock_user):
+    def test_respond_accepted(self, client, mock_async_db, mock_user):
         """Test accepting a meal event invitation."""
         event_id = "evt-resp-1"
         event = MockMealEvent(id=event_id, owner_id="some-owner")
@@ -622,8 +638,9 @@ class TestRespondToInvite:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -638,7 +655,7 @@ class TestRespondToInvite:
         assert data["user_id"] == str(mock_user.id)
         assert data["assigned_tasks"] == ["bring dessert"]
 
-    def test_respond_declined(self, client, mock_db, mock_user):
+    def test_respond_declined(self, client, mock_async_db, mock_user):
         """Test declining a meal event invitation."""
         event_id = "evt-resp-2"
         event = MockMealEvent(id=event_id, owner_id="some-owner")
@@ -652,8 +669,9 @@ class TestRespondToInvite:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -666,7 +684,7 @@ class TestRespondToInvite:
         data = response.json()
         assert data["status"] == "declined"
 
-    def test_respond_maybe(self, client, mock_db, mock_user):
+    def test_respond_maybe(self, client, mock_async_db, mock_user):
         """Test responding 'maybe' to a meal event invitation."""
         event_id = "evt-resp-3"
         event = MockMealEvent(id=event_id, owner_id="some-owner")
@@ -680,8 +698,9 @@ class TestRespondToInvite:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -694,7 +713,7 @@ class TestRespondToInvite:
         data = response.json()
         assert data["status"] == "maybe"
 
-    def test_respond_invalid_status(self, client, mock_db, mock_user):
+    def test_respond_invalid_status(self, client, mock_async_db, mock_user):
         """Test responding with an invalid status."""
         event_id = "evt-resp-4"
 
@@ -704,7 +723,7 @@ class TestRespondToInvite:
         )
         assert response.status_code == 400
 
-    def test_respond_event_not_found(self, client, mock_db, mock_user):
+    def test_respond_event_not_found(self, client, mock_async_db, mock_user):
         """Test responding to a nonexistent event."""
         response = client.post(
             "/v1/meal-events/nonexistent/respond",
@@ -712,7 +731,7 @@ class TestRespondToInvite:
         )
         assert response.status_code == 404
 
-    def test_respond_not_participant(self, client, mock_db, mock_user):
+    def test_respond_not_participant(self, client, mock_async_db, mock_user):
         """Test responding when user is not a participant."""
         event_id = "evt-resp-5"
         event = MockMealEvent(id=event_id, owner_id="some-owner")
@@ -720,9 +739,10 @@ class TestRespondToInvite:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
         # No participant record found
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -733,7 +753,7 @@ class TestRespondToInvite:
         )
         assert response.status_code == 404
 
-    def test_respond_with_null_assigned_tasks(self, client, mock_db, mock_user):
+    def test_respond_with_null_assigned_tasks(self, client, mock_async_db, mock_user):
         """Test responding when assigned_tasks is None (covers `or []` branch)."""
         event_id = "evt-resp-null"
         event = MockMealEvent(id=event_id, owner_id="some-owner")
@@ -748,8 +768,9 @@ class TestRespondToInvite:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, participant,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -771,7 +792,7 @@ class TestRespondToInvite:
 class TestSkipMealEvent:
     """Tests for POST /v1/meal-events/{event_id}/skip."""
 
-    def test_skip_as_owner(self, client, mock_db, mock_user):
+    def test_skip_as_owner(self, client, mock_async_db, mock_user):
         """Test skipping a meal event as owner."""
         event_id = "evt-skip-1"
         event = MockMealEvent(id=event_id, owner_id=str(mock_user.id))
@@ -779,8 +800,9 @@ class TestSkipMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -791,7 +813,7 @@ class TestSkipMealEvent:
         assert data["status"] == "skipped"
         assert data["id"] == event_id
 
-    def test_skip_as_cohost(self, client, mock_db, mock_user):
+    def test_skip_as_cohost(self, client, mock_async_db, mock_user):
         """Test skipping as a cohost."""
         event_id = "evt-skip-2"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id")
@@ -802,8 +824,9 @@ class TestSkipMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, cohost,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -812,7 +835,7 @@ class TestSkipMealEvent:
         assert response.status_code == 200
         assert event.status == "skipped"
 
-    def test_skip_as_host_role(self, client, mock_db, mock_user):
+    def test_skip_as_host_role(self, client, mock_async_db, mock_user):
         """Test skipping as a participant with host role."""
         event_id = "evt-skip-host"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id")
@@ -823,8 +846,9 @@ class TestSkipMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, host,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -832,12 +856,12 @@ class TestSkipMealEvent:
         response = client.post(f"/v1/meal-events/{event_id}/skip")
         assert response.status_code == 200
 
-    def test_skip_event_not_found(self, client, mock_db, mock_user):
+    def test_skip_event_not_found(self, client, mock_async_db, mock_user):
         """Test skipping a nonexistent event."""
         response = client.post("/v1/meal-events/nonexistent/skip")
         assert response.status_code == 404
 
-    def test_skip_access_denied_guest(self, client, mock_db, mock_user):
+    def test_skip_access_denied_guest(self, client, mock_async_db, mock_user):
         """Test skipping when user is a guest (not owner/cohost)."""
         event_id = "evt-skip-3"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id")
@@ -848,8 +872,9 @@ class TestSkipMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, guest,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -857,7 +882,7 @@ class TestSkipMealEvent:
         response = client.post(f"/v1/meal-events/{event_id}/skip")
         assert response.status_code == 403
 
-    def test_skip_access_denied_no_participant(self, client, mock_db, mock_user):
+    def test_skip_access_denied_no_participant(self, client, mock_async_db, mock_user):
         """Test skipping when user has no participant record and is not owner."""
         event_id = "evt-skip-4"
         event = MockMealEvent(id=event_id, owner_id="other-owner-id")
@@ -865,8 +890,9 @@ class TestSkipMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -883,7 +909,7 @@ class TestSkipMealEvent:
 class TestUpdateMealEvent:
     """Tests for PUT /v1/meal-events/{event_id}."""
 
-    def test_update_title_as_owner(self, client, mock_db, mock_user):
+    def test_update_title_as_owner(self, client, mock_async_db, mock_user):
         """Test updating the title as the event owner."""
         event_id = "evt-upd-1"
         event = MockMealEvent(
@@ -895,8 +921,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -910,7 +937,7 @@ class TestUpdateMealEvent:
         assert data["title"] == "Updated Dinner"
 
     def test_update_meal_reminder_time_persists(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """meal-1 AC 7 Test C: update with a new reminder_time → the
         column is set and `last_reminder_sent_at` is untouched."""
@@ -930,8 +957,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -949,7 +977,7 @@ class TestUpdateMealEvent:
         assert event.last_reminder_sent_at == prior_sent
 
     def test_update_meal_reminder_time_clear_via_explicit_null(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Reset-to-default: sending `null` explicitly clears the
         override back to the slot default. (`None`-means-skip pattern
@@ -970,8 +998,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1005,7 +1034,7 @@ class TestUpdateMealEvent:
         return event
 
     def test_update_title_on_shared_event_fires_meal_event_updated(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Title change on a shared event → notify_meal_event_updated
         called (actor passed through)."""
@@ -1015,8 +1044,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1038,7 +1068,7 @@ class TestUpdateMealEvent:
         assert str(actor.id) == str(mock_user.id)
 
     def test_update_scheduled_at_only_passes_new_time_to_copy(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """When ONLY scheduled_at changed, `new_time` is formatted and
         passed through — that triggers the time-specific copy variant."""
@@ -1048,8 +1078,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1072,7 +1103,7 @@ class TestUpdateMealEvent:
         assert "PM" in kwargs["new_time"] or "AM" in kwargs["new_time"]
 
     def test_update_description_only_does_not_fire_notification(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Description is not in the trigger set → no fan-out."""
         event_id = "evt-upd-shared-desc"
@@ -1081,8 +1112,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1099,7 +1131,7 @@ class TestUpdateMealEvent:
         notify_mock.assert_not_called()
 
     def test_update_title_on_nonshared_event_does_not_fire(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-shared event → fan-out is a no-op (no co-cooks to wake)."""
         event_id = "evt-upd-solo-title"
@@ -1114,8 +1146,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1132,7 +1165,7 @@ class TestUpdateMealEvent:
         notify_mock.assert_not_called()
 
     def test_update_fanout_exception_does_not_500(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """A raise from the fan-out helper must not propagate — the
         edit already committed, so we log and return 200."""
@@ -1142,8 +1175,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1160,7 +1194,7 @@ class TestUpdateMealEvent:
         assert response.status_code == 200
         assert response.json()["title"] == "Will still succeed"
 
-    def test_update_as_cohost(self, client, mock_db, mock_user):
+    def test_update_as_cohost(self, client, mock_async_db, mock_user):
         """Test updating as a cohost."""
         event_id = "evt-upd-2"
         event = MockMealEvent(
@@ -1175,8 +1209,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, cohost,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1187,7 +1222,7 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 200
 
-    def test_update_event_not_found(self, client, mock_db, mock_user):
+    def test_update_event_not_found(self, client, mock_async_db, mock_user):
         """Test updating a nonexistent event."""
         response = client.put(
             "/v1/meal-events/nonexistent",
@@ -1196,7 +1231,7 @@ class TestUpdateMealEvent:
         assert response.status_code == 404
 
     def test_update_access_denied_guest_not_calendar_member(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Guest-participant who is NOT a calendar member → 403. Host/cohost/guest
         no longer grants edit authorization; calendar membership does. This is the
@@ -1207,8 +1242,9 @@ class TestUpdateMealEvent:
         from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             CalendarUser, None,
             user_id=mock_user.id, calendar_id=event.calendar_id,
         )
@@ -1220,7 +1256,7 @@ class TestUpdateMealEvent:
         assert response.status_code == 403
 
     def test_update_access_denied_no_calendar_membership(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """No calendar membership → 403 on PATCH."""
         event_id = "evt-upd-noacc"
@@ -1229,8 +1265,9 @@ class TestUpdateMealEvent:
         from utils.models.calendar_user import CalendarUser
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             CalendarUser, None,
             user_id=mock_user.id, calendar_id=event.calendar_id,
         )
@@ -1241,7 +1278,7 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 403
 
-    def test_update_invalid_status(self, client, mock_db, mock_user):
+    def test_update_invalid_status(self, client, mock_async_db, mock_user):
         """Test updating with an invalid status."""
         event_id = "evt-upd-4"
         event = MockMealEvent(
@@ -1252,8 +1289,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1264,7 +1302,7 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 400
 
-    def test_update_valid_status(self, client, mock_db, mock_user):
+    def test_update_valid_status(self, client, mock_async_db, mock_user):
         """Test updating with each valid status."""
         event_id = "evt-upd-status"
         event = MockMealEvent(
@@ -1276,8 +1314,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1291,7 +1330,7 @@ class TestUpdateMealEvent:
             data = response.json()
             assert data["status"] == status
 
-    def test_update_invalid_meal_type(self, client, mock_db, mock_user):
+    def test_update_invalid_meal_type(self, client, mock_async_db, mock_user):
         """Test updating with an invalid meal type."""
         event_id = "evt-upd-5"
         event = MockMealEvent(
@@ -1302,8 +1341,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1314,7 +1354,7 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 400
 
-    def test_update_valid_meal_types(self, client, mock_db, mock_user):
+    def test_update_valid_meal_types(self, client, mock_async_db, mock_user):
         """Test updating with each valid meal type."""
         event_id = "evt-upd-mtype"
         event = MockMealEvent(
@@ -1326,8 +1366,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1339,7 +1380,7 @@ class TestUpdateMealEvent:
             )
             assert response.status_code == 200
 
-    def test_update_recipe_id_valid(self, client, mock_db, mock_user):
+    def test_update_recipe_id_valid(self, client, mock_async_db, mock_user):
         """Test updating with a valid recipe_id."""
         event_id = "evt-upd-6"
         recipe_id = "recipe-valid-id"
@@ -1354,12 +1395,13 @@ class TestUpdateMealEvent:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         response = client.put(
             f"/v1/meal-events/{event_id}",
@@ -1368,7 +1410,7 @@ class TestUpdateMealEvent:
         assert response.status_code == 200
         assert event.recipe_id == recipe_id
 
-    def test_update_recipe_id_not_found(self, client, mock_db, mock_user):
+    def test_update_recipe_id_not_found(self, client, mock_async_db, mock_user):
         """Test updating with a nonexistent recipe_id."""
         event_id = "evt-upd-7"
         event = MockMealEvent(
@@ -1379,8 +1421,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1392,7 +1435,7 @@ class TestUpdateMealEvent:
         )
         assert response.status_code == 404
 
-    def test_update_all_fields(self, client, mock_db, mock_user):
+    def test_update_all_fields(self, client, mock_async_db, mock_user):
         """Test updating all optional fields."""
         event_id = "evt-upd-all"
         recipe_id = "recipe-all-id"
@@ -1407,12 +1450,13 @@ class TestUpdateMealEvent:
         from utils.models.meal_event_participant import MealEventParticipant
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         scheduled_time = datetime.now(UTC).isoformat()
         response = client.put(
@@ -1450,7 +1494,7 @@ class TestUpdateMealEvent:
         assert event.is_recurring is True
         assert event.recurrence_rule == "FREQ=WEEKLY"
 
-    def test_update_with_recipe_present_in_response(self, client, mock_db, mock_user):
+    def test_update_with_recipe_present_in_response(self, client, mock_async_db, mock_user):
         """Test response includes recipe summary when recipe is attached."""
         event_id = "evt-upd-recipe-resp"
         recipe = MockRecipe(
@@ -1467,8 +1511,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1484,7 +1529,7 @@ class TestUpdateMealEvent:
         assert data["recipe"]["prep_time"] == 10
         assert data["recipe"]["cook_time"] == 20
 
-    def test_update_with_participants_in_response(self, client, mock_db, mock_user):
+    def test_update_with_participants_in_response(self, client, mock_async_db, mock_user):
         """Test response includes participants list."""
         event_id = "evt-upd-parts"
         p_user = MockUser(id="part-user-id", email="part@example.com", name="Participant")
@@ -1505,8 +1550,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1521,7 +1567,7 @@ class TestUpdateMealEvent:
         assert data["participants"][0]["user_email"] == "part@example.com"
         assert data["participants"][0]["user_name"] == "Participant"
 
-    def test_update_participant_with_no_user(self, client, mock_db, mock_user):
+    def test_update_participant_with_no_user(self, client, mock_async_db, mock_user):
         """Test participant response when p.user is None (covers None branches)."""
         event_id = "evt-upd-nouser"
         participant = MockMealEventParticipant(
@@ -1541,8 +1587,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1557,7 +1604,7 @@ class TestUpdateMealEvent:
         assert data["participants"][0]["user_name"] is None
         assert data["participants"][0]["assigned_tasks"] == []
 
-    def test_update_with_parent_event_id(self, client, mock_db, mock_user):
+    def test_update_with_parent_event_id(self, client, mock_async_db, mock_user):
         """Test response includes parent_event_id when present."""
         event_id = "evt-upd-parent"
         parent_id = "parent-evt-id"
@@ -1570,8 +1617,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1584,7 +1632,7 @@ class TestUpdateMealEvent:
         data = response.json()
         assert data["parent_event_id"] == parent_id
 
-    def test_update_with_pantry_id(self, client, mock_db, mock_user):
+    def test_update_with_pantry_id(self, client, mock_async_db, mock_user):
         """Test response includes pantry_id when present."""
         event_id = "evt-upd-pantry"
         event = MockMealEvent(
@@ -1596,8 +1644,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1610,7 +1659,7 @@ class TestUpdateMealEvent:
         data = response.json()
         assert data["pantry_id"] == "pantry-abc"
 
-    def test_update_no_fields_changed(self, client, mock_db, mock_user):
+    def test_update_no_fields_changed(self, client, mock_async_db, mock_user):
         """Test updating with empty params (no fields changed)."""
         event_id = "evt-upd-empty"
         event = MockMealEvent(
@@ -1622,8 +1671,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, None,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )
@@ -1636,7 +1686,7 @@ class TestUpdateMealEvent:
         data = response.json()
         assert data["title"] == "Original Title"
 
-    def test_update_as_host_role(self, client, mock_db, mock_user):
+    def test_update_as_host_role(self, client, mock_async_db, mock_user):
         """Test updating as a participant with host role."""
         event_id = "evt-upd-host"
         event = MockMealEvent(
@@ -1651,8 +1701,9 @@ class TestUpdateMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             MealEventParticipant, host,
             meal_event_id=event_id, user_id=str(mock_user.id),
         )

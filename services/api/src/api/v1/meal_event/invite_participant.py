@@ -3,34 +3,13 @@
 from datetime import datetime
 
 from api.v1.meal_event.utils.notifications import notify_meal_event_invite
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.user import User
-from utils.services.notifications_bridge import notify_via_threadpool
-
-
-def _notify_invite_on_threadpool(
-    meal_event_id: str,
-    invited_user_id: str,
-    invited_by_id: str,
-    message: str | None,
-    *,
-    database,
-) -> None:
-    """Threadpool-side re-fetch + fan-out for notify_meal_event_invite.
-
-    `notify_meal_event_invite` takes model instances, not ids, so we
-    re-read them on the fresh sync session the bridge injects.
-    """
-    meal_event = database.find_by(MealEvent, id=meal_event_id)
-    invited_user = database.find_by(User, id=invited_user_id)
-    invited_by = database.find_by(User, id=invited_by_id)
-    if meal_event is None or invited_user is None or invited_by is None:
-        return
-    notify_meal_event_invite(meal_event, invited_user, invited_by, message)
 
 
 class InviteParticipant(AsyncEndpoint):
@@ -103,13 +82,14 @@ class InviteParticipant(AsyncEndpoint):
             meal_event.is_shared = True
             await self.database.db.commit()
 
-        # Send notification to invited user (fire-and-forget via threadpool).
-        await notify_via_threadpool(
-            _notify_invite_on_threadpool,
-            meal_event_id=str(meal_event.id),
-            invited_user_id=str(invited_user.id),
-            invited_by_id=str(user.id),
-            message=params.message,
+        # Send notification to invited user. `notify_meal_event_invite`
+        # takes model instances only (no DB session) but can make
+        # synchronous FCM calls; dispatch on the threadpool to keep the
+        # event loop responsive. No bridge needed — the helper has no
+        # `database` / `db_session` parameter.
+        await run_in_threadpool(
+            notify_meal_event_invite,
+            meal_event, invited_user, user, params.message,
         )
 
         return success(

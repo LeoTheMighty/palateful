@@ -11,6 +11,7 @@ from api.v1.meal_event._meal_binding import (
     require_meal_available_async,
     validate_recipe_meal_xor,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -22,9 +23,7 @@ from utils.models.meal_event import MealEvent
 from utils.models.meal_event_participant import MealEventParticipant
 from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
-from utils.models.user import User
 from utils.services.meal_event_notifications import notify_meal_event_updated
-from utils.services.notifications_bridge import notify_via_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -65,34 +64,6 @@ def _format_new_time(scheduled_at: datetime) -> str:
     ampm = "AM" if hour24 < 12 else "PM"
     minute_str = f"{scheduled_at.minute:02d}"
     return f"{hour12}:{minute_str} {ampm}"
-
-
-def _notify_updated_on_threadpool(
-    meal_event_id: str,
-    actor_id: str,
-    changed_fields: list[str],
-    new_time: str | None,
-    *,
-    database,
-) -> None:
-    """Threadpool-side re-fetch + fan-out for notify_meal_event_updated.
-
-    The async handler can't hand a sync `Session` to the sync notify
-    helper, so the bridge (`notify_via_threadpool`) injects a fresh sync
-    `database`; we re-fetch the event + actor on that session and
-    invoke the sync notifier with `db_session=database.db`.
-    """
-    meal_event = database.find_by(MealEvent, id=meal_event_id)
-    actor = database.find_by(User, id=actor_id)
-    if meal_event is None or actor is None:
-        return
-    notify_meal_event_updated(
-        meal_event,
-        actor,
-        changed_fields=changed_fields,
-        new_time=new_time,
-        db_session=database.db,
-    )
 
 
 class UpdateMealEvent(AsyncEndpoint):
@@ -264,12 +235,17 @@ class UpdateMealEvent(AsyncEndpoint):
                     if "scheduled_at" in changed_fields
                     else None
                 )
-                await notify_via_threadpool(
-                    _notify_updated_on_threadpool,
-                    meal_event_id=str(meal_event.id),
-                    actor_id=str(user.id),
+                # Dispatch the sync notifier on the threadpool to keep
+                # the event loop unblocked. `db_session=None` is
+                # explicit — `push_service.send_to_user` treats it as
+                # optional (used only for token-cleanup writes).
+                await run_in_threadpool(
+                    notify_meal_event_updated,
+                    meal_event,
+                    user,
                     changed_fields=changed_fields,
                     new_time=new_time_display,
+                    db_session=None,
                 )
             except Exception:
                 # Best-effort — a push-fanout failure must never 500 the

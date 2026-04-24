@@ -119,4 +119,4 @@ async def get_user_calendar_ids_async(user: User, database) -> list:
             CalendarUser.archived_at.is_(None),
         )
     )
-    return [row[0] for row in result.all()]
+    return list(result.scalars().all())

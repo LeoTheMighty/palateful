@@ -31,16 +31,16 @@ CALENDAR_ID = "abc00000-0000-0000-0000-000000000099"
 
 
 @pytest.fixture(autouse=True)
-def _no_default_membership(mock_db):
+def _no_default_membership(mock_async_db):
     """Force CalendarUser.find_by to return None unless explicitly set."""
     from utils.models.calendar_user import CalendarUser as RealCalendarUser
-    mock_db.set_find_by(RealCalendarUser, None)
+    mock_async_db.set_find_by(RealCalendarUser, None)
     yield
 
 
-def _set_membership(mock_db, *, user_id, calendar_id, role="owner", archived_at=None):
+def _set_membership(mock_async_db, *, user_id, calendar_id, role="owner", archived_at=None):
     from utils.models.calendar_user import CalendarUser as RealCalendarUser
-    mock_db.set_find_by(
+    mock_async_db.set_find_by(
         RealCalendarUser,
         MockCalendarUser(
             user_id=user_id,
@@ -93,7 +93,7 @@ class TestRequireCalendarAccess:
 
 
 class TestDeleteCalendarNonMember:
-    def test_non_member_returns_404(self, client, mock_db, mock_user):
+    def test_non_member_returns_404(self, client, mock_async_db, mock_user):
         # No membership set → find_by returns None → 404 path.
         response = client.delete(f"/v1/calendars/{CALENDAR_ID}")
         assert response.status_code == 404
@@ -105,13 +105,13 @@ class TestDeleteCalendarNonMember:
 
 
 class TestUpdateCalendarBranches:
-    def test_non_member_returns_404(self, client, mock_db, mock_user):
+    def test_non_member_returns_404(self, client, mock_async_db, mock_user):
         response = client.patch(
             f"/v1/calendars/{CALENDAR_ID}", json={"name": "Renamed"}
         )
         assert response.status_code == 404
 
-    def test_empty_body_returns_200_no_op(self, client, mock_db, mock_user):
+    def test_empty_body_returns_200_no_op(self, client, mock_async_db, mock_user):
         """PATCH with no name/description still returns the calendar — covers the
         `if updates:` branch where updates is empty (51->54)."""
         from utils.models.calendar import Calendar as RealCalendar
@@ -119,14 +119,14 @@ class TestUpdateCalendarBranches:
             id=CALENDAR_ID, owner_id=str(mock_user.id), name="Meal Prep"
         )
         _set_membership(
-            mock_db,
+            mock_async_db,
             user_id=str(mock_user.id),
             calendar_id=CALENDAR_ID,
             role="owner",
         )
-        mock_db.set_find_by(RealCalendar, cal, id=CALENDAR_ID)
+        mock_async_db.set_find_by(RealCalendar, cal, id=CALENDAR_ID)
         # member_count query returns 1 via MockQuery default.
-        mock_db.db.query.return_value = MockQuery([1])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[1])
 
         response = client.patch(f"/v1/calendars/{CALENDAR_ID}", json={})
         assert response.status_code == 200, response.text
@@ -139,16 +139,16 @@ class TestUpdateCalendarBranches:
 
 class TestListMealEventsScopedByCalendar:
     def test_with_calendar_id_query_calls_require_calendar_access(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         _set_membership(
-            mock_db,
+            mock_async_db,
             user_id=str(mock_user.id),
             calendar_id=CALENDAR_ID,
             role="editor",
         )
         # Empty rule list, empty event list — we just need the path to execute.
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         start = datetime.now(UTC).date().isoformat()
         end = (datetime.now(UTC) + timedelta(days=7)).date().isoformat()
@@ -171,15 +171,15 @@ class TestListMealEventsScopedByCalendar:
 
 class TestListRecurrenceRulesScopedByCalendar:
     def test_with_calendar_id_query_calls_require_calendar_access(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         _set_membership(
-            mock_db,
+            mock_async_db,
             user_id=str(mock_user.id),
             calendar_id=CALENDAR_ID,
             role="editor",
         )
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.get(
             "/v1/recurrence-rules", params={"calendar_id": CALENDAR_ID}
@@ -194,7 +194,7 @@ class TestListRecurrenceRulesScopedByCalendar:
 
 
 class TestCreateRecurrenceRuleEmptyCalendarId:
-    def test_empty_calendar_id_returns_400(self, client, mock_db, mock_user):
+    def test_empty_calendar_id_returns_400(self, client, mock_async_db, mock_user):
         from datetime import date
         response = client.post(
             "/v1/recurrence-rules",
@@ -219,7 +219,7 @@ class TestCreateRecurrenceRuleEmptyCalendarId:
 
 
 class TestUpdateMealEventBranches:
-    def test_empty_calendar_id_returns_400(self, client, mock_db, mock_user):
+    def test_empty_calendar_id_returns_400(self, client, mock_async_db, mock_user):
         from utils.models.meal_event import MealEvent as RealMealEvent
         event_id = "e0000000-0000-0000-0000-000000000099"
         event = MockMealEvent(
@@ -228,12 +228,12 @@ class TestUpdateMealEventBranches:
             calendar_id=CALENDAR_ID,
         )
         _set_membership(
-            mock_db,
+            mock_async_db,
             user_id=str(mock_user.id),
             calendar_id=CALENDAR_ID,
             role="owner",
         )
-        mock_db.set_find_by(RealMealEvent, event, id=event_id)
+        mock_async_db.set_find_by(RealMealEvent, event, id=event_id)
 
         response = client.put(
             f"/v1/meal-events/{event_id}",
@@ -242,7 +242,7 @@ class TestUpdateMealEventBranches:
         # Covers update_meal_event.py:62 (empty calendar_id rejected).
         assert response.status_code == 400
 
-    def test_move_to_different_calendar(self, client, mock_db, mock_user):
+    def test_move_to_different_calendar(self, client, mock_async_db, mock_user):
         """PATCH meal_event.calendar_id to a new calendar — covers
         update_meal_event.py:71-72 (require_calendar_access on destination
         calendar, then reassign)."""
@@ -259,22 +259,22 @@ class TestUpdateMealEventBranches:
         )
         # Caller has membership on BOTH calendars (source via existing event,
         # destination via the move-target check).
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             RealCalendarUser,
             MockCalendarUser(
                 user_id=str(mock_user.id), calendar_id=source_cal, role="owner"
             ),
             user_id=str(mock_user.id), calendar_id=source_cal,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             RealCalendarUser,
             MockCalendarUser(
                 user_id=str(mock_user.id), calendar_id=dest_cal, role="editor"
             ),
             user_id=str(mock_user.id), calendar_id=dest_cal,
         )
-        mock_db.set_find_by(RealMealEvent, event, id=event_id)
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.set_find_by(RealMealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.put(
             f"/v1/meal-events/{event_id}",
@@ -293,7 +293,11 @@ class TestUpdateRecurrenceRuleMoveToCalendar:
     def test_move_to_different_calendar(self, client, mock_db, mock_user):
         """PATCH rule.calendar_id to a new calendar — covers
         update_recurrence_rule.py:143-147 (require_calendar_access on
-        destination + cascade to future materialized events)."""
+        destination + cascade to future materialized events).
+
+        recurrence_rule is still sync (aam-30 scope) so this test uses
+        the sync `mock_db` fixture.
+        """
         import uuid as _uuid
         from test_recurrence_rule import MockMealRecurrenceRule
         from utils.models.calendar_user import CalendarUser as RealCalendarUser
@@ -345,7 +349,7 @@ class TestUpdateRecurrenceRuleMoveToCalendar:
 
 class TestUpdateCalendarMemberIntegrityRaceCovered:
     """The IntegrityError rollback path was already covered by cal-share-2 tests
-    via `mock_db.db.flush.side_effect = IntegrityError(...)`. This is just a
+    via `mock_async_db.db.flush.side_effect = IntegrityError(...)`. This is just a
     placeholder pin to surface it next to the others."""
 
     def test_already_covered(self):
