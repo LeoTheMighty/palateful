@@ -1365,7 +1365,7 @@ development_status:
   aam-16-activity-domain-async: done
   aam-17-search-domain-async: done
   aam-18-import-job-domain-async: backlog
-  aam-19-user-profile-push-tokens-async: backlog
+  aam-19-user-profile-push-tokens-async: done
   aam-20-admin-domain-async: backlog
   aam-21-misc-small-routers-async: done
   # Phase 4 — Middleware + lifespan

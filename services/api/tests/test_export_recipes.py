@@ -16,7 +16,7 @@ from conftest import (
 )
 
 
-def _setup_recipe_book(mock_db, mock_user, book_id=None, recipe_id=None):
+def _setup_recipe_book(mock_async_db, mock_user, book_id=None, recipe_id=None):
     """Set up a single book with one recipe for success-path tests."""
     book_id = book_id or str(uuid.uuid4())
     recipe_id = recipe_id or str(uuid.uuid4())
@@ -47,13 +47,16 @@ def _setup_recipe_book(mock_db, mock_user, book_id=None, recipe_id=None):
     from utils.models.recipe_step import RecipeStep
     from utils.models.recipe_version import RecipeVersion
 
-    mock_db.set_where(RecipeBookUser, [membership])
-    mock_db.set_find_by(RecipeBook, book, id=book_id)
-    mock_db.set_where(Recipe, [recipe])
-    mock_db.set_where(RecipeStep, [step])
-    mock_db.set_where(RecipeNote, [note])
-    mock_db.set_where(RecipeVersion, [version])
-    mock_db.db.query.return_value = MockQuery([(ri, ingredient)])
+    mock_async_db.set_where(RecipeBookUser, [membership])
+    mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+    mock_async_db.set_where(Recipe, [recipe])
+    mock_async_db.set_where(RecipeStep, [step])
+    mock_async_db.set_where(RecipeNote, [note])
+    mock_async_db.set_where(RecipeVersion, [version])
+    # aam-19: ExportRecipes now uses `await self.db.execute(select(...).join(...))`
+    # for the (RecipeIngredient, Ingredient) pair — seed via mock_async_db.
+    from conftest import MockExecuteResult
+    mock_async_db.db.execute.return_value = MockExecuteResult([(ri, ingredient)])
 
     return book_id, recipe_id
 
@@ -61,9 +64,9 @@ def _setup_recipe_book(mock_db, mock_user, book_id=None, recipe_id=None):
 class TestExportRecipesSuccess:
     """Core success path — data is returned correctly."""
 
-    def test_export_returns_correct_counts(self, client, mock_db, mock_user):
+    def test_export_returns_correct_counts(self, client, mock_async_db, mock_user):
         """Returns correct book_count and recipe_count."""
-        book_id, _ = _setup_recipe_book(mock_db, mock_user)
+        book_id, _ = _setup_recipe_book(mock_async_db, mock_user)
 
         response = client.get("/v1/users/me/export")
 
@@ -73,9 +76,9 @@ class TestExportRecipesSuccess:
         assert data["recipe_count"] == 1
         assert "exported_at" in data
 
-    def test_export_returns_book_and_recipe_structure(self, client, mock_db, mock_user):
+    def test_export_returns_book_and_recipe_structure(self, client, mock_async_db, mock_user):
         """Returns correct book/recipe structure with all fields."""
-        book_id, recipe_id = _setup_recipe_book(mock_db, mock_user)
+        book_id, recipe_id = _setup_recipe_book(mock_async_db, mock_user)
 
         response = client.get("/v1/users/me/export")
 
@@ -91,10 +94,10 @@ class TestExportRecipesSuccess:
         assert recipe["name"] == "Pasta"
 
     def test_export_includes_steps_ingredients_notes_versions(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Recipe data includes all nested collections."""
-        _setup_recipe_book(mock_db, mock_user)
+        _setup_recipe_book(mock_async_db, mock_user)
 
         response = client.get("/v1/users/me/export")
 
@@ -119,11 +122,11 @@ class TestExportRecipesSuccess:
 class TestExportRecipesEmptyCollection:
     """Empty collection paths."""
 
-    def test_export_empty_collection(self, client, mock_db, mock_user):
+    def test_export_empty_collection(self, client, mock_async_db, mock_user):
         """Empty collection returns book_count=0, recipe_count=0, books=[]."""
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_where(RecipeBookUser, [])
+        mock_async_db.set_where(RecipeBookUser, [])
 
         response = client.get("/v1/users/me/export")
 
@@ -133,7 +136,7 @@ class TestExportRecipesEmptyCollection:
         assert data["recipe_count"] == 0
         assert data["books"] == []
 
-    def test_export_book_with_no_recipes(self, client, mock_db, mock_user):
+    def test_export_book_with_no_recipes(self, client, mock_async_db, mock_user):
         """A book with no recipes contributes to book_count but not recipe_count."""
         book_id = str(uuid.uuid4())
         membership = MockRecipeBookUser(
@@ -145,9 +148,9 @@ class TestExportRecipesEmptyCollection:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_where(RecipeBookUser, [membership])
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.set_where(Recipe, [])
+        mock_async_db.set_where(RecipeBookUser, [membership])
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_where(Recipe, [])
 
         response = client.get("/v1/users/me/export")
 
@@ -161,7 +164,7 @@ class TestExportRecipesEmptyCollection:
 class TestExportRecipesSkipsArchivedBooks:
     """Archived books are excluded from the export."""
 
-    def test_archived_book_is_skipped(self, client, mock_db, mock_user):
+    def test_archived_book_is_skipped(self, client, mock_async_db, mock_user):
         """Membership for an archived (or missing) book is skipped — book_count stays 0."""
         book_id = str(uuid.uuid4())
         membership = MockRecipeBookUser(
@@ -171,9 +174,9 @@ class TestExportRecipesSkipsArchivedBooks:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_where(RecipeBookUser, [membership])
+        mock_async_db.set_where(RecipeBookUser, [membership])
         # find_by returns None — simulates archived or deleted book
-        mock_db.set_find_by(RecipeBook, None, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, None, id=book_id)
 
         response = client.get("/v1/users/me/export")
 

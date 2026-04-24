@@ -1407,3 +1407,72 @@ class TestRecordClientError:
         ]
         assert rows[0].method is None
         assert rows[0].path is None
+
+
+class TestBootstrapDefaultListSync:
+    """Direct coverage for `_bootstrap_default_list_sync` (aam-19).
+
+    The TestCompleteOnboarding cases patch the helper at its import site
+    so the threadpool side-effect is mocked out — leaving the helper's
+    own body uncovered. These tests exercise the helper directly with a
+    fully-mocked sync session + bootstrap dep so every branch runs.
+    """
+
+    def test_bootstrap_creates_default_list_when_user_found(self):
+        from api.v1.user.complete_onboarding import _bootstrap_default_list_sync
+
+        fake_session = MagicMock()
+        fake_user = MagicMock()
+        fake_session.query.return_value.filter.return_value.first.return_value = fake_user
+
+        with patch(
+            "utils.services.database.SessionLocal",
+            return_value=fake_session,
+        ), patch(
+            "api.v1.shopping_list.bootstrap.ensure_default_shopping_list",
+        ) as mock_bootstrap:
+            _bootstrap_default_list_sync(uuid.uuid4())
+
+        mock_bootstrap.assert_called_once()
+        fake_session.close.assert_called_once()
+
+    def test_bootstrap_skips_when_user_missing(self):
+        """If the user can't be re-fetched in the sync session, the helper
+        closes the session without calling ensure_default_shopping_list."""
+        from api.v1.user.complete_onboarding import _bootstrap_default_list_sync
+
+        fake_session = MagicMock()
+        fake_session.query.return_value.filter.return_value.first.return_value = None
+
+        with patch(
+            "utils.services.database.SessionLocal",
+            return_value=fake_session,
+        ), patch(
+            "api.v1.shopping_list.bootstrap.ensure_default_shopping_list",
+        ) as mock_bootstrap:
+            _bootstrap_default_list_sync(uuid.uuid4())
+
+        mock_bootstrap.assert_not_called()
+        fake_session.close.assert_called_once()
+
+    def test_bootstrap_closes_session_even_when_helper_raises(self):
+        """`finally: session.close()` must run even if the helper raises."""
+        from api.v1.user.complete_onboarding import _bootstrap_default_list_sync
+
+        fake_session = MagicMock()
+        fake_user = MagicMock()
+        fake_session.query.return_value.filter.return_value.first.return_value = fake_user
+
+        with patch(
+            "utils.services.database.SessionLocal",
+            return_value=fake_session,
+        ), patch(
+            "api.v1.shopping_list.bootstrap.ensure_default_shopping_list",
+            side_effect=RuntimeError("boom"),
+        ):
+            try:
+                _bootstrap_default_list_sync(uuid.uuid4())
+            except RuntimeError:
+                pass
+
+        fake_session.close.assert_called_once()
