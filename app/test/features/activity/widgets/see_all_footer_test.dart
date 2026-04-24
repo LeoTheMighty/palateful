@@ -92,18 +92,18 @@ class _FakeApiClient extends ApiClient {
   }
 
   @override
-  Future<Response> listImportJobs({
-    String? status,
-    int limit = 20,
-    int offset = 0,
-    bool includeArchived = false,
-    bool archivedOnly = false,
+  Future<Response> listSeeAllImportItems({
     String? cursor,
+    int limit = 50,
   }) async {
+    // Provider now calls this endpoint directly instead of the old
+    // two-hop (listImportJobs → listImportItemsBatch). Flatten the
+    // queued `_Page.items` into a single items list and return it
+    // with the page's cursor.
     jobCursorsSeen.add(cursor);
     if (failPage) {
       throw DioException(
-        requestOptions: RequestOptions(path: '/v1/import-jobs'),
+        requestOptions: RequestOptions(path: '/v1/import-items/see-all'),
         response: Response(
           requestOptions: RequestOptions(path: ''),
           statusCode: 500,
@@ -111,43 +111,21 @@ class _FakeApiClient extends ApiClient {
       );
     }
     if (pagesToReturn.isEmpty) {
-      return _fakeResponse({'jobs': <dynamic>[], 'next_cursor': null});
+      return _fakeResponse({'items': <dynamic>[], 'next_cursor': null});
     }
     final page = pagesToReturn.removeAt(0);
-    return _fakeResponse({
-      'jobs': page.jobs,
-      'next_cursor': page.nextCursor,
-    });
-  }
-
-  @override
-  Future<Response> listImportItems(
-    String jobId, {
-    String? status,
-    bool includeArchived = false,
-  }) async {
-    // Lookup across all queued pages' items. (Even already-consumed
-    // pages keep their items referenced via the fake — simpler than
-    // tracking consumed state explicitly.)
-    // We keep a shared map built in setup.
-    final items = _itemsByJobId[jobId] ?? const <Map<String, dynamic>>[];
-    return _fakeResponse({'items': items});
-  }
-
-  @override
-  Future<Response> listImportItemsBatch(
-    List<String> jobIds, {
-    String? status,
-    bool includeArchived = false,
-  }) async {
-    final out = <dynamic>[];
-    for (final jobId in jobIds) {
-      final items = _itemsByJobId[jobId] ?? const <Map<String, dynamic>>[];
+    final flatItems = <dynamic>[];
+    for (final job in page.jobs) {
+      final jobId = job['id'].toString();
+      final items = page.itemsByJobId[jobId] ?? const <Map<String, dynamic>>[];
       for (final item in items) {
-        out.add({...item, 'job_id': jobId});
+        flatItems.add({...item, 'job_id': jobId});
       }
     }
-    return _fakeResponse({'items': out});
+    return _fakeResponse({
+      'items': flatItems,
+      'next_cursor': page.nextCursor,
+    });
   }
 
   final Map<String, List<Map<String, dynamic>>> _itemsByJobId = {};
