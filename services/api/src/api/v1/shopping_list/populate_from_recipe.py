@@ -4,18 +4,21 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
+from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 
 
-class PopulateFromRecipe(Endpoint):
+class PopulateFromRecipe(AsyncEndpoint):
     """Add all ingredients from a recipe to an existing shopping list."""
 
-    def execute(self, list_id: str, params: "PopulateFromRecipe.Params"):
+    async def execute(self, list_id: str, params: "PopulateFromRecipe.Params"):
         """
         Add all non-archived ingredients from a recipe to a shopping list.
 
@@ -28,8 +31,16 @@ class PopulateFromRecipe(Endpoint):
         """
         user = self.user
 
-        # Find recipe
-        recipe = self.database.find_by(Recipe, id=params.recipe_id)
+        recipe_result = await self.db.execute(
+            select(Recipe)
+            .options(
+                selectinload(Recipe.ingredients).selectinload(
+                    RecipeIngredient.ingredient
+                )
+            )
+            .where(Recipe.id == params.recipe_id)
+        )
+        recipe = recipe_result.scalars().first()
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -37,8 +48,7 @@ class PopulateFromRecipe(Endpoint):
                 code=ErrorCode.RECIPE_NOT_FOUND,
             )
 
-        # Verify user can view recipe
-        recipe_membership = self.database.find_by(
+        recipe_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id,
@@ -50,8 +60,12 @@ class PopulateFromRecipe(Endpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED,
             )
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(selectinload(ShoppingList.items))
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -59,9 +73,8 @@ class PopulateFromRecipe(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Verify user can edit shopping list
         is_owner = shopping_list.owner_id == user.id
-        list_membership = self.database.find_by(
+        list_membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -76,7 +89,6 @@ class PopulateFromRecipe(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Build deduplication set: skip items already added from the same recipe+ingredient
         existing_keys = {
             (item.ingredient_id, item.recipe_id)
             for item in shopping_list.items
@@ -113,8 +125,7 @@ class PopulateFromRecipe(Endpoint):
                 recipe_id=recipe.id,
                 added_by_user_id=user.id,
             )
-            self.database.create(item)
-            self.database.db.refresh(item)
+            await self.database.create(item)
 
             added_items.append(
                 PopulateFromRecipe.ItemResponse(
@@ -130,8 +141,6 @@ class PopulateFromRecipe(Endpoint):
                     updated_at=item.updated_at,
                 )
             )
-
-        self.database.db.commit()
 
         return success(
             data=PopulateFromRecipe.Response(
