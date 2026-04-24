@@ -4,26 +4,26 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.invitation import Invitation
 from utils.models.user import User
 
 
-class GetMe(Endpoint):
+class GetMe(AsyncEndpoint):
     """Get the current authenticated user."""
 
-    def execute(self):
+    async def execute(self):
         """Return the current user's data."""
         user: User = self.user
 
         # Count pending invitations for badge
-        pending_count = self.db.execute(
+        pending_count = (await self.db.execute(
             select(func.count(Invitation.id)).where(
                 Invitation.to_user_id == user.id,
                 Invitation.status == "pending",
                 Invitation.archived_at.is_(None),
             )
-        ).scalar() or 0
+        )).scalar() or 0
 
         return success(
             data=GetMe.Response(
