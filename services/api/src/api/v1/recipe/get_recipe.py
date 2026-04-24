@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from api.v1.recipe._response import build_recipe_response
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -54,10 +54,10 @@ def _lean_default_enabled() -> bool:
     return os.environ.get("RECIPES_LEAN_DEFAULT", "").lower() == "true"
 
 
-class GetRecipe(Endpoint):
+class GetRecipe(AsyncEndpoint):
     """Get recipe details by ID."""
 
-    def execute(
+    async def execute(
         self,
         recipe_id: str,
         debug: bool = False,
@@ -81,7 +81,7 @@ class GetRecipe(Endpoint):
         user: User = self.user
 
         # Get recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -90,7 +90,7 @@ class GetRecipe(Endpoint):
             )
 
         # Check access via recipe book
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id
@@ -102,7 +102,7 @@ class GetRecipe(Endpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED
             )
 
-        response_model = build_recipe_response(
+        response_model = await build_recipe_response(
             self.database,
             user,
             recipe,

@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -11,10 +11,10 @@ from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
 
 
-class GetRecipeVersion(Endpoint):
+class GetRecipeVersion(AsyncEndpoint):
     """Get the full snapshot for a specific recipe version."""
 
-    def execute(self, recipe_id: str, version_id: str):
+    async def execute(self, recipe_id: str, version_id: str):
         """
         Get a single version snapshot by ID.
 
@@ -28,7 +28,7 @@ class GetRecipeVersion(Endpoint):
         user: User = self.user
 
         # Get recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -37,7 +37,7 @@ class GetRecipeVersion(Endpoint):
             )
 
         # Check access via recipe book membership
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id
@@ -50,7 +50,7 @@ class GetRecipeVersion(Endpoint):
             )
 
         # Get the specific version
-        version = self.database.find_by(RecipeVersion, id=version_id)
+        version = await self.database.find_by(RecipeVersion, id=version_id)
         if not version or str(version.recipe_id) != str(recipe_id):
             raise APIException(
                 status_code=404,

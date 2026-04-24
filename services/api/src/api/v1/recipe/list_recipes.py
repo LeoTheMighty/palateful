@@ -3,7 +3,8 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, or_, select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -11,10 +12,10 @@ from utils.models.user import User
 from utils.models.user_favorite import UserFavorite
 
 
-class ListRecipes(Endpoint):
+class ListRecipes(AsyncEndpoint):
     """List recipes in a recipe book."""
 
-    def execute(
+    async def execute(
         self,
         book_id: str,
         limit: int = 20,
@@ -38,7 +39,7 @@ class ListRecipes(Endpoint):
         user: User = self.user
 
         # Check access
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=book_id
@@ -51,47 +52,45 @@ class ListRecipes(Endpoint):
             )
 
         # Build query (exclude archived recipes)
-        query = self.db.query(Recipe).filter(
+        stmt = select(Recipe).where(
             Recipe.recipe_book_id == book_id,
             Recipe.archived_at.is_(None),
         )
 
         # Apply search filter
         if search:
-            query = query.filter(Recipe.name.ilike(f"%{search}%"))
+            stmt = stmt.where(Recipe.name.ilike(f"%{search}%"))
 
         # Apply vibe filter
         if vibe:
-            from sqlalchemy import or_
-            query = query.filter(
+            stmt = stmt.where(
                 or_(Recipe.primary_vibe == vibe, Recipe.secondary_vibe == vibe)
             )
 
         # Get total count
-        total = query.count()
+        count_result = await self.db.execute(
+            select(func.count()).select_from(stmt.subquery())
+        )
+        total = int(count_result.scalar_one())
 
         # Apply ordering and pagination
-        recipes = (
-            query
-            .order_by(Recipe.name)
-            .offset(offset)
-            .limit(limit)
-            .all()
+        list_result = await self.db.execute(
+            stmt.order_by(Recipe.name).offset(offset).limit(limit)
         )
+        recipes = list(list_result.scalars().all())
 
-        # Get user's favorites for these recipes
+        # pbq-3 fast path: bulk favorite join — one SELECT over the page's
+        # recipe_ids, not per-recipe round-trips.
         recipe_ids = [r.id for r in recipes]
-        favorited_ids = set()
+        favorited_ids: set = set()
         if recipe_ids:
-            favorites = (
-                self.db.query(UserFavorite.recipe_id)
-                .filter(
+            fav_result = await self.db.execute(
+                select(UserFavorite.recipe_id).where(
                     UserFavorite.user_id == user.id,
-                    UserFavorite.recipe_id.in_(recipe_ids)
+                    UserFavorite.recipe_id.in_(recipe_ids),
                 )
-                .all()
             )
-            favorited_ids = {f.recipe_id for f in favorites}
+            favorited_ids = set(fav_result.scalars().all())
 
         items = [
             ListRecipes.RecipeItem(

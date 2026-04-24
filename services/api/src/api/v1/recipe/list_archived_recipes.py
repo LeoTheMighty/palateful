@@ -3,16 +3,17 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ListArchivedRecipes(Endpoint):
+class ListArchivedRecipes(AsyncEndpoint):
     """List the current user's archived recipes."""
 
-    def execute(self):
+    async def execute(self):
         """
         List all archived recipes across books the user has access to.
 
@@ -22,22 +23,24 @@ class ListArchivedRecipes(Endpoint):
         user: User = self.user
 
         # Get all recipe book IDs the user has membership in
-        memberships = self.database.where(RecipeBookUser, user_id=str(user.id)).all()
+        memberships = await self.database.where(
+            RecipeBookUser, user_id=str(user.id)
+        ).all()
         book_ids = [m.recipe_book_id for m in memberships]
 
         if not book_ids:
             return success(data=ListArchivedRecipes.Response(items=[], total=0))
 
         # Query archived recipes across those books
-        results = (
-            self.database.db.query(Recipe)
-            .filter(
+        list_result = await self.database.db.execute(
+            select(Recipe)
+            .where(
                 Recipe.recipe_book_id.in_(book_ids),
                 Recipe.archived_at.isnot(None),
             )
             .order_by(Recipe.archived_at.desc())
-            .all()
         )
+        results = list(list_result.scalars().all())
 
         items = [
             ListArchivedRecipes.ArchivedRecipeItem(

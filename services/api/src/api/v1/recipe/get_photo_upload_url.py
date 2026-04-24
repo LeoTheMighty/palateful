@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from config import settings
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -27,10 +27,10 @@ def _get_aws_service():  # pragma: no cover — AWS singleton init, mocked in te
     return _aws_service
 
 
-class GetRecipePhotoUploadUrl(Endpoint):
+class GetRecipePhotoUploadUrl(AsyncEndpoint):
     """Generate a presigned S3 URL for uploading a recipe hero photo."""
 
-    def execute(self, recipe_id: str, params: "GetRecipePhotoUploadUrl.Params"):
+    async def execute(self, recipe_id: str, params: "GetRecipePhotoUploadUrl.Params"):
         """
         Generate a presigned URL for uploading a recipe photo to S3.
 
@@ -42,7 +42,7 @@ class GetRecipePhotoUploadUrl(Endpoint):
             Presigned upload URL, S3 key, content type, and public URL.
         """
         # Verify recipe exists
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -51,7 +51,7 @@ class GetRecipePhotoUploadUrl(Endpoint):
             )
 
         # Verify user has access to the recipe's book
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(self.user.id),
             recipe_book_id=recipe.recipe_book_id,
@@ -81,7 +81,7 @@ class GetRecipePhotoUploadUrl(Endpoint):
         }
         content_type = content_type_map.get(extension.lower(), "image/jpeg")
 
-        upload_url = _get_aws_service().generate_presigned_upload_url(
+        upload_url = await _get_aws_service().generate_presigned_upload_url_async(
             s3_key=s3_key,
             content_type=content_type,
             expires_in=3600,

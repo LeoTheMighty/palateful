@@ -1,7 +1,8 @@
 """Get public recipe by share token (no auth required)."""
 
 from api.v1.recipe.get_public_recipe import GetPublicRecipe
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
@@ -11,16 +12,17 @@ from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 
 
-class GetPublicRecipeByToken(Endpoint):
+class GetPublicRecipeByToken(AsyncEndpoint):
     """Get recipe by its public share token."""
 
-    def execute(self, token: str):
-        recipe = (
-            self.db.query(Recipe)
-            .filter(Recipe.share_token == token)
-            .filter(Recipe.archived_at.is_(None))
-            .first()
+    async def execute(self, token: str):
+        recipe_result = await self.db.execute(
+            select(Recipe)
+            .where(Recipe.share_token == token)
+            .where(Recipe.archived_at.is_(None))
+            .limit(1)
         )
+        recipe = recipe_result.scalars().first()
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -28,20 +30,22 @@ class GetPublicRecipeByToken(Endpoint):
                 code=ErrorCode.RECIPE_NOT_FOUND,
             )
 
-        recipe_book = self.database.find_by(RecipeBook, id=recipe.recipe_book_id)
+        recipe_book = await self.database.find_by(
+            RecipeBook, id=recipe.recipe_book_id
+        )
 
-        steps = self.database.where(
+        steps = await self.database.where(
             RecipeStep, asc="step_number", recipe_id=recipe.id
         ).all()
 
-        recipe_ingredients = (
-            self.db.query(RecipeIngredient, Ingredient)
+        ri_result = await self.db.execute(
+            select(RecipeIngredient, Ingredient)
             .join(Ingredient, RecipeIngredient.ingredient_id == Ingredient.id)
-            .filter(RecipeIngredient.recipe_id == recipe.id)
-            .filter(RecipeIngredient.archived_at.is_(None))
+            .where(RecipeIngredient.recipe_id == recipe.id)
+            .where(RecipeIngredient.archived_at.is_(None))
             .order_by(RecipeIngredient.order_index)
-            .all()
         )
+        recipe_ingredients = list(ri_result.all())
 
         return success(
             data=GetPublicRecipe.Response(

@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
@@ -11,10 +11,10 @@ from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
 
 
-class GetRecipeVersions(Endpoint):
+class GetRecipeVersions(AsyncEndpoint):
     """List version history for a recipe."""
 
-    def execute(self, recipe_id: str):
+    async def execute(self, recipe_id: str):
         """
         Get version history for a recipe (without full snapshots).
 
@@ -27,7 +27,7 @@ class GetRecipeVersions(Endpoint):
         user: User = self.user
 
         # Get recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -36,7 +36,7 @@ class GetRecipeVersions(Endpoint):
             )
 
         # Check access via recipe book
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id
@@ -49,7 +49,7 @@ class GetRecipeVersions(Endpoint):
             )
 
         # Fetch versions ordered by version number descending (newest first)
-        versions = self.database.where(
+        versions = await self.database.where(
             RecipeVersion,
             desc="version_number",
             recipe_id=recipe_id,

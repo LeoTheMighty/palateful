@@ -5,10 +5,16 @@ rf-2 extracted this helper out of `GetRecipe.execute` so `toggle_favorite`
 duplicating the query pipeline. `GetRecipe` still owns the endpoint
 contract — this module is an internal helper reused within the recipe
 package.
+
+aam-12a: converted to `async def`. `database` is an `AsyncDatabase`;
+every DB-touching call is `await`ed. The raw ingredient-join is now an
+`await db.execute(select(...))`. aam-12b's `update_recipe` will be the
+third caller once the write-side conversion lands.
 """
 
 from decimal import Decimal
 
+from sqlalchemy import select
 from utils.formatting import format_quantity
 from utils.models.import_item import ImportItem
 from utils.models.ingredient import Ingredient
@@ -21,7 +27,7 @@ from utils.models.user import User
 from utils.models.user_favorite import UserFavorite
 
 
-def build_recipe_response(
+async def build_recipe_response(
     database,
     user: User,
     recipe: Recipe,
@@ -46,7 +52,7 @@ def build_recipe_response(
 
     db = database.db
 
-    steps = database.where(
+    steps = await database.where(
         RecipeStep,
         asc="step_number",
         recipe_id=recipe.id,
@@ -67,13 +73,13 @@ def build_recipe_response(
         for step in steps
     ]
 
-    recipe_ingredients = (
-        db.query(RecipeIngredient, Ingredient)
+    ri_result = await db.execute(
+        select(RecipeIngredient, Ingredient)
         .join(Ingredient, RecipeIngredient.ingredient_id == Ingredient.id)
-        .filter(RecipeIngredient.recipe_id == recipe.id)
+        .where(RecipeIngredient.recipe_id == recipe.id)
         .order_by(RecipeIngredient.order_index)
-        .all()
     )
+    recipe_ingredients = list(ri_result.all())
 
     ingredient_responses = [
         GetRecipe.IngredientResponse(
@@ -94,7 +100,7 @@ def build_recipe_response(
     ]
 
     if is_favorite is None:
-        favorite = database.find_by(
+        favorite = await database.find_by(
             UserFavorite,
             user_id=user.id,
             recipe_id=str(recipe.id),
@@ -103,12 +109,12 @@ def build_recipe_response(
     else:
         resolved_is_favorite = is_favorite
 
-    version_count = database.where(
+    version_count = await database.where(
         RecipeVersion,
         recipe_id=str(recipe.id),
     ).count()
 
-    notes = database.where(
+    notes = await database.where(
         RecipeNote,
         recipe_id=str(recipe.id),
         asc="created_at",
@@ -126,7 +132,9 @@ def build_recipe_response(
 
     debug_payload: GetRecipe.DebugPayload | None = None
     if debug and user.is_admin:
-        import_item = database.find_by(ImportItem, created_recipe_id=recipe.id)
+        import_item = await database.find_by(
+            ImportItem, created_recipe_id=recipe.id
+        )
         if import_item is not None:
             debug_payload = GetRecipe.DebugPayload(
                 import_item_id=str(import_item.id),

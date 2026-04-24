@@ -4,7 +4,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.formatting import format_quantity
 from utils.models.ingredient import Ingredient
@@ -14,10 +15,10 @@ from utils.models.recipe_ingredient import RecipeIngredient
 from utils.models.recipe_step import RecipeStep
 
 
-class GetPublicRecipe(Endpoint):
+class GetPublicRecipe(AsyncEndpoint):
     """Get recipe details by ID if the recipe book is public."""
 
-    def execute(self, recipe_id: str):
+    async def execute(self, recipe_id: str):
         """
         Get recipe details for a publicly shared recipe.
 
@@ -28,7 +29,7 @@ class GetPublicRecipe(Endpoint):
             Recipe details with ingredients and recipe book name
         """
         # Get recipe
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -37,7 +38,9 @@ class GetPublicRecipe(Endpoint):
             )
 
         # Check that the recipe book is public
-        recipe_book = self.database.find_by(RecipeBook, id=recipe.recipe_book_id)
+        recipe_book = await self.database.find_by(
+            RecipeBook, id=recipe.recipe_book_id
+        )
         if not recipe_book or not recipe_book.is_public:
             raise APIException(
                 status_code=404,
@@ -46,7 +49,7 @@ class GetPublicRecipe(Endpoint):
             )
 
         # Get recipe steps
-        steps = self.database.where(
+        steps = await self.database.where(
             RecipeStep,
             asc="step_number",
             recipe_id=recipe.id
@@ -68,13 +71,13 @@ class GetPublicRecipe(Endpoint):
         ]
 
         # Get ingredients with ingredient details
-        recipe_ingredients = (
-            self.db.query(RecipeIngredient, Ingredient)
+        ri_result = await self.db.execute(
+            select(RecipeIngredient, Ingredient)
             .join(Ingredient, RecipeIngredient.ingredient_id == Ingredient.id)
-            .filter(RecipeIngredient.recipe_id == recipe_id)
+            .where(RecipeIngredient.recipe_id == recipe_id)
             .order_by(RecipeIngredient.order_index)
-            .all()
         )
+        recipe_ingredients = list(ri_result.all())
 
         ingredient_responses = [
             GetPublicRecipe.IngredientResponse(
