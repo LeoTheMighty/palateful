@@ -2,17 +2,17 @@
 
 from pydantic import BaseModel
 from sqlalchemy import or_, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
 from utils.models.friendship import Friendship
 from utils.models.user import User
 
 
-class SearchUsers(Endpoint):
+class SearchUsers(AsyncEndpoint):
     """Search for users by username or name."""
 
-    def execute(self, q: str, limit: int = 20):
+    async def execute(self, q: str, limit: int = 20):
         """
         Search users by username (with or without @ prefix).
         Returns matching users with their friendship status relative to current user.
@@ -38,7 +38,7 @@ class SearchUsers(Endpoint):
         limit = min(limit, 50)
 
         # Search by username (exact prefix match) or name (contains)
-        search_results = self.db.execute(
+        search_result = await self.db.execute(
             select(User)
             .where(
                 User.id != user.id,  # Exclude current user
@@ -56,42 +56,42 @@ class SearchUsers(Endpoint):
                 User.username,
             )
             .limit(limit)
-        ).scalars().all()
+        )
+        search_results = list(search_result.scalars().all())
 
         # Get friendship status for all results
         user_ids = [u.id for u in search_results]
 
         # Get existing friendships
-        friendships = set(
-            self.db.execute(
-                select(Friendship.friend_id).where(
-                    Friendship.user_id == user.id,
-                    Friendship.friend_id.in_(user_ids),
-                )
-            ).scalars().all()
+        friendships_result = await self.db.execute(
+            select(Friendship.friend_id).where(
+                Friendship.user_id == user.id,
+                Friendship.friend_id.in_(user_ids),
+            )
         )
+        friendships = set(friendships_result.scalars().all())
 
         # Get pending friend requests (both sent and received)
+        sent_result = await self.db.execute(
+            select(FriendRequest).where(
+                FriendRequest.from_user_id == user.id,
+                FriendRequest.to_user_id.in_(user_ids),
+                FriendRequest.status == "pending",
+            )
+        )
         sent_requests = {
-            r.to_user_id: r.id
-            for r in self.db.execute(
-                select(FriendRequest).where(
-                    FriendRequest.from_user_id == user.id,
-                    FriendRequest.to_user_id.in_(user_ids),
-                    FriendRequest.status == "pending",
-                )
-            ).scalars().all()
+            r.to_user_id: r.id for r in sent_result.scalars().all()
         }
 
+        received_result = await self.db.execute(
+            select(FriendRequest).where(
+                FriendRequest.to_user_id == user.id,
+                FriendRequest.from_user_id.in_(user_ids),
+                FriendRequest.status == "pending",
+            )
+        )
         received_requests = {
-            r.from_user_id: r.id
-            for r in self.db.execute(
-                select(FriendRequest).where(
-                    FriendRequest.to_user_id == user.id,
-                    FriendRequest.from_user_id.in_(user_ids),
-                    FriendRequest.status == "pending",
-                )
-            ).scalars().all()
+            r.from_user_id: r.id for r in received_result.scalars().all()
         }
 
         # Build response
