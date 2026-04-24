@@ -1,5 +1,6 @@
 import logging
 import os
+import ssl
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 ENVIRONMENT = os.environ.get("ENVIRONMENT")
@@ -76,12 +77,19 @@ def _build_async_connect_args() -> dict:
 
     `_build_async_database_url` strips sslmode from the URL; this
     function rematerializes the intent so `create_async_engine` still
-    enforces TLS in prod. `require` / `verify-ca` / `verify-full` all
-    map to `ssl=True` (TLS, no cert verification — matches libpq
-    `require` semantics; RDS uses AWS's CA which isn't trusted by
-    default Python, so `verify-*` would need a cert bundle we don't
-    currently ship — escalate if we ever need it). `disable` / `allow`
-    / `prefer` / unset → empty dict (plain TCP).
+    enforces TLS in prod. Semantics must mirror libpq (what psycopg2
+    on the sync side already does), not asyncpg's default-verify
+    behavior:
+
+      - `require`: TLS required, cert NOT verified. asyncpg's `ssl=True`
+        builds a context with `CERT_REQUIRED` + hostname check, which
+        fails on RDS (AWS CA isn't in the default Python trust store).
+        Return a permissive context instead — match libpq's docs.
+      - `verify-ca` / `verify-full`: TLS + cert verification. Return
+        `ssl=True` so asyncpg builds its verifying default context; the
+        AWS RDS CA bundle has to be on the system trust store for this
+        to succeed. Not used today; kept for forward-compat.
+      - `disable` / `allow` / `prefer` / unset → `{}` (plain TCP).
     """
     sslmode: str | None = None
     if DATABASE_URL:
@@ -89,7 +97,12 @@ def _build_async_connect_args() -> dict:
         sslmode = q.get("sslmode")
     if sslmode is None:
         sslmode = os.environ.get("DB_SSLMODE")
-    if sslmode in ("require", "verify-ca", "verify-full"):
+    if sslmode == "require":
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return {"ssl": ctx}
+    if sslmode in ("verify-ca", "verify-full"):
         return {"ssl": True}
     return {}
 

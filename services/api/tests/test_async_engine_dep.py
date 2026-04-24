@@ -247,21 +247,37 @@ def test_async_database_url_strips_sslmode():
 
 
 def test_async_connect_args_translates_sslmode():
-    """require / verify-* → ssl=True; disable / unset → {}. The sync
-    side keeps its `DB_SSLMODE=require` env-var contract; this function
-    rematerializes that intent for asyncpg."""
+    """`require` → non-verifying SSLContext (libpq semantics);
+    `verify-ca`/`verify-full` → ssl=True (verifying default);
+    `disable`/unset → {}. The sync side keeps its `DB_SSLMODE=require`
+    env-var contract; this function rematerializes that intent for
+    asyncpg — with the same NO-cert-verification behavior psycopg2
+    gives us today, so RDS (AWS CA not in default trust store) keeps
+    working."""
     import os
+    import ssl
 
     from utils import constants
 
     original_url = constants.DATABASE_URL
     original_env = os.environ.get("DB_SSLMODE")
     try:
-        # sslmode from URL wins.
+        # `require` → permissive context, NOT ssl=True. This is the
+        # prod regression the ssl-cert-verify failure exposed.
         constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=require"
-        assert constants._build_async_connect_args() == {"ssl": True}
+        args = constants._build_async_connect_args()
+        assert set(args.keys()) == {"ssl"}
+        ctx = args["ssl"]
+        assert isinstance(ctx, ssl.SSLContext)
+        assert ctx.check_hostname is False
+        assert ctx.verify_mode == ssl.CERT_NONE
 
+        # `verify-full` → verifying ssl=True (asyncpg builds a default
+        # verifying context). Not used in prod today; kept for
+        # forward-compat if we ever ship the RDS CA bundle.
         constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=verify-full"
+        assert constants._build_async_connect_args() == {"ssl": True}
+        constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=verify-ca"
         assert constants._build_async_connect_args() == {"ssl": True}
 
         constants.DATABASE_URL = "postgresql://u:p@h:5432/d?sslmode=disable"
@@ -269,9 +285,13 @@ def test_async_connect_args_translates_sslmode():
         assert constants._build_async_connect_args() == {}
 
         # No sslmode in URL → fall through to DB_SSLMODE env.
+        # (Prod uses this branch — DATABASE_URL is built from components
+        # without sslmode, DB_SSLMODE=require set on the ECS task.)
         constants.DATABASE_URL = "postgresql://u:p@h:5432/d"
         os.environ["DB_SSLMODE"] = "require"
-        assert constants._build_async_connect_args() == {"ssl": True}
+        args = constants._build_async_connect_args()
+        assert isinstance(args["ssl"], ssl.SSLContext)
+        assert args["ssl"].verify_mode == ssl.CERT_NONE
 
         # Nothing set anywhere → {}.
         os.environ.pop("DB_SSLMODE", None)
