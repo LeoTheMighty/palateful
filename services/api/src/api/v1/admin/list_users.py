@@ -2,26 +2,26 @@
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.user import User
 
 
-class ListUsers(Endpoint):
+class ListUsers(AsyncEndpoint):
     """List all users ordered by created_at desc."""
 
-    def execute(self, limit: int = 50, offset: int = 0):
+    async def execute(self, limit: int = 50, offset: int = 0):
         """Query users table with pagination."""
         # Get total count
-        total = self.db.execute(select(func.count()).select_from(User)).scalar() or 0
+        total = (await self.db.execute(select(func.count()).select_from(User))).scalar() or 0
 
         # Get paginated results
         results = (
-            self.db.execute(
+            (await self.db.execute(
                 select(User)
                 .order_by(User.created_at.desc())
                 .limit(min(limit, 200))
                 .offset(offset)
-            )
+            ))
             .scalars()
             .all()
         )

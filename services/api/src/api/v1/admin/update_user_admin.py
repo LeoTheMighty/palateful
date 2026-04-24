@@ -2,22 +2,22 @@
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 
 
-class UpdateUserAdmin(Endpoint):
+class UpdateUserAdmin(AsyncEndpoint):
     """Toggle is_admin on a user by ID."""
 
-    def execute(self, user_id: str, params: "UpdateUserAdmin.Params"):
+    async def execute(self, user_id: str, params: "UpdateUserAdmin.Params"):
         """Set is_admin for the target user with safety checks."""
         current_user: User = self.user
 
         # Find the target user
-        target_user = self.db.execute(
+        target_user = (await self.db.execute(
             select(User).where(User.id == user_id)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
 
         if not target_user:
             raise APIException(
@@ -31,11 +31,11 @@ class UpdateUserAdmin(Endpoint):
             str(target_user.id) == str(current_user.id)
             and not params.is_admin
         ):
-            admin_count = self.db.execute(
+            admin_count = (await self.db.execute(
                 select(func.count())
                 .select_from(User)
                 .where(User.is_admin.is_(True))
-            ).scalar() or 0
+            )).scalar() or 0
 
             if admin_count <= 1:
                 raise APIException(
@@ -45,8 +45,8 @@ class UpdateUserAdmin(Endpoint):
                 )
 
         target_user.is_admin = params.is_admin
-        self.db.commit()
-        self.db.refresh(target_user)
+        await self.db.commit()
+        await self.db.refresh(target_user)
 
         return success(
             data=UpdateUserAdmin.Response(

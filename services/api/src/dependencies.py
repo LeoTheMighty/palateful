@@ -397,6 +397,23 @@ async def require_admin(
     return user
 
 
+async def require_admin_async(
+    user: User = Depends(get_current_user_async),
+) -> User:
+    """Async sibling of `require_admin` (aam-20).
+
+    Routes through `get_current_user_async` so the admin router runs on
+    the async engine end-to-end. Same 403 behavior.
+    """
+    if not user.is_admin:
+        raise APIException(
+            status_code=403,
+            detail="Admin access required",
+            code=ErrorCode.FORBIDDEN,
+        )
+    return user
+
+
 async def get_optional_user(
     authorization: Annotated[str | None, Header()] = None,
     database: Database = Depends(get_database),

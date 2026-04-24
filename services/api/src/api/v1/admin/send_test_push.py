@@ -13,12 +13,14 @@ from __future__ import annotations
 import logging
 import time
 
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, failure, success
+from utils.api.endpoint import APIException, AsyncEndpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.models.error_log import ErrorLog
 from utils.models.user import User
+from utils.services.database import Database, SessionLocal
 from utils.services.push_notification import (
     NotificationType,
     PushNotification,
@@ -54,10 +56,31 @@ def _reset_rate_limit_for_test() -> None:
     _rate_limit_events.clear()
 
 
-class SendTestPush(Endpoint):
+def _send_to_user_sync(push_service, target_user, notification, force):
+    """Threadpool-side call into the sync push service.
+
+    Builds a short-lived sync `Database` so the push service's
+    invalid-token cleanup path (which expects a sync session) works
+    without touching the async session on the event loop.
+    """
+    if SessionLocal is None:
+        return push_service.send_to_user(target_user, notification, force=force)
+    sync_db = Database(db=SessionLocal())
+    try:
+        return push_service.send_to_user(
+            target_user,
+            notification,
+            db_session=sync_db.db,
+            force=force,
+        )
+    finally:
+        sync_db.close()
+
+
+class SendTestPush(AsyncEndpoint):
     """Send a diagnostic FCM push (admin-only)."""
 
-    def execute(
+    async def execute(
         self,
         params: SendTestPush.Params,
         force: bool = True,
@@ -88,9 +111,9 @@ class SendTestPush(Endpoint):
 
         # Resolve target (defaults to admin themselves)
         target_user_id = params.target_user_id or str(admin.id)
-        target_user = self.db.execute(
+        target_user = (await self.db.execute(
             select(User).where(User.id == target_user_id)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
         if target_user is None:
             raise APIException(
                 status_code=404,
@@ -109,11 +132,12 @@ class SendTestPush(Endpoint):
         )
 
         push_service = get_push_service()
-        result = push_service.send_to_user(
-            target_user,
-            notification,
-            db_session=self.db,
-            force=force,
+        # Push service is sync (Firebase Admin SDK + sync Database for
+        # invalid-token cleanup). Dispatch through the threadpool with a
+        # fresh sync session so the async event loop isn't blocked on the
+        # FCM round-trip and the cleanup path has a usable sync handle.
+        result = await run_in_threadpool(
+            _send_to_user_sync, push_service, target_user, notification, force
         )
 
         message_id = result.get("message_id")
@@ -149,7 +173,7 @@ class SendTestPush(Endpoint):
             user_id=target_user.id,
         )
         self.db.add(audit_row)
-        self.db.commit()
+        await self.db.commit()
 
         # Row 2 (service="push_notifications", PushSendFailure) is written
         # by PushNotificationService when a real FCM send errors. We don't

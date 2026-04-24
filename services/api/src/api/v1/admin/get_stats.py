@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.error_log import ErrorLog
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -37,62 +37,62 @@ _SLOWEST_ENDPOINT_SQL = text(
 )
 
 
-class GetStats(Endpoint):
+class GetStats(AsyncEndpoint):
     """Return aggregate dashboard statistics."""
 
-    def execute(self):
+    async def execute(self):
         """Compute and return aggregate counts."""
         now = datetime.now(UTC)
         twenty_four_hours_ago = now - timedelta(hours=24)
         seven_days_ago = now - timedelta(days=7)
 
         total_users = (
-            self.db.execute(select(func.count()).select_from(User)).scalar() or 0
+            (await self.db.execute(select(func.count()).select_from(User))).scalar() or 0
         )
 
         total_recipes = (
-            self.db.execute(select(func.count()).select_from(Recipe)).scalar() or 0
+            (await self.db.execute(select(func.count()).select_from(Recipe))).scalar() or 0
         )
 
         total_recipe_books = (
-            self.db.execute(select(func.count()).select_from(RecipeBook)).scalar() or 0
+            (await self.db.execute(select(func.count()).select_from(RecipeBook))).scalar() or 0
         )
 
         errors_24h = (
-            self.db.execute(
+            (await self.db.execute(
                 select(func.count())
                 .select_from(ErrorLog)
                 .where(ErrorLog.created_at >= twenty_four_hours_ago)
-            ).scalar()
+            )).scalar()
             or 0
         )
 
         active_users_7d = (
-            self.db.execute(
+            (await self.db.execute(
                 select(func.count())
                 .select_from(User)
                 .where(User.updated_at >= seven_days_ago)
-            ).scalar()
+            )).scalar()
             or 0
         )
 
         unread_feedback = (
-            self.db.execute(
+            (await self.db.execute(
                 select(func.count())
                 .select_from(UserFeedback)
                 .where(UserFeedback.status == "unread")
-            ).scalar()
+            )).scalar()
             or 0
         )
 
-        overall_p95_ms = self.db.execute(
+        overall_p95_ms = (await self.db.execute(
             _OVERALL_P95_SQL, {"start_time": twenty_four_hours_ago}
-        ).scalar()
+        )).scalar()
         overall_p95_ms = int(overall_p95_ms) if overall_p95_ms is not None else None
 
-        slowest_rows = self.db.execute(
+        slowest_rows = (await self.db.execute(
             _SLOWEST_ENDPOINT_SQL, {"start_time": twenty_four_hours_ago}
-        ).all()
+        )).all()
         slowest_endpoint: GetStats.SlowestEndpoint | None = None
         if slowest_rows and slowest_rows[0].p95_ms is not None:
             slowest_row = slowest_rows[0]

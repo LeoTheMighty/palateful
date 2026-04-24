@@ -16,7 +16,7 @@ import uuid
 
 from pydantic import BaseModel
 from sqlalchemy import and_, desc, func, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.error_log import ErrorLog
 from utils.models.user import User
@@ -50,10 +50,10 @@ def _build_crashlytics_url(auth0_id: str | None, fallback_user_id: str) -> str:
     )
 
 
-class GetAdminPushHealth(Endpoint):
+class GetAdminPushHealth(AsyncEndpoint):
     """Per-user push health diagnostic (admin-only)."""
 
-    def execute(
+    async def execute(
         self,
         user_id_or_email: str,
         error_limit: int = _DEFAULT_ERROR_LIMIT,
@@ -69,7 +69,7 @@ class GetAdminPushHealth(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
-        target = _resolve_target(self.db, user_id_or_email)
+        target = await _resolve_target(self.db, user_id_or_email)
         if target is None:
             raise APIException(
                 status_code=404,
@@ -84,7 +84,7 @@ class GetAdminPushHealth(Endpoint):
         ]
 
         # Recent push-notifications error rows scoped to this user.
-        error_rows = self.db.execute(
+        error_rows = (await self.db.execute(
             select(ErrorLog)
             .where(
                 and_(
@@ -94,7 +94,7 @@ class GetAdminPushHealth(Endpoint):
             )
             .order_by(desc(ErrorLog.created_at))
             .limit(error_limit)
-        ).scalars().all()
+        )).scalars().all()
 
         recent_errors = [
             {
@@ -129,7 +129,7 @@ class GetAdminPushHealth(Endpoint):
                 user_id=target.id,
             )
         )
-        self.db.commit()
+        await self.db.commit()
 
         return success(
             data=GetAdminPushHealth.Response(
@@ -159,19 +159,19 @@ class GetAdminPushHealth(Endpoint):
         crashlytics_query_url: str
 
 
-def _resolve_target(db, user_id_or_email: str) -> User | None:
+async def _resolve_target(db, user_id_or_email: str) -> User | None:
     """Look up by UUID first, else by case-insensitive email match."""
     raw = user_id_or_email.strip()
     try:
         uid = uuid.UUID(raw)
-        user = db.execute(
+        user = (await db.execute(
             select(User).where(User.id == uid)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
         if user is not None:
             return user
     except (ValueError, TypeError):
         pass
 
-    return db.execute(
+    return (await db.execute(
         select(User).where(func.lower(User.email) == func.lower(raw))
-    ).scalar_one_or_none()
+    )).scalar_one_or_none()

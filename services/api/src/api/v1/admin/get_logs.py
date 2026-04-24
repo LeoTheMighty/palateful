@@ -3,16 +3,17 @@
 import logging
 
 from config import settings
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 
 logger = logging.getLogger(__name__)
 
 
-class GetLogs(Endpoint):
+class GetLogs(AsyncEndpoint):
     """Proxy to CloudWatch FilterLogEvents."""
 
-    def execute(
+    async def execute(
         self,
         service: str = "api",
         level: str | None = None,
@@ -50,7 +51,11 @@ class GetLogs(Endpoint):
             if end_time is not None:
                 kwargs["endTime"] = end_time
 
-            response = client.filter_log_events(**kwargs)
+            # boto3 is sync; dispatch to the threadpool so the async event
+            # loop isn't blocked on the CloudWatch round-trip.
+            response = await run_in_threadpool(
+                lambda: client.filter_log_events(**kwargs)
+            )
 
             events = [
                 GetLogs.LogEvent(

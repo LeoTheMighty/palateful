@@ -24,7 +24,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import text
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 
 _WINDOWS: dict[str, timedelta] = {
@@ -77,10 +77,10 @@ def _base_filters(
 # ---------------------------------------------------------------------------
 
 
-class GetClientRouteMetrics(Endpoint):
+class GetClientRouteMetrics(AsyncEndpoint):
     """Per-route p50/p95/p99 for client route_paint events."""
 
-    def execute(
+    async def execute(
         self,
         window: str = "24h",
         platform: str | None = None,
@@ -113,7 +113,7 @@ class GetClientRouteMetrics(Endpoint):
             """
         )
 
-        rows = self.db.execute(percentile_sql, params).all()
+        rows = (await self.db.execute(percentile_sql, params)).all()
         return success(
             data=GetClientRouteMetrics.Response(
                 window=window,
@@ -147,7 +147,7 @@ class GetClientRouteMetrics(Endpoint):
 # ---------------------------------------------------------------------------
 
 
-class GetClientEndpointMetrics(Endpoint):
+class GetClientEndpointMetrics(AsyncEndpoint):
     """Per-endpoint client-observed network latency.
 
     Groups by (method, endpoint); method comes from the
@@ -156,7 +156,7 @@ class GetClientEndpointMetrics(Endpoint):
     redirects, etc.).
     """
 
-    def execute(
+    async def execute(
         self,
         window: str = "24h",
         platform: str | None = None,
@@ -190,7 +190,7 @@ class GetClientEndpointMetrics(Endpoint):
             """
         )
 
-        rows = self.db.execute(percentile_sql, params).all()
+        rows = (await self.db.execute(percentile_sql, params)).all()
         return success(
             data=GetClientEndpointMetrics.Response(
                 window=window,
@@ -226,7 +226,7 @@ class GetClientEndpointMetrics(Endpoint):
 # ---------------------------------------------------------------------------
 
 
-class GetClientJankMetrics(Endpoint):
+class GetClientJankMetrics(AsyncEndpoint):
     """Per-route build-span + raster-span p95 from frame_jank_p95 events.
 
     Each `frame_jank_p95` event already carries the window's p95 for
@@ -235,7 +235,7 @@ class GetClientJankMetrics(Endpoint):
     what the operator wants for "is jank worse this week?"
     """
 
-    def execute(
+    async def execute(
         self,
         window: str = "24h",
         platform: str | None = None,
@@ -271,7 +271,7 @@ class GetClientJankMetrics(Endpoint):
             """
         )
 
-        rows = self.db.execute(percentile_sql, params).all()
+        rows = (await self.db.execute(percentile_sql, params)).all()
         return success(
             data=GetClientJankMetrics.Response(
                 window=window,
@@ -311,14 +311,14 @@ SparklineMetric = Literal[
 ]
 
 
-class GetClientSparkline(Endpoint):
+class GetClientSparkline(AsyncEndpoint):
     """Time-bucketed mean duration for one metric — drives the chart.
 
     `metric` selects which event type. `route`/`endpoint` narrow the
     scope; at most one of the two should be set per call.
     """
 
-    def execute(
+    async def execute(
         self,
         metric: str,
         window: str = "24h",
@@ -385,7 +385,7 @@ class GetClientSparkline(Endpoint):
             """
         )
 
-        rows = self.db.execute(sql, params).all()
+        rows = (await self.db.execute(sql, params)).all()
         buckets = [0.0] * _SPARKLINE_BUCKETS
         for r in rows:
             buckets[int(r.bucket_idx)] = float(r.bucket_mean or 0.0)

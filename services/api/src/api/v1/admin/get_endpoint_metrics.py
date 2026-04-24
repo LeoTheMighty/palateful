@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 from sqlalchemy import text
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 
 _WINDOWS: dict[str, timedelta] = {
@@ -66,10 +66,10 @@ _SPARKLINE_SQL = text(
 )
 
 
-class GetEndpointMetrics(Endpoint):
+class GetEndpointMetrics(AsyncEndpoint):
     """Aggregate endpoint-latency stats for the admin metrics screen."""
 
-    def execute(self, window: str = "24h"):
+    async def execute(self, window: str = "24h"):
         delta = _WINDOWS.get(window)
         if delta is None:
             raise APIException(
@@ -82,18 +82,18 @@ class GetEndpointMetrics(Endpoint):
         start_time = now - delta
         bucket_width = delta.total_seconds() / _SPARKLINE_BUCKETS
 
-        percentile_rows = self.db.execute(
+        percentile_rows = (await self.db.execute(
             _PERCENTILE_SQL, {"start_time": start_time}
-        ).all()
+        )).all()
 
-        sparkline_rows = self.db.execute(
+        sparkline_rows = (await self.db.execute(
             _SPARKLINE_SQL,
             {
                 "start_time": start_time,
                 "bucket_width_seconds": bucket_width,
                 "n_buckets": _SPARKLINE_BUCKETS,
             },
-        ).all()
+        )).all()
 
         # Merge: key = (method, normalized_path); value = 24-bucket list.
         sparklines: dict[tuple[str, str], list[float]] = {}

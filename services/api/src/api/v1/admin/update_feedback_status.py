@@ -13,26 +13,26 @@ from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.error_log import ErrorLog
 from utils.models.user import User
 from utils.models.user_feedback import UserFeedback
 
 
-class UpdateFeedbackStatus(Endpoint):
+class UpdateFeedbackStatus(AsyncEndpoint):
     """Flip the status of a single feedback row."""
 
-    def execute(
+    async def execute(
         self,
         feedback_id: str,
         params: UpdateFeedbackStatus.Params,
     ):
         admin: User = self.user
 
-        feedback = self.db.execute(
+        feedback = (await self.db.execute(
             select(UserFeedback).where(UserFeedback.id == feedback_id)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
 
         if feedback is None:
             raise APIException(
@@ -59,8 +59,8 @@ class UpdateFeedbackStatus(Endpoint):
             user_id=feedback.user_id,
         )
         self.db.add(audit)
-        self.db.commit()
-        self.db.refresh(feedback)
+        await self.db.commit()
+        await self.db.refresh(feedback)
 
         return success(
             data=UpdateFeedbackStatus.Response(

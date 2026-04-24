@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.models.user_feedback import UserFeedback
@@ -23,10 +23,10 @@ DEFAULT_LIMIT = 25
 _VALID_STATUS_FILTERS = ("unread", "read", "archived", "all")
 
 
-class ListFeedback(Endpoint):
+class ListFeedback(AsyncEndpoint):
     """List feedback entries for the admin inbox."""
 
-    def execute(
+    async def execute(
         self,
         status: str = "unread",
         offset: int = 0,
@@ -52,11 +52,11 @@ class ListFeedback(Endpoint):
             count_stmt = count_stmt.where(UserFeedback.status == status)
             list_stmt = list_stmt.where(UserFeedback.status == status)
 
-        total = self.db.execute(count_stmt).scalar() or 0
+        total = (await self.db.execute(count_stmt)).scalar() or 0
 
-        rows = self.db.execute(
+        rows = (await self.db.execute(
             list_stmt.offset(bounded_offset).limit(bounded_limit)
-        ).all()
+        )).all()
 
         items = [
             ListFeedback.FeedbackItem(

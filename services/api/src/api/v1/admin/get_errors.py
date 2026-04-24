@@ -3,14 +3,14 @@
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.error_log import ErrorLog
 
 
-class GetErrors(Endpoint):
+class GetErrors(AsyncEndpoint):
     """List errors from error_logs table."""
 
-    def execute(
+    async def execute(
         self,
         service: str | None = None,
         limit: int = 50,
@@ -26,15 +26,15 @@ class GetErrors(Endpoint):
         count_query = select(func.count()).select_from(ErrorLog)
         if service:
             count_query = count_query.where(ErrorLog.service == service)
-        total = self.db.execute(count_query).scalar() or 0
+        total = (await self.db.execute(count_query)).scalar() or 0
 
         # Get paginated results
         results = (
-            self.db.execute(
+            (await self.db.execute(
                 query.order_by(ErrorLog.created_at.desc())
                 .limit(min(limit, 200))
                 .offset(offset)
-            )
+            ))
             .scalars()
             .all()
         )

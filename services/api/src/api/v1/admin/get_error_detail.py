@@ -2,19 +2,19 @@
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.error_log import ErrorLog
 
 
-class GetErrorDetail(Endpoint):
+class GetErrorDetail(AsyncEndpoint):
     """Fetch a single error log by ID."""
 
-    def execute(self, error_id: str):
+    async def execute(self, error_id: str):
         """Get full error detail including stack trace."""
-        error = self.db.execute(
+        error = (await self.db.execute(
             select(ErrorLog).where(ErrorLog.id == error_id)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
 
         if not error:
             raise APIException(
