@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import patch
 
 from conftest import (
+    MockExecuteResult,
     MockQuery,
     MockShoppingList,
     MockShoppingListItem,
@@ -236,9 +237,13 @@ class TestCheckOffNotifications:
         mock_notify.assert_not_called()
 
     def test_notify_list_complete_called_when_last_item_checked(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
-        """notify_list_complete is called when the last unchecked item is checked."""
+        """notify_list_complete is called when the last unchecked item is checked.
+
+        aam-13: the unchecked-count query now runs on the async session
+        (`select(func.count())`). Drive it via `mock_async_db.db.execute`.
+        """
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
 
@@ -250,7 +255,7 @@ class TestCheckOffNotifications:
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # unchecked_count = 0 → all items now checked
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
         with patch("api.v1.shopping_list.update_item.notify_item_checked"):
             with patch(
@@ -264,25 +269,21 @@ class TestCheckOffNotifications:
         mock_complete.assert_called_once()
 
     def test_notify_list_complete_not_called_when_items_remain(
-        self, client, mock_db, mock_user
+        self, client, mock_db, mock_async_db, mock_user
     ):
         """notify_list_complete is NOT called when unchecked items still remain."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
-        other_item_id = str(uuid.uuid4())
 
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
         item = MockShoppingListItem(id=item_id, shopping_list_id=list_id, is_checked=False)
-        other_item = MockShoppingListItem(
-            id=other_item_id, shopping_list_id=list_id, is_checked=False
-        )
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # 1 unchecked item still remains
-        mock_db.db.query.return_value = MockQuery([other_item])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[1])
 
         with patch("api.v1.shopping_list.update_item.notify_item_checked"):
             with patch(
@@ -360,7 +361,7 @@ class TestCheckOffNotifications:
             user_id=str(mock_user.id),
         )
         mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
         with patch("api.v1.shopping_list.update_item.notify_item_checked"):
             with patch("api.v1.shopping_list.update_item.notify_list_complete"):
