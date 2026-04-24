@@ -2,17 +2,17 @@
 
 from datetime import UTC, datetime
 
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class DeleteShoppingListItem(Endpoint):
+class DeleteShoppingListItem(AsyncEndpoint):
     """Delete (archive) a shopping list item."""
 
-    def execute(self, list_id: str, item_id: str):
+    async def execute(self, list_id: str, item_id: str):
         """
         Delete (archive) a shopping list item.
 
@@ -25,8 +25,7 @@ class DeleteShoppingListItem(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -34,9 +33,8 @@ class DeleteShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member with edit permission
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -52,8 +50,7 @@ class DeleteShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Find item
-        item = self.database.find_by(
+        item = await self.database.find_by(
             ShoppingListItem, id=item_id, shopping_list_id=list_id
         )
         if not item or item.archived_at is not None:
@@ -63,10 +60,7 @@ class DeleteShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ITEM_NOT_FOUND,
             )
 
-        # Soft delete
         item.archived_at = datetime.now(UTC)
-        self.database.db.commit()
-
-        # TODO: Create ShoppingListEvent for item_removed
+        await self.database.db.commit()
 
         return success(data={"deleted": True, "id": str(item_id)})
