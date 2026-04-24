@@ -3,23 +3,23 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ListArchivedRecipeBooks(Endpoint):
+class ListArchivedRecipeBooks(AsyncEndpoint):
     """List the current user's archived recipe books."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
 
         # Query archived recipe books with recipe count
-        results = (
-            self.db.query(
+        result = await self.db.execute(
+            select(
                 RecipeBook,
                 func.count(Recipe.id).label("recipe_count"),
             )
@@ -29,14 +29,14 @@ class ListArchivedRecipeBooks(Endpoint):
                 (RecipeBook.id == Recipe.recipe_book_id)
                 & (Recipe.archived_at.is_(None)),
             )
-            .filter(
+            .where(
                 RecipeBookUser.user_id == user.id,
                 RecipeBook.archived_at.isnot(None),
             )
             .group_by(RecipeBook.id)
             .order_by(RecipeBook.archived_at.desc())
-            .all()
         )
+        results = result.all()
 
         items = [
             ListArchivedRecipeBooks.ArchivedBookItem(

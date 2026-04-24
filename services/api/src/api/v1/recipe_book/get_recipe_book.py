@@ -3,7 +3,8 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -11,10 +12,10 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class GetRecipeBook(Endpoint):
+class GetRecipeBook(AsyncEndpoint):
     """Get recipe book details by ID."""
 
-    def execute(self, recipe_book_id: str):
+    async def execute(self, recipe_book_id: str):
         """
         Get recipe book details including recipes and members.
 
@@ -27,7 +28,7 @@ class GetRecipeBook(Endpoint):
         user: User = self.user
 
         # Check access
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe_book_id
@@ -42,10 +43,10 @@ class GetRecipeBook(Endpoint):
         # Side effect: update last_opened_at for recency sorting
         membership.last_opened_at = datetime.now(UTC)
         self.database.db.add(membership)
-        self.database.db.flush()
+        await self.database.db.flush()
 
         # Get recipe book
-        recipe_book = self.database.find_by(RecipeBook, id=recipe_book_id)
+        recipe_book = await self.database.find_by(RecipeBook, id=recipe_book_id)
         if not recipe_book:
             raise APIException(
                 status_code=404,
@@ -54,15 +55,15 @@ class GetRecipeBook(Endpoint):
             )
 
         # Get recipes (exclude archived)
-        recipes = (
-            self.db.query(Recipe)
-            .filter(
+        recipes_result = await self.db.execute(
+            select(Recipe)
+            .where(
                 Recipe.recipe_book_id == recipe_book_id,
                 Recipe.archived_at.is_(None),
             )
             .order_by(Recipe.name.asc())
-            .all()
         )
+        recipes = list(recipes_result.scalars().all())
 
         recipe_items = [
             GetRecipeBook.RecipeItem(
@@ -80,15 +81,15 @@ class GetRecipeBook(Endpoint):
         ]
 
         # Get all members with their user info
-        all_memberships = (
-            self.db.query(RecipeBookUser, User)
+        members_result = await self.db.execute(
+            select(RecipeBookUser, User)
             .join(User, RecipeBookUser.user_id == User.id)
-            .filter(
+            .where(
                 RecipeBookUser.recipe_book_id == recipe_book_id,
                 RecipeBookUser.archived_at.is_(None),
             )
-            .all()
         )
+        all_memberships = members_result.all()
         members = [
             GetRecipeBook.MemberItem(
                 user_id=str(rbu.user_id),

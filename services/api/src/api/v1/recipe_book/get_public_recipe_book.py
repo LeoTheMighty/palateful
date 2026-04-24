@@ -3,16 +3,16 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 
 
-class GetPublicRecipeBook(Endpoint):
+class GetPublicRecipeBook(AsyncEndpoint):
     """Get recipe book details by ID if the book is public."""
 
-    def execute(self, recipe_book_id: str):
+    async def execute(self, recipe_book_id: str):
         """
         Get recipe book details for a publicly shared book.
 
@@ -23,7 +23,7 @@ class GetPublicRecipeBook(Endpoint):
             Recipe book details with recipe list
         """
         # Get recipe book
-        recipe_book = self.database.find_by(RecipeBook, id=recipe_book_id)
+        recipe_book = await self.database.find_by(RecipeBook, id=recipe_book_id)
         if not recipe_book or not recipe_book.is_public:
             raise APIException(
                 status_code=404,
@@ -32,7 +32,7 @@ class GetPublicRecipeBook(Endpoint):
             )
 
         # Get recipes
-        recipes = self.database.where(
+        recipes = await self.database.where(
             Recipe,
             recipe_book_id=recipe_book_id,
             asc='name'

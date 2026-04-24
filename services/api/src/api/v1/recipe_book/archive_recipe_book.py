@@ -3,21 +3,21 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ArchiveRecipeBook(Endpoint):
+class ArchiveRecipeBook(AsyncEndpoint):
     """Archive a recipe book via soft delete."""
 
-    def execute(self, recipe_book_id: str):
+    async def execute(self, recipe_book_id: str):
         user: User = self.user
 
         # Check access - must be owner
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=str(user.id),
             recipe_book_id=recipe_book_id,
@@ -30,7 +30,7 @@ class ArchiveRecipeBook(Endpoint):
             )
 
         # Get recipe book (include archived to give proper "already archived" error)
-        recipe_book = self.database.find_by(RecipeBook, id=recipe_book_id, include_archived=True)
+        recipe_book = await self.database.find_by(RecipeBook, id=recipe_book_id, include_archived=True)
         if not recipe_book:
             raise APIException(
                 status_code=404,
@@ -53,7 +53,7 @@ class ArchiveRecipeBook(Endpoint):
             restored_default_id = str(user.default_recipe_book_id) if user.default_recipe_book_id else None
 
         recipe_book.archived_at = datetime.now(UTC)
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(data=ArchiveRecipeBook.Response(
             success=True,

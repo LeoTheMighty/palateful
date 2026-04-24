@@ -1,20 +1,20 @@
 """Remove member from recipe book endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class RemoveRecipeBookMember(Endpoint):
+class RemoveRecipeBookMember(AsyncEndpoint):
     """Remove a member from a recipe book (owner only)."""
 
-    def execute(self, recipe_book_id: str, target_user_id: str):
+    async def execute(self, recipe_book_id: str, target_user_id: str):
         user: User = self.user
 
         # Only owners can remove members
-        caller_membership = self.database.find_by(
+        caller_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe_book_id,
@@ -35,7 +35,7 @@ class RemoveRecipeBookMember(Endpoint):
             )
 
         # Find the target membership
-        target_membership = self.database.find_by(
+        target_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=target_user_id,
             recipe_book_id=recipe_book_id,
@@ -47,7 +47,7 @@ class RemoveRecipeBookMember(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND,
             )
 
-        self.database.delete(target_membership)
+        await self.database.delete(target_membership)
 
         return success(data=RemoveRecipeBookMember.Response(success=True))
 

@@ -1,16 +1,16 @@
 """Update a recipe book member's role endpoint."""
 
 from pydantic import BaseModel, model_validator
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class UpdateRecipeBookMemberRole(Endpoint):
+class UpdateRecipeBookMemberRole(AsyncEndpoint):
     """Update a member's role in a recipe book (owner only)."""
 
-    def execute(
+    async def execute(
         self,
         recipe_book_id: str,
         target_user_id: str,
@@ -19,7 +19,7 @@ class UpdateRecipeBookMemberRole(Endpoint):
         user: User = self.user
 
         # Only owners can update roles
-        caller_membership = self.database.find_by(
+        caller_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe_book_id,
@@ -40,7 +40,7 @@ class UpdateRecipeBookMemberRole(Endpoint):
             )
 
         # Find the target membership
-        target_membership = self.database.find_by(
+        target_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=target_user_id,
             recipe_book_id=recipe_book_id,
@@ -52,7 +52,7 @@ class UpdateRecipeBookMemberRole(Endpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND,
             )
 
-        self.database.update(target_membership, role=params.role)
+        await self.database.update(target_membership, role=params.role)
 
         return success(
             data=UpdateRecipeBookMemberRole.Response(

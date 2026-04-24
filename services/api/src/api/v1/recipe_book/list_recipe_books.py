@@ -3,18 +3,18 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ListRecipeBooks(Endpoint):
+class ListRecipeBooks(AsyncEndpoint):
     """List user's recipe books."""
 
-    def execute(self, limit: int = 20, offset: int = 0):
+    async def execute(self, limit: int = 20, offset: int = 0):
         """
         List all recipe books the user has access to.
 
@@ -29,18 +29,18 @@ class ListRecipeBooks(Endpoint):
 
         # Subquery: total member count per book
         member_count_subq = (
-            self.db.query(
+            select(
                 RecipeBookUser.recipe_book_id,
                 func.count(RecipeBookUser.user_id).label("member_count"),
             )
-            .filter(RecipeBookUser.archived_at.is_(None))
+            .where(RecipeBookUser.archived_at.is_(None))
             .group_by(RecipeBookUser.recipe_book_id)
             .subquery()
         )
 
         # Main query: recipe books with recipe count, user role, and member count
-        query = (
-            self.db.query(
+        stmt = (
+            select(
                 RecipeBook,
                 func.count(Recipe.id).label("recipe_count"),
                 RecipeBookUser.role.label("user_role"),
@@ -57,16 +57,18 @@ class ListRecipeBooks(Endpoint):
                 (RecipeBook.id == Recipe.recipe_book_id) & (Recipe.archived_at.is_(None)),
             )
             .outerjoin(member_count_subq, RecipeBook.id == member_count_subq.c.recipe_book_id)
-            .filter(RecipeBook.archived_at.is_(None))
+            .where(RecipeBook.archived_at.is_(None))
             .group_by(RecipeBook.id, RecipeBookUser.role, RecipeBookUser.last_opened_at, member_count_subq.c.member_count)
             .order_by(RecipeBookUser.last_opened_at.desc().nullslast())
         )
 
-        # Get total count
-        total = query.count()
+        # Get total count via a COUNT over the same filtered set.
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = int((await self.db.execute(count_stmt)).scalar_one())
 
         # Apply pagination
-        results = query.offset(offset).limit(limit).all()
+        paginated_stmt = stmt.offset(offset).limit(limit)
+        results = (await self.db.execute(paginated_stmt)).all()
 
         items = [
             ListRecipeBooks.RecipeBookItem(

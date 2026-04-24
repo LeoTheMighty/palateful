@@ -3,8 +3,8 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -12,10 +12,10 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class UpdateRecipeBook(Endpoint):
+class UpdateRecipeBook(AsyncEndpoint):
     """Update a recipe book."""
 
-    def execute(self, recipe_book_id: str, params: "UpdateRecipeBook.Params"):
+    async def execute(self, recipe_book_id: str, params: "UpdateRecipeBook.Params"):
         """
         Update a recipe book.
 
@@ -29,7 +29,7 @@ class UpdateRecipeBook(Endpoint):
         user: User = self.user
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe_book_id
@@ -42,7 +42,7 @@ class UpdateRecipeBook(Endpoint):
             )
 
         # Get recipe book
-        recipe_book = self.database.find_by(RecipeBook, id=recipe_book_id)
+        recipe_book = await self.database.find_by(RecipeBook, id=recipe_book_id)
         if not recipe_book:
             raise APIException(
                 status_code=404,
@@ -69,12 +69,15 @@ class UpdateRecipeBook(Endpoint):
 
         # Update if there are changes
         if updates:
-            self.database.update(recipe_book, **updates)
+            await self.database.update(recipe_book, **updates)
 
         # Get recipe count
-        recipe_count = self.db.query(func.count(Recipe.id)).filter(
-            Recipe.recipe_book_id == recipe_book_id
-        ).scalar() or 0
+        count_result = await self.db.execute(
+            select(func.count(Recipe.id)).where(
+                Recipe.recipe_book_id == recipe_book_id
+            )
+        )
+        recipe_count = count_result.scalar() or 0
 
         return success(
             data=UpdateRecipeBook.Response(

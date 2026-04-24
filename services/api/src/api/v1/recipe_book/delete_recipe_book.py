@@ -1,17 +1,17 @@
 """Delete recipe book endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class DeleteRecipeBook(Endpoint):
+class DeleteRecipeBook(AsyncEndpoint):
     """Delete a recipe book."""
 
-    def execute(self, recipe_book_id: str):
+    async def execute(self, recipe_book_id: str):
         """
         Delete a recipe book and all its recipes.
 
@@ -24,7 +24,7 @@ class DeleteRecipeBook(Endpoint):
         user: User = self.user
 
         # Check access - must be owner
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe_book_id
@@ -37,7 +37,7 @@ class DeleteRecipeBook(Endpoint):
             )
 
         # Get recipe book
-        recipe_book = self.database.find_by(RecipeBook, id=recipe_book_id)
+        recipe_book = await self.database.find_by(RecipeBook, id=recipe_book_id)
         if not recipe_book:
             raise APIException(
                 status_code=404,
@@ -51,10 +51,10 @@ class DeleteRecipeBook(Endpoint):
             user.default_recipe_book_id = user.previous_recipe_book_id
             user.previous_recipe_book_id = None
             restored_default_id = str(user.default_recipe_book_id) if user.default_recipe_book_id else None
-            self.database.db.flush()
+            await self.database.db.flush()
 
         # Delete recipe book (cascades to recipes and memberships)
-        self.database.delete(recipe_book)
+        await self.database.delete(recipe_book)
 
         return success(
             data=DeleteRecipeBook.Response(

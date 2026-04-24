@@ -1,22 +1,22 @@
 """Add member to recipe book endpoint."""
 
 from pydantic import BaseModel, model_validator
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
-from utils.services.activity_service import create_activity
+from utils.models.user_activity import UserActivity
 
 
-class AddRecipeBookMember(Endpoint):
+class AddRecipeBookMember(AsyncEndpoint):
     """Add a member to a recipe book (owner only)."""
 
-    def execute(self, recipe_book_id: str, params: "AddRecipeBookMember.Params"):
+    async def execute(self, recipe_book_id: str, params: "AddRecipeBookMember.Params"):
         user: User = self.user
 
         # Only owners can add members
-        caller_membership = self.database.find_by(
+        caller_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe_book_id,
@@ -29,7 +29,7 @@ class AddRecipeBookMember(Endpoint):
             )
 
         # Look up target user
-        target_user = self.database.find_by(User, id=params.user_id)
+        target_user = await self.database.find_by(User, id=params.user_id)
         if not target_user:
             raise APIException(
                 status_code=404,
@@ -38,7 +38,7 @@ class AddRecipeBookMember(Endpoint):
             )
 
         # Check not already a member
-        existing = self.database.find_by(
+        existing = await self.database.find_by(
             RecipeBookUser,
             user_id=target_user.id,
             recipe_book_id=recipe_book_id,
@@ -57,18 +57,20 @@ class AddRecipeBookMember(Endpoint):
             role=params.role,
             invited_by_id=user.id,
         )
-        self.database.create(membership)
+        await self.database.create(membership)
 
-        # Create activity for the book owner
-        book = self.database.find_by(RecipeBook, id=recipe_book_id)
+        # Create activity for the book owner (inline the 3-line create_activity
+        # since we don't want to grow a create_activity_async twin just for this).
+        book = await self.database.find_by(RecipeBook, id=recipe_book_id)
         book_name = book.name if book else "a recipe book"
-        create_activity(
-            self.db,
+        activity = UserActivity(
             user_id=user.id,
-            activity_type="partner_action",
+            type="partner_action",
             title=f"{target_user.name} joined {book_name}",
             action_url=f"/recipe-books/{recipe_book_id}/members?role={caller_membership.role}",
         )
+        self.db.add(activity)
+        await self.db.flush()
 
         return success(
             data=AddRecipeBookMember.Response(

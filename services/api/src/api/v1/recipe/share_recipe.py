@@ -1,22 +1,25 @@
-"""Generate a public share token for a recipe."""
+"""Generate a public share token for a recipe.
+
+aam-12a: converted to AsyncEndpoint.
+"""
 
 import secrets
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ShareRecipe(Endpoint):
+class ShareRecipe(AsyncEndpoint):
     """Generate a public share link token for a recipe."""
 
-    def execute(self, recipe_id: str):
+    async def execute(self, recipe_id: str):
         user: User = self.user
 
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -24,7 +27,7 @@ class ShareRecipe(Endpoint):
                 code=ErrorCode.RECIPE_NOT_FOUND,
             )
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id,
@@ -38,8 +41,8 @@ class ShareRecipe(Endpoint):
 
         token = secrets.token_urlsafe(15)
         recipe.share_token = token
-        self.db.commit()
-        self.db.refresh(recipe)
+        await self.db.commit()
+        await self.db.refresh(recipe)
 
         return success(
             data=ShareRecipe.Response(

@@ -3,16 +3,16 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class CreateRecipeBook(Endpoint):
+class CreateRecipeBook(AsyncEndpoint):
     """Create a new recipe book."""
 
-    def execute(self, params: "CreateRecipeBook.Params"):
+    async def execute(self, params: "CreateRecipeBook.Params"):
         """
         Create a new recipe book for the current user.
 
@@ -30,8 +30,8 @@ class CreateRecipeBook(Endpoint):
             description=params.description,
             is_shared=params.is_shared,
         )
-        self.database.create(recipe_book)
-        self.database.db.refresh(recipe_book)
+        await self.database.create(recipe_book)
+        await self.database.db.refresh(recipe_book)
 
         # Create ownership relationship
         membership = RecipeBookUser(
@@ -40,8 +40,8 @@ class CreateRecipeBook(Endpoint):
             role="owner",
             last_opened_at=datetime.now(UTC),
         )
-        self.database.create(membership)
-        self.database.db.refresh(membership)
+        await self.database.create(membership)
+        await self.database.db.refresh(membership)
 
         return success(
             data=CreateRecipeBook.Response(
