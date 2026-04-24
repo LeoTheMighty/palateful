@@ -4,17 +4,19 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class GetShoppingList(Endpoint):
+class GetShoppingList(AsyncEndpoint):
     """Get a shopping list by ID."""
 
-    def execute(self, list_id: str):
+    async def execute(self, list_id: str):
         """
         Get a shopping list by ID.
 
@@ -26,8 +28,15 @@ class GetShoppingList(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(
+                selectinload(ShoppingList.items),
+                selectinload(ShoppingList.members),
+            )
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -35,9 +44,8 @@ class GetShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         if not is_owner and not membership:
@@ -47,12 +55,10 @@ class GetShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Update last_seen_at for the member
         if membership:
             membership.last_seen_at = datetime.utcnow()
-            self.database.db.commit()
+            await self.database.db.commit()
 
-        # Build items response
         items = []
         for item in shopping_list.items:
             if item.archived_at is None:
@@ -74,7 +80,6 @@ class GetShoppingList(Endpoint):
                         ingredient_id=(
                             str(item.ingredient_id) if item.ingredient_id else None
                         ),
-                        # New deadline/collaboration fields
                         due_at=item.due_at,
                         meal_event_id=(
                             str(item.meal_event_id) if item.meal_event_id else None
@@ -98,7 +103,6 @@ class GetShoppingList(Endpoint):
                     )
                 )
 
-        # Get member count if shared
         member_count = 0
         if shopping_list.is_shared:
             member_count = len(
@@ -142,7 +146,6 @@ class GetShoppingList(Endpoint):
         already_have_quantity: Decimal | None = None
         category: str | None = None
         ingredient_id: str | None = None
-        # New deadline/collaboration fields
         due_at: datetime | None = None
         meal_event_id: str | None = None
         due_reason: str | None = None
