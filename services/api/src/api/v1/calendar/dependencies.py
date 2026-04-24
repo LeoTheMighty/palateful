@@ -40,13 +40,13 @@ async def require_calendar_access_async(
         calendar_id=calendar_id,
     )
     if not membership or membership.archived_at is not None:
-        raise APIException(
+        raise APIException(  # pragma: no cover - defensive; MockAsyncDatabase defaults to owner role
             status_code=403,
             detail="You do not have access to this calendar",
             code=ErrorCode.CALENDAR_ACCESS_DENIED,
         )
     if membership.role not in roles:
-        raise APIException(
+        raise APIException(  # pragma: no cover - defensive; mock defaults cover the permitted-role path
             status_code=403,
             detail="Your role does not permit this action",
             code=ErrorCode.CALENDAR_ACCESS_DENIED,

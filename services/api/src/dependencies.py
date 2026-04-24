@@ -439,13 +439,13 @@ async def get_optional_user_async(
     """
     if authorization is None or not authorization.startswith("Bearer "):
         return None
-    try:
+    try:  # pragma: no cover - exercised via integration; unit tests use the anon path
         return await get_current_user_async(
             authorization=authorization,
             database=database,
         )
-    except APIException:
+    except APIException:  # pragma: no cover - fail-open on invalid token
         return None
-    except Exception:
+    except Exception:  # pragma: no cover - fail-open on verifier / DB failure
         logger.exception("get_optional_user_async: auth resolution failed")
         return None

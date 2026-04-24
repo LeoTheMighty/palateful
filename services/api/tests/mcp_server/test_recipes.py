@@ -14,20 +14,27 @@ import pytest
 
 @pytest.fixture
 def mcp_context():
-    from mcp_server.auth import current_database, current_user
+    from mcp_server.auth import (
+        current_database,
+        current_database_async,
+        current_user,
+    )
 
     user = MagicMock()
     user.id = "user-r"
     user.default_recipe_book_id = "default-book"
     database = MagicMock()
+    async_database = MagicMock()
 
     utok = current_user.set(user)
     dtok = current_database.set(database)
+    adtok = current_database_async.set(async_database)
     try:
         yield user, database
     finally:
         current_user.reset(utok)
         current_database.reset(dtok)
+        current_database_async.reset(adtok)
 
 
 class TestCreateIngredientForName:
@@ -115,12 +122,19 @@ class TestSimpleRecipeTools:
             toggle_favorite("r1")
         assert mock_call.call_args.kwargs == {"recipe_id": "r1"}
 
-    def test_list_favorites(self, mcp_context):
+    async def test_list_favorites(self, mcp_context):
+        """aam-10: ListFavorites is async — tool dispatches through
+        `await call_endpoint_async(...)`."""
+        from unittest.mock import AsyncMock
+
         from mcp_server.tools.recipes import list_favorites
 
-        with patch("mcp_server.tools.recipes.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.recipes.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            list_favorites()
+            await list_favorites()
         # No kwargs needed
         assert mock_call.called
 

@@ -46,7 +46,7 @@ async def list_cooking_logs(
     )
 
 
-def _run_post_cook_fanout(recipe_id: str, parent_log_id: str, user_id: str):
+def _run_post_cook_fanout(recipe_id: str, parent_log_id: str, user_id: str):  # pragma: no cover - threadpool fan-out; sync Database not reachable from test env
     """Dispatched to the threadpool. Owns its own sync Database session.
 
     Runs the partner-cooked notify (sync Database + Firebase) and

@@ -23,7 +23,7 @@ from api.v1.recipe.toggle_favorite import ToggleFavorite
 from api.v1.recipe.update_recipe import UpdateRecipe
 from fastapi.encoders import jsonable_encoder
 from mcp_server.auth import get_current_database, get_current_user
-from mcp_server.server import call_endpoint, mcp
+from mcp_server.server import call_endpoint, call_endpoint_async, mcp
 from utils.models.ingredient import Ingredient
 from utils.services.database import Database
 
@@ -281,11 +281,15 @@ def toggle_favorite(recipe_id: str) -> str:
 
 
 @mcp.tool()
-def list_favorites() -> str:
+async def list_favorites() -> str:
     """List every recipe the user has favorited, newest first. Great for
     "what are my favorites" or quick access when planning meals.
+
+    aam-10: ListFavorites converted to AsyncEndpoint (depends on the
+    async build_meal_summary for md-3 favorited_meals), so this tool
+    dispatches through `await call_endpoint_async(...)`.
     """
-    return call_endpoint(ListFavorites)
+    return await call_endpoint_async(ListFavorites)
 
 
 @mcp.tool()
