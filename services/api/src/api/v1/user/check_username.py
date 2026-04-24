@@ -4,7 +4,7 @@ import re
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.user import User
 
 # Username validation pattern
@@ -43,10 +43,10 @@ RESERVED_USERNAMES = {
 }
 
 
-class CheckUsername(Endpoint):
+class CheckUsername(AsyncEndpoint):
     """Check if a username is available."""
 
-    def execute(self, username: str):
+    async def execute(self, username: str):
         """Check username availability and validity."""
         username = username.lower().strip()
 
@@ -78,9 +78,9 @@ class CheckUsername(Endpoint):
             )
 
         # Check if taken
-        existing_user = self.db.execute(
+        existing_user = (await self.db.execute(
             select(User).where(User.username == username)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
 
         if existing_user:
             return success(
