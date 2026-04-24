@@ -1118,7 +1118,7 @@ class TestListFavorites:
 class TestGetRecipeFavoriteField:
     """Tests for is_favorite field in GET /v1/recipes/{recipe_id}."""
 
-    def test_get_recipe_shows_favorited(self, client, mock_db, mock_user):
+    def test_get_recipe_shows_favorited(self, client, mock_async_db, mock_user):
         """Test that get recipe shows is_favorite=true when favorited."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -1133,21 +1133,20 @@ class TestGetRecipeFavoriteField:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.user_favorite import UserFavorite
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(UserFavorite, fav,
+        mock_async_db.set_find_by(UserFavorite, fav,
                            user_id=mock_user.id,
                            recipe_id=recipe_id)
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["is_favorite"] is True
 
-    def test_get_recipe_shows_not_favorited(self, client, mock_db, mock_user):
+    def test_get_recipe_shows_not_favorited(self, client, mock_async_db, mock_user):
         """Test that get recipe shows is_favorite=false when not favorited."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -1160,11 +1159,10 @@ class TestGetRecipeFavoriteField:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
@@ -1175,7 +1173,7 @@ class TestGetRecipeFavoriteField:
 class TestGetRecipeIncludeParam:
     """ffm-9a: GET /v1/recipes/{id}?include= lenient default."""
 
-    def _setup(self, mock_db, mock_user, recipe_id="r-include"):
+    def _setup(self, mock_async_db, mock_user, recipe_id="r-include"):
         book_id = "b-include"
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
         membership = MockRecipeBookUser(
@@ -1185,22 +1183,21 @@ class TestGetRecipeIncludeParam:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.db.query.return_value = MockQuery([])
         return recipe_id
 
     def test_default_returns_full_shape(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """No `?include=` → today's full shape. Every gated key is
         present; old clients see zero diff."""
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}")
         assert response.status_code == 200
         data = response.json()
@@ -1208,11 +1205,11 @@ class TestGetRecipeIncludeParam:
             assert key in data, f"default must include {key}"
 
     def test_explicit_include_minimal_set(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """`?include=ingredients,steps` — notes + version_count are
         ABSENT (not null) from the response."""
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(
             f"/v1/recipes/{rid}?include=ingredients,steps"
         )
@@ -1224,11 +1221,11 @@ class TestGetRecipeIncludeParam:
         assert "version_count" not in data
 
     def test_explicit_include_comments_only(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """`?include=comments` maps to `notes`; ingredients + steps
         + version_count are absent."""
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}?include=comments")
         assert response.status_code == 200
         data = response.json()
@@ -1238,9 +1235,9 @@ class TestGetRecipeIncludeParam:
         assert "version_count" not in data
 
     def test_explicit_include_versions_only(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}?include=versions")
         assert response.status_code == 200
         data = response.json()
@@ -1248,11 +1245,11 @@ class TestGetRecipeIncludeParam:
         assert "notes" not in data
 
     def test_unknown_include_values_are_silent_noop(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """A new-client value against an old server is treated as
         a silent no-op — no 400. This keeps forward-compat easy."""
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(
             f"/v1/recipes/{rid}?include=ingredients,bogus"
         )
@@ -1264,11 +1261,11 @@ class TestGetRecipeIncludeParam:
         assert "version_count" not in data
 
     def test_empty_include_drops_all_gated_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """`?include=` with nothing resolvable → every gated field
         absent; non-gated base shape still returned."""
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}?include=")
         assert response.status_code == 200
         data = response.json()
@@ -1277,11 +1274,11 @@ class TestGetRecipeIncludeParam:
             assert gated not in data
 
     def test_include_full_csv_matches_default(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Passing the complete alias list yields the same shape as
         no include param."""
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(
             f"/v1/recipes/{rid}"
             "?include=ingredients,steps,comments,versions"
@@ -1297,7 +1294,7 @@ class TestGetRecipeLeanDefault:
     default shape. The env-var is the one-line rollback — flip via
     ECS task-def to restore full-shape without a code change."""
 
-    def _setup(self, mock_db, mock_user, recipe_id="r-lean"):
+    def _setup(self, mock_async_db, mock_user, recipe_id="r-lean"):
         book_id = "b-lean"
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
         membership = MockRecipeBookUser(
@@ -1307,22 +1304,21 @@ class TestGetRecipeLeanDefault:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.db.query.return_value = MockQuery([])
         return recipe_id
 
     def test_env_off_returns_full_shape(
-        self, client, mock_db, mock_user, monkeypatch
+        self, client, mock_async_db, mock_user, monkeypatch
     ):
         """Env var unset (initial safety-default) → full shape."""
         monkeypatch.delenv("RECIPES_LEAN_DEFAULT", raising=False)
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}")
         assert response.status_code == 200
         data = response.json()
@@ -1330,12 +1326,12 @@ class TestGetRecipeLeanDefault:
             assert key in data
 
     def test_env_false_returns_full_shape(
-        self, client, mock_db, mock_user, monkeypatch
+        self, client, mock_async_db, mock_user, monkeypatch
     ):
         """Env var explicitly ``false`` (documented rollback) →
         full shape."""
         monkeypatch.setenv("RECIPES_LEAN_DEFAULT", "false")
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}")
         assert response.status_code == 200
         data = response.json()
@@ -1343,13 +1339,13 @@ class TestGetRecipeLeanDefault:
         assert "version_count" in data
 
     def test_env_true_drops_notes_and_version_count(
-        self, client, mock_db, mock_user, monkeypatch
+        self, client, mock_async_db, mock_user, monkeypatch
     ):
         """Env var ``true`` → no-include default omits the heavy
         fields (``notes``, ``version_count``); ``ingredients`` +
         ``steps`` remain."""
         monkeypatch.setenv("RECIPES_LEAN_DEFAULT", "true")
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(f"/v1/recipes/{rid}")
         assert response.status_code == 200
         data = response.json()
@@ -1359,12 +1355,12 @@ class TestGetRecipeLeanDefault:
         assert "version_count" not in data
 
     def test_env_true_explicit_include_still_honored(
-        self, client, mock_db, mock_user, monkeypatch
+        self, client, mock_async_db, mock_user, monkeypatch
     ):
         """Even when env is on, an explicit ``?include=`` takes
         precedence: caller asks for comments → notes present."""
         monkeypatch.setenv("RECIPES_LEAN_DEFAULT", "true")
-        rid = self._setup(mock_db, mock_user)
+        rid = self._setup(mock_async_db, mock_user)
         response = client.get(
             f"/v1/recipes/{rid}?include=ingredients,steps,comments"
         )
