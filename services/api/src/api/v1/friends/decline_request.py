@@ -2,23 +2,23 @@
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
 from utils.models.user import User
 
 
-class DeclineFriendRequest(Endpoint):
+class DeclineFriendRequest(AsyncEndpoint):
     """Decline a friend request."""
 
-    def execute(self, request_id: str):
+    async def execute(self, request_id: str):
         """Decline a friend request."""
         user: User = self.user
 
-        # Find the friend request
-        friend_request = self.db.execute(
+        result = await self.db.execute(
             select(FriendRequest).where(FriendRequest.id == request_id)
-        ).scalar_one_or_none()
+        )
+        friend_request = result.scalar_one_or_none()
 
         if not friend_request:
             raise APIException(
@@ -27,7 +27,6 @@ class DeclineFriendRequest(Endpoint):
                 code=ErrorCode.NOT_FOUND,
             )
 
-        # Verify the request is to the current user
         if friend_request.to_user_id != user.id:
             raise APIException(
                 status_code=403,
@@ -35,7 +34,6 @@ class DeclineFriendRequest(Endpoint):
                 code=ErrorCode.FORBIDDEN,
             )
 
-        # Check if request is still pending
         if friend_request.status != "pending":
             raise APIException(
                 status_code=400,
@@ -43,9 +41,8 @@ class DeclineFriendRequest(Endpoint):
                 code=ErrorCode.CONFLICT,
             )
 
-        # Update request status
         friend_request.status = "declined"
-        self.db.commit()
+        await self.db.commit()
 
         return success(
             data=DeclineFriendRequest.Response(

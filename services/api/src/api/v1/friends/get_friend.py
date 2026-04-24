@@ -5,28 +5,28 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friendship import Friendship
 from utils.models.user import User
 
 
-class GetFriend(Endpoint):
+class GetFriend(AsyncEndpoint):
     """Get a friend's profile."""
 
-    def execute(self, friend_id: str):
+    async def execute(self, friend_id: str):
         """Get friend profile and friendship info."""
         user: User = self.user
 
-        # Find friendship with friend data
-        friendship = self.db.execute(
+        result = await self.db.execute(
             select(Friendship)
             .options(joinedload(Friendship.friend))
             .where(
                 Friendship.user_id == user.id,
                 Friendship.friend_id == friend_id,
             )
-        ).scalar_one_or_none()
+        )
+        friendship = result.scalar_one_or_none()
 
         if not friendship:
             raise APIException(

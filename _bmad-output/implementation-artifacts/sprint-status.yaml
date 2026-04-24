@@ -1381,7 +1381,7 @@ development_status:
   # flipped 150 `async def` → `def` handlers. Stories below cover the remaining
   # domains + the notify-via-threadpool helper every converted endpoint uses.
   aam-foundations-notify-threadpool-helper: done
-  aam-28-friends-domain-async: backlog
+  aam-28-friends-domain-async: done
   aam-29-parser-domain-async: in-progress
   aam-30-recurrence-rule-domain-async: in-progress
   epic-api-async-migration-retrospective: optional

@@ -2,21 +2,20 @@
 
 from pydantic import BaseModel
 from sqlalchemy import or_, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friendship import Friendship
 from utils.models.user import User
 
 
-class RemoveFriend(Endpoint):
+class RemoveFriend(AsyncEndpoint):
     """Remove a friend."""
 
-    def execute(self, friend_id: str):
+    async def execute(self, friend_id: str):
         """Remove a friend (deletes bidirectional friendship)."""
         user: User = self.user
 
-        # Find both friendship records
-        friendships = self.db.execute(
+        result = await self.db.execute(
             select(Friendship).where(
                 or_(
                     (Friendship.user_id == user.id)
@@ -25,7 +24,8 @@ class RemoveFriend(Endpoint):
                     & (Friendship.friend_id == user.id),
                 )
             )
-        ).scalars().all()
+        )
+        friendships = list(result.scalars().all())
 
         if not friendships:
             raise APIException(
@@ -34,11 +34,10 @@ class RemoveFriend(Endpoint):
                 code=ErrorCode.NOT_FOUND,
             )
 
-        # Delete both records
         for friendship in friendships:
-            self.db.delete(friendship)
+            await self.db.delete(friendship)
 
-        self.db.commit()
+        await self.db.commit()
 
         return success(
             data=RemoveFriend.Response(

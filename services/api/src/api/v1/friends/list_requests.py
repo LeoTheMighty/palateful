@@ -5,49 +5,40 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.friend_request import FriendRequest
 from utils.models.user import User
 
 
-class ListFriendRequests(Endpoint):
+class ListFriendRequests(AsyncEndpoint):
     """List all pending friend requests (sent and received)."""
 
-    def execute(self):
+    async def execute(self):
         """Get pending friend requests."""
         user: User = self.user
 
-        # Get received requests (pending only)
-        received = (
-            self.db.execute(
-                select(FriendRequest)
-                .options(joinedload(FriendRequest.from_user))
-                .where(
-                    FriendRequest.to_user_id == user.id,
-                    FriendRequest.status == "pending",
-                )
-                .order_by(FriendRequest.created_at.desc())
+        received_result = await self.db.execute(
+            select(FriendRequest)
+            .options(joinedload(FriendRequest.from_user))
+            .where(
+                FriendRequest.to_user_id == user.id,
+                FriendRequest.status == "pending",
             )
-            .scalars()
-            .all()
+            .order_by(FriendRequest.created_at.desc())
         )
+        received = list(received_result.scalars().all())
 
-        # Get sent requests (pending only)
-        sent = (
-            self.db.execute(
-                select(FriendRequest)
-                .options(joinedload(FriendRequest.to_user))
-                .where(
-                    FriendRequest.from_user_id == user.id,
-                    FriendRequest.status == "pending",
-                )
-                .order_by(FriendRequest.created_at.desc())
+        sent_result = await self.db.execute(
+            select(FriendRequest)
+            .options(joinedload(FriendRequest.to_user))
+            .where(
+                FriendRequest.from_user_id == user.id,
+                FriendRequest.status == "pending",
             )
-            .scalars()
-            .all()
+            .order_by(FriendRequest.created_at.desc())
         )
+        sent = list(sent_result.scalars().all())
 
-        # Build response
         received_requests = [
             ListFriendRequests.FriendRequestInfo(
                 id=str(r.id),

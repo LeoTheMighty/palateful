@@ -1,33 +1,30 @@
 """Accept friend request endpoint."""
 
+from api.v1.friends.notifications import notify_friend_request_accepted
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
 from utils.models.friendship import Friendship
 from utils.models.user import User
-from utils.services.push_notification import (
-    NotificationType,
-    PushNotification,
-    get_push_service,
-)
+from utils.services.notifications_bridge import notify_via_threadpool
 
 
-class AcceptFriendRequest(Endpoint):
+class AcceptFriendRequest(AsyncEndpoint):
     """Accept a friend request."""
 
-    def execute(self, request_id: str):
+    async def execute(self, request_id: str):
         """Accept a friend request and create friendship."""
         user: User = self.user
 
-        # Find the friend request
-        friend_request = self.db.execute(
+        result = await self.db.execute(
             select(FriendRequest)
             .options(joinedload(FriendRequest.from_user))
             .where(FriendRequest.id == request_id)
-        ).scalar_one_or_none()
+        )
+        friend_request = result.scalar_one_or_none()
 
         if not friend_request:
             raise APIException(
@@ -36,7 +33,6 @@ class AcceptFriendRequest(Endpoint):
                 code=ErrorCode.NOT_FOUND,
             )
 
-        # Verify the request is to the current user
         if friend_request.to_user_id != user.id:
             raise APIException(
                 status_code=403,
@@ -44,7 +40,6 @@ class AcceptFriendRequest(Endpoint):
                 code=ErrorCode.FORBIDDEN,
             )
 
-        # Check if request is still pending
         if friend_request.status != "pending":
             raise APIException(
                 status_code=400,
@@ -52,10 +47,8 @@ class AcceptFriendRequest(Endpoint):
                 code=ErrorCode.CONFLICT,
             )
 
-        # Update request status
         friend_request.status = "accepted"
 
-        # Create bidirectional friendships
         friendship1 = Friendship(
             user_id=user.id,
             friend_id=friend_request.from_user_id,
@@ -67,23 +60,14 @@ class AcceptFriendRequest(Endpoint):
         self.db.add(friendship1)
         self.db.add(friendship2)
 
-        self.db.commit()
+        await self.db.commit()
 
-        # Send push notification to the requester
         from_user = friend_request.from_user
-        display_name = f"@{user.username}" if user.username else user.name or "Someone"
-        push_service = get_push_service()
-        push_service.send_to_user(
-            from_user,
-            PushNotification(
-                title="Friend Request Accepted",
-                body=f"{display_name} accepted your friend request",
-                notification_type=NotificationType.FRIEND_REQUEST_ACCEPTED,
-                data={
-                    "friend_id": str(user.id),
-                },
-            ),
-            db_session=self.db,
+
+        await notify_via_threadpool(
+            notify_friend_request_accepted,
+            str(from_user.id),
+            user,
         )
 
         return success(

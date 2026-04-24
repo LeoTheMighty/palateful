@@ -5,31 +5,26 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.friendship import Friendship
 from utils.models.user import User
 
 
-class ListFriends(Endpoint):
+class ListFriends(AsyncEndpoint):
     """List all friends for the current user."""
 
-    def execute(self):
+    async def execute(self):
         """Get all friends."""
         user: User = self.user
 
-        # Get all friendships with friend data
-        friendships = (
-            self.db.execute(
-                select(Friendship)
-                .options(joinedload(Friendship.friend))
-                .where(Friendship.user_id == user.id)
-                .order_by(Friendship.created_at.desc())
-            )
-            .scalars()
-            .all()
+        result = await self.db.execute(
+            select(Friendship)
+            .options(joinedload(Friendship.friend))
+            .where(Friendship.user_id == user.id)
+            .order_by(Friendship.created_at.desc())
         )
+        friendships = list(result.scalars().all())
 
-        # Build response
         friends = [
             ListFriends.FriendInfo(
                 id=str(f.friend.id),

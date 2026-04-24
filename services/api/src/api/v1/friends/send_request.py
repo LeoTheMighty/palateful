@@ -2,39 +2,36 @@
 
 from datetime import UTC, datetime, timedelta
 
+from api.v1.friends.notifications import notify_friend_request_sent
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.friend_request import FriendRequest
 from utils.models.friendship import Friendship
 from utils.models.user import User
-from utils.services.push_notification import (
-    NotificationType,
-    PushNotification,
-    get_push_service,
-)
+from utils.services.notifications_bridge import notify_via_threadpool
 
 # Rate limit: max friend requests per day
 MAX_REQUESTS_PER_DAY = 20
 
 
-class SendFriendRequest(Endpoint):
+class SendFriendRequest(AsyncEndpoint):
     """Send a friend request to another user."""
 
-    def execute(self, params: "SendFriendRequest.Params"):
+    async def execute(self, params: "SendFriendRequest.Params"):
         """Send a friend request."""
         user: User = self.user
 
-        # Find target user by username or user_id
         if params.username:
             username = params.username.lower().strip()
             if username.startswith("@"):
                 username = username[1:]
 
-            target_user = self.db.execute(
+            target_result = await self.db.execute(
                 select(User).where(User.username == username)
-            ).scalar_one_or_none()
+            )
+            target_user = target_result.scalar_one_or_none()
 
             if not target_user:
                 raise APIException(
@@ -43,9 +40,10 @@ class SendFriendRequest(Endpoint):
                     code=ErrorCode.NOT_FOUND,
                 )
         elif params.user_id:
-            target_user = self.db.execute(
+            target_result = await self.db.execute(
                 select(User).where(User.id == params.user_id)
-            ).scalar_one_or_none()
+            )
+            target_user = target_result.scalar_one_or_none()
 
             if not target_user:
                 raise APIException(
@@ -60,7 +58,6 @@ class SendFriendRequest(Endpoint):
                 code=ErrorCode.VALIDATION_ERROR,
             )
 
-        # Can't send request to yourself
         if target_user.id == user.id:
             raise APIException(
                 status_code=400,
@@ -68,13 +65,13 @@ class SendFriendRequest(Endpoint):
                 code=ErrorCode.VALIDATION_ERROR,
             )
 
-        # Check if already friends
-        existing_friendship = self.db.execute(
+        existing_friendship_result = await self.db.execute(
             select(Friendship).where(
                 Friendship.user_id == user.id,
                 Friendship.friend_id == target_user.id,
             )
-        ).scalar_one_or_none()
+        )
+        existing_friendship = existing_friendship_result.scalar_one_or_none()
 
         if existing_friendship:
             raise APIException(
@@ -83,20 +80,18 @@ class SendFriendRequest(Endpoint):
                 code=ErrorCode.CONFLICT,
             )
 
-        # Check for existing request (either direction)
-        existing_request = self.db.execute(
+        existing_request_result = await self.db.execute(
             select(FriendRequest).where(
                 FriendRequest.status == "pending",
                 or_(
-                    # Request from current user to target
                     (FriendRequest.from_user_id == user.id)
                     & (FriendRequest.to_user_id == target_user.id),
-                    # Request from target to current user
                     (FriendRequest.from_user_id == target_user.id)
                     & (FriendRequest.to_user_id == user.id),
                 ),
             )
-        ).scalar_one_or_none()
+        )
+        existing_request = existing_request_result.scalar_one_or_none()
 
         if existing_request:
             if existing_request.from_user_id == user.id:
@@ -106,21 +101,20 @@ class SendFriendRequest(Endpoint):
                     code=ErrorCode.CONFLICT,
                 )
             else:
-                # They already sent us a request - suggest accepting instead
                 raise APIException(
                     status_code=400,
                     detail="This user already sent you a friend request. Accept it instead!",
                     code=ErrorCode.CONFLICT,
                 )
 
-        # Check rate limit
         day_ago = datetime.now(UTC) - timedelta(days=1)
-        requests_today = self.db.execute(
+        rate_result = await self.db.execute(
             select(func.count(FriendRequest.id)).where(
                 FriendRequest.from_user_id == user.id,
                 FriendRequest.created_at >= day_ago,
             )
-        ).scalar()
+        )
+        requests_today = rate_result.scalar()
 
         if requests_today >= MAX_REQUESTS_PER_DAY:
             raise APIException(
@@ -129,7 +123,6 @@ class SendFriendRequest(Endpoint):
                 code=ErrorCode.RATE_LIMITED,
             )
 
-        # Create friend request
         friend_request = FriendRequest(
             from_user_id=user.id,
             to_user_id=target_user.id,
@@ -137,24 +130,14 @@ class SendFriendRequest(Endpoint):
             status="pending",
         )
         self.db.add(friend_request)
-        self.db.commit()
-        self.db.refresh(friend_request)
+        await self.db.commit()
+        await self.db.refresh(friend_request)
 
-        # Send push notification
-        display_name = f"@{user.username}" if user.username else user.name or "Someone"
-        push_service = get_push_service()
-        push_service.send_to_user(
-            target_user,
-            PushNotification(
-                title="Friend Request",
-                body=f"{display_name} wants to be friends",
-                notification_type=NotificationType.FRIEND_REQUEST,
-                data={
-                    "friend_request_id": str(friend_request.id),
-                    "from_user_id": str(user.id),
-                },
-            ),
-            db_session=self.db,
+        await notify_via_threadpool(
+            notify_friend_request_sent,
+            str(target_user.id),
+            str(friend_request.id),
+            user,
         )
 
         return success(
