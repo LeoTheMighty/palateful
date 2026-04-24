@@ -4,9 +4,11 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
-from utils.models.shopping_list import ShoppingList
+from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
@@ -17,10 +19,10 @@ from .utils.deadline import (
 )
 
 
-class GetShoppingListDeadlines(Endpoint):
+class GetShoppingListDeadlines(AsyncEndpoint):
     """Get shopping list items grouped by deadline urgency."""
 
-    def execute(self, list_id: str):
+    async def execute(self, list_id: str):
         """
         Get shopping list items organized by deadline urgency.
 
@@ -43,8 +45,16 @@ class GetShoppingListDeadlines(Endpoint):
         user: User = self.user
         now = datetime.now()
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(
+                selectinload(ShoppingList.items).selectinload(
+                    ShoppingListItem.meal_event
+                )
+            )
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -52,9 +62,8 @@ class GetShoppingListDeadlines(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         if not is_owner and not membership:
@@ -64,7 +73,6 @@ class GetShoppingListDeadlines(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Group items by urgency
         items_by_urgency: dict[str, list] = {
             "overdue": [],
             "urgent": [],
@@ -74,7 +82,6 @@ class GetShoppingListDeadlines(Endpoint):
             "none": [],
         }
 
-        # Track next deadline and meal event
         next_deadline = None
         next_meal_event = None
         unchecked_count = 0
@@ -90,10 +97,8 @@ class GetShoppingListDeadlines(Endpoint):
 
             unchecked_count += 1
 
-            # Determine urgency
             urgency = get_urgency_level(item.due_at, now)
 
-            # Build item response
             item_data = GetShoppingListDeadlines.ItemResponse(
                 id=str(item.id),
                 name=item.name,
@@ -115,11 +120,9 @@ class GetShoppingListDeadlines(Endpoint):
 
             items_by_urgency[urgency].append(item_data)
 
-            # Track next deadline
             if item.due_at and (next_deadline is None or item.due_at < next_deadline):
                 next_deadline = item.due_at
 
-            # Track meal events for next event info
             if item.meal_event and (
                 next_meal_event is None
                 or item.meal_event.scheduled_at < next_meal_event["scheduled_at"]
@@ -138,7 +141,6 @@ class GetShoppingListDeadlines(Endpoint):
                     "time_until_prep": format_time_until(prep_start, now),
                 }
 
-        # Sort items within each group by due_at (if present) then by priority
         for urgency_group in items_by_urgency.values():
             urgency_group.sort(
                 key=lambda x: (
@@ -147,7 +149,6 @@ class GetShoppingListDeadlines(Endpoint):
                 )
             )
 
-        # Build meal event response
         next_meal_response = None
         if next_meal_event:
             next_meal_response = GetShoppingListDeadlines.MealEventInfo(
