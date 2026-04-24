@@ -488,14 +488,16 @@ class TestSearchUsers:
         assert data["results"][0]["friendship_status"] == "request_received"
         assert data["results"][0]["friend_request_id"] is not None
 
-    def test_search_users_empty_query_direct(self, mock_db, mock_user):
+    def test_search_users_empty_query_direct(self, mock_async_db, mock_user):
         """Test that empty query raises APIException (tests the branch not reachable via router)."""
+        import asyncio
+
         from api.v1.user.search_users import SearchUsers
         from utils.api.endpoint import APIException
 
-        endpoint = SearchUsers(user=mock_user, database=mock_db)
+        endpoint = SearchUsers(user=mock_user, database=mock_async_db)
         try:
-            endpoint.execute(q="   ")
+            asyncio.run(endpoint.execute(q="   "))
             assert False, "Should have raised APIException"
         except APIException as e:
             assert e.status_code == 400
@@ -914,8 +916,11 @@ class TestCompleteOnboarding:
 
         mock_db.db.refresh = MagicMock(side_effect=refresh_with_defaults)
 
+        # aam-19: CompleteOnboarding now imports ensure_default_shopping_list
+        # inside `_bootstrap_default_list_sync` (runs on threadpool with a fresh
+        # sync session), so patch the function at its source module.
         with patch(
-            "api.v1.user.complete_onboarding.ensure_default_shopping_list",
+            "api.v1.shopping_list.bootstrap.ensure_default_shopping_list",
             side_effect=RuntimeError("simulated bootstrap failure"),
         ):
             response = client.post(
@@ -1149,14 +1154,14 @@ class TestSetDefaultRecipeBook:
 
     def test_set_default_recipe_book_success(self, client, mock_user, mock_db, mock_async_db):
         """Test setting a default recipe book."""
-        from conftest import MockQuery, MockRecipeBook
+        from conftest import MockRecipeBook
         book_id = str(uuid.uuid4())
         book = MockRecipeBook(id=book_id)
         from utils.models.recipe_book import RecipeBook
         mock_async_db.set_find_by(RecipeBook, book, id=book_id)
-        # User must be a member — mock query returns a membership
+        # User must be a member — mock execute returns a membership row
         membership = MockRecipeBookUser(user_id=str(mock_user.id), recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([membership])
+        mock_async_db.db.execute.return_value = MockExecuteResult([membership])
 
         response = client.put(
             "/v1/users/me/default-recipe-book",
@@ -1168,7 +1173,7 @@ class TestSetDefaultRecipeBook:
 
     def test_set_default_shifts_previous(self, client, mock_user, mock_db, mock_async_db):
         """Test that setting a new default moves old to previous."""
-        from conftest import MockQuery, MockRecipeBook
+        from conftest import MockRecipeBook
         old_id = str(uuid.uuid4())
         new_id = str(uuid.uuid4())
         mock_user.default_recipe_book_id = old_id
@@ -1177,7 +1182,7 @@ class TestSetDefaultRecipeBook:
         from utils.models.recipe_book import RecipeBook
         mock_async_db.set_find_by(RecipeBook, book, id=new_id)
         membership = MockRecipeBookUser(user_id=str(mock_user.id), recipe_book_id=new_id)
-        mock_db.db.query.return_value = MockQuery([membership])
+        mock_async_db.db.execute.return_value = MockExecuteResult([membership])
 
         response = client.put(
             "/v1/users/me/default-recipe-book",
@@ -1209,13 +1214,13 @@ class TestSetDefaultRecipeBook:
 
     def test_set_default_recipe_book_not_member(self, client, mock_user, mock_db, mock_async_db):
         """Test setting a book the user is not a member of returns 403 (line 51)."""
-        from conftest import MockQuery, MockRecipeBook
+        from conftest import MockRecipeBook
         book_id = str(uuid.uuid4())
         book = MockRecipeBook(id=book_id)
         from utils.models.recipe_book import RecipeBook
         mock_async_db.set_find_by(RecipeBook, book, id=book_id)
-        # User is NOT a member — query returns empty
-        mock_db.db.query.return_value = MockQuery([])
+        # User is NOT a member — execute returns empty
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
 
         response = client.put(
             "/v1/users/me/default-recipe-book",
