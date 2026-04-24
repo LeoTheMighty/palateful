@@ -8,9 +8,11 @@ snackbar/undo UX.
 
 import uuid
 from decimal import Decimal
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 from conftest import (
+    MockExecuteResult,
     MockPantry,
     MockPantryUser,
     MockQuery,
@@ -60,25 +62,32 @@ class TestPantryHookFires:
         mock_async_db.set_find_by(
             ShoppingListItem, item, id=item_id, shopping_list_id=list_id
         )
-        mock_async_db.set_find_by(Pantry, pantry, id=pantry.id)
-        _query_router(
-            mock_db,
-            {
-                PantryUser: [membership],
-                PantryIngredient: [],
-                ShoppingListItem: [],  # unchecked_count query
-            },
-        )
+        # unchecked_count query returns 1 remaining so list_complete isn't
+        # also fired (simpler signal).
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[1])
 
-        with patch("api.v1.shopping_list.update_item.notify_item_checked"):
-            with patch("api.v1.shopping_list.update_item.notify_list_complete"):
-                with patch(
-                    "api.v1.shopping_list.update_item.dispatch"
-                ) as dispatch_mock:
-                    response = client.put(
-                        f"/v1/shopping-lists/{list_id}/items/{item_id}",
-                        json={"is_checked": True},
-                    )
+        # aam-13: pantry_service async variants are called directly. Patch
+        # the functions instead of the underlying queries.
+        upsert_result = SimpleNamespace(skipped_reason=None)
+        with patch(
+            "utils.services.pantry_service.get_or_create_default_pantry_async",
+            new_callable=AsyncMock,
+            return_value=(pantry, membership),
+        ), patch(
+            "utils.services.pantry_service.upsert_pantry_ingredient_async",
+            new_callable=AsyncMock,
+            return_value=upsert_result,
+        ), patch(
+            "api.v1.shopping_list.update_item.notify_item_checked"
+        ), patch(
+            "api.v1.shopping_list.update_item.notify_list_complete"
+        ), patch(
+            "api.v1.shopping_list.update_item.dispatch"
+        ) as dispatch_mock:
+            response = client.put(
+                f"/v1/shopping-lists/{list_id}/items/{item_id}",
+                json={"is_checked": True},
+            )
 
         assert response.status_code == 200
         data = response.json()
@@ -182,18 +191,22 @@ class TestPantryHookFires:
         mock_async_db.set_find_by(
             ShoppingListItem, item, id=item_id, shopping_list_id=list_id
         )
-        mock_db.db.query.return_value = MockQuery([])
+        # unchecked_count query — no items remain (0 unchecked).
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
-        with patch("api.v1.shopping_list.update_item.notify_item_checked"):
-            with patch("api.v1.shopping_list.update_item.notify_list_complete"):
-                with patch(
-                    "api.v1.shopping_list.update_item.get_or_create_default_pantry",
-                    side_effect=RuntimeError("boom"),
-                ):
-                    response = client.put(
-                        f"/v1/shopping-lists/{list_id}/items/{item_id}",
-                        json={"is_checked": True},
-                    )
+        with patch(
+            "utils.services.pantry_service.get_or_create_default_pantry_async",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ), patch(
+            "api.v1.shopping_list.update_item.notify_item_checked"
+        ), patch(
+            "api.v1.shopping_list.update_item.notify_list_complete"
+        ):
+            response = client.put(
+                f"/v1/shopping-lists/{list_id}/items/{item_id}",
+                json={"is_checked": True},
+            )
 
         # Request still succeeds even though the hook blew up.
         assert response.status_code == 200
