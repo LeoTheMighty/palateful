@@ -338,3 +338,140 @@ class AWSService:
             "UNKNOWN": "failed",
         }
         return mapping.get(batch_status, "pending")
+
+    # ------------------------------------------------------------------
+    # Async variants — aam-9: boto3 SDK is sync-only upstream, so async
+    # callers (post-aam-18 import domain, post-aam-29 parser domain)
+    # dispatch each call through the FastAPI threadpool to keep the
+    # event loop free. Sync variants above stay — worker-side paths that
+    # aren't on the event loop call them directly. Neither is deprecated.
+    # ------------------------------------------------------------------
+
+    async def generate_presigned_upload_url_async(
+        self,
+        s3_key: str,
+        content_type: str = "image/jpeg",
+        expires_in: int = 3600,
+    ) -> str:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(
+            self.generate_presigned_upload_url,
+            s3_key,
+            content_type,
+            expires_in,
+        )
+
+    async def presign_put_url_async(
+        self,
+        s3_key: str,
+        bucket: str,
+        content_type: str,
+        content_length: int,
+        tagging: str | None = None,
+        expires_in: int = 3600,
+    ) -> tuple[str, dict[str, str]]:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(
+            self.presign_put_url,
+            s3_key,
+            bucket,
+            content_type,
+            content_length,
+            tagging,
+            expires_in,
+        )
+
+    async def generate_presigned_download_url_async(
+        self,
+        s3_key: str,
+        bucket: str | None = None,
+        expires_in: int = 3600,
+    ) -> str:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(
+            self.generate_presigned_download_url,
+            s3_key,
+            bucket,
+            expires_in,
+        )
+
+    async def get_s3_object_async(
+        self, s3_key: str, bucket: str | None = None
+    ) -> dict[str, Any]:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(self.get_s3_object, s3_key, bucket)
+
+    async def read_object_async(self, s3_key: str, bucket: str) -> bytes:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(self.read_object, s3_key, bucket)
+
+    async def head_object_async(
+        self, s3_key: str, bucket: str
+    ) -> dict[str, Any]:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(self.head_object, s3_key, bucket)
+
+    async def copy_object_async(
+        self,
+        source_key: str,
+        dest_key: str,
+        source_bucket: str | None = None,
+        dest_bucket: str | None = None,
+    ) -> None:
+        from fastapi.concurrency import run_in_threadpool
+
+        await run_in_threadpool(
+            self.copy_object,
+            source_key,
+            dest_key,
+            source_bucket,
+            dest_bucket,
+        )
+
+    async def submit_batch_job_async(
+        self,
+        job_name: str,
+        input_s3_key: str,
+        output_s3_key: str,
+    ) -> str:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(
+            self.submit_batch_job,
+            job_name,
+            input_s3_key,
+            output_s3_key,
+        )
+
+    async def submit_batch_manifest_job_async(
+        self,
+        job_name: str,
+        items: list[dict[str, str]],
+        manifest_s3_key: str,
+        extra_environment: dict[str, str] | None = None,
+    ) -> str:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(
+            self.submit_batch_manifest_job,
+            job_name,
+            items,
+            manifest_s3_key,
+            extra_environment,
+        )
+
+    async def describe_batch_job_async(self, job_id: str) -> dict[str, Any]:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(self.describe_batch_job, job_id)
+
+    async def get_batch_job_status_async(self, job_id: str) -> str:
+        from fastapi.concurrency import run_in_threadpool
+
+        return await run_in_threadpool(self.get_batch_job_status, job_id)

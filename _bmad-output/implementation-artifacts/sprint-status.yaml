@@ -1352,7 +1352,7 @@ development_status:
   # Phase 2 — External SDK async swaps (parallel after aam-1)
   aam-7-openai-async: backlog
   aam-8-firebase-threadpool-wrap: backlog
-  aam-9-boto3-threadpool-wrap: backlog
+  aam-9-boto3-threadpool-wrap: done
   # Phase 3 — Per-domain conversions (parallel after Phase 1)
   aam-10-meal-domain-async: done
   aam-11-recipe-book-domain-async: backlog
@@ -1375,4 +1375,11 @@ development_status:
   aam-25-sync-in-async-startup-guard: backlog
   aam-26-latency-baseline-snapshot: backlog
   aam-27-concurrent-load-integration-test: backlog
+  # Phase 7 — added 2026-04-24 after Phase 0 emergency patch (commit 2243928)
+  # flipped 150 `async def` → `def` handlers. Stories below cover the remaining
+  # domains + the notify-via-threadpool helper every converted endpoint uses.
+  aam-foundations-notify-threadpool-helper: backlog
+  aam-28-friends-domain-async: backlog
+  aam-29-parser-domain-async: backlog
+  aam-30-recurrence-rule-domain-async: backlog
   epic-api-async-migration-retrospective: optional
