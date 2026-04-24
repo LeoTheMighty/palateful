@@ -9,11 +9,9 @@ from conftest import (
     MockRecipeBookUser,
     MockUser,
 )
-
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
-
 
 BOOK_ID = "10000000-0000-0000-0000-000000000001"
 TARGET_USER_ID = "a0000000-0000-0000-0000-000000000002"

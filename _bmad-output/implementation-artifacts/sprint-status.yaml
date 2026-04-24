@@ -1355,7 +1355,7 @@ development_status:
   aam-9-boto3-threadpool-wrap: done
   # Phase 3 — Per-domain conversions (parallel after Phase 1)
   aam-10-meal-domain-async: done
-  aam-11-recipe-book-domain-async: backlog
+  aam-11-recipe-book-domain-async: done
   aam-12-recipe-domain-async: backlog
   aam-13-shopping-list-domain-async: backlog
   aam-14-calendar-and-meal-event-domain-async: backlog
