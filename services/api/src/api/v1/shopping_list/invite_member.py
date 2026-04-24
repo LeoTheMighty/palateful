@@ -4,17 +4,20 @@ from datetime import datetime
 
 from api.v1.shopping_list.utils.notifications import notify_list_shared
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
+from utils.services.notifications_bridge import notify_via_threadpool
 
 
-class InviteShoppingListMember(Endpoint):
+class InviteShoppingListMember(AsyncEndpoint):
     """Invite a user to a shopping list by email or user ID."""
 
-    def execute(self, list_id: str, params: "InviteShoppingListMember.Params"):
+    async def execute(self, list_id: str, params: "InviteShoppingListMember.Params"):
         """
         Invite a user to a shopping list.
 
@@ -27,8 +30,12 @@ class InviteShoppingListMember(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(selectinload(ShoppingList.members))
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -36,9 +43,8 @@ class InviteShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - must be owner or editor
         is_owner = shopping_list.owner_id == user.id
-        current_membership = self.database.find_by(
+        current_membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_invite = is_owner or (
@@ -52,12 +58,11 @@ class InviteShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Find the user to invite
         invited_user = None
         if params.user_id:
-            invited_user = self.database.find_by(User, id=params.user_id)
+            invited_user = await self.database.find_by(User, id=params.user_id)
         elif params.email:  # pragma: no cover — falls through to not-found check below
-            invited_user = self.database.find_by(User, email=params.email)
+            invited_user = await self.database.find_by(User, email=params.email)
 
         if not invited_user:
             raise APIException(
@@ -66,8 +71,7 @@ class InviteShoppingListMember(Endpoint):
                 code=ErrorCode.USER_NOT_FOUND,
             )
 
-        # Check if already a member
-        existing = self.database.find_by(
+        existing = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=invited_user.id
         )
         if existing and not existing.archived_at:
@@ -77,7 +81,6 @@ class InviteShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ALREADY_MEMBER,
             )
 
-        # Check member limit
         member_count = len(
             [m for m in shopping_list.members if m.archived_at is None]
         )
@@ -88,31 +91,25 @@ class InviteShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_SHARE_LIMIT_REACHED,
             )
 
-        # Create or reactivate membership
         if existing and existing.archived_at:
-            # Reactivate archived membership
             existing.archived_at = None
             existing.role = params.role
-            self.database.db.commit()
+            await self.database.db.commit()
+            await self.database.db.refresh(existing)
             membership = existing
         else:
-            # Create new membership
             membership = ShoppingListUser(
                 shopping_list_id=shopping_list.id,
                 user_id=invited_user.id,
                 role=params.role,
             )
-            self.database.create(membership)
+            await self.database.create(membership)
 
-        self.database.db.refresh(membership)
-
-        # Mark list as shared if not already
         if not shopping_list.is_shared:
             shopping_list.is_shared = True
-            self.database.db.commit()
+            await self.database.db.commit()
 
-        # Ensure owner has membership record
-        owner_membership = self.database.find_by(
+        owner_membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=shopping_list.id, user_id=shopping_list.owner_id
         )
         if not owner_membership:  # pragma: no cover — owner record usually exists
@@ -121,10 +118,11 @@ class InviteShoppingListMember(Endpoint):
                 user_id=shopping_list.owner_id,
                 role="owner",
             )
-            self.database.create(owner_membership)
+            await self.database.create(owner_membership)
 
-        # Send notification to invited user
-        notify_list_shared(shopping_list, invited_user, user, self.database)
+        await notify_via_threadpool(
+            notify_list_shared, shopping_list, invited_user, user
+        )
 
         return success(
             data=InviteShoppingListMember.Response(
