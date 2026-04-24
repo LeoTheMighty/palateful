@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 from conftest import (
+    MockExecuteResult,
     MockIngredient,
     MockQuery,
     MockRecipe,
@@ -20,7 +21,7 @@ from conftest import (
 class TestListRecipes:
     """Tests for GET /v1/recipe-books/{book_id}/recipes."""
 
-    def test_list_recipes_success(self, client, mock_db, mock_user):
+    def test_list_recipes_success(self, client, mock_async_db, mock_user):
         """Test listing recipes in a book."""
         book_id = "test-book-id"
         membership = MockRecipeBookUser(
@@ -31,11 +32,15 @@ class TestListRecipes:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        # First call returns recipes, second call returns empty favorites
-        mock_db.db.query.side_effect = [MockQuery([recipe]), MockQuery([])]
+        # Three execute() calls: count, list, favorites.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
+        ]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes")
         assert response.status_code == 200
@@ -43,12 +48,12 @@ class TestListRecipes:
         assert "items" in data
         assert "total" in data
 
-    def test_list_recipes_no_access(self, client, mock_db, mock_user):
+    def test_list_recipes_no_access(self, client, mock_async_db, mock_user):
         """Test listing recipes without access."""
         response = client.get("/v1/recipe-books/no-access/recipes")
         assert response.status_code == 403
 
-    def test_list_recipes_with_search(self, client, mock_db, mock_user):
+    def test_list_recipes_with_search(self, client, mock_async_db, mock_user):
         """Test listing recipes with search query."""
         book_id = "test-book-id"
         membership = MockRecipeBookUser(
@@ -58,15 +63,18 @@ class TestListRecipes:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes?search=pasta")
         assert response.status_code == 200
 
-    def test_list_recipes_with_vibe_filter(self, client, mock_db, mock_user):
+    def test_list_recipes_with_vibe_filter(self, client, mock_async_db, mock_user):
         """Test listing recipes with vibe filter."""
         book_id = "test-book-id"
         membership = MockRecipeBookUser(
@@ -76,10 +84,13 @@ class TestListRecipes:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.side_effect = [MockQuery([]), MockQuery([])]
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes?vibe=cozy")
         assert response.status_code == 200
@@ -99,7 +110,7 @@ class TestGetVibeOptions:
 class TestGetRecipe:
     """Tests for GET /v1/recipes/{recipe_id}."""
 
-    def test_get_recipe_success(self, client, mock_db, mock_user):
+    def test_get_recipe_success(self, client, mock_async_db, mock_user):
         """Test getting a recipe."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -112,11 +123,10 @@ class TestGetRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
@@ -125,13 +135,13 @@ class TestGetRecipe:
         assert data["name"] == recipe.name
         assert "ingredients" in data
 
-    def test_get_recipe_not_found(self, client, mock_db, mock_user):
+    def test_get_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test getting a recipe that doesn't exist."""
         response = client.get("/v1/recipes/nonexistent")
         assert response.status_code == 404
 
     def test_get_recipe_debug_payload_for_admin(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Admin + debug=true returns the admin-only debug payload when an
         ImportItem is attached to the recipe."""
@@ -155,16 +165,15 @@ class TestGetRecipe:
             parsed_recipe={"name": "Test"},
             user_edits=None,
         )
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(
             RecipeBookUser, membership,
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             ImportItem, import_item, created_recipe_id=recipe.id
         )
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}?debug=true")
         assert response.status_code == 200
@@ -173,7 +182,7 @@ class TestGetRecipe:
         assert data["debug"]["import_item_id"] == "import-item-1"
 
     def test_get_recipe_debug_no_import_item(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Admin + debug=true with no ImportItem returns a None payload."""
         from utils.models.recipe import Recipe
@@ -187,32 +196,31 @@ class TestGetRecipe:
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(
             RecipeBookUser, membership,
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}?debug=true")
         assert response.status_code == 200
         data = response.json()
         assert data.get("debug") is None
 
-    def test_get_recipe_no_access(self, client, mock_db, mock_user):
+    def test_get_recipe_no_access(self, client, mock_async_db, mock_user):
         """Test getting a recipe without access to the book."""
         recipe_id = "test-recipe-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 403
 
-    def test_get_recipe_with_ingredients(self, client, mock_db, mock_user):
+    def test_get_recipe_with_ingredients(self, client, mock_async_db, mock_user):
         """Test getting a recipe that has ingredients."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -227,11 +235,13 @@ class TestGetRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([(ri, ingredient)])
+        mock_async_db.db.execute.return_value = MockExecuteResult(
+            items=[(ri, ingredient)]
+        )
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
@@ -239,7 +249,7 @@ class TestGetRecipe:
         assert len(data["ingredients"]) == 1
         assert data["ingredients"][0]["ingredient"]["canonical_name"] == "flour"
 
-    def test_get_recipe_returns_lineage_fields_for_forked_recipe(self, client, mock_db, mock_user):
+    def test_get_recipe_returns_lineage_fields_for_forked_recipe(self, client, mock_async_db, mock_user):
         """Test that forked recipe returns lineage fields in response."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -261,11 +271,10 @@ class TestGetRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
@@ -275,7 +284,7 @@ class TestGetRecipe:
         assert data["forked_from_recipe_id"] == src_recipe_id
         assert data["forked_from_book_id"] == src_book_id
 
-    def test_get_recipe_lineage_fields_null_for_non_forked(self, client, mock_db, mock_user):
+    def test_get_recipe_lineage_fields_null_for_non_forked(self, client, mock_async_db, mock_user):
         """Test that non-forked recipe returns null lineage fields."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -288,11 +297,10 @@ class TestGetRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
 
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
