@@ -1,7 +1,7 @@
 # aam-15 — Pantry Domain Async
 
 **Epic:** [epic-api-async-migration](../planning-artifacts/epic-api-async-migration.md)
-**Status:** in-progress
+**Status:** done
 **Prerequisites landed:** aam-1..aam-6 (foundations), aam-foundations-notify-threadpool-helper, aam-9 (boto3 threadpool wrap), aam-10 (meal reference).
 
 ## Scope
