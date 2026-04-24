@@ -2,16 +2,16 @@
 
 from datetime import UTC, datetime
 
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.user import User
 
 
-class DeleteShoppingList(Endpoint):
+class DeleteShoppingList(AsyncEndpoint):
     """Delete (archive) a shopping list."""
 
-    def execute(self, list_id: str):
+    async def execute(self, list_id: str):
         """
         Delete (archive) a shopping list.
 
@@ -25,8 +25,7 @@ class DeleteShoppingList(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -34,7 +33,6 @@ class DeleteShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - only owner can delete
         if shopping_list.owner_id != user.id:
             raise APIException(
                 status_code=403,
@@ -49,9 +47,8 @@ class DeleteShoppingList(Endpoint):
             user.previous_shopping_list_id = None
             restored_default_id = str(user.default_shopping_list_id) if user.default_shopping_list_id else None
 
-        # Soft delete
         shopping_list.archived_at = datetime.now(UTC)
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(data={
             "deleted": True,
