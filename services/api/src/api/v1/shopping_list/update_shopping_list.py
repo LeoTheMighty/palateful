@@ -4,7 +4,9 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
@@ -14,10 +16,10 @@ VALID_STATUSES = ["pending", "in_progress", "completed"]
 VALID_SORT_BY = ["deadline", "category", "name", "checked", "added_at"]
 
 
-class UpdateShoppingList(Endpoint):
+class UpdateShoppingList(AsyncEndpoint):
     """Update a shopping list."""
 
-    def execute(self, list_id: str, params: "UpdateShoppingList.Params"):
+    async def execute(self, list_id: str, params: "UpdateShoppingList.Params"):
         """
         Update a shopping list.
 
@@ -30,8 +32,15 @@ class UpdateShoppingList(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(
+                selectinload(ShoppingList.items),
+                selectinload(ShoppingList.members),
+            )
+            .where(ShoppingList.id == list_id)
+        )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -39,9 +48,8 @@ class UpdateShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member with edit permission
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -57,7 +65,6 @@ class UpdateShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Validate status if provided
         if params.status and params.status not in VALID_STATUSES:
             raise APIException(
                 status_code=400,
@@ -65,7 +72,6 @@ class UpdateShoppingList(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
-        # Validate sort_by if provided
         if params.sort_by and params.sort_by not in VALID_SORT_BY:
             raise APIException(
                 status_code=400,
@@ -73,7 +79,6 @@ class UpdateShoppingList(Endpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
-        # Update basic fields
         if params.name is not None:
             shopping_list.name = params.name
         if params.status is not None:
@@ -83,7 +88,6 @@ class UpdateShoppingList(Endpoint):
                 user.previous_shopping_list_id = None
             shopping_list.status = params.status
 
-        # Update new sharing/deadline fields
         if params.default_deadline is not None:
             shopping_list.default_deadline = params.default_deadline
         if params.auto_populate_from_calendar is not None:
@@ -95,10 +99,9 @@ class UpdateShoppingList(Endpoint):
         if params.sort_by is not None:
             shopping_list.sort_by = params.sort_by
 
-        self.database.db.commit()
-        self.database.db.refresh(shopping_list)
+        await self.database.db.commit()
+        await self.database.db.refresh(shopping_list)
 
-        # Build items response
         items = []
         for item in shopping_list.items:
             if item.archived_at is None:
@@ -117,14 +120,12 @@ class UpdateShoppingList(Endpoint):
                     )
                 )
 
-        # Get member count
         member_count = 0
         if shopping_list.is_shared:
             member_count = len(
                 [m for m in shopping_list.members if m.archived_at is None]
             )
 
-        # Include restored default info so frontend can show toast
         restored_default_id = str(user.default_shopping_list_id) if user.default_shopping_list_id else None
 
         return success(
@@ -159,7 +160,6 @@ class UpdateShoppingList(Endpoint):
     class Params(BaseModel):
         name: str | None = None
         status: str | None = None
-        # New fields
         default_deadline: datetime | None = None
         auto_populate_from_calendar: bool | None = None
         calendar_lookahead_days: int | None = None
