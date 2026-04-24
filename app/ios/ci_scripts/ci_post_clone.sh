@@ -23,18 +23,8 @@ export PATH="$HOME/flutter/bin:$PATH"
 flutter --version
 flutter precache --ios
 
-echo "--- ci_post_clone: staging .env ---"
-# pubspec.yaml declares `.env` and `.env.prod` as assets. `.env.prod` is
-# committed, but `.env` is gitignored and therefore missing from the
-# Xcode Cloud clone — which makes `flutter pub get` fail validating the
-# asset manifest. Stage .env.prod as .env so (a) the asset exists and
-# (b) the runtime loads prod config (envFileName defaults to `.env`
-# unless --dart-define=ENV=prod is passed, which xcodebuild isn't doing
-# here).
-cd "$CI_PRIMARY_REPOSITORY_PATH/app"
-cp .env.prod .env
-
 echo "--- ci_post_clone: flutter pub get ---"
+cd "$CI_PRIMARY_REPOSITORY_PATH/app"
 flutter pub get
 
 echo "--- ci_post_clone: pod install ---"

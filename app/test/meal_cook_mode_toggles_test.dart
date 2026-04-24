@@ -5,7 +5,6 @@
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -91,9 +90,6 @@ Future<void> _setUp({
   Set<String> failingRecipeIds = const {},
 }) async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  if (!dotenv.isInitialized) {
-    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-  }
   SharedPreferences.setMockInitialValues({});
   final gi = GetIt.instance;
   final api = _FakeApi(recipes, failingRecipeIds: failingRecipeIds);

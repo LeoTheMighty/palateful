@@ -4,6 +4,13 @@ md-3 extends the response with `favorited_meals` (additive key — pre-md-3
 clients keep working off `items` / `total`). The meals payload reuses
 foundation's `MealSummaryResponse` shape so the same widgets on the home
 favorites carousel can render either type.
+
+aam-10 cross-domain conversion: this recipe-domain handler depends on
+`api.v1.meal._response.build_meal_summary`, which became `async` when the
+meal domain converted. Keeping this endpoint sync would call the async
+builder without `await` and stuff a coroutine into `MealSummaryResponse`,
+breaking response validation in prod. Converted to `AsyncEndpoint` here
+so the recipe domain isn't blocked by aam-10's blast radius.
 """
 
 from datetime import datetime
@@ -11,8 +18,9 @@ from datetime import datetime
 from api.v1.meal._response import build_meal_summary
 from pydantic import BaseModel
 from schemas.meal import MealSummaryResponse
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.meal import Meal
 from utils.models.meal_favorite import MealFavorite
 from utils.models.meal_recipe import MealRecipe
@@ -22,25 +30,26 @@ from utils.models.user import User
 from utils.models.user_favorite import UserFavorite
 
 
-class ListFavorites(Endpoint):
+class ListFavorites(AsyncEndpoint):
     """List the current user's favorite recipes + Meals (md-3)."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
+        db = self.db
 
-        # Query recipe favorites joined with recipes, filtered by active membership
-        results = (
-            self.database.db.query(UserFavorite, Recipe)
+        recipe_stmt = (
+            select(UserFavorite, Recipe)
             .join(Recipe, UserFavorite.recipe_id == Recipe.id)
             .join(RecipeBookUser, (
                 (RecipeBookUser.recipe_book_id == Recipe.recipe_book_id)
                 & (RecipeBookUser.user_id == user.id)
             ))
-            .filter(UserFavorite.user_id == user.id)
-            .filter(Recipe.archived_at.is_(None))
+            .where(UserFavorite.user_id == user.id)
+            .where(Recipe.archived_at.is_(None))
             .order_by(UserFavorite.created_at.desc())
-            .all()
         )
+        recipe_result = await db.execute(recipe_stmt)
+        results = list(recipe_result.all())
 
         items = [
             ListFavorites.FavoriteItem(
@@ -62,9 +71,8 @@ class ListFavorites(Endpoint):
 
         # md-3: include favorited Meals as an additive response key.
         # Only Meals the user can still read + that aren't archived.
-        db = self.database.db
-        meal_rows = (
-            db.query(MealFavorite, Meal)
+        meal_stmt = (
+            select(MealFavorite, Meal)
             .join(Meal, MealFavorite.meal_id == Meal.id)
             .join(RecipeBookUser, (
                 (RecipeBookUser.recipe_book_id == Meal.recipe_book_id)
@@ -76,14 +84,15 @@ class ListFavorites(Endpoint):
                 .selectinload(MealRecipe.recipe)
                 .selectinload(Recipe.recipe_book)
             )
-            .filter(MealFavorite.user_id == user.id)
-            .filter(Meal.archived_at.is_(None))
+            .where(MealFavorite.user_id == user.id)
+            .where(Meal.archived_at.is_(None))
             .order_by(MealFavorite.created_at.desc())
-            .all()
         )
+        meal_result = await db.execute(meal_stmt)
+        meal_rows = list(meal_result.all())
 
         favorited_meals = [
-            build_meal_summary(meal, db=db, user_id=user.id)
+            await build_meal_summary(meal, db=db, user_id=user.id)
             for _fav, meal in meal_rows
         ]
 

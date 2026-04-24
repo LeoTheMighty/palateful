@@ -50,6 +50,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   StreamSubscription? _syncSub;
 
   final _addItemController = TextEditingController();
+  final _addQtyController = TextEditingController();
+  final _addUnitController = TextEditingController();
   final _addItemFocus = FocusNode();
 
   @override
@@ -105,8 +107,19 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
   void _handleItemAdded(ShoppingListItem item) {
     if (_list == null) return;
+    // Local add + WS broadcast both route here for the same item. Append
+    // only if we haven't already stored it; otherwise treat as an update
+    // so the tile reconciles without colliding on Dismissible Key(id).
     setState(() {
-      _list = _list!.copyWith(items: [..._list!.items, item]);
+      final existingIdx =
+          _list!.items.indexWhere((i) => i.id == item.id);
+      if (existingIdx >= 0) {
+        final items = [..._list!.items];
+        items[existingIdx] = item;
+        _list = _list!.copyWith(items: items);
+      } else {
+        _list = _list!.copyWith(items: [..._list!.items, item]);
+      }
     });
   }
 
@@ -202,12 +215,23 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     final name = _addItemController.text.trim();
     if (name.isEmpty || _list == null) return;
 
+    final qtyText = _addQtyController.text.trim();
+    final unitText = _addUnitController.text.trim();
+    final quantity = qtyText.isEmpty ? null : double.tryParse(qtyText);
+    final unit = unitText.isEmpty ? null : unitText;
+
     _addItemController.clear();
+    _addQtyController.clear();
+    _addUnitController.clear();
     HapticFeedback.mediumImpact();
 
     try {
-      final item = await _service.addItem(_list!.id, name: name);
-      // Update local state immediately (WebSocket will deduplicate)
+      final item = await _service.addItem(
+        _list!.id,
+        name: name,
+        quantity: quantity,
+        unit: unit,
+      );
       _handleItemAdded(item);
     } catch (e) {
       if (mounted) {
@@ -258,6 +282,8 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     _presenceSub?.cancel();
     _syncSub?.cancel();
     _addItemController.dispose();
+    _addQtyController.dispose();
+    _addUnitController.dispose();
     _addItemFocus.dispose();
     _service.updatePresence('online');
     super.dispose();
@@ -583,12 +609,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
       child: Row(
         children: [
           Expanded(
+            flex: 5,
             child: TextField(
               controller: _addItemController,
               focusNode: _addItemFocus,
               style: TextStyle(color: colorScheme.onSurface),
               decoration: InputDecoration(
-                hintText: 'Add item...',
+                hintText: 'Item',
                 hintStyle: TextStyle(color: appColors.textTertiary),
                 filled: true,
                 fillColor: colorScheme.surfaceContainerHighest,
@@ -601,11 +628,60 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   vertical: 12,
                 ),
               ),
+              textInputAction: TextInputAction.next,
+              onSubmitted: (_) => _addItem(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: TextField(
+              controller: _addQtyController,
+              style: TextStyle(color: colorScheme.onSurface),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                hintText: 'Qty',
+                hintStyle: TextStyle(color: appColors.textTertiary),
+                filled: true,
+                fillColor: colorScheme.surfaceContainerHighest,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+              textInputAction: TextInputAction.next,
+              onSubmitted: (_) => _addItem(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: _addUnitController,
+              style: TextStyle(color: colorScheme.onSurface),
+              decoration: InputDecoration(
+                hintText: 'Unit',
+                hintStyle: TextStyle(color: appColors.textTertiary),
+                filled: true,
+                fillColor: colorScheme.surfaceContainerHighest,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _addItem(),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Container(
             decoration: BoxDecoration(
               color: colorScheme.primary,

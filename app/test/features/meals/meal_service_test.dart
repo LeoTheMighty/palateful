@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/meals/services/meal_service.dart';
@@ -138,7 +137,6 @@ Map<String, dynamic> _mealPayload({String id = 'meal-1'}) => {
 
 void main() {
   setUpAll(() async {
-    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
   });
 
   late _FakeApi api;

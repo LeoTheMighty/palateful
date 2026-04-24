@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/services/api_client.dart';
@@ -18,13 +17,6 @@ import 'package:palateful/core/services/push_notification_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  // ApiClient reads API_BASE_URL from dotenv at construction — stub it so
-  // the subclassed FakeApiClient can run through super() without blowing
-  // up on NotInitializedError in tests.
-  dotenv.loadFromString(
-    envString: 'API_BASE_URL=http://localhost\n',
-    isOptional: true,
-  );
 
   final capturedReports = <_ReportCall>[];
   final capturedLogs = <String>[];

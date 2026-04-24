@@ -14,7 +14,7 @@ void main() {
   });
 
   group('LoginScreen UI Layout', () {
-    // Since LoginScreen depends on GetIt<AuthService> which requires dotenv/Auth0,
+    // Since LoginScreen depends on GetIt<AuthService> which requires Auth0,
     // we test the social button layout patterns directly.
 
     testWidgets('social sign-in buttons render correctly', (tester) async {

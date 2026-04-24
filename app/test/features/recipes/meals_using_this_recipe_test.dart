@@ -2,7 +2,6 @@
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -82,7 +81,6 @@ Widget _pumpTarget(Widget child) {
 
 void main() {
   setUpAll(() async {
-    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
   });
 
   tearDown(_unregister);

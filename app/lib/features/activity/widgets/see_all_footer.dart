@@ -63,7 +63,7 @@ class _SeeAllFooterState extends ConsumerState<SeeAllFooter> {
     if (pos.pixels < pos.maxScrollExtent - 200) return;
     if (!ref.read(importsSeeAllExpandedProvider)) return;
     final s = ref.read(importsSeeAllProvider);
-    if (s.isLoading || s.hasError || s.nextJobCursor == null) return;
+    if (s.isLoading || s.hasError || s.nextCursor == null) return;
     ref.read(importsSeeAllProvider.notifier).loadNextPage();
   }
 

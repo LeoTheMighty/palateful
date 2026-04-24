@@ -235,7 +235,7 @@ class CookTimerNotificationService {
       );
 
       // Create Android notification channel
-      if (Platform.isAndroid) {
+      if (!kIsWeb && Platform.isAndroid) {
         const channel = AndroidNotificationChannel(
           _channelId,
           _channelName,

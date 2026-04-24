@@ -6,11 +6,14 @@ import '../../../core/state/mutation_bus.dart';
 
 /// View model for a See-all row in the Imports tab.
 ///
-/// The Imports See-all aggregates items from multiple jobs. We page at
-/// the JOB level (`listImportJobs(archivedOnly=true, cursor=...)`) and
-/// fetch items per-job, because the backend only offers per-job item
-/// listing. Each "page" of this provider is `limit=50` archived jobs
-/// plus all their items, flattened into this view-model list.
+/// Backed directly by ``GET /v1/import-items/see-all`` — a single
+/// cursor-paginated endpoint whose predicate matches the See-all count
+/// exactly (archived items OR completed/skipped items older than
+/// 30 days). The previous two-hop implementation filtered by parent
+/// `ImportJob.archived_at`, which silently hid rows where the item was
+/// archived but the job was not, and hid all old-terminal rows living
+/// in active jobs — so the count was > 0 but the footer expanded to
+/// empty.
 class SeeAllImportItemView {
   final String id;
   final String title;
@@ -32,9 +35,9 @@ class SeeAllImportItemView {
 class ImportsSeeAllState {
   final List<SeeAllImportItemView> items;
 
-  /// Opaque cursor for the NEXT page of archived jobs. `null` means
-  /// "no more jobs to scan".
-  final String? nextJobCursor;
+  /// Opaque cursor for the NEXT page of items. `null` after the first
+  /// page means "no more items to scan".
+  final String? nextCursor;
 
   final bool hasLoadedFirstPage;
   final bool isLoading;
@@ -42,7 +45,7 @@ class ImportsSeeAllState {
 
   const ImportsSeeAllState({
     required this.items,
-    required this.nextJobCursor,
+    required this.nextCursor,
     required this.hasLoadedFirstPage,
     required this.isLoading,
     required this.hasError,
@@ -50,27 +53,27 @@ class ImportsSeeAllState {
 
   static const empty = ImportsSeeAllState(
     items: [],
-    nextJobCursor: null,
+    nextCursor: null,
     hasLoadedFirstPage: false,
     isLoading: false,
     hasError: false,
   );
 
   bool get isEnded =>
-      hasLoadedFirstPage && nextJobCursor == null && !hasError;
+      hasLoadedFirstPage && nextCursor == null && !hasError;
 
   ImportsSeeAllState copyWith({
     List<SeeAllImportItemView>? items,
-    String? nextJobCursor,
-    bool? nextJobCursorSet,
+    String? nextCursor,
+    bool? nextCursorSet,
     bool? hasLoadedFirstPage,
     bool? isLoading,
     bool? hasError,
   }) =>
       ImportsSeeAllState(
         items: items ?? this.items,
-        nextJobCursor:
-            (nextJobCursorSet ?? false) ? nextJobCursor : this.nextJobCursor,
+        nextCursor:
+            (nextCursorSet ?? false) ? nextCursor : this.nextCursor,
         hasLoadedFirstPage: hasLoadedFirstPage ?? this.hasLoadedFirstPage,
         isLoading: isLoading ?? this.isLoading,
         hasError: hasError ?? this.hasError,
@@ -100,7 +103,7 @@ class ImportsSeeAllNotifier extends Notifier<ImportsSeeAllState> {
   Future<void> loadNextPage() async {
     if (state.isLoading) return;
     if (state.hasLoadedFirstPage &&
-        state.nextJobCursor == null &&
+        state.nextCursor == null &&
         !state.hasError) {
       return;
     }
@@ -109,50 +112,20 @@ class ImportsSeeAllNotifier extends Notifier<ImportsSeeAllState> {
 
     try {
       final client = getIt<ApiClient>();
-      final jobsResponse = await client.listImportJobs(
-        archivedOnly: true,
-        includeArchived: true,
-        cursor: state.nextJobCursor,
+      final response = await client.listSeeAllImportItems(
+        cursor: state.nextCursor,
         limit: 50,
       );
-      final rawJobs =
-          List<dynamic>.from(jobsResponse.data['jobs'] ?? []);
-      final nextCursor = jobsResponse.data['next_cursor'] as String?;
-
-      // ffm-2: one batched fetch for all archived jobs on this page
-      // with `include_archived=true` — that's the whole point of
-      // See-all. Backend caps at 50 job_ids; `listImportJobs` limit
-      // above is 50, so one call per page is safe. A chunk loop is
-      // kept for defensive sanity.
-      final jobsById = <String, dynamic>{
-        for (final j in rawJobs) j['id'].toString(): j,
-      };
-      final newRows = <SeeAllImportItemView>[];
-      if (jobsById.isNotEmpty) {
-        final jobIds = jobsById.keys.toList();
-        for (var start = 0; start < jobIds.length; start += 50) {
-          final chunk =
-              jobIds.sublist(start, (start + 50).clamp(0, jobIds.length));
-          final batchResponse = await client.listImportItemsBatch(
-            chunk,
-            includeArchived: true,
-          );
-          final rawItems =
-              List<dynamic>.from(batchResponse.data['items'] ?? []);
-          for (final item in rawItems) {
-            final jobId = item['job_id']?.toString();
-            if (jobId == null) continue;
-            final parentJob = jobsById[jobId];
-            if (parentJob == null) continue;
-            newRows.add(_fromRaw(item, parentJob));
-          }
-        }
-      }
+      final rawItems = List<dynamic>.from(response.data['items'] ?? []);
+      final nextCursor = response.data['next_cursor'] as String?;
+      final newRows = [
+        for (final item in rawItems) _fromRaw(item),
+      ];
 
       state = state.copyWith(
         items: [...state.items, ...newRows],
-        nextJobCursor: nextCursor,
-        nextJobCursorSet: true,
+        nextCursor: nextCursor,
+        nextCursorSet: true,
         hasLoadedFirstPage: true,
         isLoading: false,
         hasError: false,
@@ -181,14 +154,13 @@ class ImportsSeeAllNotifier extends Notifier<ImportsSeeAllState> {
     await loadNextPage();
   }
 
-  static SeeAllImportItemView _fromRaw(dynamic item, dynamic parentJob) {
-    final parent = parentJob is Map ? parentJob : const {};
+  static SeeAllImportItemView _fromRaw(dynamic item) {
     return SeeAllImportItemView(
       id: item['id'].toString(),
       title: (item['recipe_name']?.toString().isNotEmpty ?? false)
           ? item['recipe_name'].toString()
           : 'Untitled',
-      sourceType: (item['source_type'] ?? parent['source_type']) as String?,
+      sourceType: item['source_type'] as String?,
       statusLabel: item['status']?.toString(),
       archivedAt: item['archived_at'] != null
           ? DateTime.tryParse(item['archived_at'].toString())

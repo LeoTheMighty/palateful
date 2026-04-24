@@ -4,7 +4,6 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -82,9 +81,6 @@ Future<void> _setUp({
   required Map<String, Map<String, dynamic>> recipes,
 }) async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  if (!dotenv.isInitialized) {
-    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-  }
   final gi = GetIt.instance;
   final api = _FakeApi(recipes);
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
@@ -234,9 +230,6 @@ Future<void> _prime(String mealId, CookSessionState state) async {
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    if (!dotenv.isInitialized) {
-      await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-    }
   });
 
   setUp(() => SharedPreferences.setMockInitialValues({}));

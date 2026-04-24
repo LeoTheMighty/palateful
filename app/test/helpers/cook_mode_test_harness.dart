@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
@@ -120,10 +119,6 @@ Future<RecordingTimerNotifService> setUpCookModeHarness({
   Map<String, dynamic>? notificationPrefs,
 }) async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  // ApiClient reads API_BASE_URL during construction, so stub dotenv.
-  if (!dotenv.isInitialized) {
-    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-  }
   final gi = GetIt.instance;
   if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
   gi.registerSingleton<ApiClient>(

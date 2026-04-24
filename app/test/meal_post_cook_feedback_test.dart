@@ -6,7 +6,6 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/core/services/recipe_cache_service.dart';
@@ -70,9 +69,6 @@ Widget _harness({
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    if (!dotenv.isInitialized) {
-      await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-    }
   });
 
   setUp(() => SharedPreferences.setMockInitialValues({}));

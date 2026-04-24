@@ -8,7 +8,6 @@
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -143,9 +142,6 @@ Future<void> _setUpHarness({
   Set<String> failingRecipeIds = const {},
 }) async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  if (!dotenv.isInitialized) {
-    await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-  }
   final gi = GetIt.instance;
   final api = _FakeMealCookApi(
     recipePayloads: recipes,
@@ -223,9 +219,6 @@ Future<void> _pumpAndLoad(WidgetTester tester, String mealId) async {
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    if (!dotenv.isInitialized) {
-      await dotenv.load(mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-    }
   });
 
   setUp(() {
@@ -410,10 +403,6 @@ void main() {
         failingRecipeIds: const {'r2'},
       );
       TestWidgetsFlutterBinding.ensureInitialized();
-      if (!dotenv.isInitialized) {
-        await dotenv.load(
-            mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-      }
       final gi = GetIt.instance;
       if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
       gi.registerSingleton<ApiClient>(api);
@@ -482,10 +471,6 @@ void main() {
         ],
       );
       TestWidgetsFlutterBinding.ensureInitialized();
-      if (!dotenv.isInitialized) {
-        await dotenv.load(
-            mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-      }
       // Wire the cache with a pre-cached payload.
       final cacheService = RecipeCacheService();
       await cacheService.cacheRecipe(
@@ -540,10 +525,6 @@ void main() {
         failingRecipeIds: const {'r2'},
       );
       TestWidgetsFlutterBinding.ensureInitialized();
-      if (!dotenv.isInitialized) {
-        await dotenv.load(
-            mergeWith: {'API_BASE_URL': 'http://localhost:8000'});
-      }
       final gi = GetIt.instance;
       if (gi.isRegistered<ApiClient>()) gi.unregister<ApiClient>();
       gi.registerSingleton<ApiClient>(api);

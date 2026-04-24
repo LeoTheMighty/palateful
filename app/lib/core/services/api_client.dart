@@ -230,6 +230,17 @@ class ApiClient {
   Future<Response> getImportItemsSeeAllCount() =>
       _dio.get('/v1/import-items/see-all-count');
 
+  /// Paginated See-all import items — archived rows plus terminal rows
+  /// older than 30 days. Used by the Imports-tab "See all" footer.
+  Future<Response> listSeeAllImportItems({
+    String? cursor,
+    int limit = 50,
+  }) {
+    final params = <String, dynamic>{'limit': limit};
+    if (cursor != null) params['cursor'] = cursor;
+    return _dio.get('/v1/import-items/see-all', queryParameters: params);
+  }
+
   Future<Response> getUnreadActivityCount() =>
       _dio.get('/v1/activities/unread-count');
 

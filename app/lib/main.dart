@@ -5,7 +5,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -40,9 +39,6 @@ final DateTime _bootT0 = DateTime.now();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Load environment variables from .env file (or .env.prod with --dart-define=ENV=prod)
-  await dotenv.load(fileName: envFileName);
 
   // Initialize Firebase (skip in E2E mode — no push notifications needed,
   // and waiting on Firebase delays test startup significantly)

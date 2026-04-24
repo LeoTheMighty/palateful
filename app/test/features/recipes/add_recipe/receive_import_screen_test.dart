@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -93,14 +92,6 @@ Future<GoRouter> _buildRouter({required String initialLocation}) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  dotenv.loadFromString(
-    envString:
-        'API_BASE_URL=http://localhost:8000\n'
-        'AUTH0_DOMAIN=test.auth0.com\n'
-        'AUTH0_CLIENT_ID=test-client-id\n'
-        'AUTH0_AUDIENCE=https://api.test/\n',
-    isOptional: true,
-  );
 
   setUp(_registerFakes);
   tearDown(_unregister);

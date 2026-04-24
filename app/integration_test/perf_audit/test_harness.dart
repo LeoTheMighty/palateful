@@ -16,8 +16,8 @@
 /// ```
 ///
 /// Why provider-level instead of `app.main()` + widget pump:
-///   1. `app.main()` runs dotenv / Firebase / push-notif init which is
-///      wrong shape for a `flutter-tester` target.
+///   1. `app.main()` runs Firebase / push-notif init which is wrong shape
+///      for a `flutter-tester` target.
 ///   2. The perf budget's contract is "how many GETs does this screen's
 ///      data layer fire on cold start" — that's what a Riverpod provider
 ///      read measures. UI taps don't add to the cold-start budget;
@@ -29,7 +29,6 @@
 /// `ptd-2-perf-audit-home.md`.
 library;
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:palateful/core/di/injection.dart';
@@ -93,27 +92,11 @@ PerfAuditScreenHarness setUpPerfAuditScreen({String? fixtureDir}) {
   // own below.
   getIt.allowReassignment = true;
 
-  // `Environment` getters read `dotenv.env`; absent load = NotInitializedError.
-  // `testLoad` seeds the map without touching the filesystem. Only the
-  // keys the construction path reads need to be present; the mock
-  // adapter intercepts every outbound request so `API_BASE_URL` is
-  // irrelevant at runtime — this is just to keep the Dio constructor
-  // from throwing.
-  if (!dotenv.isInitialized) {
-    dotenv.loadFromString(envString: '''
-API_BASE_URL=http://perf-audit.mock
-AUTH0_DOMAIN=perf-audit.example.com
-AUTH0_CLIENT_ID=perf-audit-client
-AUTH0_AUDIENCE=https://perf-audit.example.com
-''');
-  }
-
   // Core services — same shape as setupDependencies() but without the
   // side-effectful plugins (Firebase, HomeWidget, push notif).
-  // AuthService's constructor reads dotenv for AUTH0_DOMAIN /
-  // AUTH0_CLIENT_ID — seeded above — and then instantiates an Auth0
-  // handle with those placeholder strings. No network calls happen at
-  // construction time, so it's safe in flutter-tester.
+  // AuthService's constructor reads Environment constants for AUTH0_DOMAIN /
+  // AUTH0_CLIENT_ID and instantiates an Auth0 handle with those strings.
+  // No network calls happen at construction time, so it's safe in flutter-tester.
   getIt.registerSingleton<AuthService>(AuthService());
 
   final apiClient = ApiClient();

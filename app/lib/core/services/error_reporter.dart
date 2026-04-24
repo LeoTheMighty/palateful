@@ -90,6 +90,21 @@ class ErrorReporter {
   /// reported its own failure via [report] would recurse. The Dio
   /// interceptor in `api_client.dart` also skips 5xx reporting for
   /// `/client-errors` as a second line of defense.
+  // Mirrors `services/api/src/api/v1/user/record_client_error.py` Pydantic
+  // constraints. Oversized payloads return 422 and are silently dropped,
+  // so clamp here to keep the mirror best-effort.
+  static const int _maxErrorTypeLen = 120;
+  static const int _maxErrorMessageLen = 2000;
+  static const int _maxAreaLen = 64;
+  static const int _maxOperationLen = 128;
+
+  static String? _clamp(String? value, int maxLen) {
+    if (value == null) return null;
+    if (value.isEmpty) return null;
+    if (value.length <= maxLen) return value;
+    return value.substring(0, maxLen);
+  }
+
   static void _mirrorToBackend({
     required String errorType,
     required String errorMessage,
@@ -101,12 +116,17 @@ class ErrorReporter {
     if (_backendMirrorDisabled) return;
     final client = _mirrorClient;
     if (client == null) return;
+    final clampedType = _clamp(errorType, _maxErrorTypeLen);
+    final clampedMessage = _clamp(errorMessage, _maxErrorMessageLen);
+    // error_type / error_message are required with min_length=1 server-side.
+    // If either is empty after clamping, substitute a sentinel rather than
+    // dropping the event entirely — an anonymous row is still useful signal.
     unawaited(_postMirror(
       client,
-      errorType: errorType,
-      errorMessage: errorMessage,
-      area: area,
-      operation: operation,
+      errorType: clampedType ?? 'UnknownError',
+      errorMessage: clampedMessage ?? '(empty)',
+      area: _clamp(area, _maxAreaLen),
+      operation: _clamp(operation, _maxOperationLen),
       extras: extras,
       statusCode: statusCode,
     ));

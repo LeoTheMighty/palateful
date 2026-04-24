@@ -9,13 +9,19 @@ from the recipe's book.
 Two queries total regardless of result size: one for the Meal list,
 one selectinload for the component hydration used by the MealSummary
 shaper.
+
+aam-10 cross-domain conversion: this recipe-domain handler depends on
+`api.v1.meal._response.build_meal_summary`, which became `async` when
+the meal domain converted. Converted to `AsyncEndpoint` here so the
+recipe domain isn't blocked by aam-10's blast radius.
 """
 
 from api.v1.meal._response import build_meal_summary
 from pydantic import BaseModel
 from schemas.meal import MealSummaryResponse
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal import Meal
 from utils.models.meal_recipe import MealRecipe
@@ -24,14 +30,14 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class ListMealsUsingRecipe(Endpoint):
+class ListMealsUsingRecipe(AsyncEndpoint):
     """List Meals referencing a given recipe — the "Used in these Meals" row."""
 
-    def execute(self, recipe_id: str):
+    async def execute(self, recipe_id: str):
         user: User = self.user
         db = self.db
 
-        recipe = self.database.find_by(Recipe, id=recipe_id)
+        recipe = await self.database.find_by(Recipe, id=recipe_id)
         if recipe is None:
             raise APIException(
                 status_code=404,
@@ -42,7 +48,7 @@ class ListMealsUsingRecipe(Endpoint):
         # Must be able to read the recipe's book. Archived-but-readable
         # recipes still count — users may legitimately want to see that
         # an archived Dressing was once part of a Kale Salad Meal.
-        recipe_membership = self.database.find_by(
+        recipe_membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=recipe.recipe_book_id,
@@ -55,33 +61,34 @@ class ListMealsUsingRecipe(Endpoint):
             )
 
         readable_books_subq = (
-            db.query(RecipeBookUser.recipe_book_id)
-            .filter(
+            select(RecipeBookUser.recipe_book_id)
+            .where(
                 RecipeBookUser.user_id == user.id,
                 RecipeBookUser.archived_at.is_(None),
             )
             .subquery()
         )
 
-        meals = (
-            db.query(Meal)
+        meals_stmt = (
+            select(Meal)
             .join(MealRecipe, MealRecipe.meal_id == Meal.id)
             .options(
                 selectinload(Meal.components)
                 .selectinload(MealRecipe.recipe)
                 .selectinload(Recipe.recipe_book)
             )
-            .filter(
+            .where(
                 MealRecipe.recipe_id == recipe_id,
                 Meal.archived_at.is_(None),
-                Meal.recipe_book_id.in_(readable_books_subq),
+                Meal.recipe_book_id.in_(select(readable_books_subq)),
             )
             .order_by(Meal.updated_at.desc())
-            .all()
         )
+        meals_result = await db.execute(meals_stmt)
+        meals = list(meals_result.scalars().all())
 
         items = [
-            build_meal_summary(m, db=db, user_id=user.id) for m in meals
+            await build_meal_summary(m, db=db, user_id=user.id) for m in meals
         ]
         return success(data=ListMealsUsingRecipe.Response(items=items))
 

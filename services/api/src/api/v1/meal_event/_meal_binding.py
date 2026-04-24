@@ -17,11 +17,14 @@ layers an extra archive-guard on top without widening that shared API.
 
 from __future__ import annotations
 
-from api.v1.meal._access import require_meal_read
 from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.models.meal import Meal
+from utils.models.meal_recipe import MealRecipe
+from utils.models.recipe import Recipe
+from utils.models.recipe_book_user import RecipeBookUser
 
 
 class MealSummary(BaseModel):
@@ -59,11 +62,46 @@ def validate_recipe_meal_xor(
 def require_meal_available(db, meal_id: str, user) -> Meal:
     """Load a Meal + authorize the user, rejecting archived meals.
 
-    Wraps `api.v1.meal._access.require_meal_read` with an additional
-    archive check — archived meals are a 404 from the calendar's
-    perspective because a user can't plan or shop an archived meal.
+    aam-10: previously delegated to `api.v1.meal._access.require_meal_read`,
+    but that helper became `async` when the meal domain converted. The
+    meal_event + recurrence_rule handlers stay sync (they're scoped to a
+    later domain story), so this helper inlines the sync Meal load + the
+    book-read membership check + the archive guard. Mirrors the same
+    selectinload chain (`Meal.components → MealRecipe.recipe → Recipe.recipe_book`)
+    so callers that walk component attributes for `build_meal_summary`
+    don't trip MissingGreenlet on the sync path either.
     """
-    meal = require_meal_read(db, meal_id, user)
+    meal = (
+        db.query(Meal)
+        .options(
+            selectinload(Meal.components)
+            .selectinload(MealRecipe.recipe)
+            .selectinload(Recipe.recipe_book)
+        )
+        .filter(Meal.id == meal_id)
+        .first()
+    )
+    if meal is None:
+        raise APIException(
+            status_code=404,
+            detail="Meal not found",
+            code=ErrorCode.MEAL_NOT_FOUND,
+        )
+    membership = (
+        db.query(RecipeBookUser)
+        .filter(
+            RecipeBookUser.user_id == user.id,
+            RecipeBookUser.recipe_book_id == meal.recipe_book_id,
+            RecipeBookUser.archived_at.is_(None),
+        )
+        .first()
+    )
+    if membership is None:
+        raise APIException(
+            status_code=403,
+            detail="You don't have access to this meal",
+            code=ErrorCode.MEAL_ACCESS_DENIED,
+        )
     if meal.archived_at is not None:
         raise APIException(
             status_code=404,

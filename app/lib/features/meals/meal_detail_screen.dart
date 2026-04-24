@@ -207,9 +207,23 @@ class _MealDetailScreenState extends ConsumerState<MealDetailScreen> {
       if (!mounted) return;
       final n = result.itemsAdded;
       final noun = n == 1 ? '1 item' : '$n items';
-      final message = result.itemsSkipped > 0
-          ? 'Added $noun (some components unavailable)'
-          : 'Added $noun from ${meal.name}';
+      final String message;
+      if (n == 0 && result.itemsSkipped == 0) {
+        if (result.componentCount == 0) {
+          message =
+              'Nothing to add — ${meal.name} has no components yet.';
+        } else {
+          message =
+              'Nothing to add — all ${result.componentCount} component(s) were empty or unavailable.';
+        }
+      } else if (result.itemsSkipped > 0 && n == 0) {
+        message = 'Already on your list (skipped ${result.itemsSkipped}).';
+      } else if (result.itemsSkipped > 0) {
+        message =
+            'Added $noun (${result.itemsSkipped} already on list).';
+      } else {
+        message = 'Added $noun from ${meal.name}';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );
