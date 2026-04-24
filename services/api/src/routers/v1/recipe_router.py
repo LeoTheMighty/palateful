@@ -55,17 +55,17 @@ recipe_router = APIRouter(tags=["recipes"])
 
 # Recipes under recipe books
 @recipe_router.get("/recipe-books/{book_id}/recipes")
-def list_recipes(
+async def list_recipes(
     book_id: str,
     limit: int = 20,
     offset: int = 0,
     search: str | None = None,
     vibe: str | None = None,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List recipes in a recipe book."""
-    return ListRecipes.call(
+    return await ListRecipes.call(
         book_id=book_id,
         limit=limit,
         offset=offset,
@@ -111,21 +111,21 @@ async def create_recipe(
 
 # Vibe options (must be before /recipes/{recipe_id} to avoid path collision)
 @recipe_router.get("/recipes/vibes/options")
-def get_vibe_options(
-    database: Database = Depends(get_database),
+async def get_vibe_options(
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get the list of valid vibes with display names and colors."""
-    return GetVibeOptions.call(database=database)
+    return await GetVibeOptions.call(database=database)
 
 
 # Archived recipes (must be before /recipes/{recipe_id} to avoid path collision)
 @recipe_router.get("/recipes/archived")
-def list_archived_recipes(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def list_archived_recipes(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List the current user's archived recipes."""
-    return ListArchivedRecipes.call(
+    return await ListArchivedRecipes.call(
         user=user,
         database=database,
     )
@@ -176,22 +176,22 @@ def bulk_update_tags(
 
 # Public recipe by share token (no auth required — must be before /{recipe_id})
 @recipe_router.get("/recipes/public/{token}")
-def get_public_recipe_by_token(
+async def get_public_recipe_by_token(
     token: str,
-    database: Database = Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a recipe by its public share token (no auth required)."""
-    return GetPublicRecipeByToken.call(token=token, database=database)
+    return await GetPublicRecipeByToken.call(token=token, database=database)
 
 
 # Direct recipe access
 @recipe_router.get("/recipes/{recipe_id}")
-def get_recipe(
+async def get_recipe(
     recipe_id: str,
     debug: bool = False,
     include: str | None = None,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database)
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get recipe details. `debug=true` attaches parser artifacts for admins.
 
@@ -200,7 +200,7 @@ def get_recipe(
     omitted, today's full shape is returned; unknown values are silently
     dropped; omitted fields are ABSENT from the JSON, not null.
     """
-    return GetRecipe.call(
+    return await GetRecipe.call(
         recipe_id=recipe_id,
         debug=debug,
         include=include,
@@ -235,13 +235,13 @@ async def update_recipe(
 
 
 @recipe_router.get("/recipes/{recipe_id}/versions")
-def get_recipe_versions(
+async def get_recipe_versions(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get version history for a recipe."""
-    return GetRecipeVersions.call(
+    return await GetRecipeVersions.call(
         recipe_id=recipe_id,
         user=user,
         database=database,
@@ -249,14 +249,14 @@ def get_recipe_versions(
 
 
 @recipe_router.get("/recipes/{recipe_id}/versions/{version_id}")
-def get_recipe_version(
+async def get_recipe_version(
     recipe_id: str,
     version_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get the full snapshot for a specific recipe version."""
-    return GetRecipeVersion.call(
+    return await GetRecipeVersion.call(
         recipe_id=recipe_id,
         version_id=version_id,
         user=user,
@@ -333,14 +333,14 @@ def delete_recipe_note(
 
 
 @recipe_router.post("/recipes/{recipe_id}/photo-upload-url")
-def get_recipe_photo_upload_url(
+async def get_recipe_photo_upload_url(
     recipe_id: str,
     params: GetRecipePhotoUploadUrl.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Generate a presigned URL for uploading a recipe photo."""
-    return GetRecipePhotoUploadUrl.call(
+    return await GetRecipePhotoUploadUrl.call(
         recipe_id=recipe_id,
         params=params,
         user=user,
@@ -349,23 +349,23 @@ def get_recipe_photo_upload_url(
 
 
 @recipe_router.post("/recipes/{recipe_id}/share", status_code=201)
-def share_recipe(
+async def share_recipe(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Generate a public share link for a recipe."""
-    return ShareRecipe.call(recipe_id=recipe_id, user=user, database=database)
+    return await ShareRecipe.call(recipe_id=recipe_id, user=user, database=database)
 
 
 @recipe_router.delete("/recipes/{recipe_id}/share")
-def revoke_recipe_share(
+async def revoke_recipe_share(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Revoke the public share link for a recipe."""
-    return RevokeRecipeShare.call(recipe_id=recipe_id, user=user, database=database)
+    return await RevokeRecipeShare.call(recipe_id=recipe_id, user=user, database=database)
 
 
 @recipe_router.get("/recipes/{recipe_id}/meals")
@@ -383,13 +383,13 @@ async def list_meals_using_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/favorite")
-def toggle_favorite(
+async def toggle_favorite(
     recipe_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Toggle favorite status on a recipe."""
-    return ToggleFavorite.call(
+    return await ToggleFavorite.call(
         recipe_id=recipe_id,
         user=user,
         database=database,
@@ -516,12 +516,12 @@ def copy_recipe(
 
 # Public endpoints (no auth required)
 @recipe_router.get("/recipes/{recipe_id}/public")
-def get_public_recipe(
+async def get_public_recipe(
     recipe_id: str,
-    database: Database = Depends(get_database)
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a publicly shared recipe (no auth required)."""
-    return GetPublicRecipe.call(
+    return await GetPublicRecipe.call(
         recipe_id=recipe_id,
         database=database
     )

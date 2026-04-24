@@ -60,17 +60,20 @@ def _require_default_book_id(user) -> str:
 
 
 @mcp.tool()
-def get_recipe(recipe_id: str) -> str:
+async def get_recipe(recipe_id: str) -> str:
     """Fetch a recipe's full details: ingredients with quantities, step-by-step
     instructions, notes, tags, vibes, prep and cook times, and whether it's
     favorited. Use this any time the user asks about a specific recipe, or
     before suggesting variations.
+
+    aam-12a: GetRecipe converted to AsyncEndpoint, so this tool dispatches
+    through `await call_endpoint_async(...)`.
     """
-    return call_endpoint(GetRecipe, recipe_id=recipe_id)
+    return await call_endpoint_async(GetRecipe, recipe_id=recipe_id)
 
 
 @mcp.tool()
-def list_recipes(
+async def list_recipes(
     book_id: str | None = None,
     limit: int = 20,
     offset: int = 0,
@@ -80,6 +83,9 @@ def list_recipes(
     recipe book. Pair with `search` for a quick name filter, or paginate with
     `limit`/`offset` to walk the full collection. For natural-language search
     across all books, prefer `search_recipes` instead.
+
+    aam-12a: ListRecipes converted to AsyncEndpoint, so this tool dispatches
+    through `await call_endpoint_async(...)`.
     """
     user = get_current_user()
     resolved_book_id = book_id or _require_default_book_id(user)
@@ -90,7 +96,7 @@ def list_recipes(
     }
     if search is not None:
         kwargs["search"] = search
-    return call_endpoint(ListRecipes, **kwargs)
+    return await call_endpoint_async(ListRecipes, **kwargs)
 
 
 @mcp.tool()
@@ -273,11 +279,14 @@ def delete_recipe(recipe_id: str) -> str:
 
 
 @mcp.tool()
-def toggle_favorite(recipe_id: str) -> str:
+async def toggle_favorite(recipe_id: str) -> str:
     """Toggle the favorite status on a recipe. Returns the new state so you
     can confirm "marked as favorite" or "removed from favorites".
+
+    aam-12a: ToggleFavorite converted to AsyncEndpoint, so this tool
+    dispatches through `await call_endpoint_async(...)`.
     """
-    return call_endpoint(ToggleFavorite, recipe_id=recipe_id)
+    return await call_endpoint_async(ToggleFavorite, recipe_id=recipe_id)
 
 
 @mcp.tool()
