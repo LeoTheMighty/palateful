@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 
@@ -48,10 +48,10 @@ RESERVED_USERNAMES = {
 USERNAME_CHANGE_COOLDOWN_DAYS = 30
 
 
-class SetUsername(Endpoint):
+class SetUsername(AsyncEndpoint):
     """Set or update the current user's username."""
 
-    def execute(self, params: "SetUsername.Params"):
+    async def execute(self, params: "SetUsername.Params"):
         """Set or update username with validation."""
         user: User = self.user
         new_username = params.username.lower().strip()
@@ -88,9 +88,9 @@ class SetUsername(Endpoint):
                 )
 
         # Check if username is already taken (case-insensitive)
-        existing_user = self.db.execute(
+        existing_user = (await self.db.execute(
             select(User).where(User.username == new_username, User.id != user.id)
-        ).scalar_one_or_none()
+        )).scalar_one_or_none()
 
         if existing_user:
             raise APIException(
@@ -106,8 +106,8 @@ class SetUsername(Endpoint):
             # Only update changed_at if this is a change, not initial set
             user.username_changed_at = datetime.now(UTC)
 
-        self.db.commit()
-        self.db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
 
         return success(
             data=SetUsername.Response(
