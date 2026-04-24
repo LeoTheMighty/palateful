@@ -80,4 +80,18 @@ class UserActivity(Base):
             text("created_at DESC"),
             postgresql_where=text("read = true AND archived_at IS NULL"),
         ),
+        # ffm-4 unread-count snapshot: narrow partial index for the
+        # bell/Notifications COUNT. Leading (user_id, type) gives the
+        # planner a seekable prefix for the allow-listed types; the
+        # `read = false AND archived_at IS NULL` predicate bounds the
+        # index to the unread-and-active subset, turning the COUNT
+        # into an index-only scan whose size is per-user unread, not
+        # per-user total.
+        Index(
+            "ix_user_activities_user_unread_active",
+            "user_id",
+            "type",
+            text("created_at DESC"),
+            postgresql_where=text("read = false AND archived_at IS NULL"),
+        ),
     )
