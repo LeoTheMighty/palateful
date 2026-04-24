@@ -1330,9 +1330,27 @@ class MockAsyncDatabase:
         object). The terminal coroutines preserve the same return-types
         the sync `MockQuery` exposes so handler code asserting on
         `.first()` / `.all()` / `.count()` works without rewrites.
+
+        Falls back to `_find_by_results` when no explicit `set_where`
+        registration exists: lets tests mock a single entity with
+        `set_find_by(Model, obj, id=...)` and have both
+        `find_by(Model, id=...)` and
+        `where(Model, id=...).options(...).first()` return it. The
+        real `AsyncDatabase.find_by` is a thin wrapper over
+        `where().first()`, so this fallback keeps parity with
+        production semantics.
         """
         key = model.__name__
-        items = self._where_results.get(key, [])
+        items = self._where_results.get(key)
+        if items is None and kwargs:
+            key_with_args = (key, tuple(sorted(kwargs.items())))
+            fallback = self._find_by_results.get(key_with_args)
+            if fallback is None:
+                fallback = self._find_by_results.get(key)
+            if fallback is not None:
+                items = [fallback]
+        if items is None:
+            items = []
         return _MockAsyncQuery(items)
 
     def set_where(self, model_class, items):

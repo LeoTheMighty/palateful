@@ -4,7 +4,6 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -32,17 +31,16 @@ class GenerateFromMealEvent(AsyncEndpoint):
         """
         user: User = self.user
 
-        meal_event_result = await self.db.execute(
-            select(MealEvent)
+        meal_event = await (
+            self.database.where(MealEvent, id=event_id)
             .options(
                 selectinload(MealEvent.recipe)
                 .selectinload(Recipe.ingredients)
                 .selectinload(RecipeIngredient.ingredient),
                 selectinload(MealEvent.shopping_list),
             )
-            .where(MealEvent.id == event_id)
+            .first()
         )
-        meal_event = meal_event_result.scalars().first()
         if not meal_event:
             raise APIException(
                 status_code=404,

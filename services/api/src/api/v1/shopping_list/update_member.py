@@ -3,7 +3,6 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -39,13 +38,15 @@ class UpdateShoppingListMember(AsyncEndpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        target_result = await self.db.execute(
-            select(ShoppingListUser)
+        target_membership = await (
+            self.database.where(
+                ShoppingListUser,
+                shopping_list_id=list_id,
+                user_id=member_user_id,
+            )
             .options(selectinload(ShoppingListUser.user))
-            .where(ShoppingListUser.shopping_list_id == list_id)
-            .where(ShoppingListUser.user_id == member_user_id)
+            .first()
         )
-        target_membership = target_result.scalars().first()
         if not target_membership or target_membership.archived_at:
             raise APIException(
                 status_code=404,

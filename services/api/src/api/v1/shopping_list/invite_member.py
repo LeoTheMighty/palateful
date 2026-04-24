@@ -4,7 +4,6 @@ from datetime import datetime
 
 from api.v1.shopping_list.utils.notifications import notify_list_shared
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -30,12 +29,11 @@ class InviteShoppingListMember(AsyncEndpoint):
         """
         user: User = self.user
 
-        shopping_list_result = await self.db.execute(
-            select(ShoppingList)
+        shopping_list = await (
+            self.database.where(ShoppingList, id=list_id)
             .options(selectinload(ShoppingList.members))
-            .where(ShoppingList.id == list_id)
+            .first()
         )
-        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,

@@ -4,7 +4,6 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -45,16 +44,15 @@ class GetShoppingListDeadlines(AsyncEndpoint):
         user: User = self.user
         now = datetime.now()
 
-        shopping_list_result = await self.db.execute(
-            select(ShoppingList)
+        shopping_list = await (
+            self.database.where(ShoppingList, id=list_id)
             .options(
                 selectinload(ShoppingList.items).selectinload(
                     ShoppingListItem.meal_event
                 )
             )
-            .where(ShoppingList.id == list_id)
+            .first()
         )
-        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,

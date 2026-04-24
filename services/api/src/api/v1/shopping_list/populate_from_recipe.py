@@ -4,7 +4,6 @@ from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -31,16 +30,15 @@ class PopulateFromRecipe(AsyncEndpoint):
         """
         user = self.user
 
-        recipe_result = await self.db.execute(
-            select(Recipe)
+        recipe = await (
+            self.database.where(Recipe, id=params.recipe_id)
             .options(
                 selectinload(Recipe.ingredients).selectinload(
                     RecipeIngredient.ingredient
                 )
             )
-            .where(Recipe.id == params.recipe_id)
+            .first()
         )
-        recipe = recipe_result.scalars().first()
         if not recipe:
             raise APIException(
                 status_code=404,
@@ -60,12 +58,11 @@ class PopulateFromRecipe(AsyncEndpoint):
                 code=ErrorCode.RECIPE_ACCESS_DENIED,
             )
 
-        shopping_list_result = await self.db.execute(
-            select(ShoppingList)
+        shopping_list = await (
+            self.database.where(ShoppingList, id=list_id)
             .options(selectinload(ShoppingList.items))
-            .where(ShoppingList.id == list_id)
+            .first()
         )
-        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
