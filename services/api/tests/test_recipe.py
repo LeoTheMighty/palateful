@@ -874,10 +874,14 @@ class TestGetRecipePhotoUploadUrl:
     """Tests for POST /v1/recipes/{recipe_id}/photo-upload-url."""
 
     @patch("api.v1.recipe.get_photo_upload_url._get_aws_service")
-    def test_get_photo_upload_url_success(self, mock_aws, client, mock_db, mock_user):
+    def test_get_photo_upload_url_success(self, mock_aws, client, mock_async_db, mock_user):
         """Test getting a presigned URL for recipe photo upload."""
+        from unittest.mock import AsyncMock
+
         mock_service = MagicMock()
-        mock_service.generate_presigned_upload_url.return_value = "https://s3.example.com/presigned"
+        mock_service.generate_presigned_upload_url_async = AsyncMock(
+            return_value="https://s3.example.com/presigned"
+        )
         mock_aws.return_value = mock_service
 
         recipe_id = "test-recipe-id"
@@ -892,8 +896,8 @@ class TestGetRecipePhotoUploadUrl:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -910,10 +914,14 @@ class TestGetRecipePhotoUploadUrl:
         assert data["content_type"] == "image/jpeg"
 
     @patch("api.v1.recipe.get_photo_upload_url._get_aws_service")
-    def test_get_photo_upload_url_s3_key_pattern(self, mock_aws, client, mock_db, mock_user):
+    def test_get_photo_upload_url_s3_key_pattern(self, mock_aws, client, mock_async_db, mock_user):
         """Test that S3 key follows the expected pattern."""
+        from unittest.mock import AsyncMock
+
         mock_service = MagicMock()
-        mock_service.generate_presigned_upload_url.return_value = "https://s3.example.com/presigned"
+        mock_service.generate_presigned_upload_url_async = AsyncMock(
+            return_value="https://s3.example.com/presigned"
+        )
         mock_aws.return_value = mock_service
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -927,8 +935,8 @@ class TestGetRecipePhotoUploadUrl:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -943,7 +951,7 @@ class TestGetRecipePhotoUploadUrl:
         assert s3_key.endswith(".png")
         assert data["content_type"] == "image/png"
 
-    def test_get_photo_upload_url_requires_auth(self, unauthed_client, mock_db):
+    def test_get_photo_upload_url_requires_auth(self, unauthed_client, mock_async_db):
         """Test that endpoint requires authentication."""
         response = unauthed_client.post(
             "/v1/recipes/some-id/photo-upload-url",
@@ -952,7 +960,7 @@ class TestGetRecipePhotoUploadUrl:
         # FastAPI security dependency returns 422 when Authorization header is missing
         assert response.status_code in (401, 403, 422)
 
-    def test_get_photo_upload_url_recipe_not_found(self, client, mock_db, mock_user):
+    def test_get_photo_upload_url_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test 404 when recipe doesn't exist."""
         response = client.post(
             "/v1/recipes/nonexistent/photo-upload-url",
@@ -960,7 +968,7 @@ class TestGetRecipePhotoUploadUrl:
         )
         assert response.status_code == 404
 
-    def test_get_photo_upload_url_no_permission(self, client, mock_db, mock_user):
+    def test_get_photo_upload_url_no_permission(self, client, mock_async_db, mock_user):
         """Test 403 when user doesn't have edit access."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -974,8 +982,8 @@ class TestGetRecipePhotoUploadUrl:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -989,7 +997,7 @@ class TestGetRecipePhotoUploadUrl:
 class TestToggleFavorite:
     """Tests for POST /v1/recipes/{recipe_id}/favorite."""
 
-    def _setup(self, mock_db, mock_user, recipe_id="test-recipe-id",
+    def _setup(self, mock_async_db, mock_user, recipe_id="test-recipe-id",
                book_id="test-book-id", has_favorite=False):
         """Helper to set up common test fixtures."""
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
@@ -1002,52 +1010,52 @@ class TestToggleFavorite:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.user_favorite import UserFavorite
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=mock_user.id,
                            recipe_book_id=book_id)
 
         if has_favorite:
             fav = MockUserFavorite(user_id=str(mock_user.id), recipe_id=recipe_id)
-            mock_db.set_find_by(UserFavorite, fav,
+            mock_async_db.set_find_by(UserFavorite, fav,
                                user_id=mock_user.id,
                                recipe_id=recipe_id)
 
         return recipe
 
-    def test_toggle_favorite_add(self, client, mock_db, mock_user):
+    def test_toggle_favorite_add(self, client, mock_async_db, mock_user):
         """Test adding a recipe to favorites."""
         recipe_id = "test-recipe-id"
-        self._setup(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.post(f"/v1/recipes/{recipe_id}/favorite")
         assert response.status_code == 201
         data = response.json()
         assert data["is_favorite"] is True
 
-    def test_toggle_favorite_remove(self, client, mock_db, mock_user):
+    def test_toggle_favorite_remove(self, client, mock_async_db, mock_user):
         """Test removing a recipe from favorites."""
         recipe_id = "test-recipe-id"
-        self._setup(mock_db, mock_user, recipe_id=recipe_id, has_favorite=True)
+        self._setup(mock_async_db, mock_user, recipe_id=recipe_id, has_favorite=True)
 
         response = client.post(f"/v1/recipes/{recipe_id}/favorite")
         assert response.status_code == 200
         data = response.json()
         assert data["is_favorite"] is False
 
-    def test_toggle_favorite_recipe_not_found(self, client, mock_db, mock_user):
+    def test_toggle_favorite_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test toggling favorite on nonexistent recipe."""
         response = client.post("/v1/recipes/nonexistent/favorite")
         assert response.status_code == 404
 
-    def test_toggle_favorite_no_access(self, client, mock_db, mock_user):
+    def test_toggle_favorite_no_access(self, client, mock_async_db, mock_user):
         """Test toggling favorite without recipe book access."""
         recipe_id = "test-recipe-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         response = client.post(f"/v1/recipes/{recipe_id}/favorite")
         assert response.status_code == 403
