@@ -1,7 +1,12 @@
-"""Tests for MCP shopping list tools (MCP.5)."""
+"""Tests for MCP shopping list tools (MCP.5).
+
+aam-13: tools are `async def` and dispatch through `call_endpoint_async`.
+Tests are `async def` and `await` the tool; patch target flips to
+`call_endpoint_async` with `new_callable=AsyncMock`.
+"""
 
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -24,64 +29,82 @@ def mcp_context():
 
 
 class TestShoppingListTools:
-    def test_list_shopping_lists(self, mcp_context):
+    async def test_list_shopping_lists(self, mcp_context):
         from mcp_server.tools.shopping import list_shopping_lists
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            list_shopping_lists(limit=5, offset=10)
+            await list_shopping_lists(limit=5, offset=10)
         assert mock_call.call_args.kwargs == {"limit": 5, "offset": 10}
 
-    def test_get_shopping_list_default(self, mcp_context):
+    async def test_get_shopping_list_default(self, mcp_context):
         from mcp_server.tools.shopping import get_shopping_list
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            get_shopping_list()
+            await get_shopping_list()
         assert mock_call.call_args.kwargs == {"list_id": "default-list"}
 
-    def test_get_shopping_list_explicit(self, mcp_context):
+    async def test_get_shopping_list_explicit(self, mcp_context):
         from mcp_server.tools.shopping import get_shopping_list
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            get_shopping_list(list_id="l2")
+            await get_shopping_list(list_id="l2")
         assert mock_call.call_args.kwargs == {"list_id": "l2"}
 
-    def test_get_shopping_list_no_default_raises(self, mcp_context):
+    async def test_get_shopping_list_no_default_raises(self, mcp_context):
         user, _ = mcp_context
         user.default_shopping_list_id = None
         from mcp_server.tools.shopping import get_shopping_list
 
         with pytest.raises(ValueError, match="no default shopping list"):
-            get_shopping_list()
+            await get_shopping_list()
 
-    def test_create_shopping_list(self, mcp_context):
+    async def test_create_shopping_list(self, mcp_context):
         from mcp_server.tools.shopping import create_shopping_list
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            create_shopping_list("Weekly groceries")
+            await create_shopping_list("Weekly groceries")
         params = mock_call.call_args.kwargs["params"]
         assert params.name == "Weekly groceries"
 
-    def test_add_item_with_defaults(self, mcp_context):
+    async def test_add_item_with_defaults(self, mcp_context):
         from mcp_server.tools.shopping import add_shopping_list_item
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            add_shopping_list_item(name="Eggs")
+            await add_shopping_list_item(name="Eggs")
         kwargs = mock_call.call_args.kwargs
         assert kwargs["list_id"] == "default-list"
         assert kwargs["params"].name == "Eggs"
         assert kwargs["params"].quantity is None
 
-    def test_add_item_with_quantity_and_unit(self, mcp_context):
+    async def test_add_item_with_quantity_and_unit(self, mcp_context):
         from mcp_server.tools.shopping import add_shopping_list_item
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            add_shopping_list_item(
+            await add_shopping_list_item(
                 name="Milk",
                 list_id="l2",
                 quantity="2",
@@ -94,18 +117,21 @@ class TestShoppingListTools:
         assert kwargs["params"].unit == "gal"
         assert kwargs["params"].category == "dairy"
 
-    def test_add_item_bad_quantity_raises(self, mcp_context):
+    async def test_add_item_bad_quantity_raises(self, mcp_context):
         from mcp_server.tools.shopping import add_shopping_list_item
 
         with pytest.raises(ValueError, match="Invalid quantity"):
-            add_shopping_list_item(name="x", quantity="not a number")
+            await add_shopping_list_item(name="x", quantity="not a number")
 
-    def test_update_item_partial(self, mcp_context):
+    async def test_update_item_partial(self, mcp_context):
         from mcp_server.tools.shopping import update_shopping_list_item
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            update_shopping_list_item(
+            await update_shopping_list_item(
                 list_id="l1", item_id="i1", is_checked=True
             )
         kwargs = mock_call.call_args.kwargs
@@ -114,12 +140,15 @@ class TestShoppingListTools:
         assert kwargs["params"].is_checked is True
         assert kwargs["params"].quantity is None
 
-    def test_update_item_all_fields(self, mcp_context):
+    async def test_update_item_all_fields(self, mcp_context):
         from mcp_server.tools.shopping import update_shopping_list_item
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            update_shopping_list_item(
+            await update_shopping_list_item(
                 list_id="l1",
                 item_id="i1",
                 is_checked=False,
@@ -135,29 +164,35 @@ class TestShoppingListTools:
         assert params.category == "produce"
         assert params.name == "Apples"
 
-    def test_update_item_bad_quantity(self, mcp_context):
+    async def test_update_item_bad_quantity(self, mcp_context):
         from mcp_server.tools.shopping import update_shopping_list_item
 
         with pytest.raises(ValueError, match="Invalid quantity"):
-            update_shopping_list_item(list_id="l1", item_id="i1", quantity="nope")
+            await update_shopping_list_item(list_id="l1", item_id="i1", quantity="nope")
 
-    def test_populate_from_recipe_defaults(self, mcp_context):
+    async def test_populate_from_recipe_defaults(self, mcp_context):
         from mcp_server.tools.shopping import populate_from_recipe
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            populate_from_recipe(recipe_id="r1")
+            await populate_from_recipe(recipe_id="r1")
         kwargs = mock_call.call_args.kwargs
         assert kwargs["list_id"] == "default-list"
         assert kwargs["params"].recipe_id == "r1"
         assert kwargs["params"].scale_factor == 1.0
 
-    def test_populate_from_recipe_explicit_list_and_scale(self, mcp_context):
+    async def test_populate_from_recipe_explicit_list_and_scale(self, mcp_context):
         from mcp_server.tools.shopping import populate_from_recipe
 
-        with patch("mcp_server.tools.shopping.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.shopping.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            populate_from_recipe(recipe_id="r1", list_id="l2", scale_factor=2.0)
+            await populate_from_recipe(recipe_id="r1", list_id="l2", scale_factor=2.0)
         kwargs = mock_call.call_args.kwargs
         assert kwargs["list_id"] == "l2"
         assert kwargs["params"].scale_factor == 2.0
