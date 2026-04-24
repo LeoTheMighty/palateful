@@ -1494,14 +1494,16 @@ class TestSearchUsersEmptyQuery:
     """Cover empty query branch (line 25) - already covered by test_user.py,
     but adding direct endpoint test to make sure."""
 
-    def test_search_users_whitespace_only(self, mock_db, mock_user):
+    def test_search_users_whitespace_only(self, mock_async_db, mock_user):
         """Whitespace-only query raises (line 25)."""
+        import asyncio
+
         from api.v1.user.search_users import SearchUsers
         from utils.api.endpoint import APIException
 
-        endpoint = SearchUsers(user=mock_user, database=mock_db)
+        endpoint = SearchUsers(user=mock_user, database=mock_async_db)
         with pytest.raises(APIException) as exc:
-            endpoint.execute(q="   ")
+            asyncio.run(endpoint.execute(q="   "))
         assert exc.value.status_code == 400
 
 
