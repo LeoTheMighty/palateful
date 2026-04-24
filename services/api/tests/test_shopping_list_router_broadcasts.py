@@ -12,13 +12,13 @@ from conftest import (
 class TestAddItemBroadcast:
     """Verify broadcast_event_to_list is called when an item is added."""
 
-    def test_add_item_broadcasts_item_added(self, client, mock_db, mock_user):
+    def test_add_item_broadcasts_item_added(self, client, mock_db, mock_async_db, mock_user):
         """Adding an item triggers an item_added WebSocket broadcast."""
         list_id = "test-list-id"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -39,13 +39,13 @@ class TestAddItemBroadcast:
         assert args[2]["name"] == "Apples"
         assert "id" in args[2], "broadcast data must include item id for client-side state"
 
-    def test_add_item_broadcast_includes_user_id(self, client, mock_db, mock_user):
+    def test_add_item_broadcast_includes_user_id(self, client, mock_db, mock_async_db, mock_user):
         """Broadcast carries the actor's user_id as kwarg."""
         list_id = "test-list-id"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -64,7 +64,7 @@ class TestAddItemBroadcast:
 class TestUpdateItemBroadcast:
     """Verify broadcast_event_to_list is called when an item is updated."""
 
-    def test_update_item_broadcasts_item_updated(self, client, mock_db, mock_user):
+    def test_update_item_broadcasts_item_updated(self, client, mock_db, mock_async_db, mock_user):
         """Updating item name triggers 'item_updated' broadcast."""
         list_id = "test-list-id"
         item_id = "test-item-id"
@@ -72,8 +72,8 @@ class TestUpdateItemBroadcast:
         item = MockShoppingListItem(id=item_id, shopping_list_id=list_id, name="Old Name")
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -88,7 +88,7 @@ class TestUpdateItemBroadcast:
         mock_broadcast.assert_called_once()
         assert mock_broadcast.call_args[0][1] == "item_updated"
 
-    def test_update_item_is_checked_broadcasts_item_checked(self, client, mock_db, mock_user):
+    def test_update_item_is_checked_broadcasts_item_checked(self, client, mock_db, mock_async_db, mock_user):
         """Checking an item triggers 'item_checked' broadcast."""
         list_id = "test-list-id"
         item_id = "test-item-id"
@@ -96,8 +96,8 @@ class TestUpdateItemBroadcast:
         item = MockShoppingListItem(id=item_id, shopping_list_id=list_id, is_checked=False)
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # Mock for unchecked_count query
         from conftest import MockQuery
         mock_db.db.query.return_value = MockQuery([])
@@ -121,7 +121,7 @@ class TestUpdateItemBroadcast:
 class TestDeleteItemBroadcast:
     """Verify broadcast_event_to_list is called when an item is deleted."""
 
-    def test_delete_item_broadcasts_item_removed(self, client, mock_db, mock_user):
+    def test_delete_item_broadcasts_item_removed(self, client, mock_db, mock_async_db, mock_user):
         """Deleting an item triggers 'item_removed' broadcast with item_id."""
         list_id = "test-list-id"
         item_id = "test-item-id"
@@ -129,8 +129,8 @@ class TestDeleteItemBroadcast:
         item = MockShoppingListItem(id=item_id, shopping_list_id=list_id)
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -147,7 +147,7 @@ class TestDeleteItemBroadcast:
         assert args[1] == "item_removed"
         assert args[2] == {"item_id": item_id}
 
-    def test_delete_item_broadcast_carries_user_id(self, client, mock_db, mock_user):
+    def test_delete_item_broadcast_carries_user_id(self, client, mock_db, mock_async_db, mock_user):
         """Delete broadcast includes the actor's user_id."""
         list_id = "test-list-id"
         item_id = "test-item-id"
@@ -155,8 +155,8 @@ class TestDeleteItemBroadcast:
         item = MockShoppingListItem(id=item_id, shopping_list_id=list_id)
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -172,7 +172,7 @@ class TestDeleteItemBroadcast:
 class TestListShoppingListsUpdatedAt:
     """Verify ListShoppingLists response includes updated_at (Task 1)."""
 
-    def test_list_returns_updated_at(self, client, mock_db, mock_user):
+    def test_list_returns_updated_at(self, client, mock_db, mock_async_db, mock_user):
         """Each list item in the response includes an updated_at field."""
         sl = MockShoppingList(
             owner_id=str(mock_user.id),

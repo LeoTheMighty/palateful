@@ -24,7 +24,7 @@ from conftest import (
 class TestListShoppingLists:
     """Tests for GET /v1/shopping-lists."""
 
-    def test_list_shopping_lists_success(self, client, mock_db, mock_user):
+    def test_list_shopping_lists_success(self, client, mock_db, mock_async_db, mock_user):
         """Test listing shopping lists."""
         sl = MockShoppingList(
             owner_id=str(mock_user.id),
@@ -41,7 +41,7 @@ class TestListShoppingLists:
         data = response.json()
         assert data["total"] == 1
 
-    def test_list_shopping_lists_empty(self, client, mock_db, mock_user):
+    def test_list_shopping_lists_empty(self, client, mock_db, mock_async_db, mock_user):
         """Test listing when user has no shopping lists."""
         mock_db.db.query.return_value = MockQuery([])
 
@@ -126,7 +126,7 @@ class TestListShoppingLists:
 class TestCreateShoppingList:
     """Tests for POST /v1/shopping-lists."""
 
-    def test_create_shopping_list_success(self, client, mock_db, mock_user):
+    def test_create_shopping_list_success(self, client, mock_db, mock_async_db, mock_user):
         """Test creating a shopping list."""
         response = client.post(
             "/v1/shopping-lists",
@@ -136,7 +136,7 @@ class TestCreateShoppingList:
         data = response.json()
         assert data["name"] == "Weekly Groceries"
 
-    def test_create_shopping_list_no_name(self, client, mock_db, mock_user):
+    def test_create_shopping_list_no_name(self, client, mock_db, mock_async_db, mock_user):
         """Test creating a shopping list with no name (allowed, name is optional)."""
         response = client.post(
             "/v1/shopping-lists",
@@ -145,7 +145,7 @@ class TestCreateShoppingList:
         # CreateShoppingList.Params has name: str | None = None, so empty body is valid
         assert response.status_code == 201
 
-    def test_create_shopping_list_auto_sets_default(self, client, mock_db, mock_user):
+    def test_create_shopping_list_auto_sets_default(self, client, mock_db, mock_async_db, mock_user):
         """Test that creating a list auto-sets it as default when user has none."""
         mock_user.default_shopping_list_id = None
         response = client.post(
@@ -156,7 +156,7 @@ class TestCreateShoppingList:
         # User's default should now be set to the newly created list
         assert mock_user.default_shopping_list_id is not None
 
-    def test_create_shopping_list_preserves_existing_default(self, client, mock_db, mock_user):
+    def test_create_shopping_list_preserves_existing_default(self, client, mock_db, mock_async_db, mock_user):
         """Test that creating a list does NOT override an existing default."""
         import uuid
         existing_default = str(uuid.uuid4())
@@ -173,7 +173,7 @@ class TestCreateShoppingList:
 class TestGetShoppingList:
     """Tests for GET /v1/shopping-lists/{list_id}."""
 
-    def test_get_shopping_list_success(self, client, mock_db, mock_user):
+    def test_get_shopping_list_success(self, client, mock_db, mock_async_db, mock_user):
         """Test getting a shopping list."""
         list_id = "test-list-id"
         sl = MockShoppingList(
@@ -186,14 +186,14 @@ class TestGetShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == list_id
 
-    def test_get_shopping_list_no_access(self, client, mock_db, mock_user):
+    def test_get_shopping_list_no_access(self, client, mock_db, mock_async_db, mock_user):
         """Test getting a shopping list without access."""
         response = client.get("/v1/shopping-lists/no-access")
         assert response.status_code == 404
@@ -202,25 +202,25 @@ class TestGetShoppingList:
 class TestDeleteShoppingList:
     """Tests for DELETE /v1/shopping-lists/{list_id}."""
 
-    def test_delete_shopping_list_success(self, client, mock_db, mock_user):
+    def test_delete_shopping_list_success(self, client, mock_db, mock_async_db, mock_user):
         """Test deleting a shopping list as owner."""
         list_id = "test-list-id"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.delete(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 200
 
-    def test_delete_shopping_list_not_found(self, client, mock_db, mock_user):
+    def test_delete_shopping_list_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Test deleting a nonexistent shopping list."""
         response = client.delete("/v1/shopping-lists/nonexistent")
         assert response.status_code == 404
 
 
-    def test_delete_default_shopping_list_restores_previous(self, client, mock_db, mock_user):
+    def test_delete_default_shopping_list_restores_previous(self, client, mock_db, mock_async_db, mock_user):
         """Test deleting the default list restores previous (lines 48-50)."""
         list_id = str(uuid.uuid4())
         prev_list_id = str(uuid.uuid4())
@@ -231,7 +231,7 @@ class TestDeleteShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.delete(f"/v1/shopping-lists/{list_id}")
         assert response.status_code == 200
@@ -245,14 +245,14 @@ class TestAddShoppingListItem:
     """Tests for POST /v1/shopping-lists/{list_id}/items."""
 
     @patch("api.v1.shopping_list.add_item.notify_item_added")
-    def test_add_item_success(self, mock_notify, client, mock_db, mock_user):
+    def test_add_item_success(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Test adding an item to a shopping list."""
         list_id = "test-list-id"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items",
@@ -268,7 +268,7 @@ class TestAddShoppingListItem:
 
     @patch("api.v1.shopping_list.add_item.notify_item_added")
     @patch("api.v1.shopping_list.add_item.create_activity")
-    def test_add_item_to_shared_list_creates_activity(self, mock_create_activity, mock_notify, client, mock_db, mock_user):
+    def test_add_item_to_shared_list_creates_activity(self, mock_create_activity, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Test adding item to a shared list creates activity for other members (lines 87-97)."""
         list_id = "shared-list-add"
         member = MockShoppingListUser(
@@ -284,7 +284,7 @@ class TestAddShoppingListItem:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         # db.query for members returns our mock member
         mock_db.db.query.return_value = MockQuery([member])
 
@@ -304,7 +304,7 @@ class TestAddShoppingListItem:
 class TestAssignItem:
     """Tests for PUT /v1/shopping-lists/{list_id}/items/{item_id}/assign."""
 
-    def test_assign_item_not_found_list(self, client, mock_db, mock_user):
+    def test_assign_item_not_found_list(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.put(
             "/v1/shopping-lists/no-list/items/item1/assign",
@@ -312,14 +312,14 @@ class TestAssignItem:
         )
         assert response.status_code == 404
 
-    def test_assign_item_no_permission(self, client, mock_db, mock_user):
+    def test_assign_item_no_permission(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no edit permission."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner")
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         # No membership found -> can_edit is False
 
         response = client.put(
@@ -328,7 +328,7 @@ class TestAssignItem:
         )
         assert response.status_code == 403
 
-    def test_assign_item_as_editor_member(self, client, mock_db, mock_user):
+    def test_assign_item_as_editor_member(self, client, mock_db, mock_async_db, mock_user):
         """Editor member can assign items."""
         list_id = "test-list"
         item_id = "test-item"
@@ -347,11 +347,11 @@ class TestAssignItem:
         from utils.models.shopping_list_user import ShoppingListUser
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership, shopping_list_id=list_id, user_id=str(mock_user.id)
         )
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # Assignee is the owner of the list — wait, owner_id is "other-owner" so let's
         # make the assignee a member instead
         sl.owner_id = "other-owner"
@@ -361,10 +361,10 @@ class TestAssignItem:
             role="editor",
             archived_at=None,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             ShoppingListUser, assignee_membership, shopping_list_id=list_id, user_id=assignee_id
         )
-        mock_db.set_find_by(User, assignee, id=assignee_id)
+        mock_async_db.set_find_by(User, assignee, id=assignee_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}/assign",
@@ -374,14 +374,14 @@ class TestAssignItem:
         data = response.json()
         assert data["assigned_to_user_id"] == assignee_id
 
-    def test_assign_item_item_not_found(self, client, mock_db, mock_user):
+    def test_assign_item_item_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when item is not found in the list."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/missing-item/assign",
@@ -389,7 +389,7 @@ class TestAssignItem:
         )
         assert response.status_code == 404
 
-    def test_assign_item_to_owner(self, client, mock_db, mock_user):
+    def test_assign_item_to_owner(self, client, mock_db, mock_async_db, mock_user):
         """Assigning to the list owner works."""
         list_id = "test-list"
         item_id = "test-item"
@@ -400,9 +400,9 @@ class TestAssignItem:
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
-        mock_db.set_find_by(User, owner_user, id=str(mock_user.id))
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(User, owner_user, id=str(mock_user.id))
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}/assign",
@@ -413,7 +413,7 @@ class TestAssignItem:
         assert data["assigned_to_user_id"] == str(mock_user.id)
         assert data["assigned_to_user_name"] == "Owner"
 
-    def test_assign_item_to_non_member(self, client, mock_db, mock_user):
+    def test_assign_item_to_non_member(self, client, mock_db, mock_async_db, mock_user):
         """400 when assigning to a non-member."""
         list_id = "test-list"
         item_id = "test-item"
@@ -423,8 +423,8 @@ class TestAssignItem:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # No membership for non_member_id -> find_by returns None
 
         response = client.put(
@@ -433,7 +433,7 @@ class TestAssignItem:
         )
         assert response.status_code == 400
 
-    def test_assign_item_to_archived_member(self, client, mock_db, mock_user):
+    def test_assign_item_to_archived_member(self, client, mock_db, mock_async_db, mock_user):
         """400 when assigning to an archived member."""
         list_id = "test-list"
         item_id = "test-item"
@@ -450,9 +450,9 @@ class TestAssignItem:
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, archived_membership,
             shopping_list_id=list_id, user_id=archived_member_id,
         )
@@ -463,7 +463,7 @@ class TestAssignItem:
         )
         assert response.status_code == 400
 
-    def test_assign_item_assignee_user_not_found(self, client, mock_db, mock_user):
+    def test_assign_item_assignee_user_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when assignee user record doesn't exist despite valid membership."""
         list_id = "test-list"
         item_id = "test-item"
@@ -480,9 +480,9 @@ class TestAssignItem:
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, assignee_membership,
             shopping_list_id=list_id, user_id=assignee_id,
         )
@@ -494,7 +494,7 @@ class TestAssignItem:
         )
         assert response.status_code == 404
 
-    def test_unassign_item(self, client, mock_db, mock_user):
+    def test_unassign_item(self, client, mock_db, mock_async_db, mock_user):
         """Passing user_id=None unassigns the item."""
         list_id = "test-list"
         item_id = "test-item"
@@ -506,8 +506,8 @@ class TestAssignItem:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}/assign",
@@ -518,7 +518,7 @@ class TestAssignItem:
         assert data["assigned_to_user_id"] is None
         assert data["assigned_to_user_name"] is None
 
-    def test_assign_item_viewer_cannot_assign(self, client, mock_db, mock_user):
+    def test_assign_item_viewer_cannot_assign(self, client, mock_db, mock_async_db, mock_user):
         """Viewer role cannot assign items."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner")
@@ -532,8 +532,8 @@ class TestAssignItem:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -548,7 +548,7 @@ class TestAssignItem:
 class TestBulkAssignItems:
     """Tests for POST /v1/shopping-lists/{list_id}/items/bulk-assign."""
 
-    def test_bulk_assign_not_found_list(self, client, mock_db, mock_user):
+    def test_bulk_assign_not_found_list(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.post(
             "/v1/shopping-lists/no-list/items/bulk-assign",
@@ -556,14 +556,14 @@ class TestBulkAssignItems:
         )
         assert response.status_code == 404
 
-    def test_bulk_assign_no_permission(self, client, mock_db, mock_user):
+    def test_bulk_assign_no_permission(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no edit permission."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner")
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items/bulk-assign",
@@ -571,7 +571,7 @@ class TestBulkAssignItems:
         )
         assert response.status_code == 403
 
-    def test_bulk_assign_success(self, client, mock_db, mock_user):
+    def test_bulk_assign_success(self, client, mock_db, mock_async_db, mock_user):
         """Successful bulk assignment."""
         list_id = "test-list"
         item_id = "item-1"
@@ -580,8 +580,8 @@ class TestBulkAssignItems:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         # Assigning to owner (valid)
         response = client.post(
@@ -593,14 +593,14 @@ class TestBulkAssignItems:
         assert data["assigned_count"] == 1
         assert data["error_count"] == 0
 
-    def test_bulk_assign_item_not_found(self, client, mock_db, mock_user):
+    def test_bulk_assign_item_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Error when item not found in bulk assignment."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items/bulk-assign",
@@ -612,7 +612,7 @@ class TestBulkAssignItems:
         assert data["error_count"] == 1
         assert "missing" in data["errors"][0]
 
-    def test_bulk_assign_invalid_member(self, client, mock_db, mock_user):
+    def test_bulk_assign_invalid_member(self, client, mock_db, mock_async_db, mock_user):
         """Error when assigning to non-member in bulk."""
         list_id = "test-list"
         item_id = "item-1"
@@ -622,8 +622,8 @@ class TestBulkAssignItems:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items/bulk-assign",
@@ -635,7 +635,7 @@ class TestBulkAssignItems:
         assert data["error_count"] == 1
         assert "not a member" in data["errors"][0]
 
-    def test_bulk_assign_unassign_item(self, client, mock_db, mock_user):
+    def test_bulk_assign_unassign_item(self, client, mock_db, mock_async_db, mock_user):
         """Passing user_id=None in bulk unassigns."""
         list_id = "test-list"
         item_id = "item-1"
@@ -647,8 +647,8 @@ class TestBulkAssignItems:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/items/bulk-assign",
@@ -669,7 +669,7 @@ class TestInviteShoppingListMember:
     """Tests for POST /v1/shopping-lists/{list_id}/members."""
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_not_found_list(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_not_found_list(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.post(
             "/v1/shopping-lists/no-list/members",
@@ -678,14 +678,14 @@ class TestInviteShoppingListMember:
         assert response.status_code == 404
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_no_permission(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_no_permission(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """403 when user is not owner or editor."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner", members=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/members",
@@ -694,14 +694,14 @@ class TestInviteShoppingListMember:
         assert response.status_code == 403
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_user_not_found(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_user_not_found(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """404 when invited user doesn't exist."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id), members=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/members",
@@ -710,7 +710,7 @@ class TestInviteShoppingListMember:
         assert response.status_code == 404
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_by_email(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_by_email(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Can invite by email."""
         list_id = "test-list"
         invited_user = MockUser(id=str(uuid.uuid4()), email="friend@example.com", name="Friend")
@@ -720,8 +720,8 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list_user import ShoppingListUser
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, email="friend@example.com")
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, email="friend@example.com")
         # Owner membership doesn't exist yet — triggers creation
         # No existing membership for invited user
 
@@ -735,7 +735,7 @@ class TestInviteShoppingListMember:
         mock_notify.assert_called_once()
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_by_user_id(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_by_user_id(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Can invite by user_id."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -745,8 +745,8 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/members",
@@ -755,7 +755,7 @@ class TestInviteShoppingListMember:
         assert response.status_code == 201
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_already_member(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_already_member(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """400 when user is already an active member."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -772,9 +772,9 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list_user import ShoppingListUser
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, id=invited_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, existing,
             shopping_list_id=list_id, user_id=invited_id,
         )
@@ -786,7 +786,7 @@ class TestInviteShoppingListMember:
         assert response.status_code == 400
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_reactivate_archived(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_reactivate_archived(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Reactivates archived membership instead of creating new one."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -803,9 +803,9 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list_user import ShoppingListUser
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, id=invited_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, existing,
             shopping_list_id=list_id, user_id=invited_id,
         )
@@ -820,7 +820,7 @@ class TestInviteShoppingListMember:
         assert existing.role == "editor"
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_limit_reached(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_limit_reached(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """400 when member limit (10) is reached."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -840,8 +840,8 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/members",
@@ -850,7 +850,7 @@ class TestInviteShoppingListMember:
         assert response.status_code == 400
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_sets_list_as_shared(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_sets_list_as_shared(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Inviting marks the list as shared."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -860,8 +860,8 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/members",
@@ -871,7 +871,7 @@ class TestInviteShoppingListMember:
         assert sl.is_shared is True
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_creates_owner_membership(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_creates_owner_membership(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """If owner doesn't have a membership record, one is created."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -881,8 +881,8 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
         # No owner membership found -> should create one
 
         response = client.post(
@@ -892,7 +892,7 @@ class TestInviteShoppingListMember:
         assert response.status_code == 201
 
     @patch("api.v1.shopping_list.invite_member.notify_list_shared")
-    def test_invite_member_editor_can_invite(self, mock_notify, client, mock_db, mock_user):
+    def test_invite_member_editor_can_invite(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Editor member can also invite."""
         list_id = "test-list"
         invited_id = str(uuid.uuid4())
@@ -908,12 +908,12 @@ class TestInviteShoppingListMember:
         from utils.models.shopping_list_user import ShoppingListUser
         from utils.models.user import User
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(User, invited_user, id=invited_id)
+        mock_async_db.set_find_by(User, invited_user, id=invited_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/members",
@@ -930,7 +930,7 @@ class TestInviteShoppingListMember:
 class TestShareShoppingList:
     """Tests for POST /v1/shopping-lists/{list_id}/share."""
 
-    def test_share_not_found(self, client, mock_db, mock_user):
+    def test_share_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.post(
             "/v1/shopping-lists/no-list/share",
@@ -938,14 +938,14 @@ class TestShareShoppingList:
         )
         assert response.status_code == 404
 
-    def test_share_not_owner(self, client, mock_db, mock_user):
+    def test_share_not_owner(self, client, mock_db, mock_async_db, mock_user):
         """403 when user is not the owner."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner")
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/share",
@@ -954,7 +954,7 @@ class TestShareShoppingList:
         assert response.status_code == 403
 
     @patch("api.v1.shopping_list.share_shopping_list.generate_share_code", return_value="ABC123")
-    def test_share_generates_code(self, mock_gen, client, mock_db, mock_user):
+    def test_share_generates_code(self, mock_gen, client, mock_db, mock_async_db, mock_user):
         """Generates a share code for a list without one."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -964,7 +964,7 @@ class TestShareShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/share",
@@ -975,7 +975,7 @@ class TestShareShoppingList:
         assert data["share_code"] == "ABC123"
         assert data["is_shared"] is True
 
-    def test_share_existing_code(self, client, mock_db, mock_user):
+    def test_share_existing_code(self, client, mock_db, mock_async_db, mock_user):
         """Returns existing share code without generating a new one."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -985,7 +985,7 @@ class TestShareShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/share",
@@ -996,7 +996,7 @@ class TestShareShoppingList:
         assert data["share_code"] == "EXIST1"
 
     @patch("api.v1.shopping_list.share_shopping_list.generate_share_code")
-    def test_share_code_collision_retry(self, mock_gen, client, mock_db, mock_user):
+    def test_share_code_collision_retry(self, mock_gen, client, mock_db, mock_async_db, mock_user):
         """Retries on collision and fails after 10 attempts."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1009,8 +1009,8 @@ class TestShareShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingList, colliding_list, share_code="TAKEN1")
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, colliding_list, share_code="TAKEN1")
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/share",
@@ -1018,7 +1018,7 @@ class TestShareShoppingList:
         )
         assert response.status_code == 500
 
-    def test_share_creates_owner_membership(self, client, mock_db, mock_user):
+    def test_share_creates_owner_membership(self, client, mock_db, mock_async_db, mock_user):
         """Creates owner membership if missing."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1028,7 +1028,7 @@ class TestShareShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         # No owner membership -> creates one
 
         response = client.post(
@@ -1068,28 +1068,28 @@ class TestGenerateShareCode:
 class TestRemoveShoppingListMember:
     """Tests for DELETE /v1/shopping-lists/{list_id}/members/{member_user_id}."""
 
-    def test_remove_member_list_not_found(self, client, mock_db, mock_user):
+    def test_remove_member_list_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.delete(
             "/v1/shopping-lists/no-list/members/some-user",
         )
         assert response.status_code == 404
 
-    def test_remove_member_membership_not_found(self, client, mock_db, mock_user):
+    def test_remove_member_membership_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when member is not found."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.delete(
             f"/v1/shopping-lists/{list_id}/members/nonexistent-user",
         )
         assert response.status_code == 404
 
-    def test_remove_member_archived_membership(self, client, mock_db, mock_user):
+    def test_remove_member_archived_membership(self, client, mock_db, mock_async_db, mock_user):
         """404 when membership is already archived."""
         list_id = "test-list"
         member_id = str(uuid.uuid4())
@@ -1104,8 +1104,8 @@ class TestRemoveShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, archived_member,
             shopping_list_id=list_id, user_id=member_id,
         )
@@ -1116,7 +1116,7 @@ class TestRemoveShoppingListMember:
         assert response.status_code == 404
 
     @patch("api.v1.shopping_list.remove_member.datetime")
-    def test_owner_removes_member(self, mock_dt, client, mock_db, mock_user):
+    def test_owner_removes_member(self, mock_dt, client, mock_db, mock_async_db, mock_user):
         """Owner can remove another member."""
         mock_dt.now.return_value = datetime.now(UTC)
         mock_dt.UTC = UTC
@@ -1133,8 +1133,8 @@ class TestRemoveShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, target,
             shopping_list_id=list_id, user_id=member_id,
         )
@@ -1147,7 +1147,7 @@ class TestRemoveShoppingListMember:
         assert "removed" in data["message"]
 
     @patch("api.v1.shopping_list.remove_member.datetime")
-    def test_member_leaves_self(self, mock_dt, client, mock_db, mock_user):
+    def test_member_leaves_self(self, mock_dt, client, mock_db, mock_async_db, mock_user):
         """Non-owner member can leave the list."""
         mock_dt.now.return_value = datetime.now(UTC)
         mock_dt.UTC = UTC
@@ -1163,8 +1163,8 @@ class TestRemoveShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, target,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -1176,7 +1176,7 @@ class TestRemoveShoppingListMember:
         data = response.json()
         assert "left" in data["message"]
 
-    def test_owner_cannot_leave_own_list(self, client, mock_db, mock_user):
+    def test_owner_cannot_leave_own_list(self, client, mock_db, mock_async_db, mock_user):
         """Owner cannot leave their own list."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id))
@@ -1190,8 +1190,8 @@ class TestRemoveShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, owner_membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -1201,7 +1201,7 @@ class TestRemoveShoppingListMember:
         )
         assert response.status_code == 400
 
-    def test_non_owner_cannot_remove_others(self, client, mock_db, mock_user):
+    def test_non_owner_cannot_remove_others(self, client, mock_db, mock_async_db, mock_user):
         """Non-owner member cannot remove other members."""
         list_id = "test-list"
         other_member_id = str(uuid.uuid4())
@@ -1216,8 +1216,8 @@ class TestRemoveShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, other_membership,
             shopping_list_id=list_id, user_id=other_member_id,
         )
@@ -1227,7 +1227,7 @@ class TestRemoveShoppingListMember:
         )
         assert response.status_code == 403
 
-    def test_cannot_remove_owner_role(self, client, mock_db, mock_user):
+    def test_cannot_remove_owner_role(self, client, mock_db, mock_async_db, mock_user):
         """Cannot remove a member who has the owner role (non-self-removal)."""
         list_id = "test-list"
         other_owner_id = str(uuid.uuid4())
@@ -1242,8 +1242,8 @@ class TestRemoveShoppingListMember:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, target,
             shopping_list_id=list_id, user_id=other_owner_id,
         )
@@ -1263,13 +1263,13 @@ class TestJoinShoppingList:
     """Tests for POST /v1/shopping-lists/join/{share_code}."""
 
     @patch("api.v1.shopping_list.join_shopping_list.notify_member_joined")
-    def test_join_invalid_code(self, mock_notify, client, mock_db, mock_user):
+    def test_join_invalid_code(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """404 when share code is invalid."""
         response = client.post("/v1/shopping-lists/join/BADCODE")
         assert response.status_code == 404
 
     @patch("api.v1.shopping_list.join_shopping_list.notify_member_joined")
-    def test_join_success(self, mock_notify, client, mock_db, mock_user):
+    def test_join_success(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Successfully join with valid share code."""
         sl = MockShoppingList(
             id="test-list", owner_id="other-owner",
@@ -1278,7 +1278,7 @@ class TestJoinShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
+        mock_async_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
 
         response = client.post("/v1/shopping-lists/join/ABCDEF")
         assert response.status_code == 201
@@ -1288,7 +1288,7 @@ class TestJoinShoppingList:
         mock_notify.assert_called_once()
 
     @patch("api.v1.shopping_list.join_shopping_list.notify_member_joined")
-    def test_join_already_member(self, mock_notify, client, mock_db, mock_user):
+    def test_join_already_member(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """400 when already a member."""
         sl = MockShoppingList(
             id="test-list", owner_id="other-owner",
@@ -1303,8 +1303,8 @@ class TestJoinShoppingList:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
+        mock_async_db.set_find_by(
             ShoppingListUser, existing,
             shopping_list_id="test-list", user_id=str(mock_user.id),
         )
@@ -1313,7 +1313,7 @@ class TestJoinShoppingList:
         assert response.status_code == 400
 
     @patch("api.v1.shopping_list.join_shopping_list.notify_member_joined")
-    def test_join_member_limit(self, mock_notify, client, mock_db, mock_user):
+    def test_join_member_limit(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """400 when member limit reached."""
         active_members = [
             MockShoppingListUser(
@@ -1331,13 +1331,13 @@ class TestJoinShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
+        mock_async_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
 
         response = client.post("/v1/shopping-lists/join/ABCDEF")
         assert response.status_code == 400
 
     @patch("api.v1.shopping_list.join_shopping_list.notify_member_joined")
-    def test_join_code_uppercased(self, mock_notify, client, mock_db, mock_user):
+    def test_join_code_uppercased(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """Share code is uppercased before lookup."""
         sl = MockShoppingList(
             id="test-list", owner_id="other-owner",
@@ -1346,7 +1346,7 @@ class TestJoinShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
+        mock_async_db.set_find_by(ShoppingList, sl, share_code="ABCDEF")
 
         response = client.post("/v1/shopping-lists/join/abcdef")
         assert response.status_code == 201
@@ -1360,7 +1360,7 @@ class TestJoinShoppingList:
 class TestUpdateShoppingList:
     """Tests for PUT /v1/shopping-lists/{list_id}."""
 
-    def test_update_not_found(self, client, mock_db, mock_user):
+    def test_update_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.put(
             "/v1/shopping-lists/no-list",
@@ -1368,14 +1368,14 @@ class TestUpdateShoppingList:
         )
         assert response.status_code == 404
 
-    def test_update_no_permission(self, client, mock_db, mock_user):
+    def test_update_no_permission(self, client, mock_db, mock_async_db, mock_user):
         """403 when user can't edit."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner", items=[], members=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1383,7 +1383,7 @@ class TestUpdateShoppingList:
         )
         assert response.status_code == 403
 
-    def test_update_name_success(self, client, mock_db, mock_user):
+    def test_update_name_success(self, client, mock_db, mock_async_db, mock_user):
         """Owner can update name."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1394,7 +1394,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1404,7 +1404,7 @@ class TestUpdateShoppingList:
         data = response.json()
         assert data["name"] == "Updated Name"
 
-    def test_update_invalid_status(self, client, mock_db, mock_user):
+    def test_update_invalid_status(self, client, mock_db, mock_async_db, mock_user):
         """400 when invalid status is provided."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1414,7 +1414,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1422,7 +1422,7 @@ class TestUpdateShoppingList:
         )
         assert response.status_code == 400
 
-    def test_update_valid_status(self, client, mock_db, mock_user):
+    def test_update_valid_status(self, client, mock_db, mock_async_db, mock_user):
         """Can update status to a valid value."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1433,7 +1433,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1443,7 +1443,7 @@ class TestUpdateShoppingList:
         data = response.json()
         assert data["status"] == "completed"
 
-    def test_update_invalid_sort_by(self, client, mock_db, mock_user):
+    def test_update_invalid_sort_by(self, client, mock_db, mock_async_db, mock_user):
         """400 when invalid sort_by is provided."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1453,7 +1453,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1461,7 +1461,7 @@ class TestUpdateShoppingList:
         )
         assert response.status_code == 400
 
-    def test_update_all_fields(self, client, mock_db, mock_user):
+    def test_update_all_fields(self, client, mock_db, mock_async_db, mock_user):
         """Can update all optional fields."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1472,7 +1472,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1492,7 +1492,7 @@ class TestUpdateShoppingList:
         assert data["status"] == "in_progress"
         assert data["sort_by"] == "name"
 
-    def test_update_with_items(self, client, mock_db, mock_user):
+    def test_update_with_items(self, client, mock_db, mock_async_db, mock_user):
         """Response includes item data, filtering archived."""
         list_id = "test-list"
         item1 = MockShoppingListItem(
@@ -1512,7 +1512,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1523,7 +1523,7 @@ class TestUpdateShoppingList:
         assert len(data["items"]) == 1
         assert data["items"][0]["name"] == "Active Item"
 
-    def test_update_shared_list_member_count(self, client, mock_db, mock_user):
+    def test_update_shared_list_member_count(self, client, mock_db, mock_async_db, mock_user):
         """Response includes member_count for shared lists."""
         list_id = "test-list"
         members = [
@@ -1538,7 +1538,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1548,7 +1548,7 @@ class TestUpdateShoppingList:
         data = response.json()
         assert data["member_count"] == 1  # Only 1 active
 
-    def test_update_as_editor_member(self, client, mock_db, mock_user):
+    def test_update_as_editor_member(self, client, mock_db, mock_async_db, mock_user):
         """Editor member can update."""
         list_id = "test-list"
         membership = MockShoppingListUser(
@@ -1566,8 +1566,8 @@ class TestUpdateShoppingList:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -1578,7 +1578,7 @@ class TestUpdateShoppingList:
         )
         assert response.status_code == 200
 
-    def test_update_with_meal_event_and_pantry(self, client, mock_db, mock_user):
+    def test_update_with_meal_event_and_pantry(self, client, mock_db, mock_async_db, mock_user):
         """Response includes meal_event_id and pantry_id when set."""
         list_id = "test-list"
         sl = MockShoppingList(
@@ -1590,7 +1590,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1602,7 +1602,7 @@ class TestUpdateShoppingList:
         assert data["pantry_id"] == "pantry-456"
 
 
-    def test_update_completing_default_list_restores_previous(self, client, mock_db, mock_user):
+    def test_update_completing_default_list_restores_previous(self, client, mock_db, mock_async_db, mock_user):
         """Test completing the default list restores previous (lines 82-83)."""
         list_id = str(uuid.uuid4())
         prev_list_id = str(uuid.uuid4())
@@ -1617,7 +1617,7 @@ class TestUpdateShoppingList:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}",
@@ -1636,7 +1636,7 @@ class TestUpdateShoppingList:
 class TestGenerateFromMealEvent:
     """Tests for POST /v1/meal-events/{event_id}/shopping-list/generate."""
 
-    def test_generate_event_not_found(self, client, mock_db, mock_user):
+    def test_generate_event_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when meal event doesn't exist."""
         response = client.post(
             "/v1/meal-events/no-event/shopping-list/generate",
@@ -1644,13 +1644,13 @@ class TestGenerateFromMealEvent:
         )
         assert response.status_code == 404
 
-    def test_generate_no_access(self, client, mock_db, mock_user):
+    def test_generate_no_access(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no access to the meal event."""
         event = MockMealEvent(id="event-1", owner_id="other-owner")
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1658,13 +1658,13 @@ class TestGenerateFromMealEvent:
         )
         assert response.status_code == 403
 
-    def test_generate_no_recipe(self, client, mock_db, mock_user):
+    def test_generate_no_recipe(self, client, mock_db, mock_async_db, mock_user):
         """400 when meal event has no recipe."""
         event = MockMealEvent(id="event-1", owner_id=str(mock_user.id), recipe=None)
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1672,7 +1672,7 @@ class TestGenerateFromMealEvent:
         )
         assert response.status_code == 400
 
-    def test_generate_list_already_exists(self, client, mock_db, mock_user):
+    def test_generate_list_already_exists(self, client, mock_db, mock_async_db, mock_user):
         """400 when shopping list already exists for the event."""
         recipe = MockModel(
             id="recipe-1", name="Test Recipe",
@@ -1685,7 +1685,7 @@ class TestGenerateFromMealEvent:
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1693,7 +1693,7 @@ class TestGenerateFromMealEvent:
         )
         assert response.status_code == 400
 
-    def test_generate_success(self, client, mock_db, mock_user):
+    def test_generate_success(self, client, mock_db, mock_async_db, mock_user):
         """Generates shopping list from recipe ingredients."""
         ingredient = MockModel(
             id="ing-1", canonical_name="Flour",
@@ -1715,7 +1715,7 @@ class TestGenerateFromMealEvent:
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1729,7 +1729,7 @@ class TestGenerateFromMealEvent:
         # Post-epic-ingredients-string-simplification: category is always None.
         assert data["items"][0]["category"] is None
 
-    def test_generate_skips_archived_ingredients(self, client, mock_db, mock_user):
+    def test_generate_skips_archived_ingredients(self, client, mock_db, mock_async_db, mock_user):
         """Archived recipe ingredients are skipped."""
         ingredient = MockModel(
             id="ing-1", canonical_name="Salt",
@@ -1750,7 +1750,7 @@ class TestGenerateFromMealEvent:
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1778,7 +1778,7 @@ class TestGenerateFromMealEvent:
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1812,7 +1812,7 @@ class TestGenerateFromMealEvent:
 
         from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
 
         response = client.post(
             "/v1/meal-events/event-1/shopping-list/generate",
@@ -1825,7 +1825,7 @@ class TestGenerateFromMealEvent:
         assert data["items"][0]["name"] == "flour"
         assert data["items"][0]["already_have_quantity"] is None
 
-    def test_generate_as_participant(self, client, mock_db, mock_user):
+    def test_generate_as_participant(self, client, mock_db, mock_async_db, mock_user):
         """Participant can generate shopping list."""
         from conftest import MockMealEventParticipant
 
@@ -1847,8 +1847,8 @@ class TestGenerateFromMealEvent:
         from utils.models.meal_event import MealEvent
         from utils.models.meal_event_participant import MealEventParticipant
 
-        mock_db.set_find_by(MealEvent, event, id="event-1")
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(MealEvent, event, id="event-1")
+        mock_async_db.set_find_by(
             MealEventParticipant, participant,
             meal_event_id="event-1", user_id=str(mock_user.id),
         )
@@ -1868,7 +1868,7 @@ class TestGenerateFromMealEvent:
 class TestOrganizeByStore:
     """Tests for POST /v1/shopping-lists/{list_id}/organize-by-store."""
 
-    def test_organize_not_found(self, client, mock_db, mock_user):
+    def test_organize_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.post(
             "/v1/shopping-lists/no-list/organize-by-store",
@@ -1876,14 +1876,14 @@ class TestOrganizeByStore:
         )
         assert response.status_code == 404
 
-    def test_organize_no_permission(self, client, mock_db, mock_user):
+    def test_organize_no_permission(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no edit permission."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner", items=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/organize-by-store",
@@ -1891,14 +1891,14 @@ class TestOrganizeByStore:
         )
         assert response.status_code == 403
 
-    def test_organize_empty_list(self, client, mock_db, mock_user):
+    def test_organize_empty_list(self, client, mock_db, mock_async_db, mock_user):
         """Organizing empty list returns empty sections."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id), items=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/organize-by-store",
@@ -1909,7 +1909,7 @@ class TestOrganizeByStore:
         assert data["total_items"] == 0
         assert data["sections_used"] == 0
 
-    def test_organize_auto_assign_sections(self, client, mock_db, mock_user):
+    def test_organize_auto_assign_sections(self, client, mock_db, mock_async_db, mock_user):
         """Auto-assigns sections based on category."""
         list_id = "test-list"
         item1 = MockShoppingListItem(
@@ -1926,7 +1926,7 @@ class TestOrganizeByStore:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/organize-by-store",
@@ -1941,7 +1941,7 @@ class TestOrganizeByStore:
         assert "produce" in section_keys
         assert "dairy" in section_keys
 
-    def test_organize_skips_checked_items(self, client, mock_db, mock_user):
+    def test_organize_skips_checked_items(self, client, mock_db, mock_async_db, mock_user):
         """Checked items are skipped during organization."""
         list_id = "test-list"
         unchecked = MockShoppingListItem(
@@ -1958,7 +1958,7 @@ class TestOrganizeByStore:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/organize-by-store",
@@ -1968,7 +1968,7 @@ class TestOrganizeByStore:
         data = response.json()
         assert data["total_items"] == 1
 
-    def test_organize_no_auto_assign(self, client, mock_db, mock_user):
+    def test_organize_no_auto_assign(self, client, mock_db, mock_async_db, mock_user):
         """No auto-assign when disabled; items with no section go to 'other'."""
         list_id = "test-list"
         item = MockShoppingListItem(
@@ -1981,7 +1981,7 @@ class TestOrganizeByStore:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/organize-by-store",
@@ -1992,7 +1992,7 @@ class TestOrganizeByStore:
         assert data["sections_used"] == 1
         assert data["sections"][0]["section"] == "other"
 
-    def test_organize_preserves_existing_section(self, client, mock_db, mock_user):
+    def test_organize_preserves_existing_section(self, client, mock_db, mock_async_db, mock_user):
         """Items with existing store_section keep it during auto-assign."""
         list_id = "test-list"
         item = MockShoppingListItem(
@@ -2005,7 +2005,7 @@ class TestOrganizeByStore:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/organize-by-store",
@@ -2055,31 +2055,31 @@ class TestGetStoreSections:
 class TestGetShoppingListDeadlines:
     """Tests for GET /v1/shopping-lists/{list_id}/deadlines."""
 
-    def test_deadlines_not_found(self, client, mock_db, mock_user):
+    def test_deadlines_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.get("/v1/shopping-lists/no-list/deadlines")
         assert response.status_code == 404
 
-    def test_deadlines_no_access(self, client, mock_db, mock_user):
+    def test_deadlines_no_access(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no access."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner", items=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 403
 
-    def test_deadlines_empty_list(self, client, mock_db, mock_user):
+    def test_deadlines_empty_list(self, client, mock_db, mock_async_db, mock_user):
         """Empty list has all zeros."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id=str(mock_user.id), items=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 200
@@ -2087,7 +2087,7 @@ class TestGetShoppingListDeadlines:
         assert data["unchecked_count"] == 0
         assert data["checked_count"] == 0
 
-    def test_deadlines_with_items(self, client, mock_db, mock_user):
+    def test_deadlines_with_items(self, client, mock_db, mock_async_db, mock_user):
         """Items are grouped by urgency, checked items counted separately."""
         list_id = "test-list"
         now = datetime.now()
@@ -2130,7 +2130,7 @@ class TestGetShoppingListDeadlines:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 200
@@ -2138,7 +2138,7 @@ class TestGetShoppingListDeadlines:
         assert data["unchecked_count"] == 2  # overdue + no_deadline
         assert data["checked_count"] == 1
 
-    def test_deadlines_with_due_reason(self, client, mock_db, mock_user):
+    def test_deadlines_with_due_reason(self, client, mock_db, mock_async_db, mock_user):
         """Items with due_reason show reason text."""
         list_id = "test-list"
         now = datetime.now()
@@ -2155,7 +2155,7 @@ class TestGetShoppingListDeadlines:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 200
@@ -2165,7 +2165,7 @@ class TestGetShoppingListDeadlines:
         assert today_items[0]["due_reason"] == "marinate"
         assert today_items[0]["due_reason_text"] == "Needs time to marinate"
 
-    def test_deadlines_with_meal_event(self, client, mock_db, mock_user):
+    def test_deadlines_with_meal_event(self, client, mock_db, mock_async_db, mock_user):
         """Items linked to meal events populate next_meal_event info."""
         list_id = "test-list"
         now = datetime.now()
@@ -2187,7 +2187,7 @@ class TestGetShoppingListDeadlines:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 200
@@ -2195,7 +2195,7 @@ class TestGetShoppingListDeadlines:
         assert data["next_meal_event"] is not None
         assert data["next_meal_event"]["title"] == "Dinner Party"
 
-    def test_deadlines_as_member(self, client, mock_db, mock_user):
+    def test_deadlines_as_member(self, client, mock_db, mock_async_db, mock_user):
         """Member can access deadlines."""
         list_id = "test-list"
         membership = MockShoppingListUser(
@@ -2208,8 +2208,8 @@ class TestGetShoppingListDeadlines:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -2217,7 +2217,7 @@ class TestGetShoppingListDeadlines:
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 200
 
-    def test_deadlines_tracks_next_deadline(self, client, mock_db, mock_user):
+    def test_deadlines_tracks_next_deadline(self, client, mock_db, mock_async_db, mock_user):
         """next_deadline is the earliest due_at among unchecked items."""
         list_id = "test-list"
         now = datetime.now()
@@ -2243,7 +2243,7 @@ class TestGetShoppingListDeadlines:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/deadlines")
         assert response.status_code == 200
@@ -2259,19 +2259,19 @@ class TestGetShoppingListDeadlines:
 class TestGetShoppingListEvents:
     """Tests for GET /v1/shopping-lists/{list_id}/events."""
 
-    def test_events_not_found(self, client, mock_db, mock_user):
+    def test_events_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.get("/v1/shopping-lists/no-list/events")
         assert response.status_code == 404
 
-    def test_events_no_access(self, client, mock_db, mock_user):
+    def test_events_no_access(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no access."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner")
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/events")
         assert response.status_code == 403
@@ -2284,7 +2284,7 @@ class TestGetShoppingListEvents:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         # Mock event service
         mock_service = MagicMock()
@@ -2307,7 +2307,7 @@ class TestGetShoppingListEvents:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         event_user = MockUser(id=str(uuid.uuid4()), name="Eventist")
         mock_event = MockModel(
@@ -2346,8 +2346,8 @@ class TestGetShoppingListEvents:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -2369,7 +2369,7 @@ class TestGetShoppingListEvents:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         mock_service = MagicMock()
         mock_service.get_events_since.return_value = []
@@ -2390,7 +2390,7 @@ class TestGetShoppingListEvents:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         # Return exactly limit events to trigger has_more=True
         # default limit is 100, so return 100 events
@@ -2424,7 +2424,7 @@ class TestGetShoppingListEvents:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         mock_event = MockModel(
             id=str(uuid.uuid4()),
@@ -2455,24 +2455,24 @@ class TestGetShoppingListEvents:
 class TestListShoppingListMembers:
     """Tests for GET /v1/shopping-lists/{list_id}/members."""
 
-    def test_list_members_not_found(self, client, mock_db, mock_user):
+    def test_list_members_not_found(self, client, mock_db, mock_async_db, mock_user):
         """404 when shopping list doesn't exist."""
         response = client.get("/v1/shopping-lists/no-list/members")
         assert response.status_code == 404
 
-    def test_list_members_no_access(self, client, mock_db, mock_user):
+    def test_list_members_no_access(self, client, mock_db, mock_async_db, mock_user):
         """403 when user has no access."""
         list_id = "test-list"
         sl = MockShoppingList(id=list_id, owner_id="other-owner", members=[])
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/members")
         assert response.status_code == 403
 
-    def test_list_members_as_owner(self, client, mock_db, mock_user):
+    def test_list_members_as_owner(self, client, mock_db, mock_async_db, mock_user):
         """Owner can list members."""
         list_id = "test-list"
         member_user = MockUser(
@@ -2502,7 +2502,7 @@ class TestListShoppingListMembers:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/members")
         assert response.status_code == 200
@@ -2511,7 +2511,7 @@ class TestListShoppingListMembers:
         assert data["is_shared"] is True
         assert data["share_code"] == "CODE01"
 
-    def test_list_members_includes_owner_if_missing(self, client, mock_db, mock_user):
+    def test_list_members_includes_owner_if_missing(self, client, mock_db, mock_async_db, mock_user):
         """Owner is included even if not in members list."""
         list_id = "test-list"
         # No members at all
@@ -2527,7 +2527,7 @@ class TestListShoppingListMembers:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/members")
         assert response.status_code == 200
@@ -2535,7 +2535,7 @@ class TestListShoppingListMembers:
         assert data["total"] == 1
         assert data["members"][0]["role"] == "owner"
 
-    def test_list_members_skips_archived(self, client, mock_db, mock_user):
+    def test_list_members_skips_archived(self, client, mock_db, mock_async_db, mock_user):
         """Archived members are not included."""
         list_id = "test-list"
         active_user = MockUser(id=str(uuid.uuid4()), name="Active")
@@ -2572,7 +2572,7 @@ class TestListShoppingListMembers:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/members")
         assert response.status_code == 200
@@ -2583,7 +2583,7 @@ class TestListShoppingListMembers:
         member_ids = [m["user_id"] for m in data["members"]]
         assert str(active_user.id) in member_ids
 
-    def test_list_members_as_member(self, client, mock_db, mock_user):
+    def test_list_members_as_member(self, client, mock_db, mock_async_db, mock_user):
         """Member can list other members."""
         list_id = "test-list"
         membership = MockShoppingListUser(
@@ -2603,8 +2603,8 @@ class TestListShoppingListMembers:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser, membership,
             shopping_list_id=list_id, user_id=str(mock_user.id),
         )
@@ -2612,7 +2612,7 @@ class TestListShoppingListMembers:
         response = client.get(f"/v1/shopping-lists/{list_id}/members")
         assert response.status_code == 200
 
-    def test_list_members_with_null_user(self, client, mock_db, mock_user):
+    def test_list_members_with_null_user(self, client, mock_db, mock_async_db, mock_user):
         """Member with null user reference still renders."""
         list_id = "test-list"
         member = MockShoppingListUser(
@@ -2635,7 +2635,7 @@ class TestListShoppingListMembers:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.get(f"/v1/shopping-lists/{list_id}/members")
         assert response.status_code == 200

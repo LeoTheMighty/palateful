@@ -14,7 +14,7 @@ from conftest import (
 class TestCheckOffItemSuccess:
     """Core success path — check and uncheck an item."""
 
-    def test_check_item_sets_is_checked_true(self, client, mock_db, mock_user):
+    def test_check_item_sets_is_checked_true(self, client, mock_db, mock_async_db, mock_user):
         """Checking an item returns is_checked=True."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -24,8 +24,8 @@ class TestCheckOffItemSuccess:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         mock_db.db.query.return_value = MockQuery([])  # stub the unchecked_count query
 
         with patch("api.v1.shopping_list.update_item.notify_item_checked"):
@@ -39,7 +39,7 @@ class TestCheckOffItemSuccess:
         data = response.json()
         assert data["is_checked"] is True
 
-    def test_check_item_sets_checked_at_and_checked_by(self, client, mock_db, mock_user):
+    def test_check_item_sets_checked_at_and_checked_by(self, client, mock_db, mock_async_db, mock_user):
         """Checking an item sets checked_at timestamp and checked_by_user_id."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -49,8 +49,8 @@ class TestCheckOffItemSuccess:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         mock_db.db.query.return_value = MockQuery([])
 
         with patch("api.v1.shopping_list.update_item.notify_item_checked"):
@@ -65,7 +65,7 @@ class TestCheckOffItemSuccess:
         assert data["checked_by_user_id"] == str(mock_user.id)
         assert data["checked_at"] is not None
 
-    def test_uncheck_item_clears_checked_fields(self, client, mock_db, mock_user):
+    def test_uncheck_item_clears_checked_fields(self, client, mock_db, mock_async_db, mock_user):
         """Unchecking an item clears checked_at and checked_by_user_id."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -80,8 +80,8 @@ class TestCheckOffItemSuccess:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}",
@@ -98,7 +98,7 @@ class TestCheckOffItemSuccess:
 class TestCheckOffItemErrors:
     """Error cases — 404 and 403 responses."""
 
-    def test_check_item_404_list_not_found(self, client, mock_db, mock_user):
+    def test_check_item_404_list_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Returns 404 when shopping list is not found."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -112,7 +112,7 @@ class TestCheckOffItemErrors:
 
         assert response.status_code == 404
 
-    def test_check_item_403_no_access(self, client, mock_db, mock_user):
+    def test_check_item_403_no_access(self, client, mock_db, mock_async_db, mock_user):
         """Returns 403 when user has no list access."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -123,7 +123,7 @@ class TestCheckOffItemErrors:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         # ShoppingListUser not configured → find_by returns None → 403
 
         response = client.put(
@@ -133,7 +133,7 @@ class TestCheckOffItemErrors:
 
         assert response.status_code == 403
 
-    def test_check_item_404_item_not_found(self, client, mock_db, mock_user):
+    def test_check_item_404_item_not_found(self, client, mock_db, mock_async_db, mock_user):
         """Returns 404 when item is not found."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -142,7 +142,7 @@ class TestCheckOffItemErrors:
 
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         # ShoppingListItem not configured → find_by returns None → 404
 
         response = client.put(
@@ -152,7 +152,7 @@ class TestCheckOffItemErrors:
 
         assert response.status_code == 404
 
-    def test_check_archived_item_returns_404(self, client, mock_db, mock_user):
+    def test_check_archived_item_returns_404(self, client, mock_db, mock_async_db, mock_user):
         """Returns 404 when item is archived."""
         from datetime import datetime, timezone
 
@@ -168,8 +168,8 @@ class TestCheckOffItemErrors:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/items/{item_id}",
@@ -182,7 +182,7 @@ class TestCheckOffItemErrors:
 class TestCheckOffNotifications:
     """Verify notification hooks are called on check events."""
 
-    def test_notify_item_checked_is_called(self, client, mock_db, mock_user):
+    def test_notify_item_checked_is_called(self, client, mock_db, mock_async_db, mock_user):
         """notify_item_checked is called when item is checked."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -192,8 +192,8 @@ class TestCheckOffNotifications:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         mock_db.db.query.return_value = MockQuery([item])  # 1 unchecked → no complete
 
         with patch(
@@ -207,7 +207,7 @@ class TestCheckOffNotifications:
 
         mock_notify.assert_called_once()
 
-    def test_notify_item_checked_not_called_on_uncheck(self, client, mock_db, mock_user):
+    def test_notify_item_checked_not_called_on_uncheck(self, client, mock_db, mock_async_db, mock_user):
         """notify_item_checked is NOT called when item is unchecked."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -222,8 +222,8 @@ class TestCheckOffNotifications:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         with patch(
             "api.v1.shopping_list.update_item.notify_item_checked"
@@ -247,8 +247,8 @@ class TestCheckOffNotifications:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # unchecked_count = 0 → all items now checked
         mock_db.db.query.return_value = MockQuery([])
 
@@ -279,8 +279,8 @@ class TestCheckOffNotifications:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         # 1 unchecked item still remains
         mock_db.db.query.return_value = MockQuery([other_item])
 
@@ -295,7 +295,7 @@ class TestCheckOffNotifications:
 
         mock_complete.assert_not_called()
 
-    def test_uncheck_broadcasts_item_checked_event(self, client, mock_db, mock_user):
+    def test_uncheck_broadcasts_item_checked_event(self, client, mock_db, mock_async_db, mock_user):
         """Unchecking an item also fires 'item_checked' broadcast (not 'item_updated').
 
         The router uses `if params.is_checked is not None` → 'item_checked' for both
@@ -316,8 +316,8 @@ class TestCheckOffNotifications:
 
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -335,7 +335,7 @@ class TestCheckOffNotifications:
         )
         assert response.json()["is_checked"] is False
 
-    def test_editor_member_can_check_off_item(self, client, mock_db, mock_user):
+    def test_editor_member_can_check_off_item(self, client, mock_db, mock_async_db, mock_user):
         """A non-owner member with 'editor' role can check off items."""
         list_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
@@ -352,14 +352,14 @@ class TestCheckOffNotifications:
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(
             ShoppingListUser,
             editor_membership,
             shopping_list_id=list_id,
             user_id=str(mock_user.id),
         )
-        mock_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
+        mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
         mock_db.db.query.return_value = MockQuery([])
 
         with patch("api.v1.shopping_list.update_item.notify_item_checked"):
