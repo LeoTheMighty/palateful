@@ -1,13 +1,13 @@
 """Push notification token management endpoints.
 
 aam-21: `GetNotificationPreferences` + `UpdateNotificationPreferences`
-converted to `AsyncEndpoint`. The push-token classes
-(`RegisterPushToken`/`UnregisterPushToken`) stay sync — aam-19 owns
-their conversion alongside the rest of the user profile domain.
+converted to `AsyncEndpoint`. aam-19: `RegisterPushToken` and
+`UnregisterPushToken` flipped to `AsyncEndpoint` to complete the user
+profile domain conversion.
 """
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, AsyncEndpoint, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 from utils.services.push_notification import (
@@ -16,10 +16,10 @@ from utils.services.push_notification import (
 )
 
 
-class RegisterPushToken(Endpoint):
+class RegisterPushToken(AsyncEndpoint):
     """Register a device push token for notifications."""
 
-    def execute(self, params: "RegisterPushToken.Params"):
+    async def execute(self, params: "RegisterPushToken.Params"):
         """
         Register a push notification token for the current user's device.
 
@@ -45,7 +45,7 @@ class RegisterPushToken(Endpoint):
         if params.token not in tokens:
             tokens.append(params.token)
             user.push_tokens = tokens
-            self.database.db.commit()
+            await self.database.db.commit()
 
         return success(
             data=RegisterPushToken.Response(
@@ -64,10 +64,10 @@ class RegisterPushToken(Endpoint):
         token_count: int
 
 
-class UnregisterPushToken(Endpoint):
+class UnregisterPushToken(AsyncEndpoint):
     """Unregister a device push token."""
 
-    def execute(self, params: "UnregisterPushToken.Params"):
+    async def execute(self, params: "UnregisterPushToken.Params"):
         """
         Remove a push notification token when user logs out or uninstalls.
 
@@ -86,7 +86,7 @@ class UnregisterPushToken(Endpoint):
         if params.token in tokens:
             tokens.remove(params.token)
             user.push_tokens = tokens
-            self.database.db.commit()
+            await self.database.db.commit()
 
         return success(
             data=UnregisterPushToken.Response(

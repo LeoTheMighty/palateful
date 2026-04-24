@@ -17,13 +17,14 @@ class GetMe(AsyncEndpoint):
         user: User = self.user
 
         # Count pending invitations for badge
-        pending_count = (await self.db.execute(
+        pending_result = await self.db.execute(
             select(func.count(Invitation.id)).where(
                 Invitation.to_user_id == user.id,
                 Invitation.status == "pending",
                 Invitation.archived_at.is_(None),
             )
-        )).scalar() or 0
+        )
+        pending_count = pending_result.scalar() or 0
 
         return success(
             data=GetMe.Response(
