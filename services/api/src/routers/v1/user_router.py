@@ -1,10 +1,10 @@
 """User endpoints router.
 
-aam-21 partial flip: `feedback`, `client-errors`, and
-`notification-preferences` endpoints now depend on the async auth +
-DB deps and dispatch through `await Foo.call(...)`. The rest of the
-router (profile, push-tokens, search, onboarding, export) stays sync
-— aam-19 owns that conversion.
+aam-19: remaining sync handlers (profile, defaults, onboarding,
+push-tokens, username, export, search) flipped to `async def` with
+`get_current_user_async` + `get_async_database`. The feedback,
+client-errors, and notification-preferences handlers (flipped in aam-21)
+stay async; no sync handlers remain on this router.
 """
 
 from api.v1.user import (
@@ -26,69 +26,66 @@ from api.v1.user import (
 )
 from dependencies import (
     get_async_database,
-    get_current_user,
     get_current_user_async,
-    get_database,
 )
 from fastapi import APIRouter, Depends, Header, Query
 from schemas.user import OnboardingRequest
 from utils.models.user import User
 from utils.services.async_database import AsyncDatabase
-from utils.services.database import Database
 
 user_router = APIRouter(prefix="/users", tags=["users"])
 
 
 @user_router.get("/me")
-def get_me(
-    user: User = Depends(get_current_user),
+async def get_me(
+    user: User = Depends(get_current_user_async),
     authorization: str = Header(None),
-    database=Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get the current authenticated user."""
-    return GetMe.call(user=user, database=database)
+    return await GetMe.call(user=user, database=database)
 
 
 @user_router.put("/me")
-def update_me(
+async def update_me(
     params: UpdateMe.Params,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_async),
     authorization: str = Header(None),
-    database: Database = Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update the current user's profile."""
-    return UpdateMe.call(params, user=user, database=database)
+    return await UpdateMe.call(params, user=user, database=database)
 
 
 @user_router.put("/me/default-recipe-book")
-def set_default_recipe_book(
+async def set_default_recipe_book(
     params: SetDefaultRecipeBook.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Set the user's default recipe book."""
-    return SetDefaultRecipeBook.call(params=params, user=user, database=database)
+    return await SetDefaultRecipeBook.call(params=params, user=user, database=database)
 
 
 @user_router.put("/me/default-shopping-list")
-def set_default_shopping_list(
+async def set_default_shopping_list(
     params: SetDefaultShoppingList.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Set the user's default shopping list."""
-    return SetDefaultShoppingList.call(params=params, user=user, database=database)
+    return await SetDefaultShoppingList.call(params=params, user=user, database=database)
 
 
 @user_router.post("/me/complete-onboarding")
-def complete_onboarding(
+async def complete_onboarding(
     params: OnboardingRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_async),
     authorization: str = Header(None),
-    database: Database = Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Complete user onboarding with name and start method."""
-    return CompleteOnboarding.call(params, user=user, database=database)
+    return await CompleteOnboarding.call(params, user=user, database=database)
 
 
 # ============================================================
@@ -97,23 +94,23 @@ def complete_onboarding(
 
 
 @user_router.post("/me/push-tokens")
-def register_push_token(
+async def register_push_token(
     params: RegisterPushToken.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Register a device push notification token."""
-    return RegisterPushToken.call(params=params, user=user, database=database)
+    return await RegisterPushToken.call(params=params, user=user, database=database)
 
 
 @user_router.delete("/me/push-tokens")
-def unregister_push_token(
+async def unregister_push_token(
     params: UnregisterPushToken.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Unregister a device push notification token."""
-    return UnregisterPushToken.call(params=params, user=user, database=database)
+    return await UnregisterPushToken.call(params=params, user=user, database=database)
 
 
 @user_router.post("/me/client-errors")
@@ -161,22 +158,22 @@ async def update_notification_preferences(
 
 
 @user_router.put("/me/username")
-def set_username(
+async def set_username(
     params: SetUsername.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Set or update the current user's username."""
-    return SetUsername.call(params=params, user=user, database=database)
+    return await SetUsername.call(params=params, user=user, database=database)
 
 
 @user_router.get("/check-username/{username}")
-def check_username(
+async def check_username(
     username: str,
-    database: Database = Depends(get_database),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Check if a username is available."""
-    return CheckUsername.call(username=username, database=database)
+    return await CheckUsername.call(username=username, database=database)
 
 
 # ============================================================
@@ -185,12 +182,12 @@ def check_username(
 
 
 @user_router.get("/me/export")
-def export_recipes(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def export_recipes(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Export the user's entire recipe collection as JSON."""
-    return ExportRecipes.call(user=user, database=database)
+    return await ExportRecipes.call(user=user, database=database)
 
 
 # ============================================================
@@ -199,14 +196,14 @@ def export_recipes(
 
 
 @user_router.get("/search")
-def search_users(
+async def search_users(
     q: str = Query(..., min_length=1, description="Search query"),
     limit: int = Query(20, ge=1, le=50, description="Maximum results"),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Search for users by username or name."""
-    return SearchUsers.call(q=q, limit=limit, user=user, database=database)
+    return await SearchUsers.call(q=q, limit=limit, user=user, database=database)
 
 
 # ============================================================
