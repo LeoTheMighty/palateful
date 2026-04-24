@@ -34,7 +34,7 @@ def make_recipe_ingredient(ingredient_id, recipe_id, canonical_name="Flour"):
 class TestPopulateFromRecipeSuccess:
     """Core success path — items are added, counts are correct."""
 
-    def test_populate_from_recipe_success(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_success(self, client, mock_db, mock_async_db, mock_user):
         """Adds recipe ingredients and returns correct items_added count."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -50,9 +50,9 @@ class TestPopulateFromRecipeSuccess:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-recipe",
@@ -71,7 +71,7 @@ class TestPopulateFromRecipeSuccess:
         assert data["items"][0]["recipe_id"] == recipe_id
         assert data["items"][0]["ingredient_id"] == ingredient_id
 
-    def test_populate_from_recipe_multiple_ingredients(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_multiple_ingredients(self, client, mock_db, mock_async_db, mock_user):
         """All non-archived ingredients are added."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -89,9 +89,9 @@ class TestPopulateFromRecipeSuccess:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-recipe",
@@ -103,7 +103,7 @@ class TestPopulateFromRecipeSuccess:
         assert data["items_added"] == 3
         assert data["items_skipped"] == 0
 
-    def test_populate_from_recipe_with_scale_factor(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_with_scale_factor(self, client, mock_db, mock_async_db, mock_user):
         """Quantities are scaled when scale_factor != 1.0."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -119,9 +119,9 @@ class TestPopulateFromRecipeSuccess:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-recipe",
@@ -140,7 +140,7 @@ class TestPopulateFromRecipeSuccess:
 class TestPopulateFromRecipeDeduplication:
     """Deduplication — already-added items from the same recipe are skipped."""
 
-    def test_populate_from_recipe_skips_duplicates(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_skips_duplicates(self, client, mock_db, mock_async_db, mock_user):
         """If same (ingredient_id, recipe_id) already in list, it is skipped."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -162,9 +162,9 @@ class TestPopulateFromRecipeDeduplication:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-recipe",
@@ -176,7 +176,7 @@ class TestPopulateFromRecipeDeduplication:
         assert data["items_added"] == 0
         assert data["items_skipped"] == 1
 
-    def test_populate_from_recipe_skips_archived_ingredients(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_skips_archived_ingredients(self, client, mock_db, mock_async_db, mock_user):
         """Recipe ingredients with archived_at set are not added."""
         from datetime import datetime, timezone
 
@@ -195,9 +195,9 @@ class TestPopulateFromRecipeDeduplication:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-recipe",
@@ -213,7 +213,7 @@ class TestPopulateFromRecipeDeduplication:
 class TestPopulateFromRecipeErrors:
     """Error cases — 404 and 403 responses."""
 
-    def test_populate_from_recipe_404_recipe(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_404_recipe(self, client, mock_db, mock_async_db, mock_user):
         """Returns 404 when recipe is not found."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -227,7 +227,7 @@ class TestPopulateFromRecipeErrors:
 
         assert response.status_code == 404
 
-    def test_populate_from_recipe_403_no_recipe_access(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_403_no_recipe_access(self, client, mock_db, mock_async_db, mock_user):
         """Returns 403 when user is not a member of the recipe's book."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -238,7 +238,7 @@ class TestPopulateFromRecipeErrors:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
         # RecipeBookUser not configured → find_by returns None → 403
 
         response = client.post(
@@ -248,7 +248,7 @@ class TestPopulateFromRecipeErrors:
 
         assert response.status_code == 403
 
-    def test_populate_from_recipe_404_list(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_404_list(self, client, mock_db, mock_async_db, mock_user):
         """Returns 404 when shopping list is not found."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -260,8 +260,8 @@ class TestPopulateFromRecipeErrors:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
         # ShoppingList not configured → find_by returns None → 404
 
         response = client.post(
@@ -271,7 +271,7 @@ class TestPopulateFromRecipeErrors:
 
         assert response.status_code == 404
 
-    def test_populate_from_recipe_403_no_list_access(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_403_no_list_access(self, client, mock_db, mock_async_db, mock_user):
         """Returns 403 when user is not an owner or editor of the shopping list."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -287,9 +287,9 @@ class TestPopulateFromRecipeErrors:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         # ShoppingListUser not configured → find_by returns None → 403
 
         response = client.post(
@@ -299,7 +299,7 @@ class TestPopulateFromRecipeErrors:
 
         assert response.status_code == 403
 
-    def test_populate_from_recipe_editor_member_can_add_items(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_editor_member_can_add_items(self, client, mock_db, mock_async_db, mock_user):
         """A non-owner member with 'editor' role can successfully add items."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -325,10 +325,10 @@ class TestPopulateFromRecipeErrors:
         from utils.models.shopping_list import ShoppingList
         from utils.models.shopping_list_user import ShoppingListUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
-        mock_db.set_find_by(ShoppingListUser, editor_membership, shopping_list_id=list_id, user_id=str(mock_user.id))
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(ShoppingListUser, editor_membership, shopping_list_id=list_id, user_id=str(mock_user.id))
 
         response = client.post(
             f"/v1/shopping-lists/{list_id}/populate-from-recipe",
@@ -343,7 +343,7 @@ class TestPopulateFromRecipeErrors:
 class TestPopulateFromRecipeBroadcast:
     """Verify WebSocket broadcast is called for each added item."""
 
-    def test_populate_from_recipe_broadcasts_each_item(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_broadcasts_each_item(self, client, mock_db, mock_async_db, mock_user):
         """Router broadcasts item_added for every ingredient added."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -360,9 +360,9 @@ class TestPopulateFromRecipeBroadcast:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -386,7 +386,7 @@ class TestPopulateFromRecipeBroadcast:
             kwargs = call[1]
             assert kwargs.get("user_id") == str(mock_user.id), "broadcast must carry actor user_id"
 
-    def test_populate_from_recipe_no_broadcast_when_all_skipped(self, client, mock_db, mock_user):
+    def test_populate_from_recipe_no_broadcast_when_all_skipped(self, client, mock_db, mock_async_db, mock_user):
         """No broadcast when all items are duplicates (nothing added)."""
         list_id = str(uuid.uuid4())
         recipe_id = str(uuid.uuid4())
@@ -407,9 +407,9 @@ class TestPopulateFromRecipeBroadcast:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.shopping_list import ShoppingList
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
-        mock_db.set_find_by(ShoppingList, sl, id=list_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, MockRecipeBookUser(), user_id=str(mock_user.id), recipe_book_id=recipe.recipe_book_id)
+        mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
