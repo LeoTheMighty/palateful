@@ -3,17 +3,19 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class UpdateShoppingListMember(Endpoint):
+class UpdateShoppingListMember(AsyncEndpoint):
     """Update a member's role or notification settings."""
 
-    def execute(
+    async def execute(
         self, list_id: str, member_user_id: str, params: "UpdateShoppingListMember.Params"
     ):
         """
@@ -29,8 +31,7 @@ class UpdateShoppingListMember(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -38,10 +39,13 @@ class UpdateShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Find the membership to update
-        target_membership = self.database.find_by(
-            ShoppingListUser, shopping_list_id=list_id, user_id=member_user_id
+        target_result = await self.db.execute(
+            select(ShoppingListUser)
+            .options(selectinload(ShoppingListUser.user))
+            .where(ShoppingListUser.shopping_list_id == list_id)
+            .where(ShoppingListUser.user_id == member_user_id)
         )
+        target_membership = target_result.scalars().first()
         if not target_membership or target_membership.archived_at:
             raise APIException(
                 status_code=404,
@@ -49,12 +53,9 @@ class UpdateShoppingListMember(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_MEMBER_NOT_FOUND,
             )
 
-        # Check if this is a self-update (updating own settings)
         is_self_update = str(user.id) == member_user_id
 
-        # Check permissions for role changes
         if params.role is not None and not is_self_update:
-            # Only owner can change others' roles
             is_owner = shopping_list.owner_id == user.id
             if not is_owner:
                 raise APIException(
@@ -63,7 +64,6 @@ class UpdateShoppingListMember(Endpoint):
                     code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
                 )
 
-            # Can't change owner's role
             if target_membership.role == "owner":
                 raise APIException(
                     status_code=400,
@@ -71,7 +71,6 @@ class UpdateShoppingListMember(Endpoint):
                     code=ErrorCode.SHOPPING_LIST_CANNOT_REMOVE_OWNER,
                 )
 
-        # Update fields
         if params.role is not None:
             target_membership.role = params.role
 
@@ -84,10 +83,9 @@ class UpdateShoppingListMember(Endpoint):
         if params.notify_on_deadline is not None:
             target_membership.notify_on_deadline = params.notify_on_deadline
 
-        self.database.db.commit()
-        self.database.db.refresh(target_membership)
+        await self.database.db.commit()
+        await self.database.db.refresh(target_membership)
 
-        # Get member user info
         member_user = target_membership.user
 
         return success(
