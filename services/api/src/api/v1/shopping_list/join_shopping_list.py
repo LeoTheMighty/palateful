@@ -4,17 +4,20 @@ from datetime import datetime
 
 from api.v1.shopping_list.utils.notifications import notify_member_joined
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
+from utils.services.notifications_bridge import notify_via_threadpool
 
 
-class JoinShoppingList(Endpoint):
+class JoinShoppingList(AsyncEndpoint):
     """Join a shopping list using a share code."""
 
-    def execute(self, share_code: str):
+    async def execute(self, share_code: str):
         """
         Join a shopping list via share code.
 
@@ -26,10 +29,12 @@ class JoinShoppingList(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list by share code
-        shopping_list = self.database.find_by(
-            ShoppingList, share_code=share_code.upper()
+        shopping_list_result = await self.db.execute(
+            select(ShoppingList)
+            .options(selectinload(ShoppingList.members))
+            .where(ShoppingList.share_code == share_code.upper())
         )
+        shopping_list = shopping_list_result.scalars().first()
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -37,8 +42,7 @@ class JoinShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_INVALID_SHARE_CODE,
             )
 
-        # Check if already a member
-        existing = self.database.find_by(
+        existing = await self.database.find_by(
             ShoppingListUser, shopping_list_id=shopping_list.id, user_id=user.id
         )
         if existing:
@@ -48,28 +52,24 @@ class JoinShoppingList(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ALREADY_MEMBER,
             )
 
-        # Check member limit (optional, configurable)
         member_count = len(
             [m for m in shopping_list.members if m.archived_at is None]
         )
-        if member_count >= 10:  # Max 10 members per list
+        if member_count >= 10:
             raise APIException(
                 status_code=400,
                 detail="This shopping list has reached the maximum number of members",
                 code=ErrorCode.SHOPPING_LIST_SHARE_LIMIT_REACHED,
             )
 
-        # Create membership
         membership = ShoppingListUser(
             shopping_list_id=shopping_list.id,
             user_id=user.id,
             role="editor",  # New members default to editor
         )
-        self.database.create(membership)
-        self.database.db.refresh(membership)
+        await self.database.create(membership)
 
-        # Notify existing members about new member
-        notify_member_joined(shopping_list, user, self.database)
+        await notify_via_threadpool(notify_member_joined, shopping_list, user)
 
         return success(
             data=JoinShoppingList.Response(
