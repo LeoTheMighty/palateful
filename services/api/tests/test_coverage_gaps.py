@@ -89,7 +89,7 @@ class TestSendMessageSSEGenerator:
 class TestUpdateShoppingListMember:
     """Cover UpdateShoppingListMember.execute (lines 30-93)."""
 
-    def _setup(self, mock_db, mock_user, list_id, member_user_id, role="editor",
+    def _setup(self, mock_async_db, mock_user, list_id, member_user_id, role="editor",
                owner_id=None, target_role="editor"):
         """Helper to set up shopping list + membership."""
         from utils.models.shopping_list import ShoppingList
@@ -119,7 +119,7 @@ class TestUpdateShoppingListMember:
         """Owner updates another member's role (success path)."""
         list_id = "sl-update-member"
         member_id = str(uuid.uuid4())
-        self._setup(mock_db, mock_user, list_id, member_id)
+        self._setup(mock_async_db, mock_user, list_id, member_id)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/members/{member_id}",
@@ -132,7 +132,7 @@ class TestUpdateShoppingListMember:
     def test_update_member_notify_settings(self, client, mock_db, mock_async_db, mock_user):
         """Self-update notification settings."""
         list_id = "sl-notify-update"
-        self._setup(mock_db, mock_user, list_id, str(mock_user.id), target_role="editor")
+        self._setup(mock_async_db, mock_user, list_id, str(mock_user.id), target_role="editor")
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/members/{mock_user.id}",
@@ -197,7 +197,7 @@ class TestUpdateShoppingListMember:
         list_id = "sl-mem-notown"
         other_owner = str(uuid.uuid4())
         member_id = str(uuid.uuid4())
-        self._setup(mock_db, mock_user, list_id, member_id, owner_id=other_owner)
+        self._setup(mock_async_db, mock_user, list_id, member_id, owner_id=other_owner)
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/members/{member_id}",
@@ -209,7 +209,7 @@ class TestUpdateShoppingListMember:
         """Cannot change the owner's role."""
         list_id = "sl-mem-ownrole"
         target_id = str(uuid.uuid4())
-        self._setup(mock_db, mock_user, list_id, target_id, target_role="owner")
+        self._setup(mock_async_db, mock_user, list_id, target_id, target_role="owner")
 
         response = client.put(
             f"/v1/shopping-lists/{list_id}/members/{target_id}",
@@ -1551,7 +1551,7 @@ class TestAddShoppingListItemEdgeCases:
         assert response.status_code == 404
 
     @patch("api.v1.shopping_list.add_item.notify_item_added")
-    def test_add_item_no_permission(self, mock_notify, client, mock_db, mock_user):
+    def test_add_item_no_permission(self, mock_notify, client, mock_db, mock_async_db, mock_user):
         """403 when user has no edit access (line 52)."""
         list_id = "sl-no-perm"
         sl = MockShoppingList(id=list_id, owner_id=str(uuid.uuid4()))
@@ -1588,12 +1588,17 @@ class TestListShoppingListsExtended:
 
     def test_list_shopping_lists_with_status_filter(self, client, mock_db, mock_async_db, mock_user):
         """Status filter branch (line 61)."""
-        mock_db.db.query.return_value = MockQuery([])
+        from conftest import MockExecuteResult
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
         response = client.get("/v1/shopping-lists?status=active")
         assert response.status_code == 200
 
     def test_list_shopping_lists_shared_with_members(self, client, mock_db, mock_async_db, mock_user):
         """Shared list counts members (line 84)."""
+        from conftest import MockExecuteResult
         member = MockShoppingListUser(
             user_id=str(mock_user.id), archived_at=None,
         )
@@ -1601,7 +1606,10 @@ class TestListShoppingListsExtended:
             owner_id=str(mock_user.id), is_shared=True,
             items=[], members=[member],
         )
-        mock_db.db.query.return_value = MockQuery([sl])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[sl]),
+        ]
 
         response = client.get("/v1/shopping-lists")
         assert response.status_code == 200
