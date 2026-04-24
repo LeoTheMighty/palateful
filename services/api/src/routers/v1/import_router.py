@@ -31,7 +31,7 @@ import_router = APIRouter(tags=["import"])
 
 
 @import_router.post("/recipe-books/{book_id}/import")
-async def start_import(
+def start_import(
     book_id: str,
     params: StartImport.Params,
     user: User = Depends(get_current_user),
@@ -47,7 +47,7 @@ async def start_import(
 
 
 @import_router.post("/imports/upload-url")
-async def get_import_upload_url(
+def get_import_upload_url(
     params: GetImportUploadUrl.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -61,7 +61,7 @@ async def get_import_upload_url(
 
 
 @import_router.get("/import-jobs")
-async def list_import_jobs(
+def list_import_jobs(
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -99,7 +99,7 @@ async def list_import_jobs(
 
 
 @import_router.get("/import-jobs/{job_id}")
-async def get_import_job(
+def get_import_job(
     job_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -113,7 +113,7 @@ async def get_import_job(
 
 
 @import_router.delete("/import-jobs/{job_id}")
-async def cancel_import_job(
+def cancel_import_job(
     job_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -127,7 +127,7 @@ async def cancel_import_job(
 
 
 @import_router.get("/import-jobs/{job_id}/items")
-async def list_import_items(
+def list_import_items(
     job_id: str,
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100),
@@ -159,7 +159,7 @@ async def list_import_items(
 
 
 @import_router.get("/import-items")
-async def list_import_items_batch(
+def list_import_items_batch(
     job_ids: str = Query(
         ...,
         description=(
@@ -195,7 +195,7 @@ async def list_import_items_batch(
 
 
 @import_router.get("/import-items/see-all-count")
-async def import_see_all_count(
+def import_see_all_count(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -209,7 +209,7 @@ async def import_see_all_count(
 
 
 @import_router.get("/import-items/see-all")
-async def list_see_all_import_items(
+def list_see_all_import_items(
     limit: int = Query(50, ge=1, le=100),
     cursor: str | None = Query(
         None,
@@ -235,7 +235,7 @@ async def list_see_all_import_items(
 
 
 @import_router.get("/import-items/{item_id}")
-async def get_import_item(
+def get_import_item(
     item_id: str,
     include: str | None = Query(
         None,
@@ -258,7 +258,7 @@ async def get_import_item(
 
 
 @import_router.get("/import-items/{item_id}/telemetry")
-async def get_import_item_telemetry(
+def get_import_item_telemetry(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -272,7 +272,7 @@ async def get_import_item_telemetry(
 
 
 @import_router.put("/import-items/{item_id}")
-async def update_import_item(
+def update_import_item(
     item_id: str,
     params: UpdateImportItem.Params,
     user: User = Depends(get_current_user),
@@ -288,7 +288,7 @@ async def update_import_item(
 
 
 @import_router.post("/import-items/{item_id}/approve")
-async def approve_import_item(
+def approve_import_item(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -302,7 +302,7 @@ async def approve_import_item(
 
 
 @import_router.post("/import-items/{item_id}/skip")
-async def skip_import_item(
+def skip_import_item(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -316,7 +316,7 @@ async def skip_import_item(
 
 
 @import_router.post("/import-items/{item_id}/retry")
-async def retry_import_item(
+def retry_import_item(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -330,7 +330,7 @@ async def retry_import_item(
 
 
 @import_router.post("/import-items/{item_id}/dismiss")
-async def dismiss_import_item(
+def dismiss_import_item(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -344,7 +344,7 @@ async def dismiss_import_item(
 
 
 @import_router.post("/import-items/{item_id}/corrections")
-async def submit_import_correction(
+def submit_import_correction(
     item_id: str,
     params: SubmitCorrection.Params,
     user: User = Depends(get_current_user),
@@ -366,7 +366,7 @@ async def submit_import_correction(
 
 
 @import_router.post("/import-jobs/dismiss-all-failed")
-async def dismiss_all_failed_imports(
+def dismiss_all_failed_imports(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -378,7 +378,7 @@ async def dismiss_all_failed_imports(
 
 
 @import_router.post("/import-items/{item_id}/archive")
-async def archive_import_item(
+def archive_import_item(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -392,7 +392,7 @@ async def archive_import_item(
 
 
 @import_router.post("/import-items/{item_id}/unarchive")
-async def unarchive_import_item(
+def unarchive_import_item(
     item_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),

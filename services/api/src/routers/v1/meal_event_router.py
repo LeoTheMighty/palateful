@@ -27,7 +27,7 @@ meal_event_router = APIRouter(tags=["meal-events"])
 
 
 @meal_event_router.get("/meal-events")
-async def list_meal_events(
+def list_meal_events(
     limit: int = 20,
     offset: int = 0,
     start_date: date | None = None,
@@ -53,7 +53,7 @@ async def list_meal_events(
 
 
 @meal_event_router.post("/meal-events")
-async def create_meal_event(
+def create_meal_event(
     params: CreateMealEvent.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -67,7 +67,7 @@ async def create_meal_event(
 
 
 @meal_event_router.get("/meal-events/{event_id}")
-async def get_meal_event(
+def get_meal_event(
     event_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -81,7 +81,7 @@ async def get_meal_event(
 
 
 @meal_event_router.put("/meal-events/{event_id}")
-async def update_meal_event(
+def update_meal_event(
     event_id: str,
     params: UpdateMealEvent.Params,
     user: User = Depends(get_current_user),
@@ -97,7 +97,7 @@ async def update_meal_event(
 
 
 @meal_event_router.delete("/meal-events/{event_id}")
-async def delete_meal_event(
+def delete_meal_event(
     event_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -111,7 +111,7 @@ async def delete_meal_event(
 
 
 @meal_event_router.post("/meal-events/{event_id}/skip")
-async def skip_meal_event(
+def skip_meal_event(
     event_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -125,7 +125,7 @@ async def skip_meal_event(
 
 
 @meal_event_router.post("/meal-events/{event_id}/invite")
-async def invite_participant(
+def invite_participant(
     event_id: str,
     params: InviteParticipant.Params,
     user: User = Depends(get_current_user),
@@ -141,7 +141,7 @@ async def invite_participant(
 
 
 @meal_event_router.post("/meal-events/{event_id}/respond")
-async def respond_to_invite(
+def respond_to_invite(
     event_id: str,
     params: RespondToInvite.Params,
     user: User = Depends(get_current_user),
@@ -179,7 +179,7 @@ async def respond_to_invite(
 
 
 @meal_event_router.post("/meal-events/{event_id}/add-to-shopping-list")
-async def add_meal_event_to_shopping_list(
+def add_meal_event_to_shopping_list(
     event_id: str,
     params: AddMealEventToShoppingList.Params,
     user: User = Depends(get_current_user),

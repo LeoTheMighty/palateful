@@ -27,7 +27,7 @@ admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @admin_router.get("/logs")
-async def get_logs(
+def get_logs(
     service: str = Query("api", description="Service name (api or worker)"),
     level: str | None = Query(None, description="Log level filter"),
     search: str | None = Query(None, description="Search text filter"),
@@ -51,7 +51,7 @@ async def get_logs(
 
 
 @admin_router.get("/errors")
-async def get_errors(
+def get_errors(
     service: str | None = Query(None, description="Filter by service"),
     limit: int = Query(50, ge=1, le=200, description="Max errors to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -69,7 +69,7 @@ async def get_errors(
 
 
 @admin_router.get("/errors/{error_id}")
-async def get_error_detail(
+def get_error_detail(
     error_id: str,
     user: User = Depends(require_admin),
     database: Database = Depends(get_database),
@@ -83,7 +83,7 @@ async def get_error_detail(
 
 
 @admin_router.get("/users")
-async def list_users(
+def list_users(
     limit: int = Query(50, ge=1, le=200, description="Max users to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     user: User = Depends(require_admin),
@@ -99,7 +99,7 @@ async def list_users(
 
 
 @admin_router.put("/users/{user_id}/admin")
-async def update_user_admin(
+def update_user_admin(
     user_id: str,
     params: UpdateUserAdmin.Params,
     user: User = Depends(require_admin),
@@ -115,7 +115,7 @@ async def update_user_admin(
 
 
 @admin_router.get("/stats")
-async def get_stats(
+def get_stats(
     user: User = Depends(require_admin),
     database: Database = Depends(get_database),
 ):
@@ -127,7 +127,7 @@ async def get_stats(
 
 
 @admin_router.post("/notifications/test-push")
-async def send_test_push(
+def send_test_push(
     params: SendTestPush.Params,
     force: bool = Query(True, description="Bypass quiet hours (default true)"),
     user: User = Depends(require_admin),
@@ -143,7 +143,7 @@ async def send_test_push(
 
 
 @admin_router.get("/notifications/health/{user_id_or_email}")
-async def get_push_health(
+def get_push_health(
     user_id_or_email: str,
     error_limit: int = Query(
         10,
@@ -169,7 +169,7 @@ async def get_push_health(
 
 
 @admin_router.get("/feedback")
-async def list_feedback(
+def list_feedback(
     status: str = Query("unread", description="Filter by status: unread | read | archived | all"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(25, ge=1, le=100, description="Max items per page"),
@@ -187,7 +187,7 @@ async def list_feedback(
 
 
 @admin_router.put("/feedback/{feedback_id}/status")
-async def update_feedback_status(
+def update_feedback_status(
     feedback_id: str,
     params: UpdateFeedbackStatus.Params,
     user: User = Depends(require_admin),
@@ -208,7 +208,7 @@ async def update_feedback_status(
 
 
 @admin_router.get("/metrics/endpoints")
-async def get_endpoint_metrics(
+def get_endpoint_metrics(
     window: str = Query("24h", description="Window: 1h | 24h | 7d"),
     user: User = Depends(require_admin),
     database: Database = Depends(get_database),
@@ -222,7 +222,7 @@ async def get_endpoint_metrics(
 
 
 @admin_router.get("/metrics/tasks")
-async def get_task_metrics(
+def get_task_metrics(
     window: str = Query("24h", description="Window: 1h | 24h | 7d"),
     user: User = Depends(require_admin),
     database: Database = Depends(get_database),
@@ -241,7 +241,7 @@ async def get_task_metrics(
 
 
 @admin_router.get("/metrics/client/routes")
-async def get_client_route_metrics(
+def get_client_route_metrics(
     window: str = Query("24h", description="1h | 24h | 7d | 30d"),
     platform: str | None = Query(None, description="ios | android | web"),
     app_version: str | None = Query(None),
@@ -261,7 +261,7 @@ async def get_client_route_metrics(
 
 
 @admin_router.get("/metrics/client/endpoints")
-async def get_client_endpoint_metrics(
+def get_client_endpoint_metrics(
     window: str = Query("24h", description="1h | 24h | 7d | 30d"),
     platform: str | None = Query(None),
     app_version: str | None = Query(None),
@@ -281,7 +281,7 @@ async def get_client_endpoint_metrics(
 
 
 @admin_router.get("/metrics/client/jank")
-async def get_client_jank_metrics(
+def get_client_jank_metrics(
     window: str = Query("24h", description="1h | 24h | 7d | 30d"),
     platform: str | None = Query(None),
     app_version: str | None = Query(None),
@@ -301,7 +301,7 @@ async def get_client_jank_metrics(
 
 
 @admin_router.get("/metrics/client/sparkline")
-async def get_client_sparkline(
+def get_client_sparkline(
     metric: str = Query(..., description="route_paint | network_request | frame_jank_p95 | app_start"),
     window: str = Query("24h"),
     platform: str | None = Query(None),

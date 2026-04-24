@@ -10,7 +10,7 @@ search_router = APIRouter(prefix="/search", tags=["search"])
 
 
 @search_router.get("")
-async def search(
+def search(
     q: str = Query(..., min_length=2, description="Search query"),
     limit: int = Query(20, ge=1, le=50, description="Max results per category"),
     scope: str | None = Query(

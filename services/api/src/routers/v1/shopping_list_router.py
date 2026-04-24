@@ -42,7 +42,7 @@ shopping_list_router = APIRouter(tags=["shopping-lists"])
 
 
 @shopping_list_router.get("/shopping-lists")
-async def list_shopping_lists(
+def list_shopping_lists(
     limit: int = 20,
     offset: int = 0,
     status: str | None = None,
@@ -60,7 +60,7 @@ async def list_shopping_lists(
 
 
 @shopping_list_router.post("/shopping-lists")
-async def create_shopping_list(
+def create_shopping_list(
     params: CreateShoppingList.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -74,7 +74,7 @@ async def create_shopping_list(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}")
-async def get_shopping_list(
+def get_shopping_list(
     list_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -88,7 +88,7 @@ async def get_shopping_list(
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}")
-async def update_shopping_list(
+def update_shopping_list(
     list_id: str,
     params: UpdateShoppingList.Params,
     user: User = Depends(get_current_user),
@@ -104,7 +104,7 @@ async def update_shopping_list(
 
 
 @shopping_list_router.delete("/shopping-lists/{list_id}")
-async def delete_shopping_list(
+def delete_shopping_list(
     list_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -189,7 +189,7 @@ async def delete_shopping_list_item(
 
 
 @shopping_list_router.get("/shopping-lists/store-sections")
-async def get_store_sections(  # pragma: no cover — route shadowed by /{list_id}
+def get_store_sections(  # pragma: no cover — route shadowed by /{list_id}
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -201,7 +201,7 @@ async def get_store_sections(  # pragma: no cover — route shadowed by /{list_i
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/organize-by-store")
-async def organize_by_store(
+def organize_by_store(
     list_id: str,
     params: OrganizeByStore.Params,
     user: User = Depends(get_current_user),
@@ -222,7 +222,7 @@ async def organize_by_store(
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}/items/{item_id}/assign")
-async def assign_item(
+def assign_item(
     list_id: str,
     item_id: str,
     params: AssignItem.Params,
@@ -240,7 +240,7 @@ async def assign_item(
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/items/bulk-assign")
-async def bulk_assign_items(
+def bulk_assign_items(
     list_id: str,
     params: BulkAssignItems.Params,
     user: User = Depends(get_current_user),
@@ -261,7 +261,7 @@ async def bulk_assign_items(
 
 
 @shopping_list_router.post("/meal-events/{event_id}/shopping-list/generate")
-async def generate_shopping_list(
+def generate_shopping_list(
     event_id: str,
     params: GenerateFromMealEvent.Params,
     user: User = Depends(get_current_user),
@@ -302,7 +302,7 @@ async def populate_shopping_list_from_recipe(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}/deadlines")
-async def get_shopping_list_deadlines(
+def get_shopping_list_deadlines(
     list_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -321,7 +321,7 @@ async def get_shopping_list_deadlines(
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/share")
-async def share_shopping_list(
+def share_shopping_list(
     list_id: str,
     params: ShareShoppingList.Params,
     user: User = Depends(get_current_user),
@@ -337,7 +337,7 @@ async def share_shopping_list(
 
 
 @shopping_list_router.post("/shopping-lists/join/{share_code}")
-async def join_shopping_list(
+def join_shopping_list(
     share_code: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -351,7 +351,7 @@ async def join_shopping_list(
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/members")
-async def invite_shopping_list_member(
+def invite_shopping_list_member(
     list_id: str,
     params: InviteShoppingListMember.Params,
     user: User = Depends(get_current_user),
@@ -367,7 +367,7 @@ async def invite_shopping_list_member(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}/members")
-async def list_shopping_list_members(
+def list_shopping_list_members(
     list_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -381,7 +381,7 @@ async def list_shopping_list_members(
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}/members/{member_user_id}")
-async def update_shopping_list_member(
+def update_shopping_list_member(
     list_id: str,
     member_user_id: str,
     params: UpdateShoppingListMember.Params,
@@ -399,7 +399,7 @@ async def update_shopping_list_member(
 
 
 @shopping_list_router.delete("/shopping-lists/{list_id}/members/{member_user_id}")
-async def remove_shopping_list_member(
+def remove_shopping_list_member(
     list_id: str,
     member_user_id: str,
     user: User = Depends(get_current_user),
@@ -420,7 +420,7 @@ async def remove_shopping_list_member(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}/events")
-async def get_shopping_list_events(
+def get_shopping_list_events(
     list_id: str,
     since_sequence: int = 0,
     limit: int = 100,

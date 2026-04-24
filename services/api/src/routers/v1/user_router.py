@@ -40,7 +40,7 @@ user_router = APIRouter(prefix="/users", tags=["users"])
 
 
 @user_router.get("/me")
-async def get_me(
+def get_me(
     user: User = Depends(get_current_user),
     authorization: str = Header(None),
     database=Depends(get_database),
@@ -50,7 +50,7 @@ async def get_me(
 
 
 @user_router.put("/me")
-async def update_me(
+def update_me(
     params: UpdateMe.Params,
     user: User = Depends(get_current_user),
     authorization: str = Header(None),
@@ -61,7 +61,7 @@ async def update_me(
 
 
 @user_router.put("/me/default-recipe-book")
-async def set_default_recipe_book(
+def set_default_recipe_book(
     params: SetDefaultRecipeBook.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -71,7 +71,7 @@ async def set_default_recipe_book(
 
 
 @user_router.put("/me/default-shopping-list")
-async def set_default_shopping_list(
+def set_default_shopping_list(
     params: SetDefaultShoppingList.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -81,7 +81,7 @@ async def set_default_shopping_list(
 
 
 @user_router.post("/me/complete-onboarding")
-async def complete_onboarding(
+def complete_onboarding(
     params: OnboardingRequest,
     user: User = Depends(get_current_user),
     authorization: str = Header(None),
@@ -97,7 +97,7 @@ async def complete_onboarding(
 
 
 @user_router.post("/me/push-tokens")
-async def register_push_token(
+def register_push_token(
     params: RegisterPushToken.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -107,7 +107,7 @@ async def register_push_token(
 
 
 @user_router.delete("/me/push-tokens")
-async def unregister_push_token(
+def unregister_push_token(
     params: UnregisterPushToken.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -161,7 +161,7 @@ async def update_notification_preferences(
 
 
 @user_router.put("/me/username")
-async def set_username(
+def set_username(
     params: SetUsername.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -171,7 +171,7 @@ async def set_username(
 
 
 @user_router.get("/check-username/{username}")
-async def check_username(
+def check_username(
     username: str,
     database: Database = Depends(get_database),
 ):
@@ -185,7 +185,7 @@ async def check_username(
 
 
 @user_router.get("/me/export")
-async def export_recipes(
+def export_recipes(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -199,7 +199,7 @@ async def export_recipes(
 
 
 @user_router.get("/search")
-async def search_users(
+def search_users(
     q: str = Query(..., min_length=1, description="Search query"),
     limit: int = Query(20, ge=1, le=50, description="Maximum results"),
     user: User = Depends(get_current_user),

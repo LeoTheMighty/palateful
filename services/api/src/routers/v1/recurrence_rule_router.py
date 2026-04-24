@@ -18,7 +18,7 @@ recurrence_rule_router = APIRouter(tags=["recurrence-rules"])
 
 
 @recurrence_rule_router.get("/recurrence-rules")
-async def list_recurrence_rules(
+def list_recurrence_rules(
     calendar_id: str | None = None,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -30,7 +30,7 @@ async def list_recurrence_rules(
 
 
 @recurrence_rule_router.post("/recurrence-rules")
-async def create_recurrence_rule(
+def create_recurrence_rule(
     params: CreateRecurrenceRule.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -44,7 +44,7 @@ async def create_recurrence_rule(
 
 
 @recurrence_rule_router.get("/recurrence-rules/{rule_id}")
-async def get_recurrence_rule(
+def get_recurrence_rule(
     rule_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -58,7 +58,7 @@ async def get_recurrence_rule(
 
 
 @recurrence_rule_router.put("/recurrence-rules/{rule_id}")
-async def update_recurrence_rule(
+def update_recurrence_rule(
     rule_id: str,
     params: UpdateRecurrenceRule.Params,
     user: User = Depends(get_current_user),
@@ -74,7 +74,7 @@ async def update_recurrence_rule(
 
 
 @recurrence_rule_router.delete("/recurrence-rules/{rule_id}")
-async def delete_recurrence_rule(
+def delete_recurrence_rule(
     rule_id: str,
     scope: str = "series",
     occurrence_date: date | None = None,

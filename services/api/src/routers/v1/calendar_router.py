@@ -20,7 +20,7 @@ calendar_router = APIRouter(prefix="/calendars", tags=["calendars"])
 
 
 @calendar_router.get("")
-async def list_calendars(
+def list_calendars(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -29,7 +29,7 @@ async def list_calendars(
 
 
 @calendar_router.post("")
-async def create_calendar(
+def create_calendar(
     params: CreateCalendar.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -39,7 +39,7 @@ async def create_calendar(
 
 
 @calendar_router.get("/{calendar_id}")
-async def get_calendar(
+def get_calendar(
     calendar_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -51,7 +51,7 @@ async def get_calendar(
 
 
 @calendar_router.patch("/{calendar_id}")
-async def update_calendar(
+def update_calendar(
     calendar_id: str,
     params: UpdateCalendar.Params,
     user: User = Depends(get_current_user),
@@ -64,7 +64,7 @@ async def update_calendar(
 
 
 @calendar_router.delete("/{calendar_id}")
-async def delete_calendar(
+def delete_calendar(
     calendar_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -76,7 +76,7 @@ async def delete_calendar(
 
 
 @calendar_router.get("/{calendar_id}/members")
-async def list_calendar_members(
+def list_calendar_members(
     calendar_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -88,7 +88,7 @@ async def list_calendar_members(
 
 
 @calendar_router.patch("/{calendar_id}/members/{target_user_id}")
-async def update_calendar_member(
+def update_calendar_member(
     calendar_id: str,
     target_user_id: str,
     params: UpdateCalendarMember.Params,
@@ -106,7 +106,7 @@ async def update_calendar_member(
 
 
 @calendar_router.delete("/{calendar_id}/members/{target_user_id}")
-async def remove_calendar_member(
+def remove_calendar_member(
     calendar_id: str,
     target_user_id: str,
     user: User = Depends(get_current_user),
@@ -122,7 +122,7 @@ async def remove_calendar_member(
 
 
 @calendar_router.post("/{calendar_id}/leave")
-async def leave_calendar(
+def leave_calendar(
     calendar_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),

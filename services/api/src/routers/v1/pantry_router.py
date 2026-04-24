@@ -17,7 +17,7 @@ pantry_router = APIRouter(tags=["pantries"])
 
 
 @pantry_router.get("/pantries/default")
-async def get_default_pantry(
+def get_default_pantry(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -26,7 +26,7 @@ async def get_default_pantry(
 
 
 @pantry_router.post("/pantries/{pantry_id}/ingredients")
-async def add_pantry_ingredient(
+def add_pantry_ingredient(
     pantry_id: str,
     params: PantryIngredientCreate,
     user: User = Depends(get_current_user),
@@ -42,7 +42,7 @@ async def add_pantry_ingredient(
 
 
 @pantry_router.patch("/pantries/{pantry_id}/ingredients/{ingredient_id}")
-async def update_pantry_ingredient(
+def update_pantry_ingredient(
     pantry_id: str,
     ingredient_id: str,
     params: PantryIngredientUpdate,
@@ -60,7 +60,7 @@ async def update_pantry_ingredient(
 
 
 @pantry_router.post("/pantries/{pantry_id}/estimate-expiry")
-async def estimate_pantry_expiry(
+def estimate_pantry_expiry(
     pantry_id: str,
     params: EstimateExpiry.Params,
     user: User = Depends(get_current_user),
@@ -76,7 +76,7 @@ async def estimate_pantry_expiry(
 
 
 @pantry_router.delete("/pantries/{pantry_id}/ingredients/{ingredient_id}")
-async def delete_pantry_ingredient(
+def delete_pantry_ingredient(
     pantry_id: str,
     ingredient_id: str,
     user: User = Depends(get_current_user),

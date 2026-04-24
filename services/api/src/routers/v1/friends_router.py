@@ -24,7 +24,7 @@ friends_router = APIRouter(prefix="/friends", tags=["friends"])
 
 
 @friends_router.get("/requests")
-async def list_friend_requests(
+def list_friend_requests(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -38,7 +38,7 @@ async def list_friend_requests(
 
 
 @friends_router.get("")
-async def list_friends(
+def list_friends(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -47,7 +47,7 @@ async def list_friends(
 
 
 @friends_router.get("/{friend_id}")
-async def get_friend(
+def get_friend(
     friend_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -57,7 +57,7 @@ async def get_friend(
 
 
 @friends_router.delete("/{friend_id}")
-async def remove_friend(
+def remove_friend(
     friend_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -67,7 +67,7 @@ async def remove_friend(
 
 
 @friends_router.post("/requests")
-async def send_friend_request(
+def send_friend_request(
     params: SendFriendRequest.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -77,7 +77,7 @@ async def send_friend_request(
 
 
 @friends_router.post("/requests/{request_id}/accept")
-async def accept_friend_request(
+def accept_friend_request(
     request_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -87,7 +87,7 @@ async def accept_friend_request(
 
 
 @friends_router.post("/requests/{request_id}/decline")
-async def decline_friend_request(
+def decline_friend_request(
     request_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -99,7 +99,7 @@ async def decline_friend_request(
 
 
 @friends_router.delete("/requests/{request_id}")
-async def cancel_friend_request(
+def cancel_friend_request(
     request_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),

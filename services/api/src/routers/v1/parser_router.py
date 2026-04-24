@@ -19,7 +19,7 @@ parser_router = APIRouter(prefix="/parser", tags=["parser"])
 
 
 @parser_router.post("/upload-url")
-async def get_upload_url(
+def get_upload_url(
     params: GetUploadUrl.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -33,7 +33,7 @@ async def get_upload_url(
 
 
 @parser_router.post("/jobs")
-async def submit_parser_job(
+def submit_parser_job(
     params: SubmitParserJob.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -47,7 +47,7 @@ async def submit_parser_job(
 
 
 @parser_router.post("/jobs/batch")
-async def submit_batch_parser_job(
+def submit_batch_parser_job(
     params: SubmitBatchParserJob.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -61,7 +61,7 @@ async def submit_batch_parser_job(
 
 
 @parser_router.get("/jobs/{job_id}")
-async def get_parser_job(
+def get_parser_job(
     job_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -75,7 +75,7 @@ async def get_parser_job(
 
 
 @parser_router.post("/batches")
-async def create_parser_batch(
+def create_parser_batch(
     params: CreateParserBatch.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -89,7 +89,7 @@ async def create_parser_batch(
 
 
 @parser_router.get("/batches")
-async def list_parser_batches(
+def list_parser_batches(
     active: bool = Query(False),
     limit: int = Query(20),
     user: User = Depends(get_current_user),
@@ -105,7 +105,7 @@ async def list_parser_batches(
 
 
 @parser_router.get("/batches/{batch_id}")
-async def get_parser_batch(
+def get_parser_batch(
     batch_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -119,7 +119,7 @@ async def get_parser_batch(
 
 
 @parser_router.post("/batches/{batch_id}/complete")
-async def complete_parser_batch(
+def complete_parser_batch(
     batch_id: str,
     params: CompleteParserBatch.Params,
     database: Database = Depends(get_database),

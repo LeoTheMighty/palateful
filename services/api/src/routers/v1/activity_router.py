@@ -18,7 +18,7 @@ activity_router = APIRouter(prefix="/activities", tags=["activities"])
 
 
 @activity_router.get("")
-async def list_activities(
+def list_activities(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
     limit: int = 50,
@@ -87,7 +87,7 @@ async def list_activities(
 
 
 @activity_router.get("/unread-count")
-async def unread_count(
+def unread_count(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -96,7 +96,7 @@ async def unread_count(
 
 
 @activity_router.get("/see-all-count")
-async def see_all_count(
+def see_all_count(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -105,7 +105,7 @@ async def see_all_count(
 
 
 @activity_router.put("/{activity_id}/read")
-async def mark_activity_read(
+def mark_activity_read(
     activity_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -119,7 +119,7 @@ async def mark_activity_read(
 
 
 @activity_router.put("/read-all")
-async def mark_all_read(
+def mark_all_read(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -128,7 +128,7 @@ async def mark_all_read(
 
 
 @activity_router.post("/{activity_id}/archive")
-async def archive_activity(
+def archive_activity(
     activity_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -142,7 +142,7 @@ async def archive_activity(
 
 
 @activity_router.post("/{activity_id}/unarchive")
-async def unarchive_activity(
+def unarchive_activity(
     activity_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),

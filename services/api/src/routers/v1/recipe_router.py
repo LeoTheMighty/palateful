@@ -55,7 +55,7 @@ recipe_router = APIRouter(tags=["recipes"])
 
 # Recipes under recipe books
 @recipe_router.get("/recipe-books/{book_id}/recipes")
-async def list_recipes(
+def list_recipes(
     book_id: str,
     limit: int = 20,
     offset: int = 0,
@@ -111,7 +111,7 @@ async def create_recipe(
 
 # Vibe options (must be before /recipes/{recipe_id} to avoid path collision)
 @recipe_router.get("/recipes/vibes/options")
-async def get_vibe_options(
+def get_vibe_options(
     database: Database = Depends(get_database),
 ):
     """Get the list of valid vibes with display names and colors."""
@@ -120,7 +120,7 @@ async def get_vibe_options(
 
 # Archived recipes (must be before /recipes/{recipe_id} to avoid path collision)
 @recipe_router.get("/recipes/archived")
-async def list_archived_recipes(
+def list_archived_recipes(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -133,7 +133,7 @@ async def list_archived_recipes(
 
 # Bulk recipe operations (must be before /recipes/{recipe_id} to avoid path collision)
 @recipe_router.post("/recipes/bulk/move")
-async def bulk_move_recipes(
+def bulk_move_recipes(
     params: BulkMoveRecipes.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -147,7 +147,7 @@ async def bulk_move_recipes(
 
 
 @recipe_router.post("/recipes/bulk/archive")
-async def bulk_archive_recipes(
+def bulk_archive_recipes(
     params: BulkArchiveRecipes.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -161,7 +161,7 @@ async def bulk_archive_recipes(
 
 
 @recipe_router.post("/recipes/bulk/tags")
-async def bulk_update_tags(
+def bulk_update_tags(
     params: BulkUpdateTags.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -176,7 +176,7 @@ async def bulk_update_tags(
 
 # Public recipe by share token (no auth required — must be before /{recipe_id})
 @recipe_router.get("/recipes/public/{token}")
-async def get_public_recipe_by_token(
+def get_public_recipe_by_token(
     token: str,
     database: Database = Depends(get_database),
 ):
@@ -186,7 +186,7 @@ async def get_public_recipe_by_token(
 
 # Direct recipe access
 @recipe_router.get("/recipes/{recipe_id}")
-async def get_recipe(
+def get_recipe(
     recipe_id: str,
     debug: bool = False,
     include: str | None = None,
@@ -235,7 +235,7 @@ async def update_recipe(
 
 
 @recipe_router.get("/recipes/{recipe_id}/versions")
-async def get_recipe_versions(
+def get_recipe_versions(
     recipe_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -249,7 +249,7 @@ async def get_recipe_versions(
 
 
 @recipe_router.get("/recipes/{recipe_id}/versions/{version_id}")
-async def get_recipe_version(
+def get_recipe_version(
     recipe_id: str,
     version_id: str,
     user: User = Depends(get_current_user),
@@ -265,7 +265,7 @@ async def get_recipe_version(
 
 
 @recipe_router.post("/recipes/{recipe_id}/versions/{version_id}/restore")
-async def restore_recipe_version(
+def restore_recipe_version(
     recipe_id: str,
     version_id: str,
     user: User = Depends(get_current_user),
@@ -281,7 +281,7 @@ async def restore_recipe_version(
 
 
 @recipe_router.post("/recipes/{recipe_id}/notes", status_code=201)
-async def add_recipe_note(
+def add_recipe_note(
     recipe_id: str,
     params: AddRecipeNote.Params,
     user: User = Depends(get_current_user),
@@ -317,7 +317,7 @@ async def add_recipe_note(
 
 
 @recipe_router.delete("/recipes/{recipe_id}/notes/{note_id}")
-async def delete_recipe_note(
+def delete_recipe_note(
     recipe_id: str,
     note_id: str,
     user: User = Depends(get_current_user),
@@ -333,7 +333,7 @@ async def delete_recipe_note(
 
 
 @recipe_router.post("/recipes/{recipe_id}/photo-upload-url")
-async def get_recipe_photo_upload_url(
+def get_recipe_photo_upload_url(
     recipe_id: str,
     params: GetRecipePhotoUploadUrl.Params,
     user: User = Depends(get_current_user),
@@ -349,7 +349,7 @@ async def get_recipe_photo_upload_url(
 
 
 @recipe_router.post("/recipes/{recipe_id}/share", status_code=201)
-async def share_recipe(
+def share_recipe(
     recipe_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -359,7 +359,7 @@ async def share_recipe(
 
 
 @recipe_router.delete("/recipes/{recipe_id}/share")
-async def revoke_recipe_share(
+def revoke_recipe_share(
     recipe_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -383,7 +383,7 @@ async def list_meals_using_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/favorite")
-async def toggle_favorite(
+def toggle_favorite(
     recipe_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -432,7 +432,7 @@ async def delete_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/restore")
-async def restore_recipe(
+def restore_recipe(
     recipe_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -446,7 +446,7 @@ async def restore_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/move")
-async def move_recipe(
+def move_recipe(
     recipe_id: str,
     params: MoveRecipe.Params,
     user: User = Depends(get_current_user),
@@ -499,7 +499,7 @@ async def fork_recipe(
 
 
 @recipe_router.post("/recipes/{recipe_id}/copy")
-async def copy_recipe(
+def copy_recipe(
     recipe_id: str,
     params: CopyRecipe.Params,
     user: User = Depends(get_current_user),
@@ -516,7 +516,7 @@ async def copy_recipe(
 
 # Public endpoints (no auth required)
 @recipe_router.get("/recipes/{recipe_id}/public")
-async def get_public_recipe(
+def get_public_recipe(
     recipe_id: str,
     database: Database = Depends(get_database)
 ):
@@ -528,7 +528,7 @@ async def get_public_recipe(
 
 
 @recipe_router.get("/recipe-books/{book_id}/public")
-async def get_public_recipe_book(
+def get_public_recipe_book(
     book_id: str,
     database: Database = Depends(get_database)
 ):

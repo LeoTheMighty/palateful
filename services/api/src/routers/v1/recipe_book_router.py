@@ -25,7 +25,7 @@ recipe_book_router = APIRouter(prefix="/recipe-books", tags=["recipe-books"])
 
 
 @recipe_book_router.get("")
-async def list_recipe_books(
+def list_recipe_books(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
     limit: int = 20,
@@ -41,7 +41,7 @@ async def list_recipe_books(
 
 
 @recipe_book_router.post("")
-async def create_recipe_book(
+def create_recipe_book(
     params: CreateRecipeBook.Params,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database)
@@ -52,7 +52,7 @@ async def create_recipe_book(
 
 # Archived recipe books (must be before /{recipe_book_id} to avoid path collision)
 @recipe_book_router.get("/archived")
-async def list_archived_recipe_books(
+def list_archived_recipe_books(
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
 ):
@@ -64,7 +64,7 @@ async def list_archived_recipe_books(
 
 
 @recipe_book_router.get("/{recipe_book_id}")
-async def get_recipe_book(
+def get_recipe_book(
     recipe_book_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database)
@@ -78,7 +78,7 @@ async def get_recipe_book(
 
 
 @recipe_book_router.put("/{recipe_book_id}")
-async def update_recipe_book(
+def update_recipe_book(
     recipe_book_id: str,
     params: UpdateRecipeBook.Params,
     user: User = Depends(get_current_user),
@@ -94,7 +94,7 @@ async def update_recipe_book(
 
 
 @recipe_book_router.delete("/{recipe_book_id}")
-async def delete_recipe_book(
+def delete_recipe_book(
     recipe_book_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database)
@@ -108,7 +108,7 @@ async def delete_recipe_book(
 
 
 @recipe_book_router.post("/{recipe_book_id}/archive")
-async def archive_recipe_book(
+def archive_recipe_book(
     recipe_book_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -122,7 +122,7 @@ async def archive_recipe_book(
 
 
 @recipe_book_router.post("/{recipe_book_id}/restore")
-async def restore_recipe_book(
+def restore_recipe_book(
     recipe_book_id: str,
     user: User = Depends(get_current_user),
     database: Database = Depends(get_database),
@@ -136,7 +136,7 @@ async def restore_recipe_book(
 
 
 @recipe_book_router.post("/{recipe_book_id}/members")
-async def add_recipe_book_member(
+def add_recipe_book_member(
     recipe_book_id: str,
     params: AddRecipeBookMember.Params,
     user: User = Depends(get_current_user),
@@ -164,7 +164,7 @@ async def add_recipe_book_member(
 
 
 @recipe_book_router.patch("/{recipe_book_id}/members/{target_user_id}")
-async def update_recipe_book_member_role(
+def update_recipe_book_member_role(
     recipe_book_id: str,
     target_user_id: str,
     params: UpdateRecipeBookMemberRole.Params,
@@ -182,7 +182,7 @@ async def update_recipe_book_member_role(
 
 
 @recipe_book_router.delete("/{recipe_book_id}/members/{target_user_id}")
-async def remove_recipe_book_member(
+def remove_recipe_book_member(
     recipe_book_id: str,
     target_user_id: str,
     user: User = Depends(get_current_user),
