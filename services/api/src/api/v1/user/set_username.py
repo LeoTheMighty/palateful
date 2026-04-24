@@ -88,9 +88,10 @@ class SetUsername(AsyncEndpoint):
                 )
 
         # Check if username is already taken (case-insensitive)
-        existing_user = (await self.db.execute(
+        existing_result = await self.db.execute(
             select(User).where(User.username == new_username, User.id != user.id)
-        )).scalar_one_or_none()
+        )
+        existing_user = existing_result.scalar_one_or_none()
 
         if existing_user:
             raise APIException(
