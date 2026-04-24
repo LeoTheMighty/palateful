@@ -8,7 +8,6 @@ from api.v1.shopping_list.utils.notifications import (
     notify_item_checked,
     notify_list_complete,
 )
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from utils.api.endpoint import APIException, AsyncEndpoint, success
@@ -120,11 +119,7 @@ class UpdateShoppingListItem(AsyncEndpoint):
         # Pantry auto-add hook (pantry-3): only fire on the false → true
         # transition AND when we have a resolved ingredient. Free-text items
         # skip entirely. A failure here must not break the user's check-off.
-        #
-        # pantry_service is still sync (aam-15 in progress); bridge through
-        # run_in_threadpool on a fresh short-lived sync session. Snapshot
-        # the scalar attrs the sync helpers need so the sync session never
-        # accesses the async ORM instance.
+        # aam-15 landed async pantry_service variants; use them directly.
         pantry_ingredient_id: str | None = None
         pantry_id: str | None = None
         if (
@@ -132,42 +127,27 @@ class UpdateShoppingListItem(AsyncEndpoint):
             and previous_is_checked is False
             and item.ingredient_id is not None
         ):
-            user_id_snapshot = user.id
-            ingredient_id_snapshot = item.ingredient_id
-            quantity_snapshot = item.quantity
-            unit_snapshot = item.unit
-
-            def _pantry_sync_add() -> tuple[str | None, str | None]:
-                from utils.services.database import Database, SessionLocal
-                from utils.services.pantry_service import (
-                    get_or_create_default_pantry,
-                    upsert_pantry_ingredient,
-                )
-
-                sync_db = Database(db=SessionLocal())
-                try:
-                    pantry, _m = get_or_create_default_pantry(
-                        user_id_snapshot, sync_db
-                    )
-                    result = upsert_pantry_ingredient(
-                        sync_db,
-                        pantry_id=pantry.id,
-                        ingredient_id=ingredient_id_snapshot,
-                        quantity_display=quantity_snapshot,
-                        unit_display=unit_snapshot,
-                        quantity_normalized=quantity_snapshot,
-                        unit_normalized=unit_snapshot,
-                    )
-                    if result.skipped_reason is None:  # pragma: no branch
-                        return (str(pantry.id), str(ingredient_id_snapshot))
-                    return (None, None)
-                finally:
-                    sync_db.close()
-
             try:
-                pantry_id, pantry_ingredient_id = await run_in_threadpool(
-                    _pantry_sync_add
+                from utils.services.pantry_service import (
+                    get_or_create_default_pantry_async,
+                    upsert_pantry_ingredient_async,
                 )
+
+                pantry, _m = await get_or_create_default_pantry_async(
+                    user.id, self.database
+                )
+                result = await upsert_pantry_ingredient_async(
+                    self.database,
+                    pantry_id=pantry.id,
+                    ingredient_id=item.ingredient_id,
+                    quantity_display=item.quantity,
+                    unit_display=item.unit,
+                    quantity_normalized=item.quantity,
+                    unit_normalized=item.unit,
+                )
+                if result.skipped_reason is None:  # pragma: no branch
+                    pantry_ingredient_id = str(item.ingredient_id)
+                    pantry_id = str(pantry.id)
                 # Domain dispatcher stays sync — in-memory only.
                 dispatch(
                     "ShoppingListItemPurchased",
