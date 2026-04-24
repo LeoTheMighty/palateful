@@ -1,17 +1,17 @@
 """Assign shopping list item to a user endpoint."""
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class AssignItem(Endpoint):
+class AssignItem(AsyncEndpoint):
     """Assign a shopping list item to a specific user."""
 
-    def execute(
+    async def execute(
         self,
         list_id: str,
         item_id: str,
@@ -30,8 +30,7 @@ class AssignItem(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -39,9 +38,8 @@ class AssignItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -56,8 +54,7 @@ class AssignItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Find item
-        item = self.database.find_by(
+        item = await self.database.find_by(
             ShoppingListItem, id=item_id, shopping_list_id=list_id
         )
         if not item:
@@ -67,15 +64,12 @@ class AssignItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ITEM_NOT_FOUND,
             )
 
-        # Validate assignee is a member (if assigning)
         assignee = None
         if params.user_id:
-            # Check if assignee is owner
             if str(shopping_list.owner_id) == params.user_id:
-                assignee = self.database.find_by(User, id=params.user_id)
+                assignee = await self.database.find_by(User, id=params.user_id)
             else:
-                # Check if assignee is a member
-                assignee_membership = self.database.find_by(
+                assignee_membership = await self.database.find_by(
                     ShoppingListUser,
                     shopping_list_id=list_id,
                     user_id=params.user_id,
@@ -86,7 +80,7 @@ class AssignItem(Endpoint):
                         detail="Cannot assign to non-member",
                         code=ErrorCode.SHOPPING_LIST_MEMBER_NOT_FOUND,
                     )
-                assignee = self.database.find_by(User, id=params.user_id)
+                assignee = await self.database.find_by(User, id=params.user_id)
 
             if not assignee:
                 raise APIException(
@@ -95,10 +89,9 @@ class AssignItem(Endpoint):
                     code=ErrorCode.USER_NOT_FOUND,
                 )
 
-        # Update assignment
         item.assigned_to_user_id = params.user_id
-        self.database.db.commit()
-        self.database.db.refresh(item)
+        await self.database.db.commit()
+        await self.database.db.refresh(item)
 
         return success(
             data=AssignItem.Response(
@@ -121,10 +114,10 @@ class AssignItem(Endpoint):
         assigned_to_user_name: str | None = None
 
 
-class BulkAssignItems(Endpoint):
+class BulkAssignItems(AsyncEndpoint):
     """Bulk assign shopping list items to users."""
 
-    def execute(
+    async def execute(
         self,
         list_id: str,
         params: "BulkAssignItems.Params",
@@ -143,8 +136,7 @@ class BulkAssignItems(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -152,9 +144,8 @@ class BulkAssignItems(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -169,23 +160,21 @@ class BulkAssignItems(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Process assignments
         assigned_count = 0
         errors = []
 
         for assignment in params.assignments:
-            item = self.database.find_by(
+            item = await self.database.find_by(
                 ShoppingListItem, id=assignment.item_id, shopping_list_id=list_id
             )
             if not item:
                 errors.append(f"Item {assignment.item_id} not found")
                 continue
 
-            # Validate assignee if provided
             if assignment.user_id:
                 is_valid_assignee = (
                     str(shopping_list.owner_id) == assignment.user_id
-                    or self.database.find_by(
+                    or await self.database.find_by(
                         ShoppingListUser,
                         shopping_list_id=list_id,
                         user_id=assignment.user_id,
@@ -201,7 +190,7 @@ class BulkAssignItems(Endpoint):
             item.assigned_to_user_id = assignment.user_id
             assigned_count += 1
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=BulkAssignItems.Response(

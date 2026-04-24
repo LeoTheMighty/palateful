@@ -5,15 +5,15 @@ from decimal import Decimal
 
 from api.v1.shopping_list.bootstrap import set_default_if_missing
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.user import User
 
 
-class CreateShoppingList(Endpoint):
+class CreateShoppingList(AsyncEndpoint):
     """Create a new shopping list."""
 
-    def execute(self, params: "CreateShoppingList.Params"):
+    async def execute(self, params: "CreateShoppingList.Params"):
         """
         Create a new shopping list.
 
@@ -25,24 +25,22 @@ class CreateShoppingList(Endpoint):
         """
         user: User = self.user
 
-        # Create shopping list
         shopping_list = ShoppingList(
             name=params.name,
             meal_event_id=params.meal_event_id,
             pantry_id=params.pantry_id,
             owner_id=user.id,
         )
-        self.database.create(shopping_list)
-        self.database.db.refresh(shopping_list)
+        await self.database.create(shopping_list)
 
         # Auto-set as default if user has no default shopping list.
-        # Shared helper with onboarding + backfill (single source of truth
-        # for the default-list invariant).
+        # `set_default_if_missing` only mutates `user.default_shopping_list_id`
+        # and does not call any session methods — safe to invoke with the
+        # AsyncSession underneath despite the sync type hint.
         if set_default_if_missing(user, shopping_list, self.database.db):
-            self.database.db.commit()
-            self.database.db.refresh(user)
+            await self.database.db.commit()
+            await self.database.db.refresh(user)
 
-        # Add items if provided
         item_responses = []
         for item_input in params.items:
             item = ShoppingListItem(
@@ -54,8 +52,7 @@ class CreateShoppingList(Endpoint):
                 ingredient_id=item_input.ingredient_id,
                 recipe_id=item_input.recipe_id,
             )
-            self.database.create(item)
-            self.database.db.refresh(item)
+            await self.database.create(item)
             item_responses.append(
                 CreateShoppingList.ItemResponse(
                     id=str(item.id),

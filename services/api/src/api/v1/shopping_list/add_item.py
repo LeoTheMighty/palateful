@@ -5,18 +5,20 @@ from decimal import Decimal
 
 from api.v1.shopping_list.utils.notifications import notify_item_added
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList, ShoppingListItem
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
-from utils.services.activity_service import create_activity
+from utils.models.user_activity import UserActivity
+from utils.services.notifications_bridge import notify_via_threadpool
 
 
-class AddShoppingListItem(Endpoint):
+class AddShoppingListItem(AsyncEndpoint):
     """Add an item to a shopping list."""
 
-    def execute(self, list_id: str, params: "AddShoppingListItem.Params"):
+    async def execute(self, list_id: str, params: "AddShoppingListItem.Params"):
         """
         Add an item to a shopping list.
 
@@ -29,8 +31,7 @@ class AddShoppingListItem(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -38,9 +39,8 @@ class AddShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member with edit permission
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         can_edit = is_owner or (
@@ -56,7 +56,6 @@ class AddShoppingListItem(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Create item with new fields
         item = ShoppingListItem(
             shopping_list_id=shopping_list.id,
             name=params.name,
@@ -65,43 +64,45 @@ class AddShoppingListItem(Endpoint):
             category=params.category,
             ingredient_id=params.ingredient_id,
             recipe_id=params.recipe_id,
-            # New deadline/collaboration fields
             due_at=params.due_at,
             meal_event_id=params.meal_event_id,
             due_reason=params.due_reason,
             priority=params.priority,
-            added_by_user_id=user.id,  # Track who added the item
+            added_by_user_id=user.id,
             notes=params.notes,
             assigned_to_user_id=params.assigned_to_user_id,
             store_section=params.store_section,
             store_order=params.store_order,
         )
-        self.database.create(item)
-        self.database.db.refresh(item)
+        await self.database.create(item)
 
-        # Send notification to members of shared list
-        notify_item_added(shopping_list, item, user, self.database)
+        # Push notification (fire-and-forget) via sync helper on threadpool.
+        await notify_via_threadpool(notify_item_added, shopping_list, item, user)
 
-        # Create activity for other list members
+        # Activity fan-out — inline on the async session (sync
+        # create_activity takes a sync Session, so we construct the row
+        # directly and flush via the async session).
         if shopping_list.is_shared:
-            members = (
-                self.db.query(ShoppingListUser)
-                .filter(
+            members_result = await self.db.execute(
+                select(ShoppingListUser).where(
                     ShoppingListUser.shopping_list_id == shopping_list.id,
                     ShoppingListUser.user_id != user.id,
                     ShoppingListUser.archived_at.is_(None),
                 )
-                .all()
             )
+            members = list(members_result.scalars().all())
             for m in members:
-                create_activity(
-                    self.db,
-                    user_id=m.user_id,
-                    activity_type="partner_action",
-                    title=f"{user.name} added an item to {shopping_list.name}",
-                    subtitle=item.name,
-                    action_url=f"/shopping-lists/{shopping_list.id}",
+                self.db.add(
+                    UserActivity(
+                        user_id=m.user_id,
+                        type="partner_action",
+                        title=f"{user.name} added an item to {shopping_list.name}",
+                        subtitle=item.name,
+                        action_url=f"/shopping-lists/{shopping_list.id}",
+                    )
                 )
+            if members:
+                await self.db.commit()
 
         return success(
             data=AddShoppingListItem.Response(
@@ -113,7 +114,6 @@ class AddShoppingListItem(Endpoint):
                 category=item.category,
                 ingredient_id=str(item.ingredient_id) if item.ingredient_id else None,
                 recipe_id=str(item.recipe_id) if item.recipe_id else None,
-                # New fields
                 due_at=item.due_at,
                 meal_event_id=str(item.meal_event_id) if item.meal_event_id else None,
                 due_reason=item.due_reason,
@@ -138,7 +138,6 @@ class AddShoppingListItem(Endpoint):
         category: str | None = None
         ingredient_id: str | None = None
         recipe_id: str | None = None
-        # New deadline/collaboration fields
         due_at: datetime | None = None
         meal_event_id: str | None = None
         due_reason: str | None = None
@@ -157,7 +156,6 @@ class AddShoppingListItem(Endpoint):
         category: str | None = None
         ingredient_id: str | None = None
         recipe_id: str | None = None
-        # New fields
         due_at: datetime | None = None
         meal_event_id: str | None = None
         due_reason: str | None = None
