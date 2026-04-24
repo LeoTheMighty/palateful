@@ -98,9 +98,9 @@ class TestUpdateItemBroadcast:
         from utils.models.shopping_list import ShoppingList, ShoppingListItem
         mock_async_db.set_find_by(ShoppingList, sl, id=list_id)
         mock_async_db.set_find_by(ShoppingListItem, item, id=item_id, shopping_list_id=list_id)
-        # Mock for unchecked_count query
-        from conftest import MockQuery
-        mock_db.db.query.return_value = MockQuery([])
+        # Mock for unchecked_count query — count select now runs via async session.
+        from conftest import MockExecuteResult
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
         with patch(
             "routers.v1.shopping_list_router.broadcast_event_to_list",
@@ -179,8 +179,11 @@ class TestListShoppingListsUpdatedAt:
             items=[],
             members=[],
         )
-        from conftest import MockQuery
-        mock_db.db.query.return_value = MockQuery([sl])
+        from conftest import MockExecuteResult
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[sl]),
+        ]
 
         response = client.get("/v1/shopping-lists")
         assert response.status_code == 200
