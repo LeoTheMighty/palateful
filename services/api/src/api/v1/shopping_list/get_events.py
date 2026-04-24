@@ -3,19 +3,20 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.shopping_list import ShoppingList
+from utils.models.shopping_list_event import ShoppingListEvent
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
-from .utils.events import ShoppingListEventService
 
-
-class GetShoppingListEvents(Endpoint):
+class GetShoppingListEvents(AsyncEndpoint):
     """Get shopping list events for sync/catch-up."""
 
-    def execute(
+    async def execute(
         self,
         list_id: str,
         since_sequence: int = 0,
@@ -39,8 +40,7 @@ class GetShoppingListEvents(Endpoint):
         """
         user: User = self.user
 
-        # Find shopping list
-        shopping_list = self.database.find_by(ShoppingList, id=list_id)
+        shopping_list = await self.database.find_by(ShoppingList, id=list_id)
         if not shopping_list:
             raise APIException(
                 status_code=404,
@@ -48,9 +48,8 @@ class GetShoppingListEvents(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_NOT_FOUND,
             )
 
-        # Check access - owner or member
         is_owner = shopping_list.owner_id == user.id
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             ShoppingListUser, shopping_list_id=list_id, user_id=user.id
         )
         if not is_owner and not membership:
@@ -60,21 +59,30 @@ class GetShoppingListEvents(Endpoint):
                 code=ErrorCode.SHOPPING_LIST_ACCESS_DENIED,
             )
 
-        # Get events
-        event_service = ShoppingListEventService(self.db)
-        events = event_service.get_events_since(
-            shopping_list_id=shopping_list.id,
-            since_sequence=since_sequence,
-            limit=min(limit, 500),  # Cap at 500
+        # Inline event replay query — ShoppingListEventService stays sync
+        # for the WebSocket handler; here we run the two reads directly on
+        # the AsyncSession to avoid building a parallel async service.
+        events_result = await self.db.execute(
+            select(ShoppingListEvent)
+            .options(selectinload(ShoppingListEvent.user))
+            .where(ShoppingListEvent.shopping_list_id == shopping_list.id)
+            .where(ShoppingListEvent.sequence > since_sequence)
+            .order_by(ShoppingListEvent.sequence)
+            .limit(min(limit, 500))
         )
-        current_sequence = event_service.get_current_sequence(shopping_list.id)
+        events = list(events_result.scalars().all())
 
-        # Update last_seen_at for the member
+        current_sequence_result = await self.db.execute(
+            select(func.max(ShoppingListEvent.sequence)).where(
+                ShoppingListEvent.shopping_list_id == shopping_list.id
+            )
+        )
+        current_sequence = current_sequence_result.scalar() or 0
+
         if membership:
             membership.last_seen_at = datetime.utcnow()
-            self.database.db.commit()
+            await self.database.db.commit()
 
-        # Build response
         event_responses = []
         for event in events:
             event_user = event.user
