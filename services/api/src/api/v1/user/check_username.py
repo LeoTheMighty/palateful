@@ -78,9 +78,10 @@ class CheckUsername(AsyncEndpoint):
             )
 
         # Check if taken
-        existing_user = (await self.db.execute(
+        result = await self.db.execute(
             select(User).where(User.username == username)
-        )).scalar_one_or_none()
+        )
+        existing_user = result.scalar_one_or_none()
 
         if existing_user:
             return success(

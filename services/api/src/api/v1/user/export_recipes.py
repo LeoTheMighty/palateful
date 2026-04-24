@@ -3,7 +3,8 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.ingredient import Ingredient
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
@@ -15,44 +16,52 @@ from utils.models.recipe_version import RecipeVersion
 from utils.models.user import User
 
 
-class ExportRecipes(Endpoint):
+class ExportRecipes(AsyncEndpoint):
     """Export user's entire recipe collection as JSON."""
 
-    def execute(self):
+    async def execute(self):
         user: User = self.user
 
         # Find all active book memberships for this user
-        memberships = self.database.where(RecipeBookUser, user_id=user.id).all()
+        memberships = await self.database.where(
+            RecipeBookUser, user_id=user.id
+        ).all()
 
         books_data = []
         total_recipe_count = 0
 
         for membership in memberships:
-            book = self.database.find_by(RecipeBook, id=membership.recipe_book_id)
+            book = await self.database.find_by(
+                RecipeBook, id=membership.recipe_book_id
+            )
             if not book:
                 continue
 
             # Get all non-archived recipes in this book
-            recipes = self.database.where(Recipe, recipe_book_id=book.id).all()
+            recipes = await self.database.where(
+                Recipe, recipe_book_id=book.id
+            ).all()
 
             recipes_data = []
             for recipe in recipes:
-                steps = self.database.where(
+                steps = await self.database.where(
                     RecipeStep, recipe_id=recipe.id, asc="step_number"
                 ).all()
 
-                ingredients = (
-                    self.db.query(RecipeIngredient, Ingredient)
+                ingredients_result = await self.db.execute(
+                    select(RecipeIngredient, Ingredient)
                     .join(Ingredient, RecipeIngredient.ingredient_id == Ingredient.id)
-                    .filter(RecipeIngredient.recipe_id == recipe.id)
-                    .filter(RecipeIngredient.archived_at.is_(None))
+                    .where(RecipeIngredient.recipe_id == recipe.id)
+                    .where(RecipeIngredient.archived_at.is_(None))
                     .order_by(RecipeIngredient.order_index)
-                    .all()
                 )
+                ingredients = ingredients_result.all()
 
-                notes = self.database.where(RecipeNote, recipe_id=recipe.id).all()
+                notes = await self.database.where(
+                    RecipeNote, recipe_id=recipe.id
+                ).all()
 
-                versions = self.database.where(
+                versions = await self.database.where(
                     RecipeVersion,
                     recipe_id=recipe.id,
                     asc="version_number",

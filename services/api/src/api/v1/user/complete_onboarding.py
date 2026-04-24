@@ -2,9 +2,9 @@
 
 import logging
 
-from api.v1.shopping_list.bootstrap import ensure_default_shopping_list
+from fastapi.concurrency import run_in_threadpool
 from schemas.user import OnboardingRequest, OnboardingResponse, RecipeBookResponse, UserResponse
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
@@ -13,10 +13,10 @@ from utils.models.user import User
 logger = logging.getLogger(__name__)
 
 
-class CompleteOnboarding(Endpoint):
+class CompleteOnboarding(AsyncEndpoint):
     """Complete user onboarding with name and start method selection."""
 
-    def execute(self, params: OnboardingRequest):
+    async def execute(self, params: OnboardingRequest):
         """
         Complete the onboarding process:
         1. Validate and update user's name
@@ -65,7 +65,7 @@ class CompleteOnboarding(Endpoint):
             is_public=False,
         )
         self.db.add(recipe_book)
-        self.db.flush()  # Get the recipe book ID
+        await self.db.flush()  # Get the recipe book ID
 
         # 3. Add user as owner of the recipe book
         membership = RecipeBookUser(
@@ -84,20 +84,24 @@ class CompleteOnboarding(Endpoint):
             user.notification_permission_status = params.notification_permission_status
 
         # Commit all changes
-        self.db.commit()
-        self.db.refresh(user)
-        self.db.refresh(recipe_book)
+        await self.db.commit()
+        await self.db.refresh(user)
+        await self.db.refresh(recipe_book)
 
         # Post-commit: idempotently ensure the user has a default shopping list.
         # Wrapped in try/except so a failure here does NOT fail onboarding —
         # the migration backfill sweep catches any users missed this way.
-        # (See services/api/src/api/v1/shopping_list/bootstrap.py)
+        # (See services/api/src/api/v1/shopping_list/bootstrap.py) Dispatched
+        # via threadpool with a fresh sync session because the bootstrap
+        # helper is sync-only (shared with the migration sweep + the still-sync
+        # `CreateShoppingList` in aam-13).
+        user_id = user.id
         try:
-            ensure_default_shopping_list(user, self.db)
+            await run_in_threadpool(_bootstrap_default_list_sync, user_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "complete_onboarding.default_list_post_commit_failed",
-                extra={"user_id": str(user.id), "error": str(exc)},
+                extra={"user_id": str(user_id), "error": str(exc)},
             )
 
         # Build response
@@ -137,3 +141,23 @@ class CompleteOnboarding(Endpoint):
     class Response(OnboardingResponse):
         """Alias for response."""
         pass
+
+
+def _bootstrap_default_list_sync(user_id) -> None:
+    """Re-fetch User on a fresh sync session and run `ensure_default_shopping_list`.
+
+    Runs on the FastAPI threadpool. The async User object cannot cross
+    thread boundaries, so we re-fetch by id on a sync `SessionLocal()`.
+    The helper is idempotent — if the migration backfill sweep already
+    bootstrapped this user, it no-ops.
+    """
+    from api.v1.shopping_list.bootstrap import ensure_default_shopping_list
+    from utils.services.database import SessionLocal
+
+    session = SessionLocal()
+    try:
+        sync_user = session.query(User).filter(User.id == user_id).first()
+        if sync_user is not None:
+            ensure_default_shopping_list(sync_user, session)
+    finally:
+        session.close()
