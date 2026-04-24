@@ -3,18 +3,18 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import Endpoint, success
+from utils.api.endpoint import AsyncEndpoint, success
 from utils.models.shopping_list import ShoppingList
 from utils.models.shopping_list_user import ShoppingListUser
 from utils.models.user import User
 
 
-class ListShoppingLists(Endpoint):
+class ListShoppingLists(AsyncEndpoint):
     """List shopping lists for the current user (owned and shared)."""
 
-    def execute(
+    async def execute(
         self,
         limit: int = 20,
         offset: int = 0,
@@ -37,61 +37,55 @@ class ListShoppingLists(Endpoint):
         """
         user: User = self.user
 
-        # Get IDs of lists where user is a member
-        member_list_ids = (
-            self.db.query(ShoppingListUser.shopping_list_id)
-            .filter(ShoppingListUser.user_id == user.id)
-            .filter(ShoppingListUser.archived_at.is_(None))
-            .subquery()
+        member_list_ids_stmt = (
+            select(ShoppingListUser.shopping_list_id)
+            .where(ShoppingListUser.user_id == user.id)
+            .where(ShoppingListUser.archived_at.is_(None))
         )
 
         # Build query: owned OR member. selectinload items + members so
         # the response loop below (`sl.items`, `sl.members`) doesn't
         # trigger 2N lazy loads — bounded to two `IN`-batched queries
         # regardless of page size.
-        query = (
-            self.db.query(ShoppingList)
+        conditions = [
+            or_(
+                ShoppingList.owner_id == user.id,
+                ShoppingList.id.in_(member_list_ids_stmt),
+            ),
+            ShoppingList.archived_at.is_(None),
+        ]
+
+        if status:
+            conditions.append(ShoppingList.status == status)
+
+        count_stmt = select(func.count()).select_from(ShoppingList).where(*conditions)
+        total_result = await self.db.execute(count_stmt)
+        total = int(total_result.scalar_one())
+
+        lists_stmt = (
+            select(ShoppingList)
             .options(
                 selectinload(ShoppingList.items),
                 selectinload(ShoppingList.members),
             )
-            .filter(
-                or_(
-                    ShoppingList.owner_id == user.id,
-                    ShoppingList.id.in_(member_list_ids),
-                )
-            )
-            .filter(ShoppingList.archived_at.is_(None))
-        )
-
-        # Apply status filter
-        if status:
-            query = query.filter(ShoppingList.status == status)
-
-        # Get total count
-        total = query.count()
-
-        # Apply ordering and pagination
-        shopping_lists = (
-            query.order_by(ShoppingList.updated_at.desc())
+            .where(*conditions)
+            .order_by(ShoppingList.updated_at.desc())
             .offset(offset)
             .limit(limit)
-            .all()
         )
+        lists_result = await self.db.execute(lists_stmt)
+        shopping_lists = list(lists_result.scalars().all())
 
         items = []
         for sl in shopping_lists:
-            # Count items and checked items
             active_items = [i for i in sl.items if i.archived_at is None]
             item_count = len(active_items)
             checked_count = sum(1 for i in active_items if i.is_checked)
 
-            # Get member count
             member_count = 0
             if sl.is_shared:
                 member_count = len([m for m in sl.members if m.archived_at is None])
 
-            # Determine user's role
             is_owner = sl.owner_id == user.id
             membership = next(
                 (m for m in sl.members if m.user_id == user.id and not m.archived_at),
