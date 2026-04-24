@@ -25,9 +25,15 @@ class TestListMealEvents:
             participants=[],
             recipe=None,
         )
-        # ListMealEvents uses db.query(MealEvent).outerjoin(...).filter(...)
-        # Returns MealEvent objects directly
-        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        # ListMealEvents issues three execute() calls in order:
+        # 1) SELECT CalendarUser.calendar_id  → scoped_calendar_ids
+        # 2) SELECT COUNT(*) FROM (stmt)      → total
+        # 3) SELECT MealEvent ... LIMIT ...   → paged items
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=["cal-1"]),
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[event]),
+        ]
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200

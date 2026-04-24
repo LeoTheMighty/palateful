@@ -213,8 +213,13 @@ class TestEdges:
             id=str(uuid.uuid4()), owner_id=mock_user.id,
             recipe=recipe, recipe_id=recipe.id,
         )
+        # Two execute() calls: SELECT MealEvent, then SELECT ShoppingList
+        # (empty → 404 path).
         mock_async_db.set_find_by(MealEvent, event, id=event.id)
-        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[]),
+        ]
         response = client.post(
             f"/v1/meal-events/{event.id}/add-to-shopping-list",
             json={"shopping_list_id": str(uuid.uuid4())},

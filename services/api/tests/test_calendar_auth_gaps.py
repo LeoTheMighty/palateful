@@ -220,12 +220,13 @@ class TestCreateRecurrenceRuleEmptyCalendarId:
 
 class TestUpdateMealEventBranches:
     def test_empty_calendar_id_returns_400(self, client, mock_async_db, mock_user):
-        from utils.models.meal_event import MealEvent as RealMealEvent
         event_id = "e0000000-0000-0000-0000-000000000099"
         event = MockMealEvent(
             id=event_id,
             owner_id=str(mock_user.id),
             calendar_id=CALENDAR_ID,
+            participants=[],
+            recipe=None,
         )
         _set_membership(
             mock_async_db,
@@ -233,21 +234,21 @@ class TestUpdateMealEventBranches:
             calendar_id=CALENDAR_ID,
             role="owner",
         )
-        mock_async_db.set_find_by(RealMealEvent, event, id=event_id)
+        # Handler does SELECT MealEvent ... with eager loads.
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.put(
             f"/v1/meal-events/{event_id}",
             json={"calendar_id": ""},
         )
-        # Covers update_meal_event.py:62 (empty calendar_id rejected).
+        # Covers update_meal_event.py empty-calendar_id branch.
         assert response.status_code == 400
 
     def test_move_to_different_calendar(self, client, mock_async_db, mock_user):
-        """PATCH meal_event.calendar_id to a new calendar — covers
-        update_meal_event.py:71-72 (require_calendar_access on destination
-        calendar, then reassign)."""
+        """PATCH meal_event.calendar_id to a new calendar — covers the
+        destination-calendar require_calendar_access check + reassignment.
+        """
         from utils.models.calendar_user import CalendarUser as RealCalendarUser
-        from utils.models.meal_event import MealEvent as RealMealEvent
 
         event_id = "e0000000-0000-0000-0000-000000000077"
         source_cal = CALENDAR_ID
@@ -256,9 +257,10 @@ class TestUpdateMealEventBranches:
             id=event_id,
             owner_id=str(mock_user.id),
             calendar_id=source_cal,
+            participants=[],
+            recipe=None,
         )
-        # Caller has membership on BOTH calendars (source via existing event,
-        # destination via the move-target check).
+        # Caller has membership on BOTH calendars.
         mock_async_db.set_find_by(
             RealCalendarUser,
             MockCalendarUser(
@@ -273,8 +275,9 @@ class TestUpdateMealEventBranches:
             ),
             user_id=str(mock_user.id), calendar_id=dest_cal,
         )
-        mock_async_db.set_find_by(RealMealEvent, event, id=event_id)
-        mock_async_db.db.execute.return_value = MockExecuteResult([])
+        # SELECT MealEvent (only one execute() hits the event in this
+        # test; the destination membership goes through find_by).
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.put(
             f"/v1/meal-events/{event_id}",

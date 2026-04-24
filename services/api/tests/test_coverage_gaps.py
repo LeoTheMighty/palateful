@@ -990,7 +990,7 @@ class TestGetMealEventExtended:
     """Cover missing branches in GetMealEvent."""
 
     def test_get_meal_event_non_calendar_member_returns_404(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-member of the event's calendar → 404 (no existence leak)."""
         event_id = "evt-noaccess"
@@ -1000,10 +1000,9 @@ class TestGetMealEventExtended:
         )
 
         from utils.models.calendar_user import CalendarUser
-        from utils.models.meal_event import MealEvent
 
-        mock_db.set_find_by(MealEvent, event, id=event_id)
-        mock_db.set_find_by(
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
+        mock_async_db.set_find_by(
             CalendarUser, None,
             user_id=mock_user.id, calendar_id=event.calendar_id,
         )
@@ -1011,8 +1010,8 @@ class TestGetMealEventExtended:
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 404
 
-    def test_get_meal_event_with_recipe(self, client, mock_db, mock_user):
-        """Event with recipe returns recipe summary (line 53)."""
+    def test_get_meal_event_with_recipe(self, client, mock_async_db, mock_user):
+        """Event with recipe returns recipe summary."""
         event_id = "evt-recipe"
         recipe = MockRecipe(
             id="r1", name="Pasta", description="Italian",
@@ -1024,17 +1023,15 @@ class TestGetMealEventExtended:
             parent_event_id=None,
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["recipe"]["name"] == "Pasta"
 
-    def test_get_meal_event_with_participants(self, client, mock_db, mock_user):
-        """Event with participants returns participant list (line 65)."""
+    def test_get_meal_event_with_participants(self, client, mock_async_db, mock_user):
+        """Event with participants returns participant list."""
         event_id = "evt-parts"
         p_user = MockUser(id="pu1", email="p@test.com", name="Participant")
         participant = MockMealEventParticipant(
@@ -1048,9 +1045,7 @@ class TestGetMealEventExtended:
             parent_event_id=None,
         )
 
-        from utils.models.meal_event import MealEvent
-
-        mock_db.set_find_by(MealEvent, event, id=event_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[event])
 
         response = client.get(f"/v1/meal-events/{event_id}")
         assert response.status_code == 200
@@ -1067,20 +1062,20 @@ class TestGetMealEventExtended:
 class TestListMealEventsExtended:
     """Cover filter branches in ListMealEvents."""
 
-    def test_list_with_meal_type_filter(self, client, mock_db, mock_user):
-        """meal_type filter (line 68)."""
-        mock_db.db.query.return_value = MockQuery([])
+    def test_list_with_meal_type_filter(self, client, mock_async_db, mock_user):
+        """meal_type filter."""
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/meal-events?meal_type=dinner")
         assert response.status_code == 200
 
-    def test_list_with_status_filter(self, client, mock_db, mock_user):
-        """status filter (line 72)."""
-        mock_db.db.query.return_value = MockQuery([])
+    def test_list_with_status_filter(self, client, mock_async_db, mock_user):
+        """status filter."""
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/meal-events?status=planned")
         assert response.status_code == 200
 
-    def test_list_with_recipe_in_event(self, client, mock_db, mock_user):
-        """Event with recipe produces recipe_summary (line 89)."""
+    def test_list_with_recipe_in_event(self, client, mock_async_db, mock_user):
+        """Event with recipe produces recipe_summary."""
         recipe = MockRecipe(
             id="r1", name="Soup", description="Warm",
             prep_time=5, cook_time=30, image_url=None,
@@ -1089,7 +1084,12 @@ class TestListMealEventsExtended:
             owner_id=str(mock_user.id), participants=[],
             recipe=recipe,
         )
-        mock_db.db.query.return_value = MockQuery([event])
+        # (1) scoped ids (2) count (3) paged
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=["cal-1"]),
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[event]),
+        ]
 
         response = client.get("/v1/meal-events")
         assert response.status_code == 200

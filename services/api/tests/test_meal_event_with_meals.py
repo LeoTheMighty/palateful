@@ -193,15 +193,13 @@ class TestCreateMealMode:
             user_id=mock_user.id
         )
 
-        # MealService first loads the Meal (`get_with_components` ->
-        # db.query(Meal)), then checks `user_has_book_read` via
-        # db.query(RecipeBookUser). Route them by argument type.
-        def _query_router(model):
-            if model is MealModel:
-                return MockExecuteResult(items=[meal])
-            return MockExecuteResult(items=[])  # RecipeBookUser → empty → 403
-
-        mock_async_db.db.execute.side_effect = _query_router
+        # require_meal_available_async runs two execute() calls:
+        # (1) SELECT Meal (with options) → returns meal
+        # (2) SELECT RecipeBookUser → empty → 403
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[]),
+        ]
 
         body = {
             "title": "Dinner",
@@ -280,20 +278,38 @@ class TestUpdateMealMode:
     def test_switch_recipe_event_to_meal_clears_recipe_id(
         self, client, mock_async_db, mock_user
     ):
+        from utils.models.meal_event import MealEvent
+
         meal, book_id, MealModel, RecipeBookUser = _make_meal_with_components(
             user_id=mock_user.id
         )
-        mock_async_db.db.execute.return_value = MockExecuteResult(items=[meal])
         mock_async_db.set_find_by(
             RecipeBookUser, MockRecipeBookUser(user_id=mock_user.id, recipe_book_id=book_id),
             user_id=mock_user.id, recipe_book_id=book_id,
         )
-        event_id, event = self._setup_event(
-            mock_async_db, mock_user, recipe_id=str(uuid.uuid4())
+
+        event_id = str(uuid.uuid4())
+        event = MockMealEvent(
+            id=event_id,
+            owner_id=mock_user.id,
+            calendar_id=str(uuid.uuid4()),
+            recipe_id=str(uuid.uuid4()),
+            meal_id=None,
         )
-        # After the patch the hydration accesses event.meal directly (lazy);
-        # fixture it so meal_summary populates without a DB roundtrip.
+        mock_async_db.set_find_by(MealEvent, event, id=event_id)
+        # Hydration accesses event.meal directly; fixture it.
         event.meal = meal
+        # Three execute() calls:
+        # (1) UpdateMealEvent eager-loads MealEvent
+        # (2) require_meal_available_async: SELECT Meal
+        # (3) require_meal_available_async: SELECT RecipeBookUser (but
+        #     RecipeBookUser goes through find_by — so in practice only
+        #     two executes happen). Use the two we know about.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[event]),
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[MockRecipeBookUser(user_id=mock_user.id, recipe_book_id=book_id)]),
+        ]
 
         response = client.put(
             f"/v1/meal-events/{event_id}", json={"meal_id": str(meal.id)}
