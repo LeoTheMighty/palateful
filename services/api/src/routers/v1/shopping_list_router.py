@@ -28,9 +28,14 @@ from api.v1.shopping_list import (
     broadcast_event_to_list,
     shopping_list_websocket_handler,
 )
-from dependencies import get_current_user, get_database
+from dependencies import (
+    get_async_database,
+    get_current_user_async,
+    get_database,
+)
 from fastapi import APIRouter, Depends, WebSocket
 from utils.models.user import User
+from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 
 shopping_list_router = APIRouter(tags=["shopping-lists"])
@@ -42,15 +47,15 @@ shopping_list_router = APIRouter(tags=["shopping-lists"])
 
 
 @shopping_list_router.get("/shopping-lists")
-def list_shopping_lists(
+async def list_shopping_lists(
     limit: int = 20,
     offset: int = 0,
     status: str | None = None,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List shopping lists for the current user (owned and shared)."""
-    return ListShoppingLists.call(
+    return await ListShoppingLists.call(
         limit=limit,
         offset=offset,
         status=status,
@@ -60,13 +65,13 @@ def list_shopping_lists(
 
 
 @shopping_list_router.post("/shopping-lists")
-def create_shopping_list(
+async def create_shopping_list(
     params: CreateShoppingList.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Create a new shopping list."""
-    return CreateShoppingList.call(
+    return await CreateShoppingList.call(
         params=params,
         user=user,
         database=database,
@@ -74,13 +79,13 @@ def create_shopping_list(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}")
-def get_shopping_list(
+async def get_shopping_list(
     list_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get shopping list details."""
-    return GetShoppingList.call(
+    return await GetShoppingList.call(
         list_id=list_id,
         user=user,
         database=database,
@@ -88,14 +93,14 @@ def get_shopping_list(
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}")
-def update_shopping_list(
+async def update_shopping_list(
     list_id: str,
     params: UpdateShoppingList.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update a shopping list."""
-    return UpdateShoppingList.call(
+    return await UpdateShoppingList.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -104,13 +109,13 @@ def update_shopping_list(
 
 
 @shopping_list_router.delete("/shopping-lists/{list_id}")
-def delete_shopping_list(
+async def delete_shopping_list(
     list_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Delete a shopping list (owner only)."""
-    return DeleteShoppingList.call(
+    return await DeleteShoppingList.call(
         list_id=list_id,
         user=user,
         database=database,
@@ -126,11 +131,11 @@ def delete_shopping_list(
 async def add_shopping_list_item(
     list_id: str,
     params: AddShoppingListItem.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Add an item to a shopping list."""
-    result = AddShoppingListItem.call(
+    result = await AddShoppingListItem.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -146,11 +151,11 @@ async def update_shopping_list_item(
     list_id: str,
     item_id: str,
     params: UpdateShoppingListItem.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update a shopping list item."""
-    result = UpdateShoppingListItem.call(
+    result = await UpdateShoppingListItem.call(
         list_id=list_id,
         item_id=item_id,
         params=params,
@@ -167,11 +172,11 @@ async def update_shopping_list_item(
 async def delete_shopping_list_item(
     list_id: str,
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Delete a shopping list item."""
-    result = DeleteShoppingListItem.call(
+    result = await DeleteShoppingListItem.call(
         list_id=list_id,
         item_id=item_id,
         user=user,
@@ -189,26 +194,26 @@ async def delete_shopping_list_item(
 
 
 @shopping_list_router.get("/shopping-lists/store-sections")
-def get_store_sections(  # pragma: no cover — route shadowed by /{list_id}
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def get_store_sections(  # pragma: no cover — route shadowed by /{list_id}
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get available store sections for organizing shopping lists."""
-    return GetStoreSections.call(
+    return await GetStoreSections.call(
         user=user,
         database=database,
     )
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/organize-by-store")
-def organize_by_store(
+async def organize_by_store(
     list_id: str,
     params: OrganizeByStore.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Organize shopping list items by store section."""
-    return OrganizeByStore.call(
+    return await OrganizeByStore.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -222,15 +227,15 @@ def organize_by_store(
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}/items/{item_id}/assign")
-def assign_item(
+async def assign_item(
     list_id: str,
     item_id: str,
     params: AssignItem.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Assign a shopping list item to a specific user."""
-    return AssignItem.call(
+    return await AssignItem.call(
         list_id=list_id,
         item_id=item_id,
         params=params,
@@ -240,14 +245,14 @@ def assign_item(
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/items/bulk-assign")
-def bulk_assign_items(
+async def bulk_assign_items(
     list_id: str,
     params: BulkAssignItems.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Bulk assign shopping list items to users."""
-    return BulkAssignItems.call(
+    return await BulkAssignItems.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -261,14 +266,14 @@ def bulk_assign_items(
 
 
 @shopping_list_router.post("/meal-events/{event_id}/shopping-list/generate")
-def generate_shopping_list(
+async def generate_shopping_list(
     event_id: str,
     params: GenerateFromMealEvent.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Generate a shopping list from a meal event's recipe."""
-    return GenerateFromMealEvent.call(
+    return await GenerateFromMealEvent.call(
         event_id=event_id,
         params=params,
         user=user,
@@ -280,11 +285,11 @@ def generate_shopping_list(
 async def populate_shopping_list_from_recipe(
     list_id: str,
     params: PopulateFromRecipe.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Add all ingredients from a recipe to an existing shopping list."""
-    result = PopulateFromRecipe.call(
+    result = await PopulateFromRecipe.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -302,13 +307,13 @@ async def populate_shopping_list_from_recipe(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}/deadlines")
-def get_shopping_list_deadlines(
+async def get_shopping_list_deadlines(
     list_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get shopping list items grouped by deadline urgency."""
-    return GetShoppingListDeadlines.call(
+    return await GetShoppingListDeadlines.call(
         list_id=list_id,
         user=user,
         database=database,
@@ -321,14 +326,14 @@ def get_shopping_list_deadlines(
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/share")
-def share_shopping_list(
+async def share_shopping_list(
     list_id: str,
     params: ShareShoppingList.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Generate a share code for a shopping list."""
-    return ShareShoppingList.call(
+    return await ShareShoppingList.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -337,13 +342,13 @@ def share_shopping_list(
 
 
 @shopping_list_router.post("/shopping-lists/join/{share_code}")
-def join_shopping_list(
+async def join_shopping_list(
     share_code: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Join a shopping list using a share code."""
-    return JoinShoppingList.call(
+    return await JoinShoppingList.call(
         share_code=share_code,
         user=user,
         database=database,
@@ -351,14 +356,14 @@ def join_shopping_list(
 
 
 @shopping_list_router.post("/shopping-lists/{list_id}/members")
-def invite_shopping_list_member(
+async def invite_shopping_list_member(
     list_id: str,
     params: InviteShoppingListMember.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Invite a member to a shopping list by email or user ID."""
-    return InviteShoppingListMember.call(
+    return await InviteShoppingListMember.call(
         list_id=list_id,
         params=params,
         user=user,
@@ -367,13 +372,13 @@ def invite_shopping_list_member(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}/members")
-def list_shopping_list_members(
+async def list_shopping_list_members(
     list_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get all members of a shopping list."""
-    return ListShoppingListMembers.call(
+    return await ListShoppingListMembers.call(
         list_id=list_id,
         user=user,
         database=database,
@@ -381,15 +386,15 @@ def list_shopping_list_members(
 
 
 @shopping_list_router.put("/shopping-lists/{list_id}/members/{member_user_id}")
-def update_shopping_list_member(
+async def update_shopping_list_member(
     list_id: str,
     member_user_id: str,
     params: UpdateShoppingListMember.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update a member's role or notification settings."""
-    return UpdateShoppingListMember.call(
+    return await UpdateShoppingListMember.call(
         list_id=list_id,
         member_user_id=member_user_id,
         params=params,
@@ -399,14 +404,14 @@ def update_shopping_list_member(
 
 
 @shopping_list_router.delete("/shopping-lists/{list_id}/members/{member_user_id}")
-def remove_shopping_list_member(
+async def remove_shopping_list_member(
     list_id: str,
     member_user_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Remove a member from a shopping list (or leave)."""
-    return RemoveShoppingListMember.call(
+    return await RemoveShoppingListMember.call(
         list_id=list_id,
         member_user_id=member_user_id,
         user=user,
@@ -420,15 +425,15 @@ def remove_shopping_list_member(
 
 
 @shopping_list_router.get("/shopping-lists/{list_id}/events")
-def get_shopping_list_events(
+async def get_shopping_list_events(
     list_id: str,
     since_sequence: int = 0,
     limit: int = 100,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get shopping list events for sync/catch-up."""
-    return GetShoppingListEvents.call(
+    return await GetShoppingListEvents.call(
         list_id=list_id,
         since_sequence=since_sequence,
         limit=limit,
