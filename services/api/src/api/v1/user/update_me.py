@@ -1,15 +1,15 @@
 """Update current user profile endpoint."""
 
 from pydantic import BaseModel, field_validator
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.user import User
 
 
-class UpdateMe(Endpoint):
+class UpdateMe(AsyncEndpoint):
     """Update the current user's profile."""
 
-    def execute(self, params: "UpdateMe.Params"):
+    async def execute(self, params: "UpdateMe.Params"):
         """Update allowed profile fields (name only)."""
         user: User = self.user
 
@@ -23,8 +23,8 @@ class UpdateMe(Endpoint):
                 )
             user.name = name
 
-        self.db.commit()
-        self.db.refresh(user)
+        await self.db.commit()
+        await self.db.refresh(user)
 
         return success(
             data=UpdateMe.Response(
