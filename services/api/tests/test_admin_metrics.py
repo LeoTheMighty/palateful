@@ -1,7 +1,7 @@
 """Tests for GetEndpointMetrics, GetTaskMetrics, and the
 GetStats latency extension (obs-latency-2).
 
-Uses the standard `mock_db` fixture — we don't spin up real Postgres
+Uses the standard `mock_async_db` fixture — we don't spin up real Postgres
 here; we assert on the shape of the query results and the endpoint's
 merging logic.
 """
@@ -70,9 +70,9 @@ def _task_sparkline_row(**kwargs):
 
 
 class TestGetEndpointMetrics:
-    def test_returns_rows_with_sparklines(self, client, mock_user, mock_db):
+    def test_returns_rows_with_sparklines(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult(
                 [
                     _percentile_row(
@@ -121,9 +121,9 @@ class TestGetEndpointMetrics:
         # Empty buckets default to 0.0
         assert row["sparkline"][0] == 0.0
 
-    def test_empty_dataset_returns_empty_rows(self, client, mock_user, mock_db):
+    def test_empty_dataset_returns_empty_rows(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),
             MockExecuteResult([]),
         ]
@@ -132,14 +132,14 @@ class TestGetEndpointMetrics:
         data = response.json()
         assert data["rows"] == []
 
-    def test_invalid_window_rejected(self, client, mock_user, mock_db):
+    def test_invalid_window_rejected(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         response = client.get("/v1/admin/metrics/endpoints?window=30d")
         assert response.status_code == 400
 
-    def test_default_window_is_24h(self, client, mock_user, mock_db):
+    def test_default_window_is_24h(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),
             MockExecuteResult([]),
         ]
@@ -147,10 +147,10 @@ class TestGetEndpointMetrics:
         assert response.status_code == 200
         assert response.json()["window"] == "24h"
 
-    def test_accepts_all_three_windows(self, client, mock_user, mock_db):
+    def test_accepts_all_three_windows(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         for window in ("1h", "24h", "7d"):
-            mock_db.db.execute.side_effect = [
+            mock_async_db.db.execute.side_effect = [
                 MockExecuteResult([]),
                 MockExecuteResult([]),
             ]
@@ -165,9 +165,9 @@ class TestGetEndpointMetrics:
 
 
 class TestGetTaskMetrics:
-    def test_returns_rows_with_failure_rate(self, client, mock_user, mock_db):
+    def test_returns_rows_with_failure_rate(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult(
                 [
                     _task_percentile_row(
@@ -201,11 +201,11 @@ class TestGetTaskMetrics:
         assert rows[0]["sparkline"][5] == 55000.0
 
     def test_multiple_sparkline_rows_per_task_merge(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         """Two buckets for the same task populate distinct indices on one sparkline."""
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult(
                 [_task_percentile_row(task_name="t.one", total=4, failures=0)]
             ),
@@ -222,9 +222,9 @@ class TestGetTaskMetrics:
         assert sparkline[2] == 10.0
         assert sparkline[5] == 25.0
 
-    def test_empty_tasks_returns_empty(self, client, mock_user, mock_db):
+    def test_empty_tasks_returns_empty(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),
             MockExecuteResult([]),
         ]
@@ -232,7 +232,7 @@ class TestGetTaskMetrics:
         assert response.status_code == 200
         assert response.json() == {"window": "1h", "rows": []}
 
-    def test_invalid_window_rejected(self, client, mock_user, mock_db):
+    def test_invalid_window_rejected(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         response = client.get("/v1/admin/metrics/tasks?window=forever")
         assert response.status_code == 400
@@ -245,14 +245,14 @@ class TestGetTaskMetrics:
 
 class TestGetStatsLatencyExtension:
     def test_overall_p95_and_slowest_endpoint_returned(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         mock_user.is_admin = True
         # Mirrors the query order in get_stats.py:
         # 1) total_users, 2) total_recipes, 3) total_recipe_books,
         # 4) errors_24h, 5) active_users_7d, 6) unread_feedback,
         # 7) overall_p95_ms, 8) slowest_endpoint
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([5]),  # total_users
             MockExecuteResult([12]),  # total_recipes
             MockExecuteResult([3]),  # total_recipe_books
@@ -279,9 +279,9 @@ class TestGetStatsLatencyExtension:
         assert data["slowest_endpoint"]["normalized_path"] == "/v1/recipes"
         assert data["slowest_endpoint"]["p95_ms"] == 2100
 
-    def test_cold_start_returns_nulls(self, client, mock_user, mock_db):
+    def test_cold_start_returns_nulls(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([0]),  # total_users
             MockExecuteResult([0]),  # total_recipes
             MockExecuteResult([0]),  # total_recipe_books

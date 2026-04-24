@@ -32,11 +32,11 @@ class MockUserFeedback(MockModel):
 
 
 class TestListFeedback:
-    def test_defaults_to_unread_filter(self, client, mock_user, mock_db):
+    def test_defaults_to_unread_filter(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         author = MockUser(email="author@example.com", name="Jane Doe")
         fb = MockUserFeedback(user_id=author.id)
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([1]),            # count
             MockExecuteResult([(fb, author)]), # listing — iterable of (UserFeedback, User) tuples
         ]
@@ -52,9 +52,9 @@ class TestListFeedback:
         assert data["items"][0]["user_display_name"] == "Jane Doe"
         assert data["items"][0]["user_email"] == "author@example.com"
 
-    def test_explicit_status_filter(self, client, mock_user, mock_db):
+    def test_explicit_status_filter(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([0]),
             MockExecuteResult([]),
         ]
@@ -62,11 +62,11 @@ class TestListFeedback:
         assert response.status_code == 200
         assert response.json()["status"] == "archived"
 
-    def test_status_all_returns_all(self, client, mock_user, mock_db):
+    def test_status_all_returns_all(self, client, mock_user, mock_async_db):
         """`status=all` drops the status filter on both count and listing."""
         mock_user.is_admin = True
         author = MockUser()
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([3]),
             MockExecuteResult([
                 (MockUserFeedback(status="unread"), author),
@@ -78,12 +78,12 @@ class TestListFeedback:
         assert response.status_code == 200
         assert response.json()["total"] == 3
 
-    def test_invalid_status_returns_400(self, client, mock_user, mock_db):
+    def test_invalid_status_returns_400(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         response = client.get("/v1/admin/feedback?status=spam")
         assert response.status_code == 400
 
-    def test_pagination_bounds(self, client, mock_user, mock_db):
+    def test_pagination_bounds(self, client, mock_user, mock_async_db):
         """limit clamped to MAX_LIMIT=100 by the FastAPI Query validator (le=100)."""
         mock_user.is_admin = True
         response = client.get("/v1/admin/feedback?limit=500")
@@ -91,12 +91,12 @@ class TestListFeedback:
         assert response.status_code == 422
 
     def test_display_name_falls_back_to_username_then_email(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
         mock_user.is_admin = True
         no_name = MockUser(name=None, username="janedoe", email="j@example.com")
         fb = MockUserFeedback(user_id=no_name.id)
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([1]),
             MockExecuteResult([(fb, no_name)]),
         ]
@@ -111,11 +111,11 @@ class TestListFeedback:
 
 class TestUpdateFeedbackStatus:
     def test_unread_to_read_writes_audit_row(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
         mock_user.is_admin = True
         fb = MockUserFeedback(status="unread")
-        mock_db.db.execute.return_value = MockExecuteResult([fb])
+        mock_async_db.db.execute.return_value = MockExecuteResult([fb])
 
         response = client.put(
             f"/v1/admin/feedback/{fb.id}/status",
@@ -129,7 +129,7 @@ class TestUpdateFeedbackStatus:
         assert body["updated_at"] is not None
 
         # Audit row written
-        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        added = [c.args[0] for c in mock_async_db.db.add.call_args_list]
         audit_rows = [
             r for r in added if getattr(r, "service", None) == "audit"
         ]
@@ -141,29 +141,29 @@ class TestUpdateFeedbackStatus:
         assert "to=read" in row.error_message
         assert f"by_admin={mock_user.id}" in row.error_message
 
-    def test_read_to_archived_allowed(self, client, mock_user, mock_db):
+    def test_read_to_archived_allowed(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         fb = MockUserFeedback(status="read")
-        mock_db.db.execute.return_value = MockExecuteResult([fb])
+        mock_async_db.db.execute.return_value = MockExecuteResult([fb])
         response = client.put(
             f"/v1/admin/feedback/{fb.id}/status",
             json={"status": "archived"},
         )
         assert response.status_code == 200
 
-    def test_invalid_status_rejected(self, client, mock_user, mock_db):
+    def test_invalid_status_rejected(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         fb = MockUserFeedback()
-        mock_db.db.execute.return_value = MockExecuteResult([fb])
+        mock_async_db.db.execute.return_value = MockExecuteResult([fb])
         response = client.put(
             f"/v1/admin/feedback/{fb.id}/status",
             json={"status": "closed"},
         )
         assert response.status_code == 422
 
-    def test_not_found_returns_404(self, client, mock_user, mock_db):
+    def test_not_found_returns_404(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.put(
             f"/v1/admin/feedback/{uuid.uuid4()}/status",
             json={"status": "read"},
@@ -171,19 +171,19 @@ class TestUpdateFeedbackStatus:
         assert response.status_code == 404
 
     def test_same_status_no_op_still_writes_audit(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
         """unread → unread still writes an audit row so the action appears
         in the history, even though nothing really changed."""
         mock_user.is_admin = True
         fb = MockUserFeedback(status="unread")
-        mock_db.db.execute.return_value = MockExecuteResult([fb])
+        mock_async_db.db.execute.return_value = MockExecuteResult([fb])
         response = client.put(
             f"/v1/admin/feedback/{fb.id}/status",
             json={"status": "unread"},
         )
         assert response.status_code == 200
-        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        added = [c.args[0] for c in mock_async_db.db.add.call_args_list]
         audit_rows = [
             r for r in added if getattr(r, "service", None) == "audit"
         ]
@@ -197,13 +197,13 @@ class TestUpdateFeedbackStatus:
 
 class TestGetStatsUnreadFeedback:
     def test_stats_includes_unread_feedback_count(
-        self, client, mock_user, mock_db,
+        self, client, mock_user, mock_async_db,
     ):
         mock_user.is_admin = True
         # Queries: total_users, total_recipes, total_recipe_books,
         # errors_24h, active_users_7d, unread_feedback,
         # overall_p95_ms, slowest_endpoint.
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([100]),
             MockExecuteResult([500]),
             MockExecuteResult([50]),
@@ -231,12 +231,10 @@ class TestGetStatsUnreadFeedback:
 
 
 class TestUpdateFeedbackStatusParams:
-    def test_missing_status_field_returns_422(self, client, mock_user, mock_db):
+    def test_missing_status_field_returns_422(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         response = client.put(
             f"/v1/admin/feedback/{uuid.uuid4()}/status",
             json={},
         )
         assert response.status_code == 422
-
-

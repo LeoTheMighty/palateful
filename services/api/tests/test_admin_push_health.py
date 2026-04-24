@@ -29,7 +29,7 @@ def _mock_error_log(
 
 
 class TestAdminPushHealthByUuid:
-    def test_uuid_lookup_returns_health_blob(self, client, mock_user, mock_db):
+    def test_uuid_lookup_returns_health_blob(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         target = MockUser(
             email="target@example.com",
@@ -39,7 +39,7 @@ class TestAdminPushHealthByUuid:
         )
         error_row = _mock_error_log(user_id=target.id)
 
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([target]),       # uuid lookup hits
             MockExecuteResult([error_row]),    # recent errors
         ]
@@ -64,7 +64,7 @@ class TestAdminPushHealthByUuid:
 
 
 class TestAdminPushHealthByEmail:
-    def test_email_lookup_resolves_same_user(self, client, mock_user, mock_db):
+    def test_email_lookup_resolves_same_user(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         target = MockUser(
             email="target@example.com",
@@ -78,7 +78,7 @@ class TestAdminPushHealthByEmail:
         # Implementation does try/except on uuid.UUID(raw) — if raw is not
         # a UUID it proceeds directly to email lookup, so only one
         # execute for user resolution, then one for error rows.
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([target]),  # email lookup
             MockExecuteResult([]),        # no recent errors
         ]
@@ -96,11 +96,11 @@ class TestAdminPushHealthByEmail:
 
 
 class TestAdminPushHealth404:
-    def test_nonexistent_uuid_returns_404(self, client, mock_user, mock_db):
+    def test_nonexistent_uuid_returns_404(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         missing = uuid.uuid4()
         # Both UUID and email lookups come back empty.
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),
             MockExecuteResult([]),
         ]
@@ -111,10 +111,10 @@ class TestAdminPushHealth404:
 
         assert response.status_code == 404
 
-    def test_nonexistent_email_returns_404(self, client, mock_user, mock_db):
+    def test_nonexistent_email_returns_404(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         # Non-UUID input → endpoint goes straight to email lookup.
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([]),
         ]
 
@@ -126,7 +126,7 @@ class TestAdminPushHealth404:
 
 
 class TestAdminPushHealthAuthz:
-    def test_non_admin_raises_403(self, client, mock_user, mock_db):
+    def test_non_admin_raises_403(self, client, mock_user, mock_async_db):
         from utils.classes.error_code import ErrorCode
         mock_user.is_admin = False
         response = client.get(
@@ -137,7 +137,7 @@ class TestAdminPushHealthAuthz:
 
 
 class TestAdminPushHealthAudit:
-    def test_one_audit_row_per_call(self, client, mock_user, mock_db):
+    def test_one_audit_row_per_call(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         target = MockUser(
             email="audit@example.com",
@@ -145,7 +145,7 @@ class TestAdminPushHealthAudit:
             push_tokens=[],
             notification_permission_status="granted",
         )
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([target]),
             MockExecuteResult([]),
         ]
@@ -155,7 +155,7 @@ class TestAdminPushHealthAudit:
         )
 
         assert response.status_code == 200
-        added = [c.args[0] for c in mock_db.db.add.call_args_list]
+        added = [c.args[0] for c in mock_async_db.db.add.call_args_list]
         audit_rows = [r for r in added if getattr(r, "service", None) == "audit"]
         assert len(audit_rows) == 1
         audit = audit_rows[0]
@@ -167,7 +167,7 @@ class TestAdminPushHealthAudit:
 
 class TestAdminPushHealthErrorLimit:
     def test_error_limit_out_of_range_returns_400(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         mock_user.is_admin = True
         response = client.get(

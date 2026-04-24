@@ -52,18 +52,38 @@ class TestRequireAdmin:
         assert exc_info.value.status_code == 403
 
 
+class TestRequireAdminAsync:
+    """Async sibling of `require_admin` (aam-20). Same 403 semantics."""
+
+    async def test_admin_user_allowed(self, mock_user):
+        from dependencies import require_admin_async
+
+        mock_user.is_admin = True
+        result = await require_admin_async(user=mock_user)
+        assert result is mock_user
+
+    async def test_non_admin_forbidden(self, mock_user):
+        from dependencies import require_admin_async
+        from utils.api.endpoint import APIException
+
+        mock_user.is_admin = False
+        with pytest.raises(APIException) as exc_info:
+            await require_admin_async(user=mock_user)
+        assert exc_info.value.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # GET /v1/admin/stats
 # ---------------------------------------------------------------------------
 
 
 class TestGetStats:
-    def test_returns_aggregate_counts(self, client, mock_user, mock_db):
+    def test_returns_aggregate_counts(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         # Queries in order: total_users, total_recipes, total_recipe_books,
         # errors_24h, active_users_7d, unread_feedback, overall_p95_ms,
         # slowest_endpoint.
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([7]),
             MockExecuteResult([7]),
             MockExecuteResult([7]),
@@ -90,12 +110,12 @@ class TestGetStats:
 
 class TestGetErrors:
     def test_list_errors_with_service_filter(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         mock_user.is_admin = True
         err = MockErrorLog(service="api")
         # First call = count, second = paginated list
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([3]),
             MockExecuteResult([err]),
         ]
@@ -106,9 +126,9 @@ class TestGetErrors:
         assert len(data["errors"]) == 1
         assert data["errors"][0]["service"] == "api"
 
-    def test_list_errors_no_filter(self, client, mock_user, mock_db):
+    def test_list_errors_no_filter(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([0]),
             MockExecuteResult([]),
         ]
@@ -118,19 +138,19 @@ class TestGetErrors:
 
 
 class TestGetErrorDetail:
-    def test_returns_full_error(self, client, mock_user, mock_db):
+    def test_returns_full_error(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         err = MockErrorLog(user_id=str(uuid.uuid4()))
-        mock_db.db.execute.return_value = MockExecuteResult([err])
+        mock_async_db.db.execute.return_value = MockExecuteResult([err])
         response = client.get(f"/v1/admin/errors/{err.id}")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == err.id
         assert data["stack_trace"] == "Traceback..."
 
-    def test_returns_404_when_missing(self, client, mock_user, mock_db):
+    def test_returns_404_when_missing(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.get(f"/v1/admin/errors/{uuid.uuid4()}")
         assert response.status_code == 404
 
@@ -141,10 +161,10 @@ class TestGetErrorDetail:
 
 
 class TestListUsers:
-    def test_returns_users_with_total(self, client, mock_user, mock_db):
+    def test_returns_users_with_total(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         other = MockUser(email="a@b.com", username="alice")
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([2]),
             MockExecuteResult([mock_user, other]),
         ]
@@ -156,10 +176,10 @@ class TestListUsers:
 
 
 class TestUpdateUserAdmin:
-    def test_grants_admin_to_other_user(self, client, mock_user, mock_db):
+    def test_grants_admin_to_other_user(self, client, mock_user, mock_async_db):
         mock_user.is_admin = True
         target = MockUser(is_admin=False, email="t@b.com")
-        mock_db.db.execute.return_value = MockExecuteResult([target])
+        mock_async_db.db.execute.return_value = MockExecuteResult([target])
         response = client.put(
             f"/v1/admin/users/{target.id}/admin",
             json={"is_admin": True},
@@ -168,10 +188,10 @@ class TestUpdateUserAdmin:
         assert response.json()["is_admin"] is True
 
     def test_user_not_found_returns_404(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         mock_user.is_admin = True
-        mock_db.db.execute.return_value = MockExecuteResult([])
+        mock_async_db.db.execute.return_value = MockExecuteResult([])
         response = client.put(
             f"/v1/admin/users/{uuid.uuid4()}/admin",
             json={"is_admin": True},
@@ -179,12 +199,12 @@ class TestUpdateUserAdmin:
         assert response.status_code == 404
 
     def test_cannot_remove_admin_from_last_admin(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         """Self-demote blocked when admin_count <= 1."""
         mock_user.is_admin = True
         # target = self, admin_count query returns 1
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([mock_user]),  # target lookup
             MockExecuteResult([1]),  # admin count
         ]
@@ -195,11 +215,11 @@ class TestUpdateUserAdmin:
         assert response.status_code == 400
 
     def test_self_demote_succeeds_when_other_admins_exist(
-        self, client, mock_user, mock_db
+        self, client, mock_user, mock_async_db
     ):
         """Self-demote allowed when admin_count > 1 — covers branch 40->47."""
         mock_user.is_admin = True
-        mock_db.db.execute.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             MockExecuteResult([mock_user]),  # target lookup
             MockExecuteResult([5]),  # admin count > 1
         ]
