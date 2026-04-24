@@ -275,12 +275,25 @@ ACs:
 - `recipe_book/websocket.py` handler accepts `AsyncSession`; query loop uses `await`; no sync-in-async during `websocket.send_text(...)` yields.
 - **WS regression probe**: QA walkthrough exercises connect → subscribe → receive → disconnect → reconnect burst (10 connects in 2s) with `get_current_user_async` in the upgrade dep chain.
 
-**`aam-12-recipe-domain-async`** — recipe router + api + MCP recipes tools.
+**`aam-12a-recipe-reads-async`** (split from aam-12) — read + read-adjacent recipe endpoints, router handlers, MCP read tools, and the shared `_response.py::build_recipe_response` helper converted to async. Write endpoints (create/update/delete/fork/copy/move/bulk/notes/restore_version) remain sync — see aam-12b.
 
 ACs:
-- All recipe endpoints async; recipe forking / versioning paths verified for lazy-load traps (version history has deep relationship chains — explicit audit).
-- `pbq-3` fast-path (bulk favorite join from `list_recipes.py:82–94`) preserved.
-- QA walkthrough: `GET /v1/recipes`, `GET /v1/recipes/{id}`, fork, version-history, restore.
+- `_response.py::build_recipe_response` is `async def`; the raw ingredient-join uses `await db.execute(select(...))`.
+- 13 read/read-adjacent endpoints inherit `AsyncEndpoint`: `GetRecipe`, `ListRecipes`, `ListArchivedRecipes`, `GetVibeOptions`, `GetPublicRecipe`, `GetPublicRecipeByToken`, `GetRecipeVersion`, `GetRecipeVersions`, `GetRecipePhotoUploadUrl` (uses `generate_presigned_upload_url_async`), `ToggleFavorite`, `ShareRecipe`, `RevokeRecipeShare`. `ListMealsUsingRecipe` + `ListFavorites` already async from aam-10.
+- `pbq-3` fast-path (bulk favorite join on `list_recipes.py`) preserved via `await db.execute(select(UserFavorite.recipe_id).where(...))`.
+- `services/api/src/routers/v1/recipe_router.py` read handlers flip to `get_async_database` + `get_current_user_async` + `await Foo.call(...)`. Write handlers stay sync.
+- `services/api/src/mcp_server/tools/recipes.py` `get_recipe`, `list_recipes`, `toggle_favorite` dispatch via `await call_endpoint_async(...)`.
+- Read-side test classes in `test_recipe.py` + all of `test_share_recipe.py` convert from `mock_db`/`MockQuery` to `mock_async_db`/`MockExecuteResult`.
+
+**`aam-12b-recipe-writes-async`** — write endpoints + router handlers for recipes. Consumes 12a's async `build_recipe_response`.
+
+ACs:
+- `CreateRecipe`, `UpdateRecipe`, `DeleteRecipe`, `RestoreRecipe`, `ForkRecipe`, `CopyRecipe`, `MoveRecipe`, `BulkMoveRecipes`, `BulkArchiveRecipes`, `BulkUpdateTags`, `AddRecipeNote`, `DeleteRecipeNote`, `RestoreRecipeVersion` all inherit `AsyncEndpoint`.
+- `UpdateRecipe` switches from its own Response shape to `await build_recipe_response(...)` (12a's async version).
+- Write-side router handlers flip to async deps + `await Foo.call(...)`.
+- `CreateRecipe` + `UpdateRecipe` MCP tools dispatch via `await call_endpoint_async(...)`.
+- Write-side test classes in `test_recipe.py` convert to `mock_async_db`.
+- QA walkthrough: fork, version-history + restore, bulk ops.
 
 **`aam-13-shopping-list-domain-async`** — shopping_list router + api + WebSocket + subscriber + MCP shopping tools.
 
