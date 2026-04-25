@@ -1442,7 +1442,7 @@ development_status:
   epic-import-duplicate-detection: in-progress
   import-dup-1-backend-duplicate-match-query-and-response-extension: done
   import-dup-2-backend-skip-endpoint-and-skipped-status: done
-  import-dup-3-frontend-duplicate-banner-and-approve-import-wiring: backlog
+  import-dup-3-frontend-duplicate-banner-and-approve-import-wiring: done
   import-dup-4-regression-sweep-and-e2e: backlog
   epic-import-duplicate-detection-retrospective: optional
 

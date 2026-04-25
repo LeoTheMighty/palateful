@@ -13,6 +13,7 @@ import '../../../shared/widgets/error_banner.dart';
 import '../../activity/widgets/import_activity_detail.dart';
 import '../widgets/structured_ingredient_row.dart';
 import 'ingredient_edits_mapping.dart';
+import 'widgets/duplicate_banner.dart';
 import 'widgets/inferred_field_badge.dart';
 
 class ImportItemReviewScreen extends StatefulWidget {
@@ -51,6 +52,25 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
   bool _isSaving = false;
   bool _hasEdits = false;
   Timer? _saveTimer;
+
+  // import-dup-3 — duplicate-detection state.
+  //
+  // `_duplicateMatches` is the raw list from the API response. Empty
+  // (or absent in the response) → no banner. Non-empty → render
+  // `DuplicateBanner` above the form.
+  //
+  // `_duplicateDismissed` tracks the user's "Add anyway" choice for
+  // this screen instance. Tapping it hides the banner so the user
+  // can edit + approve normally without the banner re-rendering on
+  // every setState. The choice does not persist across screen
+  // re-opens — that's intentional: if they navigate away and back,
+  // we re-show the duplicate hint.
+  //
+  // `_isProcessingDuplicateAction` blocks all banner buttons while a
+  // skip / restore call is in flight, preventing double-fire.
+  List<dynamic> _duplicateMatches = const [];
+  bool _duplicateDismissed = false;
+  bool _isProcessingDuplicateAction = false;
 
   // efi-6 — local mutable set of field names the extractor best-guessed.
   // Rendered sparkles next to the 4 inferable field labels Review Import
@@ -111,6 +131,14 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
       if (edits != null) recipe.addAll(edits);
 
       _populateControllers(recipe);
+
+      // import-dup-3 — pull the duplicate-match block (empty list when
+      // the server returned no matches). Backend always emits the
+      // `duplicate.matches` shape for non-failed items; we defensively
+      // accept missing / null too (older servers, error fallbacks).
+      final duplicate = item['duplicate'] as Map<String, dynamic>?;
+      _duplicateMatches =
+          (duplicate?['matches'] as List?) ?? const <dynamic>[];
 
       // efi-6 — decode extractor-flagged inferred fields. The set is
       // mutable so edits can shrink it. The original values map lets
@@ -355,6 +383,157 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // import-dup-3 — banner action handlers.
+  //
+  // All three actions go through the parent (vs. delegating into the banner)
+  // so we can guard with `_isProcessingDuplicateAction`, surface SnackBar
+  // errors uniformly, and route post-action navigation. The banner stays
+  // presentational — it just fires the callbacks.
+  // ---------------------------------------------------------------------------
+
+  /// Skip the import item (banner Skip button). Same wire path as `_dismiss`
+  /// — explicit naming here so the call site reads clearly. The button is
+  /// disabled during the call to prevent double-fire on a slow network.
+  Future<void> _onBannerSkip() async {
+    if (_isProcessingDuplicateAction) return;
+    setState(() => _isProcessingDuplicateAction = true);
+    try {
+      await _apiClient.skipImportItem(widget.itemId);
+      emitMutation(ImportItemDismissed(
+        itemId: widget.itemId,
+        item: null,
+        jobDismissed: false,
+      ));
+      if (mounted) context.pop(false);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isProcessingDuplicateAction = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not skip this import.')),
+        );
+      }
+    }
+  }
+
+  /// Restore the existing archived recipe AND skip the import item, in
+  /// that order. If restore fails we surface the error and don't skip
+  /// — better to leave the import in awaiting_review (user can retry)
+  /// than to drop the import while the user thinks the restore worked.
+  Future<void> _onBannerRestore() async {
+    if (_isProcessingDuplicateAction) return;
+    final recipeId = _primaryDuplicateRecipeId;
+    if (recipeId == null) return;
+
+    setState(() => _isProcessingDuplicateAction = true);
+    try {
+      await _apiClient.restoreRecipe(recipeId);
+      // Restored recipe rejoins its book — emit so the book's recipe
+      // list (and Archive view) refresh immediately.
+      emitMutation(RecipeUnarchived(
+        recipeId: recipeId,
+        recipe: const <String, dynamic>{},
+      ));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isProcessingDuplicateAction = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not restore the recipe.')),
+        );
+      }
+      return;
+    }
+
+    // Restore succeeded — drop the import so it doesn't keep nagging
+    // the user. If THIS step fails, the recipe is still restored
+    // correctly; the user just sees the import lingering and can
+    // dismiss it from the activity feed.
+    try {
+      await _apiClient.skipImportItem(widget.itemId);
+      emitMutation(ImportItemDismissed(
+        itemId: widget.itemId,
+        item: null,
+        jobDismissed: false,
+      ));
+    } catch (_) {
+      // Non-fatal — recipe was restored. Surface a soft warning.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+            'Recipe restored. Could not auto-dismiss the import.',
+          )),
+        );
+      }
+    }
+
+    if (mounted) context.pop(true);
+  }
+
+  /// "Add anyway" — user explicitly wants both copies. Hide the banner
+  /// for the rest of this screen's life, and let them edit + approve
+  /// normally. No backend call.
+  void _onBannerAddAnyway() {
+    if (_isProcessingDuplicateAction) return;
+    setState(() => _duplicateDismissed = true);
+  }
+
+  /// Tap on the matched recipe's name → deep-link to recipe detail.
+  /// Closes the import flow with `false` (no recipe was created here).
+  void _onBannerTapMatch() {
+    final recipeId = _primaryDuplicateRecipeId;
+    if (recipeId == null) return;
+    if (mounted) {
+      context.pop(false);
+      context.push('/recipes/$recipeId');
+    }
+  }
+
+  /// Show the full match list as a bottom sheet (multi-match case).
+  /// Tapping a row navigates to that recipe's detail screen.
+  void _onBannerShowAll() {
+    if (_isProcessingDuplicateAction) return;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _duplicateMatches.length,
+            itemBuilder: (_, i) {
+              final m = _duplicateMatches[i] as Map<String, dynamic>;
+              final title = (m['title'] as String?) ?? 'Untitled';
+              final book = (m['current_book_name'] as String?) ?? '';
+              final isArchived = m['archived_at'] != null;
+              return ListTile(
+                leading: Icon(
+                  isArchived ? Icons.history : Icons.menu_book_outlined,
+                ),
+                title: Text(title),
+                subtitle: Text(
+                  isArchived ? 'Archived · $book' : book,
+                ),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  final id = m['recipe_id'] as String?;
+                  if (id == null) return;
+                  context.pop(false);
+                  context.push('/recipes/$id');
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  String? get _primaryDuplicateRecipeId {
+    if (_duplicateMatches.isEmpty) return null;
+    final first = _duplicateMatches.first;
+    if (first is! Map<String, dynamic>) return null;
+    return first['recipe_id'] as String?;
+  }
+
   void _addIngredient() {
     setState(() {
       _ingredientRows.add(_IngredientEntry(
@@ -580,6 +759,14 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
     final textTheme = Theme.of(context).textTheme;
     final item = _item ?? const <String, dynamic>{};
 
+    final showBanner =
+        _duplicateMatches.isNotEmpty && !_duplicateDismissed;
+    final primaryMatch = showBanner
+        ? _duplicateMatches.first as Map<String, dynamic>
+        : null;
+    final isArchivedMatch =
+        primaryMatch != null && primaryMatch['archived_at'] != null;
+
     return Column(
       children: [
         Expanded(
@@ -589,6 +776,21 @@ class _ImportItemReviewScreenState extends State<ImportItemReviewScreen> {
               // Hierarchical detail header (error → stage → source →
               // timestamps → retry). Replaces the old one-liner source row.
               ImportActivityDetail(item: item),
+              if (showBanner) ...[
+                const SizedBox(height: 16),
+                DuplicateBanner(
+                  match: primaryMatch!,
+                  otherMatchCount: _duplicateMatches.length - 1,
+                  isProcessing: _isProcessingDuplicateAction,
+                  onSkip: _onBannerSkip,
+                  onRestore: isArchivedMatch ? _onBannerRestore : null,
+                  onAddAnyway: _onBannerAddAnyway,
+                  onTapMatch: _onBannerTapMatch,
+                  onShowAll: _duplicateMatches.length > 1
+                      ? _onBannerShowAll
+                      : null,
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Recipe name
