@@ -320,6 +320,39 @@ void main() {
       expect(moved.first.newBookId, 'b-new');
     });
 
+    // recipe-bulk-org-1+5 — multi-source bulk move keeps each recipe's
+    // own prior book id on the emitted event so subscribers scoped to
+    // any of the involved books invalidate correctly.
+    test(
+        'bulkMoveRecipesByPriorBook emits per-recipe RecipeMoved with '
+        'distinct oldBookId values', () async {
+      final events = await _captureAllEvents(() async {
+        await service.bulkMoveRecipesByPriorBook(
+          const {
+            'r1': 'src-a',
+            'r2': 'src-b',
+            'r3': 'src-a',
+          },
+          'b-dest',
+        );
+      });
+      final moved = events.whereType<RecipeMoved>().toList();
+      expect(moved, hasLength(3));
+      final byId = {for (final e in moved) e.recipeId: e};
+      expect(byId['r1']?.oldBookId, 'src-a');
+      expect(byId['r2']?.oldBookId, 'src-b');
+      expect(byId['r3']?.oldBookId, 'src-a');
+      // Every event lands on the same destination.
+      expect(moved.every((e) => e.newBookId == 'b-dest'), isTrue);
+    });
+
+    test('bulkMoveRecipesByPriorBook with empty map is a no-op', () async {
+      final events = await _captureAllEvents(() async {
+        await service.bulkMoveRecipesByPriorBook(const {}, 'b-dest');
+      });
+      expect(events.whereType<RecipeMoved>(), isEmpty);
+    });
+
     test('bulkArchiveRecipes emits ONE RecipeBulkArchived, not N',
         () async {
       final events = await _captureAllEvents(() async {
