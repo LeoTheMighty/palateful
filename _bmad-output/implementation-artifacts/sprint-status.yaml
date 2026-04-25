@@ -1433,7 +1433,7 @@ development_status:
   epic-recipe-bulk-organize: in-progress
   recipe-bulk-org-1-frontend-add-to-and-move-to-actions-on-long-press-bar: done
   recipe-bulk-org-2-backend-prior-book-ids-in-bulk-move-response: done
-  recipe-bulk-org-3-frontend-source-book-disambiguation-from-global-view: backlog
+  recipe-bulk-org-3-frontend-source-book-disambiguation-from-global-view: done
   recipe-bulk-org-4-frontend-recipe-detail-book-picker-pill-row-replaces-modal: backlog
   recipe-bulk-org-5-regression-sweep-and-e2e: backlog
   epic-recipe-bulk-organize-retrospective: optional

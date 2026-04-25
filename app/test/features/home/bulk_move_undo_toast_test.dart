@@ -51,4 +51,28 @@ void main() {
     await tester.pump();
     expect(find.text("Moved 1 recipe to Mom's Recipes"), findsOneWidget);
   });
+
+  testWidgets('multi-source breakdown overrides default copy', (tester) async {
+    late BuildContext capturedContext;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(builder: (ctx) {
+          capturedContext = ctx;
+          return const SizedBox();
+        }),
+      ),
+    ));
+    showBulkMoveUndoToast(
+      capturedContext,
+      movedCount: 5,
+      destinationName: 'Favorites',
+      breakdown: "3 from Mom's, 2 from Trying Out",
+      onUndo: () {},
+    );
+    await tester.pump();
+    expect(
+      find.text("Moved 3 from Mom's, 2 from Trying Out → Favorites"),
+      findsOneWidget,
+    );
+  });
 }

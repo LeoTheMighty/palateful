@@ -24,6 +24,7 @@ import 'widgets/book_picker_sheet.dart';
 import 'widgets/bulk_dispatcher.dart';
 import 'widgets/bulk_move_undo_toast.dart';
 import 'widgets/bulk_partial_failure_dialog.dart';
+import 'widgets/move_source_disambiguation_sheet.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
 import 'widgets/home_bulk_action_bar.dart';
@@ -674,8 +675,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// recipe-bulk-org-1: dispatcher for both Add-to-Book and Move-to-Book.
-  /// The two only differ in toast copy; the FK swap is identical.
+  /// recipe-bulk-org-1 + 3: dispatcher for both Add-to-Book and
+  /// Move-to-Book.
+  ///
+  /// `Add to…` always treats every recipe in the selection as a target
+  /// for the destination book — there is nothing ambiguous from the
+  /// user's perspective. `Move to…` from the global "All recipes" view
+  /// with a selection spanning multiple source books pauses to ask
+  /// which sources should move (default: all) before showing the
+  /// destination picker. Single-source `Move to…` skips the prompt.
   Future<void> _handleBookMove({required BookMoveVerb verb}) async {
     if (_isBulkOperating) return;
     final selection = ref.read(homeSelectionProvider);
@@ -685,11 +693,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Capture each recipe's prior book id from the cached home content
     // BEFORE the move. Used by Undo to put each recipe back where it
     // came from, even when the selection spans multiple source books.
-    final priorMap = <String, String>{};
+    var priorMap = <String, String>{};
+    final bookNames = <String, String>{};
     for (final id in recipeIds) {
       final r = _findRecipe(id);
       if (r is Map) {
-        priorMap[id] = (r['recipe_book_id']?.toString() ?? '');
+        final bookId = r['recipe_book_id']?.toString() ?? '';
+        priorMap[id] = bookId;
+        final name = r['recipe_book_name']?.toString();
+        if (name != null && name.isNotEmpty) {
+          bookNames[bookId] = name;
+        }
+      }
+    }
+
+    // recipe-bulk-org-3: disambiguation for multi-source `Move to…`.
+    if (verb == BookMoveVerb.move) {
+      final groups = <String, List<String>>{};
+      for (final entry in priorMap.entries) {
+        if (entry.value.isEmpty) continue;
+        groups.putIfAbsent(entry.value, () => []).add(entry.key);
+      }
+      if (groups.length > 1) {
+        final selected = await MoveSourceDisambiguationSheet.show(
+          context,
+          groups: [
+            for (final e in groups.entries)
+              SourceBookGroup(
+                bookId: e.key,
+                bookName: bookNames[e.key] ?? 'Untitled',
+                recipeIds: e.value,
+              ),
+          ],
+        );
+        if (selected == null || !mounted) return;
+        if (selected.isEmpty) return;
+        // Trim priorMap to only the recipes the user kept checked.
+        final keptIds = <String>{
+          for (final g in selected) ...g.recipeIds,
+        };
+        priorMap = {
+          for (final entry in priorMap.entries)
+            if (keptIds.contains(entry.key)) entry.key: entry.value,
+        };
       }
     }
 
@@ -726,10 +772,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.read(homeSelectionProvider.notifier).exit();
       ref.invalidate(homeContentProvider);
       if (!mounted) return;
+      // Multi-source toasts include a per-source breakdown so the user
+      // can quickly verify the split was right (e.g. "Moved 3 from
+      // Mom's, 2 from Trying Out → Favorites").
+      final breakdown = _movedBreakdown(movedMap, bookNames);
       showBulkMoveUndoToast(
         context,
         movedCount: movedMap.length,
         destinationName: destName,
+        breakdown: breakdown,
         onUndo: () => _undoBulkMove(movedMap, destId),
       );
     } catch (_) {
@@ -743,6 +794,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } finally {
       if (mounted) setState(() => _isBulkOperating = false);
     }
+  }
+
+  /// Build the human-readable per-source breakdown for the move toast.
+  /// Returns `null` for single-source moves so the toast falls back to
+  /// the simple `Moved N to <book>` copy.
+  String? _movedBreakdown(
+    Map<String, String> movedMap,
+    Map<String, String> bookNames,
+  ) {
+    final counts = <String, int>{};
+    for (final src in movedMap.values) {
+      counts[src] = (counts[src] ?? 0) + 1;
+    }
+    if (counts.length < 2) return null;
+    final parts = counts.entries
+        .map((e) => '${e.value} from ${bookNames[e.key] ?? 'Untitled'}')
+        .toList();
+    return parts.join(', ');
   }
 
   /// Inverse of a bulk move: each recipe goes back to whichever book it
