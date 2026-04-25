@@ -150,22 +150,28 @@ class TestASGIAuthIntegration:
 
 
 class TestErrorHandling:
-    """call_endpoint turns failures into human-readable strings."""
+    """call_endpoint_async turns failures into human-readable strings."""
 
-    def test_get_recipe_not_found_returns_error_string(self):
-        from mcp_server.auth import current_database, current_user
+    async def test_get_recipe_not_found_returns_error_string(self):
+        from mcp_server.auth import (
+            current_database,
+            current_database_async,
+            current_user,
+        )
         from mcp_server.tools.recipes import get_recipe
 
         user = MagicMock()
-        database = MagicMock()
+        sync_database = MagicMock()
+        async_database = MagicMock()
         utok = current_user.set(user)
-        dtok = current_database.set(database)
+        dtok = current_database.set(sync_database)
+        adtok = current_database_async.set(async_database)
 
         class _NotFound:
             def __init__(self, database=None, user=None):
                 pass
 
-            def run(self, **kwargs):
+            async def run(self, **kwargs):
                 return {
                     "success": False,
                     "error_message": "Recipe with ID 'nope' not found",
@@ -173,15 +179,12 @@ class TestErrorHandling:
                 }
 
         try:
-            with patch("mcp_server.server.get_current_user", return_value=user), patch(
-                "mcp_server.server.get_current_database", return_value=database
-            ), patch(
-                "mcp_server.tools.recipes.GetRecipe", _NotFound
-            ):
-                result = get_recipe("nope")
+            with patch("mcp_server.tools.recipes.GetRecipe", _NotFound):
+                result = await get_recipe("nope")
         finally:
             current_user.reset(utok)
             current_database.reset(dtok)
+            current_database_async.reset(adtok)
 
         assert result.startswith("Error: Recipe with ID 'nope' not found")
         assert "Traceback" not in result
