@@ -2675,8 +2675,7 @@ class TestConnectionManager:
     def test_connect_adds_to_room(self, manager, mock_user, mock_ws):
         """Connect adds connection to the room."""
         list_id = "list-1"
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(mock_ws, mock_user, list_id)
+        asyncio.run(manager.connect(mock_ws, mock_user, list_id)
         )
         assert list_id in manager.active_connections
         assert (str(mock_user.id), mock_ws) in manager.active_connections[list_id]
@@ -2684,8 +2683,7 @@ class TestConnectionManager:
     def test_disconnect_removes_from_room(self, manager, mock_user, mock_ws):
         """Disconnect removes websocket from all rooms."""
         list_id = "list-1"
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(mock_ws, mock_user, list_id)
+        asyncio.run(manager.connect(mock_ws, mock_user, list_id)
         )
         manager.disconnect(mock_ws)
         assert list_id not in manager.active_connections
@@ -2698,8 +2696,7 @@ class TestConnectionManager:
     def test_disconnect_removes_empty_room(self, manager, mock_user, mock_ws):
         """Room is deleted when last connection leaves."""
         list_id = "list-1"
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(mock_ws, mock_user, list_id)
+        asyncio.run(manager.connect(mock_ws, mock_user, list_id)
         )
         manager.disconnect(mock_ws)
         assert list_id not in manager.active_connections
@@ -2707,19 +2704,16 @@ class TestConnectionManager:
     def test_broadcast_to_list(self, manager, mock_user, mock_ws):
         """Broadcast sends message to all connections in room."""
         list_id = "list-1"
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(mock_ws, mock_user, list_id)
+        asyncio.run(manager.connect(mock_ws, mock_user, list_id)
         )
         ws2 = AsyncMock()
         ws2.accept = AsyncMock()
         ws2.send_text = AsyncMock()
         user2 = MockUser(id=str(uuid.uuid4()), name="User2")
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(ws2, user2, list_id)
+        asyncio.run(manager.connect(ws2, user2, list_id)
         )
 
-        asyncio.get_event_loop().run_until_complete(
-            manager.broadcast_to_list(list_id, {"type": "test"})
+        asyncio.run(manager.broadcast_to_list(list_id, {"type": "test"})
         )
         assert mock_ws.send_text.called
         assert ws2.send_text.called
@@ -2727,20 +2721,16 @@ class TestConnectionManager:
     def test_broadcast_excludes_websocket(self, manager, mock_user, mock_ws):
         """Broadcast excludes the specified websocket."""
         list_id = "list-1"
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(mock_ws, mock_user, list_id)
+        asyncio.run(manager.connect(mock_ws, mock_user, list_id)
         )
-        asyncio.get_event_loop().run_until_complete(
-            manager.broadcast_to_list(
-                list_id, {"type": "test"}, exclude_websocket=mock_ws,
-            )
+        asyncio.run(manager.broadcast_to_list(
+                list_id, {"type": "test"}, exclude_websocket=mock_ws,)
         )
         assert not mock_ws.send_text.called
 
     def test_broadcast_to_nonexistent_room(self, manager):
         """Broadcasting to a non-existent room is a no-op."""
-        asyncio.get_event_loop().run_until_complete(
-            manager.broadcast_to_list("nonexistent", {"type": "test"})
+        asyncio.run(manager.broadcast_to_list("nonexistent", {"type": "test"})
         )
 
     def test_broadcast_disconnects_failed_sockets(self, manager, mock_user):
@@ -2749,11 +2739,9 @@ class TestConnectionManager:
         failing_ws = AsyncMock()
         failing_ws.accept = AsyncMock()
         failing_ws.send_text = AsyncMock(side_effect=Exception("Connection lost"))
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(failing_ws, mock_user, list_id)
+        asyncio.run(manager.connect(failing_ws, mock_user, list_id)
         )
-        asyncio.get_event_loop().run_until_complete(
-            manager.broadcast_to_list(list_id, {"type": "test"})
+        asyncio.run(manager.broadcast_to_list(list_id, {"type": "test"})
         )
         # After broadcast, the failed socket should be disconnected
         assert failing_ws not in manager.connection_info
@@ -2761,8 +2749,7 @@ class TestConnectionManager:
     def test_get_online_users(self, manager, mock_user, mock_ws):
         """Returns unique user IDs for a room."""
         list_id = "list-1"
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(mock_ws, mock_user, list_id)
+        asyncio.run(manager.connect(mock_ws, mock_user, list_id)
         )
         online = manager.get_online_users(list_id)
         assert str(mock_user.id) in online
@@ -2785,12 +2772,10 @@ class TestBroadcastEventToList:
         ws.send_text = AsyncMock()
         user = MockUser()
 
-        asyncio.get_event_loop().run_until_complete(
-            manager.connect(ws, user, "test-list")
+        asyncio.run(manager.connect(ws, user, "test-list")
         )
 
-        asyncio.get_event_loop().run_until_complete(
-            broadcast_event_to_list(
+        asyncio.run(broadcast_event_to_list(
                 "test-list", "item_added",
                 {"item_id": "i1", "name": "Milk"},
                 user_id=str(user.id),
@@ -2812,11 +2797,9 @@ class TestBroadcastEventToList:
         from api.v1.shopping_list.websocket import broadcast_event_to_list
 
         list_uuid = uuid.uuid4()
-        asyncio.get_event_loop().run_until_complete(
-            broadcast_event_to_list(
+        asyncio.run(broadcast_event_to_list(
                 list_uuid, "item_removed",
-                {"item_id": "i1"},
-            )
+                {"item_id": "i1"},)
         )
         # Should not raise even with no connections
 
@@ -3655,8 +3638,7 @@ class TestWebSocketHandler:
         db = MagicMock()
         db.query.return_value = MockQuery([])
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "no-list", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "no-list", mock_user, db)
         )
         ws.close.assert_called_once_with(code=4004, reason="Shopping list not found")
 
@@ -3680,8 +3662,7 @@ class TestWebSocketHandler:
             return MockQuery([])
         db.query.side_effect = query_side_effect
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "list-1", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "list-1", mock_user, db)
         )
         ws.close.assert_called_once_with(code=4003, reason="Access denied")
 
@@ -3706,8 +3687,7 @@ class TestWebSocketHandler:
         mock_service.get_events_since.return_value = []
         MockEventService.return_value = mock_service
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "list-1", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "list-1", mock_user, db)
         )
 
         # Should have sent initial sync
@@ -3742,8 +3722,7 @@ class TestWebSocketHandler:
         mock_service.get_events_since.return_value = []
         MockEventService.return_value = mock_service
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "list-1", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "list-1", mock_user, db)
         )
 
         # Should have sent pong
@@ -3779,8 +3758,7 @@ class TestWebSocketHandler:
         mock_service.get_events_since.return_value = []
         MockEventService.return_value = mock_service
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "list-1", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "list-1", mock_user, db)
         )
         # No crash, presence was broadcast
 
@@ -3817,8 +3795,7 @@ class TestWebSocketHandler:
         mock_service.get_events_since.return_value = [mock_event]
         MockEventService.return_value = mock_service
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "list-1", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "list-1", mock_user, db)
         )
 
         # Should have sent sync_response (initial + request response)
@@ -3860,7 +3837,6 @@ class TestWebSocketHandler:
         mock_service.get_current_sequence.return_value = 0
         MockEventService.return_value = mock_service
 
-        asyncio.get_event_loop().run_until_complete(
-            shopping_list_websocket_handler(ws, "list-1", mock_user, db)
+        asyncio.run(shopping_list_websocket_handler(ws, "list-1", mock_user, db)
         )
         ws.send_json.assert_called()
