@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 from conftest import (
     MockExecuteResult,
     MockIngredient,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
     MockRecipeBookUser,
@@ -2516,6 +2515,34 @@ class TestCreateRecipeMissingBranches:
             )
         assert response.status_code == 201
 
+    def test_create_recipe_embedding_set(self, client, mock_async_db, mock_user):
+        """When the embedder returns a vector, it's persisted onto the recipe."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        with patch(
+            "api.v1.search.generate_recipe_embedding.generate_recipe_embedding",
+            return_value=[0.1, 0.2, 0.3],
+        ):
+            response = client.post(
+                f"/v1/recipe-books/{book_id}/recipes",
+                json={"name": "Has Embedding Recipe"},
+            )
+        assert response.status_code == 201
+
 
 class TestUpdateRecipeMissingBranches:
     """Tests for missing branches in update_recipe.py."""
@@ -2654,7 +2681,7 @@ class TestUpdateRecipeMissingBranches:
         book_id = "test-book-id"
         ingredient_id = str(uuid.uuid4())
         ingredient = MockIngredient(id=ingredient_id, canonical_name="sugar")
-        recipe = self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id, book_id=book_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id, book_id=book_id)
 
         from utils.models.ingredient import Ingredient
         from utils.models.recipe_ingredient import RecipeIngredient
@@ -2662,7 +2689,12 @@ class TestUpdateRecipeMissingBranches:
         from utils.models.recipe_step import RecipeStep
 
         mock_async_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
-        mock_async_db.set_where(RecipeIngredient, [])
+        # Pre-existing ingredient is deleted before the new write — exercise
+        # the `for ri in existing: await self.database.delete(ri)` loop so
+        # both branches of the delete-and-recreate ingredient path stay
+        # covered.
+        existing_ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
+        mock_async_db.set_where(RecipeIngredient, [existing_ri])
         mock_async_db.set_where(RecipeStep, [])
         mock_async_db.set_where(RecipeNote, [])
 
@@ -2835,6 +2867,31 @@ class TestUpdateRecipeMissingBranches:
         )
         assert response.status_code == 200
         mock_async_db.db.add.assert_called()
+
+    def test_update_recipe_no_permission(self, client, mock_async_db, mock_user):
+        """Viewer membership cannot update — 403 RECIPE_ACCESS_DENIED."""
+        recipe_id = "test-recipe-id"
+        book_id = "test-book-id"
+        recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="viewer",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                           user_id=str(mock_user.id),
+                           recipe_book_id=book_id)
+
+        response = client.put(
+            f"/v1/recipes/{recipe_id}",
+            json={"name": "Updated"},
+        )
+        assert response.status_code == 403
 
 
 class TestGetRecipeVersionsMissingBranches:
