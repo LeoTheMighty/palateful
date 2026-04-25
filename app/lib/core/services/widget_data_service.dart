@@ -11,9 +11,12 @@ const _appGroupId = 'group.com.palateful.app';
 class WidgetDataService {
   bool _initialized = false;
 
-  /// Initialize the widget data bridge.
+  /// Initialize the widget data bridge. iOS-only — App Groups don't
+  /// exist on Android/web, and `home_widget`'s setAppGroupId throws
+  /// MissingPluginException off-platform.
   Future<void> initialize() async {
     if (_initialized) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     try {
       await HomeWidget.setAppGroupId(_appGroupId);
       _initialized = true;

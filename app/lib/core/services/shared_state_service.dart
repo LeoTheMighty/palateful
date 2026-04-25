@@ -30,9 +30,12 @@ class SharedStateService {
   Timer? _debounceTimer;
   _PendingSync _pending = const _PendingSync();
 
-  /// Initialize the bridge. Safe to call multiple times.
+  /// Initialize the bridge. Safe to call multiple times. iOS-only —
+  /// App Groups + the share extension are an iOS feature; off-platform,
+  /// home_widget throws MissingPluginException.
   Future<void> initialize() async {
     if (_initialized) return;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     try {
       await HomeWidget.setAppGroupId(_appGroupId);
       _initialized = true;

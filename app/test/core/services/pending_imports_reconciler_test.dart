@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/core/services/pending_imports_reconciler.dart';
@@ -16,6 +17,7 @@ void main() {
   late Map<String, Object?> store;
 
   setUp(() {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     store = {};
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -39,6 +41,7 @@ void main() {
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('reconcile posts each pending record and clears the list on success', () async {

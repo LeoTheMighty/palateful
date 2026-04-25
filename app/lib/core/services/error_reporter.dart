@@ -297,8 +297,12 @@ class ErrorReporter {
     // Mirror breadcrumbs into server-side error_logs as service="client",
     // error_type="ClientLog" rows. Lets us read Leo's boot-time push flow
     // (the ensureRegistered breadcrumbs from push-diag-2) from the same
-    // audit_errors.py pipeline as server errors.
-    _mirrorToBackend(errorType: 'ClientLog', errorMessage: message);
+    // audit_errors.py pipeline as server errors. Skip nav.* breadcrumbs —
+    // they fire on every screen transition and drown out signal in
+    // audit_errors output (Crashlytics still receives them below).
+    if (!message.startsWith('nav.')) {
+      _mirrorToBackend(errorType: 'ClientLog', errorMessage: message);
+    }
 
     if (_reportingDisabled) {
       debugPrint('[ErrorReporter.log] $message');

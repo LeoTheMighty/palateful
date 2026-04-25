@@ -36,6 +36,10 @@ class PendingImportsReconciler {
   }
 
   Future<void> reconcile() async {
+    // iOS-only: App Group reads route through home_widget which has no
+    // Android/web implementation. Skip silently rather than 500-spam
+    // error_logs with MissingPluginException.
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
     try {
       final raw = await HomeWidget.getWidgetData<String>('share_pending_imports');
       if (raw == null || raw.isEmpty || raw == '[]') return;
