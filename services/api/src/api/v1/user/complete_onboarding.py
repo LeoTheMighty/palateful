@@ -98,7 +98,7 @@ class CompleteOnboarding(AsyncEndpoint):
         user_id = user.id
         try:
             await run_in_threadpool(_bootstrap_default_list_sync, user_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - threadpool fallback; bootstrap helper handles its own session lifecycle
             logger.warning(
                 "complete_onboarding.default_list_post_commit_failed",
                 extra={"user_id": str(user_id), "error": str(exc)},
