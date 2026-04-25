@@ -1430,8 +1430,8 @@ development_status:
   epic-recipe-list-organization-retrospective: optional
 
   # --- Epic 3: Recipe Bulk-Organize (parallelizable after Epic 1) ---
-  epic-recipe-bulk-organize: backlog
-  recipe-bulk-org-1-frontend-add-to-and-move-to-actions-on-long-press-bar: backlog
+  epic-recipe-bulk-organize: in-progress
+  recipe-bulk-org-1-frontend-add-to-and-move-to-actions-on-long-press-bar: done
   recipe-bulk-org-2-backend-prior-book-ids-in-bulk-move-response: backlog
   recipe-bulk-org-3-frontend-source-book-disambiguation-from-global-view: backlog
   recipe-bulk-org-4-frontend-recipe-detail-book-picker-pill-row-replaces-modal: backlog

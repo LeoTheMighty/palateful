@@ -8,6 +8,7 @@ import '../../core/state/mutation_failure_copy.dart';
 import '../../core/state/mutation_snackbar.dart';
 import '../recipes/providers/recipe_provider.dart';
 import '../recipes/services/recipe_service.dart';
+import '../recipe_books/services/recipe_book_service.dart';
 import '../../shared/widgets/buttons.dart';
 import '../../shared/widgets/empty_state.dart';
 import '../../shared/widgets/shimmer_loading.dart';
@@ -19,7 +20,9 @@ import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
 import 'providers/home_content_provider.dart';
 import 'widgets/batch_import_status_widget.dart';
+import 'widgets/book_picker_sheet.dart';
 import 'widgets/bulk_dispatcher.dart';
+import 'widgets/bulk_move_undo_toast.dart';
 import 'widgets/bulk_partial_failure_dialog.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
@@ -31,6 +34,11 @@ import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+
+/// Which label the bulk bar tapped to open the book picker.
+/// `Add to…` and `Move to…` differ only in toast copy and tooltip; the
+/// underlying FK swap is identical.
+enum BookMoveVerb { add, move }
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -481,6 +489,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onCreateMeal: _handleCreateMeal,
               onAddToMeal: _handleAddToMeal,
               onArchive: _handleArchive,
+              onAddToBook: () => _handleBookMove(verb: BookMoveVerb.add),
+              onMoveToBook: () => _handleBookMove(verb: BookMoveVerb.move),
             )
           : null,
     );
@@ -659,6 +669,120 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       invalidateMeal(ref, mealId, bookId: meal.recipeBookId);
       ref.read(homeSelectionProvider.notifier).exit();
       ref.invalidate(homeContentProvider);
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
+  }
+
+  /// recipe-bulk-org-1: dispatcher for both Add-to-Book and Move-to-Book.
+  /// The two only differ in toast copy; the FK swap is identical.
+  Future<void> _handleBookMove({required BookMoveVerb verb}) async {
+    if (_isBulkOperating) return;
+    final selection = ref.read(homeSelectionProvider);
+    final recipeIds = selection.selectedRecipeIds.toList();
+    if (recipeIds.isEmpty) return;
+
+    // Capture each recipe's prior book id from the cached home content
+    // BEFORE the move. Used by Undo to put each recipe back where it
+    // came from, even when the selection spans multiple source books.
+    final priorMap = <String, String>{};
+    for (final id in recipeIds) {
+      final r = _findRecipe(id);
+      if (r is Map) {
+        priorMap[id] = (r['recipe_book_id']?.toString() ?? '');
+      }
+    }
+
+    final dest = await BookPickerSheet.show(
+      context,
+      title: verb == BookMoveVerb.add ? 'Add to…' : 'Move to…',
+    );
+    if (dest == null || !mounted) return;
+    final destId = dest['id']?.toString();
+    final destName = dest['name']?.toString() ?? 'book';
+    if (destId == null || destId.isEmpty) return;
+
+    setState(() => _isBulkOperating = true);
+    try {
+      HapticFeedback.selectionClick();
+      // Drop recipes already in the destination — backend would skip
+      // them, but pruning here keeps the toast count honest.
+      final movedMap = <String, String>{
+        for (final entry in priorMap.entries)
+          if (entry.value != destId) entry.key: entry.value,
+      };
+      if (movedMap.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Already in $destName'),
+            ),
+          );
+        }
+        return;
+      }
+      await getIt<RecipeBookService>()
+          .bulkMoveRecipesByPriorBook(movedMap, destId);
+      ref.read(homeSelectionProvider.notifier).exit();
+      ref.invalidate(homeContentProvider);
+      if (!mounted) return;
+      showBulkMoveUndoToast(
+        context,
+        movedCount: movedMap.length,
+        destinationName: destName,
+        onUndo: () => _undoBulkMove(movedMap, destId),
+      );
+    } catch (_) {
+      if (mounted) {
+        showMutationFailureSnackbar(
+          context,
+          MutationType.bulkMoveRecipes,
+          () => _handleBookMove(verb: verb),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isBulkOperating = false);
+    }
+  }
+
+  /// Inverse of a bulk move: each recipe goes back to whichever book it
+  /// came from. The destination of the original move (now the *source*
+  /// of the inverse) is the same for every recipe, but the *targets*
+  /// may differ — group by prior book id and issue one bulk-move call
+  /// per group so the API's per-recipe source-membership check passes.
+  Future<void> _undoBulkMove(
+    Map<String, String> recipeIdToPriorBookId,
+    String previousDestinationBookId,
+  ) async {
+    if (_isBulkOperating) return;
+    setState(() => _isBulkOperating = true);
+    try {
+      final groups = <String, List<String>>{};
+      for (final entry in recipeIdToPriorBookId.entries) {
+        if (entry.value.isEmpty) continue;
+        groups.putIfAbsent(entry.value, () => []).add(entry.key);
+      }
+      final service = getIt<RecipeBookService>();
+      for (final entry in groups.entries) {
+        await service.bulkMoveRecipes(
+          entry.value,
+          entry.key,
+          sourceBookId: previousDestinationBookId,
+        );
+      }
+      ref.invalidate(homeContentProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Move undone')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not undo — try moving manually')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isBulkOperating = false);
     }

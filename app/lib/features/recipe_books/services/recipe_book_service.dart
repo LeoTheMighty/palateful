@@ -167,6 +167,32 @@ class RecipeBookService {
     }
   }
 
+  /// Move every recipe in [recipeIdToPriorBookId] to [destinationBookId].
+  /// Unlike [bulkMoveRecipes] this preserves each recipe's *own* prior
+  /// book id when emitting [RecipeMoved], so subscribers scoped to any
+  /// of the source books invalidate correctly even when the selection
+  /// spans multiple source books (recipe-bulk-org-1 from "All recipes").
+  ///
+  /// The backend already validates per-recipe source membership in
+  /// `BulkMoveRecipes.execute`, so a single API call suffices regardless
+  /// of how many distinct source books are represented.
+  Future<void> bulkMoveRecipesByPriorBook(
+    Map<String, String> recipeIdToPriorBookId,
+    String destinationBookId,
+  ) async {
+    final recipeIds = recipeIdToPriorBookId.keys.toList();
+    if (recipeIds.isEmpty) return;
+    await _api.bulkMoveRecipes(recipeIds, destinationBookId);
+    for (final recipeId in recipeIds) {
+      emitMutation(RecipeMoved(
+        recipeId: recipeId,
+        recipe: {'id': recipeId, 'recipe_book_id': destinationBookId},
+        oldBookId: recipeIdToPriorBookId[recipeId] ?? '',
+        newBookId: destinationBookId,
+      ));
+    }
+  }
+
   /// Bulk-archive. Emits ONE [RecipeBulkArchived] event — Locked
   /// Decision #3 (bulk events, not N per-item events).
   Future<void> bulkArchiveRecipes(

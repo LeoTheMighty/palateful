@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'home_selection_controller.dart';
 
 /// Bottom-docked bulk bar. Primary slot is context-sensitive (Create
-/// Meal / `Add to "<name>"` / disabled-with-reason). Secondary slot is
-/// always Archive (enabled whenever the selection is non-empty).
+/// Meal / `Add to "<name>"` / disabled-with-reason). Secondary slots are
+/// `Add to…` / `Move to…` (recipe-only) and Archive (always enabled
+/// when the selection is non-empty).
 ///
 /// Mounted in `Scaffold.bottomNavigationBar` (not Stack/Positioned) —
 /// home uses sliver-backed `CustomScrollView` fragments and the slot is
@@ -27,6 +28,11 @@ class HomeBulkActionBar extends ConsumerWidget {
   final VoidCallback? onAddToMeal;
   final VoidCallback? onArchive;
 
+  /// recipe-bulk-org-1 callbacks. `Add to…` and `Move to…` open the
+  /// shared `BookPickerSheet`; the bar itself stays UI-only.
+  final VoidCallback? onAddToBook;
+  final VoidCallback? onMoveToBook;
+
   const HomeBulkActionBar({
     super.key,
     this.selectedMealName,
@@ -34,6 +40,8 @@ class HomeBulkActionBar extends ConsumerWidget {
     this.onCreateMeal,
     this.onAddToMeal,
     this.onArchive,
+    this.onAddToBook,
+    this.onMoveToBook,
   });
 
   @override
@@ -42,6 +50,12 @@ class HomeBulkActionBar extends ConsumerWidget {
     if (!state.isActive) return const SizedBox.shrink();
     final action = resolvePrimaryAction(state.shape);
     final colorScheme = Theme.of(context).colorScheme;
+
+    // Move/Add to Book apply to recipes (single-FK swap on the
+    // `recipe_book_id` column). Hide them when the selection has any
+    // Meals — Meals don't live in books.
+    final showBookActions = state.selectedRecipeIds.isNotEmpty &&
+        state.selectedMealIds.isEmpty;
 
     return Material(
       color: colorScheme.surfaceContainerHighest,
@@ -70,6 +84,22 @@ class HomeBulkActionBar extends ConsumerWidget {
                       onAddToMeal: onAddToMeal,
                     ),
                   ),
+                  if (showBookActions) ...[
+                    const SizedBox(width: 8),
+                    _BookActionButton(
+                      label: 'Add to',
+                      icon: Icons.add_box_outlined,
+                      enabled: !isWorking,
+                      onPressed: onAddToBook,
+                    ),
+                    const SizedBox(width: 8),
+                    _BookActionButton(
+                      label: 'Move to',
+                      icon: Icons.drive_file_move_outlined,
+                      enabled: !isWorking,
+                      onPressed: onMoveToBook,
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   _ArchiveButton(
                     enabled: !isWorking && state.totalSelected > 0,
@@ -148,6 +178,34 @@ class _PrimarySlot extends StatelessWidget {
           ),
         );
     }
+  }
+}
+
+class _BookActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback? onPressed;
+
+  const _BookActionButton({
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$label book',
+      button: true,
+      enabled: enabled,
+      child: OutlinedButton.icon(
+        onPressed: enabled ? onPressed : null,
+        icon: Icon(icon),
+        label: Text(label),
+      ),
+    );
   }
 }
 

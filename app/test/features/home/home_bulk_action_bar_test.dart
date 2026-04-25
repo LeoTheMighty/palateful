@@ -102,4 +102,65 @@ void main() {
   // above and manually in the QA walkthrough. Widget-testing a
   // continuously-ticking progress indicator reliably was fighting the
   // ticker — deferred to hmp-5's a11y/regression sweep.
+
+  testWidgets('recipes only — Add to / Move to render', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(homeSelectionProvider.notifier)
+        .enterWith(kind: 'recipe', id: 'r1');
+    container.read(homeSelectionProvider.notifier).toggleRecipe('r2');
+
+    int addTaps = 0;
+    int moveTaps = 0;
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        home: Scaffold(
+          bottomNavigationBar: HomeBulkActionBar(
+            onAddToBook: () => addTaps++,
+            onMoveToBook: () => moveTaps++,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Add to'), findsOneWidget);
+    expect(find.text('Move to'), findsOneWidget);
+
+    await tester.tap(find.text('Add to'));
+    expect(addTaps, 1);
+    await tester.tap(find.text('Move to'));
+    expect(moveTaps, 1);
+  });
+
+  testWidgets(
+      'mixed selection (recipe + meal) hides Add to / Move to buttons',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(homeSelectionProvider.notifier)
+        .enterWith(kind: 'meal', id: 'm1');
+    container.read(homeSelectionProvider.notifier).toggleRecipe('r1');
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        home: Scaffold(
+          bottomNavigationBar:
+              HomeBulkActionBar(selectedMealName: 'Kale Salad'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Add to'), findsNothing);
+    expect(find.text('Move to'), findsNothing);
+  });
+
+  // Note: isWorking disables of Add to / Move to follow the same
+  // null-onPressed pattern as the existing primary slot — the
+  // continuously-ticking LinearProgressIndicator makes a widget test
+  // fragile (see comment at the top of this group). Coverage stays in
+  // the QA walkthrough.
 }
