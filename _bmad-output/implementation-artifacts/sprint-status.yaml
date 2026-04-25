@@ -1445,3 +1445,67 @@ development_status:
   import-dup-3-frontend-duplicate-banner-and-approve-import-wiring: backlog
   import-dup-4-regression-sweep-and-e2e: backlog
   epic-import-duplicate-detection-retrospective: optional
+
+  # =====================================================================
+  # PLANNED 2026-04-25 — Beat Recime: 5 epics from /dev-plan loop
+  # =====================================================================
+  # Source: _bmad-output/planning-artifacts/epics.md (2026-04-25 addendum)
+  # PRD addendum: prd.md (FR-COMP-1 through FR-COMP-16)
+  # Investigation: investigations/07-competitor-analysis-recime.md (Apr refresh)
+  # User-locked decisions: free forever (locked), social-video full
+  # pipeline, shopping-list dedup stays cut, Recipe Notes response =
+  # differentiate-not-fight-on-price, Recime mass-import via Chrome
+  # extension YES (lawyer check pre-launch).
+  # Epic files all marked <draft: pre-party-mode> until Phase 6 refines
+  # each via party-mode.
+
+  # --- Epic A: Recime Positioning (foundation; ship first to lock copy) ---
+  epic-recime-positioning: backlog
+  pos-1-content-copy-for-all-surfaces: backlog
+  pos-2-frontend-why-we-are-free-page-and-onboarding-line: backlog
+  pos-3-web-real-landing-page-replacing-flutter-shell: backlog
+  pos-4-privacy-and-android-md-and-readme-updates: backlog
+  pos-5-app-store-and-play-console-listing-assets: backlog
+  pos-6-share-card-tagline-and-ci-grep-guard: backlog
+  epic-recime-positioning-retrospective: optional
+
+  # --- Epic B: Social-Media Video Import (defensive; ~3-4 weeks) ---
+  epic-social-video-import: backlog
+  social-vid-1-backend-audio-transcription-service-with-whisper: backlog
+  social-vid-2-backend-platform-scrapers-tiktok-instagram-youtube: backlog
+  social-vid-3-backend-orchestrator-and-import-items-schema: backlog
+  social-vid-4-backend-worker-task-and-push-notification: backlog
+  social-vid-5-frontend-share-routing-and-video-import-landing-screen: backlog
+  social-vid-6-frontend-attribution-badge-and-failure-state-and-e2e: backlog
+  epic-social-video-import-retrospective: optional
+
+  # --- Epic C: Pantry — Cook With What You Have (offensive moat; ~2-3 weeks) ---
+  epic-pantry-cook-with-what-you-have: backlog
+  pantry-cook-1-backend-pantry-decrement-and-cook-completion: backlog
+  pantry-cook-2-backend-shopping-checkout-and-preference-toggle: backlog
+  pantry-cook-3-backend-cookable-recipes-endpoint-and-mcp-tool: backlog
+  pantry-cook-4-frontend-cookable-card-and-coverage-badge: backlog
+  pantry-cook-5-frontend-post-cook-shopping-and-nudge-and-e2e: backlog
+  epic-pantry-cook-with-what-you-have-retrospective: optional
+
+  # --- Epic D: Recime Mass-Import (Chrome extension MVP; ~1.5 weeks) ---
+  # Depends on epic-recipe-default-books (Trying Out destination — already
+  # shipping per recent /dev commits) and epic-import-duplicate-detection
+  # (dedup path — also shipping). Lawyer check on TOS framing required
+  # pre-public-Chrome-Web-Store-launch but not an epic blocker.
+  epic-recime-mass-import: backlog
+  recime-imp-1-backend-recime-normalizer-and-import-endpoint: backlog
+  recime-imp-2-backend-rate-limit-audit-and-job-type: backlog
+  recime-imp-3-chrome-extension-mvp-manifest-popup-content: backlog
+  recime-imp-4-frontend-walkthrough-and-activity-hub-integration: backlog
+  recime-imp-5-lawyer-checklist-chrome-store-listing-and-e2e: backlog
+  epic-recime-mass-import-retrospective: optional
+
+  # --- Epic E: Nutrition Auto-Calc (USDA-sourced, free for everyone; ~3-5 weeks) ---
+  epic-nutrition-auto-calc: backlog
+  nutri-1-backend-ingredients-schema-and-usda-data-load: backlog
+  nutri-2-backend-nutrition-calculator-and-recipes-schema: backlog
+  nutri-3-backend-get-response-and-recalc-hook: backlog
+  nutri-4-frontend-nutrition-card-and-breakdown-sheet: backlog
+  nutri-5-frontend-manual-override-and-settings-and-e2e: backlog
+  epic-nutrition-auto-calc-retrospective: optional
