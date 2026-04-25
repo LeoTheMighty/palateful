@@ -41,7 +41,7 @@ class TestRecipeBookConnectionManager:
     def test_connect_adds_connection_to_room(self, manager, mock_user, mock_websocket):
         """Connecting adds the (user_id, ws) pair to the room."""
         book_id = "book-1"
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             manager.connect(mock_websocket, mock_user, book_id)
         )
         assert book_id in manager.active_connections
@@ -50,7 +50,7 @@ class TestRecipeBookConnectionManager:
     def test_disconnect_removes_connection(self, manager, mock_user, mock_websocket):
         """Disconnecting removes the websocket from all rooms."""
         book_id = "book-1"
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             manager.connect(mock_websocket, mock_user, book_id)
         )
         manager.disconnect(mock_websocket)
@@ -59,7 +59,7 @@ class TestRecipeBookConnectionManager:
     def test_disconnect_removes_empty_room(self, manager, mock_user, mock_websocket):
         """Room entry is deleted when the last connection leaves."""
         book_id = "book-1"
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             manager.connect(mock_websocket, mock_user, book_id)
         )
         manager.disconnect(mock_websocket)
@@ -73,7 +73,7 @@ class TestRecipeBookConnectionManager:
     def test_get_online_users_returns_ids(self, manager, mock_user, mock_websocket):
         """get_online_users returns user IDs for connected clients."""
         book_id = "book-1"
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             manager.connect(mock_websocket, mock_user, book_id)
         )
         online = manager.get_online_users(book_id)
@@ -96,12 +96,13 @@ class TestRecipeBookConnectionManager:
         user2 = MagicMock()
         user2.id = uuid.UUID("a0000000-0000-0000-0000-000000000002")
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(manager.connect(ws1, mock_user, book_id))
-        loop.run_until_complete(manager.connect(ws2, user2, book_id))
+        async def _setup_and_broadcast():
+            await manager.connect(ws1, mock_user, book_id)
+            await manager.connect(ws2, user2, book_id)
+            msg = {"type": "recipe_added", "recipe_book_id": book_id, "data": {}}
+            await manager.broadcast_to_book(book_id, msg)
 
-        msg = {"type": "recipe_added", "recipe_book_id": book_id, "data": {}}
-        loop.run_until_complete(manager.broadcast_to_book(book_id, msg))
+        asyncio.run(_setup_and_broadcast())
 
         ws1.send_text.assert_called_once()
         ws2.send_text.assert_called_once()
@@ -122,20 +123,20 @@ class TestRecipeBookConnectionManager:
         user2 = MagicMock()
         user2.id = uuid.UUID("a0000000-0000-0000-0000-000000000003")
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(manager.connect(ws1, mock_user, book_id))
-        loop.run_until_complete(manager.connect(ws2, user2, book_id))
+        async def _setup_and_broadcast():
+            await manager.connect(ws1, mock_user, book_id)
+            await manager.connect(ws2, user2, book_id)
+            msg = {"type": "recipe_updated", "data": {}}
+            await manager.broadcast_to_book(book_id, msg, exclude_websocket=ws1)
 
-        msg = {"type": "recipe_updated", "data": {}}
-        loop.run_until_complete(manager.broadcast_to_book(book_id, msg, exclude_websocket=ws1))
+        asyncio.run(_setup_and_broadcast())
 
         ws1.send_text.assert_not_called()
         ws2.send_text.assert_called_once()
 
     def test_broadcast_to_empty_book_no_error(self, manager):
         """Broadcasting to a book with no connections does not raise."""
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(
+        asyncio.run(
             manager.broadcast_to_book("empty-book", {"type": "recipe_added"})
         )  # Should not raise
 
@@ -156,8 +157,7 @@ class TestBroadcastEventToRecipeBook:
 
         with patch.object(ws_module, "manager", mock_manager):
             book_id = str(uuid.uuid4())
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(
+            asyncio.run(
                 ws_module.broadcast_event_to_recipe_book(
                     book_id, "recipe_removed", {"recipe_id": "r-1"}
                 )
@@ -199,7 +199,7 @@ class TestRecipeBookWebSocketHandler:
         db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
 
         book_id = str(uuid.uuid4())
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             recipe_book_websocket_handler(websocket, book_id, mock_user, db)
         )
 
@@ -229,7 +229,7 @@ class TestRecipeBookWebSocketHandler:
         fresh_manager = RecipeBookConnectionManager()
         from api.v1.recipe_book import websocket as ws_module
         with patch.object(ws_module, "manager", fresh_manager):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 recipe_book_websocket_handler(websocket, book_id, mock_user, db)
             )
 
@@ -347,7 +347,7 @@ class TestRecipeBookWebSocketRouteAuth:
 
         db = MagicMock()
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             recipe_book_websocket(
                 websocket=websocket,
                 book_id="some-book",
@@ -372,7 +372,7 @@ class TestRecipeBookWebSocketRouteAuth:
         mock_verifier = AsyncMock()
         mock_verifier.verify_token = AsyncMock(side_effect=Exception("invalid token"))
         with patch("utils.services.auth0.get_auth0_verifier", return_value=mock_verifier):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 recipe_book_websocket(
                     websocket=websocket,
                     book_id="some-book",
@@ -412,12 +412,13 @@ class TestRecipeBookConnectionManagerMissingBranches:
         user2 = MagicMock()
         user2.id = uuid.UUID("a0000000-0000-0000-0000-000000000002")
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(manager.connect(ws_ok, user, book_id))
-        loop.run_until_complete(manager.connect(ws_bad, user2, book_id))
+        async def _setup_and_broadcast():
+            await manager.connect(ws_ok, user, book_id)
+            await manager.connect(ws_bad, user2, book_id)
+            msg = {"type": "recipe_updated", "data": {}}
+            await manager.broadcast_to_book(book_id, msg)
 
-        msg = {"type": "recipe_updated", "data": {}}
-        loop.run_until_complete(manager.broadcast_to_book(book_id, msg))
+        asyncio.run(_setup_and_broadcast())
 
         # ws_ok should have been sent to
         ws_ok.send_text.assert_called_once()
@@ -432,9 +433,11 @@ class TestRecipeBookConnectionManagerMissingBranches:
         ws = AsyncMock()
         ws.accept = AsyncMock()
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(manager.connect(ws, user, "book-1"))
-        loop.run_until_complete(manager.connect(ws, user, "book-2"))
+        async def _connect_both():
+            await manager.connect(ws, user, "book-1")
+            await manager.connect(ws, user, "book-2")
+
+        asyncio.run(_connect_both())
 
         assert "book-1" in manager.active_connections
         assert "book-2" in manager.active_connections
@@ -454,9 +457,12 @@ class TestRecipeBookConnectionManagerMissingBranches:
         ws2.accept = AsyncMock()
 
         book_id = "book-1"
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(manager.connect(ws1, user1, book_id))
-        loop.run_until_complete(manager.connect(ws2, user2, book_id))
+
+        async def _connect_both():
+            await manager.connect(ws1, user1, book_id)
+            await manager.connect(ws2, user2, book_id)
+
+        asyncio.run(_connect_both())
 
         manager.disconnect(ws1)
 
@@ -503,7 +509,7 @@ class TestRecipeBookWebSocketHandlerMissingBranches:
         fresh_manager = RecipeBookConnectionManager()
         from api.v1.recipe_book import websocket as ws_module
         with patch.object(ws_module, "manager", fresh_manager):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 recipe_book_websocket_handler(websocket, book_id, mock_user, db)
             )
 
@@ -539,7 +545,7 @@ class TestRecipeBookWebSocketHandlerMissingBranches:
         fresh_manager = RecipeBookConnectionManager()
         from api.v1.recipe_book import websocket as ws_module
         with patch.object(ws_module, "manager", fresh_manager):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 recipe_book_websocket_handler(websocket, book_id, mock_user, db)
             )
 
@@ -560,8 +566,7 @@ class TestBroadcastEventMissingBranches:
         with patch.object(ws_module, "manager", mock_manager):
             book_id = str(uuid.uuid4())
             user_id = str(uuid.uuid4())
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(
+            asyncio.run(
                 ws_module.broadcast_event_to_recipe_book(
                     book_id, "recipe_added", {"name": "Pasta"}, user_id=user_id
                 )
@@ -579,8 +584,7 @@ class TestBroadcastEventMissingBranches:
 
         with patch.object(ws_module, "manager", mock_manager):
             book_id = str(uuid.uuid4())
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(
+            asyncio.run(
                 ws_module.broadcast_event_to_recipe_book(
                     book_id, "recipe_removed", {"recipe_id": "r-1"}
                 )
