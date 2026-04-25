@@ -65,7 +65,7 @@ class TestGetPushHealthErrorLimitOutOfRange:
     """
 
     @pytest.mark.parametrize("bad_limit", [0, -1, 51, 100])
-    def test_raises_api_exception_for_out_of_range(self, bad_limit, mock_user):
+    async def test_raises_api_exception_for_out_of_range(self, bad_limit, mock_user):
         from api.v1.admin.get_push_health import GetAdminPushHealth
         from utils.api.endpoint import APIException
 
@@ -74,8 +74,9 @@ class TestGetPushHealthErrorLimitOutOfRange:
         endpoint.user = mock_user
         endpoint.db = MagicMock()
 
+        # aam-20: GetAdminPushHealth.execute is async — await it.
         with pytest.raises(APIException) as excinfo:
-            endpoint.execute(
+            await endpoint.execute(
                 user_id_or_email=str(uuid.uuid4()),
                 error_limit=bad_limit,
             )

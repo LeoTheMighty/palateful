@@ -40,14 +40,12 @@ from api.v1.recipe_book.websocket import broadcast_event_to_recipe_book
 from dependencies import (
     get_async_database,
     get_current_user_async,
-    get_database,
 )
 from fastapi import APIRouter, Depends
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.user import User
 from utils.services.async_database import AsyncDatabase
-from utils.services.database import Database
 from utils.services.notifications_bridge import notify_via_threadpool
 
 recipe_router = APIRouter(tags=["recipes"])
@@ -535,12 +533,12 @@ async def get_public_recipe(
 
 
 @recipe_router.get("/recipe-books/{book_id}/public")
-def get_public_recipe_book(
+async def get_public_recipe_book(
     book_id: str,
-    database: Database = Depends(get_database)
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a publicly shared recipe book (no auth required)."""
-    return GetPublicRecipeBook.call(
+    return await GetPublicRecipeBook.call(
         recipe_book_id=book_id,
-        database=database
+        database=database,
     )
