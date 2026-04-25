@@ -1420,8 +1420,8 @@ development_status:
   epic-recipe-default-books-retrospective: optional
 
   # --- Epic 2: Recipe List Organization (parallelizable after Epic 1) ---
-  epic-recipe-list-organization: backlog
-  recipe-list-org-1-backend-last-cooked-on-list-responses-sort-and-index: backlog
+  epic-recipe-list-organization: in-progress
+  recipe-list-org-1-backend-last-cooked-on-list-responses-sort-and-index: done
   recipe-list-org-2-backend-hide-in-meals-filter-server-or-client-decision: backlog
   recipe-list-org-3-frontend-view-toggle-button-table-tile-and-persisted-preference: backlog
   recipe-list-org-4-frontend-dynamic-column-mirrors-active-sort: backlog

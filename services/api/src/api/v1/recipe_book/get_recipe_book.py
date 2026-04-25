@@ -3,9 +3,10 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
+from utils.models.cooking_log import CookingLog
 from utils.models.recipe import Recipe
 from utils.models.recipe_book import RecipeBook
 from utils.models.recipe_book_user import RecipeBookUser
@@ -65,6 +66,28 @@ class GetRecipeBook(AsyncEndpoint):
         )
         recipes = list(recipes_result.scalars().all())
 
+        # recipe-list-org-1: bulk last_cooked aggregate over the embedded
+        # recipes. The home-content provider in the Flutter app reads the
+        # `recipes[]` payload here per book and feeds it into the same
+        # table-view as ``GET /v1/recipe-books/{id}/recipes`` — so the
+        # last_cooked field has to be on this shape too.
+        last_cooked_by_recipe: dict = {}
+        recipe_ids = [r.id for r in recipes]
+        if recipe_ids:
+            cooked_result = await self.db.execute(
+                select(
+                    CookingLog.recipe_id,
+                    func.max(CookingLog.cooked_at),
+                )
+                .where(
+                    CookingLog.recipe_id.in_(recipe_ids),
+                    CookingLog.archived_at.is_(None),
+                )
+                .group_by(CookingLog.recipe_id)
+            )
+            for row in cooked_result.all():
+                last_cooked_by_recipe[row[0]] = row[1]
+
         recipe_items = [
             GetRecipeBook.RecipeItem(
                 id=str(recipe.id),
@@ -76,6 +99,7 @@ class GetRecipeBook(AsyncEndpoint):
                 image_url=recipe.image_url,
                 created_at=recipe.created_at,
                 updated_at=recipe.updated_at,
+                last_cooked=last_cooked_by_recipe.get(recipe.id),
             )
             for recipe in recipes
         ]
@@ -126,6 +150,7 @@ class GetRecipeBook(AsyncEndpoint):
         image_url: str | None = None
         created_at: datetime
         updated_at: datetime
+        last_cooked: datetime | None = None
 
     class MemberItem(BaseModel):
         user_id: str

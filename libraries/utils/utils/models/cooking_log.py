@@ -5,7 +5,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import UUID, CheckConstraint, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import (
+    UUID,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.models.base import Base
@@ -35,6 +45,12 @@ class CookingLog(Base):
             "(num_nonnulls(recipe_id, meal_id) = 1) OR "
             "(parent_meal_log_id IS NOT NULL AND recipe_id IS NOT NULL AND meal_id IS NULL)",
             name="ck_cooking_logs_target",
+        ),
+        Index(
+            "ix_cooking_logs_recipe_id_cooked_at_active",
+            "recipe_id",
+            text("cooked_at DESC"),
+            postgresql_where=text("archived_at IS NULL"),
         ),
     )
 

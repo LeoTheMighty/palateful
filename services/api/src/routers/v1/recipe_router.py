@@ -59,6 +59,8 @@ async def list_recipes(
     offset: int = 0,
     search: str | None = None,
     vibe: str | None = None,
+    sort: str = "name",
+    dir: str = "asc",
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
@@ -69,6 +71,8 @@ async def list_recipes(
         offset=offset,
         search=search,
         vibe=vibe,
+        sort=sort,
+        dir=dir,
         user=user,
         database=database
     )

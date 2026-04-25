@@ -127,6 +127,8 @@ class TestGetRecipeBook:
 
     def test_get_recipe_book_with_recipes(self, client, mock_async_db, mock_user):
         """Test getting a recipe book that contains recipes."""
+        from datetime import UTC, datetime
+
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
         membership = MockRecipeBookUser(
@@ -134,6 +136,7 @@ class TestGetRecipeBook:
             recipe_book_id=book_id,
         )
         recipe = MockRecipe(recipe_book_id=book_id, name="Pasta")
+        cooked_at = datetime.now(UTC)
 
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
@@ -142,9 +145,10 @@ class TestGetRecipeBook:
                                   user_id=str(mock_user.id),
                                   recipe_book_id=book_id)
         mock_async_db.set_find_by(RecipeBook, book, id=book_id)
-        # Two db.execute calls: recipes (returns [recipe]) then members (empty).
+        # Three db.execute calls: recipes, last_cooked aggregate, members.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[(recipe.id, cooked_at)]),
             MockExecuteResult(items=[]),
         ]
 
@@ -154,6 +158,38 @@ class TestGetRecipeBook:
         assert data["recipe_count"] == 1
         assert len(data["recipes"]) == 1
         assert data["recipes"][0]["name"] == "Pasta"
+        assert data["recipes"][0]["last_cooked"] is not None
+
+    def test_get_recipe_book_recipe_never_cooked(
+        self, client, mock_async_db, mock_user
+    ):
+        """A recipe with no cooking_logs row gets last_cooked=null."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        recipe = MockRecipe(recipe_book_id=book_id, name="Untouched")
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        # Aggregate returns no rows → last_cooked is null.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+        ]
+
+        response = client.get(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["recipes"][0]["last_cooked"] is None
 
 
 class TestUpdateRecipeBook:

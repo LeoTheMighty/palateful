@@ -1,6 +1,7 @@
 """Tests for recipe endpoints."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from conftest import (
@@ -28,17 +29,19 @@ class TestListRecipes:
             recipe_book_id=book_id,
         )
         recipe = MockRecipe(recipe_book_id=book_id, name="Pasta")
+        cooked_at = datetime.now(UTC)
 
         from utils.models.recipe_book_user import RecipeBookUser
 
         mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        # Three execute() calls: count, list, favorites.
+        # Four execute() calls: count, list, favorites, last_cooked agg.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[1]),
             MockExecuteResult(items=[recipe]),
             MockExecuteResult(items=[]),
+            MockExecuteResult(items=[(recipe.id, cooked_at)]),
         ]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes")
@@ -46,6 +49,7 @@ class TestListRecipes:
         data = response.json()
         assert "items" in data
         assert "total" in data
+        assert data["items"][0]["last_cooked"] is not None
 
     def test_list_recipes_no_access(self, client, mock_async_db, mock_user):
         """Test listing recipes without access."""
@@ -65,6 +69,9 @@ class TestListRecipes:
         mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
+        # Two execute() calls when result is empty: count, list.
+        # The favorites + last_cooked aggregate are gated on a non-empty
+        # recipe page, so they don't fire here.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
@@ -93,6 +100,176 @@ class TestListRecipes:
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes?vibe=cozy")
         assert response.status_code == 200
+
+    def test_list_recipes_last_cooked_null_for_never_cooked(
+        self, client, mock_async_db, mock_user
+    ):
+        """A recipe with no cooking_logs row gets last_cooked=null."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        recipe = MockRecipe(recipe_book_id=book_id, name="Untouched")
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        # Aggregate returns no rows for this recipe → null.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+        ]
+
+        response = client.get(f"/v1/recipe-books/{book_id}/recipes")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"][0]["last_cooked"] is None
+
+    def test_list_recipes_sort_last_cooked_desc(
+        self, client, mock_async_db, mock_user
+    ):
+        """sort=last_cooked&dir=desc is accepted; aggregate maps to row."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        # The mock layer doesn't actually run SQL, so we can't assert
+        # ordering — but we *can* assert the route accepts the params and
+        # that the aggregate is mapped onto the recipe by id.
+        recent = MockRecipe(recipe_book_id=book_id, name="Recent")
+        older = MockRecipe(recipe_book_id=book_id, name="Older")
+        recent_at = datetime.now(UTC)
+        older_at = recent_at - timedelta(days=7)
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[2]),
+            MockExecuteResult(items=[recent, older]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[
+                (recent.id, recent_at),
+                (older.id, older_at),
+            ]),
+        ]
+
+        response = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?sort=last_cooked&dir=desc"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Both rows have last_cooked populated from the aggregate map.
+        assert all(item["last_cooked"] is not None for item in data["items"])
+
+    def test_list_recipes_sort_last_cooked_asc(
+        self, client, mock_async_db, mock_user
+    ):
+        """sort=last_cooked&dir=asc takes the NULLS FIRST branch."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
+
+        response = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?sort=last_cooked&dir=asc"
+        )
+        assert response.status_code == 200
+
+    def test_list_recipes_sort_created_at(
+        self, client, mock_async_db, mock_user
+    ):
+        """sort=created_at takes the created_at branch (desc + asc)."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
+
+        # desc
+        r1 = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?sort=created_at&dir=desc"
+        )
+        assert r1.status_code == 200
+        # asc
+        r2 = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?sort=created_at&dir=asc"
+        )
+        assert r2.status_code == 200
+
+    def test_list_recipes_sort_name_desc(self, client, mock_async_db, mock_user):
+        """sort=name&dir=desc covers the name-desc arm."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
+
+        response = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?sort=name&dir=desc"
+        )
+        assert response.status_code == 200
+
+    def test_list_recipes_invalid_sort_400(
+        self, client, mock_async_db, mock_user
+    ):
+        """Invalid sort value rejected with 400."""
+        book_id = "test-book-id"
+        response = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?sort=garbage"
+        )
+        assert response.status_code == 400
+
+    def test_list_recipes_invalid_dir_400(
+        self, client, mock_async_db, mock_user
+    ):
+        """Invalid dir value rejected with 400."""
+        book_id = "test-book-id"
+        response = client.get(
+            f"/v1/recipe-books/{book_id}/recipes?dir=sideways"
+        )
+        assert response.status_code == 400
 
 
 class TestGetVibeOptions:
@@ -859,6 +1036,7 @@ class TestUpdateRecipeStepsAndTags:
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[1]),
             MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
         ]
 
@@ -1709,6 +1887,10 @@ class TestBulkMoveRecipes:
         assert response.status_code == 200
         data = response.json()
         assert data["moved_count"] == 2
+        # recipe-bulk-org-2: response carries prior_recipe_book_id per
+        # moved recipe so the client can build a no-fetch undo.
+        moved = {item["id"]: item["prior_recipe_book_id"] for item in data["moved"]}
+        assert moved == {"recipe-1": src_book_id, "recipe-2": src_book_id}
         assert recipe1.recipe_book_id == dest_book_id
         assert recipe2.recipe_book_id == dest_book_id
 
@@ -1827,7 +2009,77 @@ class TestBulkMoveRecipes:
         assert response.status_code == 200
         data = response.json()
         assert data["moved_count"] == 1  # Only recipe-2 was moved
+        # The skipped recipe (already in dest) must NOT appear in `moved`.
+        moved_ids = [item["id"] for item in data["moved"]]
+        assert moved_ids == ["recipe-2"]
+        assert data["moved"][0]["prior_recipe_book_id"] == src_book_id
         assert recipe_to_move.recipe_book_id == dest_book_id
+    def test_bulk_move_returns_distinct_prior_book_ids(
+        self, client, mock_async_db, mock_user
+    ):
+        """recipe-bulk-org-2: each `moved` item carries its own prior id.
+
+        Selection from "All recipes" can span multiple source books;
+        the per-recipe prior id lets the client undo each recipe back
+        to where it came from in one round-trip per source group.
+        """
+        src_a = "src-book-a"
+        src_b = "src-book-b"
+        dest_book_id = "dest-book-id"
+        recipe1 = MockRecipe(id="recipe-1", recipe_book_id=src_a)
+        recipe2 = MockRecipe(id="recipe-2", recipe_book_id=src_b)
+        dest_book = MockRecipeBook(id=dest_book_id)
+        src_a_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_a,
+            role="owner",
+        )
+        src_b_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=src_b,
+            role="editor",
+        )
+        dest_membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=dest_book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_async_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, src_a_membership,
+            user_id=str(mock_user.id), recipe_book_id=src_a,
+        )
+        mock_async_db.set_find_by(
+            RecipeBookUser, src_b_membership,
+            user_id=str(mock_user.id), recipe_book_id=src_b,
+        )
+        mock_async_db.set_find_by(
+            RecipeBookUser, dest_membership,
+            user_id=str(mock_user.id), recipe_book_id=dest_book_id,
+        )
+
+        response = client.post(
+            "/v1/recipes/bulk/move",
+            json={
+                "recipe_ids": ["recipe-1", "recipe-2"],
+                "destination_book_id": dest_book_id,
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["moved_count"] == 2
+        moved = {item["id"]: item["prior_recipe_book_id"] for item in data["moved"]}
+        assert moved == {"recipe-1": src_a, "recipe-2": src_b}
+        # FK swap actually persisted on both rows.
+        assert recipe1.recipe_book_id == dest_book_id
+        assert recipe2.recipe_book_id == dest_book_id
 
 
 class TestBulkArchiveRecipes:
