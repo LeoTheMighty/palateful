@@ -314,7 +314,7 @@ class TestGetRecipe:
 class TestCreateRecipe:
     """Tests for POST /v1/recipe-books/{book_id}/recipes."""
 
-    def test_create_recipe_success(self, client, mock_db, mock_user):
+    def test_create_recipe_success(self, client, mock_async_db, mock_user):
         """Test creating a recipe."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -327,10 +327,10 @@ class TestCreateRecipe:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/recipes",
@@ -347,7 +347,7 @@ class TestCreateRecipe:
         assert data["name"] == "New Recipe"
         assert data["servings"] == 4
 
-    def test_create_recipe_no_permission(self, client, mock_db, mock_user):
+    def test_create_recipe_no_permission(self, client, mock_async_db, mock_user):
         """Test creating a recipe without editor access."""
         book_id = "test-book-id"
         membership = MockRecipeBookUser(
@@ -358,7 +358,7 @@ class TestCreateRecipe:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -368,7 +368,7 @@ class TestCreateRecipe:
         )
         assert response.status_code == 403
 
-    def test_create_recipe_missing_name(self, client, mock_db):
+    def test_create_recipe_missing_name(self, client, mock_async_db):
         """Test creating a recipe without name fails."""
         response = client.post(
             "/v1/recipe-books/some-id/recipes",
@@ -380,7 +380,7 @@ class TestCreateRecipe:
 class TestDeleteRecipe:
     """Tests for DELETE /v1/recipes/{recipe_id} (soft delete / archive)."""
 
-    def test_delete_recipe_archives(self, client, mock_db, mock_user):
+    def test_delete_recipe_archives(self, client, mock_async_db, mock_user):
         """Test deleting a recipe sets archived_at (soft delete)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -394,8 +394,8 @@ class TestDeleteRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -407,12 +407,12 @@ class TestDeleteRecipe:
         # Verify soft delete: archived_at should be set
         assert recipe.archived_at is not None
 
-    def test_delete_recipe_not_found(self, client, mock_db):
+    def test_delete_recipe_not_found(self, client, mock_async_db):
         """Test deleting a recipe that doesn't exist."""
         response = client.delete("/v1/recipes/nonexistent")
         assert response.status_code == 404
 
-    def test_delete_recipe_no_permission(self, client, mock_db, mock_user):
+    def test_delete_recipe_no_permission(self, client, mock_async_db, mock_user):
         """Test deleting a recipe as viewer fails."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -426,8 +426,8 @@ class TestDeleteRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -438,7 +438,7 @@ class TestDeleteRecipe:
 class TestRestoreRecipe:
     """Tests for POST /v1/recipes/{recipe_id}/restore."""
 
-    def test_restore_recipe_success(self, client, mock_db, mock_user):
+    def test_restore_recipe_success(self, client, mock_async_db, mock_user):
         """Test restoring an archived recipe."""
         from datetime import UTC, datetime
 
@@ -458,8 +458,8 @@ class TestRestoreRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -470,12 +470,12 @@ class TestRestoreRecipe:
         # Verify restored
         assert recipe.archived_at is None
 
-    def test_restore_recipe_not_found(self, client, mock_db, mock_user):
+    def test_restore_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test restoring a nonexistent recipe."""
         response = client.post("/v1/recipes/nonexistent/restore")
         assert response.status_code == 404
 
-    def test_restore_recipe_not_archived(self, client, mock_db, mock_user):
+    def test_restore_recipe_not_archived(self, client, mock_async_db, mock_user):
         """Test restoring a recipe that is not archived."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -483,12 +483,12 @@ class TestRestoreRecipe:
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
 
         response = client.post(f"/v1/recipes/{recipe_id}/restore")
         assert response.status_code == 400
 
-    def test_restore_recipe_no_permission(self, client, mock_db, mock_user):
+    def test_restore_recipe_no_permission(self, client, mock_async_db, mock_user):
         """Test restoring without owner/editor role fails."""
         from datetime import UTC, datetime
 
@@ -508,8 +508,8 @@ class TestRestoreRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id, include_archived=True)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -570,7 +570,7 @@ class TestListArchivedRecipes:
 class TestCreateRecipeWithStepsAndTags:
     """Tests for creating recipes with steps and tags."""
 
-    def test_create_recipe_with_steps(self, client, mock_db, mock_user):
+    def test_create_recipe_with_steps(self, client, mock_async_db, mock_user):
         """Test creating a recipe with structured steps."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -583,10 +583,10 @@ class TestCreateRecipeWithStepsAndTags:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/recipes",
@@ -606,7 +606,7 @@ class TestCreateRecipeWithStepsAndTags:
         assert data["steps"][0]["step_number"] == 1
         assert data["steps"][2]["step_number"] == 3
 
-    def test_create_recipe_with_tags(self, client, mock_db, mock_user):
+    def test_create_recipe_with_tags(self, client, mock_async_db, mock_user):
         """Test creating a recipe with tags."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -619,10 +619,10 @@ class TestCreateRecipeWithStepsAndTags:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/recipes",
@@ -635,7 +635,7 @@ class TestCreateRecipeWithStepsAndTags:
         data = response.json()
         assert data["tags"] == ["italian", "quick", "weeknight"]
 
-    def test_create_recipe_without_steps_tags(self, client, mock_db, mock_user):
+    def test_create_recipe_without_steps_tags(self, client, mock_async_db, mock_user):
         """Test backward compat: create recipe without steps or tags."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -648,10 +648,10 @@ class TestCreateRecipeWithStepsAndTags:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/recipes",
@@ -662,7 +662,7 @@ class TestCreateRecipeWithStepsAndTags:
         assert data["tags"] == []
         assert data["steps"] == []
 
-    def test_create_recipe_step_ordering(self, client, mock_db, mock_user):
+    def test_create_recipe_step_ordering(self, client, mock_async_db, mock_user):
         """Test that steps preserve step_number ordering."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -675,10 +675,10 @@ class TestCreateRecipeWithStepsAndTags:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/recipes",
@@ -702,7 +702,7 @@ class TestCreateRecipeWithStepsAndTags:
 class TestUpdateRecipeStepsAndTags:
     """Tests for updating recipe steps and tags."""
 
-    def _setup_update(self, mock_db, mock_user, recipe_id="test-recipe-id",
+    def _setup_update(self, mock_async_db, mock_user, recipe_id="test-recipe-id",
                       book_id="test-book-id", tags=None):
         """Helper to set up common update test fixtures."""
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, tags=tags or [])
@@ -715,17 +715,16 @@ class TestUpdateRecipeStepsAndTags:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
         return recipe
 
-    def test_update_recipe_tags(self, client, mock_db, mock_user):
+    def test_update_recipe_tags(self, client, mock_async_db, mock_user):
         """Test updating recipe tags replaces them."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -735,17 +734,17 @@ class TestUpdateRecipeStepsAndTags:
         data = response.json()
         assert data["tags"] == ["dinner", "healthy"]
 
-    def test_update_recipe_steps(self, client, mock_db, mock_user):
+    def test_update_recipe_steps(self, client, mock_async_db, mock_user):
         """Test updating recipe steps replaces them."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         from utils.models.recipe_step import RecipeStep
 
         # Simulate the steps that would be returned after delete+recreate
         step1 = MockRecipeStep(recipe_id=recipe_id, step_number=1, instruction="New step 1")
         step2 = MockRecipeStep(recipe_id=recipe_id, step_number=2, instruction="New step 2")
-        mock_db.set_where(RecipeStep, [step1, step2])
+        mock_async_db.set_where(RecipeStep, [step1, step2])
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -762,10 +761,10 @@ class TestUpdateRecipeStepsAndTags:
         assert data["steps"][0]["instruction"] == "New step 1"
         assert data["steps"][1]["instruction"] == "New step 2"
 
-    def test_update_recipe_without_steps_tags(self, client, mock_db, mock_user):
+    def test_update_recipe_without_steps_tags(self, client, mock_async_db, mock_user):
         """Test updating recipe name only doesn't affect steps/tags."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id,
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id,
                           tags=["existing"])
 
         response = client.put(
@@ -1373,7 +1372,7 @@ class TestGetRecipeLeanDefault:
 class TestMoveRecipe:
     """Tests for POST /v1/recipes/{recipe_id}/move."""
 
-    def test_move_recipe_success(self, client, mock_db, mock_user):
+    def test_move_recipe_success(self, client, mock_async_db, mock_user):
         """Test moving a recipe to another book."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1395,12 +1394,12 @@ class TestMoveRecipe:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1414,7 +1413,7 @@ class TestMoveRecipe:
         assert data["recipe_book_id"] == dest_book_id
         assert recipe.recipe_book_id == dest_book_id
 
-    def test_move_recipe_not_found(self, client, mock_db, mock_user):
+    def test_move_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test moving a nonexistent recipe."""
         response = client.post(
             "/v1/recipes/nonexistent/move",
@@ -1422,7 +1421,7 @@ class TestMoveRecipe:
         )
         assert response.status_code == 404
 
-    def test_move_recipe_same_book(self, client, mock_db, mock_user):
+    def test_move_recipe_same_book(self, client, mock_async_db, mock_user):
         """Test moving recipe to same book fails."""
         recipe_id = "test-recipe-id"
         book_id = "same-book-id"
@@ -1430,7 +1429,7 @@ class TestMoveRecipe:
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         response = client.post(
             f"/v1/recipes/{recipe_id}/move",
@@ -1438,7 +1437,7 @@ class TestMoveRecipe:
         )
         assert response.status_code == 400
 
-    def test_move_recipe_no_source_permission(self, client, mock_db, mock_user):
+    def test_move_recipe_no_source_permission(self, client, mock_async_db, mock_user):
         """Test moving recipe without source book edit permission."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1452,8 +1451,8 @@ class TestMoveRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
 
@@ -1463,7 +1462,7 @@ class TestMoveRecipe:
         )
         assert response.status_code == 403
 
-    def test_move_recipe_no_dest_permission(self, client, mock_db, mock_user):
+    def test_move_recipe_no_dest_permission(self, client, mock_async_db, mock_user):
         """Test moving recipe without destination book edit permission."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1485,12 +1484,12 @@ class TestMoveRecipe:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1500,7 +1499,7 @@ class TestMoveRecipe:
         )
         assert response.status_code == 403
 
-    def test_move_recipe_dest_not_found(self, client, mock_db, mock_user):
+    def test_move_recipe_dest_not_found(self, client, mock_async_db, mock_user):
         """Test moving recipe to nonexistent destination book."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1514,8 +1513,8 @@ class TestMoveRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
 
@@ -1529,7 +1528,7 @@ class TestMoveRecipe:
 class TestCopyRecipe:
     """Tests for POST /v1/recipes/{recipe_id}/copy."""
 
-    def test_copy_recipe_success(self, client, mock_db, mock_user):
+    def test_copy_recipe_success(self, client, mock_async_db, mock_user):
         """Test copying a recipe to another book."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1558,18 +1557,18 @@ class TestCopyRecipe:
         from utils.models.recipe_ingredient import RecipeIngredient
         from utils.models.recipe_step import RecipeStep
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
-        mock_db.set_where(RecipeIngredient, [
+        mock_async_db.set_where(RecipeIngredient, [
             MockRecipeIngredient(recipe_id=recipe_id, order_index=0),
         ])
-        mock_db.set_where(RecipeStep, [
+        mock_async_db.set_where(RecipeStep, [
             MockRecipeStep(recipe_id=recipe_id, step_number=1, instruction="Boil"),
         ])
 
@@ -1583,7 +1582,7 @@ class TestCopyRecipe:
         # New recipe should have a different ID
         assert data["id"] != recipe_id
 
-    def test_copy_recipe_not_found(self, client, mock_db, mock_user):
+    def test_copy_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test copying a nonexistent recipe."""
         response = client.post(
             "/v1/recipes/nonexistent/copy",
@@ -1591,14 +1590,14 @@ class TestCopyRecipe:
         )
         assert response.status_code == 404
 
-    def test_copy_recipe_no_source_access(self, client, mock_db, mock_user):
+    def test_copy_recipe_no_source_access(self, client, mock_async_db, mock_user):
         """Test copying recipe without source book access."""
         recipe_id = "test-recipe-id"
         recipe = MockRecipe(id=recipe_id, recipe_book_id="other-book")
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
 
         response = client.post(
             f"/v1/recipes/{recipe_id}/copy",
@@ -1606,7 +1605,7 @@ class TestCopyRecipe:
         )
         assert response.status_code == 403
 
-    def test_copy_recipe_no_dest_permission(self, client, mock_db, mock_user):
+    def test_copy_recipe_no_dest_permission(self, client, mock_async_db, mock_user):
         """Test copying recipe without destination book edit permission."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1628,12 +1627,12 @@ class TestCopyRecipe:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1643,7 +1642,7 @@ class TestCopyRecipe:
         )
         assert response.status_code == 403
 
-    def test_copy_recipe_dest_not_found(self, client, mock_db, mock_user):
+    def test_copy_recipe_dest_not_found(self, client, mock_async_db, mock_user):
         """Test copying recipe to nonexistent destination book."""
         recipe_id = "test-recipe-id"
         src_book_id = "src-book-id"
@@ -1657,8 +1656,8 @@ class TestCopyRecipe:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
 
@@ -1672,7 +1671,7 @@ class TestCopyRecipe:
 class TestBulkMoveRecipes:
     """Tests for POST /v1/recipes/bulk/move."""
 
-    def test_bulk_move_success(self, client, mock_db, mock_user):
+    def test_bulk_move_success(self, client, mock_async_db, mock_user):
         """Test bulk moving recipes to another book."""
         src_book_id = "src-book-id"
         dest_book_id = "dest-book-id"
@@ -1694,13 +1693,13 @@ class TestBulkMoveRecipes:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe1, id="recipe-1")
-        mock_db.set_find_by(Recipe, recipe2, id="recipe-2")
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_async_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1714,7 +1713,7 @@ class TestBulkMoveRecipes:
         assert recipe1.recipe_book_id == dest_book_id
         assert recipe2.recipe_book_id == dest_book_id
 
-    def test_bulk_move_empty_list(self, client, mock_db, mock_user):
+    def test_bulk_move_empty_list(self, client, mock_async_db, mock_user):
         """Test bulk move with empty recipe list."""
         response = client.post(
             "/v1/recipes/bulk/move",
@@ -1722,7 +1721,7 @@ class TestBulkMoveRecipes:
         )
         assert response.status_code == 400
 
-    def test_bulk_move_no_dest_permission(self, client, mock_db, mock_user):
+    def test_bulk_move_no_dest_permission(self, client, mock_async_db, mock_user):
         """Test bulk move without destination book permission."""
         dest_book_id = "dest-book-id"
         dest_book = MockRecipeBook(id=dest_book_id)
@@ -1735,8 +1734,8 @@ class TestBulkMoveRecipes:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1746,7 +1745,7 @@ class TestBulkMoveRecipes:
         )
         assert response.status_code == 403
 
-    def test_bulk_move_dest_not_found(self, client, mock_db, mock_user):
+    def test_bulk_move_dest_not_found(self, client, mock_async_db, mock_user):
         """Test bulk move to nonexistent destination."""
         response = client.post(
             "/v1/recipes/bulk/move",
@@ -1754,7 +1753,7 @@ class TestBulkMoveRecipes:
         )
         assert response.status_code == 404
 
-    def test_bulk_move_no_source_permission(self, client, mock_db, mock_user):
+    def test_bulk_move_no_source_permission(self, client, mock_async_db, mock_user):
         """Test bulk move without source book permission."""
         src_book_id = "src-book-id"
         dest_book_id = "dest-book-id"
@@ -1775,12 +1774,12 @@ class TestBulkMoveRecipes:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1790,7 +1789,7 @@ class TestBulkMoveRecipes:
         )
         assert response.status_code == 403
 
-    def test_bulk_move_skips_already_in_dest(self, client, mock_db, mock_user):
+    def test_bulk_move_skips_already_in_dest(self, client, mock_async_db, mock_user):
         """Test that recipes already in the destination book are skipped."""
         dest_book_id = "dest-book-id"
         src_book_id = "src-book-id"
@@ -1812,13 +1811,13 @@ class TestBulkMoveRecipes:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe_already_there, id="recipe-1")
-        mock_db.set_find_by(Recipe, recipe_to_move, id="recipe-2")
-        mock_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
-        mock_db.set_find_by(RecipeBookUser, src_membership,
+        mock_async_db.set_find_by(Recipe, recipe_already_there, id="recipe-1")
+        mock_async_db.set_find_by(Recipe, recipe_to_move, id="recipe-2")
+        mock_async_db.set_find_by(RecipeBook, dest_book, id=dest_book_id)
+        mock_async_db.set_find_by(RecipeBookUser, src_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=src_book_id)
-        mock_db.set_find_by(RecipeBookUser, dest_membership,
+        mock_async_db.set_find_by(RecipeBookUser, dest_membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=dest_book_id)
 
@@ -1835,7 +1834,7 @@ class TestBulkMoveRecipes:
 class TestBulkArchiveRecipes:
     """Tests for POST /v1/recipes/bulk/archive."""
 
-    def test_bulk_archive_success(self, client, mock_db, mock_user):
+    def test_bulk_archive_success(self, client, mock_async_db, mock_user):
         """Test bulk archiving recipes."""
         book_id = "test-book-id"
         recipe1 = MockRecipe(id="recipe-1", recipe_book_id=book_id)
@@ -1849,9 +1848,9 @@ class TestBulkArchiveRecipes:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe1, id="recipe-1")
-        mock_db.set_find_by(Recipe, recipe2, id="recipe-2")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_async_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -1865,7 +1864,7 @@ class TestBulkArchiveRecipes:
         assert recipe1.archived_at is not None
         assert recipe2.archived_at is not None
 
-    def test_bulk_archive_empty_list(self, client, mock_db, mock_user):
+    def test_bulk_archive_empty_list(self, client, mock_async_db, mock_user):
         """Test bulk archive with empty recipe list."""
         response = client.post(
             "/v1/recipes/bulk/archive",
@@ -1873,7 +1872,7 @@ class TestBulkArchiveRecipes:
         )
         assert response.status_code == 400
 
-    def test_bulk_archive_no_permission(self, client, mock_db, mock_user):
+    def test_bulk_archive_no_permission(self, client, mock_async_db, mock_user):
         """Test bulk archive without permission."""
         book_id = "test-book-id"
         recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id)
@@ -1886,8 +1885,8 @@ class TestBulkArchiveRecipes:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -1897,7 +1896,7 @@ class TestBulkArchiveRecipes:
         )
         assert response.status_code == 403
 
-    def test_bulk_archive_recipe_not_found(self, client, mock_db, mock_user):
+    def test_bulk_archive_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test bulk archive with nonexistent recipe."""
         response = client.post(
             "/v1/recipes/bulk/archive",
@@ -1909,7 +1908,7 @@ class TestBulkArchiveRecipes:
 class TestBulkUpdateTags:
     """Tests for POST /v1/recipes/bulk/tags."""
 
-    def test_bulk_add_tags(self, client, mock_db, mock_user):
+    def test_bulk_add_tags(self, client, mock_async_db, mock_user):
         """Test bulk adding tags to recipes."""
         book_id = "test-book-id"
         recipe1 = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=["italian"])
@@ -1923,9 +1922,9 @@ class TestBulkUpdateTags:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe1, id="recipe-1")
-        mock_db.set_find_by(Recipe, recipe2, id="recipe-2")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe1, id="recipe-1")
+        mock_async_db.set_find_by(Recipe, recipe2, id="recipe-2")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -1941,7 +1940,7 @@ class TestBulkUpdateTags:
         assert "italian" in recipe1.tags  # preserved
         assert "quick" in recipe2.tags
 
-    def test_bulk_remove_tags(self, client, mock_db, mock_user):
+    def test_bulk_remove_tags(self, client, mock_async_db, mock_user):
         """Test bulk removing tags from recipes."""
         book_id = "test-book-id"
         recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=["italian", "quick", "easy"])
@@ -1954,8 +1953,8 @@ class TestBulkUpdateTags:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -1966,7 +1965,7 @@ class TestBulkUpdateTags:
         assert response.status_code == 200
         assert recipe.tags == ["italian"]
 
-    def test_bulk_add_and_remove_tags(self, client, mock_db, mock_user):
+    def test_bulk_add_and_remove_tags(self, client, mock_async_db, mock_user):
         """Test bulk adding and removing tags simultaneously."""
         book_id = "test-book-id"
         recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=["old-tag"])
@@ -1979,8 +1978,8 @@ class TestBulkUpdateTags:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -1992,7 +1991,7 @@ class TestBulkUpdateTags:
         assert "new-tag" in recipe.tags
         assert "old-tag" not in recipe.tags
 
-    def test_bulk_tags_empty_list(self, client, mock_db, mock_user):
+    def test_bulk_tags_empty_list(self, client, mock_async_db, mock_user):
         """Test bulk tags with empty recipe list."""
         response = client.post(
             "/v1/recipes/bulk/tags",
@@ -2000,7 +1999,7 @@ class TestBulkUpdateTags:
         )
         assert response.status_code == 400
 
-    def test_bulk_tags_no_changes(self, client, mock_db, mock_user):
+    def test_bulk_tags_no_changes(self, client, mock_async_db, mock_user):
         """Test bulk tags with no tag changes specified."""
         response = client.post(
             "/v1/recipes/bulk/tags",
@@ -2008,7 +2007,7 @@ class TestBulkUpdateTags:
         )
         assert response.status_code == 400
 
-    def test_bulk_tags_no_permission(self, client, mock_db, mock_user):
+    def test_bulk_tags_no_permission(self, client, mock_async_db, mock_user):
         """Test bulk tags without permission."""
         book_id = "test-book-id"
         recipe = MockRecipe(id="recipe-1", recipe_book_id=book_id, tags=[])
@@ -2021,8 +2020,8 @@ class TestBulkUpdateTags:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id="recipe-1")
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id="recipe-1")
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2116,7 +2115,7 @@ class TestGetRecipeVersion:
 class TestRestoreRecipeVersion:
     """Tests for POST /v1/recipes/{recipe_id}/versions/{version_id}/restore."""
 
-    def test_restore_recipe_version_success(self, client, mock_db, mock_user):
+    def test_restore_recipe_version_success(self, client, mock_async_db, mock_user):
         """Test restoring a recipe to a previous version."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2144,11 +2143,11 @@ class TestRestoreRecipeVersion:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
 
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
         assert response.status_code == 200
@@ -2156,13 +2155,13 @@ class TestRestoreRecipeVersion:
         # Recipe name should be updated to snapshot value
         assert data["name"] == "Old Name"
         # A new version snapshot should have been added (db.add called)
-        mock_db.db.add.assert_called()
+        mock_async_db.db.add.assert_called()
         # The new snapshot version must have changed_fields = ["restore:1"] (AC #3)
-        call_args = mock_db.db.add.call_args_list
+        call_args = mock_async_db.db.add.call_args_list
         added_versions = [a.args[0] for a in call_args if hasattr(a.args[0], 'changed_fields')]
         assert any(v.changed_fields == ["restore:1"] for v in added_versions)
 
-    def test_restore_recipe_version_access_denied(self, client, mock_db, mock_user):
+    def test_restore_recipe_version_access_denied(self, client, mock_async_db, mock_user):
         """Test that viewers cannot restore a recipe version."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2176,20 +2175,20 @@ class TestRestoreRecipeVersion:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
 
         response = client.post(f"/v1/recipes/{recipe_id}/versions/some-version/restore")
         assert response.status_code == 403
 
-    def test_restore_recipe_version_recipe_not_found(self, client, mock_db, mock_user):
+    def test_restore_recipe_version_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test restoring a version for a non-existent recipe."""
         response = client.post("/v1/recipes/nonexistent/versions/some-version/restore")
         assert response.status_code == 404
 
-    def test_restore_recipe_version_not_found(self, client, mock_db, mock_user):
+    def test_restore_recipe_version_not_found(self, client, mock_async_db, mock_user):
         """Test restoring a version that doesn't exist."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2203,8 +2202,8 @@ class TestRestoreRecipeVersion:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
         # RecipeVersion not set — find_by returns None
@@ -2216,7 +2215,7 @@ class TestRestoreRecipeVersion:
 class TestAddRecipeNote:
     """Tests for POST /v1/recipes/{recipe_id}/notes."""
 
-    def test_add_recipe_note_success(self, client, mock_db, mock_user):
+    def test_add_recipe_note_success(self, client, mock_async_db, mock_user):
         """Test adding a note to a recipe returns 201 with note body."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2229,8 +2228,8 @@ class TestAddRecipeNote:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
 
@@ -2244,7 +2243,7 @@ class TestAddRecipeNote:
         assert "id" in data
         assert "created_at" in data
 
-    def test_add_recipe_note_access_denied(self, client, mock_db, mock_user):
+    def test_add_recipe_note_access_denied(self, client, mock_async_db, mock_user):
         """Test adding a note to a recipe without access returns 404."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2252,7 +2251,7 @@ class TestAddRecipeNote:
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
         # No membership set → find_by returns None → 404
 
         response = client.post(
@@ -2265,7 +2264,7 @@ class TestAddRecipeNote:
 class TestDeleteRecipeNote:
     """Tests for DELETE /v1/recipes/{recipe_id}/notes/{note_id}."""
 
-    def test_delete_recipe_note_success(self, client, mock_db, mock_user):
+    def test_delete_recipe_note_success(self, client, mock_async_db, mock_user):
         """Test deleting own note returns 200."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2286,18 +2285,18 @@ class TestDeleteRecipeNote:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_note import RecipeNote
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeNote, note, id=note_id)
+        mock_async_db.set_find_by(RecipeNote, note, id=note_id)
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["deleted"] is True
 
-    def test_delete_recipe_note_not_found(self, client, mock_db, mock_user):
+    def test_delete_recipe_note_not_found(self, client, mock_async_db, mock_user):
         """Test deleting a non-existent note returns 404."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2310,8 +2309,8 @@ class TestDeleteRecipeNote:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
         # RecipeNote not set → find_by returns None → 404
@@ -2319,7 +2318,7 @@ class TestDeleteRecipeNote:
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/nonexistent")
         assert response.status_code == 404
 
-    def test_delete_recipe_note_unauthorized(self, client, mock_db, mock_user):
+    def test_delete_recipe_note_unauthorized(self, client, mock_async_db, mock_user):
         """Test deleting another user's note as editor returns 403."""
         import uuid
         recipe_id = "test-recipe-id"
@@ -2342,11 +2341,11 @@ class TestDeleteRecipeNote:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_note import RecipeNote
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeNote, note, id=note_id)
+        mock_async_db.set_find_by(RecipeNote, note, id=note_id)
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
         assert response.status_code == 403
@@ -2355,7 +2354,7 @@ class TestDeleteRecipeNote:
 class TestCreateRecipeMissingBranches:
     """Tests for missing branches in create_recipe.py."""
 
-    def test_create_recipe_book_not_found(self, client, mock_db, mock_user):
+    def test_create_recipe_book_not_found(self, client, mock_async_db, mock_user):
         """Test creating recipe when book exists in membership but not in find_by (line 51)."""
         book_id = "test-book-id"
         membership = MockRecipeBookUser(
@@ -2366,7 +2365,7 @@ class TestCreateRecipeMissingBranches:
 
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
         # RecipeBook not set -> find_by returns None -> 404
@@ -2377,7 +2376,7 @@ class TestCreateRecipeMissingBranches:
         )
         assert response.status_code == 404
 
-    def test_create_recipe_with_ingredients(self, client, mock_db, mock_user):
+    def test_create_recipe_with_ingredients(self, client, mock_async_db, mock_user):
         """Test creating recipe with ingredients including normalization (lines 84-119)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -2393,11 +2392,11 @@ class TestCreateRecipeMissingBranches:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/recipes",
@@ -2417,7 +2416,7 @@ class TestCreateRecipeMissingBranches:
         assert len(data["ingredients"]) == 1
         assert data["ingredients"][0]["ingredient"]["canonical_name"] == "flour"
 
-    def test_create_recipe_ingredient_not_found(self, client, mock_db, mock_user):
+    def test_create_recipe_ingredient_not_found(self, client, mock_async_db, mock_user):
         """Test creating recipe with nonexistent ingredient (line 85-90)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -2430,10 +2429,10 @@ class TestCreateRecipeMissingBranches:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
         # Ingredient not configured -> find_by returns None -> 400
 
         response = client.post(
@@ -2451,7 +2450,7 @@ class TestCreateRecipeMissingBranches:
         )
         assert response.status_code == 400
 
-    def test_create_recipe_normalization_failure(self, client, mock_db, mock_user):
+    def test_create_recipe_normalization_failure(self, client, mock_async_db, mock_user):
         """Test creating recipe when quantity normalization fails (lines 100-103)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -2467,11 +2466,11 @@ class TestCreateRecipeMissingBranches:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
 
         # Patch normalize_quantity to raise an exception
         with patch("api.v1.recipe.create_recipe.normalize_quantity", side_effect=Exception("unsupported unit")):
@@ -2492,7 +2491,7 @@ class TestCreateRecipeMissingBranches:
         data = response.json()
         assert len(data["ingredients"]) == 1
 
-    def test_create_recipe_embedding_none(self, client, mock_db, mock_user):
+    def test_create_recipe_embedding_none(self, client, mock_async_db, mock_user):
         """Test creating recipe when embedding generation returns None (line 76->81 false branch)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -2505,10 +2504,10 @@ class TestCreateRecipeMissingBranches:
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None):
             response = client.post(
@@ -2521,7 +2520,7 @@ class TestCreateRecipeMissingBranches:
 class TestUpdateRecipeMissingBranches:
     """Tests for missing branches in update_recipe.py."""
 
-    def _setup_update(self, mock_db, mock_user, recipe_id="test-recipe-id",
+    def _setup_update(self, mock_async_db, mock_user, recipe_id="test-recipe-id",
                       book_id="test-book-id", tags=None, name="Test Recipe"):
         """Helper to set up common update test fixtures."""
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id, tags=tags or [], name=name)
@@ -2534,17 +2533,16 @@ class TestUpdateRecipeMissingBranches:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
         return recipe
 
-    def test_update_recipe_description(self, client, mock_db, mock_user):
+    def test_update_recipe_description(self, client, mock_async_db, mock_user):
         """Test updating description field."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2554,10 +2552,10 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["description"] == "Updated description"
 
-    def test_update_recipe_servings(self, client, mock_db, mock_user):
+    def test_update_recipe_servings(self, client, mock_async_db, mock_user):
         """Test updating servings field."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2567,10 +2565,10 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["servings"] == 8
 
-    def test_update_recipe_prep_time(self, client, mock_db, mock_user):
+    def test_update_recipe_prep_time(self, client, mock_async_db, mock_user):
         """Test updating prep_time field."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2580,10 +2578,10 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["prep_time"] == 45
 
-    def test_update_recipe_cook_time(self, client, mock_db, mock_user):
+    def test_update_recipe_cook_time(self, client, mock_async_db, mock_user):
         """Test updating cook_time field."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2593,10 +2591,10 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["cook_time"] == 60
 
-    def test_update_recipe_image_url(self, client, mock_db, mock_user):
+    def test_update_recipe_image_url(self, client, mock_async_db, mock_user):
         """Test updating image_url field."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2606,10 +2604,10 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["image_url"] == "https://example.com/photo.jpg"
 
-    def test_update_recipe_source_url(self, client, mock_db, mock_user):
+    def test_update_recipe_source_url(self, client, mock_async_db, mock_user):
         """Test updating source_url field."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2619,12 +2617,12 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["source_url"] == "https://example.com/recipe"
 
-    def test_update_recipe_primary_vibe_only(self, client, mock_db, mock_user):
+    def test_update_recipe_primary_vibe_only(self, client, mock_async_db, mock_user):
         """Update only primary_vibe (secondary unchanged)."""
         from utils.constants import VALID_VIBES
 
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
         valid_vibe = next(iter(VALID_VIBES))
 
         response = client.put(
@@ -2636,11 +2634,11 @@ class TestUpdateRecipeMissingBranches:
         assert data["primary_vibe"] == valid_vibe
 
     def test_update_recipe_secondary_vibe_only_invalid(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Update only secondary_vibe with an invalid value → stored as None."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2650,31 +2648,31 @@ class TestUpdateRecipeMissingBranches:
         data = response.json()
         assert data["secondary_vibe"] is None
 
-    def test_update_recipe_with_ingredients(self, client, mock_db, mock_user):
+    def test_update_recipe_with_ingredients(self, client, mock_async_db, mock_user):
         """Test updating recipe ingredients (delete-and-recreate)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
         ingredient_id = str(uuid.uuid4())
         ingredient = MockIngredient(id=ingredient_id, canonical_name="sugar")
-        recipe = self._setup_update(mock_db, mock_user, recipe_id=recipe_id, book_id=book_id)
+        recipe = self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id, book_id=book_id)
 
         from utils.models.ingredient import Ingredient
         from utils.models.recipe_ingredient import RecipeIngredient
         from utils.models.recipe_note import RecipeNote
         from utils.models.recipe_step import RecipeStep
 
-        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
-        mock_db.set_where(RecipeIngredient, [])
-        mock_db.set_where(RecipeStep, [])
-        mock_db.set_where(RecipeNote, [])
+        mock_async_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+        mock_async_db.set_where(RecipeIngredient, [])
+        mock_async_db.set_where(RecipeStep, [])
+        mock_async_db.set_where(RecipeNote, [])
 
-        # db.query calls in order:
-        # 1. func.max(RecipeVersion.version_number) during _create_version_snapshot
-        # 2. RecipeIngredient join Ingredient for response
+        # db.execute calls in order:
+        # 1. select(func.max(RecipeVersion.version_number)) in _create_version_snapshot
+        # 2. select(RecipeIngredient, Ingredient).join(...) for response
         ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
-        mock_db.db.query.side_effect = [
-            MockQuery([0]),                  # max version_number
-            MockQuery([(ri, ingredient)]),   # ingredient join for response
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),                  # max version_number
+            MockExecuteResult(items=[(ri, ingredient)]),   # ingredient join for response
         ]
 
         response = client.put(
@@ -2696,21 +2694,21 @@ class TestUpdateRecipeMissingBranches:
         body = response.json()
         assert body["ingredients"][0]["id"] == ingredient_id
 
-    def test_update_recipe_ingredient_not_found(self, client, mock_db, mock_user):
+    def test_update_recipe_ingredient_not_found(self, client, mock_async_db, mock_user):
         """Test updating recipe with nonexistent ingredient returns 400."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         from utils.models.recipe_ingredient import RecipeIngredient
         from utils.models.recipe_note import RecipeNote
         from utils.models.recipe_step import RecipeStep
 
-        mock_db.set_where(RecipeIngredient, [])
-        mock_db.set_where(RecipeStep, [])
-        mock_db.set_where(RecipeNote, [])
+        mock_async_db.set_where(RecipeIngredient, [])
+        mock_async_db.set_where(RecipeStep, [])
+        mock_async_db.set_where(RecipeNote, [])
 
-        # _create_version_snapshot calls db.query for max version_number
-        mock_db.db.query.return_value = MockQuery([0])
+        # _create_version_snapshot awaits db.execute for max version_number
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2726,27 +2724,27 @@ class TestUpdateRecipeMissingBranches:
         )
         assert response.status_code == 400
 
-    def test_update_recipe_normalization_failure(self, client, mock_db, mock_user):
+    def test_update_recipe_normalization_failure(self, client, mock_async_db, mock_user):
         """Test updating recipe when normalization fails uses display values."""
         recipe_id = "test-recipe-id"
         ingredient_id = str(uuid.uuid4())
         ingredient = MockIngredient(id=ingredient_id, canonical_name="saffron")
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         from utils.models.ingredient import Ingredient
         from utils.models.recipe_ingredient import RecipeIngredient
         from utils.models.recipe_note import RecipeNote
         from utils.models.recipe_step import RecipeStep
 
-        mock_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
-        mock_db.set_where(RecipeIngredient, [])
-        mock_db.set_where(RecipeStep, [])
-        mock_db.set_where(RecipeNote, [])
+        mock_async_db.set_find_by(Ingredient, ingredient, id=ingredient_id)
+        mock_async_db.set_where(RecipeIngredient, [])
+        mock_async_db.set_where(RecipeStep, [])
+        mock_async_db.set_where(RecipeNote, [])
 
         ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
-        mock_db.db.query.side_effect = [
-            MockQuery([0]),                  # max version_number
-            MockQuery([(ri, ingredient)]),   # ingredient join for response
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),                  # max version_number
+            MockExecuteResult(items=[(ri, ingredient)]),   # ingredient join for response
         ]
 
         with patch("api.v1.recipe.update_recipe.normalize_quantity", side_effect=Exception("bad unit")):
@@ -2764,10 +2762,10 @@ class TestUpdateRecipeMissingBranches:
             )
         assert response.status_code == 200
 
-    def test_update_recipe_same_name_skips_embedding(self, client, mock_db, mock_user):
+    def test_update_recipe_same_name_skips_embedding(self, client, mock_async_db, mock_user):
         """Test that sending the same name value skips embedding regeneration."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id, name="Test Recipe")
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id, name="Test Recipe")
 
         with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding") as mock_embed:
             response = client.put(
@@ -2777,10 +2775,10 @@ class TestUpdateRecipeMissingBranches:
         assert response.status_code == 200
         mock_embed.assert_not_called()  # no embedding regen needed
 
-    def test_update_recipe_embedding_regeneration(self, client, mock_db, mock_user):
+    def test_update_recipe_embedding_regeneration(self, client, mock_async_db, mock_user):
         """Test that updating name/description/tags regenerates embedding."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=[0.1, 0.2]) as mock_embed:
             response = client.put(
@@ -2790,10 +2788,10 @@ class TestUpdateRecipeMissingBranches:
         assert response.status_code == 200
         mock_embed.assert_called_once()
 
-    def test_update_recipe_embedding_returns_none(self, client, mock_db, mock_user):
+    def test_update_recipe_embedding_returns_none(self, client, mock_async_db, mock_user):
         """Test that embedding=None branch is handled when updating searchable fields."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         with patch("api.v1.search.generate_recipe_embedding.generate_recipe_embedding", return_value=None):
             response = client.put(
@@ -2802,10 +2800,10 @@ class TestUpdateRecipeMissingBranches:
             )
         assert response.status_code == 200
 
-    def test_update_recipe_no_changes(self, client, mock_db, mock_user):
+    def test_update_recipe_no_changes(self, client, mock_async_db, mock_user):
         """Test updating recipe with no fields changed."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2813,10 +2811,10 @@ class TestUpdateRecipeMissingBranches:
         )
         assert response.status_code == 200
 
-    def test_update_recipe_versioning_on_name_change(self, client, mock_db, mock_user):
+    def test_update_recipe_versioning_on_name_change(self, client, mock_async_db, mock_user):
         """Test that changing name triggers a version snapshot."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id, name="Old Name")
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id, name="Old Name")
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -2824,19 +2822,19 @@ class TestUpdateRecipeMissingBranches:
         )
         assert response.status_code == 200
         # Verify db.add was called (version snapshot created)
-        mock_db.db.add.assert_called()
+        mock_async_db.db.add.assert_called()
 
-    def test_update_recipe_versioning_on_instructions_change(self, client, mock_db, mock_user):
+    def test_update_recipe_versioning_on_instructions_change(self, client, mock_async_db, mock_user):
         """Test that changing instructions triggers a version snapshot."""
         recipe_id = "test-recipe-id"
-        self._setup_update(mock_db, mock_user, recipe_id=recipe_id)
+        self._setup_update(mock_async_db, mock_user, recipe_id=recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
             json={"instructions": "New instructions here"}
         )
         assert response.status_code == 200
-        mock_db.db.add.assert_called()
+        mock_async_db.db.add.assert_called()
 
 
 class TestGetRecipeVersionsMissingBranches:
@@ -2927,7 +2925,7 @@ class TestGetRecipeVersionsMissingBranches:
 class TestRestoreRecipeVersionMissingBranches:
     """Tests for missing branches in restore_recipe_version.py."""
 
-    def test_restore_version_with_ingredients_and_steps(self, client, mock_db, mock_user):
+    def test_restore_version_with_ingredients_and_steps(self, client, mock_async_db, mock_user):
         """Test restoring a version with ingredients and steps in snapshot (lines 93-151)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -2980,23 +2978,23 @@ class TestRestoreRecipeVersionMissingBranches:
         from utils.models.recipe_step import RecipeStep
         from utils.models.recipe_version import RecipeVersion
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeVersion, version, id=version_id)
-        mock_db.set_where(RecipeIngredient, [])
-        mock_db.set_where(RecipeStep, [])
-        mock_db.set_where(RecipeNote, [])
-        mock_db.set_where(RecipeVersion, [])
+        mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
+        mock_async_db.set_where(RecipeIngredient, [])
+        mock_async_db.set_where(RecipeStep, [])
+        mock_async_db.set_where(RecipeNote, [])
+        mock_async_db.set_where(RecipeVersion, [])
 
-        # db.query calls in order:
-        # 1. func.max(RecipeVersion.version_number) in _create_restore_snapshot
-        # 2. RecipeIngredient join Ingredient for response (uses self.db.query)
+        # db.execute calls in order:
+        # 1. select(func.max(RecipeVersion.version_number)) in _create_restore_snapshot
+        # 2. select(RecipeIngredient, Ingredient).join(...) for response
         ri = MockRecipeIngredient(recipe_id=recipe_id, ingredient_id=ingredient_id)
-        mock_db.db.query.side_effect = [
-            MockQuery([0]),                  # max version_number
-            MockQuery([(ri, ingredient)]),   # ingredient join for response
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),                  # max version_number
+            MockExecuteResult(items=[(ri, ingredient)]),   # ingredient join for response
         ]
 
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
@@ -3008,7 +3006,7 @@ class TestRestoreRecipeVersionMissingBranches:
 class TestAddRecipeNoteMissingBranches:
     """Tests for missing branches in add_recipe_note.py."""
 
-    def test_add_note_recipe_not_found(self, client, mock_db, mock_user):
+    def test_add_note_recipe_not_found(self, client, mock_async_db, mock_user):
         """Test adding note to a nonexistent recipe (line 35-40)."""
         response = client.post(
             "/v1/recipes/nonexistent/notes",
@@ -3016,7 +3014,7 @@ class TestAddRecipeNoteMissingBranches:
         )
         assert response.status_code == 404
 
-    def test_add_note_empty_body_rejected(self, client, mock_db, mock_user):
+    def test_add_note_empty_body_rejected(self, client, mock_async_db, mock_user):
         """Test that empty body is rejected by validator."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -3029,8 +3027,8 @@ class TestAddRecipeNoteMissingBranches:
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
 
@@ -3044,7 +3042,7 @@ class TestAddRecipeNoteMissingBranches:
 class TestDeleteRecipeNoteMissingBranches:
     """Tests for missing branches in delete_recipe_note.py."""
 
-    def test_delete_note_wrong_recipe_id(self, client, mock_db, mock_user):
+    def test_delete_note_wrong_recipe_id(self, client, mock_async_db, mock_user):
         """Test deleting a note that belongs to a different recipe (line 47)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -3064,16 +3062,16 @@ class TestDeleteRecipeNoteMissingBranches:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_note import RecipeNote
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeNote, note, id=note_id)
+        mock_async_db.set_find_by(RecipeNote, note, id=note_id)
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
         assert response.status_code == 404
 
-    def test_delete_note_already_archived(self, client, mock_db, mock_user):
+    def test_delete_note_already_archived(self, client, mock_async_db, mock_user):
         """Test deleting a note that is already archived (line 47)."""
         from datetime import UTC, datetime
 
@@ -3096,16 +3094,16 @@ class TestDeleteRecipeNoteMissingBranches:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_note import RecipeNote
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeNote, note, id=note_id)
+        mock_async_db.set_find_by(RecipeNote, note, id=note_id)
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
         assert response.status_code == 404
 
-    def test_delete_note_as_book_owner(self, client, mock_db, mock_user):
+    def test_delete_note_as_book_owner(self, client, mock_async_db, mock_user):
         """Test that book owner can delete another user's note (line 56)."""
         other_user_id = str(uuid.uuid4())
         recipe_id = "test-recipe-id"
@@ -3127,18 +3125,18 @@ class TestDeleteRecipeNoteMissingBranches:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_note import RecipeNote
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeNote, note, id=note_id)
+        mock_async_db.set_find_by(RecipeNote, note, id=note_id)
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/{note_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["deleted"] is True
 
-    def test_delete_note_recipe_no_membership(self, client, mock_db, mock_user):
+    def test_delete_note_recipe_no_membership(self, client, mock_async_db, mock_user):
         """Test deleting note without book membership (line 38-43)."""
         recipe_id = "test-recipe-id"
         book_id = "test-book-id"
@@ -3146,7 +3144,7 @@ class TestDeleteRecipeNoteMissingBranches:
 
         from utils.models.recipe import Recipe
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
         # No membership set -> 404
 
         response = client.delete(f"/v1/recipes/{recipe_id}/notes/some-note")
@@ -3215,14 +3213,8 @@ class TestRecipeInferredFields:
     """efi-3 — GetRecipe surfaces + UpdateRecipe shrink-only for
     ``recipes.inferred_fields``."""
 
-    def _setup(self, mock_db, mock_async_db, mock_user, *, stored):
-        """Configure both sync + async mocks.
-
-        aam-12a converted `GetRecipe` to `AsyncEndpoint` (async mocks),
-        but `UpdateRecipe` is still sync (aam-12b scope). The test class
-        covers both — one helper sets up both databases so GET vs PUT
-        tests work unchanged.
-        """
+    def _setup(self, mock_async_db, mock_user, *, stored):
+        """Configure async mocks for GET + PUT recipe paths."""
         from utils.models.recipe import Recipe
         from utils.models.recipe_book_user import RecipeBookUser
 
@@ -3236,22 +3228,19 @@ class TestRecipeInferredFields:
             recipe_book_id=book_id,
             role="owner",
         )
-        for db in (mock_db, mock_async_db):
-            db.set_find_by(Recipe, recipe, id=recipe_id)
-            db.set_find_by(
-                RecipeBookUser,
-                membership,
-                user_id=str(mock_user.id),
-                recipe_book_id=book_id,
-            )
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
         return recipe_id, recipe
 
     def test_get_recipe_surfaces_inferred_fields(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         recipe_id, _ = self._setup(
-            mock_db,
             mock_async_db,
             mock_user,
             stored=["cook_time_minutes", "servings"],
@@ -3262,28 +3251,27 @@ class TestRecipeInferredFields:
         assert data["inferred_fields"] == ["cook_time_minutes", "servings"]
 
     def test_get_recipe_empty_list_when_not_inferred(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        recipe_id, _ = self._setup(mock_db, mock_async_db, mock_user, stored=[])
+        recipe_id, _ = self._setup(mock_async_db, mock_user, stored=[])
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         assert response.json()["inferred_fields"] == []
 
     def test_get_recipe_tolerates_null_column(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Legacy rows with a null column decode to `[]` defensively."""
-        recipe_id, recipe = self._setup(mock_db, mock_async_db, mock_user, stored=[])
+        recipe_id, recipe = self._setup(mock_async_db, mock_user, stored=[])
         recipe.inferred_fields = None  # simulate a pre-migration row
         response = client.get(f"/v1/recipes/{recipe_id}")
         assert response.status_code == 200
         assert response.json()["inferred_fields"] == []
 
     def test_update_recipe_shrinks_inferred_fields(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         recipe_id, _ = self._setup(
-            mock_db,
             mock_async_db,
             mock_user,
             stored=["cook_time_minutes", "servings", "cuisine"],
@@ -3297,12 +3285,12 @@ class TestRecipeInferredFields:
         assert data["inferred_fields"] == ["servings", "cuisine"]
 
     def test_update_recipe_empty_list_shrinks_to_none(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Sending `[]` is a valid shrink — user has edited every
         inferred field, nothing left to sparkle."""
         recipe_id, _ = self._setup(
-            mock_db, mock_async_db, mock_user, stored=["cook_time_minutes"]
+            mock_async_db, mock_user, stored=["cook_time_minutes"]
         )
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -3312,12 +3300,12 @@ class TestRecipeInferredFields:
         assert response.json()["inferred_fields"] == []
 
     def test_update_recipe_rejects_expansion(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Adding a field not in the stored set → 400 with the current
         stored set in `data.allowed`."""
         recipe_id, _ = self._setup(
-            mock_db, mock_async_db, mock_user, stored=["cook_time_minutes"]
+            mock_async_db, mock_user, stored=["cook_time_minutes"]
         )
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -3334,12 +3322,12 @@ class TestRecipeInferredFields:
         assert body["data"]["allowed"] == ["cook_time_minutes"]
 
     def test_update_recipe_rejects_non_inferable_field(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """A name not in INFERABLE_FIELDS → 400, even if it happens to
         be a subset of the stored set (can't happen legitimately; the
         stored set is bounded by the allow-list)."""
-        recipe_id, _ = self._setup(mock_db, mock_async_db, mock_user, stored=[])
+        recipe_id, _ = self._setup(mock_async_db, mock_user, stored=[])
         response = client.put(
             f"/v1/recipes/{recipe_id}",
             json={"inferred_fields": ["name"]},
@@ -3349,13 +3337,13 @@ class TestRecipeInferredFields:
         assert body["data"]["allowed"] == []
 
     def test_update_recipe_rejects_non_string_entry(
-        self, client, mock_db, mock_async_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """FastAPI rejects non-string entries at the pydantic layer
         with a 422 — exercise the branch so the full Params schema is
         validated end-to-end."""
         recipe_id, _ = self._setup(
-            mock_db, mock_async_db, mock_user, stored=["cook_time_minutes"]
+            mock_async_db, mock_user, stored=["cook_time_minutes"]
         )
         response = client.put(
             f"/v1/recipes/{recipe_id}",
@@ -3365,11 +3353,10 @@ class TestRecipeInferredFields:
         # expected outer error.
         assert response.status_code in (400, 422)
 
-    def test_update_recipe_dedupes_shrink(self, client, mock_db, mock_async_db, mock_user):
+    def test_update_recipe_dedupes_shrink(self, client, mock_async_db, mock_user):
         """Client-sent duplicates are deduped server-side before
         persistence (order preserved from first-seen)."""
         recipe_id, _ = self._setup(
-            mock_db,
             mock_async_db,
             mock_user,
             stored=["cook_time_minutes", "servings"],

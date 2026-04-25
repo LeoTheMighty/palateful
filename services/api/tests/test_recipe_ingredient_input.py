@@ -12,8 +12,8 @@ import uuid
 
 import pytest
 from conftest import (
+    MockExecuteResult,
     MockIngredient,
-    MockQuery,
     MockRecipe,
     MockRecipeBook,
     MockRecipeBookUser,
@@ -25,7 +25,7 @@ from utils.models.recipe_book_user import RecipeBookUser
 
 
 @pytest.fixture
-def book_and_membership(mock_db, mock_user):
+def book_and_membership(mock_async_db, mock_user):
     """Authenticated owner membership on a recipe book."""
     book_id = "test-book-id"
     book = MockRecipeBook(id=book_id)
@@ -34,19 +34,19 @@ def book_and_membership(mock_db, mock_user):
         recipe_book_id=book_id,
         role="owner",
     )
-    mock_db.set_find_by(
+    mock_async_db.set_find_by(
         RecipeBookUser,
         membership,
         user_id=str(mock_user.id),
         recipe_book_id=book_id,
     )
-    mock_db.set_find_by(RecipeBook, book, id=book_id)
+    mock_async_db.set_find_by(RecipeBook, book, id=book_id)
     return book_id
 
 
 class TestCreateRecipeNameOrId:
     def test_name_only_creates_fresh_ingredient_row(
-        self, client, mock_db, book_and_membership
+        self, client, mock_async_db, book_and_membership
     ):
         """Name-only input inserts a fresh `ingredients` row — no matching."""
         response = client.post(
@@ -70,7 +70,7 @@ class TestCreateRecipeNameOrId:
         assert data["ingredients"][0]["ingredient"]["canonical_name"] == "butter"
 
     def test_repeated_names_create_distinct_rows(
-        self, client, mock_db, book_and_membership
+        self, client, mock_async_db, book_and_membership
     ):
         """Post-epic-ingredients-string-simplification: repeating the same
         name across ingredients always stages a new row — no find-or-create,
@@ -92,12 +92,12 @@ class TestCreateRecipeNameOrId:
         assert data["ingredients"][0]["ingredient"]["canonical_name"] == "olive oil"
         assert data["ingredients"][1]["ingredient"]["canonical_name"] == "olive oil"
         # Confirm two distinct Ingredient instances were staged: find-or-create
-        # would have added only one. (The in-memory mock_db leaves flush as a
+        # would have added only one. (The in-memory mock_async_db leaves flush as a
         # no-op so DB-assigned IDs aren't observable via response; counting
         # adds is the direct proof.)
         added_ingredients = [
             call.args[0]
-            for call in mock_db.db.add.call_args_list
+            for call in mock_async_db.db.add.call_args_list
             if isinstance(call.args[0], Ingredient)
         ]
         assert len(added_ingredients) == 2
@@ -117,12 +117,12 @@ class TestCreateRecipeNameOrId:
         assert response.status_code == 400
 
     def test_ingredient_id_only_still_works(
-        self, client, mock_db, book_and_membership
+        self, client, mock_async_db, book_and_membership
     ):
         """Backwards compat — existing clients supplying only ingredient_id."""
         ing_id = str(uuid.uuid4())
         existing = MockIngredient(id=ing_id, canonical_name="flour")
-        mock_db.set_find_by(Ingredient, existing, id=ing_id)
+        mock_async_db.set_find_by(Ingredient, existing, id=ing_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_and_membership}/recipes",
@@ -138,12 +138,12 @@ class TestCreateRecipeNameOrId:
         assert data["ingredients"][0]["ingredient"]["id"] == ing_id
 
     def test_both_id_and_name_supplied_id_wins(
-        self, client, mock_db, book_and_membership
+        self, client, mock_async_db, book_and_membership
     ):
         """When both inputs arrive, ingredient_id wins (guards against name drift)."""
         ing_id = str(uuid.uuid4())
         existing = MockIngredient(id=ing_id, canonical_name="sugar")
-        mock_db.set_find_by(Ingredient, existing, id=ing_id)
+        mock_async_db.set_find_by(Ingredient, existing, id=ing_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_and_membership}/recipes",
@@ -195,7 +195,7 @@ class TestCreateRecipeNameOrId:
         assert response.status_code == 400
 
     def test_name_lowercased_and_stripped(
-        self, client, mock_db, book_and_membership
+        self, client, mock_async_db, book_and_membership
     ):
         """`  BUTTER  ` gets stored as `butter` (lowercased + stripped),
         even though a separate fresh row is created per the epic."""
@@ -214,14 +214,16 @@ class TestCreateRecipeNameOrId:
 
 
 class TestUpdateRecipeNameOrId:
-    def _setup_recipe(self, mock_db, book_id, recipe_id, ing_tuple=None):
-        """Wire a Recipe + a predictable query chain.
+    def _setup_recipe(self, mock_async_db, book_id, recipe_id, ing_tuple=None):
+        """Wire a Recipe + a predictable execute chain.
 
-        The update path calls `db.query` twice: once for the version
-        snapshot's `max(version_number).scalar()` and once for the joined
-        ingredient fetch on the way out. A `side_effect` list returns a
-        distinct MockQuery for each call so scalar() gets None (→ 0) and
-        .all() gets the (ri, ingredient) tuple we want.
+        The async update path awaits `db.execute` twice when params carry
+        ingredients: once for the version snapshot's
+        `select(func.max(RecipeVersion.version_number)).scalar()` and once
+        for the joined ingredient fetch on the way out. A `side_effect`
+        list returns a distinct MockExecuteResult for each call so
+        scalar() gets None (→ 0) and .all() gets the (ri, ingredient)
+        tuple we want.
         """
         recipe = MockRecipe(
             id=recipe_id,
@@ -229,15 +231,15 @@ class TestUpdateRecipeNameOrId:
             recipe_book_id=book_id,
             tags=[],
         )
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.db.query.side_effect = [
-            MockQuery([]),  # max_version
-            MockQuery([ing_tuple] if ing_tuple else []),  # joined fetch
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),  # max_version
+            MockExecuteResult(items=[ing_tuple] if ing_tuple else []),  # joined fetch
         ]
         return recipe
 
     def test_update_accepts_name_only(
-        self, client, mock_db, mock_user, book_and_membership
+        self, client, mock_async_db, mock_user, book_and_membership
     ):
         from conftest import MockRecipeIngredient
 
@@ -245,7 +247,7 @@ class TestUpdateRecipeNameOrId:
         created_ri = MockRecipeIngredient(recipe_id=recipe_id)
         created_ingredient = MockIngredient(canonical_name="paprika")
         self._setup_recipe(
-            mock_db,
+            mock_async_db,
             book_and_membership,
             recipe_id,
             ing_tuple=(created_ri, created_ingredient),
@@ -267,10 +269,10 @@ class TestUpdateRecipeNameOrId:
         )
 
     def test_update_rejects_neither_id_nor_name(
-        self, client, mock_db, mock_user, book_and_membership
+        self, client, mock_async_db, mock_user, book_and_membership
     ):
         recipe_id = str(uuid.uuid4())
-        self._setup_recipe(mock_db, book_and_membership, recipe_id)
+        self._setup_recipe(mock_async_db, book_and_membership, recipe_id)
 
         response = client.put(
             f"/v1/recipes/{recipe_id}",
