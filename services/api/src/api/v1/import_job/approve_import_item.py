@@ -83,6 +83,10 @@ class ApproveImportItem(AsyncEndpoint):
         item.status = "approved"
         await recompute_import_job_counters(self.database.db, job)
         await self.database.db.commit()
+        # `updated_at` has `onupdate=func.now()`; SQLAlchemy expires it
+        # after flush, so the response build below would otherwise trigger
+        # a sync lazy-load on the AsyncSession (MissingGreenlet).
+        await self.database.db.refresh(item)
 
         # Dispatch recipe creation task
         create_recipe_task.delay(

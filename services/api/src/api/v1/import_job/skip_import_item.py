@@ -73,6 +73,11 @@ class SkipImportItem(AsyncEndpoint):
         # Update job counts
         await self._update_job_counts(job)
 
+        # `updated_at` has `onupdate=func.now()`; SQLAlchemy expires it
+        # after flush, so the response build below would otherwise trigger
+        # a sync lazy-load on the AsyncSession (MissingGreenlet).
+        await self.database.db.refresh(item)
+
         return success(
             data=SkipImportItem.Response(
                 id=str(item.id),
