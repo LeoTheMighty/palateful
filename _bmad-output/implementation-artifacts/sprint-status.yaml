@@ -1416,7 +1416,7 @@ development_status:
   recipe-defaults-1-backend-is-system-column-and-trying-out-seed-migration: done
   recipe-defaults-2-backend-new-user-provisioning-hook-seeds-trying-out-and-default: done
   recipe-defaults-3-frontend-switcher-pins-system-books-with-distinct-styling: done
-  recipe-defaults-4-frontend-share-import-fallback-uses-default-recipe-book-id: backlog
+  recipe-defaults-4-frontend-share-import-fallback-uses-default-recipe-book-id: done
   epic-recipe-default-books-retrospective: optional
 
   # --- Epic 2: Recipe List Organization (parallelizable after Epic 1) ---

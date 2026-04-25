@@ -69,13 +69,29 @@ class _ShareImportScreenState extends State<ShareImportScreen> {
       final defaultId = _authService.defaultRecipeBookId;
       Map<String, dynamic> targetBook;
 
+      // recipe-defaults-4: prefer the system Trying Out book over the
+      // legacy `books.first` arbitrary fallback when the user has no
+      // default. Story 2's auth-callback hook will eventually set
+      // `default_recipe_book_id` server-side, but until that propagates
+      // to the client cache (e.g. via a fresh `/v1/users/me` fetch),
+      // the system book is the right destination — every existing user
+      // got one back-filled by the story-1 migration, and every new
+      // user gets one from the story-2 hook.
+      Map<String, dynamic>? systemBook;
+      for (final b in books) {
+        if (b['is_system'] == true) {
+          systemBook = b;
+          break;
+        }
+      }
+
       if (defaultId != null) {
         targetBook = books.firstWhere(
           (b) => b['id']?.toString() == defaultId,
-          orElse: () => books.first,
+          orElse: () => systemBook ?? books.first,
         );
       } else {
-        targetBook = books.first;
+        targetBook = systemBook ?? books.first;
       }
 
       _selectedBookId = targetBook['id']?.toString();
