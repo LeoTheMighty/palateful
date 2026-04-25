@@ -294,7 +294,7 @@ class UpdateRecipe(AsyncEndpoint):
             UpdateRecipe.IngredientResponse(
                 id=str(ri.ingredient_id),
                 ingredient=UpdateRecipe.IngredientSummary(
-                    id=ing.id,
+                    id=str(ing.id),
                     canonical_name=ing.canonical_name,
                     category=None,
                 ),
@@ -315,7 +315,7 @@ class UpdateRecipe(AsyncEndpoint):
 
         return success(
             data=UpdateRecipe.Response(
-                id=recipe.id,
+                id=str(recipe.id),
                 name=recipe.name,
                 description=recipe.description,
                 instructions=recipe.instructions,

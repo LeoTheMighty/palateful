@@ -1513,7 +1513,7 @@ class TestListImportItemsCursor:
         from pagination import encode_cursor
 
         job_id = self._setup_job(mock_async_db, mock_user)
-        cursor = encode_cursor(None, 1_700_000_000_000, str(_uuid.uuid4()))
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
         item = MockImportItem(import_job_id=job_id, status="succeeded")
         mock_async_db.db.execute.return_value = MockExecuteResult(items=[item])
 
@@ -1580,7 +1580,7 @@ class TestListImportItemsCursor:
         # Provide a cursor so the cursor-path runs with limit+1 detection.
         from pagination import encode_cursor
 
-        cursor = encode_cursor(None, 1_700_000_000_000, "seed-id")
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
         response = client.get(
             f"/v1/import-jobs/{job_id}/items?cursor={cursor}&limit=50"
         )
@@ -1609,7 +1609,7 @@ class TestListImportItemsCursor:
         ]
         mock_async_db.db.execute.return_value = MockExecuteResult(items=items)
         cursor = encode_cursor(
-            1_750_000_000_000, 1_700_000_000_000, "seed"
+            1_750_000_000_000, 1_700_000_000_000, str(uuid.uuid4())
         )
         response = client.get(
             f"/v1/import-jobs/{job_id}/items"
@@ -1644,7 +1644,7 @@ class TestListImportJobsCursor:
 
         from pagination import encode_cursor
 
-        cursor = encode_cursor(None, 1_700_000_000_000, str(_uuid.uuid4()))
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
         job = MockImportJob(user_id=str(mock_user.id))
         mock_async_db.db.execute.return_value = MockExecuteResult(items=[job])
 
@@ -1695,7 +1695,7 @@ class TestListImportJobsCursor:
 
         jobs = [MockImportJob(user_id=str(mock_user.id)) for _ in range(60)]
         mock_async_db.db.execute.return_value = MockExecuteResult(items=jobs)
-        cursor = encode_cursor(None, 1_700_000_000_000, "seed")
+        cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
         response = client.get(f"/v1/import-jobs?cursor={cursor}&limit=50")
         assert response.status_code == 200
         body = response.json()

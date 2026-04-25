@@ -2726,6 +2726,70 @@ class TestUpdateRecipeMissingBranches:
         body = response.json()
         assert body["ingredients"][0]["id"] == ingredient_id
 
+    def test_update_recipe_returns_200_when_ids_are_uuid_objects(
+        self, client, mock_async_db, mock_user
+    ):
+        # Regression: prod hands back ``uuid.UUID`` for Recipe.id and
+        # Ingredient.id (both are ``Mapped[uuid.UUID]``), but the
+        # Pydantic response schema declares ``id: str``. Without an
+        # explicit ``str(...)`` cast the request 500s with a
+        # ValidationError ("Input should be a valid string ... input_type=UUID").
+        # Mocks default ``id`` to ``str(uuid.uuid4())``, so this test
+        # forces the prod-shaped value to keep the cast in place.
+        recipe_uuid = uuid.uuid4()
+        ingredient_uuid = uuid.uuid4()
+        book_id = "test-book-id"
+
+        recipe = MockRecipe(id=recipe_uuid, recipe_book_id=book_id, tags=[])
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id), recipe_book_id=book_id, role="owner"
+        )
+        ingredient = MockIngredient(id=ingredient_uuid, canonical_name="sugar")
+
+        from utils.models.ingredient import Ingredient
+        from utils.models.recipe import Recipe
+        from utils.models.recipe_book_user import RecipeBookUser
+        from utils.models.recipe_ingredient import RecipeIngredient
+        from utils.models.recipe_note import RecipeNote
+        from utils.models.recipe_step import RecipeStep
+
+        mock_async_db.set_find_by(Recipe, recipe, id=str(recipe_uuid))
+        mock_async_db.set_find_by(
+            RecipeBookUser,
+            membership,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(Ingredient, ingredient, id=str(ingredient_uuid))
+        mock_async_db.set_where(RecipeIngredient, [])
+        mock_async_db.set_where(RecipeStep, [])
+        mock_async_db.set_where(RecipeNote, [])
+
+        ri = MockRecipeIngredient(
+            recipe_id=recipe_uuid, ingredient_id=ingredient_uuid
+        )
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[(ri, ingredient)]),
+        ]
+
+        response = client.put(
+            f"/v1/recipes/{recipe_uuid}",
+            json={
+                "ingredients": [
+                    {
+                        "ingredient_id": str(ingredient_uuid),
+                        "quantity": 1.0,
+                        "unit": "cups",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["id"] == str(recipe_uuid)
+        assert body["ingredients"][0]["ingredient"]["id"] == str(ingredient_uuid)
+
     def test_update_recipe_ingredient_not_found(self, client, mock_async_db, mock_user):
         """Test updating recipe with nonexistent ingredient returns 400."""
         recipe_id = "test-recipe-id"

@@ -83,7 +83,7 @@ class GetPublicRecipe(AsyncEndpoint):
             GetPublicRecipe.IngredientResponse(
                 id=str(ri.ingredient_id),
                 ingredient=GetPublicRecipe.IngredientSummary(
-                    id=ing.id,
+                    id=str(ing.id),
                     canonical_name=ing.canonical_name,
                 ),
                 quantity_display=format_quantity(ri.quantity_display, ri.unit_display),
@@ -99,7 +99,7 @@ class GetPublicRecipe(AsyncEndpoint):
 
         return success(
             data=GetPublicRecipe.Response(
-                id=recipe.id,
+                id=str(recipe.id),
                 name=recipe.name,
                 description=recipe.description,
                 instructions=recipe.instructions,

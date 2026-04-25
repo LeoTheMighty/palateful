@@ -1,5 +1,6 @@
 """List user activities endpoint."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from pagination import (
@@ -77,8 +78,16 @@ class ListActivities(AsyncEndpoint):
 
         if cursor is not None:
             try:
-                cur_arch_ms, cur_created_ms, cur_id = decode_cursor(cursor)
+                cur_arch_ms, cur_created_ms, cur_id_str = decode_cursor(cursor)
             except InvalidCursorError as exc:
+                raise APIException(
+                    status_code=400,
+                    detail="invalid_cursor",
+                    code=ErrorCode.VALIDATION_ERROR,
+                ) from exc
+            try:
+                cur_id = uuid.UUID(cur_id_str)
+            except ValueError as exc:
                 raise APIException(
                     status_code=400,
                     detail="invalid_cursor",
