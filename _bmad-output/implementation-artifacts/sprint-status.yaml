@@ -1466,7 +1466,7 @@ development_status:
   pos-3-web-real-landing-page-replacing-flutter-shell: backlog
   pos-4-privacy-and-android-md-and-readme-updates: backlog
   pos-5-app-store-and-play-console-listing-assets: backlog
-  pos-6-share-card-tagline-and-ci-grep-guard: backlog
+  pos-6-share-card-tagline-and-ci-grep-guard: deleted  # split into pos-6a + pos-6b per party-mode 2026-04-25
   epic-recime-positioning-retrospective: optional
 
   # --- Epic B: Social-Media Video Import (defensive; ~3-4 weeks) ---
@@ -1481,7 +1481,7 @@ development_status:
 
   # --- Epic C: Pantry — Cook With What You Have (offensive moat; ~2-3 weeks) ---
   epic-pantry-cook-with-what-you-have: backlog
-  pantry-cook-1-backend-pantry-decrement-and-cook-completion: backlog
+  pantry-cook-1-backend-pantry-decrement-and-cook-completion: deleted  # split into pantry-cook-1a + 1b per party-mode 2026-04-25
   pantry-cook-2-backend-shopping-checkout-and-preference-toggle: backlog
   pantry-cook-3-backend-cookable-recipes-endpoint-and-mcp-tool: backlog
   pantry-cook-4-frontend-cookable-card-and-coverage-badge: backlog
@@ -1494,18 +1494,51 @@ development_status:
   # (dedup path — also shipping). Lawyer check on TOS framing required
   # pre-public-Chrome-Web-Store-launch but not an epic blocker.
   epic-recime-mass-import: backlog
-  recime-imp-1-backend-recime-normalizer-and-import-endpoint: backlog
+  recime-imp-1-backend-recime-normalizer-and-import-endpoint: deleted  # split into recime-imp-1a + 1b per party-mode 2026-04-25
   recime-imp-2-backend-rate-limit-audit-and-job-type: backlog
-  recime-imp-3-chrome-extension-mvp-manifest-popup-content: backlog
+  recime-imp-3-chrome-extension-mvp-manifest-popup-content: deleted  # split into recime-imp-3a + 3b per party-mode 2026-04-25
   recime-imp-4-frontend-walkthrough-and-activity-hub-integration: backlog
   recime-imp-5-lawyer-checklist-chrome-store-listing-and-e2e: backlog
   epic-recime-mass-import-retrospective: optional
 
   # --- Epic E: Nutrition Auto-Calc (USDA-sourced, free for everyone; ~3-5 weeks) ---
   epic-nutrition-auto-calc: backlog
-  nutri-1-backend-ingredients-schema-and-usda-data-load: backlog
+  nutri-1-backend-ingredients-schema-and-usda-data-load: deleted  # split into nutri-1a + 1b per party-mode 2026-04-25
   nutri-2-backend-nutrition-calculator-and-recipes-schema: backlog
   nutri-3-backend-get-response-and-recalc-hook: backlog
   nutri-4-frontend-nutrition-card-and-breakdown-sheet: backlog
   nutri-5-frontend-manual-override-and-settings-and-e2e: backlog
   epic-nutrition-auto-calc-retrospective: optional
+
+  # =====================================================================
+  # POST-PARTY-MODE refinements (2026-04-25) — story splits + additions
+  # =====================================================================
+  # Source: epic file Refinements sections (party-mode pass on 2026-04-25)
+  # Parent stories marked `deleted` above with one-line split comments.
+  # Sub-stories + new stories all enter at backlog.
+
+  # --- epic-recime-positioning splits + additions ---
+  pos-6a-share-text-tagline-and-grep-guard-ci-wiring: backlog
+  pos-6b-free-forever-chip-on-limit-shaped-surfaces: backlog
+  pos-7-web-relocation-safety-net-redirects-and-auth0-callbacks: backlog
+
+  # --- epic-social-video-import addition ---
+  social-vid-7-cost-observability-audit-errors-cost-summary-flag: backlog
+
+  # --- epic-pantry-cook-with-what-you-have splits + additions ---
+  pantry-cook-1a-backend-pantry-decrement-service-and-ingredient-matching-fixture-suite: backlog
+  pantry-cook-1b-backend-apply-cook-completion-endpoint-and-undo-endpoint-and-audit-log: backlog
+  pantry-cook-3-5-backend-ws-broadcast-and-perf-budgets-and-indexes: backlog
+
+  # --- epic-recime-mass-import splits + additions ---
+  recime-imp-1a-spike-recime-web-api-shape-capture-and-fixtures: backlog
+  recime-imp-1b-backend-normalizer-and-import-endpoint-built-from-fixtures: backlog
+  recime-imp-3a-chrome-extension-mvp-manifest-popup-content-script: backlog
+  recime-imp-3b-chrome-extension-hardening-kill-switch-schema-version-telemetry-magic-link: backlog
+  recime-imp-6-ci-cd-and-kill-switch-and-magic-link-and-telemetry-endpoints: backlog
+  recime-imp-7-contract-drift-canary-and-qa-fixture-set: backlog
+
+  # --- epic-nutrition-auto-calc splits + additions ---
+  nutri-0-ops-decision-s3-snapshot-upload-and-usda-data-version-env-var: backlog
+  nutri-1a-backend-ingredients-nutrition-per-unit-migration: backlog
+  nutri-1b-backend-load-usda-script-s3-read-and-rollback-script-and-audit-row: backlog
