@@ -1439,8 +1439,8 @@ development_status:
   epic-recipe-bulk-organize-retrospective: optional
 
   # --- Epic 4: Import Duplicate Detection (parallelizable after Epic 1) ---
-  epic-import-duplicate-detection: backlog
-  import-dup-1-backend-duplicate-match-query-and-response-extension: backlog
+  epic-import-duplicate-detection: in-progress
+  import-dup-1-backend-duplicate-match-query-and-response-extension: done
   import-dup-2-backend-skip-endpoint-and-skipped-status: backlog
   import-dup-3-frontend-duplicate-banner-and-approve-import-wiring: backlog
   import-dup-4-regression-sweep-and-e2e: backlog

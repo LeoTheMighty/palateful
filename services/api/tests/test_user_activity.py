@@ -672,6 +672,18 @@ class TestListActivitiesCursor:
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
+    def test_cursor_with_non_uuid_row_id_returns_400(
+        self, client, mock_async_db, mock_user
+    ):
+        """Cursor decodes but row_id is not a valid UUID — defensive 400."""
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, "not-a-uuid")
+        mock_async_db.db.execute.side_effect = _list_side_effect([])
+        response = client.get(f"/v1/activities?cursor={cursor}")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
     def test_cursor_default_mode_decodes_and_returns_items(
         self, client, mock_async_db, mock_user
     ):

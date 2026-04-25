@@ -1507,6 +1507,21 @@ class TestListImportItemsCursor:
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
+    def test_cursor_with_non_uuid_row_id_returns_400(
+        self, client, mock_async_db, mock_user
+    ):
+        """Cursor decodes but row_id is not a valid UUID — defensive 400."""
+        from pagination import encode_cursor
+
+        job_id = self._setup_job(mock_async_db, mock_user)
+        cursor = encode_cursor(None, 1_700_000_000_000, "not-a-uuid")
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
+        response = client.get(
+            f"/v1/import-jobs/{job_id}/items?cursor={cursor}"
+        )
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
     def test_cursor_default_mode_decodes(self, client, mock_async_db, mock_user):
         import uuid as _uuid
 
@@ -1636,6 +1651,18 @@ class TestListImportJobsCursor:
     def test_invalid_cursor_returns_400(self, client, mock_async_db, mock_user):
         mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-jobs?cursor=%21%21%21%21")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
+    def test_cursor_with_non_uuid_row_id_returns_400(
+        self, client, mock_async_db, mock_user
+    ):
+        """Cursor decodes but row_id is not a valid UUID — defensive 400."""
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(None, 1_700_000_000_000, "not-a-uuid")
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
+        response = client.get(f"/v1/import-jobs?cursor={cursor}")
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
@@ -1802,6 +1829,18 @@ class TestListSeeAllImportItems:
     def test_invalid_cursor_returns_400(self, client, mock_async_db, mock_user):
         mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-items/see-all?cursor=%21%21%21%21")
+        assert response.status_code == 400
+        assert response.json()["error_message"] == "invalid_cursor"
+
+    def test_cursor_with_non_uuid_row_id_returns_400(
+        self, client, mock_async_db, mock_user
+    ):
+        """Cursor decodes but row_id is not a valid UUID — defensive 400."""
+        from pagination import encode_cursor
+
+        cursor = encode_cursor(1_700_000_000_000, 1_700_000_000_000, "not-a-uuid")
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
+        response = client.get(f"/v1/import-items/see-all?cursor={cursor}")
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
@@ -2248,6 +2287,326 @@ class TestGetImportItem:
         # irrd-3: missing parsed_recipe -> both confidence fields null.
         assert data["confidence_score"] is None
         assert data["confidence_source"] is None
+
+
+class TestGetImportItemDuplicateBlock:
+    """import-dup-1: GET /v1/import-items/{id} embeds a `duplicate.matches`
+    array so the Approve-Import banner can render before the user taps
+    Approve. Match keys are exact title (case-insensitive, trimmed) and
+    source URL; both scoped to the user's library via recipe_book
+    membership.
+    """
+
+    @staticmethod
+    def _row(
+        *,
+        recipe_id="r-1",
+        name="Mom's Brisket",
+        source_url=None,
+        recipe_book_id="dup-book",
+        archived_at=None,
+        book_name="Mom's Recipes",
+        last_cooked=None,
+    ):
+        """Build a row-tuple with attribute access (mirrors RowMapping)."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            id=recipe_id,
+            name=name,
+            source_url=source_url,
+            recipe_book_id=recipe_book_id,
+            archived_at=archived_at,
+            book_name=book_name,
+            last_cooked=last_cooked,
+        )
+
+    def _setup_item(
+        self,
+        mock_async_db,
+        mock_user,
+        *,
+        item_id="dup-item",
+        job_id="dup-job",
+        book_id="dup-book",
+        parsed_recipe=None,
+        user_edits=None,
+        source_url=None,
+    ):
+        from utils.models.import_item import ImportItem
+        from utils.models.import_job import ImportJob
+
+        item = MockImportItem(
+            id=item_id,
+            import_job_id=job_id,
+            status="awaiting_review",
+            source_type="url",
+            source_url=source_url,
+            raw_data={},
+            parsed_recipe=parsed_recipe,
+            user_edits=user_edits,
+        )
+        job = MockImportJob(
+            id=job_id,
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        return item_id
+
+    def _seed_membership(self, mock_async_db, mock_user, book_ids):
+        """Seed the user's recipe-book memberships for the dup-match query."""
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        members = [
+            MockRecipeBookUser(
+                user_id=str(mock_user.id),
+                recipe_book_id=book_id,
+                role="owner",
+            )
+            for book_id in book_ids
+        ]
+        mock_async_db.set_where(RecipeBookUser, members)
+
+    def test_duplicate_block_empty_when_no_match(
+        self, client, mock_async_db, mock_user
+    ):
+        """No matches → `duplicate.matches` is `[]`, not absent."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Brand New Recipe"},
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        # Empty execute result = no matching rows.
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert "duplicate" in data
+        assert data["duplicate"] == {"matches": []}
+
+    def test_duplicate_block_active_title_match(
+        self, client, mock_async_db, mock_user
+    ):
+        """Exact title match (case-insensitive) → one active entry, kind=title."""
+        from datetime import UTC, datetime
+
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "  Mom's Brisket  "},  # leading/trailing ws
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        last_cooked = datetime(2026, 4, 22, 18, 0, tzinfo=UTC)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
+            self._row(
+                recipe_id="r-active",
+                name="MOM'S BRISKET",  # different case → still matches
+                book_name="Mom's Recipes",
+                last_cooked=last_cooked,
+            )
+        ])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        matches = response.json()["duplicate"]["matches"]
+        assert len(matches) == 1
+        m = matches[0]
+        assert m["recipe_id"] == "r-active"
+        assert m["title"] == "MOM'S BRISKET"
+        assert m["current_book_id"] == "dup-book"
+        assert m["current_book_name"] == "Mom's Recipes"
+        assert m["archived_at"] is None
+        assert m["last_cooked"] == "2026-04-22T18:00:00+00:00"
+        assert m["match_kind"] == "title"
+
+    def test_duplicate_block_archived_title_match(
+        self, client, mock_async_db, mock_user
+    ):
+        """Archived match surfaces archived_at so the banner can pick amber."""
+        from datetime import UTC, datetime
+
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Mom's Brisket"},
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        archived = datetime(2024, 3, 12, 9, 30, tzinfo=UTC)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
+            self._row(
+                recipe_id="r-archived",
+                name="Mom's Brisket",
+                archived_at=archived,
+            )
+        ])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        matches = response.json()["duplicate"]["matches"]
+        assert len(matches) == 1
+        assert matches[0]["archived_at"] == "2024-03-12T09:30:00+00:00"
+        assert matches[0]["match_kind"] == "title"
+
+    def test_duplicate_block_url_only_when_parsed_title_blank(
+        self, client, mock_async_db, mock_user
+    ):
+        """No title at all but URL present → still matches via URL."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "   "},  # title short-circuits to None
+            source_url="https://example.com/brisket",
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
+            self._row(
+                recipe_id="r-url-only",
+                name="Saved Brisket",
+                source_url="https://example.com/brisket",
+            )
+        ])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        matches = response.json()["duplicate"]["matches"]
+        assert len(matches) == 1
+        assert matches[0]["match_kind"] == "source_url"
+
+    def test_duplicate_block_url_match_overrides_title_difference(
+        self, client, mock_async_db, mock_user
+    ):
+        """URL-only match (titles differ) → match_kind='source_url'."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Re-titled Brisket"},
+            source_url="https://example.com/brisket",
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
+            self._row(
+                recipe_id="r-url",
+                name="Original Brisket",
+                source_url="https://example.com/brisket",
+            )
+        ])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        matches = response.json()["duplicate"]["matches"]
+        assert len(matches) == 1
+        assert matches[0]["match_kind"] == "source_url"
+
+    def test_duplicate_block_user_edits_title_overrides_parsed(
+        self, client, mock_async_db, mock_user
+    ):
+        """user_edits.name wins over parsed_recipe.name when both present."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Stale Parser Name"},
+            user_edits={"name": "Mom's Brisket"},
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
+            self._row(
+                recipe_id="r-edit",
+                name="Mom's Brisket",
+            )
+        ])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        matches = response.json()["duplicate"]["matches"]
+        assert len(matches) == 1
+        assert matches[0]["match_kind"] == "title"
+
+    def test_duplicate_block_active_sorts_above_archived(
+        self, client, mock_async_db, mock_user
+    ):
+        """Multi-match: active matches sort above archived ones."""
+        from datetime import UTC, datetime
+
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Mom's Brisket"},
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        archived_at = datetime(2024, 3, 12, tzinfo=UTC)
+        # DB returns archived first; sort should re-order.
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
+            self._row(
+                recipe_id="r-archived",
+                name="Mom's Brisket",
+                archived_at=archived_at,
+                book_name="Old Book",
+            ),
+            self._row(
+                recipe_id="r-active",
+                name="Mom's Brisket",
+                book_name="Mom's Recipes",
+            ),
+        ])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        matches = response.json()["duplicate"]["matches"]
+        assert [m["recipe_id"] for m in matches] == ["r-active", "r-archived"]
+
+    def test_duplicate_block_empty_when_no_title_or_url(
+        self, client, mock_async_db, mock_user
+    ):
+        """No title and no URL → helper short-circuits, no DB hit, empty list."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "   "},  # whitespace-only
+            source_url=None,
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        # If the helper short-circuits we should never call execute. We
+        # still pre-set it (defensive) — the assertion is on output.
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        assert response.json()["duplicate"]["matches"] == []
+
+    def test_duplicate_block_empty_when_user_has_no_books(
+        self, client, mock_async_db, mock_user
+    ):
+        """User with zero memberships → empty matches (no DB scan)."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Mom's Brisket"},
+        )
+        # No memberships seeded → empty list.
+        self._seed_membership(mock_async_db, mock_user, [])
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        assert response.json()["duplicate"]["matches"] == []
+
+    def test_duplicate_block_degrades_on_helper_failure(
+        self, client, mock_async_db, mock_user
+    ):
+        """If the dup-match query raises, the screen still renders w/ no banner."""
+        item_id = self._setup_item(
+            mock_async_db,
+            mock_user,
+            parsed_recipe={"name": "Mom's Brisket"},
+        )
+        self._seed_membership(mock_async_db, mock_user, ["dup-book"])
+        mock_async_db.db.execute.side_effect = RuntimeError("db hiccup")
+
+        response = client.get(f"/v1/import-items/{item_id}")
+        assert response.status_code == 200
+        assert response.json()["duplicate"]["matches"] == []
 
 
 class TestGetImportItemLeanDefault:

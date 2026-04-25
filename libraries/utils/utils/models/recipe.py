@@ -87,4 +87,18 @@ class Recipe(Base):
         Index("idx_recipes_name_trgm", "name", postgresql_using="gin", postgresql_ops={"name": "gin_trgm_ops"}),
         Index("idx_recipes_description_trgm", "description", postgresql_using="gin", postgresql_ops={"description": "gin_trgm_ops"}),
         Index("ix_recipes_share_token", "share_token", unique=True, postgresql_where=text("share_token IS NOT NULL")),
+        # import-dup-1 — backs the duplicate-detection title query the
+        # Approve-Import GET endpoint runs (`recipe_book_id IN (...)
+        # AND lower(trim(name)) = lower(trim(:title))`). The expression
+        # is written in Postgres' canonical `TRIM(BOTH FROM ...)` form
+        # because that's what `pg_get_indexdef` emits, and alembic-check
+        # textually compares the model expression against the live DB
+        # index definition. Equivalent to `lower(trim(name))` at
+        # runtime (`trim` defaults to BOTH).
+        # Migration: 20260425020000_add_recipe_lower_name_index.
+        Index(
+            "ix_recipes_book_lower_name",
+            "recipe_book_id",
+            text("lower(TRIM(BOTH FROM name))"),
+        ),
     )

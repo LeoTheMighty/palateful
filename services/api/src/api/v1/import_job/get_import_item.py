@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from api.v1.import_job._duplicate_match import find_duplicate_recipes
 from pydantic import BaseModel
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -128,6 +129,13 @@ class GetImportItem(AsyncEndpoint):
             item.parsed_recipe
         )
 
+        # import-dup-1 — surface "you already have this" matches so the
+        # Approve-Import banner can render before the user taps Approve.
+        # user_edits.name overrides parsed_recipe.name when present (the
+        # user already retitled it; match against their current title).
+        # Failures here degrade gracefully — empty matches list, no 500.
+        duplicate_matches = await self._safe_find_duplicates(item, user)
+
         response_model = GetImportItem.Response(
             id=str(item.id),
             status=item.status,
@@ -151,6 +159,9 @@ class GetImportItem(AsyncEndpoint):
             confidence_score=confidence_score,
             confidence_source=confidence_source,
             inferred_fields=_extract_inferred_fields(item.parsed_recipe),
+            duplicate=GetImportItem.DuplicateBlock(
+                matches=duplicate_matches
+            ),
         )
 
         # ffm-10: the ``parsed_recipe`` blob is expensive to serialize
@@ -167,6 +178,64 @@ class GetImportItem(AsyncEndpoint):
         payload = response_model.model_dump()
         payload.pop(_PARSED_RECIPE_KEY, None)
         return success(data=payload)
+
+    async def _safe_find_duplicates(
+        self, item: ImportItem, user: User
+    ) -> list["GetImportItem.DuplicateMatch"]:
+        """Run the duplicate-match query, swallowing any DB error.
+
+        If the helper raises (bad SQL, DB hiccup, missing index pre-deploy)
+        the Approve-Import screen still renders — the user just doesn't
+        see the banner. Failing open is right here because the banner is
+        a *helpful* hint, not a correctness gate; blocking the screen
+        would be worse than missing one alert.
+        """
+        # Pull the title to match against. user_edits.name wins when the
+        # user has already retitled the parsed recipe (otherwise we'd
+        # flag a stale duplicate against the original parser name).
+        # Falls back to parsed_recipe.name. Both are optional.
+        parsed_title: str | None = None
+        if isinstance(item.user_edits, dict):
+            parsed_title = item.user_edits.get("name")
+        if not parsed_title and isinstance(item.parsed_recipe, dict):
+            parsed_title = item.parsed_recipe.get("name")
+
+        try:
+            matches = await find_duplicate_recipes(
+                self.database,
+                user_id=str(user.id),
+                parsed_title=parsed_title,
+                parsed_source_url=item.source_url,
+            )
+        except Exception:
+            # Degrade silently — banner just doesn't render. The global
+            # error handler still captures the exception trace.
+            return []
+
+        return [
+            GetImportItem.DuplicateMatch(
+                recipe_id=m["recipe_id"],
+                title=m["title"],
+                current_book_id=m["current_book_id"],
+                current_book_name=m["current_book_name"],
+                archived_at=m["archived_at"],
+                last_cooked=m["last_cooked"],
+                match_kind=m["match_kind"],
+            )
+            for m in matches
+        ]
+
+    class DuplicateMatch(BaseModel):
+        recipe_id: str
+        title: str
+        current_book_id: str
+        current_book_name: str
+        archived_at: datetime | None = None
+        last_cooked: datetime | None = None
+        match_kind: str  # "title" | "source_url"
+
+    class DuplicateBlock(BaseModel):
+        matches: list["GetImportItem.DuplicateMatch"] = []
 
     class Response(BaseModel):
         id: str
@@ -191,3 +260,4 @@ class GetImportItem(AsyncEndpoint):
         confidence_score: float | None = None
         confidence_source: str | None = None
         inferred_fields: list[str] = []
+        duplicate: "GetImportItem.DuplicateBlock | None" = None
