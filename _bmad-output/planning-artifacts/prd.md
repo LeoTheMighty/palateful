@@ -2104,3 +2104,176 @@ Phase-2 audit (2026-04-23) surfaced concrete client-side fetch-reduction targets
 - **MetricKit + JankStats daily payloads flowing to `client_latencies`** with `platform='ios'` / `platform='android'` within 7 days of dogfood rollout.
 - **CI catches a synthetic regression** — deliberately adding a duplicate `getRecipeBooks()` fails the per-screen budget test.
 - **`bin/perf-audit` runs < 5 minutes** end-to-end on CI. Usable in PR workflows.
+
+## Addendum — 2026-04-25 — Beat Recime: Parity + Differentiation + Free-Forever Positioning + Recime Mass-Import
+
+**Context.** April 2026 refresh of `investigations/07-competitor-analysis-recime.md` (full source) surfaced four strategic shifts since the March investigation:
+
+1. **Recime quietly cut US pricing to $39.99/yr in some cohorts** (App Store IAP range $9.99–$59.99) but spent Q1 on a v5.0 rebrand instead of closing the pantry / merge-duplicates / sort / public-recipes complaints driving their 2026 reviews. Recime ships zero new functional features in Q1; their wounds are open.
+2. **Recipe Notes (new entrant)** explicitly markets as "Free ReciMe Alternative" — unlimited imports, family sharing, no ads, $0. Occupies the exact "free + unlimited" niche Palateful was eyeing. **Defensibility shifts from "we're free" to "we're free AND pantry-aware AND household-native AND Meals-capable."**
+3. **Apple+Gemini Siri** (CNBC Jan 2026, AppleInsider Apr 2026) demoed "what can I make with what's in my fridge" — Apple is signaling system-level pantry intelligence is a 12-24 month threat to all standalone recipe apps. **Household + shared + pantry moats matter MORE now, not less.**
+4. **Palateful parity scorecard:** Must-Adopt 5/5 done, Should-Adopt 3.6/5, remaining open gaps are social-media video import (Recime's #1 growth driver — `epic-media-import` was deleted, partial backend work landed), pantry write-side hooks + "What can I cook?" ranking (sitting in `epic-pantry` backlog), nutrition auto-calc (Recime Premium-gates this), and free-forever positioning copy (zero user-visible marketing surface mentions pricing today).
+
+**Mid-planning addition (same day, 2026-04-25):** user asked whether one-click migration from Recime is feasible. Feasibility check returned **YELLOW with a pivot** — Recime recipes are private (not scrapeable from a server), but a third-party Chrome extension already proves the user-side path works against Recime's own internal API using the user's session cookie. **Pivoted scope:** Palateful-branded Chrome extension that POSTs into our import endpoint. Sidesteps Recime TOS section 2.2(c)/(d) by mirroring Recime's GDPR data-portability promise. Lawyer check before public Chrome Web Store launch but not an epic blocker.
+
+### User-locked decisions (2026-04-25 batch)
+
+- **Pricing model: free forever, locked.** Strip the "v1 — no in-app purchases" qualifier from `ANDROID.md`. Any future monetization would have to be donations / one-time / non-paywall — closes off any subscription pivot. Strongest hook against Recime's billing-complaint-laden subscription.
+- **Parity scope:** match loved features, leapfrog disliked ones (~4 epics → 5 with mid-planning Recime-import addition).
+- **Social-video scope:** full pipeline — TikTok + Instagram + YouTube URL routing + audio transcription (Whisper) + caption scraping + AI extraction + Flutter import-from-shared-video screen.
+- **Smart shopping list dedup:** keep as cut per the 2026-04-20 decision in `epic-ingredients-string-simplification`. Position Meals as the dedup answer.
+- **Recipe Notes response:** differentiate harder on pantry + household + Meals. Don't fight on free; win on capability stack at $0.
+- **Cross-app migration via uploaded export files (Paprika/Mela/Crouton):** deferred this round. Distinct from Recime mass-import via Chrome extension — that one IS in scope.
+- **Recime mass-import:** Chrome extension MVP path. ~1-1.5 weeks, 5 stories. Lawyer check before public launch but not an epic blocker.
+
+### New Functional Requirements
+
+**FR-COMP-1 Free-forever positioning surface coverage.** App Store description, Play Store description, web landing at `palateful.app` (replacing today's empty Flutter shell), in-app onboarding reassurance line, in-app "Why we're free" Settings page, privacy policy affirmation, and share-recipe card tagline all carry consistent "free forever, no paywalls, no ads, no premium tier — ever" language. No "v1" qualifiers. No "premium," "pro," "upgrade," or "unlock" wording anywhere in user-facing copy.
+
+**FR-COMP-2 Public comparison table.** Web landing page includes a published comparison table (Palateful vs Recime vs Recipe Notes vs Mela) covering price, import sources, household sharing, pantry, Meals, shopping-list intelligence, and ads. Comparison is factually verifiable as of publish date; updated quarterly or when a competitor's positioning materially changes.
+
+**FR-COMP-3 Social-media video import.** Users sharing a TikTok / Instagram Reel / YouTube Short URL or video file via the OS share sheet are routed to a video-extraction pipeline. Backend transcribes audio via OpenAI Whisper, scrapes platform captions where available, and synthesizes a structured recipe via the existing AI extractor. The recipe lands in the user's `Trying Out` book (per `epic-recipe-default-books` default) with attribution preserved (`From @chefname on TikTok`). Failure path shows a friendly empty state with a fallback to screenshot-import.
+
+**FR-COMP-4 Per-import cost cap on video.** Whisper transcription has $-per-minute cost. Videos longer than 10 minutes are rejected with a friendly error directing the user to share a screenshot or a manual paste. Per-import cost is logged via the existing `error_logs` audit pattern for retroactive cost analysis.
+
+**FR-COMP-5 Pantry write-side hooks.** Cook-mode completion offers an "Update pantry?" confirmation defaulted to Yes; tapping Yes decrements pantry items used in the recipe (or marks them used up). Shopping-list checkout (item check-off at the store) optionally auto-adds matching items to pantry with `purchased_at = now`; controlled by a user-preference flag (default off; opt-in via Settings).
+
+**FR-COMP-6 "What can I cook?" recipe ranking.** New `GET /v1/recipes/cookable` endpoint returns the user's recipes ranked by pantry-coverage (count of recipe ingredients matched to non-empty pantry items, normalized to recipe size). Response includes a per-recipe `missing_ingredients` array. Surfaced as a home-screen card and as a `GetCookableRecipesTool` for the AI agent + MCP server.
+
+**FR-COMP-7 Pantry-coverage badge on recipe detail.** Every recipe detail screen displays a small badge ("You have 6 of 8 ingredients" or "You have all 8 ingredients") computed against the household's pantry. Tapping the badge expands a missing-ingredients sheet with a one-tap "Add to shopping list" action.
+
+**FR-COMP-8 Use-it-up expiry nudge.** When any pantry item is within 3 days of its expiry date, the home screen surfaces a nudge ("Your chicken thighs expire Friday — here are 3 quick recipes that use them") linking to a filtered cookable-recipes view biased toward recipes using that ingredient.
+
+**FR-COMP-9 Nutrition auto-calculation.** Every recipe (imported or manually created) displays an auto-calculated nutrition card per serving (calories, protein, carbs, fat) sourced from USDA FoodData Central data joined to the user's ingredients. Estimate carries a small disclaimer. When an ingredient can't be matched to USDA data, the card shows the unmatched ingredient and offers an inline manual-entry path. Recipe edit screen exposes optional manual-override fields.
+
+**FR-COMP-10 USDA ingredient data load.** One-time data-load script populates the `ingredients` table with USDA FoodData Central nutrition data for the ~5000 most-common ingredients. Future ingredient additions (via recipe extraction) attempt USDA match at insert time; failed matches flagged for batch re-resolution.
+
+**FR-COMP-11 Settings toggle for nutrition display.** A user can disable the nutrition card globally via Settings → "Show nutrition" toggle (default on). When disabled, no nutrition computation runs for that user (perf optimization).
+
+**FR-COMP-12 Recime mass-import receiving endpoint.** New `POST /v1/recipes/import/recime` accepts a Recime-shaped JSON recipe payload (single recipe per call), normalizes to Palateful's recipe model, files into the user's `Trying Out` book per `epic-recipe-default-books`, dedupes against existing recipes via the existing duplicate-detection path (per `epic-import-duplicate-detection`), and returns a structured response with the created recipe id + dedup verdict. Endpoint authenticated via the user's existing Palateful API token (no new auth flow). Rate-limited to 200 requests / 5 minutes per user — comfortable for the typical Recime library size while bounding abuse.
+
+**FR-COMP-13 Palateful-branded Chrome extension (Manifest V3).** A standalone Chrome extension distributed via the Chrome Web Store under Palateful's developer account. Content script injected into recime.app pages; popup with a single primary action: "Send all my recipes to Palateful." Extension reads the user's Recime session cookie + Palateful API token (entered once and stored in `chrome.storage.local`), paginates through Recime's internal list-recipes endpoint, fetches per-recipe detail, and POSTs each to `POST /v1/recipes/import/recime`. Extension surfaces per-recipe success / skip / fail counts in real-time and displays a final summary with a deep link back to the Palateful app's `Trying Out` book.
+
+**FR-COMP-14 In-app import-progress visibility.** The Recime import surfaces in the existing Activity Hub as a long-running import job row (per the YNAB-inspired status icons + relative-time UX). Per-recipe success / skip / fail counts visible; tapping the row opens a per-recipe detail sheet showing which Recime recipes succeeded, were skipped as duplicates, or failed (with reason). On completion, push notification: "N recipes imported from Recime — review in Trying Out."
+
+**FR-COMP-15 Recime-import onboarding entry point.** Settings → "Import from another app" → "Recime" → walkthrough screen explaining the 3-step flow with annotated screenshots and a one-tap "Install Extension" button deep-linking to the Chrome Web Store listing. Walkthrough also surfaces a short FAQ ("Why a browser extension? Because Recime doesn't expose a public API and we want to respect their TOS — your browser does the work, your data stays yours.").
+
+**FR-COMP-16 Recime-import audit + cost guardrails.** Every Recime mass-import session emits an `error_logs` audit row at start (`service="audit"`, `error_type="RecimeImportSession"`) capturing the user_id and intended recipe count, then an audit row at end with the final success / skip / fail counts. No PII (cookies, tokens) is ever logged. Per-user limit: at most 2 mass-import sessions per 24h (graceful "you've already started a Recime import today" UX on the third attempt) — bounds extension misuse and Recime API hits.
+
+### Non-functional constraints (this round)
+
+- **Free-forever copy bar.** Any user-visible copy or surface produced under any epic in this round must honor the free-forever commitment. No "premium," "pro," "upgrade," or "unlock" language. If a story discovers it needs to gate something, the gate must be removed (or the feature cut) — not a paywall added.
+- **Recipe Notes parity check.** Before publishing the comparison table, verify Recipe Notes' claimed feature set against their current App Store description and any reachable feature list. If Recipe Notes ships pantry / Meals / household-with-permissions before Palateful, escalate.
+- **Video-import cost ceiling.** Per-user per-month video-extraction cost capped at $5 ($1.50 of Whisper at full 10-min videos × ~3 imports/day). When exceeded, reject with friendly error + link to manual entry.
+- **Privacy & attribution.** Video attribution stores creator handle and platform; never stores or transmits the source video file beyond the transient transcription window. Source URL preserved.
+- **No nutrition over-claim.** All nutrition cards display a "* Estimated" disclaimer; manual override is always one tap away. Servings count is the user's input; we don't infer it.
+- **Recime extension TOS framing.** The Recime mass-import Chrome extension is owned/operated by the user in their own browser, exporting their own data — exactly as Recime's own privacy-policy GDPR-portability clause entitles them to do. Walkthrough copy makes this framing explicit. 30-minute lawyer review required before public Chrome Web Store launch.
+- **API coverage stays at 100%.** New endpoints under `services/api` carry full unit + integration tests.
+- **No new AWS resources.** Every epic in this round reuses existing infrastructure (S3 imports bucket, FastAPI ECS task, Postgres RDS, worker container, OpenAI/Whisper API key). The web landing page replaces today's empty Flutter web shell on the existing Cloudflare Pages deploy. The Chrome Web Store listing is hosted by Google.
+
+### Out of scope (this round)
+
+- **Cross-app migration parsers** (Paprika / Mela / Crouton uploaded export files). Acquisition utility, not parity feature; deferred. Users currently use the paste path. (Distinct from Recime mass-import via Chrome extension — that one IS in scope.)
+- **Live import preview** (Mela-style "see formatted recipe before save"). Low impact; deferred.
+- **Smart shopping-list cross-recipe dedup.** Intentionally cut on 2026-04-20 per `epic-ingredients-string-simplification`. Meal-grouping is the answer.
+- **AI recipe generation from fridge photo** (Whisk-style). Out of scope; we lean on cookable-recipes-from-pantry instead.
+- **Grocery-retailer integration** (Whisk-style 29-retailer checkout). Complex API surface, low strategic value for households.
+- **Face-gesture cook navigation** (Crouton-style). Niche; voice cook mode already shipped.
+- **Physical cookbook export** (CopyMeThat-style print-on-demand).
+- **Subscription / paywall infrastructure.** Free forever, locked.
+- **Firefox / Safari extensions for Recime import.** Chrome MVP only this round; revisit if demand exists.
+
+### Success metrics
+
+- **App Store / Play Store conversion lift** vs the pre-positioning baseline. Track install-from-listing rate weekly post-launch.
+- **Social-video import success rate ≥ 70%** measured by approve-rate on video-extracted import items vs URL-extracted. (URL baseline ~85%.)
+- **Cookable-recipes home card engagement** — at least one tap-through per active session for users with non-empty pantries.
+- **Pantry-decrement opt-in rate ≥ 50%** of post-cook completions on day 30.
+- **Nutrition card display rate ≥ 95%** of recipes with all ingredients matched to USDA data within 7 days of the data load.
+- **Zero "free for now" regressions** in copy — grep guard or CI check on user-facing strings for "v1," "premium," "pro," "upgrade," "subscription."
+- **Recime mass-import success rate ≥ 90%** measured as the fraction of Recime recipes the extension fetches that successfully land in the user's `Trying Out` book.
+- **Recime mass-import median session duration < 90 seconds** for libraries up to 100 recipes.
+- **Chrome Web Store rating ≥ 4.0 stars** on the Palateful Recime-import extension within 60 days of launch.
+
+## Addendum — 2026-04-25 — Beat Recime: Parity + Differentiation + Free-Forever Positioning + Recime Mass-Import
+
+**Context.** April 2026 refresh of `investigations/07-competitor-analysis-recime.md` surfaced four strategic shifts: Recime cut US pricing to $39.99/yr in some cohorts but spent Q1 on a rebrand instead of closing the pantry/dedup/sort gaps; Recipe Notes (new entrant) explicitly markets as "Free ReciMe Alternative" — Palateful's defensibility shifts from "we're free" to "we're free AND pantry-aware AND household-native AND Meals-capable"; Apple+Gemini Siri (late 2026) demoed system-level pantry intelligence — household + shared + pantry moats matter MORE now; Palateful parity is Must-Adopt 5/5, Should-Adopt 3.6/5 with remaining open gaps in social-video import, pantry write-side, nutrition, and free-forever positioning copy. Mid-planning addition: feasibility check on "import all my Recime recipes" returned YELLOW with a Chrome-extension pivot that uses the user's own session cookie to mirror Recime's GDPR data-portability promise.
+
+### User-locked decisions (2026-04-25 batch)
+
+- **Pricing model: free forever, locked.** Strip "v1 — no in-app purchases" qualifier from `ANDROID.md`. Closes off any subscription pivot. Strongest hook against Recime's billing-complaint-laden subscription.
+- **Parity scope:** match loved features, leapfrog disliked ones (5 epics).
+- **Social-video scope:** full pipeline (TikTok + Instagram + YouTube + Whisper + AI extraction + Flutter UI).
+- **Smart shopping list dedup:** keep as cut per 2026-04-20 decision. Position Meals as the dedup answer.
+- **Recipe Notes response:** differentiate harder on pantry + household + Meals. Don't fight on free; win on capability stack at $0.
+- **Cross-app uploaded-file migration (Paprika/Mela/Crouton):** deferred. Recime mass-import via Chrome extension IS in scope.
+- **Recime mass-import:** Chrome extension MVP. Lawyer check pre-launch but not an epic blocker.
+
+### New Functional Requirements
+
+**FR-COMP-1 Free-forever positioning surface coverage.** App Store + Play Store + web landing at `palateful.app` (replacing today's empty Flutter shell) + in-app onboarding reassurance line + in-app "Why we're free" Settings page + privacy policy affirmation + share-recipe card tagline all carry consistent "free forever, no paywalls, no ads, no premium tier — ever." No "v1" qualifiers. No "premium," "pro," "upgrade," or "unlock" anywhere in user-facing copy.
+
+**FR-COMP-2 Public comparison table.** Web landing includes published table (Palateful vs Recime vs Recipe Notes vs Mela) on price + import sources + household sharing + pantry + Meals + shopping intelligence + ads. Updated quarterly or when a competitor's positioning materially changes.
+
+**FR-COMP-3 Social-media video import.** Users sharing a TikTok / Instagram Reel / YouTube Short URL or video file via OS share sheet are routed to a video-extraction pipeline. Backend transcribes audio via OpenAI Whisper, scrapes platform captions where available, synthesizes a structured recipe via the existing AI extractor. Recipe lands in `Trying Out` per `epic-recipe-default-books` with attribution preserved (`From @chefname on TikTok`). Failure path shows friendly empty state with screenshot-import fallback.
+
+**FR-COMP-4 Per-import cost cap on video.** Whisper has $-per-minute cost. Videos > 10 min rejected with friendly error. Per-import cost logged via existing `error_logs` audit pattern.
+
+**FR-COMP-5 Pantry write-side hooks.** Cook-mode completion offers "Update pantry?" defaulted to Yes; tapping Yes decrements pantry items used in the recipe. Shopping-list checkout optionally auto-adds to pantry with `purchased_at = now` (default off; Settings opt-in).
+
+**FR-COMP-6 "What can I cook?" recipe ranking.** New `GET /v1/recipes/cookable` endpoint returns user's recipes ranked by pantry-coverage. Per-recipe `missing_ingredients` array. Surfaced as home-screen card + `GetCookableRecipesTool` for AI agent + MCP server.
+
+**FR-COMP-7 Pantry-coverage badge on recipe detail.** Every recipe detail screen displays a small badge ("You have 6 of 8 ingredients" or "You have all 8 ingredients") computed against the household's pantry. Tapping expands a missing-ingredients sheet with one-tap "Add to shopping list."
+
+**FR-COMP-8 Use-it-up expiry nudge.** When any pantry item is within 3 days of expiry, home screen surfaces a nudge ("Your chicken thighs expire Friday — here are 3 quick recipes that use them") linking to a filtered cookable-recipes view.
+
+**FR-COMP-9 Nutrition auto-calculation.** Every recipe displays auto-calculated nutrition card per serving (calories, protein, carbs, fat) sourced from USDA FoodData Central. Carries "* Estimated" disclaimer. Unmatched ingredients show inline manual-entry path. Recipe edit exposes optional manual-override fields.
+
+**FR-COMP-10 USDA ingredient data load.** One-time data-load script populates `ingredients` table with USDA FoodData Central data for ~5000 most-common ingredients. Future ingredient additions attempt USDA match at insert time; failed matches flagged for batch re-resolution.
+
+**FR-COMP-11 Settings toggle for nutrition display.** User can disable nutrition card globally via Settings → "Show nutrition" (default on). When disabled, no nutrition computation runs (perf optimization).
+
+**FR-COMP-12 Recime mass-import receiving endpoint.** New `POST /v1/recipes/import/recime` accepts a Recime-shaped JSON recipe payload, normalizes to Palateful's recipe model, files into `Trying Out` per `epic-recipe-default-books`, dedupes via existing duplicate-detection path per `epic-import-duplicate-detection`. Authenticated via existing Palateful API token. Rate-limited 200 req / 5 min per user.
+
+**FR-COMP-13 Palateful-branded Chrome extension (Manifest V3).** Standalone extension distributed via Chrome Web Store under Palateful's developer account. Content script injected into recime.app pages; popup with single primary action ("Send all my recipes to Palateful"). Reads user's Recime session cookie + Palateful API token (entered once, `chrome.storage.local`), paginates Recime's internal list-recipes endpoint, fetches per-recipe detail, POSTs each to `POST /v1/recipes/import/recime`. Real-time per-recipe success/skip/fail counts in popup; final summary with deep link back to Palateful's `Trying Out`.
+
+**FR-COMP-14 In-app import-progress visibility.** Recime import surfaces in existing Activity Hub as long-running import job row (per YNAB-inspired status icons + relative-time UX). Per-recipe success/skip/fail counts visible. Tapping opens per-recipe detail sheet. On completion, push notification: "N recipes imported from Recime — review in Trying Out."
+
+**FR-COMP-15 Recime-import onboarding entry point.** Settings → "Import from another app" → "Recime" → walkthrough screen with annotated screenshots + one-tap "Install Extension" CTA deep-linking to Chrome Web Store. FAQ: "Why a browser extension? Because Recime doesn't expose a public API and we want to respect their TOS — your browser does the work, your data stays yours."
+
+**FR-COMP-16 Recime-import audit + cost guardrails.** Every Recime mass-import session emits `error_logs` audit row at start (`service="audit"`, `error_type="RecimeImportSession"`) with user_id + intended count, then audit row at end with final success/skip/fail counts. No PII (cookies, tokens) ever logged. Per-user limit: 2 mass-import sessions / 24h with graceful UX on the third.
+
+### Non-functional constraints
+
+- **Free-forever copy bar.** Any user-visible copy or surface in this round must honor the free-forever commitment. No "premium," "pro," "upgrade," or "unlock" language. If a story discovers it needs to gate something, the gate must be removed (or feature cut) — not a paywall added.
+- **Recipe Notes parity check.** Before publishing comparison table, verify Recipe Notes' claimed feature set against current App Store description.
+- **Video-import cost ceiling.** Per-user per-month cap at $5 (~$1.50 of Whisper at full 10-min videos × ~3 imports/day). When exceeded, reject with friendly error + manual-entry link.
+- **Privacy & attribution (video).** Stores creator handle + platform; never stores or transmits source video file beyond transient transcription window. Source URL preserved.
+- **No nutrition over-claim.** All cards display "* Estimated" disclaimer; manual override one tap away.
+- **Recime extension TOS framing.** Extension is owned/operated by user in their own browser, exporting their own data — exactly as Recime's own privacy-policy GDPR-portability clause entitles them to. Walkthrough copy makes this framing explicit. 30-min lawyer review required pre-launch.
+- **API coverage stays at 100%.** New endpoints carry full unit + integration tests.
+- **No new AWS resources.** Every epic in this round reuses existing infrastructure. Web landing page replaces today's empty Flutter web shell on existing Cloudflare Pages deploy. Chrome Web Store listing hosted by Google.
+
+### Out of scope (this round)
+
+- Cross-app uploaded-file migration parsers (Paprika / Mela / Crouton). Distinct from Recime mass-import via Chrome extension (which IS in scope).
+- Live import preview (Mela-style).
+- Smart shopping-list cross-recipe dedup (intentionally cut on 2026-04-20).
+- AI recipe generation from fridge photo (Whisk-style).
+- Grocery-retailer integration (Whisk-style 29-retailer checkout).
+- Face-gesture cook navigation (Crouton-style).
+- Physical cookbook export (CopyMeThat-style print-on-demand).
+- Subscription / paywall infrastructure. Free forever, locked.
+- Firefox / Safari extensions for Recime import. Chrome MVP only this round.
+
+### Success metrics
+
+- **App Store / Play Store conversion lift** vs pre-positioning baseline. Track install-from-listing weekly post-launch.
+- **Social-video import success rate ≥ 70%** measured by approve-rate on video-extracted vs URL-extracted (URL baseline ~85%).
+- **Cookable-recipes home card engagement** — at least one tap-through per active session for users with non-empty pantries.
+- **Pantry-decrement opt-in rate ≥ 50%** of post-cook completions on day 30.
+- **Nutrition card display rate ≥ 95%** of recipes with all ingredients matched within 7 days of data load.
+- **Zero "free for now" regressions** in copy — grep guard or CI check on user-facing strings for "v1," "premium," "pro," "upgrade," "subscription."
+- **Recime mass-import success rate ≥ 90%** measured as fraction of Recime recipes the extension fetches that successfully land in `Trying Out`.
+- **Recime mass-import median session duration < 90 seconds** for libraries up to 100 recipes.
+- **Chrome Web Store rating ≥ 4.0 stars** on the Palateful Recime-import extension within 60 days of launch.

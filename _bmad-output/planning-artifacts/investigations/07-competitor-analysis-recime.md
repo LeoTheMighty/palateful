@@ -561,3 +561,152 @@ Users in reviews express strong preference for one-time purchase or lifetime opt
 ---
 
 *Sources: App Store reviews, Google Play reviews, Plan to Eat blog (Recime review), RecipeOne blog (app comparisons), MacStories (Pestle and Crouton reviews), TechCrunch (Pestle TikTok feature), Apple Developer (Design Awards), Startup Daily (Recime funding), Screensdesign (app showcase), Pluck Blog (app comparisons), Fulcra Design (app comparison), Flavor365 (app reviews), Drizzle Lemons (app testing), Forkee (honest comparison).*
+
+---
+
+## Addendum — 2026-04-25 — April Refresh + Palateful Parity Audit
+
+> Refresh of the March investigation with: (a) latest 2026 review/pricing intel, (b) Palateful current-state parity audit, (c) free-forever positioning lock-in, (d) Recime mass-import feasibility check (RED → YELLOW pivot via Chrome extension).
+
+### What Changed Since March
+
+**1. Recime price drop (US cohorts).** Recime's help center (updated 2026-03-23) now lists the annual sub at **$39.99/yr** in some US cohorts; App Store IAP range is "$9.99–$59.99" suggesting A/B or grandfathered tiers. The "$59.99/yr" talking point is going stale — lead positioning instead with **5 imports/week** + **public-recipes-by-default** on the free tier. Source: [Recime help](https://recime.app/help/en/articles/11630592-how-much-does-the-recime-subscription-cost).
+
+**2. Recime Q1 2026 = rebrand cycle, NOT feature cycle.** v5.0 (Feb 3) was a major brand redesign; v5.1.x – v5.2.x (Apr 7–16) are polish + bug fixes. **No new functional surfaces shipped since March.** The pantry / merge-duplicates / sort-options / public-recipes complaints are all still open and getting worse in 2026 reviews. Strategic opening for Palateful.
+
+**3. NEW Recime complaints (last 90 days):**
+- Backlash to the v5.0 rebrand ("Not a fan of the makeover — font, art and color choices have brought the app down" — TheMadCow, Feb 8).
+- Search-within-cookbook is broken (works on home, fails inside a cookbook).
+- "Even Pro users see ads" — surfacing in 2026 reviews; not in March investigation.
+- Subscription-cancellation friction → JustUseApp aggregator scores Recime **4.1/100 on safety** based on 167K review NLP, weighted by billing complaints.
+- Pinterest imports failing.
+
+**4. NEW competitor: Recipe Notes.** Explicitly markets as "Free ReciMe Alternative" — unlimited imports, family sharing, no ads, $0. **Occupies the exact "free + unlimited" niche Palateful was eyeing.** Palateful's defensibility shifts from "we're free" to "we're free **AND pantry-aware AND household-native AND Meals-capable**." See [recipenotes.app/free-recime-alternative](https://recipenotes.app/free-recime-alternative).
+
+**5. Other new entrants:**
+- **Snapshot Recipes** — AI-first recipe generator (Apr 2026, hit #10 iOS Food & Drink); threat is on the AI-generation flank, not import flank.
+- **Deglaze** — explicitly markets "save in 1–2 seconds vs Recime's 10s loading spinner" (4.9 App Store).
+- **Flavorish, Recipe One, Preplo, Peel, Kich, Rejoy** — 2025/2026 entrants. Category is **crowding fast**.
+
+**6. Apple+Gemini Siri (late 2026) — medium-term existential threat.** Apple's Siri+Gemini integration (CNBC Jan 12 2026, AppleInsider Apr 22) demoed "what can I make with what's in my fridge" — Apple is signaling pantry-aware cooking is a system-level capability they want to own. **Household + pantry + shared-list moats matter MORE now, not less.**
+
+### Refreshed Pricing Landscape (April 2026)
+
+| App | Apr 2026 price | Change vs. March |
+|---|---|---|
+| **Recime** | **$39.99/yr** US (some cohorts) — App Store range $9.99–$59.99 | **DROP from $59.99** in at least some cohorts |
+| **Samsung Food (Whisk)** | $59.99/yr or $6.99/mo | No change |
+| **Paprika 3** | $4.99 mobile, $29.99 desktop (one-time) | No change |
+| **Mela** | ~$5.99 iOS one-time | No change |
+| **Crouton** | 10 free recipes, then ~$15 one-time (was ~$10) | Slight uptick |
+| **Pestle** | Free + monthly/yearly/lifetime | No change |
+| **CopyMeThat** | $1/mo or yearly/lifetime; lifetime ~$65 | Shifted toward subscription |
+| **Recipe Notes** *(new)* | **$0 — free forever, unlimited storage, family sharing, no ads** | NEW |
+
+**Median annual:** ~$50/yr. **Cheapest paid:** Paprika $4.99 one-time. **Cheapest, period:** Recipe Notes $0.
+
+### Palateful Parity Scorecard (2026-04-25)
+
+**Must-Adopt (5/5 done):** iOS share extension (`epic-share-ios-extension`), Android share entrypoint (`epic-share-android-entrypoint`), photo/OCR import (HunyuanOCR, shipped 2026-01), meal-plan→shopping-list auto-connection (`mcal-5`, shipped 2026-04-18). Smart shopping list dedup is **intentionally cut** per `epic-ingredients-string-simplification` (2026-04-20) — Meal-grouping is the answer instead.
+
+**Should-Adopt (3.6/5):**
+- Voice cook mode: **DONE** (`11-6-hands-free-voice-input-in-cooking-mode`).
+- Auto-detected timers: **IN-FLIGHT** (`epic-cook-mode-timers`; `cmt-1` done, `cmt-2..6` backlog, ~7-9 days remaining).
+- Nutrition auto-calc: **NOT PLANNED** → addressed by `epic-nutrition-auto-calc` (this round).
+- Live import preview: NOT PLANNED (low priority, deferred).
+- Cross-app migration via uploaded export files: NOT PLANNED (deferred this round).
+
+**Differentiation moats Palateful already has:** household collaboration with real-time sync, pantry foundation, Meals (multi-recipe compositions), recipe versioning + forking, MCP server (Claude integration), AI tool-calling agent.
+
+### Critical Open Gaps Addressed in This Planning Round
+
+1. **Social-media video import (TikTok/Instagram/YouTube)** — Recime's #1 growth driver. `epic-media-import` was deleted; partial backend (video file upload via share extension) landed but no frontend extraction routing. **→ `epic-social-video-import` (this round).**
+2. **Pantry write-side hooks + "What can I cook?" ranking** — pantry CRUD + read shipped, but no auto-decrement on cook, no shopping→pantry hook, no "cook what you have" surface. **→ `epic-pantry-cook-with-what-you-have` (this round).**
+3. **Free-forever positioning copy** — no user-visible marketing surface mentions pricing; ANDROID.md hedges with "v1 — no in-app purchases." **→ `epic-recime-positioning` (this round).**
+4. **Nutrition auto-calc** — Recime Premium-gates this; users want it; no plans. **→ `epic-nutrition-auto-calc` (this round).**
+5. **Recime mass-import (mid-planning addition).** User asked whether one-click migration from Recime is feasible. Feasibility check returned **YELLOW with a pivot**: original premise (free recipes are publicly scrapeable) was falsified — Recime recipes are private by default for both free AND Pro users; Recime TOS section 2.2(c) explicitly bans building competitive products against their service. **However**, a third-party Chrome extension ("ReciMe Recipe Exporter" by Jeff @ nealllc.com, updated 2026-04-14) proves the technical pattern: user logs in to recime.app in their own browser, extension uses their own session cookie to call Recime's internal web API, exfiltrates the user's full library to PDF. **Pivoted scope:** Palateful-branded Chrome extension that POSTs into Palateful's import endpoint instead. Sidesteps TOS scraper concern by mirroring Recime's GDPR data-portability promise. **→ `epic-recime-mass-import` (this round, Chrome extension MVP).**
+
+### Five Positioning Hooks for "Palateful is Free" (Locked-in Copy)
+
+1. **"Recime: $39.99–$59.99/yr or 5 imports per week. Palateful: unlimited everything, $0."**
+2. **"They charge $59.99/yr to merge two onions on a shopping list — and they still don't. We do it free, in a Meal."**
+3. **"Your household isn't one person. Your recipe app shouldn't be either. Real shared cookbooks, shared pantries, shared lists — free."**
+4. **"Paprika tracks pantry. Recime imports from TikTok. Samsung Food has shared lists. Palateful does all three — free, in one app."**
+5. **"Even Recime Pro users see ads in 2026. Palateful: no ads, no paywall, no five-imports-a-week limit. Ever."**
+
+### Why "Free Forever" (Lock-In Decision — 2026-04-25)
+
+User decision (2026-04-25): Palateful commits to **free forever** as a positioning hook, not "free for now." This closes off any future paywall pivot — monetization, if ever pursued, would have to be donations / one-time / non-paywall. The strength of "free forever" as a hook against Recime's $39.99–$59.99/yr — and against Recipe Notes (the sole free competitor) where Palateful's pantry/Meals/household stack is the differentiator — is materially stronger than hedged "free today" framing.
+
+### Recime Mass-Import Feasibility Findings (Detailed)
+
+**Verdict: RED for the original "scrape public recipes" idea. YELLOW with a Chrome-extension pivot.**
+
+Key findings:
+- **Recime web app exists** at `recime.app` (login modal at `/?loginModal=true`); described in their own help docs as "Available on desktop or laptop only" and "Still in beta." [web app help](https://recime.app/help/en/articles/11626084-can-i-access-recime-using-a-computer)
+- **No public per-user profile pages, no public per-recipe URL pattern, no public discovery layer.** Recime explicitly states: "We do not offer any 'sharing' functionality within ReciMe and do not encourage sharing of recipes amongst individual users." [copyright/privacy article](https://recime.app/help/en/articles/11596213-recipe-saving-on-recime-and-copyright)
+- **All recipes are private — free AND Pro alike.** Verbatim from Recime: *"When a user saves a recipe using ReciMe, it is automatically marked as Private. That means it is only visible to the individual user who saved it."* The free vs Pro distinction is import quota (5/week free), not privacy. **The original premise of the feature ("free-tier recipes are public") is falsified.**
+- **TOS section 2.2(c)/(d) hostile to a Palateful-hosted scraper.** "no part of the Services may be copied, reproduced, distributed... in any form" + "you shall not access the Services in order to build a similar or competitive website, product, or service." A backend scraper is a clear violation. [terms](https://www.recime.app/terms-and-conditions)
+- **GDPR data-portability clause grants users export rights.** Privacy policy: "your personal information in a structured, commonly used, machine-readable format" + "built-in functionality allowing users to download information stored in their accounts at no cost." [privacy](https://www.recime.app/privacy-policy)
+- **Working precedent — third-party Chrome extension.** "ReciMe Recipe Exporter" by Jeff @ nealllc.com, last updated 2026-04-14, 1 user. Description: *"uses your existing ReciMe login session to read your recipes through the ReciMe API"* — currently dumps to PDF, but the underlying mechanism is exactly what Palateful would need. [extension](https://chromewebstore.google.com/detail/recime-recipe-exporter/nbmmcjlploegpicloeoknlgdblcbmoga)
+- **No competitor has an "import from Recime" feature.** Recipe Notes (the most aggressive Recime-alternative marketer) only imports from Instagram/TikTok/Pinterest/Facebook/websites, not from Recime. Snapshot Recipes/Deglaze/Paprika/Mela/AnyList all silent. **The 4-year gap is itself the strongest negative signal — and the strongest opportunity.**
+
+**Recommended path (locked-in 2026-04-25):** Build a Palateful-branded Chrome extension mirroring Jeff's pattern but POSTing into Palateful's import endpoint. The user is downloading their own data via their own session, exactly as the GDPR portability clause grants. Risk to flag at launch: even the extension is arguably TOS-iffy since Palateful is a competing service. Mitigation is framing + a 30-minute lawyer check before public Chrome Web Store launch. Not an epic blocker. See `epic-recime-mass-import.md` for full design.
+
+### Bottom Line for Planning
+
+- **Don't fight Recipe Notes on price** — they're $0 too. Win on capability stack at $0.
+- **Close the social-video gap** — Recime is winning installs daily on this. Defensive move.
+- **Open the pantry+household moat fully** — Apple+Gemini is coming for system-level pantry intel; ship the household-native version first.
+- **Lock the free-forever copy** — strongest hook against Recime's billing-complaint-laden subscription.
+- **Ship the Recime-import Chrome extension** — first-mover, works around TOS via user-side framing, leverages Recime's own GDPR portability promise. Strongest acquisition lever.
+- **Skip cross-app migration parsers (Paprika/Mela/Crouton)** this round — acquisition utility, not parity feature; revisit later.
+
+---
+
+*Refresh sources: [Recime App Store](https://apps.apple.com/us/app/recime-recipes-meal-planner/id1593779280), [Recime Google Play](https://play.google.com/store/apps/details?id=com.recime.app), [Recime help / pricing](https://recime.app/help/en/articles/11630592-how-much-does-the-recime-subscription-cost), [Recime TOS](https://www.recime.app/terms-and-conditions), [Recime privacy policy](https://www.recime.app/privacy-policy), [Recipe Saving on ReciMe and Copyright](https://recime.app/help/en/articles/11596213-recipe-saving-on-recime-and-copyright), [Recipe Notes](https://recipenotes.app/free-recime-alternative), [Plan to Eat — Samsung Food review](https://www.plantoeat.com/blog/2026/01/samsung-food-review-pros-and-cons/), [Drizzle Lemons 2026 best apps](https://www.drizzlelemons.com/blog/best-recipe-apps-2026), [JustUseApp Recime aggregator](https://justuseapp.com/en/app/1593779280/recime-easy-tasty-recipes/reviews), [RecipeOne 2026 Recime review](https://www.recipeone.app/blog/recime-app-review), [Deglaze positioning](https://www.deglaze.app/blog/deglaze-vs-recime), [ReciMe Recipe Exporter Chrome extension](https://chromewebstore.google.com/detail/recime-recipe-exporter/nbmmcjlploegpicloeoknlgdblcbmoga), [CNBC Apple+Gemini Jan 12 2026](https://www.cnbc.com/2026/01/12/apple-google-ai-siri-gemini.html), [AppleInsider Apr 22 2026](https://appleinsider.com/articles/26/04/22/google-confirms-context-aware-siri-built-from-gemini-will-debut-in-2026).*
+
+---
+
+## Addendum — 2026-04-25 — April Refresh + Palateful Parity Audit + Recime Mass-Import Feasibility
+
+> Refresh of the March investigation. Source addendum saved to git history. See PRD addendum (2026-04-25) and `_bmad-output/planning-artifacts/epics.md` 5-epic addendum (2026-04-25) for downstream artifacts.
+
+### April 2026 Snapshot
+
+- **Recime US price drop** to $39.99/yr in some cohorts (App Store IAP $9.99–$59.99). [Recime help](https://recime.app/help/en/articles/11630592-how-much-does-the-recime-subscription-cost). Lead positioning with **5 imports/week limit** + **public-by-default free tier** instead.
+- **Recime Q1 2026 = rebrand cycle, no functional features** since March. Pantry / merge-duplicates / sort / public-recipes complaints remain open in 2026 reviews.
+- **NEW Recime complaints (last 90 days):** v5.0 rebrand backlash, search-within-cookbook broken, "Pro users still see ads," subscription-cancellation friction (JustUseApp 4.1/100 safety score from 167K NLP'd reviews), Pinterest imports failing.
+- **NEW competitor: Recipe Notes** ([recipenotes.app](https://recipenotes.app/free-recime-alternative)) — explicitly "Free ReciMe Alternative." Free, unlimited, family sharing, no ads. Occupies the same niche Palateful eyed. Defensibility shifts to "free **AND pantry-aware AND household-native AND Meals-capable**."
+- **Other entrants:** Snapshot Recipes (AI-first, Apr 2026 #10 iOS Food & Drink), Deglaze (positions on speed vs Recime), Flavorish/RecipeOne/Preplo/Peel/Kich/Rejoy (2025-2026). Category crowding fast.
+- **Apple+Gemini Siri** late 2026 demoed "what can I make with what's in my fridge." System-level pantry intelligence is a 12-24 month threat. Household + shared + pantry moats matter MORE now.
+
+### Palateful Parity Scorecard (2026-04-25)
+
+- **Must-Adopt: 5/5 done.** iOS share extension, Android share entrypoint, OCR import, meal-plan→shopping-list (`mcal-5`), smart-list dedup intentionally cut on 2026-04-20 with Meal-grouping as the answer.
+- **Should-Adopt: 3.6/5.** Voice cook mode DONE; auto-detected timers IN-FLIGHT (`epic-cook-mode-timers` cmt-2..6); nutrition NOT PLANNED → addressed this round; live preview deferred; cross-app file migration deferred.
+- **Differentiation moats Palateful has:** household collab + real-time sync, pantry foundation, Meals (multi-recipe compositions), recipe versioning + forking, MCP server, AI tool-calling agent.
+
+### Recime Mass-Import Feasibility — VERDICT: RED → YELLOW pivot
+
+- **All Recime recipes are private** for both free AND Pro users. Original "free recipes are public" premise FALSIFIED. "*recipes are treated as personal notes... not as publicly republished content*" ([Recime copyright article](https://recime.app/help/en/articles/11596213-recipe-saving-on-recime-and-copyright)).
+- **Recime TOS section 2.2(c)/(d) hostile to a Palateful-hosted scraper.** "*shall not access the Services in order to build a similar or competitive website, product, or service*" ([Recime TOS](https://www.recime.app/terms-and-conditions)).
+- **Recime privacy policy GDPR portability clause grants users export rights** — "*your personal information in a structured, commonly used, machine-readable format*" ([Recime privacy](https://www.recime.app/privacy-policy)).
+- **Working precedent:** Third-party Chrome extension "ReciMe Recipe Exporter" by Jeff @ nealllc.com, last updated 2026-04-14, dumps to PDF using user's session cookie ([extension](https://chromewebstore.google.com/detail/recime-recipe-exporter/nbmmcjlploegpicloeoknlgdblcbmoga)).
+- **Pivoted scope:** Palateful-branded Chrome extension that POSTs into our import endpoint instead of generating PDF. Sidesteps TOS scraper concern (user-side, not server-side; mirrors GDPR portability). Lawyer review before public Chrome Web Store launch but not an epic blocker. Full design in `epic-recime-mass-import.md`.
+
+### Five Locked Epics for This Round
+
+1. `epic-recime-positioning` (P0, ~1 week) — free-forever copy lock-in, web landing page, comparison table, in-app "why we're free."
+2. `epic-social-video-import` (P0, ~3-4 weeks) — TikTok + Instagram + YouTube extraction via Whisper transcription + caption scraping + AI synthesis.
+3. `epic-pantry-cook-with-what-you-have` (P0, ~2-3 weeks) — pantry write-side hooks + "what can I cook tonight?" ranking + pantry-coverage badges + use-it-up nudges.
+4. `epic-recime-mass-import` (P1, ~1.5 weeks) — Palateful-branded Chrome extension MVP for one-click Recime library import.
+5. `epic-nutrition-auto-calc` (P1, ~3-5 weeks) — USDA FoodData Central data load + auto-calculated macros per recipe + manual override.
+
+### Five Positioning Hooks for "Palateful is Free"
+
+1. "Recime: $39.99–$59.99/yr or 5 imports/week. Palateful: unlimited everything, $0."
+2. "They charge $59.99/yr to merge two onions on a shopping list — and they still don't. We do it free, in a Meal."
+3. "Your household isn't one person. Your recipe app shouldn't be either. Real shared cookbooks, shared pantries, shared lists — free."
+4. "Paprika tracks pantry. Recime imports from TikTok. Samsung Food has shared lists. Palateful does all three — free, in one app."
+5. "Even Recime Pro users see ads in 2026. Palateful: no ads, no paywall, no five-imports-a-week limit. Ever."
