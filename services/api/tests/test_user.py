@@ -842,6 +842,45 @@ class TestCompleteOnboarding:
         assert mock_user.name == "Leo"
         assert mock_user.has_completed_onboarding is True
 
+    def test_complete_onboarding_preserves_existing_default_recipe_book_id(
+        self, client, mock_user, mock_db, mock_async_db
+    ):
+        """recipe-defaults-2 — the auth-callback hook seeds Trying Out as
+        the default before onboarding ever runs. Onboarding must NOT
+        overwrite that default with the new "My Recipes" book id."""
+        from datetime import UTC, datetime
+
+        existing_default = str(uuid.uuid4())
+        mock_user.has_completed_onboarding = False
+        mock_user.username = None
+        mock_user.username_changed_at = None
+        mock_user.default_recipe_book_id = existing_default
+        mock_db.db.commit = MagicMock()
+        mock_db.db.flush = MagicMock()
+        mock_db.db.add = MagicMock()
+
+        def refresh_with_defaults(obj):
+            if not hasattr(obj, 'id') or obj.id is None:
+                obj.id = str(uuid.uuid4())
+            if hasattr(obj, 'created_at') and obj.created_at is None:
+                obj.created_at = datetime.now(UTC)
+            if hasattr(obj, 'updated_at') and obj.updated_at is None:
+                obj.updated_at = datetime.now(UTC)
+
+        mock_db.db.refresh = MagicMock(side_effect=refresh_with_defaults)
+
+        response = client.post(
+            "/v1/users/me/complete-onboarding",
+            json={"name": "Leo", "start_method": "browse"},
+        )
+        assert response.status_code == 200
+        # "My Recipes" is still created and returned in the response …
+        data = response.json()
+        assert data["recipe_book"] is not None
+        assert data["recipe_book"]["name"] == "My Recipes"
+        # … but the user's default stays pointed at the original (Trying Out).
+        assert mock_user.default_recipe_book_id == existing_default
+
     def test_complete_onboarding_empty_name(self, client, mock_user, mock_db, mock_async_db):
         """Test that empty name is rejected."""
         mock_user.has_completed_onboarding = False

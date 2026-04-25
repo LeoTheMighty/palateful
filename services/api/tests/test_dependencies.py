@@ -484,3 +484,119 @@ class TestEnsureDefaultCalendarDepCaching:
             f"longer holds and an explicit request.state cache is "
             f"needed (see pbq-8 story)."
         )
+
+
+class TestEnsureSystemTryingOut:
+    """recipe-defaults-2 — sync helper that seeds a system Trying Out
+    book on first authed request and sets the user's default."""
+
+    def _make_database(self):
+        from sqlalchemy.exc import IntegrityError
+
+        database = MagicMock()
+        database.db = MagicMock()
+        database.db.query = MagicMock()
+        database.db.flush = MagicMock()
+        database.create = MagicMock()
+        database.update = MagicMock()
+
+        # begin_nested() is used as `with database.db.begin_nested(): ...`
+        class _NoopCM:
+            def __init__(self, raises=None):
+                self._raises = raises
+
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, exc_type, exc, tb):
+                if self_inner._raises:
+                    raise self_inner._raises
+                return None
+
+        database._NoopCM = _NoopCM
+        database._IntegrityError = IntegrityError
+        return database
+
+    def test_ensure_system_trying_out_returns_existing(self):
+        """Fast path — book already present; no INSERT, no default touch."""
+        from dependencies import _ensure_system_trying_out
+
+        database = self._make_database()
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        user.default_recipe_book_id = uuid.uuid4()  # custom default already
+
+        existing = MagicMock()
+        existing.id = uuid.uuid4()
+        # query(...).join(...).filter(...).first() chain returns `existing`.
+        database.db.query.return_value.join.return_value.filter.return_value.first.return_value = existing
+
+        result = _ensure_system_trying_out(database, user)
+        assert result is existing
+        database.create.assert_not_called()
+        database.update.assert_not_called()
+
+    def test_ensure_system_trying_out_creates_when_missing(self):
+        """Happy creation — book + membership + default-set."""
+        from dependencies import _ensure_system_trying_out
+
+        database = self._make_database()
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        user.default_recipe_book_id = None
+
+        # First .first() returns None (miss); after create, the book has an id.
+        database.db.query.return_value.join.return_value.filter.return_value.first.return_value = None
+        database.db.begin_nested = MagicMock(return_value=database._NoopCM())
+
+        result = _ensure_system_trying_out(database, user)
+
+        # Book + membership both created.
+        assert database.create.call_count == 2
+        # Default set (book got an id from the construction; mock retains it).
+        assert database.update.call_count == 1
+        update_call = database.update.call_args
+        assert "default_recipe_book_id" in update_call.kwargs
+        assert result is not None
+
+    def test_ensure_system_trying_out_preserves_existing_default(self):
+        """User has a non-null default — helper does not call update."""
+        from dependencies import _ensure_system_trying_out
+
+        database = self._make_database()
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        user.default_recipe_book_id = uuid.uuid4()  # already set
+
+        # Miss path so we exercise creation.
+        database.db.query.return_value.join.return_value.filter.return_value.first.return_value = None
+        database.db.begin_nested = MagicMock(return_value=database._NoopCM())
+
+        _ensure_system_trying_out(database, user)
+        database.update.assert_not_called()
+
+    def test_ensure_system_trying_out_handles_race_loss(self):
+        """SAVEPOINT INSERT raises IntegrityError → re-read returns winner."""
+        from dependencies import _ensure_system_trying_out
+
+        database = self._make_database()
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        user.default_recipe_book_id = None
+
+        winner = MagicMock()
+        winner.id = uuid.uuid4()
+        # First .first() (initial probe) returns None; second (re-read) returns winner.
+        first_mock = MagicMock(side_effect=[None, winner])
+        database.db.query.return_value.join.return_value.filter.return_value.first = first_mock
+
+        # Have begin_nested context manager raise IntegrityError on exit.
+        integrity = database._IntegrityError("INSERT", {}, Exception("dup"))
+        database.db.begin_nested = MagicMock(
+            return_value=database._NoopCM(raises=integrity)
+        )
+
+        result = _ensure_system_trying_out(database, user)
+        assert result is winner
+        # default_recipe_book_id was None and winner exists → update once.
+        database.update.assert_called_once()

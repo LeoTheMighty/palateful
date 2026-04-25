@@ -14,6 +14,8 @@ from utils.classes.error_code import ErrorCode
 from utils.constants import LOGGING_LEVEL
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
+from utils.models.recipe_book import RecipeBook
+from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 from utils.services.async_database import AsyncDatabase
 from utils.services.database import AsyncSessionLocal, Database, SessionLocal
@@ -24,6 +26,7 @@ logger.setLevel(LOGGING_LEVEL)
 _E2E_TOKEN = "e2e-test-token"
 _E2E_AUTH0_ID = "e2e|test-user"
 _DEFAULT_CALENDAR_NAME = "My Calendar"
+_TRYING_OUT_BOOK_NAME = "Trying Out"
 
 
 def get_db():
@@ -117,6 +120,7 @@ async def get_current_user(
         if not user.has_completed_onboarding:
             database.update(user, has_completed_onboarding=True)
         _ensure_default_calendar(database, user)
+        _ensure_system_trying_out(database, user)
         return user
 
     # Import verifier here to avoid circular imports
@@ -148,6 +152,10 @@ async def get_current_user(
     # one already exists. Race-safe via the partial unique index on
     # calendars(owner_id) WHERE is_default = true AND archived_at IS NULL.
     _ensure_default_calendar(database, user)
+
+    # Ensure this user owns a system Trying Out recipe book + default-set.
+    # Idempotent — no-op when the user already owns one.
+    _ensure_system_trying_out(database, user)
 
     return user
 
@@ -238,6 +246,62 @@ def _ensure_default_calendar(database: Database, user: User) -> Calendar | None:
         )
 
 
+def _find_system_trying_out_book(database: Database, user: User) -> RecipeBook | None:
+    """Return the user's active system Trying Out book, or None."""
+    return (
+        database.db.query(RecipeBook)
+        .join(RecipeBookUser, RecipeBookUser.recipe_book_id == RecipeBook.id)
+        .filter(
+            RecipeBookUser.user_id == user.id,
+            RecipeBookUser.role == "owner",
+            RecipeBookUser.archived_at.is_(None),
+            RecipeBook.is_system.is_(True),
+            RecipeBook.archived_at.is_(None),
+        )
+        .first()
+    )
+
+
+def _ensure_system_trying_out(database: Database, user: User) -> RecipeBook | None:
+    """Ensure `user` owns a system Trying Out recipe book + default-set.
+
+    Mirrors `_ensure_default_calendar`: idempotent SELECT-before-INSERT
+    inside a SAVEPOINT, with an `IntegrityError` fallback that re-reads
+    the concurrent winner. Sets `user.default_recipe_book_id` on the
+    book's id only when the user does not already have one — never
+    overwrites a custom default the user has already chosen.
+    """
+    book = _find_system_trying_out_book(database, user)
+
+    if book is None:
+        try:
+            with database.db.begin_nested():
+                book = RecipeBook(
+                    name=_TRYING_OUT_BOOK_NAME,
+                    is_public=False,
+                    is_shared=False,
+                    is_system=True,
+                )
+                database.create(book)
+                database.db.flush()
+
+                membership = RecipeBookUser(
+                    user_id=user.id,
+                    recipe_book_id=book.id,
+                    role="owner",
+                )
+                database.create(membership)
+                database.db.flush()
+        except IntegrityError:
+            # Concurrent provisioning won the race — re-read.
+            book = _find_system_trying_out_book(database, user)
+
+    if book is not None and user.default_recipe_book_id is None:
+        database.update(user, default_recipe_book_id=book.id)
+
+    return book
+
+
 async def get_current_user_async(
     authorization: Annotated[str, Header()],
     database: AsyncDatabase = Depends(get_async_database),
@@ -276,6 +340,7 @@ async def get_current_user_async(
         if not user.has_completed_onboarding:
             await database.update(user, has_completed_onboarding=True)
         await _ensure_default_calendar_async(database, user)
+        await _ensure_system_trying_out_async(database, user)
         return user
 
     from utils.services.auth0 import get_auth0_verifier
@@ -299,6 +364,7 @@ async def get_current_user_async(
 
     user = await _finalize_auth_async(database, user, claims)
     await _ensure_default_calendar_async(database, user)
+    await _ensure_system_trying_out_async(database, user)
 
     return user
 
@@ -382,6 +448,63 @@ async def _ensure_default_calendar_async(
         # transaction stays usable.
         result = await database.db.execute(stmt)
         return result.scalars().first()
+
+
+async def _find_system_trying_out_book_async(
+    database: AsyncDatabase, user: User
+) -> RecipeBook | None:
+    """Async sibling of `_find_system_trying_out_book`."""
+    stmt = (
+        select(RecipeBook)
+        .join(RecipeBookUser, RecipeBookUser.recipe_book_id == RecipeBook.id)
+        .where(
+            RecipeBookUser.user_id == user.id,
+            RecipeBookUser.role == "owner",
+            RecipeBookUser.archived_at.is_(None),
+            RecipeBook.is_system.is_(True),
+            RecipeBook.archived_at.is_(None),
+        )
+    )
+    result = await database.db.execute(stmt)
+    return result.scalars().first()
+
+
+async def _ensure_system_trying_out_async(
+    database: AsyncDatabase, user: User
+) -> RecipeBook | None:
+    """Async sibling of `_ensure_system_trying_out`. Same idempotent
+    SELECT-before-INSERT + IntegrityError-on-race pattern; sets
+    `user.default_recipe_book_id` only when the user does not already
+    have one.
+    """
+    book = await _find_system_trying_out_book_async(database, user)
+
+    if book is None:
+        try:
+            async with database.db.begin_nested():
+                book = RecipeBook(
+                    name=_TRYING_OUT_BOOK_NAME,
+                    is_public=False,
+                    is_shared=False,
+                    is_system=True,
+                )
+                database.db.add(book)
+                await database.db.flush()
+
+                membership = RecipeBookUser(
+                    user_id=user.id,
+                    recipe_book_id=book.id,
+                    role="owner",
+                )
+                database.db.add(membership)
+                await database.db.flush()
+        except IntegrityError:
+            book = await _find_system_trying_out_book_async(database, user)
+
+    if book is not None and user.default_recipe_book_id is None:
+        await database.update(user, default_recipe_book_id=book.id)
+
+    return book
 
 
 async def require_admin(

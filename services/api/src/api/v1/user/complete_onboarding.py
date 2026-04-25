@@ -75,8 +75,12 @@ class CompleteOnboarding(AsyncEndpoint):
         )
         self.db.add(membership)
 
-        # 4. Set as default recipe book
-        user.default_recipe_book_id = recipe_book.id
+        # 4. Set as default recipe book — but only if the user doesn't
+        # already have one. The Auth0 callback hook (recipe-defaults-2)
+        # provisions a system Trying Out book and sets it as the default
+        # before onboarding ever runs; we must not overwrite that.
+        if user.default_recipe_book_id is None:
+            user.default_recipe_book_id = recipe_book.id
 
         # 5. Mark onboarding as complete + record notification permission state
         user.has_completed_onboarding = True

@@ -465,3 +465,112 @@ def test_mcp_get_current_database_async_raises_when_unset():
     with pytest.raises(APIException) as exc_info:
         get_current_database_async()
     assert exc_info.value.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# _ensure_system_trying_out_async (recipe-defaults-2)
+# ---------------------------------------------------------------------------
+
+
+async def test_ensure_system_trying_out_async_returns_existing(fake_async_db):
+    """Fast path — a system book already exists; no INSERT, no default touch."""
+    from dependencies import _ensure_system_trying_out_async
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.default_recipe_book_id = uuid.uuid4()  # custom default already
+
+    existing = MagicMock()
+    existing.id = uuid.uuid4()
+    existing_result = MagicMock()
+    existing_result.scalars.return_value.first.return_value = existing
+    fake_async_db.db.execute.return_value = existing_result
+
+    result = await _ensure_system_trying_out_async(fake_async_db, user)
+    assert result is existing
+    fake_async_db.db.add.assert_not_called()
+    fake_async_db.update.assert_not_called()
+
+
+async def test_ensure_system_trying_out_async_creates_when_missing(fake_async_db):
+    """Happy creation — book + membership + default-set."""
+    from dependencies import _ensure_system_trying_out_async
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.default_recipe_book_id = None
+
+    class _NoopCM:
+        async def __aenter__(self_inner):
+            return self_inner
+
+        async def __aexit__(self_inner, *a):
+            return None
+
+    fake_async_db.db.begin_nested = MagicMock(return_value=_NoopCM())
+
+    result = await _ensure_system_trying_out_async(fake_async_db, user)
+
+    assert result is not None
+    # Book + membership both added.
+    assert fake_async_db.db.add.call_count == 2
+    # flush() called twice — once after each add.
+    assert fake_async_db.db.flush.await_count == 2
+    # Default set.
+    fake_async_db.update.assert_awaited_once()
+
+
+async def test_ensure_system_trying_out_async_preserves_existing_default(
+    fake_async_db,
+):
+    """User has a non-null default — helper does not call update."""
+    from dependencies import _ensure_system_trying_out_async
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.default_recipe_book_id = uuid.uuid4()  # already set
+
+    class _NoopCM:
+        async def __aenter__(self_inner):
+            return self_inner
+
+        async def __aexit__(self_inner, *a):
+            return None
+
+    fake_async_db.db.begin_nested = MagicMock(return_value=_NoopCM())
+
+    await _ensure_system_trying_out_async(fake_async_db, user)
+    fake_async_db.update.assert_not_called()
+
+
+async def test_ensure_system_trying_out_async_handles_race_loss(fake_async_db):
+    """SAVEPOINT INSERT raises IntegrityError → re-read returns winner."""
+    from dependencies import _ensure_system_trying_out_async
+
+    user = MagicMock()
+    user.id = uuid.uuid4()
+    user.default_recipe_book_id = None
+
+    class _ExplodingCM:
+        async def __aenter__(self_inner):
+            return self_inner
+
+        async def __aexit__(self_inner, exc_type, exc, tb):
+            return None  # __aexit__ returning None means re-raise
+
+    fake_async_db.db.begin_nested = MagicMock(return_value=_ExplodingCM())
+    fake_async_db.db.flush.side_effect = IntegrityError(
+        "INSERT", {}, Exception("dup")
+    )
+
+    winner = MagicMock()
+    winner.id = uuid.uuid4()
+    empty = MagicMock()
+    empty.scalars.return_value.first.return_value = None
+    won = MagicMock()
+    won.scalars.return_value.first.return_value = winner
+    fake_async_db.db.execute.side_effect = [empty, won]
+
+    result = await _ensure_system_trying_out_async(fake_async_db, user)
+    assert result is winner
+    fake_async_db.update.assert_awaited_once()

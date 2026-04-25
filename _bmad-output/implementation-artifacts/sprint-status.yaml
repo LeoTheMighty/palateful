@@ -1414,7 +1414,7 @@ development_status:
   # --- Epic 1: Recipe Default Books (foundation) ---
   epic-recipe-default-books: backlog
   recipe-defaults-1-backend-is-system-column-and-trying-out-seed-migration: done
-  recipe-defaults-2-backend-new-user-provisioning-hook-seeds-trying-out-and-default: backlog
+  recipe-defaults-2-backend-new-user-provisioning-hook-seeds-trying-out-and-default: done
   recipe-defaults-3-frontend-switcher-pins-system-books-with-distinct-styling: backlog
   recipe-defaults-4-frontend-share-import-fallback-uses-default-recipe-book-id: backlog
   epic-recipe-default-books-retrospective: optional
