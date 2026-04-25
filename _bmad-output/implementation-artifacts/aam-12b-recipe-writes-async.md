@@ -1,6 +1,6 @@
 # Story aam-12b: Recipe writes async
 
-**Status**: in-progress
+**Status**: done
 **Epic**: epic-api-async-migration
 **Phase**: 3 — Per-domain conversions (split from aam-12)
 **Depends on**: aam-12a (reads + `_response.py::build_recipe_response`
