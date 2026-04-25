@@ -1,4 +1,4 @@
-<!-- draft: pre-party-mode -->
+<!-- refined via party-mode 2026-04-25 -->
 # Epic: Recime Positioning — Lock In "Free Forever"
 
 ## Overview
@@ -92,3 +92,48 @@ _bmad-output/implementation-artifacts/
 - **Web landing — single-page or multi-page?** Default is single-page hero + comparison + footer. If a multi-page site (with feature pages, blog) is desired, scope expands to a static-site generator decision (Astro / 11ty / hand-rolled).
 - **Domain for the Flutter web app post-relocation.** Default: `palateful.app/app` keeps it under the same domain. Alternative: `app.palateful.app` subdomain — cleaner separation but needs a new Cloudflare Pages config + DNS update. Pick at story `pos-3`.
 - **Comparison table refresh cadence.** Default: quarterly + when a competitor materially changes positioning. If the operator wants more / less frequent, adjust the FR-COMP-2 commitment.
+
+---
+
+## Refinements applied (party-mode 2026-04-25)
+
+### File-path corrections (real Flutter file layout)
+- Replace `app/lib/features/profile/settings_screen.dart` → `app/lib/features/profile/profile_screen.dart` (the actual Settings entry-point file).
+- Replace `app/lib/features/sharing/recipe_share_card.dart` → `app/lib/services/share_service.dart` (no image-card builder exists; sharing is plain text/link). Image-card rendering CUT from this round; tagline appended to share text instead.
+
+### End-user-flow additions
+- **New step (after current step 3): "Limit-shaped surfaces speak free."** Anywhere a competitor would render a paywall (import button, recipe-count footer, household-member add sheet, etc.), Palateful renders a quiet "Unlimited — free forever" affordance instead of nothing. Concretely: import-screen footer + household-add sheet in v1.
+- **Rewrite step 6:** "share-recipe card flow" → "share-recipe **text/link** flow via `app/lib/services/share_service.dart`; append `\nGet Palateful — free forever: https://palateful.app` to the shared text payload."
+
+### Frontend section additions
+- Comparison snippet on `WhyWeAreFreePage` uses a **Palateful-vs-one-competitor toggle** (PageView/Tabs), NOT a 4-column grid (4 columns are unreadable on a 360px Android screen).
+- Two "free forever" affordance widgets (import-screen footer, household-add sheet) consume a single shared **`FreeForeverChip`** widget — locked as the canonical affordance for any limit-shaped surface across all 5 epics this round.
+
+### Infrastructure section additions
+- **Cloudflare Pages `_redirects` rules** — when the Flutter web app moves to `/app`, prior routes (`/login*`, `/auth/*`, deep-link paths) must redirect to `/app/...`. Verify Auth0 allowed-callback list before flipping DNS, otherwise login breaks the day landing ships.
+- **Wire `tools/copy-grep-guard.sh` into CI** following the existing `tools/no-silent-catch-check.sh` integration shape (do not invent a new pattern). Allowlist file at `tools/copy-grep-allowlist.txt` follows the `file:lineno:rationale` format from `tools/silent-catch-allowlist.txt`.
+- **Scrub existing "v1 — Palateful is free, no in-app purchases" instances** — confirmed in `ANDROID.md:645`; possibly in `apl-2-*.md` artifacts and `play-store-assets/README.md`. Story `pos-4` enumerates each.
+
+### Story changes
+- **Split `pos-6` into `pos-6a` + `pos-6b`:**
+  - `pos-6a Share-text tagline + grep guard CI wiring` (1 day, ships first; image-card rendering CUT entirely).
+  - `pos-6b "Unlimited" affordance chip on limit-shaped surfaces` (2 days; ships `FreeForeverChip` + mounts on import-screen footer + household-add sheet).
+- **Add `pos-7 Web-relocation safety net`** (0.5 day; **blocks `pos-3` go-live**): Cloudflare `_redirects` rules + Auth0 callback list update + smoke test of `palateful.app/app/login` round-trip after DNS flip.
+- **Tighten `pos-1` AC:** name leonid@ac93.org as the citation reviewer; require URL + retrieval date per row in a sidecar **`_bmad-output/planning-artifacts/pos-1-comparison-sources.md`** so quarterly refresh has a diff target.
+- **Add to every story AC:** standalone QA-walkthrough file at `_bmad-output/implementation-artifacts/pos-N-qa-walkthrough.md` per codebase convention.
+
+### Open questions (escalated)
+1. Should `FreeForeverChip` be a contract every new feature must call (mandatory for any limit-shaped surface), or only the two named here? **Recommend: mandatory** — every future epic that touches a surface where competitors paywall must render the chip.
+2. Comparison table — include "ads" row even though all four competitors are ad-free, to pre-empt the question, or omit? **Recommend: include with "no ads" everywhere** — frames the question for users.
+3. Does `palateful.app` currently serve user-bookmarked URLs, or is it OK to break? Affects whether the Flutter app must stay at `palateful.app` apex or can move to `palateful.app/app`. **Recommend: `palateful.app/app`** with redirects for login + auth callback paths.
+
+### Locked decisions to propagate to later epics (4 remaining)
+1. **Forbidden-strings list is canonical** (`premium`, `pro`, `upgrade`, `subscription`, `paywall`, `unlock`, `v1.*purchases`). Every later epic's copy must pass `tools/copy-grep-guard.sh` with no new allowlist entries unless reviewed.
+2. **`FreeForeverChip` widget is the single approved affordance** for any "this would be a paywall in another app" surface. Later epics (Recime import + social-video naturally limit-shaped) reuse it; do not invent feature-specific copy.
+3. **Comparison-table sources** live at `_bmad-output/planning-artifacts/pos-1-comparison-sources.md` with retrieval dates; later marketing/positioning work updates this file rather than re-researching.
+4. **Web app at `palateful.app/app`, landing at apex** (assuming default open question resolves that way). Later epics that produce shareable URLs use `/app/...` deep links.
+
+### Risks
+1. **Auth0 callback breakage when Flutter web moves to `/app`** — outage risk on landing-launch day. *Mitigation:* `pos-7` blocks `pos-3` go-live.
+2. **Operator-paste latency** — store-listing copy queued behind next Android promotion per `apl-2`. *Mitigation:* operator schedules paste within 7 days of `pos-5` merge.
+3. **Comparison-table factual drift** — competitors change pricing between quarterly refreshes. *Mitigation:* `pos-1-comparison-sources.md` sidecar makes drift detectable.

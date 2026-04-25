@@ -1,4 +1,4 @@
-<!-- draft: pre-party-mode -->
+<!-- refined via party-mode 2026-04-25 -->
 # Epic: Nutrition Auto-Calculation — USDA-Sourced, Free for Everyone
 
 ## Overview
@@ -105,3 +105,63 @@ _bmad-output/implementation-artifacts/
 - **USDA snapshot in repo or runtime download?** Default proposed: commit a small snapshot (`data/usda/`) so the data-load script is reproducible offline. Alternative: download at runtime from USDA's public CDN — keeps the repo lean but adds a runtime dependency. Confirm before story `nutri-1`.
 - **Should cookable-recipes ranking (`epic-pantry-cook-with-what-you-have`) accept a nutrition filter (e.g., "low-carb only")?** Out of scope for this round but trivial to add once `nutrition_per_serving` is on the recipe row. Flag for a future quality-of-life epic.
 - **Manual-override granularity.** Default proposed: per-recipe override (4 fields per serving). Alternative: per-ingredient override (lets users say "for me, butter is 95 cal/tbsp not 102"). Per-recipe is simpler for v1; per-ingredient is the longer-tail story.
+
+---
+
+## Refinements applied (party-mode 2026-04-25)
+
+### End-user-flow additions / rewrites
+- **Add step 0 — placement spec:** below ingredients, above steps; on small viewports, collapses to a single-line summary chip with disclosure. Document why (cook eye-flow: "what's in it" → "is it heavy?" → "how do I make it").
+- **Rewrite step 3 — unify entry points:** missing-ingredient inline entry sheet uses the SAME per-ingredient override sheet built for recipe-edit. ONE UI, two entry points. Don't ship two manual-entry flows.
+- **Add step 6 — disclaimer everywhere:** "* Estimated" appears on the card, the breakdown sheet header, AND inside the manual-override sheet. Spec it explicitly.
+- **Reframe step 5 — toggle is taste, not perf:** Settings toggle is a clutter / taste preference (not a perf optimization). Default ON. Perf is an implementation consequence, not a user promise.
+
+### Frontend section additions
+- `nutrition_card.dart` **subscribes via `MutationBus` to `RecipeIngredientsChanged` events** (per `app/lib/core/state/README.md`). Uses existing coalescer recipe.
+- When backend recalc completes async, **WS-lowering recipe pushes the new `nutrition_per_serving` snapshot**; nutrition card re-renders from the bus event. Failure path uses `mutationFailureCopy` map for snackbar.
+- **Named preference key:** `users.preferences.show_nutrition: bool` (default `true`). Document next to existing prefs.
+- **Replace the missing-ingredient inline entry widget** with a thin entry-point that opens the SAME per-ingredient override sheet built for recipe-edit. One UI.
+
+### Backend section additions
+- **Recalc-on-save is ENQUEUED to the worker, NOT inline.** Recipe-update response returns immediately; WS-lowering pushes new `nutrition_per_serving` when worker finishes. Adds latency to worker, not to the cook tapping Save.
+- **Bulk-import path computes nutrition INLINE within the import task** (single pass over already-parsed ingredients), bypassing the recalc-on-save hook. Hook checks `if recipe.created_via_import and recipe.created_at within last N seconds: skip` to prevent double-compute.
+- **USDA re-load fan-out is BATCHED + RATE-LIMITED** by the worker (`process_nutrition_recompute_batch` with N recipes per task). Not a sync recipe-update storm.
+- **Sync vs async contract documented** in calculator service docstring.
+- **New operator-only admin endpoint `POST /v1/admin/nutrition/reload`** to enqueue the data-load script + return audit row id. Alternative to ssh-into-container.
+
+### Infrastructure section additions
+- **DECISION (blocking nutri-1): USDA snapshot lives in S3** (`s3://palateful-data/usda/v2026q1/`) — NOT committed to repo, NOT runtime-downloaded from USDA. Reasons: keeps repo lean, version-pinned by S3 prefix, prod container has IAM access, USDA CDN not a runtime dep.
+- **USDA version pin via `USDA_DATA_VERSION` env var** (default `v2026q1`). Quarterly cadence; operator decision.
+- `load_usda_nutrition.py` reads from S3 (not local FS), writes pre-flight diff report (matched / unmatched / changed-rows count) to audit row, requires `--yes` to commit.
+- **Rollback story:** previous `nutrition_per_unit` snapshotted to `error_logs.context` JSON before each USDA load. Sibling `revert_usda_nutrition.py` script reverses a bad load. Document in `CLAUDE.md` Ops Scripts section.
+- Reaffirm: no new AWS resources (S3 bucket already exists per infra inventory).
+
+### Story changes
+- **Add `nutri-0` — operator decision + S3 snapshot upload + `USDA_DATA_VERSION` env var plumbing.** Half-day, ops-only. **Blocks `nutri-1`.**
+- **Split `nutri-1` into `1a` + `1b`:**
+  - `1a` — migration only (reversible, cheap).
+  - `1b` — data-load script + S3 read + rollback script + audit row. The risky part with its own AC + sign-off.
+- **Modify `nutri-3`:** explicitly call out that recalc is enqueued, not inline; bulk-import path skips the hook; AC includes a 50-recipe-import load test asserting <N recompute tasks fire (not 50).
+- **Modify `nutri-4`:** add MutationBus + WS-lowering integration to AC; merge missing-ingredient entry sheet with the per-ingredient override sheet built in `nutri-5`.
+- **Modify `nutri-5`:** pull the per-ingredient override sheet earlier so `nutri-4` can reuse it; add AC for "* Estimated" disclaimer presence in all three surfaces (card, breakdown, override sheet).
+
+### Open questions (escalated)
+1. **USDA snapshot location.** Recommend **S3** (`s3://palateful-data/usda/<version>/`). Confirm before `nutri-0`. Repo-commit and runtime-download both rejected per party-mode discussion.
+2. **Manual-override granularity.** Recommend BOTH — per-recipe (4 fields, primary v1) AND per-ingredient (advanced; reuses missing-ingredient entry sheet). Per-recipe overrides per-ingredient when both present. Confirm or simplify to per-recipe-only.
+3. **Nutrition-card placement.** Recommend below ingredients / above steps; collapsed-chip on small viewports.
+4. **Recalc fan-out cap.** When USDA re-load touches an ingredient used by 10k recipes — what's the acceptable recompute window? Recommend batched, 100/min, completes in <2h; user-visible during rolling window.
+5. **Sync vs async on recipe-edit Save.** Recommend async (worker + WS push). Cook-tap-Save latency stays untouched.
+
+### Locked decisions (last epic in round; cross-epic facts now locked)
+- **USDA data version pinned via `USDA_DATA_VERSION` env var** (initial `v2026q1`); refresh **quarterly, operator-driven, audit-row gated**.
+- **USDA snapshot in S3** (`s3://palateful-data/usda/<version>/`), NOT in git, NOT runtime-downloaded.
+- **Nutrition recalc is ALWAYS async** (worker-enqueued), never inline on the recipe-update request path. Bulk-import flows compute inline-during-import to avoid hook fan-out.
+- **`users.preferences.show_nutrition: bool`** is now the canonical preference key.
+- **"* Estimated" disclaimer is mandatory on the card, breakdown sheet, AND override sheet** — three surfaces, not one. Widget-test asserts presence on all three.
+- **Cookable-recipes ranking nutrition filter** ("low-carb only" etc.) is **deferred to a future quality-of-life epic**, not this round.
+
+### Risks
+1. **USDA fuzzy-match false positives** ("cream of tartar" matched to "heavy cream"). *Mitigation:* match-confidence threshold + rejected-match audit log; below-threshold stays NULL ("Nutrition unavailable"); manual review queue for top-100 highest-recipe-count unmatched ingredients before each USDA load goes prod.
+2. **Disclaimer-miss liability** — if a single surface ships without "* Estimated" we've over-claimed precision on a free, unverified data source. *Mitigation:* widget-test asserts disclaimer text presence on all three surfaces; lint rule or grep guard in CI flagging any nutrition widget that doesn't import `EstimatedDisclaimer` shared component.
+3. **Recalc storm on bulk import** — Recime mass-import lands 87 recipes; recalc fires 87 times. *Mitigation:* bulk-import path computes nutrition inline within the import task and skips the hook (`recipe.created_via_import` guard); `nutri-3` AC asserts ≤1 recompute per imported recipe; worker rate-limit cap as belt-and-braces.
+4. **Settings toggle is a fake promise** — if "Show nutrition = OFF" still computes server-side, the perf claim is a lie. *Mitigation:* AC requires GET endpoint to short-circuit before calculator invocation when `users.preferences.show_nutrition is False`; integration test asserts zero calculator calls; observability log line confirms skip-rate in prod.

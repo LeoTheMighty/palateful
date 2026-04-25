@@ -1,4 +1,4 @@
-<!-- draft: pre-party-mode -->
+<!-- refined via party-mode 2026-04-25 -->
 # Epic: Social-Media Video Import — TikTok / Instagram / YouTube via Whisper + AI
 
 ## Overview
@@ -114,3 +114,58 @@ _bmad-output/implementation-artifacts/
 - **Whisper deployment choice — OpenAI hosted vs whisper.cpp local.** Default: OpenAI hosted Whisper ($0.006/min, no infra). Alternative: whisper.cpp running in-worker ($0 marginal, ~2GB image bloat, slower for large videos). Hosted is simpler for v1; local is the cost-optimization story when volume grows.
 - **Instagram API token sourcing.** Instagram's Graph API requires a Facebook developer app + Page connection. If we don't want to maintain that, oEmbed fallback covers ~80% of cases but loses creator handle. Acceptable for v1?
 - **Video duration cap — 10 min vs other.** 10 min covers ~95% of recipe TikToks/Reels/Shorts and bounds Whisper cost at ~$0.06 per longest-allowed import. Higher cap = better coverage of YouTube long-form recipe videos; lower cap = tighter cost control. Confirm 10 min before story `social-vid-1`.
+
+---
+
+## Refinements applied (party-mode 2026-04-25)
+
+### End-user-flow additions / rewrites
+- **Replace step 4** — instead of a 2-second auto-dismiss landing sheet, show a **brief toast** ("Extracting recipe from your TikTok — check Activity Hub") and immediately surface the import as an **Activity Hub row** with the YNAB-style "extracting" status icon + relative time. (Cuts `VideoImportLandingScreen` entirely.)
+- **Add step 6.5** — if push notifications are denied, the Activity Hub row transitions silently and the app badges the Hub icon. No push required for completion discovery.
+- **Add step 10** — monthly-cap-exceeded path: Activity Hub row shows a "paused — monthly limit reached, resets <date>" status with a "Try a screenshot instead" CTA opening the photo-import flow.
+- **Add step 11** — duplicate-video path: if `recipes.source_url` already matches an existing recipe for this user, surface "You already imported this — open existing recipe?" instead of re-extracting.
+
+### Frontend section additions
+- **CUT `VideoImportLandingScreen`** — replaced by toast + Activity Hub row pattern (consistent with shipped UX).
+- **Add MutationBus events on `import_item.status` transitions:** `extracting`, `ready`, `failed`, `budget_paused`. Activity Hub badge count updates reactively via existing MutationBus subscription pattern (`app/lib/core/state/README.md`).
+- `VideoExtractionFailureScreen` becomes an **Activity Hub row state** (with inline CTAs), NOT a separate screen.
+- **Deep-link handler** — push payload `{type: 'video_import_ready', import_item_id}` opens Approve-Import directly.
+- Widget tests use `pumpWithMutation` for the four status transitions.
+
+### Backend section additions
+- **Idempotency key on `extract_recipe_from_video_task`** keyed on `import_item_id` — Whisper call is no-op if a transcription cost row already exists for this import. Prevents worker-retry double-billing.
+- **30-day cost-cap query closes concurrent-request race** via `SELECT … FOR UPDATE` on a per-user budget row OR a Redis counter.
+- **Scraper short-circuit** — if scraper returns >300 chars of caption, skip Whisper entirely (cost optimization; make explicit).
+- **Test fixtures** — `respx` (or recorded `vcrpy` cassettes) under `services/api/tests/fixtures/social_video/` checked into repo. Hard AC, not a follow-up.
+- **Dedupe check** on `recipes.source_url` per user before queueing the worker task.
+- **Alembic migration must include `downgrade()`** — drop `social_video` from `import_items.source_type` enum + null-out rows where `source_type='social_video'`.
+
+### Infrastructure section additions
+- **Worker-task timeout = 180s** explicit (covers a 10-min video transcription with margin); document interaction with existing worker task-timeout default.
+- **ffmpeg presence assertion in worker startup health check** (fail-fast if image regresses).
+- **Per-platform circuit-breaker** — if a scraper's official-API path errors >5x in 10 min, fall through to oEmbed/audio-only for the next hour (in-process counter, no new infra).
+
+### Story changes
+- **`social-vid-1` extension:** add idempotency-key sub-task and per-user cost-cap concurrency mitigation; AC line for the friendly over-budget error string.
+- **`social-vid-2` extension:** add cassette-fixture sub-task and per-platform circuit-breaker; pin `respx` in test deps.
+- **`social-vid-3` extension:** add downgrade-path AC; add dedupe-on-source-url check.
+- **`social-vid-4` extension:** add deep-link payload spec; add MutationBus emission spec for status transitions.
+- **`social-vid-5` rewrite — shrinks ~40%:** cut `VideoImportLandingScreen`, replace with "toast + Activity Hub row" sub-task.
+- **`social-vid-6` extension:** Activity Hub row-state for failure (replacing standalone failure screen), add monthly-cap-paused row state, add duplicate-video path.
+- **NEW `social-vid-7 Cost-observability`** — extend `audit_errors.py` with `--cost-summary` flag aggregating `WhisperTranscription` rows by user + month for ops visibility. No new infra; just a script flag.
+
+### Open questions (escalated)
+1. Success-rate target before we ship — what's "good enough" parity with Recime? **Recommend ≥70% approve-rate on video-extracted vs ~85% baseline on URL-extracted.**
+2. Duplicate-import behavior — block, or allow with "Import again" affordance? **Recommend block with one-tap CTA to open existing recipe.**
+3. Cap reset cadence — calendar-month vs rolling-30-day? **Recommend rolling-30-day** (more user-fair on edge cases).
+
+### Locked decisions to propagate (3 remaining epics)
+1. **Activity Hub is the canonical surface for any async/long-running operation.** Don't invent landing screens; use Hub rows with YNAB-style status icons + relative-time UX.
+2. **MutationBus events on `import_item.status` are part of the contract.** Downstream epics touching import lifecycle (Recime mass-import, nutrition auto-calc) MUST subscribe, not poll.
+3. **Per-user-per-month cost-cap pattern via `error_logs` aggregation** is the established convention. Reuse for any future paid-API feature. Friendly "paused — resets <date>" copy is the standard user-facing string.
+4. **`services/api/src/services/audio_transcription.py`** is the SHARED Whisper wrapper. Anyone needing transcription (cooking-mode voice, etc.) calls this module — do not re-wrap Whisper.
+
+### Risks
+1. **TOS-scraping fragility (TikTok/Instagram).** Both platforms actively block unofficial scrapers; oEmbed endpoints have rate limits + deprecate. *Mitigation:* audio-transcription path is always-on fallback; per-platform circuit-breaker prevents cascade failure.
+2. **Whisper rate-limit + cost overrun.** Per-import cap doesn't cover concurrent-request races. *Mitigation:* idempotency key on worker task + Redis/SELECT-FOR-UPDATE on per-user budget; surface "paused" Hub row state.
+3. **100% API coverage gate vs external HTTP.** Three scrapers + Whisper wrapper = significant test surface. *Mitigation:* commit `respx`/`vcrpy` cassettes in `social-vid-1` + `social-vid-2` as a BLOCKING AC, not a follow-up.

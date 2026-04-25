@@ -1,4 +1,4 @@
-<!-- draft: pre-party-mode -->
+<!-- refined via party-mode 2026-04-25 -->
 # Epic: Recime Mass-Import — Chrome Extension MVP
 
 ## Overview
@@ -121,3 +121,65 @@ _bmad-output/implementation-artifacts/
 - **Chrome extension distribution — public Chrome Web Store or unlisted/dev-only first?** Default proposed: unlisted/dev-only for v1 (only users with the link install it), expand to public listing after 30 days of dogfood + lawyer green-light. If you want public from day one, we lock in the lawyer review as a hard blocker on `recime-imp-5`.
 - **API token entry UX — paste-once or per-session?** Default: paste-once (stored in `chrome.storage.local`, encrypted by Chrome's built-in mechanism). If you want per-session for paranoia (less convenient), we add a "remember me" checkbox.
 - **Failure-row retention.** When an individual recipe fails to import (e.g., Recime returns malformed JSON), we currently log + count it. Should we offer a retry CTA in the per-recipe detail sheet, or is "log + skip" enough for v1?
+
+---
+
+## Refinements applied (party-mode 2026-04-25)
+
+### End-user-flow additions / rewrites
+- **Insert step 1.5:** "If you're on mobile, we'll email you a desktop link" — with an "Email me the install link" button sending a one-tap link to the Chrome Web Store + the user's pre-filled API token via a magic-link endpoint. **Eliminates the manual paste step** and solves the mobile-cohort UX gap.
+- **Rewrite step 4:** API token shown in a separate, copy-buttoned screen in the app (NOT buried in extension popup). Reduces friction.
+- **Add step 6.5:** "Walkthrough screen transitions to live progress view as soon as the first recipe POST arrives (via WS-lowered MutationBus event)." Auto-advances; user doesn't need to manually navigate to Activity Hub.
+- **Add step 9.5:** If 0 recipes received within 10 minutes of token issuance, walkthrough screen shows "Need help? Tap to message support" state.
+
+### Frontend section additions
+- **New WS/mutation event `RecimeImportSessionStarted`** — walkthrough screen subscribes, auto-advances on first POST.
+- **New idle/empty/error states on `RecimeImportWalkthroughScreen`:** waiting / no-recipes-after-10min / extension-disabled-by-server.
+- **New "Email me the desktop link" widget** with magic-link payload.
+- **Drop static screenshots** in favor of looping silent MP4/Lottie under `app/assets/walkthroughs/recime/` (more durable when Recime ships UI refreshes); keep one PNG fallback per step for low-bandwidth.
+
+### Backend section additions
+- **New `POST /v1/recipes/import/recime/session` (start)** — explicit session lifecycle; fixes 24h-cap race and gives in-app side a deterministic "session started" signal.
+- **New `POST /v1/recipes/import/recime/session/{id}/finalize` (end)** — explicit session finalization.
+- **Inbound payload requires `payload_schema_version` field** — unknown versions reject loudly with `error_type="RecimeSchemaDrift"` audit row. Prevents silent garbage on contract drift.
+- **New `GET /v1/extensions/recime/status`** returning `{enabled: bool, min_extension_version: str, message: str}` — read by extension on each session start. **Server-side kill-switch** without a Chrome Web Store push.
+- **New `POST /v1/extensions/recime/magic-link`** — emails desktop install link + one-time-use API token to requesting user.
+- **New `POST /v1/extensions/recime/telemetry`** — extension reports client-side errors invisible to FastAPI.
+
+### Infrastructure section additions
+- **New CI workflow `.github/workflows/chrome-extension.yml`:** lint → build → zip → on-tag upload via `chrome-webstore-upload-cli` to UNLISTED track (manual promote to public).
+- **Extension version scheme:** SemVer; major bump = API contract break; CI enforces extension's declared `min_api_version` matches a real deployed API tag.
+- **Document Google developer-account ownership:** which Google account holds the listing, who has MFA, recovery-key location (1Password Palateful vault). Captured in `chrome-extension/README.md`.
+- **Kill-switch wiring:** extension queries `/v1/extensions/recime/status` first thing every session.
+- **Sentry-equivalent telemetry** from extension → backend `/v1/extensions/recime/telemetry`.
+
+### Story changes
+- **Split `recime-imp-1` into `1a` + `1b`:**
+  - `1a` — **spike:** capture recime.app XHR shapes, document, commit fixtures. Output is hard prerequisite, not sub-task.
+  - `1b` — normalizer + endpoint built from fixtures.
+- **Split `recime-imp-3` into `3a` + `3b`:**
+  - `3a` — extension MVP (manifest + popup + content script + background).
+  - `3b` — extension hardening (kill-switch query, schema-version stamping, telemetry, magic-link consumption).
+- **Add `recime-imp-6 — CI/CD + kill-switch + magic-link.`** Chrome extension CI workflow, `/v1/extensions/recime/status` + `/magic-link` + `/telemetry` endpoints, developer-account documentation, rollback runbook.
+- **Add `recime-imp-7 — Contract drift canary + QA fixture set.`** Nightly canary diffing recime.app response shape; recorded fixture set for CI replay; documented QA account roster.
+- **`recime-imp-5` reframed:** lawyer review is a **parallel checklist, not a sequential story** — can run alongside development; sign-off gate captured in story file under `## Lawyer Sign-off` section.
+
+### Open questions (escalated)
+1. **Lawyer review mechanics** — which lawyer, what's the SLA, where's sign-off captured, what's escalation if framing must change? **User decision required.**
+2. **Chrome Web Store listing strategy** — unlisted-only forever / unlisted v1 → public after 30d dogfood / public from day one? **Recommend unlisted v1 → public after 30 days + lawyer green-light.**
+3. **Recime API breaking mid-import** — kill-switch + schema-drift audit + canary defense, or do we want auto-pause-and-refund-the-cap behavior? **Recommend kill-switch + canary as v1; auto-pause is v2.**
+4. **QA Recime accounts** — authorized to maintain a small set of test Recime accounts under Palateful's name, or each QA tester uses their own? **Recommend recorded fixtures for CI + 1 personal test account for manual smoke.**
+5. **Mobile-only users** — magic-link flow covers laptop+phone, but pure-mobile users have no path. Acceptable for v1?
+
+### Locked decisions to propagate (1 remaining epic)
+1. **Browser-extension distribution pattern:** Chrome Web Store unlisted track → manual promote, version-pinned to API contract via `min_api_version`. Reuse for any future Mela/Paprika/Crouton extensions.
+2. **Lawyer-review gate convention:** parallel with dev, sign-off in story file under `## Lawyer Sign-off`, public listing gated on green-light. Not a hard story blocker.
+3. **New `error_logs` conventions:** `service="audit"` `error_type="RecimeImportSession"` (session bookends), `service="recime_import"` `error_type="RecimeSchemaDrift"` (contract break), `service="recime_extension"` `error_type=*` (extension telemetry). Future extensions follow `service="<source>_extension"`.
+4. **Server-side kill-switch endpoint pattern:** `GET /v1/extensions/<source>/status` returning `{enabled, min_extension_version, message}`. Every extension Palateful ships queries its own status endpoint at session start.
+5. **Magic-link mobile→desktop hand-off:** `POST /v1/extensions/<source>/magic-link` is the standard for any "user must do this on a different device" flow.
+
+### Risks
+1. **Recime breaks their internal API silently** (most likely failure mode). *Mitigation:* schema-version field on every payload + nightly contract-drift canary + server-side kill-switch endpoint.
+2. **Chrome Web Store rejects the listing** (unclear policy on "scrape competitor data" extensions). *Mitigation:* submit unlisted first to get rejection feedback without burning PR; lawyer pre-reviews CWS description copy.
+3. **Recime updates TOS to ban session-cookie tools** post-launch. *Mitigation:* lawyer reviews privacy-policy framing for residual GDPR-portability defense; have 24h server-side kill-switch ready; pre-draft user-comms email.
+4. **Support load when extension misfires.** *Mitigation:* in-app idle/error states with "message support" CTA + magic-link / telemetry endpoint capturing client-side errors.

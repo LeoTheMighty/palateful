@@ -1,4 +1,4 @@
-<!-- draft: pre-party-mode -->
+<!-- refined via party-mode 2026-04-25 -->
 # Epic: Pantry — Cook With What You Have
 
 ## Overview
@@ -112,3 +112,66 @@ _bmad-output/implementation-artifacts/
 - **Default for `auto_add_to_pantry_on_checkout` — OFF or ON?** Default proposed is OFF (least surprising). If you want ON by default for the kitchen-power-user positioning, we flip and show an opt-out toast on first checkout.
 - **Use-it-up nudge frequency — daily fire or once per item per 3 days?** Default proposed: once per item per 24h dismiss cooldown. If users find it nagging, we can move to weekly summary.
 - **"What Can I Cook?" card placement on home.** Proposed: above the recents section, below any meal-of-the-day card. Pushes other content down — confirm or pick a different slot.
+
+---
+
+## Refinements applied (party-mode 2026-04-25)
+
+### End-user-flow additions / rewrites
+- **Add step 0.5 (between current 1 and 2):** "Mark recipe cooked from outside cook mode — same decrement sheet fires from recipe-detail tap-to-mark-cooked and from meal-event completion." Same idempotency model.
+- **Append to step 1:** "Decrement sheet shows a **5-second undo snackbar** on confirm; one tap restores the prior pantry state." (Critical for trust.)
+- **Append to step 3:** "When a household member cooks, the other member's open home screen updates the cookable card live via WS-lowered MutationBus event (no pull-to-refresh)."
+- **Rewrite step 5 conditional:** Use-it-up nudge fires ONLY when the soon-to-expire item has at least one matching cookable recipe in the user's library; otherwise suppressed (no deadend).
+- **Add step 7:** "Empty / sparse pantry behavior — cookable card hidden when pantry has <3 items; replaced by 'Add a few pantry items to see what you can cook' CTA with deeplink to pantry add."
+
+### Frontend section additions
+- **New `MutationEvent` subtypes:** `PantryItemAdded`, `PantryItemDecremented`, `PantryItemUsedUp`, `PantryItemDismissed`, plus bulk `PantryBulkApplied(sessionId, deltas)`. (One bulk event per cook completion, not N per ingredient.)
+- All pantry mutations emit from a new `PantryService` class on the success branch.
+- `cookableRecipesProvider` and `pantryCoverageProvider(recipeId)` both `ref.listen(mutationBusProvider)` and `invalidateSelf()` on any pantry event type.
+- **WS-lowering** — backend broadcasts `pantry_applied` WS frame after `apply-cook-completion` and `apply-shopping-checkout` succeed; existing WS adapter lowers it into `PantryBulkApplied` so partner devices re-render.
+- Failure-copy entries added to `mutationFailureCopy` map for each new event type.
+- Each frontend story includes one `pumpWithMutation` regression test for its surface.
+- **Undo snackbar** on post-cook decrement — 5-second window calls a new `POST /v1/pantry/undo-cook-completion` with the session_id.
+
+### Backend section additions
+- **Replace 5-minute idempotency window with `cook_session_id` UUID** generated client-side when cook mode opens. New `pantry_decrement_events` table with unique `(user_id, cook_session_id)` constraint; insert-on-conflict-do-nothing semantics. Re-cook = new session = new decrement; double-tap = same session = no-op.
+- **New `POST /v1/pantry/undo-cook-completion`** — accepts `cook_session_id`, reverses deltas from `pantry_decrement_events`. 5-min window enforced server-side.
+- **Every applied DeltaPlan writes to `error_logs`** with `service="pantry"`, `error_type="DeltaApplied"`, payload = JSON of delta plan + recipe_id + session_id (audit, not error). Mirrors `service="audit"` pattern from ops scripts.
+- **Cookable-recipes ranking:** precompute denormalized `recipe_ingredient_count` column (filled by Alembic backfill in same migration) — coverage = matched / cached_count. Avoids count-aggregation per request on 500+ recipes.
+- **WS broadcast** of `pantry_applied` frame to all household members after each successful apply.
+- 100% coverage explicitly stated per story AC.
+
+### Infrastructure section additions
+- **Alembic migration adds three indexes** alongside the new columns:
+  - `pantry_items(user_id, expires_at) WHERE expires_at IS NOT NULL` — for use-it-up nudge.
+  - `pantry_items(household_id, ingredient_id)` — for cookable JOIN.
+  - `recipe_ingredients(ingredient_id)` if missing — for use-it-up reverse lookup.
+- **New table `pantry_decrement_events(id, user_id, cook_session_id, recipe_id, applied_at, delta_plan_json, reversed_at)`** with unique `(user_id, cook_session_id)`.
+- **`tools/perf-budgets.yaml` entries:** `GET /v1/recipes/cookable` p95 ≤ 200ms at 500 recipes / 100 pantry items; `POST /v1/pantry/apply-cook-completion` p95 ≤ 150ms.
+
+### Story changes
+- **Split `pantry-cook-1` into `1a` + `1b`:**
+  - `1a` — pure `pantry_decrement` service + unit normalization reuse + **ingredient-matching CSV fixture suite** at `services/api/tests/fixtures/ingredient_matching_cases.csv` (synonyms, plurals, brand prefixes, unit-only differences, zero-quantity, false-positive blockers like "chicken broth" vs "chicken"). No endpoint.
+  - `1b` — `apply-cook-completion` endpoint + `pantry_decrement_events` idempotency table + `undo-cook-completion` endpoint + `service="pantry"` audit log.
+- **Add `pantry-cook-3.5 — Backend: WS broadcast + perf budgets + indexes.`** Self-contained infra-flavored story: `pantry_applied` WS frame, three Postgres indexes, `tools/perf-budgets.yaml` entries, denormalized `recipe_ingredient_count` column.
+- **`pantry-cook-4` AC expansion:** new MutationEvent subtypes wired, `pumpWithMutation` regression tests for cookable card + coverage badge, partner-device update via WS-lowered event.
+- **`pantry-cook-5` extension:** undo snackbar on decrement sheet, tap-to-mark-cooked from recipe detail + meal-event completion, empty-pantry CTA, sparse-pantry threshold (<3 items hides card).
+
+### Open questions (escalated)
+1. Sparse-pantry threshold — hide cookable card below N items? **Recommend N=3.**
+2. Undo window for cook decrement — 5-second snackbar only, or longer "recent cooks" history screen? **Recommend 5-second snackbar v1; history screen is a v2 story if requested.**
+3. WS broadcast scope — every pantry mutation, or only cook + shopping batch events (skip per-item manual edits)? **Recommend bulk events only** (bandwidth + render cost discipline).
+4. Ingredient-matching ambiguity — "chicken" pantry could match "chicken broth" or "chicken thighs"? **Recommend (a) exact normalized name only for v1**, evolve to (b) confirmation prompt post-launch.
+5. Cookable card placement on home — above recents, above use-it-up nudge, or top-of-home? **Recommend above recents, below any meal-of-the-day card.**
+
+### Locked decisions to propagate (2 remaining epics)
+1. **MutationBus naming for pantry:** `PantryItemAdded` / `Decremented` / `UsedUp` / `Dismissed` + bulk `PantryBulkApplied(sessionId, deltas)`. Future pantry-touching epics MUST emit/subscribe via these — no parallel hierarchy.
+2. **`cook_session_id` is the canonical idempotency key** for any cook-mode-derived mutation. Future epics hanging work off cook completion (post-cook nutrition snapshot, post-cook social share) reuse the same session_id.
+3. **`service="pantry"` audit pattern** in `error_logs` — every applied DeltaPlan writes a row. Future pantry mutations follow `service="pantry"`, `error_type="<verb>Applied"`, payload JSON.
+4. **WS frame `pantry_applied`** is the canonical household-sync frame for pantry mutations. Don't invent a new frame.
+5. **Perf budget pattern** — every new list endpoint at risk of N+1 ranking gets a `tools/perf-budgets.yaml` entry in the same epic that introduces it; not a follow-up.
+
+### Risks
+1. **Pantry trust collapse from wrong decrements.** Unit-mismatch corrupts pantry → users stop using cook mode → moat dies. *Mitigation:* CSV-parametrized ingredient-matching fixture suite, conservative match (exact normalized-name only v1), 5-second undo snackbar, per-DeltaPlan audit row for fast triage.
+2. **Ingredient-matching false positives** ("chicken broth" matches "chicken"). *Mitigation:* match on `ingredient_id` only after extractor canonicalizes — never raw text.
+3. **Cookable-ranking p95 regression at 500+ recipes / 100+ pantry items.** *Mitigation:* Postgres indexes in same migration, cached `recipe_ingredient_count`, perf-budget entry enforced in CI, `analyze_latency.py` baseline captured before merge.
