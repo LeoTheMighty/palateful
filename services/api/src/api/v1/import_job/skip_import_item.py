@@ -58,8 +58,23 @@ class SkipImportItem(AsyncEndpoint):
                 code=ErrorCode.IMPORT_JOB_ACCESS_DENIED,
             )
 
-        # Validate item status
-        if item.status in ("completed", "skipped"):
+        # Idempotent — skipping an already-skipped item is a 200 no-op.
+        # The Approve-Import banner's Skip button can be tapped twice
+        # (double-tap, slow network retry); treating the second tap as
+        # 400 would surface a confusing error toast for a user-intent
+        # the system already honored. import-dup-2.
+        if item.status == "skipped":
+            return success(
+                data=SkipImportItem.Response(
+                    id=str(item.id),
+                    status=item.status,
+                    updated_at=item.updated_at,
+                )
+            )
+
+        # Already imported → can't undo via skip. Different mistake;
+        # the user wants `archive` on the resulting recipe instead.
+        if item.status == "completed":
             raise APIException(
                 status_code=400,
                 detail=f"Cannot skip item in {item.status} status",

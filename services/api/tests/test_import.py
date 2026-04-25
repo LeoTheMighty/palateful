@@ -3681,8 +3681,15 @@ class TestSkipImportItem:
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 400
 
-    def test_skip_import_item_already_skipped(self, client, mock_async_db, mock_user):
-        """Test skipping item that is already skipped is not allowed."""
+    def test_skip_import_item_already_skipped_is_idempotent(
+        self, client, mock_async_db, mock_user
+    ):
+        """import-dup-2: skipping an already-skipped item is a 200 no-op.
+
+        Banner Skip button can be tapped twice (double-tap, slow network
+        retry). Returning 400 would surface a confusing error toast for
+        a user-intent the system already honored.
+        """
         item_id = "test-item-id"
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -3713,7 +3720,11 @@ class TestSkipImportItem:
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
-        assert response.status_code == 400
+        assert response.status_code == 200
+        assert response.json()["status"] == "skipped"
+        # _update_job_counts must NOT be called on the no-op path —
+        # otherwise we'd thrash the job's totals on repeated taps.
+        mock_async_db.db.execute.assert_not_called()
 
     def test_skip_import_item_pending_status(self, client, mock_async_db, mock_user):
         """Test skipping item in pending status succeeds."""
