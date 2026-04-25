@@ -750,10 +750,13 @@ class _CookModeScreenState extends State<CookModeScreen>
   }
 
   Future<void> _showPostCookFeedbackSheet() async {
-    await showModalBottomSheet<void>(
+    // Sheet returns `true` when the user chose to go back to cooking
+    // (back arrow or swipe-down dismiss). Returns `false` (or null) when
+    // the user completed via Save/Skip — we exit cook mode in that case.
+    final wentBack = await showModalBottomSheet<bool>(
       context: context,
-      isDismissible: false,
-      enableDrag: false,
+      isDismissible: true,
+      enableDrag: true,
       isScrollControlled: true,
       backgroundColor: context.cookModeTheme.cookSurface,
       shape: const RoundedRectangleBorder(
@@ -777,11 +780,21 @@ class _CookModeScreenState extends State<CookModeScreen>
             _debouncer.discardPending();
             unawaited(_persister.clear(_sessionKey));
           }
-          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop(false);
+        },
+        onBack: () {
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop(true);
         },
       ),
     );
-    if (mounted) context.pop(); // Exit cook mode screen after sheet closes
+    if (!mounted) return;
+    if (wentBack == true) {
+      // User accidentally tapped Done — resume cooking. _finishCooking
+      // stopped the stopwatch, so restart it.
+      _cookingStopwatch.start();
+      return;
+    }
+    context.pop(); // Exit cook mode screen after sheet closes
   }
 
   /// Open the overflow-menu-driven Reset confirmation sheet. On confirm:

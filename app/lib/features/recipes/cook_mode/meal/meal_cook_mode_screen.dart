@@ -1302,10 +1302,10 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
   }
 
   Future<void> _openPostCookSheet(List<ComponentRatable> ratables) async {
-    await showModalBottomSheet<void>(
+    final wentBack = await showModalBottomSheet<bool>(
       context: context,
-      isDismissible: false,
-      enableDrag: false,
+      isDismissible: true,
+      enableDrag: true,
       isScrollControlled: true,
       backgroundColor: context.cookModeTheme.cookSurface,
       shape: const RoundedRectangleBorder(
@@ -1322,11 +1322,21 @@ class _MealCookModeScreenState extends ConsumerState<MealCookModeScreen>
             _debouncer.discardPending();
             unawaited(_persister.clear(_sessionKey));
           }
-          if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop(false);
+        },
+        onBack: () {
+          if (sheetContext.mounted) Navigator.of(sheetContext).pop(true);
         },
       ),
     );
-    if (mounted) context.pop();
+    if (!mounted) return;
+    if (wentBack == true) {
+      // Accidental finish — resume the meal. Both _finishCooking and
+      // _openPostCookForEnteredRecipes stop the stopwatch; restart it.
+      _cookingStopwatch.start();
+      return;
+    }
+    context.pop();
   }
 
   String _formatDuration(Duration d) {

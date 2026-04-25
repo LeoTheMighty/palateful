@@ -34,6 +34,11 @@ class PostCookFeedbackSheet extends StatefulWidget {
   /// (e.g. persisted cook session, see epic-cook-mode-resume cmr-4).
   final void Function({bool saved}) onComplete;
 
+  /// Optional — when non-null, a back arrow renders in the top-left.
+  /// Tapping it should dismiss the sheet AND keep the caller in cook
+  /// mode (recovery for an accidental "Done" tap).
+  final VoidCallback? onBack;
+
   PostCookFeedbackSheet({
     super.key,
     required this.components,
@@ -41,6 +46,7 @@ class PostCookFeedbackSheet extends StatefulWidget {
     required this.recipeCache,
     required this.isOffline,
     required this.onComplete,
+    this.onBack,
     this.title,
   }) {
     if (components.isEmpty) {
@@ -219,15 +225,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle (visual only — sheet is not draggable)
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: cook.cookOnSurface.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          _buildHeader(cook),
           const SizedBox(height: 20),
 
           Text(
@@ -347,14 +345,7 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: cook.cookOnSurface.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+            _buildHeader(cook),
             const SizedBox(height: 16),
             Text(
               'How did it go?',
@@ -410,6 +401,39 @@ class _PostCookFeedbackSheetState extends State<PostCookFeedbackSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(CookModeTheme cook) {
+    final dragHandle = Container(
+      width: 40,
+      height: 4,
+      decoration: BoxDecoration(
+        color: cook.cookOnSurface.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(2),
+      ),
+    );
+    if (widget.onBack == null) return dragHandle;
+    return SizedBox(
+      height: 40,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          dragHandle,
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              key: const Key('post_cook_back_button'),
+              tooltip: 'Back to cooking',
+              icon: Icon(
+                Icons.arrow_back,
+                color: cook.cookOnSurface,
+              ),
+              onPressed: _isSaving ? null : widget.onBack,
+            ),
+          ),
+        ],
       ),
     );
   }
