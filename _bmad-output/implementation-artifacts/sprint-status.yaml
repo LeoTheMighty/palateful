@@ -1385,3 +1385,63 @@ development_status:
   aam-29-parser-domain-async: done
   aam-30-recurrence-rule-domain-async: done
   epic-api-async-migration-retrospective: optional
+
+  # === Recipe Organization & Curation — added 2026-04-25 ===
+  # Motivation: party-mode session 2026-04-25 — recipe collection growing
+  # past ~30 items wants intent-based organization without a new lifecycle
+  # column or a parallel data model. Lock: opinionated default books
+  # (Favorites = virtual lens over user_favorites flag; Trying Out = real
+  # is_system=true book), single-FK book membership preserved, archive is
+  # the negative-verdict signal (no "Didn't Love" book). Browse polish via
+  # grid/table toggle + dynamic-sort column + hide-recipes-in-meals
+  # default-on. Bulk Add to / Move to actions on long-press +
+  # recipe-detail book picker redesign. Approve-Import duplicate
+  # detection v1 = exact title + URL match (no fuzzy in v1).
+  #
+  # User-locked decisions (2026-04-25):
+  #   - Two defaults: Favorites (virtual) + Trying Out (real, is_system).
+  #   - Sharing routes to Trying Out by default for new users.
+  #   - Single-FK preserved; Move = FK swap; Add to == Move to from global view.
+  #   - Hide-in-meals filter default ON; counter chip surfaces hidden count.
+  #   - Grid/Table toggle is one icon; persisted per user.
+  #   - Table view = thumbnail + title + books pill + dynamic column mirroring active sort.
+  #   - last_cooked = MAX(cooking_logs.cooked_at). No new "I cooked this" button in v1.
+  #   - Approve-Import dup match = exact title OR source_url; 3 actions
+  #     (Skip / Restore / Add anyway). No silent auto-skip ever.
+  # No new infra. Two new Alembic migrations (is_system + index +
+  # skipped enum value).
+
+  # --- Epic 1: Recipe Default Books (foundation) ---
+  epic-recipe-default-books: backlog
+  recipe-defaults-1-backend-is-system-column-and-trying-out-seed-migration: done
+  recipe-defaults-2-backend-new-user-provisioning-hook-seeds-trying-out-and-default: backlog
+  recipe-defaults-3-frontend-switcher-pins-system-books-with-distinct-styling: backlog
+  recipe-defaults-4-frontend-share-import-fallback-uses-default-recipe-book-id: backlog
+  epic-recipe-default-books-retrospective: optional
+
+  # --- Epic 2: Recipe List Organization (parallelizable after Epic 1) ---
+  epic-recipe-list-organization: backlog
+  recipe-list-org-1-backend-last-cooked-on-list-responses-sort-and-index: backlog
+  recipe-list-org-2-backend-hide-in-meals-filter-server-or-client-decision: backlog
+  recipe-list-org-3-frontend-view-toggle-button-table-tile-and-persisted-preference: backlog
+  recipe-list-org-4-frontend-dynamic-column-mirrors-active-sort: backlog
+  recipe-list-org-5-frontend-hide-in-meals-filter-chip-and-counter: backlog
+  recipe-list-org-6-regression-sweep-and-table-view-smoke: backlog
+  epic-recipe-list-organization-retrospective: optional
+
+  # --- Epic 3: Recipe Bulk-Organize (parallelizable after Epic 1) ---
+  epic-recipe-bulk-organize: backlog
+  recipe-bulk-org-1-frontend-add-to-and-move-to-actions-on-long-press-bar: backlog
+  recipe-bulk-org-2-backend-prior-book-ids-in-bulk-move-response: backlog
+  recipe-bulk-org-3-frontend-source-book-disambiguation-from-global-view: backlog
+  recipe-bulk-org-4-frontend-recipe-detail-book-picker-pill-row-replaces-modal: backlog
+  recipe-bulk-org-5-regression-sweep-and-e2e: backlog
+  epic-recipe-bulk-organize-retrospective: optional
+
+  # --- Epic 4: Import Duplicate Detection (parallelizable after Epic 1) ---
+  epic-import-duplicate-detection: backlog
+  import-dup-1-backend-duplicate-match-query-and-response-extension: backlog
+  import-dup-2-backend-skip-endpoint-and-skipped-status: backlog
+  import-dup-3-frontend-duplicate-banner-and-approve-import-wiring: backlog
+  import-dup-4-regression-sweep-and-e2e: backlog
+  epic-import-duplicate-detection-retrospective: optional

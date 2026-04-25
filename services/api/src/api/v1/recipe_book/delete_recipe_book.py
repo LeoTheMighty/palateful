@@ -45,6 +45,13 @@ class DeleteRecipeBook(AsyncEndpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND
             )
 
+        if recipe_book.is_system:
+            raise APIException(
+                status_code=400,
+                detail="Cannot delete a system recipe book",
+                code=ErrorCode.INVALID_REQUEST,
+            )
+
         # Auto-recovery: if deleting the default book, restore previous
         restored_default_id = None
         if str(recipe_book.id) == str(user.default_recipe_book_id or ""):

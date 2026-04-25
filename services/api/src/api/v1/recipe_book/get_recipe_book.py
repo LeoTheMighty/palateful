@@ -106,6 +106,7 @@ class GetRecipeBook(AsyncEndpoint):
                 description=recipe_book.description,
                 is_public=recipe_book.is_public,
                 is_shared=recipe_book.is_shared,
+                is_system=recipe_book.is_system,
                 user_role=membership.role,
                 recipe_count=len(recipes),
                 recipes=recipe_items,
@@ -137,6 +138,7 @@ class GetRecipeBook(AsyncEndpoint):
         description: str | None = None
         is_public: bool = False
         is_shared: bool = False
+        is_system: bool = False
         user_role: str = "owner"
         recipe_count: int = 0
         recipes: list["GetRecipeBook.RecipeItem"] = []

@@ -50,6 +50,13 @@ class UpdateRecipeBook(AsyncEndpoint):
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND
             )
 
+        if recipe_book.is_system:
+            raise APIException(
+                status_code=400,
+                detail="Cannot modify a system recipe book",
+                code=ErrorCode.INVALID_REQUEST,
+            )
+
         # Only owners can change is_public
         if params.is_public is not None and membership.role != "owner":
             raise APIException(

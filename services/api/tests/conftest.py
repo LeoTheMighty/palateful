@@ -111,6 +111,7 @@ class MockRecipeBook(MockModel):
             "description": "A test recipe book",
             "is_public": False,
             "is_shared": False,
+            "is_system": False,
         }
         defaults.update(kwargs)
         super().__init__(**defaults)

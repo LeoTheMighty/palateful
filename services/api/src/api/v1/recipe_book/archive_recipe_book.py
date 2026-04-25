@@ -45,6 +45,13 @@ class ArchiveRecipeBook(AsyncEndpoint):
                 code=ErrorCode.INVALID_REQUEST,
             )
 
+        if recipe_book.is_system:
+            raise APIException(
+                status_code=400,
+                detail="Cannot archive a system recipe book",
+                code=ErrorCode.INVALID_REQUEST,
+            )
+
         # Auto-recovery: if archiving the default book, restore previous
         restored_default_id = None
         if str(recipe_book.id) == str(user.default_recipe_book_id or ""):

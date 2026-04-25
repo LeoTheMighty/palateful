@@ -77,6 +77,7 @@ class ListRecipeBooks(AsyncEndpoint):
                 description=recipe_book.description,
                 is_public=recipe_book.is_public,
                 is_shared=recipe_book.is_shared,
+                is_system=recipe_book.is_system,
                 user_role=user_role,
                 recipe_count=recipe_count,
                 member_count=member_count,
@@ -102,6 +103,7 @@ class ListRecipeBooks(AsyncEndpoint):
         description: str | None = None
         is_public: bool = False
         is_shared: bool = False
+        is_system: bool = False
         user_role: str = "owner"
         recipe_count: int = 0
         member_count: int = 1

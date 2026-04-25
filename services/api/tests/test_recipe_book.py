@@ -682,3 +682,147 @@ class TestDeleteRecipeBookMissingBranches:
 
         response = client.delete(f"/v1/recipe-books/{book_id}")
         assert response.status_code == 404
+
+
+class TestSystemBookGuards:
+    """recipe-defaults-1 — system books are read-only via the public API.
+
+    `is_system=true` books are seeded by the migration / new-user
+    provisioning hook (story 2). The public mutation endpoints must
+    refuse to rename, delete, or archive them so the existing long-press
+    UI on the recipe-book switcher cannot accidentally remove the
+    pinned `Trying Out` destination.
+    """
+
+    def test_list_recipe_books_includes_is_system(self, client, mock_async_db, mock_user):
+        """List response surfaces `is_system` for each row."""
+        from datetime import UTC, datetime
+        sys_book = MockRecipeBook(name="Trying Out", is_system=True)
+        user_book = MockRecipeBook(name="Weeknight", is_system=False)
+        now = datetime.now(UTC)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[2]),
+            MockExecuteResult(items=[
+                (sys_book, 0, "owner", 1, now),
+                (user_book, 5, "owner", 1, now),
+            ]),
+        ]
+
+        response = client.get("/v1/recipe-books")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        items_by_name = {item["name"]: item for item in data["items"]}
+        assert items_by_name["Trying Out"]["is_system"] is True
+        assert items_by_name["Weeknight"]["is_system"] is False
+
+    def test_get_recipe_book_includes_is_system(self, client, mock_async_db, mock_user):
+        """Single-book response includes `is_system`."""
+        book_id = "system-book-id"
+        book = MockRecipeBook(id=book_id, name="Trying Out", is_system=True)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+        ]
+
+        response = client.get(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 200
+        assert response.json()["is_system"] is True
+
+    def test_update_recipe_book_rejects_system_book(self, client, mock_async_db, mock_user):
+        """Owner trying to rename a system book gets 400."""
+        book_id = "system-book-id"
+        book = MockRecipeBook(id=book_id, name="Trying Out", is_system=True)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.put(
+            f"/v1/recipe-books/{book_id}",
+            json={"name": "Renamed"},
+        )
+        assert response.status_code == 400
+        assert "system" in response.json()["error_message"].lower()
+
+    def test_delete_recipe_book_rejects_system_book(self, client, mock_async_db, mock_user):
+        """Owner trying to delete a system book gets 400."""
+        book_id = "system-book-id"
+        book = MockRecipeBook(id=book_id, name="Trying Out", is_system=True)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.delete(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 400
+        assert "system" in response.json()["error_message"].lower()
+
+    def test_archive_recipe_book_rejects_system_book(self, client, mock_async_db, mock_user):
+        """Owner trying to archive a system book gets 400."""
+        book_id = "system-book-id"
+        book = MockRecipeBook(id=book_id, name="Trying Out", is_system=True)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id, include_archived=True)
+
+        response = client.post(f"/v1/recipe-books/{book_id}/archive")
+        assert response.status_code == 400
+        assert "system" in response.json()["error_message"].lower()
+
+    def test_create_recipe_book_ignores_is_system_param(self, client, mock_async_db, mock_user):
+        """Client-supplied `is_system: true` is rejected by Pydantic params shape."""
+        # `CreateRecipeBook.Params` does not declare `is_system`, so by
+        # default Pydantic ignores unknown extras. The new RecipeBook
+        # row uses the model's server_default (False). This test pins
+        # that contract so a future Params expansion can't silently
+        # leak the field.
+        response = client.post(
+            "/v1/recipe-books",
+            json={"name": "New Book", "is_system": True},
+        )
+        assert response.status_code == 201
+        # The response schema doesn't include is_system at all, so we
+        # assert the field is not there (defensive — confirms it's not
+        # leaking through any layer).
+        assert "is_system" not in response.json()
