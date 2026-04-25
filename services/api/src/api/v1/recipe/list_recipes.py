@@ -8,6 +8,8 @@ from sqlalchemy import func, or_, select
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.cooking_log import CookingLog
+from utils.models.meal import Meal
+from utils.models.meal_recipe import MealRecipe
 from utils.models.recipe import Recipe
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
@@ -102,6 +104,25 @@ class ListRecipes(AsyncEndpoint):
         )
         total = int(count_result.scalar_one())
 
+        # recipe-list-org-2: total_in_meals — distinct count of recipes in
+        # this book that are referenced by a non-archived meal_recipes row
+        # whose parent meal is also non-archived. Same predicate the
+        # per-row is_in_meal aggregate uses below — keeps the chip count
+        # consistent with the row flags across pagination.
+        total_in_meals_result = await self.db.execute(
+            select(func.count(func.distinct(MealRecipe.recipe_id)))
+            .select_from(MealRecipe)
+            .join(Meal, Meal.id == MealRecipe.meal_id)
+            .join(Recipe, Recipe.id == MealRecipe.recipe_id)
+            .where(
+                Recipe.recipe_book_id == book_id,
+                Recipe.archived_at.is_(None),
+                MealRecipe.archived_at.is_(None),
+                Meal.archived_at.is_(None),
+            )
+        )
+        total_in_meals = int(total_in_meals_result.scalar_one() or 0)
+
         # Apply ordering. last_cooked sorts via a correlated scalar
         # subquery on cooking_logs — the ix_cooking_logs_recipe_id_cooked_at_active
         # partial index serves this directly.
@@ -117,6 +138,7 @@ class ListRecipes(AsyncEndpoint):
         recipe_ids = [r.id for r in recipes]
         favorited_ids: set = set()
         last_cooked_by_recipe: dict = {}
+        in_meal_ids: set = set()
         if recipe_ids:
             fav_result = await self.db.execute(
                 select(UserFavorite.recipe_id).where(
@@ -143,6 +165,22 @@ class ListRecipes(AsyncEndpoint):
             for row in cooked_result.all():
                 last_cooked_by_recipe[row[0]] = row[1]
 
+            # recipe-list-org-2: bulk meal-membership lookup. Joins through
+            # `meals` so an archived meal stops hiding its recipes — the
+            # join row survives soft-archive but the parent meal is gated
+            # out by archived_at IS NULL.
+            in_meal_result = await self.db.execute(
+                select(MealRecipe.recipe_id)
+                .join(Meal, Meal.id == MealRecipe.meal_id)
+                .where(
+                    MealRecipe.recipe_id.in_(recipe_ids),
+                    MealRecipe.archived_at.is_(None),
+                    Meal.archived_at.is_(None),
+                )
+                .distinct()
+            )
+            in_meal_ids = set(in_meal_result.scalars().all())
+
         items = [
             ListRecipes.RecipeItem(
                 id=recipe.id,
@@ -158,6 +196,7 @@ class ListRecipes(AsyncEndpoint):
                 is_favorite=recipe.id in favorited_ids,
                 created_at=recipe.created_at,
                 last_cooked=last_cooked_by_recipe.get(recipe.id),
+                is_in_meal=recipe.id in in_meal_ids,
             )
             for recipe in recipes
         ]
@@ -166,8 +205,9 @@ class ListRecipes(AsyncEndpoint):
             data=ListRecipes.Response(
                 items=items,
                 total=total,
+                total_in_meals=total_in_meals,
                 limit=limit,
-                offset=offset
+                offset=offset,
             )
         )
 
@@ -185,10 +225,12 @@ class ListRecipes(AsyncEndpoint):
         is_favorite: bool = False
         created_at: datetime
         last_cooked: datetime | None = None
+        is_in_meal: bool = False
 
     class Response(BaseModel):
         items: list["ListRecipes.RecipeItem"]
         total: int
+        total_in_meals: int = 0
         limit: int
         offset: int
 

@@ -145,10 +145,11 @@ class TestGetRecipeBook:
                                   user_id=str(mock_user.id),
                                   recipe_book_id=book_id)
         mock_async_db.set_find_by(RecipeBook, book, id=book_id)
-        # Three db.execute calls: recipes, last_cooked aggregate, members.
+        # Four db.execute calls: recipes, last_cooked, in_meal, members.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[recipe]),
             MockExecuteResult(items=[(recipe.id, cooked_at)]),
+            MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
         ]
 
@@ -156,9 +157,11 @@ class TestGetRecipeBook:
         assert response.status_code == 200
         data = response.json()
         assert data["recipe_count"] == 1
+        assert data["total_in_meals"] == 0
         assert len(data["recipes"]) == 1
         assert data["recipes"][0]["name"] == "Pasta"
         assert data["recipes"][0]["last_cooked"] is not None
+        assert data["recipes"][0]["is_in_meal"] is False
 
     def test_get_recipe_book_recipe_never_cooked(
         self, client, mock_async_db, mock_user
@@ -179,9 +182,10 @@ class TestGetRecipeBook:
                                   user_id=str(mock_user.id),
                                   recipe_book_id=book_id)
         mock_async_db.set_find_by(RecipeBook, book, id=book_id)
-        # Aggregate returns no rows → last_cooked is null.
+        # Aggregates return no rows → last_cooked null, is_in_meal false.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
         ]
@@ -190,6 +194,39 @@ class TestGetRecipeBook:
         assert response.status_code == 200
         data = response.json()
         assert data["recipes"][0]["last_cooked"] is None
+        assert data["recipes"][0]["is_in_meal"] is False
+
+    def test_get_recipe_book_recipe_in_meal(
+        self, client, mock_async_db, mock_user
+    ):
+        """is_in_meal=true and total_in_meals counts when meal_recipes returns the id."""
+        book_id = "test-book-id"
+        book = MockRecipeBook(id=book_id)
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        recipe = MockRecipe(recipe_book_id=book_id, name="In a meal")
+
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[recipe.id]),
+            MockExecuteResult(items=[]),
+        ]
+
+        response = client.get(f"/v1/recipe-books/{book_id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_in_meals"] == 1
+        assert data["recipes"][0]["is_in_meal"] is True
 
 
 class TestUpdateRecipeBook:

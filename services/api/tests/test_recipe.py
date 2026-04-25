@@ -36,12 +36,15 @@ class TestListRecipes:
         mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        # Four execute() calls: count, list, favorites, last_cooked agg.
+        # Six execute() calls when page non-empty:
+        # count, total_in_meals, list, favorites, last_cooked, in_meal.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[recipe]),
             MockExecuteResult(items=[]),
             MockExecuteResult(items=[(recipe.id, cooked_at)]),
+            MockExecuteResult(items=[]),
         ]
 
         response = client.get(f"/v1/recipe-books/{book_id}/recipes")
@@ -49,7 +52,9 @@ class TestListRecipes:
         data = response.json()
         assert "items" in data
         assert "total" in data
+        assert data["total_in_meals"] == 0
         assert data["items"][0]["last_cooked"] is not None
+        assert data["items"][0]["is_in_meal"] is False
 
     def test_list_recipes_no_access(self, client, mock_async_db, mock_user):
         """Test listing recipes without access."""
@@ -69,10 +74,10 @@ class TestListRecipes:
         mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        # Two execute() calls when result is empty: count, list.
-        # The favorites + last_cooked aggregate are gated on a non-empty
-        # recipe page, so they don't fire here.
+        # Three execute() calls when result is empty: count, total_in_meals,
+        # list. Per-page aggregates short-circuit on empty pages.
         mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
         ]
@@ -94,6 +99,7 @@ class TestListRecipes:
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
         mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
         ]
@@ -117,10 +123,12 @@ class TestListRecipes:
         mock_async_db.set_find_by(RecipeBookUser, membership,
                                   user_id=str(mock_user.id),
                                   recipe_book_id=book_id)
-        # Aggregate returns no rows for this recipe → null.
+        # Aggregates return no rows → last_cooked null, is_in_meal false.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
         ]
@@ -129,6 +137,38 @@ class TestListRecipes:
         assert response.status_code == 200
         data = response.json()
         assert data["items"][0]["last_cooked"] is None
+        assert data["items"][0]["is_in_meal"] is False
+
+    def test_list_recipes_in_meal_flag_and_total(
+        self, client, mock_async_db, mock_user
+    ):
+        """is_in_meal=true when meal_recipes lookup yields the id; total_in_meals reflects count."""
+        book_id = "test-book-id"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+        )
+        recipe = MockRecipe(recipe_book_id=book_id, name="In a meal")
+
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        mock_async_db.set_find_by(RecipeBookUser, membership,
+                                  user_id=str(mock_user.id),
+                                  recipe_book_id=book_id)
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[recipe.id]),
+        ]
+
+        response = client.get(f"/v1/recipe-books/{book_id}/recipes")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_in_meals"] == 1
+        assert data["items"][0]["is_in_meal"] is True
 
     def test_list_recipes_sort_last_cooked_desc(
         self, client, mock_async_db, mock_user
@@ -154,12 +194,14 @@ class TestListRecipes:
                                   recipe_book_id=book_id)
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[2]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[recent, older]),
             MockExecuteResult(items=[]),
             MockExecuteResult(items=[
                 (recent.id, recent_at),
                 (older.id, older_at),
             ]),
+            MockExecuteResult(items=[]),
         ]
 
         response = client.get(
@@ -187,6 +229,7 @@ class TestListRecipes:
                                   recipe_book_id=book_id)
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
         ]
 
@@ -210,9 +253,12 @@ class TestListRecipes:
         mock_async_db.set_find_by(RecipeBookUser, membership,
                                   user_id=str(mock_user.id),
                                   recipe_book_id=book_id)
+        # 3 calls per request × 2 requests.
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
         ]
@@ -242,6 +288,7 @@ class TestListRecipes:
                                   user_id=str(mock_user.id),
                                   recipe_book_id=book_id)
         mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[0]),
             MockExecuteResult(items=[]),
         ]
@@ -1035,7 +1082,9 @@ class TestUpdateRecipeStepsAndTags:
                            recipe_book_id=book_id)
         mock_async_db.db.execute.side_effect = [
             MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[0]),
             MockExecuteResult(items=[recipe]),
+            MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
             MockExecuteResult(items=[]),
         ]
