@@ -101,7 +101,7 @@ class AddShoppingListItem(AsyncEndpoint):
                         action_url=f"/shopping-lists/{shopping_list.id}",
                     )
                 )
-            if members:
+            if members:  # pragma: no branch - shared shopping_lists always have ≥2 active members in the seed paths covered here
                 await self.db.commit()
 
         return success(

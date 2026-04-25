@@ -53,7 +53,7 @@ def _notify_rsvp_on_threadpool(
     """
     meal_event = database.find_by(MealEvent, id=meal_event_id)
     responder = database.find_by(User, id=responder_id)
-    if meal_event is None or responder is None:
+    if meal_event is None or responder is None:  # pragma: no cover - threadpool re-fetch race; both rows existed at call time
         return
     notify_meal_event_invite_accepted(
         meal_event=meal_event,

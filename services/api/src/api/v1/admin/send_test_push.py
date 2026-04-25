@@ -63,7 +63,7 @@ def _send_to_user_sync(push_service, target_user, notification, force):
     invalid-token cleanup path (which expects a sync session) works
     without touching the async session on the event loop.
     """
-    if SessionLocal is None:
+    if SessionLocal is None:  # pragma: no cover - only hit when DATABASE_URL=""
         return push_service.send_to_user(target_user, notification, force=force)
     sync_db = Database(db=SessionLocal())
     try:

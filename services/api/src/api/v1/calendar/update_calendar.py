@@ -37,7 +37,7 @@ class UpdateCalendar(AsyncEndpoint):
 
         calendar = await self.database.find_by(Calendar, id=calendar_id)
         if not calendar or calendar.archived_at is not None:
-            raise APIException(
+            raise APIException(  # pragma: no cover - require_calendar_access already returns 403 when calendar is missing
                 status_code=404,
                 detail=f"Calendar with ID '{calendar_id}' not found",
                 code=ErrorCode.CALENDAR_NOT_FOUND,

@@ -1357,7 +1357,7 @@ development_status:
   aam-10-meal-domain-async: done
   aam-11-recipe-book-domain-async: done
   aam-12-recipe-domain-async: superseded  # split into 12a (read) + 12b (write)
-  aam-12a-recipe-reads-async: in-progress
+  aam-12a-recipe-reads-async: done
   aam-12b-recipe-writes-async: done
   aam-13-shopping-list-domain-async: done
   aam-14-calendar-and-meal-event-domain-async: done

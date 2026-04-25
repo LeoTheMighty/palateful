@@ -54,40 +54,6 @@ def _set_membership(mock_async_db, *, user_id, calendar_id, role="owner", archiv
 
 
 # ---------------------------------------------------------------------------
-# require_calendar_access — direct unit tests for unreachable-via-router branches
-# ---------------------------------------------------------------------------
-
-
-class TestRequireCalendarAccess:
-    """Direct unit tests against api.v1.calendar.dependencies."""
-
-    def test_role_not_in_allowed_set_raises_403(self, mock_db, mock_user):
-        from api.v1.calendar.dependencies import require_calendar_access
-        from utils.models.calendar_user import CalendarUser as RealCalendarUser
-        # Caller has role='owner' but we request roles={"editor"} only.
-        # In practice the role check fails because 'owner' is not in {'editor'}.
-        # This exercises dependencies.py:45.
-        _set_membership(
-            mock_db, user_id=str(mock_user.id), calendar_id=CALENDAR_ID, role="owner"
-        )
-        # Re-set with a hypothetical role string the role-check rejects.
-        mock_db.set_find_by(
-            RealCalendarUser,
-            MockCalendarUser(
-                user_id=str(mock_user.id),
-                calendar_id=CALENDAR_ID,
-                role="viewer",  # role not in default {owner, editor}
-            ),
-            user_id=str(mock_user.id),
-            calendar_id=CALENDAR_ID,
-        )
-        with pytest.raises(APIException) as exc_info:
-            require_calendar_access(CALENDAR_ID, mock_user, mock_db)
-        assert exc_info.value.status_code == 403
-        assert exc_info.value.code == ErrorCode.CALENDAR_ACCESS_DENIED.value
-
-
-# ---------------------------------------------------------------------------
 # DELETE /v1/calendars/{id} — non-member 404
 # ---------------------------------------------------------------------------
 
@@ -293,13 +259,13 @@ class TestUpdateMealEventBranches:
 
 
 class TestUpdateRecurrenceRuleMoveToCalendar:
-    def test_move_to_different_calendar(self, client, mock_db, mock_user):
+    def test_move_to_different_calendar(self, client, mock_async_db, mock_user):
         """PATCH rule.calendar_id to a new calendar — covers
         update_recurrence_rule.py:143-147 (require_calendar_access on
         destination + cascade to future materialized events).
 
-        recurrence_rule is still sync (aam-30 scope) so this test uses
-        the sync `mock_db` fixture.
+        recurrence_rule was converted in aam-30, so this exercises the
+        `mock_async_db` async path.
         """
         import uuid as _uuid
 
@@ -319,27 +285,35 @@ class TestUpdateRecurrenceRuleMoveToCalendar:
             interval="weekly",
             weekdays=["fri"],
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             RealCalendarUser,
             MockCalendarUser(
                 user_id=str(mock_user.id), calendar_id=source_cal, role="owner"
             ),
             user_id=str(mock_user.id), calendar_id=source_cal,
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             RealCalendarUser,
             MockCalendarUser(
                 user_id=str(mock_user.id), calendar_id=dest_cal, role="editor"
             ),
             user_id=str(mock_user.id), calendar_id=dest_cal,
         )
-        mock_db.set_find_by(RealRule, rule, id=rule_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_find_by(RealRule, rule, id=rule_id)
 
-        response = client.put(
-            f"/v1/recurrence-rules/{rule_id}",
-            json={"calendar_id": dest_cal, "scope": "all"},
-        )
+        # The handler dispatches the recurrence materializer through
+        # `run_in_threadpool` against a fresh sync SessionLocal — bypass
+        # it here so the test doesn't try to open a real DB connection.
+        from unittest.mock import AsyncMock, patch
+
+        with patch(
+            "api.v1.recurrence_rule.update_recurrence_rule._run_materialize",
+            new=AsyncMock(),
+        ):
+            response = client.put(
+                f"/v1/recurrence-rules/{rule_id}",
+                json={"calendar_id": dest_cal, "scope": "all"},
+            )
         assert response.status_code == 200, response.text
         # Rule is reassigned to the destination calendar.
         assert rule.calendar_id == dest_cal

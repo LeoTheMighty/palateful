@@ -1,6 +1,6 @@
 # Story aam-12a: Recipe reads async
 
-**Status**: in-progress
+**Status**: done
 **Epic**: epic-api-async-migration
 **Phase**: 3 — Per-domain conversions (split from aam-12)
 

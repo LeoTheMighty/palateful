@@ -14,9 +14,9 @@ The parallel `api/v1/meal/_access.py` that already owns
 `require_meal_read` is deliberately NOT extended here — this module
 layers an extra archive-guard on top without widening that shared API.
 
-aam-14 added `require_meal_available_async` so converted meal_event
-handlers can stay fully async. The sync version stays for
-recurrence_rule callers (aam-30 flips those).
+Both meal_event and recurrence_rule handlers are async (aam-14 +
+aam-30); the only flavor of `require_meal_available` shipped here is
+`require_meal_available_async`.
 """
 
 from __future__ import annotations
@@ -61,52 +61,11 @@ def validate_recipe_meal_xor(
         )
 
 
-def require_meal_available(db, meal_id: str, user) -> Meal:
-    """Load a Meal + authorize the user, rejecting archived meals."""
-    meal = (
-        db.query(Meal)
-        .options(
-            selectinload(Meal.components)
-            .selectinload(MealRecipe.recipe)
-            .selectinload(Recipe.recipe_book)
-        )
-        .filter(Meal.id == meal_id)
-        .first()
-    )
-    if meal is None:
-        raise APIException(
-            status_code=404,
-            detail="Meal not found",
-            code=ErrorCode.MEAL_NOT_FOUND,
-        )
-    membership = (
-        db.query(RecipeBookUser)
-        .filter(
-            RecipeBookUser.user_id == user.id,
-            RecipeBookUser.recipe_book_id == meal.recipe_book_id,
-            RecipeBookUser.archived_at.is_(None),
-        )
-        .first()
-    )
-    if membership is None:
-        raise APIException(
-            status_code=403,
-            detail="You don't have access to this meal",
-            code=ErrorCode.MEAL_ACCESS_DENIED,
-        )
-    if meal.archived_at is not None:
-        raise APIException(
-            status_code=404,
-            detail="Meal not found",
-            code=ErrorCode.MEAL_NOT_FOUND,
-        )
-    return meal
-
-
 async def require_meal_available_async(db, meal_id: str, user) -> Meal:
-    """Async sibling of `require_meal_available` (aam-14).
+    """Load a Meal + authorize the user, rejecting archived meals.
 
-    Same selectinload chain so build_meal_summary reads don't trigger
+    Eager-loads the component → recipe → recipe_book chain that
+    `build_meal_summary` walks, so the call site doesn't trigger
     MissingGreenlet on the async session. `db` is the AsyncSession
     (typically `self.database.db`).
     """

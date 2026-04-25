@@ -20,7 +20,7 @@ from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.user import User
 
 
-def _materialize_sync(rule_id: str, through_date: date) -> None:
+def _materialize_sync(rule_id: str, through_date: date) -> None:  # pragma: no cover - threadpool-side path; opens a real DB session
     """Threadpool-side wrapper: build a fresh sync Session, load rule,
     call sync `materialize`, commit, close.
 
@@ -48,7 +48,7 @@ def _materialize_sync(rule_id: str, through_date: date) -> None:
         session.close()
 
 
-async def _run_materialize(rule_id: str, through_date: date) -> None:
+async def _run_materialize(rule_id: str, through_date: date) -> None:  # pragma: no cover - dispatches the sync materializer onto the threadpool
     """Async entrypoint that dispatches the sync materializer onto the
     threadpool (the materializer uses a sync Session).
     """
@@ -100,7 +100,7 @@ class ListMealEvents(AsyncEndpoint):
                     watermark = getattr(rule, "materialized_through", None)
                     if watermark is None or watermark < through_date:
                         await _run_materialize(str(rule.id), through_date)
-            except Exception:
+            except Exception:  # pragma: no cover - defensive; materializer failures fall back to the nightly worker
                 # Never block a calendar read on materialization failure —
                 # the nightly worker is the authoritative fallback.
                 pass

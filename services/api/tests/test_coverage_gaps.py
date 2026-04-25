@@ -37,13 +37,18 @@ from conftest import (
 class TestSendMessageSSEGenerator:
     """Cover the SSE event_generator inside send_message_stream (lines 28-42)."""
 
-    def test_send_message_streams_sse_events(self, client, mock_db, mock_async_db, mock_user):
-        """Hit the SSE streaming path — exercises the event_generator function body."""
+    def test_send_message_streams_sse_events(self, client, mock_db, mock_user):
+        """Hit the SSE streaming path — exercises the event_generator function body.
+
+        send_message stays sync (chat_router POST `/chat/threads/{id}/messages`)
+        per the aam-21 deferral comment, so this test configures the sync
+        `mock_db` fixture rather than the async one.
+        """
         from utils.models.thread import Thread
 
         thread_id = str(uuid.uuid4())
         thread = MockModel(id=thread_id, user_id=str(mock_user.id))
-        mock_async_db.set_find_by(Thread, thread, id=thread_id)
+        mock_db.set_find_by(Thread, thread, id=thread_id)
 
         # Patch run_chat_agent to yield one event then finish
         async def fake_agent(**kwargs):
@@ -60,13 +65,13 @@ class TestSendMessageSSEGenerator:
         # Body should contain SSE data lines
         assert "data:" in response.text
 
-    def test_send_message_sse_error_path(self, client, mock_db, mock_async_db, mock_user):
+    def test_send_message_sse_error_path(self, client, mock_db, mock_user):
         """Cover the except branch in event_generator (lines 38-40)."""
         from utils.models.thread import Thread
 
         thread_id = str(uuid.uuid4())
         thread = MockModel(id=thread_id, user_id=str(mock_user.id))
-        mock_async_db.set_find_by(Thread, thread, id=thread_id)
+        mock_db.set_find_by(Thread, thread, id=thread_id)
 
         async def exploding_agent(**kwargs):
             raise RuntimeError("boom")
