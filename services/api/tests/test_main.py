@@ -56,9 +56,13 @@ class TestAPIExceptionHandler:
 
     def _call_protected_endpoint(self, raising_dep) -> tuple[int, dict]:
         from main import app
-        from dependencies import get_current_user
+        from dependencies import get_current_user, get_current_user_async
 
+        # aam-18: import-jobs router uses get_current_user_async; override
+        # both so the test still covers the dep-raises-APIException path
+        # regardless of which auth dep the protected endpoint binds.
         app.dependency_overrides[get_current_user] = raising_dep
+        app.dependency_overrides[get_current_user_async] = raising_dep
         try:
             with TestClient(app) as c:
                 resp = c.get(
@@ -68,6 +72,7 @@ class TestAPIExceptionHandler:
             return resp.status_code, resp.json()
         finally:
             app.dependency_overrides.pop(get_current_user, None)
+            app.dependency_overrides.pop(get_current_user_async, None)
 
     def test_apiexception_translates_to_declared_status(self):
         from utils.api.endpoint import APIException
