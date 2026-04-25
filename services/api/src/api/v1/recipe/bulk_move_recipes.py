@@ -10,7 +10,13 @@ from utils.models.user import User
 
 
 class BulkMoveRecipes(AsyncEndpoint):
-    """Move multiple recipes to a different recipe book."""
+    """Move multiple recipes to a different recipe book.
+
+    Returns the list of moved recipes with their **prior** book id so
+    the caller can build a one-tap Undo affordance without re-fetching
+    each recipe (recipe-bulk-org-2). Recipes that were already in the
+    destination are skipped silently and do not appear in `moved`.
+    """
 
     async def execute(self, params: "BulkMoveRecipes.Params"):
         user: User = self.user
@@ -42,8 +48,9 @@ class BulkMoveRecipes(AsyncEndpoint):
                 code=ErrorCode.RECIPE_BOOK_ACCESS_DENIED,
             )
 
-        # Load and validate all recipes
-        recipes = []
+        # Load and validate all recipes; capture prior_recipe_book_id
+        # for each recipe that will actually move.
+        moved_recipes: list[tuple[Recipe, str]] = []
         for recipe_id in params.recipe_ids:
             recipe = await self.database.find_by(Recipe, id=recipe_id)
             if not recipe:
@@ -66,20 +73,34 @@ class BulkMoveRecipes(AsyncEndpoint):
                     detail="You don't have permission to move this recipe",
                     code=ErrorCode.RECIPE_ACCESS_DENIED,
                 )
-            recipes.append(recipe)
+            moved_recipes.append((recipe, str(recipe.recipe_book_id)))
 
         # Perform moves
-        for recipe in recipes:
+        for recipe, _prior in moved_recipes:
             recipe.recipe_book_id = params.destination_book_id
         await self.database.db.commit()
 
         return success(
-            data=BulkMoveRecipes.Response(moved_count=len(recipes))
+            data=BulkMoveRecipes.Response(
+                moved=[
+                    BulkMoveRecipes.MovedItem(
+                        id=str(recipe.id),
+                        prior_recipe_book_id=prior,
+                    )
+                    for recipe, prior in moved_recipes
+                ],
+                moved_count=len(moved_recipes),
+            )
         )
 
     class Params(BaseModel):
         recipe_ids: list[str] = Field(max_length=100)
         destination_book_id: str
 
+    class MovedItem(BaseModel):
+        id: str
+        prior_recipe_book_id: str
+
     class Response(BaseModel):
+        moved: list["BulkMoveRecipes.MovedItem"] = Field(default_factory=list)
         moved_count: int
