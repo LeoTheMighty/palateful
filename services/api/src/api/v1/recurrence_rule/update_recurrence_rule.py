@@ -15,14 +15,17 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from api.v1.meal_event._meal_binding import (
-    require_meal_available,
+    require_meal_available_async,
     validate_recipe_meal_xor,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal import Meal as MealModel
 from utils.models.meal_event import MealEvent
@@ -45,25 +48,57 @@ from .create_recurrence_rule import (
 )
 
 
-def _load_meal_for_hydration(db, meal_id):
+def _materialize_sync(rule_id: str, through_date: date) -> None:
+    """Threadpool-side wrapper: open a fresh sync Session, load rule,
+    call sync `materialize`, commit, close. No-op if `SessionLocal`
+    isn't configured (test env with `DATABASE_URL=""`).
+    """
+    from utils.recurrence.materializer import materialize
+    from utils.services.database import SessionLocal
+
+    if SessionLocal is None:
+        return
+    session = SessionLocal()
+    try:
+        rule = (
+            session.query(MealRecurrenceRule)
+            .filter(MealRecurrenceRule.id == rule_id)
+            .first()
+        )
+        if rule is None:
+            return
+        materialize(rule, through_date, session)
+        session.commit()
+    finally:
+        session.close()
+
+
+async def _run_materialize(rule_id: str, through_date: date) -> None:
+    """Async entrypoint that dispatches the sync materializer onto the
+    threadpool (the materializer uses a sync Session).
+    """
+    await run_in_threadpool(_materialize_sync, rule_id, through_date)
+
+
+async def _load_meal_for_hydration(db, meal_id):
     """Load a Meal with components eager-loaded for response hydration."""
     if meal_id is None:
         return None
-    return (
-        db.query(MealModel)
+    result = await db.execute(
+        select(MealModel)
         .options(
             selectinload(MealModel.components).selectinload(MealRecipe.recipe)
         )
-        .filter(MealModel.id == meal_id)
-        .first()
+        .where(MealModel.id == meal_id)
     )
+    return result.scalars().first()
 
 
-class UpdateRecurrenceRule(Endpoint):
-    def execute(self, rule_id: str, params: UpdateRecurrenceRule.Params):
+class UpdateRecurrenceRule(AsyncEndpoint):
+    async def execute(self, rule_id: str, params: UpdateRecurrenceRule.Params):
         user: User = self.user
 
-        rule = self.database.find_by(MealRecurrenceRule, id=rule_id)
+        rule = await self.database.find_by(MealRecurrenceRule, id=rule_id)
         if not rule or rule.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -71,12 +106,14 @@ class UpdateRecurrenceRule(Endpoint):
                 code=ErrorCode.NOT_FOUND,
             )
         # Calendar membership is the sole edit-authorization gate.
-        require_calendar_access(str(rule.calendar_id), user, self.database)
+        await require_calendar_access_async(
+            str(rule.calendar_id), user, self.database
+        )
 
         if params.scope == "all":
-            return self._apply_all(rule, params)
+            return await self._apply_all(rule, params)
         if params.scope == "this_and_following":
-            return self._apply_split(rule, params)
+            return await self._apply_split(rule, params)
 
         raise APIException(
             status_code=400,
@@ -87,7 +124,7 @@ class UpdateRecurrenceRule(Endpoint):
     # ------------------------------------------------------------------
     # scope == "all"
 
-    def _apply_all(
+    async def _apply_all(
         self, rule: MealRecurrenceRule, params: UpdateRecurrenceRule.Params
     ):
         # Resolve effective fields (patch semantics: None means "leave alone").
@@ -148,7 +185,7 @@ class UpdateRecurrenceRule(Endpoint):
         )
 
         if recipe_id is not None:
-            recipe = self.database.find_by(Recipe, id=str(recipe_id))
+            recipe = await self.database.find_by(Recipe, id=str(recipe_id))
             if not recipe:
                 raise APIException(
                     status_code=404,
@@ -157,7 +194,9 @@ class UpdateRecurrenceRule(Endpoint):
                 )
         if meal_id is not None and params.meal_id is not None:
             # Only re-check access when the caller is actively setting meal_id.
-            require_meal_available(self.database.db, str(meal_id), self.user)
+            await require_meal_available_async(
+                self.db, str(meal_id), self.user
+            )
         if recipe_id is not None or meal_id is not None:
             title_to_store = None
         else:
@@ -189,28 +228,31 @@ class UpdateRecurrenceRule(Endpoint):
             params.calendar_id is not None
             and str(params.calendar_id) != str(rule.calendar_id)
         ):
-            require_calendar_access(
+            await require_calendar_access_async(
                 str(params.calendar_id), self.user, self.database
             )
             rule.calendar_id = params.calendar_id
-            self.database.db.query(MealEvent).filter(
-                MealEvent.recurrence_rule_id == rule.id,
-                MealEvent.scheduled_at >= datetime.now(UTC),
-            ).update(
-                {MealEvent.calendar_id: params.calendar_id},
-                synchronize_session=False,
+            await self.db.execute(
+                sa_update(MealEvent)
+                .where(
+                    MealEvent.recurrence_rule_id == rule.id,
+                    MealEvent.scheduled_at >= datetime.now(UTC),
+                )
+                .values(calendar_id=params.calendar_id)
             )
 
-        from utils.recurrence.materializer import materialize
+        await self.db.flush()
+        # Commit async state BEFORE dispatching materialize (fresh sync
+        # session inside the threadpool needs to see the latest rule).
+        await self.db.commit()
 
         through = rule.materialized_through or (
             date.today() + timedelta(weeks=MATERIALIZATION_WINDOW_WEEKS)
         )
-        materialize(rule, through, self.database.db)
+        await _run_materialize(str(rule.id), through)
 
-        self.database.db.commit()
-        self.database.db.refresh(rule)
-        meal = _load_meal_for_hydration(self.database.db, rule.meal_id)
+        await self.db.refresh(rule)
+        meal = await _load_meal_for_hydration(self.db, rule.meal_id)
         return success(
             data={"rule": _rule_to_response(rule, meal=meal).model_dump(mode="json")}
         )
@@ -218,7 +260,7 @@ class UpdateRecurrenceRule(Endpoint):
     # ------------------------------------------------------------------
     # scope == "this_and_following"
 
-    def _apply_split(
+    async def _apply_split(
         self, rule: MealRecurrenceRule, params: UpdateRecurrenceRule.Params
     ):
         occurrence_date = params.occurrence_date
@@ -250,18 +292,20 @@ class UpdateRecurrenceRule(Endpoint):
         # end_date == split_end.
         if rule.end_date == split_end:
             existing_new = (
-                self.database.db.query(MealRecurrenceRule)
-                .filter(MealRecurrenceRule.owner_id == rule.owner_id)
-                .filter(MealRecurrenceRule.start_date == occurrence_date)
-                .filter(MealRecurrenceRule.archived_at.is_(None))
-                .first()
-            )
-            if existing_new is not None:
-                old_meal = _load_meal_for_hydration(
-                    self.database.db, rule.meal_id
+                await self.db.execute(
+                    select(MealRecurrenceRule)
+                    .where(MealRecurrenceRule.owner_id == rule.owner_id)
+                    .where(MealRecurrenceRule.start_date == occurrence_date)
+                    .where(MealRecurrenceRule.archived_at.is_(None))
+                    .limit(1)
                 )
-                new_meal = _load_meal_for_hydration(
-                    self.database.db, existing_new.meal_id
+            ).scalars().first()
+            if existing_new is not None:
+                old_meal = await _load_meal_for_hydration(
+                    self.db, rule.meal_id
+                )
+                new_meal = await _load_meal_for_hydration(
+                    self.db, existing_new.meal_id
                 )
                 return success(
                     data={
@@ -342,7 +386,7 @@ class UpdateRecurrenceRule(Endpoint):
         )
 
         if recipe_id is not None:
-            recipe = self.database.find_by(Recipe, id=str(recipe_id))
+            recipe = await self.database.find_by(Recipe, id=str(recipe_id))
             if not recipe:
                 raise APIException(
                     status_code=404,
@@ -350,26 +394,25 @@ class UpdateRecurrenceRule(Endpoint):
                     code=ErrorCode.RECIPE_NOT_FOUND,
                 )
         if meal_id is not None and params.meal_id is not None:
-            require_meal_available(self.database.db, str(meal_id), self.user)
+            await require_meal_available_async(
+                self.db, str(meal_id), self.user
+            )
         if recipe_id is not None or meal_id is not None:
             title_to_store = None
         else:
             title_to_store = (title or "").strip() or None
 
-        from utils.recurrence.materializer import materialize
-
-        # Shorten the old rule first and regenerate so its tail is cleared.
+        # Shorten the old rule first so its tail is cleared when we
+        # materialize below.
         rule.end_date = split_end
         old_through = rule.materialized_through or (
             date.today() + timedelta(weeks=MATERIALIZATION_WINDOW_WEEKS)
         )
-        materialize(rule, old_through, self.database.db)
 
-        # Create the new rule and materialize forward. The new rule
-        # inherits the source rule's calendar_id — move-to-calendar on a
-        # split is not supported in this story (would require two
-        # require_calendar_access checks and an explicit UX choice; defer
-        # to if/when a user requests it).
+        # Create the new rule. The new rule inherits the source rule's
+        # calendar_id — move-to-calendar on a split is not supported in
+        # this story (would require two require_calendar_access checks
+        # and an explicit UX choice; defer to if/when a user requests it).
         new_rule = MealRecurrenceRule(
             owner_id=rule.owner_id,
             calendar_id=rule.calendar_id,
@@ -385,17 +428,20 @@ class UpdateRecurrenceRule(Endpoint):
             tz_name=tz_name,
             is_shared=is_shared,
         )
-        self.database.db.add(new_rule)
-        self.database.db.flush()
+        self.db.add(new_rule)
+        await self.db.flush()
+        # Commit async state BEFORE dispatching materialize (fresh sync
+        # sessions inside the threadpool need to see both rules).
+        await self.db.commit()
 
+        await _run_materialize(str(rule.id), old_through)
         new_through = date.today() + timedelta(weeks=MATERIALIZATION_WINDOW_WEEKS)
-        materialize(new_rule, new_through, self.database.db)
+        await _run_materialize(str(new_rule.id), new_through)
 
-        self.database.db.commit()
-        self.database.db.refresh(rule)
-        self.database.db.refresh(new_rule)
-        old_meal = _load_meal_for_hydration(self.database.db, rule.meal_id)
-        new_meal = _load_meal_for_hydration(self.database.db, new_rule.meal_id)
+        await self.db.refresh(rule)
+        await self.db.refresh(new_rule)
+        old_meal = await _load_meal_for_hydration(self.db, rule.meal_id)
+        new_meal = await _load_meal_for_hydration(self.db, new_rule.meal_id)
         return success(
             data={
                 "rule": _rule_to_response(rule, meal=old_meal).model_dump(

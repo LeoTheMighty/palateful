@@ -1,16 +1,18 @@
 """mcal-3 tests — recurrence_rule endpoints accept `meal_id` XOR `recipe_id`.
 
+aam-30: rewritten to the `mock_async_db` + `MockExecuteResult` pattern.
 Mirrors `test_meal_event_with_meals.py` structure — the recurrence-rule
 surface gets the same XOR validator, meal access check, and meal_summary
 hydration chain.
 """
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import AsyncMock, patch
 
 from conftest import (
+    MockExecuteResult,
     MockModel,
-    MockQuery,
     MockRecipe,
     MockRecipeBookUser,
 )
@@ -44,8 +46,6 @@ class MockMealRecipe(MockModel):
 
 
 def _make_meal_with_components(*, archived=False):
-    from utils.models.meal import Meal as MealModel
-
     book_id = str(uuid.uuid4())
     r_a = MockRecipe(id=str(uuid.uuid4()), name="Kale Salad", image_url="https://cdn/a.jpg", recipe_book_id=book_id)
     r_a.recipe_book = None
@@ -62,7 +62,7 @@ def _make_meal_with_components(*, archived=False):
     )
     if archived:
         meal.archived_at = datetime.now(timezone.utc)
-    return meal, book_id, MealModel
+    return meal, book_id
 
 
 def _valid_body(**overrides):
@@ -79,13 +79,29 @@ def _valid_body(**overrides):
     return body
 
 
+def _patch_create_materialize():
+    return patch(
+        "api.v1.recurrence_rule.create_recurrence_rule._run_materialize",
+        new_callable=AsyncMock,
+    )
+
+
+def _patch_update_materialize():
+    return patch(
+        "api.v1.recurrence_rule.update_recurrence_rule._run_materialize",
+        new_callable=AsyncMock,
+    )
+
+
 # ---------------------------------------------------------------------------
 # XOR rejection
 # ---------------------------------------------------------------------------
 
 
 class TestRecurrenceXor:
-    def test_create_rejects_both_recipe_id_and_meal_id(self, client, mock_db, mock_user):
+    def test_create_rejects_both_recipe_id_and_meal_id(
+        self, client, mock_async_db, mock_user
+    ):
         body = _valid_body(
             recipe_id=str(uuid.uuid4()), meal_id=str(uuid.uuid4())
         )
@@ -101,33 +117,21 @@ class TestRecurrenceXor:
 
 class TestRecurrenceCreateMealMode:
     def test_create_rule_with_meal_id_returns_meal_summary(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        from utils.models.recipe_book_user import RecipeBookUser
-
-        meal, book_id, MealModel = _make_meal_with_components()
-        # MealService loads Meal then RecipeBookUser via db.query;
-        # materializer also queries MealEvent. Route by model to
-        # avoid returning a Meal row to the materializer's MealEvent query.
+        meal, book_id = _make_meal_with_components()
         membership = MockRecipeBookUser(
             user_id=mock_user.id, recipe_book_id=book_id, role="owner"
         )
-
-        def _query_router(model):
-            if model is MealModel:
-                return MockQuery([meal])
-            if model is RecipeBookUser:
-                return MockQuery([membership])
-            return MockQuery([])
-
-        mock_db.db.query.side_effect = _query_router
-        mock_db.set_find_by(
-            RecipeBookUser, membership,
-            user_id=mock_user.id, recipe_book_id=book_id,
-        )
+        # require_meal_available_async: Meal select → [meal], RBU select → [membership].
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[membership]),
+        ]
 
         body = _valid_body(meal_id=str(meal.id))
-        response = client.post("/v1/recurrence-rules", json=body)
+        with _patch_create_materialize():
+            response = client.post("/v1/recurrence-rules", json=body)
         assert response.status_code == 201
         data = response.json()
         assert data["meal_id"] == str(meal.id)
@@ -135,65 +139,50 @@ class TestRecurrenceCreateMealMode:
         # Title stored as None since the rule derives display title from the Meal.
         assert data["title"] is None
 
-    def test_create_meal_rule_404_on_missing_meal(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])  # no meal found
+    def test_create_meal_rule_404_on_missing_meal(
+        self, client, mock_async_db, mock_user
+    ):
+        # require_meal_available_async: Meal select → empty → 404.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[]),
+        ]
         body = _valid_body(meal_id=str(uuid.uuid4()))
         response = client.post("/v1/recurrence-rules", json=body)
         assert response.status_code == 404
 
-    def test_create_meal_rule_404_on_archived_meal(self, client, mock_db, mock_user):
-        from utils.models.recipe_book_user import RecipeBookUser
-
-        meal, book_id, MealModel = _make_meal_with_components(archived=True)
-
+    def test_create_meal_rule_404_on_archived_meal(
+        self, client, mock_async_db, mock_user
+    ):
+        meal, book_id = _make_meal_with_components(archived=True)
         membership = MockRecipeBookUser(
             user_id=mock_user.id, recipe_book_id=book_id, role="owner"
         )
-
-        def _query_router(model):
-            if model is MealModel:
-                return MockQuery([meal])
-            if model is RecipeBookUser:
-                return MockQuery([membership])
-            return MockQuery([])
-
-        mock_db.db.query.side_effect = _query_router
-        mock_db.set_find_by(
-            RecipeBookUser, membership,
-            user_id=mock_user.id, recipe_book_id=book_id,
-        )
+        # Meal found + membership found, but meal.archived_at set → 404.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[membership]),
+        ]
         body = _valid_body(meal_id=str(meal.id))
         response = client.post("/v1/recurrence-rules", json=body)
         assert response.status_code == 404
 
     def test_create_rule_accepts_meal_id_without_title(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Previously title was required when recipe_id was unset — meal_id
         now satisfies the same constraint."""
-        from utils.models.recipe_book_user import RecipeBookUser
-
-        meal, book_id, MealModel = _make_meal_with_components()
-
+        meal, book_id = _make_meal_with_components()
         membership = MockRecipeBookUser(
             user_id=mock_user.id, recipe_book_id=book_id, role="owner"
         )
-
-        def _query_router(model):
-            if model is MealModel:
-                return MockQuery([meal])
-            if model is RecipeBookUser:
-                return MockQuery([membership])
-            return MockQuery([])
-
-        mock_db.db.query.side_effect = _query_router
-        mock_db.set_find_by(
-            RecipeBookUser, membership,
-            user_id=mock_user.id, recipe_book_id=book_id,
-        )
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[membership]),
+        ]
         body = _valid_body(meal_id=str(meal.id))
         assert "title" not in body
-        response = client.post("/v1/recurrence-rules", json=body)
+        with _patch_create_materialize():
+            response = client.post("/v1/recurrence-rules", json=body)
         assert response.status_code == 201
 
 
@@ -203,24 +192,28 @@ class TestRecurrenceCreateMealMode:
 
 
 class TestRecurrenceRegression:
-    def test_create_freetext_rule_still_works(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_create_freetext_rule_still_works(
+        self, client, mock_async_db, mock_user
+    ):
         body = _valid_body(title="Takeout Mondays")
-        response = client.post("/v1/recurrence-rules", json=body)
+        with _patch_create_materialize():
+            response = client.post("/v1/recurrence-rules", json=body)
         assert response.status_code == 201
         data = response.json()
         assert data["meal_id"] is None
         assert data["meal_summary"] is None
 
-    def test_create_recipe_rule_still_works(self, client, mock_db, mock_user):
+    def test_create_recipe_rule_still_works(
+        self, client, mock_async_db, mock_user
+    ):
         from utils.models.recipe import Recipe
 
         recipe = MockRecipe(id=str(uuid.uuid4()), name="Pizza")
-        mock_db.set_find_by(Recipe, recipe, id=recipe.id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe.id)
 
         body = _valid_body(recipe_id=recipe.id)
-        response = client.post("/v1/recurrence-rules", json=body)
+        with _patch_create_materialize():
+            response = client.post("/v1/recurrence-rules", json=body)
         assert response.status_code == 201
         data = response.json()
         assert data["meal_id"] is None
@@ -234,12 +227,11 @@ class TestRecurrenceRegression:
 
 class TestRecurrenceUpdateMealMode:
     def test_scope_all_switch_recipe_rule_to_meal_mode(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.meal_recurrence_rule import MealRecurrenceRule
-        from utils.models.recipe_book_user import RecipeBookUser
 
-        meal, book_id, MealModel = _make_meal_with_components()
+        meal, book_id = _make_meal_with_components()
         rule_id = str(uuid.uuid4())
         existing_rule = MockMealRecurrenceRule(
             id=rule_id,
@@ -249,28 +241,27 @@ class TestRecurrenceUpdateMealMode:
             meal_id=None,
             title=None,
         )
-        mock_db.set_find_by(MealRecurrenceRule, existing_rule, id=rule_id)
+        mock_async_db.set_find_by(
+            MealRecurrenceRule, existing_rule, id=rule_id
+        )
         membership = MockRecipeBookUser(
             user_id=mock_user.id, recipe_book_id=book_id, role="owner"
         )
+        # Sequence:
+        # 1. require_meal_available_async → Meal select → [meal]
+        # 2. require_meal_available_async → RBU select → [membership]
+        # 3. _load_meal_for_hydration (post-refresh, rule.meal_id=meal.id) → [meal]
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[membership]),
+            MockExecuteResult(items=[meal]),
+        ]
 
-        def _query_router(model):
-            if model is MealModel:
-                return MockQuery([meal])
-            if model is RecipeBookUser:
-                return MockQuery([membership])
-            return MockQuery([])
-
-        mock_db.db.query.side_effect = _query_router
-        mock_db.set_find_by(
-            RecipeBookUser, membership,
-            user_id=mock_user.id, recipe_book_id=book_id,
-        )
-
-        response = client.put(
-            f"/v1/recurrence-rules/{rule_id}",
-            json={"scope": "all", "meal_id": str(meal.id)},
-        )
+        with _patch_update_materialize():
+            response = client.put(
+                f"/v1/recurrence-rules/{rule_id}",
+                json={"scope": "all", "meal_id": str(meal.id)},
+            )
         assert response.status_code == 200
         rule = response.json()["rule"]
         assert rule["meal_id"] == str(meal.id)
@@ -278,13 +269,11 @@ class TestRecurrenceUpdateMealMode:
         assert rule["meal_summary"]["name"] == "Kale Salad Meal"
 
     def test_scope_split_with_meal_id_creates_new_meal_rule(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        from datetime import date, timedelta
         from utils.models.meal_recurrence_rule import MealRecurrenceRule
-        from utils.models.recipe_book_user import RecipeBookUser
 
-        meal, book_id, MealModel = _make_meal_with_components()
+        meal, book_id = _make_meal_with_components()
         rule_id = str(uuid.uuid4())
         # Start date well in the past so _date_is_on_rule resolves cleanly
         # on a Monday (matches the rule weekdays=["mon"]).
@@ -308,32 +297,33 @@ class TestRecurrenceUpdateMealMode:
             tz_name="America/Los_Angeles",
             end_date=None,
         )
-        mock_db.set_find_by(MealRecurrenceRule, existing_rule, id=rule_id)
+        mock_async_db.set_find_by(
+            MealRecurrenceRule, existing_rule, id=rule_id
+        )
         membership = MockRecipeBookUser(
             user_id=mock_user.id, recipe_book_id=book_id, role="owner"
         )
+        # Sequence inside _apply_split (rule.end_date is None → no sibling
+        # lookup fires):
+        # 1. require_meal_available_async → Meal select → [meal]
+        # 2. require_meal_available_async → RBU select → [membership]
+        # 3. post-refresh _load_meal_for_hydration(old rule.meal_id=None) → skipped
+        # 4. post-refresh _load_meal_for_hydration(new_rule.meal_id=meal.id) → [meal]
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+            MockExecuteResult(items=[membership]),
+            MockExecuteResult(items=[meal]),
+        ]
 
-        def _query_router(model):
-            if model is MealModel:
-                return MockQuery([meal])
-            if model is RecipeBookUser:
-                return MockQuery([membership])
-            return MockQuery([])
-
-        mock_db.db.query.side_effect = _query_router
-        mock_db.set_find_by(
-            RecipeBookUser, membership,
-            user_id=mock_user.id, recipe_book_id=book_id,
-        )
-
-        response = client.put(
-            f"/v1/recurrence-rules/{rule_id}",
-            json={
-                "scope": "this_and_following",
-                "occurrence_date": split.isoformat(),
-                "meal_id": str(meal.id),
-            },
-        )
+        with _patch_update_materialize():
+            response = client.put(
+                f"/v1/recurrence-rules/{rule_id}",
+                json={
+                    "scope": "this_and_following",
+                    "occurrence_date": split.isoformat(),
+                    "meal_id": str(meal.id),
+                },
+            )
         assert response.status_code == 200
         body = response.json()
         assert body["new_rule"]["meal_id"] == str(meal.id)
@@ -341,17 +331,22 @@ class TestRecurrenceUpdateMealMode:
 
 
 class TestRecurrenceReads:
-    def test_get_rule_with_meal_id_hydrates_summary(self, client, mock_db, mock_user):
+    def test_get_rule_with_meal_id_hydrates_summary(
+        self, client, mock_async_db, mock_user
+    ):
         from utils.models.meal_recurrence_rule import MealRecurrenceRule
 
-        meal, book_id, MealModel = _make_meal_with_components()
+        meal, book_id = _make_meal_with_components()
         rule_id = str(uuid.uuid4())
         rule = MockMealRecurrenceRule(
             id=rule_id, meal_id=str(meal.id), recipe_id=None, title=None,
             owner_id=mock_user.id, calendar_id=str(uuid.uuid4()),
         )
-        mock_db.set_find_by(MealRecurrenceRule, rule, id=rule_id)
-        mock_db.db.query.return_value = MockQuery([meal])
+        mock_async_db.set_find_by(MealRecurrenceRule, rule, id=rule_id)
+        # get_recurrence_rule: single Meal select for hydration.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[meal]),
+        ]
 
         response = client.get(f"/v1/recurrence-rules/{rule_id}")
         assert response.status_code == 200
@@ -359,22 +354,22 @@ class TestRecurrenceReads:
         assert data["meal_id"] == str(meal.id)
         assert data["meal_summary"]["component_count"] == 2
 
-    def test_list_rules_mixes_recipe_and_meal_items(self, client, mock_db, mock_user):
-        meal, book_id, MealModel = _make_meal_with_components()
+    def test_list_rules_mixes_recipe_and_meal_items(
+        self, client, mock_async_db, mock_user
+    ):
+        meal, book_id = _make_meal_with_components()
         recipe_rule = MockMealRecurrenceRule(
             id=str(uuid.uuid4()), owner_id=mock_user.id, recipe_id=str(uuid.uuid4()),
         )
         meal_rule = MockMealRecurrenceRule(
             id=str(uuid.uuid4()), owner_id=mock_user.id, meal_id=str(meal.id),
         )
-        query_calls = {"rules": [recipe_rule, meal_rule], "meals": [meal]}
-
-        def _query_router(model):
-            if model is MealModel:
-                return MockQuery(query_calls["meals"])
-            return MockQuery(query_calls["rules"])
-
-        mock_db.db.query.side_effect = _query_router
+        # get_user_calendar_ids_async → cal_ids; rules select → [both]; meal batch → [meal].
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[recipe_rule.calendar_id]),
+            MockExecuteResult(items=[recipe_rule, meal_rule]),
+            MockExecuteResult(items=[meal]),
+        ]
 
         response = client.get("/v1/recurrence-rules")
         assert response.status_code == 200

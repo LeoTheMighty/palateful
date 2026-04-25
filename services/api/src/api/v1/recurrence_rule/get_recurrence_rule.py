@@ -1,8 +1,9 @@
 """Get recurrence rule endpoint."""
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal import Meal
 from utils.models.meal_recipe import MealRecipe
@@ -12,13 +13,13 @@ from utils.models.user import User
 from .create_recurrence_rule import _rule_to_response
 
 
-class GetRecurrenceRule(Endpoint):
+class GetRecurrenceRule(AsyncEndpoint):
     """Return a single rule if the user can see it via calendar membership."""
 
-    def execute(self, rule_id: str):
+    async def execute(self, rule_id: str):
         user: User = self.user
 
-        rule = self.database.find_by(MealRecurrenceRule, id=rule_id)
+        rule = await self.database.find_by(MealRecurrenceRule, id=rule_id)
         if not rule or rule.archived_at is not None:
             raise APIException(
                 status_code=404,
@@ -28,7 +29,9 @@ class GetRecurrenceRule(Endpoint):
 
         # Mask non-members as 404 — no existence leak for reads.
         try:
-            require_calendar_access(str(rule.calendar_id), user, self.database)
+            await require_calendar_access_async(
+                str(rule.calendar_id), user, self.database
+            )
         except APIException as exc:
             if exc.status_code == 403:
                 raise APIException(
@@ -41,11 +44,12 @@ class GetRecurrenceRule(Endpoint):
         meal = None
         if rule.meal_id is not None:
             meal = (
-                self.database.db.query(Meal)
-                .options(
-                    selectinload(Meal.components).selectinload(MealRecipe.recipe)
+                await self.db.execute(
+                    select(Meal)
+                    .options(
+                        selectinload(Meal.components).selectinload(MealRecipe.recipe)
+                    )
+                    .where(Meal.id == rule.meal_id)
                 )
-                .filter(Meal.id == rule.meal_id)
-                .first()
-            )
+            ).scalars().first()
         return success(data=_rule_to_response(rule, meal=meal))

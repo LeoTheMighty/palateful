@@ -1383,5 +1383,5 @@ development_status:
   aam-foundations-notify-threadpool-helper: done
   aam-28-friends-domain-async: done
   aam-29-parser-domain-async: done
-  aam-30-recurrence-rule-domain-async: in-progress
+  aam-30-recurrence-rule-domain-async: done
   epic-api-async-migration-retrospective: optional

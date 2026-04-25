@@ -9,34 +9,34 @@ from api.v1.recurrence_rule import (
     ListRecurrenceRules,
     UpdateRecurrenceRule,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 recurrence_rule_router = APIRouter(tags=["recurrence-rules"])
 
 
 @recurrence_rule_router.get("/recurrence-rules")
-def list_recurrence_rules(
+async def list_recurrence_rules(
     calendar_id: str | None = None,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List recurrence rules visible to the current user."""
-    return ListRecurrenceRules.call(
+    return await ListRecurrenceRules.call(
         calendar_id=calendar_id, user=user, database=database
     )
 
 
 @recurrence_rule_router.post("/recurrence-rules")
-def create_recurrence_rule(
+async def create_recurrence_rule(
     params: CreateRecurrenceRule.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Create a new recurrence rule."""
-    return CreateRecurrenceRule.call(
+    return await CreateRecurrenceRule.call(
         params=params,
         user=user,
         database=database,
@@ -44,13 +44,13 @@ def create_recurrence_rule(
 
 
 @recurrence_rule_router.get("/recurrence-rules/{rule_id}")
-def get_recurrence_rule(
+async def get_recurrence_rule(
     rule_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get a recurrence rule."""
-    return GetRecurrenceRule.call(
+    return await GetRecurrenceRule.call(
         rule_id=rule_id,
         user=user,
         database=database,
@@ -58,14 +58,14 @@ def get_recurrence_rule(
 
 
 @recurrence_rule_router.put("/recurrence-rules/{rule_id}")
-def update_recurrence_rule(
+async def update_recurrence_rule(
     rule_id: str,
     params: UpdateRecurrenceRule.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update a recurrence rule (scope=all or this_and_following)."""
-    return UpdateRecurrenceRule.call(
+    return await UpdateRecurrenceRule.call(
         rule_id=rule_id,
         params=params,
         user=user,
@@ -74,15 +74,15 @@ def update_recurrence_rule(
 
 
 @recurrence_rule_router.delete("/recurrence-rules/{rule_id}")
-def delete_recurrence_rule(
+async def delete_recurrence_rule(
     rule_id: str,
     scope: str = "series",
     occurrence_date: date | None = None,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Archive (or split) a recurrence rule."""
-    return DeleteRecurrenceRule.call(
+    return await DeleteRecurrenceRule.call(
         rule_id=rule_id,
         scope=scope,
         occurrence_date=occurrence_date,

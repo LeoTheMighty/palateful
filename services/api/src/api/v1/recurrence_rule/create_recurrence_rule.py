@@ -2,15 +2,16 @@
 
 from datetime import date, datetime, timedelta
 
-from api.v1.calendar.dependencies import require_calendar_access
+from api.v1.calendar.dependencies import require_calendar_access_async
 from api.v1.meal_event._meal_binding import (
     MealSummary,
     build_meal_summary,
-    require_meal_available,
+    require_meal_available_async,
     validate_recipe_meal_xor,
 )
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.meal_recurrence_rule import MealRecurrenceRule
 from utils.models.recipe import Recipe
@@ -21,10 +22,44 @@ from ._access import validate_recurrence_fields, validate_tz_name
 MATERIALIZATION_WINDOW_WEEKS = 9
 
 
-class CreateRecurrenceRule(Endpoint):
+def _materialize_sync(rule_id: str, through_date: date) -> None:
+    """Threadpool-side wrapper: open a fresh sync Session, load rule,
+    call sync `materialize`, commit, close.
+
+    Mirrors `api.v1.meal_event.list_meal_events._materialize_sync`. No-op
+    if `SessionLocal` isn't configured (test env with `DATABASE_URL=""`).
+    """
+    from utils.recurrence.materializer import materialize
+    from utils.services.database import SessionLocal
+
+    if SessionLocal is None:
+        return
+    session = SessionLocal()
+    try:
+        rule = (
+            session.query(MealRecurrenceRule)
+            .filter(MealRecurrenceRule.id == rule_id)
+            .first()
+        )
+        if rule is None:
+            return
+        materialize(rule, through_date, session)
+        session.commit()
+    finally:
+        session.close()
+
+
+async def _run_materialize(rule_id: str, through_date: date) -> None:
+    """Async entrypoint that dispatches the sync materializer onto the
+    threadpool (the materializer uses a sync Session).
+    """
+    await run_in_threadpool(_materialize_sync, rule_id, through_date)
+
+
+class CreateRecurrenceRule(AsyncEndpoint):
     """Create a new recurrence rule and materialize the first window."""
 
-    def execute(self, params: "CreateRecurrenceRule.Params"):
+    async def execute(self, params: "CreateRecurrenceRule.Params"):
         user: User = self.user
 
         if not params.calendar_id:
@@ -34,7 +69,9 @@ class CreateRecurrenceRule(Endpoint):
                 code=ErrorCode.RECURRENCE_RULE_CALENDAR_REQUIRED,
             )
 
-        require_calendar_access(params.calendar_id, user, self.database)
+        await require_calendar_access_async(
+            params.calendar_id, user, self.database
+        )
 
         validate_recipe_meal_xor(params.recipe_id, params.meal_id)
 
@@ -54,7 +91,7 @@ class CreateRecurrenceRule(Endpoint):
 
         recipe = None
         if params.recipe_id:
-            recipe = self.database.find_by(Recipe, id=params.recipe_id)
+            recipe = await self.database.find_by(Recipe, id=params.recipe_id)
             if not recipe:
                 raise APIException(
                     status_code=404,
@@ -64,7 +101,9 @@ class CreateRecurrenceRule(Endpoint):
 
         meal = None
         if params.meal_id:
-            meal = require_meal_available(self.database.db, params.meal_id, user)
+            meal = await require_meal_available_async(
+                self.db, params.meal_id, user
+            )
 
         # When recipe_id or meal_id is set, title is derived at read time
         # from the linked entity's name (materializer `_resolve_title`).
@@ -90,17 +129,19 @@ class CreateRecurrenceRule(Endpoint):
             tz_name=params.tz_name,
             is_shared=params.is_shared,
         )
-        self.database.db.add(rule)
-        self.database.db.flush()
+        self.db.add(rule)
+        await self.db.flush()
 
-        # Materialize the initial window in the same transaction.
-        from utils.recurrence.materializer import materialize
+        # Commit first so a fresh sync session inside the threadpool
+        # materializer can see the new rule. Trade-off: if materialize
+        # fails below, the rule is durable without its initial window —
+        # the nightly worker is the authoritative fallback.
+        await self.db.commit()
 
         through = date.today() + timedelta(weeks=MATERIALIZATION_WINDOW_WEEKS)
-        materialize(rule, through, self.database.db)
+        await _run_materialize(str(rule.id), through)
 
-        self.database.db.commit()
-        self.database.db.refresh(rule)
+        await self.db.refresh(rule)
 
         return success(
             data=_rule_to_response(rule, meal=meal),
