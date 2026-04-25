@@ -1,28 +1,42 @@
-"""Tests for MCP import tools (MCP.4)."""
+"""Tests for MCP import tools (MCP.4).
+
+aam-18: tools flipped to ``async def`` + ``await call_endpoint_async(...)``.
+Tests patch ``call_endpoint_async`` with ``AsyncMock`` and ``await`` each
+tool invocation. ``get_import_status`` (which dispatches two endpoints
+directly) patches the endpoint classes with async ``.run`` methods and
+sets the ``current_database_async`` contextvar.
+"""
 
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
 @pytest.fixture
 def mcp_context():
-    from mcp_server.auth import current_database, current_user
+    from mcp_server.auth import (
+        current_database,
+        current_database_async,
+        current_user,
+    )
 
     user = MagicMock()
     user.id = "user-i"
     user.default_recipe_book_id = "default-book"
     database = MagicMock()
+    async_database = MagicMock()
 
     utok = current_user.set(user)
     dtok = current_database.set(database)
+    datok = current_database_async.set(async_database)
     try:
         yield user, database
     finally:
         current_user.reset(utok)
         current_database.reset(dtok)
+        current_database_async.reset(datok)
 
 
 class TestBuildStartImportParams:
@@ -119,34 +133,43 @@ class TestBuildStartImportParams:
 
 
 class TestImportRecipe:
-    def test_delegates_url_with_default_book(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_delegates_url_with_default_book(self, mcp_context):
         from mcp_server.tools.import_tools import import_recipe
 
-        with patch("mcp_server.tools.import_tools.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.import_tools.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = '{"id":"job1"}'
-            result = import_recipe(source_type="url", url="https://a.com/recipe")
+            result = await import_recipe(source_type="url", url="https://a.com/recipe")
 
         assert result == '{"id":"job1"}'
         kwargs = mock_call.call_args.kwargs
         assert kwargs["book_id"] == "default-book"
         assert kwargs["params"].source_type == "url"
 
-    def test_explicit_book_id(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_explicit_book_id(self, mcp_context):
         from mcp_server.tools.import_tools import import_recipe
 
-        with patch("mcp_server.tools.import_tools.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.import_tools.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            import_recipe(source_type="text", text="boil water", book_id="b9")
+            await import_recipe(source_type="text", text="boil water", book_id="b9")
 
         assert mock_call.call_args.kwargs["book_id"] == "b9"
 
-    def test_no_default_book_raises(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_no_default_book_raises(self, mcp_context):
         user, _ = mcp_context
         user.default_recipe_book_id = None
         from mcp_server.tools.import_tools import import_recipe
 
         with pytest.raises(ValueError, match="no default recipe book"):
-            import_recipe(source_type="url", url="https://x.com/y")
+            await import_recipe(source_type="url", url="https://x.com/y")
 
 
 class _FakeOkEndpoint:
@@ -155,7 +178,7 @@ class _FakeOkEndpoint:
     def __init__(self, database=None, user=None):
         pass
 
-    def run(self, **kwargs):
+    async def run(self, **kwargs):
         return {
             "success": True,
             "data": SimpleNamespace(id="job1", status="pending"),
@@ -167,7 +190,7 @@ class _FakeItemsOk:
     def __init__(self, database=None, user=None):
         pass
 
-    def run(self, **kwargs):
+    async def run(self, **kwargs):
         return {
             "success": True,
             "data": SimpleNamespace(items=[], total=0, has_more=False),
@@ -176,7 +199,8 @@ class _FakeItemsOk:
 
 
 class TestGetImportStatus:
-    def test_combines_job_and_items(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_combines_job_and_items(self, mcp_context):
         from mcp_server.tools.import_tools import get_import_status
 
         with patch(
@@ -184,35 +208,37 @@ class TestGetImportStatus:
         ), patch(
             "mcp_server.tools.import_tools.ListImportItems", _FakeItemsOk
         ):
-            raw = get_import_status("job1")
+            raw = await get_import_status("job1")
 
         parsed = json.loads(raw)
         assert "job" in parsed
         assert "items" in parsed
         assert parsed["job"]["id"] == "job1"
 
-    def test_job_failure_returns_error(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_job_failure_returns_error(self, mcp_context):
         from mcp_server.tools.import_tools import get_import_status
 
         class _FailJob:
             def __init__(self, database=None, user=None):
                 pass
 
-            def run(self, **kwargs):
+            async def run(self, **kwargs):
                 return {"success": False, "error_message": "not found", "status": 404}
 
         with patch("mcp_server.tools.import_tools.GetImportJob", _FailJob):
-            result = get_import_status("doesnt-exist")
+            result = await get_import_status("doesnt-exist")
         assert result.startswith("Error: not found")
 
-    def test_items_failure_returns_error(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_items_failure_returns_error(self, mcp_context):
         from mcp_server.tools.import_tools import get_import_status
 
         class _FailItems:
             def __init__(self, database=None, user=None):
                 pass
 
-            def run(self, **kwargs):
+            async def run(self, **kwargs):
                 return {"success": False, "error_message": "boom", "status": 500}
 
         with patch(
@@ -220,17 +246,21 @@ class TestGetImportStatus:
         ), patch(
             "mcp_server.tools.import_tools.ListImportItems", _FailItems
         ):
-            result = get_import_status("j")
+            result = await get_import_status("j")
         assert result.startswith("Error: boom")
 
 
 class TestApproveImport:
-    def test_delegates_to_call_endpoint(self, mcp_context):
+    @pytest.mark.asyncio
+    async def test_delegates_to_call_endpoint(self, mcp_context):
         from mcp_server.tools.import_tools import approve_import
 
-        with patch("mcp_server.tools.import_tools.call_endpoint") as mock_call:
+        with patch(
+            "mcp_server.tools.import_tools.call_endpoint_async",
+            new_callable=AsyncMock,
+        ) as mock_call:
             mock_call.return_value = "{}"
-            approve_import("i1")
+            await approve_import("i1")
         assert mock_call.call_args.kwargs == {"item_id": "i1"}
 
 

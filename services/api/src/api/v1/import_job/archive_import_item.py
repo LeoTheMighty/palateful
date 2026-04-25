@@ -17,7 +17,8 @@ archive calls on an awaiting-review item end with one 200 success + one
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -31,13 +32,13 @@ _IN_PROGRESS_STATUSES = frozenset(
 )
 
 
-class ArchiveImportItem(Endpoint):
+class ArchiveImportItem(AsyncEndpoint):
     """Archive an ImportItem row."""
 
-    def execute(self, item_id: str):
+    async def execute(self, item_id: str):
         user: User = self.user
 
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -45,7 +46,7 @@ class ArchiveImportItem(Endpoint):
                 code=ErrorCode.IMPORT_ITEM_NOT_FOUND,
             )
 
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -53,7 +54,7 @@ class ArchiveImportItem(Endpoint):
                 code=ErrorCode.IMPORT_JOB_NOT_FOUND,
             )
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -69,12 +70,13 @@ class ArchiveImportItem(Endpoint):
         # a row can flip from awaiting_review → processing between the
         # initial find_by() above and the write below. Lock + re-read
         # guarantees we decide on the post-flip status.
-        locked = (
-            self.db.query(ImportItem)
-            .filter(ImportItem.id == item.id)
+        locked_result = await self.db.execute(
+            select(ImportItem)
+            .where(ImportItem.id == item.id)
             .with_for_update()
-            .first()
+            .limit(1)
         )
+        locked = locked_result.scalars().first()
         if locked is None:
             # Concurrent delete is the only way this can happen; treat
             # same as 404.
@@ -94,7 +96,7 @@ class ArchiveImportItem(Endpoint):
         if locked.archived_at is None:
             locked.archived_at = datetime.now(UTC)
             self.db.add(locked)
-            self.db.commit()
+            await self.db.commit()
 
         return success(
             data=ArchiveImportItem.Response(

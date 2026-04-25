@@ -23,7 +23,7 @@ import json
 from typing import Any
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, failure, success
+from utils.api.endpoint import APIException, AsyncEndpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.models.error_log import ErrorLog
 from utils.models.import_item import ImportItem
@@ -32,7 +32,7 @@ from utils.models.user import User
 from utils.services.recipe_extractors.inference_prompt import INFERABLE_FIELDS
 
 
-class SubmitCorrection(Endpoint):
+class SubmitCorrection(AsyncEndpoint):
     """POST /v1/import-items/{id}/corrections — log a user override on an
     inferred field.
 
@@ -40,7 +40,7 @@ class SubmitCorrection(Endpoint):
     ``parsed_recipe`` — approve-import-item is the real persistence path.
     """
 
-    def execute(self, item_id: str, params: "SubmitCorrection.Params"):
+    async def execute(self, item_id: str, params: "SubmitCorrection.Params"):
         user: User = self.user
 
         if params.field not in INFERABLE_FIELDS:
@@ -51,7 +51,7 @@ class SubmitCorrection(Endpoint):
                 data={"allowed": list(INFERABLE_FIELDS)},
             )
 
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -60,7 +60,7 @@ class SubmitCorrection(Endpoint):
             )
 
         # Access check: owner of the parent ImportJob.
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job or job.user_id != user.id:
             raise APIException(
                 status_code=403,
@@ -90,7 +90,7 @@ class SubmitCorrection(Endpoint):
             user_id=user.id,
         )
         self.database.db.add(row)
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(data=SubmitCorrection.Response(), status=204)
 

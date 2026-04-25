@@ -3,6 +3,11 @@
 Imports are async: `import_recipe` returns a job_id immediately and the client
 polls `get_import_status` until items show up. Never block the tool call on
 parsing — Claude should tell the user "I kicked it off" and keep moving.
+
+aam-18: tools flipped to ``async def`` + ``await call_endpoint_async(...)``.
+``get_import_status`` keeps its composite shape (job + items in one payload)
+and resolves the async database directly so the two foundation endpoints
+share the same MCP-request DB session.
 """
 
 from __future__ import annotations
@@ -14,8 +19,8 @@ from api.v1.import_job.get_import_job import GetImportJob
 from api.v1.import_job.list_import_items import ListImportItems
 from api.v1.import_job.start_import import StartImport
 from fastapi.encoders import jsonable_encoder
-from mcp_server.auth import get_current_database, get_current_user
-from mcp_server.server import call_endpoint, mcp
+from mcp_server.auth import get_current_database_async, get_current_user
+from mcp_server.server import call_endpoint_async, mcp
 
 _SUPPORTED_SOURCE_TYPES = {"url", "text", "photo"}
 
@@ -69,7 +74,7 @@ def _require_default_book(user) -> str:
 
 
 @mcp.tool()
-def import_recipe(
+async def import_recipe(
     source_type: str,
     url: str | None = None,
     text: str | None = None,
@@ -103,11 +108,13 @@ def import_recipe(
         ocr_texts=ocr_texts,
         additional_context=additional_context,
     )
-    return call_endpoint(StartImport, book_id=resolved_book_id, params=params)
+    return await call_endpoint_async(
+        StartImport, book_id=resolved_book_id, params=params
+    )
 
 
 @mcp.tool()
-def get_import_status(job_id: str, item_limit: int = 20) -> str:
+async def get_import_status(job_id: str, item_limit: int = 20) -> str:
     """Check the status of an in-flight import: job-level counters plus the
     per-item breakdown (name, status, error if failed).
 
@@ -116,13 +123,15 @@ def get_import_status(job_id: str, item_limit: int = 20) -> str:
     with no pending items, you're done.
     """
     user = get_current_user()
-    database = get_current_database()
+    database = get_current_database_async()
 
-    job_result = GetImportJob(database=database, user=user).run(job_id=job_id)
+    job_result = await GetImportJob(database=database, user=user).run(
+        job_id=job_id
+    )
     if not job_result["success"]:
         return f"Error: {job_result.get('error_message') or 'Unknown error'}"
 
-    items_result = ListImportItems(database=database, user=user).run(
+    items_result = await ListImportItems(database=database, user=user).run(
         job_id=job_id, limit=item_limit, offset=0
     )
     if not items_result["success"]:
@@ -136,10 +145,10 @@ def get_import_status(job_id: str, item_limit: int = 20) -> str:
 
 
 @mcp.tool()
-def approve_import(item_id: str) -> str:
+async def approve_import(item_id: str) -> str:
     """Approve a single pending import item, triggering recipe creation.
 
     Use this after `get_import_status` shows an item in `awaiting_review`.
     The recipe is created in the job's target book.
     """
-    return call_endpoint(ApproveImportItem, item_id=item_id)
+    return await call_endpoint_async(ApproveImportItem, item_id=item_id)

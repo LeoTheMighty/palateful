@@ -6,9 +6,11 @@ from datetime import datetime
 
 from botocore.exceptions import ClientError
 from config import settings
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from utils.api.endpoint import APIException, Endpoint, failure, success
+from utils.api.endpoint import APIException, AsyncEndpoint, failure, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -63,10 +65,10 @@ def _get_aws_service() -> AWSService:  # pragma: no cover — singleton, mocked
     return _aws_service
 
 
-class StartImport(Endpoint):
+class StartImport(AsyncEndpoint):
     """Start a new recipe import job."""
 
-    def execute(self, book_id: str, params: "StartImport.Params"):
+    async def execute(self, book_id: str, params: "StartImport.Params"):
         """
         Start a new import job for the recipe book.
 
@@ -86,7 +88,7 @@ class StartImport(Endpoint):
         # duplicate ImportJobs. Runs before rate-limit so a legit
         # reconciler retry doesn't burn a rate slot.
         if params.idempotency_key:
-            existing_job = self._find_existing_job(
+            existing_job = await self._find_existing_job(
                 user_id=str(user.id),
                 idempotency_key=params.idempotency_key,
             )
@@ -129,7 +131,7 @@ class StartImport(Endpoint):
             )
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=book_id,
@@ -142,7 +144,7 @@ class StartImport(Endpoint):
             )
 
         # Verify recipe book exists
-        recipe_book = self.database.find_by(RecipeBook, id=book_id)
+        recipe_book = await self.database.find_by(RecipeBook, id=book_id)
         if not recipe_book:
             raise APIException(
                 status_code=404,
@@ -191,7 +193,7 @@ class StartImport(Endpoint):
             source_filename = "text_paste"
         elif params.source_type == "audio":
             if params.s3_key:
-                self._validate_s3_key_inputs(params, user)
+                await self._validate_s3_key_inputs(params, user)
                 source_filename = params.file_name or params.s3_key
             elif not params.file_base64 or not params.file_name:
                 raise APIException(
@@ -203,7 +205,7 @@ class StartImport(Endpoint):
                 source_filename = params.file_name
         elif params.source_type == "pdf":
             if params.s3_key:
-                self._validate_s3_key_inputs(params, user)
+                await self._validate_s3_key_inputs(params, user)
                 source_filename = params.file_name or params.s3_key
             elif not params.file_base64 or not params.file_name:
                 raise APIException(
@@ -215,7 +217,7 @@ class StartImport(Endpoint):
                 source_filename = params.file_name
         elif params.source_type == "spreadsheet":
             if params.s3_key:
-                self._validate_s3_key_inputs(params, user)
+                await self._validate_s3_key_inputs(params, user)
                 source_filename = params.file_name or params.s3_key
             elif not params.file_base64 or not params.file_name:
                 raise APIException(
@@ -234,7 +236,7 @@ class StartImport(Endpoint):
                     detail="s3_key is required for video_file import",
                     code=ErrorCode.INVALID_REQUEST,
                 )
-            self._validate_s3_key_inputs(params, user)
+            await self._validate_s3_key_inputs(params, user)
             source_filename = params.file_name or params.s3_key
         else:
             raise APIException(
@@ -259,7 +261,7 @@ class StartImport(Endpoint):
             idempotency_key=params.idempotency_key,
         )
         try:
-            self.database.create(job)
+            await self.database.create(job)
         except IntegrityError:
             # Only the (user_id, idempotency_key) partial UNIQUE can
             # fire here — so if there's no key, we have nothing to
@@ -269,7 +271,7 @@ class StartImport(Endpoint):
             # callers see the same job.
             if params.idempotency_key is None:
                 raise
-            winner = self._find_existing_job(
+            winner = await self._find_existing_job(
                 user_id=str(user.id),
                 idempotency_key=params.idempotency_key,
             )
@@ -284,7 +286,7 @@ class StartImport(Endpoint):
                 ),
                 status=200,
             )
-        self.database.db.refresh(job)
+        await self.database.db.refresh(job)
 
         # Create import items for URL list
         if params.source_type == "url_list" and params.urls:
@@ -296,9 +298,9 @@ class StartImport(Endpoint):
                     source_url=url,
                     status="pending",
                 )
-                self.database.create(item)
+                await self.database.create(item)
             job.total_items = len(params.urls)
-            self.database.db.commit()
+            await self.database.db.commit()
         elif params.source_type == "url":
             # sbf-5: social URL routing moved upstream. extract_recipe_task
             # still has a defensive check, but the primary decision is
@@ -319,9 +321,9 @@ class StartImport(Endpoint):
                 raw_data=item_raw_data,
                 status="pending",
             )
-            self.database.create(item)
+            await self.database.create(item)
             job.total_items = 1
-            self.database.db.commit()
+            await self.database.db.commit()
         elif params.source_type == "photo" and params.ocr_texts:  # pragma: no cover — validated above
             # Concatenate all OCR texts into a single import item
             combined_text = "\n\n---\n\n".join(params.ocr_texts)
@@ -331,9 +333,9 @@ class StartImport(Endpoint):
                 raw_data={"text": combined_text},
                 status="pending",
             )
-            self.database.create(item)
+            await self.database.create(item)
             job.total_items = 1
-            self.database.db.commit()
+            await self.database.db.commit()
         elif params.source_type == "text" and params.raw_text:
             item = ImportItem(
                 import_job_id=job.id,
@@ -341,9 +343,9 @@ class StartImport(Endpoint):
                 raw_data={"text": params.raw_text.strip()},
                 status="pending",
             )
-            self.database.create(item)
+            await self.database.create(item)
             job.total_items = 1
-            self.database.db.commit()
+            await self.database.db.commit()
         elif params.source_type == "audio" and params.file_base64:  # pragma: no branch
             import base64
             import tempfile
@@ -360,7 +362,9 @@ class StartImport(Endpoint):
                 audio_path = f.name
 
             try:
-                transcript, cost_cents = transcribe_audio(audio_path)
+                transcript, cost_cents = await run_in_threadpool(
+                    transcribe_audio, audio_path
+                )
             finally:
                 import os
                 os.unlink(audio_path)
@@ -372,10 +376,10 @@ class StartImport(Endpoint):
                 status="pending",
                 ai_cost_cents=cost_cents,
             )
-            self.database.create(item)
+            await self.database.create(item)
             job.total_items = 1
             job.total_ai_cost_cents = cost_cents
-            self.database.db.commit()
+            await self.database.db.commit()
         elif params.source_type == "pdf" and params.file_base64:  # pragma: no branch
             import base64
 
@@ -386,11 +390,13 @@ class StartImport(Endpoint):
             )
 
             file_bytes = base64.b64decode(params.file_base64)
-            pdf_type, page_count = classify_pdf(file_bytes)
+            pdf_type, page_count = await run_in_threadpool(
+                classify_pdf, file_bytes
+            )
 
             if pdf_type.value == "text":
-                text = extract_text_from_pdf(file_bytes)
-                recipes = detect_recipe_boundaries(text)
+                text = await run_in_threadpool(extract_text_from_pdf, file_bytes)
+                recipes = await run_in_threadpool(detect_recipe_boundaries, text)
                 for i, recipe_chunk in enumerate(recipes):
                     item = ImportItem(
                         import_job_id=job.id,
@@ -399,26 +405,33 @@ class StartImport(Endpoint):
                         raw_data={"text": recipe_chunk["text"], "pdf_recipe_title": recipe_chunk.get("title")},
                         status="pending",
                     )
-                    self.database.create(item)
+                    await self.database.create(item)
                 job.total_items = len(recipes)
             else:
                 # Scanned PDF — treat each page as a separate item
+                scanned_text = await run_in_threadpool(
+                    extract_text_from_pdf, file_bytes
+                )
                 item = ImportItem(
                     import_job_id=job.id,
                     source_type="text",
-                    raw_data={"text": extract_text_from_pdf(file_bytes), "is_scanned_pdf": True},
+                    raw_data={"text": scanned_text, "is_scanned_pdf": True},
                     status="pending",
                 )
-                self.database.create(item)
+                await self.database.create(item)
                 job.total_items = 1
-            self.database.db.commit()
+            await self.database.db.commit()
         elif params.source_type == "spreadsheet" and params.file_base64:
             import base64
 
             from utils.services.spreadsheet_parser import parse_spreadsheet
 
             file_bytes = base64.b64decode(params.file_base64)
-            rows = parse_spreadsheet(file_bytes, params.file_name or "file.csv")
+            rows = await run_in_threadpool(
+                parse_spreadsheet,
+                file_bytes,
+                params.file_name or "file.csv",
+            )
             for row_text in rows:
                 item = ImportItem(
                     import_job_id=job.id,
@@ -426,9 +439,9 @@ class StartImport(Endpoint):
                     raw_data={"text": row_text},
                     status="pending",
                 )
-                self.database.create(item)
+                await self.database.create(item)
             job.total_items = len(rows)
-            self.database.db.commit()
+            await self.database.db.commit()
         elif (  # pragma: no branch  # upstream validation ensures one arm of the elif chain always matches
             params.source_type in _S3_KEY_SOURCE_TYPES
             and params.s3_key
@@ -451,15 +464,15 @@ class StartImport(Endpoint):
                     },
                     status="pending",
                 )
-                self.database.create(item)
+                await self.database.create(item)
                 job.total_items = 1
-                self.database.db.commit()
+                await self.database.db.commit()
             except IntegrityError:
                 # Concurrent /import for the same key raced past the
                 # in-endpoint dedupe query; the partial UNIQUE index is
                 # the second line of defense. Roll back the open job +
                 # activity row so we don't leak half-created state.
-                self.database.db.rollback()
+                await self.database.db.rollback()
                 return failure(
                     status=409,
                     error_code=ErrorCode.DUPLICATE_IMPORT.value,
@@ -490,21 +503,24 @@ class StartImport(Endpoint):
             status=201,
         )
 
-    def _find_existing_job(
+    async def _find_existing_job(
         self,
         user_id: str,
         idempotency_key: str,
     ) -> ImportJob | None:
-        return (
-            self.database.db.query(ImportJob)
-            .filter(
+        result = await self.database.db.execute(
+            select(ImportJob)
+            .where(
                 ImportJob.user_id == user_id,
                 ImportJob.idempotency_key == idempotency_key,
             )
-            .first()
+            .limit(1)
         )
+        return result.scalars().first()
 
-    def _validate_s3_key_inputs(self, params: "StartImport.Params", user: User) -> None:
+    async def _validate_s3_key_inputs(
+        self, params: "StartImport.Params", user: User
+    ) -> None:
         """sbf-3: validate s3_key ownership + object readiness + replay.
 
         Runs in this order so the cheapest/clearest failures surface
@@ -526,7 +542,7 @@ class StartImport(Endpoint):
         aws = _get_aws_service()
         bucket = settings.s3_imports_bucket
         try:
-            aws.head_object(s3_key, bucket)
+            await aws.head_object_async(s3_key, bucket)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             if code in ("404", "NoSuchKey", "NotFound"):
@@ -537,9 +553,10 @@ class StartImport(Endpoint):
                 ) from exc
             raise
 
-        existing = self.database.db.query(ImportItem).filter(
-            ImportItem.s3_key == s3_key,
-        ).first()
+        existing_result = await self.database.db.execute(
+            select(ImportItem).where(ImportItem.s3_key == s3_key).limit(1)
+        )
+        existing = existing_result.scalars().first()
         if existing is not None:
             raise APIException(
                 status_code=409,

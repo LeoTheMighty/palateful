@@ -14,10 +14,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from conftest import (
+    MockExecuteResult,
     MockImportItem,
     MockImportJob,
     MockModel,
-    MockQuery,
     MockRecipeBookUser,
 )
 
@@ -62,16 +62,15 @@ def _audit(
     )
 
 
-def _configure_owner(mock_db, mock_user, item, job, *, audit_rows=None):
+def _configure_owner(mock_async_db, mock_user, item, job, *, audit_rows=None):
     """Wire up the ownership + audit-row mocks for a telemetry GET."""
-    from utils.models.error_log import ErrorLog
     from utils.models.import_item import ImportItem
     from utils.models.import_job import ImportJob
     from utils.models.recipe_book_user import RecipeBookUser
 
-    mock_db.set_find_by(ImportItem, item, id=item.id)
-    mock_db.set_find_by(ImportJob, job, id=item.import_job_id)
-    mock_db.set_find_by(
+    mock_async_db.set_find_by(ImportItem, item, id=item.id)
+    mock_async_db.set_find_by(ImportJob, job, id=item.import_job_id)
+    mock_async_db.set_find_by(
         RecipeBookUser,
         MockRecipeBookUser(
             user_id=str(mock_user.id),
@@ -82,19 +81,19 @@ def _configure_owner(mock_db, mock_user, item, job, *, audit_rows=None):
         recipe_book_id=job.recipe_book_id,
     )
 
-    def _query(model):
-        if model is ErrorLog:
-            return MockQuery(audit_rows or [])
-        return MockQuery([])
-
-    mock_db.db.query.side_effect = _query
+    # The telemetry endpoint makes exactly one db.execute call — a
+    # `select(ErrorLog).where(...).order_by(...)` — so a single
+    # return_value is enough. Future audit-row queries would land here.
+    mock_async_db.db.execute.return_value = MockExecuteResult(
+        items=list(audit_rows or [])
+    )
 
 
 class TestTelemetryEndpoint:
     """GET /v1/import-items/{item_id}/telemetry."""
 
     def test_happy_path_rolls_up_started_and_terminal_rows(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id = str(uuid.uuid4())
         job = MockImportJob(user_id=str(mock_user.id))
@@ -134,7 +133,7 @@ class TestTelemetryEndpoint:
                 import_item_id=item_id,
             ),
         ]
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=audit)
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=audit)
 
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
@@ -166,7 +165,7 @@ class TestTelemetryEndpoint:
         assert stages[3]["duration_ms"] is None
 
     def test_empty_telemetry_returns_all_pending(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id = str(uuid.uuid4())
         job = MockImportJob(user_id=str(mock_user.id))
@@ -178,7 +177,7 @@ class TestTelemetryEndpoint:
             status="pending",
         )
 
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=[])
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=[])
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
 
@@ -193,7 +192,7 @@ class TestTelemetryEndpoint:
             assert entry["truncated"] is False
 
     def test_preview_truncation_caps_at_4096_and_sets_flag(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id = str(uuid.uuid4())
         job = MockImportJob(user_id=str(mock_user.id))
@@ -207,7 +206,7 @@ class TestTelemetryEndpoint:
             status="extracting",
         )
 
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=[])
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=[])
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
 
@@ -217,7 +216,7 @@ class TestTelemetryEndpoint:
         assert parsed["truncated"] is True
 
     def test_under_cap_preview_emits_truncated_false(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id = str(uuid.uuid4())
         job = MockImportJob(user_id=str(mock_user.id))
@@ -228,23 +227,23 @@ class TestTelemetryEndpoint:
             parsed_recipe={"name": "R"},
         )
 
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=[])
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=[])
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
         stages = response.json()["stages"]
         assert stages[0]["truncated"] is False
         assert stages[1]["truncated"] is False
 
-    def test_404_when_item_missing(self, client, mock_db, mock_user):
+    def test_404_when_item_missing(self, client, mock_async_db, mock_user):
         item_id = str(uuid.uuid4())
         from utils.models.import_item import ImportItem
 
-        mock_db.set_find_by(ImportItem, None, id=item_id)
+        mock_async_db.set_find_by(ImportItem, None, id=item_id)
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 404
 
     def test_403_when_caller_is_not_owner_or_member(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id = str(uuid.uuid4())
         other_user_id = str(uuid.uuid4())
@@ -260,9 +259,9 @@ class TestTelemetryEndpoint:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=item.import_job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=item.import_job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             None,
             user_id=str(mock_user.id),
@@ -272,7 +271,7 @@ class TestTelemetryEndpoint:
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 403
 
-    def test_404_when_job_missing(self, client, mock_db, mock_user):
+    def test_404_when_job_missing(self, client, mock_async_db, mock_user):
         """Item exists but its parent import_job was dropped — defensive 404
         instead of a 500 from dereferencing `job.recipe_book_id`."""
         item_id = str(uuid.uuid4())
@@ -283,14 +282,14 @@ class TestTelemetryEndpoint:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, None, id=item.import_job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, None, id=item.import_job_id)
 
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 404
 
     def test_parsed_preview_joins_multi_group_list(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Parser-batch imports can land a list of OCR chunks under
         `raw_data.text` (one per page). Preview joins with `\\n---\\n` so
@@ -303,14 +302,14 @@ class TestTelemetryEndpoint:
             raw_data={"text": ["page 1", "page 2", "page 3"]},
             parsed_recipe=None,
         )
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=[])
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=[])
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
         parsed = response.json()["stages"][0]
         assert parsed["raw_output_preview"] == "page 1\n---\npage 2\n---\npage 3"
 
     def test_extracted_preview_none_when_parsed_recipe_unserializable(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """A `parsed_recipe` JSONB that contains a raw bytes payload (or
         otherwise non-JSON-default-encodable object) must fall through to
@@ -330,14 +329,14 @@ class TestTelemetryEndpoint:
             raw_data={},
             parsed_recipe={"bad": _Unserializable()},
         )
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=[])
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=[])
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
         extracted = response.json()["stages"][1]
         assert extracted["raw_output_preview"] is None
 
     def test_extract_status_tolerates_bad_stack_trace_payload(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Audit rows whose `stack_trace` is null, empty, malformed JSON, or
         JSON-but-not-a-dict must not break the rollup — they just contribute
@@ -373,7 +372,7 @@ class TestTelemetryEndpoint:
         rows[1].stack_trace = "not-json"  # malformed
         rows[2].stack_trace = "[1, 2, 3]"  # JSON but not a dict
 
-        _configure_owner(mock_db, mock_user, item, job, audit_rows=rows)
+        _configure_owner(mock_async_db, mock_user, item, job, audit_rows=rows)
         response = client.get(f"/v1/import-items/{item_id}/telemetry")
         assert response.status_code == 200
         # None of the three rows should have contributed a terminal status
@@ -382,7 +381,7 @@ class TestTelemetryEndpoint:
             assert entry["status"] == "pending"
 
     def test_legacy_rows_without_stage_are_filtered_out(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Rows whose `stage` column is still NULL (pre-irrd-2) must not
         poison the telemetry rollup. The model-level `.in_(_STAGE_ORDER)`
@@ -406,7 +405,7 @@ class TestTelemetryEndpoint:
         )
         legacy_row.stage = None  # Simulate a legacy pre-migration row.
         _configure_owner(
-            mock_db,
+            mock_async_db,
             mock_user,
             item,
             job,

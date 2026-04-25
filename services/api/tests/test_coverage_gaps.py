@@ -579,7 +579,7 @@ class TestRestoreRecipeVersionExtended:
         result = _parse_quantity_display("3")
         assert result == Decimal("3.0") or float(result) == pytest.approx(3.0)
 
-    def _setup_restore(self, mock_db, mock_user, snapshot,
+    def _setup_restore(self, mock_async_db, mock_user, snapshot,
                        existing_ingredients=None, existing_steps=None):
         """Helper to set up restore test."""
         recipe_id = "recipe-restore"
@@ -611,20 +611,20 @@ class TestRestoreRecipeVersionExtended:
         mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id), recipe_book_id=book_id)
         mock_async_db.set_find_by(RecipeVersion, version, id=version_id)
-        mock_db.set_where(RecipeIngredient, existing_ingredients or [])
-        mock_db.set_where(RecipeStep, existing_steps or [])
-        mock_db.set_where(RecipeNote, [])
-        mock_db.set_where(RecipeVersion, [])
+        mock_async_db.set_where(RecipeIngredient, existing_ingredients or [])
+        mock_async_db.set_where(RecipeStep, existing_steps or [])
+        mock_async_db.set_where(RecipeNote, [])
+        mock_async_db.set_where(RecipeVersion, [])
 
         return recipe_id, version_id
 
-    def test_restore_with_existing_items_to_delete(self, client, mock_db, mock_async_db, mock_user):
+    def test_restore_with_existing_items_to_delete(self, client, mock_async_db, mock_user):
         """Existing ingredients/steps are deleted before restore (lines 103, 137)."""
         existing_ing = MockRecipeIngredient(recipe_id="recipe-restore")
         existing_step = MockRecipeStep(recipe_id="recipe-restore", step_number=1)
 
         recipe_id, version_id = self._setup_restore(
-            mock_db, mock_user,
+            mock_async_db, mock_user,
             snapshot={
                 "name": "New",
                 "ingredients": [
@@ -638,19 +638,19 @@ class TestRestoreRecipeVersionExtended:
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
         assert response.status_code == 200
 
-    def test_restore_empty_snapshot_no_updates(self, client, mock_db, mock_async_db, mock_user):
+    def test_restore_empty_snapshot_no_updates(self, client, mock_async_db, mock_user):
         """Snapshot without name/instructions skips update (branches 93->95, 95->97, 97->101)."""
         recipe_id, version_id = self._setup_restore(
-            mock_db, mock_user,
+            mock_async_db, mock_user,
             snapshot={},  # no name, no instructions
         )
         response = client.post(f"/v1/recipes/{recipe_id}/versions/{version_id}/restore")
         assert response.status_code == 200
 
-    def test_restore_parse_quantity_failure_in_ingredient(self, client, mock_db, mock_async_db, mock_user):
+    def test_restore_parse_quantity_failure_in_ingredient(self, client, mock_async_db, mock_user):
         """Unparseable quantity falls back to Decimal('1') (lines 110-111)."""
         recipe_id, version_id = self._setup_restore(
-            mock_db, mock_user,
+            mock_async_db, mock_user,
             snapshot={
                 "ingredients": [
                     {"ingredient_id": str(uuid.uuid4()), "quantity_display": "not-a-number!!!", "unit_display": "cups"},
@@ -708,8 +708,8 @@ class TestForkRecipeCloning:
         mock_async_db.set_find_by(RecipeBook, src_book, id=book_id)
 
         # where() returns ingredients and steps
-        mock_db.set_where(RecipeIngredient, [ingredient])
-        mock_db.set_where(RecipeStep, [step])
+        mock_async_db.set_where(RecipeIngredient, [ingredient])
+        mock_async_db.set_where(RecipeStep, [step])
 
         response = client.post(
             f"/v1/recipes/{recipe_id}/fork",
@@ -767,7 +767,9 @@ class TestStartImportExtended:
         assert response.status_code == 400
 
     @patch("api.v1.import_job.start_import.parse_source_task")
-    def test_unsupported_source_type(self, mock_task, client, mock_db, mock_user):
+    def test_unsupported_source_type(
+        self, mock_task, client, mock_db, mock_async_db, mock_user
+    ):
         """Unsupported source_type (line 80)."""
         book_id = "test-book"
         membership = MockRecipeBookUser(

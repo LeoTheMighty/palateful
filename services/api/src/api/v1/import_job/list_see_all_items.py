@@ -28,8 +28,8 @@ from pagination import (
     encode_cursor,
 )
 from pydantic import BaseModel
-from sqlalchemy import or_, text, tuple_
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import or_, select, text, tuple_
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -41,18 +41,18 @@ _TERMINAL_STATUSES = ("completed", "skipped")
 _NEG_INF = text("'-infinity'::timestamptz")
 
 
-class ListSeeAllImportItems(Endpoint):
+class ListSeeAllImportItems(AsyncEndpoint):
     """Paginated list of items eligible for the Imports See-all footer."""
 
-    def execute(self, limit: int = 50, cursor: str | None = None):
+    async def execute(self, limit: int = 50, cursor: str | None = None):
         user: User = self.user
         limit = max(1, min(limit, _MAX_LIMIT))
         cutoff = datetime.now(UTC) - timedelta(days=_OLDER_THAN_DAYS)
 
-        query = (
-            self.database.db.query(ImportItem, ImportJob.source_type)
+        stmt = (
+            select(ImportItem, ImportJob.source_type)
             .join(ImportJob, ImportItem.import_job_id == ImportJob.id)
-            .filter(
+            .where(
                 ImportJob.user_id == user.id,
                 or_(
                     ImportItem.archived_at.isnot(None),
@@ -80,7 +80,7 @@ class ListSeeAllImportItems(Endpoint):
                 if cur_arch_ms is None
                 else datetime.fromtimestamp(cur_arch_ms / 1000, tz=UTC)
             )
-            query = query.filter(
+            stmt = stmt.where(
                 tuple_(
                     text(
                         "COALESCE(import_items.archived_at, "
@@ -92,7 +92,7 @@ class ListSeeAllImportItems(Endpoint):
                 < tuple_(cur_arch_ts, cur_created, cur_id)
             )
 
-        query = query.order_by(
+        stmt = stmt.order_by(
             text(
                 "COALESCE(import_items.archived_at, "
                 "'-infinity'::timestamptz) DESC"
@@ -101,7 +101,8 @@ class ListSeeAllImportItems(Endpoint):
             ImportItem.id.desc(),
         ).limit(limit + 1)
 
-        rows = query.all()
+        rows_result = await self.database.db.execute(stmt)
+        rows = list(rows_result.all())
         has_more = len(rows) > limit
         rows = rows[:limit]
 

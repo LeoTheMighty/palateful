@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -27,10 +27,10 @@ def _normalize_user_edits_units(user_edits: dict, session) -> dict:
     return user_edits
 
 
-class UpdateImportItem(Endpoint):
+class UpdateImportItem(AsyncEndpoint):
     """Update import item with user edits."""
 
-    def execute(self, item_id: str, params: "UpdateImportItem.Params"):
+    async def execute(self, item_id: str, params: "UpdateImportItem.Params"):
         """
         Update import item with user edits.
 
@@ -44,7 +44,7 @@ class UpdateImportItem(Endpoint):
         user: User = self.user
 
         # Load import item
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -53,7 +53,7 @@ class UpdateImportItem(Endpoint):
             )
 
         # Load job for access check
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -62,7 +62,7 @@ class UpdateImportItem(Endpoint):
             )
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -88,7 +88,7 @@ class UpdateImportItem(Endpoint):
         item.user_edits = _normalize_user_edits_units(
             dict(params.user_edits), self.database.db
         )
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=UpdateImportItem.Response(

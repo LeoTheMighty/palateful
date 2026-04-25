@@ -1364,7 +1364,7 @@ development_status:
   aam-15-pantry-domain-async: done
   aam-16-activity-domain-async: done
   aam-17-search-domain-async: done
-  aam-18-import-job-domain-async: in-progress
+  aam-18-import-job-domain-async: done
   aam-19-user-profile-push-tokens-async: done
   aam-20-admin-domain-async: done
   aam-21-misc-small-routers-async: done

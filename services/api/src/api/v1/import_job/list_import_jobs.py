@@ -9,8 +9,8 @@ from pagination import (
     encode_cursor,
 )
 from pydantic import BaseModel
-from sqlalchemy import text, tuple_
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select, text, tuple_
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_job import ImportJob
 from utils.models.user import User
@@ -19,10 +19,10 @@ _MAX_LIMIT = 100
 _NEG_INF = text("'-infinity'::timestamptz")
 
 
-class ListImportJobs(Endpoint):
+class ListImportJobs(AsyncEndpoint):
     """List all import jobs for the current user."""
 
-    def execute(
+    async def execute(
         self,
         status: str | None = None,
         limit: int = 20,
@@ -63,17 +63,15 @@ class ListImportJobs(Endpoint):
             )
         limit = max(1, min(limit, _MAX_LIMIT))
 
-        query = self.database.db.query(ImportJob).filter(
-            ImportJob.user_id == user.id
-        )
+        stmt = select(ImportJob).where(ImportJob.user_id == user.id)
 
         if status:
-            query = query.filter(ImportJob.status == status)
+            stmt = stmt.where(ImportJob.status == status)
 
         if archived_only:
-            query = query.filter(ImportJob.archived_at.isnot(None))
+            stmt = stmt.where(ImportJob.archived_at.isnot(None))
         elif not include_archived:
-            query = query.filter(ImportJob.archived_at.is_(None))
+            stmt = stmt.where(ImportJob.archived_at.is_(None))
 
         see_all_mode = include_archived or archived_only
 
@@ -93,7 +91,7 @@ class ListImportJobs(Endpoint):
                     if cur_arch_ms is None
                     else datetime.fromtimestamp(cur_arch_ms / 1000, tz=UTC)
                 )
-                query = query.filter(
+                stmt = stmt.where(
                     tuple_(
                         text(
                             "COALESCE(import_jobs.archived_at, "
@@ -105,15 +103,21 @@ class ListImportJobs(Endpoint):
                     < tuple_(cur_arch_ts, cur_created, cur_id)
                 )
             else:
-                query = query.filter(
+                stmt = stmt.where(
                     tuple_(ImportJob.created_at, ImportJob.id)
                     < tuple_(cur_created, cur_id)
                 )
 
-        total = query.count() if cursor is None else 0
+        if cursor is None:
+            total_result = await self.database.db.execute(
+                select(func.count()).select_from(stmt.subquery())
+            )
+            total = int(total_result.scalar_one())
+        else:
+            total = 0
 
         if see_all_mode:
-            query = query.order_by(
+            stmt = stmt.order_by(
                 text(
                     "COALESCE(import_jobs.archived_at, "
                     "'-infinity'::timestamptz) DESC"
@@ -122,16 +126,20 @@ class ListImportJobs(Endpoint):
                 ImportJob.id.desc(),
             )
         else:
-            query = query.order_by(
+            stmt = stmt.order_by(
                 ImportJob.created_at.desc(), ImportJob.id.desc()
             )
 
         if cursor is not None:
-            rows = query.limit(limit + 1).all()
+            rows_result = await self.database.db.execute(stmt.limit(limit + 1))
+            rows = list(rows_result.scalars().all())
             has_more = len(rows) > limit
             jobs = rows[:limit]
         else:
-            jobs = query.offset(offset).limit(limit).all()
+            jobs_result = await self.database.db.execute(
+                stmt.offset(offset).limit(limit)
+            )
+            jobs = list(jobs_result.scalars().all())
             has_more = offset + len(jobs) < total
 
         job_responses = []

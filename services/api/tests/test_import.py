@@ -9,17 +9,32 @@ from conftest import (
     MockExecuteResult,
     MockImportItem,
     MockImportJob,
-    MockQuery,
     MockRecipeBook,
     MockRecipeBookUser,
 )
+
+
+def _paginated(items, total=None):
+    """Build a side_effect for list endpoints that do count + rows.
+
+    The cursor=None path of `list_import_jobs` / `list_import_items` /
+    `list_see_all_items` runs `select(func.count())` followed by the
+    actual `select(Model)`. Tests pass the list of expected rows; this
+    helper expands to the matching `[count_result, rows_result]`.
+    """
+    if total is None:
+        total = len(items)
+    return [
+        MockExecuteResult(items=[total]),
+        MockExecuteResult(items=items),
+    ]
 
 
 class TestStartImport:
     """Tests for POST /v1/recipe-books/{book_id}/import."""
 
     @patch("api.v1.import_job.start_import.parse_source_task")
-    def test_start_import_success(self, mock_task, client, mock_db, mock_user):
+    def test_start_import_success(self, mock_task, client, mock_async_db, mock_user):
         """Test starting an import job."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -32,10 +47,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
 
@@ -48,7 +63,7 @@ class TestStartImport:
         )
         assert response.status_code == 201
 
-    def test_start_import_no_access(self, client, mock_db, mock_user):
+    def test_start_import_no_access(self, client, mock_async_db, mock_user):
         """Test starting import without access."""
         response = client.post(
             "/v1/recipe-books/no-access/import",
@@ -61,7 +76,7 @@ class TestStartImport:
 
 
     @patch("api.v1.import_job.start_import.parse_source_task")
-    def test_start_import_photo_success(self, mock_task, client, mock_db, mock_user):
+    def test_start_import_photo_success(self, mock_task, client, mock_async_db, mock_user):
         """Test starting a photo import job."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -74,10 +89,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
 
@@ -93,7 +108,7 @@ class TestStartImport:
         assert data["source_type"] == "photo"
 
     @patch("api.v1.import_job.start_import.parse_source_task")
-    def test_start_import_url_list_success(self, mock_task, client, mock_db, mock_user):
+    def test_start_import_url_list_success(self, mock_task, client, mock_async_db, mock_user):
         """Test starting a URL list import job."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -106,10 +121,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
 
@@ -129,7 +144,7 @@ class TestStartImport:
         assert data["source_type"] == "url_list"
         assert data["total_items"] == 3
 
-    def test_start_import_url_list_empty(self, client, mock_db, mock_user):
+    def test_start_import_url_list_empty(self, client, mock_async_db, mock_user):
         """Test URL list import with empty URLs."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -142,10 +157,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -156,7 +171,7 @@ class TestStartImport:
         )
         assert response.status_code == 400
 
-    def test_start_import_photo_no_texts(self, client, mock_db, mock_user):
+    def test_start_import_photo_no_texts(self, client, mock_async_db, mock_user):
         """Test photo import without OCR texts."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -169,10 +184,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -185,7 +200,7 @@ class TestStartImport:
 
 
     @patch("api.v1.import_job.start_import.parse_source_task")
-    def test_start_import_text_success(self, mock_task, client, mock_db, mock_user):
+    def test_start_import_text_success(self, mock_task, client, mock_async_db, mock_user):
         """Test starting a text paste import job (lines 80-93, 147-156)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -198,10 +213,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
 
@@ -217,7 +232,7 @@ class TestStartImport:
         assert data["source_type"] == "text"
         assert data["total_items"] == 1
 
-    def test_start_import_text_missing_text(self, client, mock_db, mock_user):
+    def test_start_import_text_missing_text(self, client, mock_async_db, mock_user):
         """Test text import without raw_text (line 81)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -230,10 +245,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -241,7 +256,7 @@ class TestStartImport:
         )
         assert response.status_code == 400
 
-    def test_start_import_text_empty_text(self, client, mock_db, mock_user):
+    def test_start_import_text_empty_text(self, client, mock_async_db, mock_user):
         """Test text import with empty raw_text (line 81 — whitespace only)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -254,10 +269,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -265,7 +280,7 @@ class TestStartImport:
         )
         assert response.status_code == 400
 
-    def test_start_import_text_too_long(self, client, mock_db, mock_user):
+    def test_start_import_text_too_long(self, client, mock_async_db, mock_user):
         """Test text import with text exceeding max length (line 87)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -278,10 +293,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -290,7 +305,7 @@ class TestStartImport:
         assert response.status_code == 400
 
 
-    def test_start_import_spreadsheet_missing_fields(self, client, mock_db, mock_user):
+    def test_start_import_spreadsheet_missing_fields(self, client, mock_async_db, mock_user):
         """Test spreadsheet import without file_base64/file_name (line 95-100)."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -303,10 +318,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -316,7 +331,7 @@ class TestStartImport:
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("utils.services.spreadsheet_parser.parse_spreadsheet")
-    def test_start_import_spreadsheet_success(self, mock_parse, mock_task, client, mock_db, mock_user):
+    def test_start_import_spreadsheet_success(self, mock_parse, mock_task, client, mock_async_db, mock_user):
         """Test starting a spreadsheet import job (lines 94-101, 165-181)."""
         import base64
 
@@ -331,10 +346,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
         mock_parse.return_value = ["Recipe 1: flour, sugar", "Recipe 2: eggs, butter"]
@@ -354,7 +369,7 @@ class TestStartImport:
         assert data["source_type"] == "spreadsheet"
         assert data["total_items"] == 2
 
-    def test_start_import_audio_missing_fields(self, client, mock_db, mock_user):
+    def test_start_import_audio_missing_fields(self, client, mock_async_db, mock_user):
         """Test audio import without file_base64/file_name."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -367,10 +382,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -378,7 +393,7 @@ class TestStartImport:
         )
         assert response.status_code == 400
 
-    def test_start_import_pdf_missing_fields(self, client, mock_db, mock_user):
+    def test_start_import_pdf_missing_fields(self, client, mock_async_db, mock_user):
         """Test PDF import without file_base64/file_name."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -391,10 +406,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -405,7 +420,7 @@ class TestStartImport:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import.transcribe_audio", create=True)
     @patch("utils.services.recipe_extractors.audio_extractor.transcribe_audio")
-    def test_start_import_audio_success(self, mock_transcribe, _mock_transcribe2, mock_task, client, mock_db, mock_user):
+    def test_start_import_audio_success(self, mock_transcribe, _mock_transcribe2, mock_task, client, mock_async_db, mock_user):
         """Test starting an audio import job — transcribe_audio path."""
         import base64
 
@@ -420,10 +435,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
         mock_transcribe.return_value = ("Two cups of flour, one cup of sugar.", 5)
@@ -447,7 +462,7 @@ class TestStartImport:
     @patch("utils.services.recipe_extractors.pdf_extractor.classify_pdf")
     @patch("utils.services.recipe_extractors.pdf_extractor.extract_text_from_pdf")
     @patch("utils.services.recipe_extractors.pdf_extractor.detect_recipe_boundaries")
-    def test_start_import_pdf_text_success(self, mock_boundaries, mock_extract, mock_classify, mock_task, client, mock_db, mock_user):
+    def test_start_import_pdf_text_success(self, mock_boundaries, mock_extract, mock_classify, mock_task, client, mock_async_db, mock_user):
         """Test starting a text-based PDF import job."""
         import base64
         from enum import Enum
@@ -463,10 +478,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
 
@@ -497,7 +512,7 @@ class TestStartImport:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("utils.services.recipe_extractors.pdf_extractor.classify_pdf")
     @patch("utils.services.recipe_extractors.pdf_extractor.extract_text_from_pdf")
-    def test_start_import_pdf_scanned_success(self, mock_extract, mock_classify, mock_task, client, mock_db, mock_user):
+    def test_start_import_pdf_scanned_success(self, mock_extract, mock_classify, mock_task, client, mock_async_db, mock_user):
         """Test starting a scanned PDF import job."""
         import base64
         from enum import Enum
@@ -513,10 +528,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
 
@@ -542,7 +557,7 @@ class TestStartImport:
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import.detect_platform")
-    def test_start_import_url_social_platform_label(self, mock_detect, mock_task, client, mock_db, mock_user):
+    def test_start_import_url_social_platform_label(self, mock_detect, mock_task, client, mock_async_db, mock_user):
         """Test URL import with social media platform enriches the activity label."""
         book_id = "test-book-id"
         book = MockRecipeBook(id=book_id)
@@ -556,10 +571,10 @@ class TestStartImport:
         from utils.models.recipe_book import RecipeBook
         from utils.services.url_classifier import SocialPlatform
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         mock_task.delay.return_value = None
         mock_detect.return_value = SocialPlatform.TIKTOK
@@ -575,7 +590,7 @@ class TestStartImport:
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     def test_start_import_url_truncates_long_source_filename(
-        self, mock_task, client, mock_db, mock_user
+        self, mock_task, client, mock_async_db, mock_user
     ):
         """NYT/Substack tracking URLs overflow ImportJob.source_filename's
         VARCHAR(255). Truncation must happen before insert so the job
@@ -593,10 +608,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                             user_id=str(mock_user.id),
                             recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
         mock_task.delay.return_value = None
 
         long_url = "https://nl.nytimes.com/f/cooking/" + ("x" * 500)
@@ -604,11 +619,11 @@ class TestStartImport:
 
         created: list = []
 
-        def _capture(model):
+        async def _capture(model):
             created.append(model)
             return model
 
-        mock_db.create = MagicMock(side_effect=_capture)
+        mock_async_db.create = _capture
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -624,7 +639,7 @@ class TestStartImport:
         assert jobs[0].source_filename == long_url[:255]
 
     def test_start_import_idempotency_replay_returns_existing(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Replay with same idempotency_key returns the existing job (200)."""
         book_id = "test-book-id"
@@ -635,7 +650,7 @@ class TestStartImport:
             source_type="url",
             idempotency_key=key,
         )
-        mock_db.db.query.return_value = MockQuery([existing])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[existing])
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -650,7 +665,7 @@ class TestStartImport:
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     def test_start_import_idempotency_first_call_creates_job(
-        self, mock_task, client, mock_db, mock_user
+        self, mock_task, client, mock_async_db, mock_user
     ):
         """New idempotency_key: pre-check misses, job is created normally."""
         book_id = "test-book-id"
@@ -664,10 +679,10 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
         mock_task.delay.return_value = None
 
         response = client.post(
@@ -681,7 +696,7 @@ class TestStartImport:
         assert response.status_code == 201
 
     def test_start_import_idempotency_race_returns_winner(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """IntegrityError on insert → endpoint returns the winning job."""
         from unittest.mock import MagicMock
@@ -704,18 +719,20 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
         # Pre-check misses (empty), create raises IntegrityError, recovery
         # lookup finds the concurrent winner.
-        query_results = iter([MockQuery([]), MockQuery([winner])])
-        mock_db.db.query.side_effect = lambda *a, **kw: next(query_results)
-        mock_db.create = MagicMock(
-            side_effect=IntegrityError("INSERT", {}, Exception())
-        )
+        query_results = iter([MockExecuteResult(items=[]), MockExecuteResult(items=[winner])])
+        mock_async_db.db.execute.side_effect = lambda *a, **kw: next(query_results)
+
+        async def _raise_integrity(model):
+            raise IntegrityError("INSERT", {}, Exception())
+
+        mock_async_db.create = _raise_integrity
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -729,7 +746,7 @@ class TestStartImport:
         assert response.json()["id"] == str(winner.id)
 
     def test_start_import_integrity_error_without_idempotency_key_reraises(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """IntegrityError with no idempotency_key bubbles up as a 500."""
         from unittest.mock import MagicMock
@@ -745,13 +762,15 @@ class TestStartImport:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.recipe_book import RecipeBook
 
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
-        mock_db.create = MagicMock(
-            side_effect=IntegrityError("INSERT", {}, Exception())
-        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        async def _raise_integrity(model):
+            raise IntegrityError("INSERT", {}, Exception())
+
+        mock_async_db.create = _raise_integrity
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -766,10 +785,14 @@ class TestStartImport:
 class TestListImportJobs:
     """Tests for GET /v1/import-jobs."""
 
-    def test_list_import_jobs_success(self, client, mock_db, mock_user):
+    def test_list_import_jobs_success(self, client, mock_async_db, mock_user):
         job1 = MockImportJob(user_id=str(mock_user.id), status="completed")
         job2 = MockImportJob(user_id=str(mock_user.id), status="pending")
-        mock_db.db.query.return_value = MockQuery([job1, job2])
+        # Offset-paginated path: first execute is the count, second is the rows.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[2]),
+            MockExecuteResult(items=[job1, job2]),
+        ]
 
         response = client.get("/v1/import-jobs")
         assert response.status_code == 200
@@ -779,10 +802,13 @@ class TestListImportJobs:
         assert data["has_more"] is False
 
     def test_list_import_jobs_with_status_filter(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         job = MockImportJob(user_id=str(mock_user.id), status="completed")
-        mock_db.db.query.return_value = MockQuery([job])
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[1]),
+            MockExecuteResult(items=[job]),
+        ]
 
         response = client.get("/v1/import-jobs?status=completed&limit=10&offset=0")
         assert response.status_code == 200
@@ -790,8 +816,11 @@ class TestListImportJobs:
         assert data["total"] == 1
         assert data["jobs"][0]["status"] == "completed"
 
-    def test_list_import_jobs_empty(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_list_import_jobs_empty(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
         response = client.get("/v1/import-jobs")
         assert response.status_code == 200
         data = response.json()
@@ -803,7 +832,7 @@ class TestListImportJobs:
 class TestGetImportJob:
     """Tests for GET /v1/import-jobs/{job_id}."""
 
-    def test_get_import_job_success(self, client, mock_db, mock_user):
+    def test_get_import_job_success(self, client, mock_async_db, mock_user):
         """Test getting an import job."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -815,19 +844,19 @@ class TestGetImportJob:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.get(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == job_id
 
-    def test_get_import_job_not_found(self, client, mock_db, mock_user):
+    def test_get_import_job_not_found(self, client, mock_async_db, mock_user):
         """Test getting a nonexistent import job."""
         response = client.get("/v1/import-jobs/nonexistent")
         assert response.status_code == 404
 
-    def test_get_import_job_access_denied(self, client, mock_db, mock_user):
+    def test_get_import_job_access_denied(self, client, mock_async_db, mock_user):
         """Test getting a job when user has no membership and is not the job owner."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -839,13 +868,13 @@ class TestGetImportJob:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         # No membership set, and job.user_id != mock_user.id
 
         response = client.get(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 403
 
-    def test_get_import_job_access_via_membership(self, client, mock_db, mock_user):
+    def test_get_import_job_access_via_membership(self, client, mock_async_db, mock_user):
         """Test getting a job when user has membership but is not the job owner."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -863,15 +892,15 @@ class TestGetImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.get(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 200
 
-    def test_get_import_job_access_as_job_owner_no_membership(self, client, mock_db, mock_user):
+    def test_get_import_job_access_as_job_owner_no_membership(self, client, mock_async_db, mock_user):
         """Test getting a job when user is the job owner but has no membership."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -883,7 +912,7 @@ class TestGetImportJob:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         # No membership set, but job.user_id == mock_user.id
 
         response = client.get(f"/v1/import-jobs/{job_id}")
@@ -893,7 +922,7 @@ class TestGetImportJob:
 class TestCancelImportJob:
     """Tests for DELETE /v1/import-jobs/{job_id}."""
 
-    def test_cancel_import_job_success(self, client, mock_db, mock_user):
+    def test_cancel_import_job_success(self, client, mock_async_db, mock_user):
         """Test cancelling an import job."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -912,8 +941,8 @@ class TestCancelImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -923,12 +952,12 @@ class TestCancelImportJob:
         assert data["status"] == "cancelled"
         assert data["completed_at"] is not None
 
-    def test_cancel_import_job_not_found(self, client, mock_db):
+    def test_cancel_import_job_not_found(self, client, mock_async_db):
         """Test cancelling a nonexistent import job."""
         response = client.delete("/v1/import-jobs/nonexistent")
         assert response.status_code == 404
 
-    def test_cancel_import_job_no_membership(self, client, mock_db, mock_user):
+    def test_cancel_import_job_no_membership(self, client, mock_async_db, mock_user):
         """Test cancelling a job with no membership and not the job owner."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -941,13 +970,13 @@ class TestCancelImportJob:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         # No membership set and job.user_id != mock_user.id
 
         response = client.delete(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 403
 
-    def test_cancel_import_job_not_owner_role_but_is_job_starter(self, client, mock_db, mock_user):
+    def test_cancel_import_job_not_owner_role_but_is_job_starter(self, client, mock_async_db, mock_user):
         """Test cancelling: user is not owner role, but is the user who started the job."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -966,8 +995,8 @@ class TestCancelImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -975,7 +1004,7 @@ class TestCancelImportJob:
         assert response.status_code == 200
         assert response.json()["status"] == "cancelled"
 
-    def test_cancel_import_job_editor_not_job_starter(self, client, mock_db, mock_user):
+    def test_cancel_import_job_editor_not_job_starter(self, client, mock_async_db, mock_user):
         """Test cancelling: user has editor role but did not start the job."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -994,15 +1023,15 @@ class TestCancelImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.delete(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 403
 
-    def test_cancel_import_job_already_completed(self, client, mock_db, mock_user):
+    def test_cancel_import_job_already_completed(self, client, mock_async_db, mock_user):
         """Test cancelling an already completed job."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1021,15 +1050,15 @@ class TestCancelImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.delete(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 400
 
-    def test_cancel_import_job_already_cancelled(self, client, mock_db, mock_user):
+    def test_cancel_import_job_already_cancelled(self, client, mock_async_db, mock_user):
         """Test cancelling an already cancelled job."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1048,15 +1077,15 @@ class TestCancelImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.delete(f"/v1/import-jobs/{job_id}")
         assert response.status_code == 400
 
-    def test_cancel_import_job_awaiting_review(self, client, mock_db, mock_user):
+    def test_cancel_import_job_awaiting_review(self, client, mock_async_db, mock_user):
         """Test cancelling a job in awaiting_review status succeeds."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1075,8 +1104,8 @@ class TestCancelImportJob:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -1088,7 +1117,7 @@ class TestCancelImportJob:
 class TestListImportItems:
     """Tests for GET /v1/import-jobs/{job_id}/items."""
 
-    def test_list_import_items_success(self, client, mock_db, mock_user):
+    def test_list_import_items_success(self, client, mock_async_db, mock_user):
         """Test listing import items."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1100,8 +1129,8 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -1110,12 +1139,12 @@ class TestListImportItems:
         assert data["total"] == 0
         assert data["has_more"] is False
 
-    def test_list_import_items_not_found(self, client, mock_db, mock_user):
+    def test_list_import_items_not_found(self, client, mock_async_db, mock_user):
         """Test listing items for a nonexistent job."""
         response = client.get("/v1/import-jobs/nonexistent/items")
         assert response.status_code == 404
 
-    def test_list_import_items_include_archived_true(self, client, mock_db, mock_user):
+    def test_list_import_items_include_archived_true(self, client, mock_async_db, mock_user):
         """include_archived=true flips off the archived_at IS NULL filter."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1127,13 +1156,13 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items?include_archived=true")
         assert response.status_code == 200
 
-    def test_list_import_items_access_denied(self, client, mock_db, mock_user):
+    def test_list_import_items_access_denied(self, client, mock_async_db, mock_user):
         """Test listing items when user has no access."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1145,12 +1174,12 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 403
 
-    def test_list_import_items_with_status_filter(self, client, mock_db, mock_user):
+    def test_list_import_items_with_status_filter(self, client, mock_async_db, mock_user):
         """Test listing items with a status filter."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1162,13 +1191,13 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items?status=awaiting_review")
         assert response.status_code == 200
 
-    def test_list_import_items_with_parsed_recipe(self, client, mock_db, mock_user):
+    def test_list_import_items_with_parsed_recipe(self, client, mock_async_db, mock_user):
         """Test listing items that have parsed_recipe data."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1185,8 +1214,8 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([item])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -1196,7 +1225,7 @@ class TestListImportItems:
         assert data["items"][0]["needs_review"] is True  # status is awaiting_review
         assert data["total"] == 1
 
-    def test_list_import_items_with_needs_review_ingredient(self, client, mock_db, mock_user):
+    def test_list_import_items_with_needs_review_ingredient(self, client, mock_async_db, mock_user):
         """Test listing items where an ingredient needs review."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1219,15 +1248,15 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([item])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
         data = response.json()
         assert data["items"][0]["needs_review"] is True
 
-    def test_list_import_items_surfaces_confidence_fields(self, client, mock_db, mock_user):
+    def test_list_import_items_surfaces_confidence_fields(self, client, mock_async_db, mock_user):
         """irrd-3 AC6: confidence_score + confidence_source hoist onto summary rows."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1249,8 +1278,8 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([item])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -1259,7 +1288,7 @@ class TestListImportItems:
         assert data["items"][0]["confidence_source"] == "heuristic"
 
     def test_list_import_items_surfaces_created_recipe_id(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """created_recipe_id is emitted on list rows so the app can link
         Auto-Imported rows to their recipe. Without this, every completed
@@ -1286,8 +1315,8 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([with_recipe, without_recipe])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([with_recipe, without_recipe])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -1295,7 +1324,7 @@ class TestListImportItems:
         assert data["items"][0]["created_recipe_id"] == recipe_id
         assert data["items"][1]["created_recipe_id"] is None
 
-    def test_list_import_items_no_needs_review(self, client, mock_db, mock_user):
+    def test_list_import_items_no_needs_review(self, client, mock_async_db, mock_user):
         """Test listing items where no ingredient needs review and status is not awaiting_review."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1317,15 +1346,15 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([item])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
         data = response.json()
         assert data["items"][0]["needs_review"] is False
 
-    def test_list_import_items_without_parsed_recipe(self, client, mock_db, mock_user):
+    def test_list_import_items_without_parsed_recipe(self, client, mock_async_db, mock_user):
         """Test listing items that have no parsed_recipe (None)."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1342,8 +1371,8 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([item])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -1351,7 +1380,7 @@ class TestListImportItems:
         assert data["items"][0]["recipe_name"] is None
         assert data["items"][0]["needs_review"] is False
 
-    def test_list_import_items_access_via_membership(self, client, mock_db, mock_user):
+    def test_list_import_items_access_via_membership(self, client, mock_async_db, mock_user):
         """Test listing items when user has membership but is not job owner."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1369,16 +1398,16 @@ class TestListImportItems:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
 
-    def test_list_import_items_has_more(self, client, mock_db, mock_user):
+    def test_list_import_items_has_more(self, client, mock_async_db, mock_user):
         """Test listing items with has_more pagination indicator."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1396,7 +1425,7 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         # MockQuery returns all items for both count() and all()
         # so has_more = offset + len(items) < total = 0 + 2 < 2 = False
         # To test has_more=True, we need count > len(returned items)
@@ -1404,7 +1433,7 @@ class TestListImportItems:
         # We can still test with offset: offset=1, total=2, returned=2 -> 1+2=3 > 2, no
         # Actually with MockQuery, offset/limit don't actually filter.
         # Let's just verify the logic is exercised.
-        mock_db.db.query.return_value = MockQuery(items)
+        mock_async_db.db.execute.side_effect = _paginated(items)
 
         response = client.get(f"/v1/import-jobs/{job_id}/items?limit=1&offset=0")
         assert response.status_code == 200
@@ -1412,7 +1441,7 @@ class TestListImportItems:
         # MockQuery doesn't actually paginate, so total=2, items=2, has_more = 0+2<2 = False
         assert data["total"] == 2
 
-    def test_list_import_items_with_error_message(self, client, mock_db, mock_user):
+    def test_list_import_items_with_error_message(self, client, mock_async_db, mock_user):
         """Test listing items with error information."""
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -1430,8 +1459,8 @@ class TestListImportItems:
 
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.db.execute.side_effect = _paginated([item])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -1442,7 +1471,7 @@ class TestListImportItems:
 class TestListImportItemsCursor:
     """afh-1b: cursor pagination on GET /v1/import-jobs/{job_id}/items."""
 
-    def _setup_job(self, mock_db, mock_user, job_id="job-cursor-test"):
+    def _setup_job(self, mock_async_db, mock_user, job_id="job-cursor-test"):
         from utils.models.import_job import ImportJob
 
         job = MockImportJob(
@@ -1450,14 +1479,14 @@ class TestListImportItemsCursor:
             user_id=str(mock_user.id),
             recipe_book_id="book-id",
         )
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         return job_id
 
     def test_cursor_and_offset_both_present_returns_400(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        job_id = self._setup_job(mock_db, mock_user)
-        mock_db.db.query.return_value = MockQuery([])
+        job_id = self._setup_job(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.get(
             f"/v1/import-jobs/{job_id}/items?cursor=abc&offset=5"
@@ -1468,9 +1497,9 @@ class TestListImportItemsCursor:
             == "cursor_and_offset_mutually_exclusive"
         )
 
-    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
-        job_id = self._setup_job(mock_db, mock_user)
-        mock_db.db.query.return_value = MockQuery([])
+    def test_invalid_cursor_returns_400(self, client, mock_async_db, mock_user):
+        job_id = self._setup_job(mock_async_db, mock_user)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.get(
             f"/v1/import-jobs/{job_id}/items?cursor=%21%21%21%21"
@@ -1478,15 +1507,15 @@ class TestListImportItemsCursor:
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
-    def test_cursor_default_mode_decodes(self, client, mock_db, mock_user):
+    def test_cursor_default_mode_decodes(self, client, mock_async_db, mock_user):
         import uuid as _uuid
 
         from pagination import encode_cursor
 
-        job_id = self._setup_job(mock_db, mock_user)
+        job_id = self._setup_job(mock_async_db, mock_user)
         cursor = encode_cursor(None, 1_700_000_000_000, str(_uuid.uuid4()))
         item = MockImportItem(import_job_id=job_id, status="succeeded")
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[item])
 
         response = client.get(
             f"/v1/import-jobs/{job_id}/items?cursor={cursor}"
@@ -1497,14 +1526,14 @@ class TestListImportItemsCursor:
         assert body["total"] == 0
 
     def test_cursor_see_all_mode_with_archived_at(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         import uuid as _uuid
         from datetime import UTC, datetime
 
         from pagination import encode_cursor
 
-        job_id = self._setup_job(mock_db, mock_user)
+        job_id = self._setup_job(mock_async_db, mock_user)
         cursor = encode_cursor(
             1_700_000_000_000, 1_699_000_000_000, str(_uuid.uuid4())
         )
@@ -1513,7 +1542,7 @@ class TestListImportItemsCursor:
             status="succeeded",
             archived_at=datetime(2025, 6, 1, tzinfo=UTC),
         )
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[item])
 
         response = client.get(
             f"/v1/import-jobs/{job_id}/items"
@@ -1522,15 +1551,15 @@ class TestListImportItemsCursor:
         assert response.status_code == 200
 
     def test_cursor_see_all_mode_with_null_archived_at_cursor(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         import uuid as _uuid
 
         from pagination import encode_cursor
 
-        job_id = self._setup_job(mock_db, mock_user)
+        job_id = self._setup_job(mock_async_db, mock_user)
         cursor = encode_cursor(None, 1_699_000_000_000, str(_uuid.uuid4()))
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.get(
             f"/v1/import-jobs/{job_id}/items"
@@ -1539,14 +1568,14 @@ class TestListImportItemsCursor:
         assert response.status_code == 200
 
     def test_next_cursor_present_when_more_results(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        job_id = self._setup_job(mock_db, mock_user)
+        job_id = self._setup_job(mock_async_db, mock_user)
         items = [
             MockImportItem(import_job_id=job_id, status="succeeded")
             for _ in range(60)
         ]
-        mock_db.db.query.return_value = MockQuery(items)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=items)
 
         # Provide a cursor so the cursor-path runs with limit+1 detection.
         from pagination import encode_cursor
@@ -1563,13 +1592,13 @@ class TestListImportItemsCursor:
         assert 'rel="next"' in link
 
     def test_see_all_next_cursor_encodes_archived_at(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from datetime import UTC, datetime
 
         from pagination import encode_cursor
 
-        job_id = self._setup_job(mock_db, mock_user)
+        job_id = self._setup_job(mock_async_db, mock_user)
         items = [
             MockImportItem(
                 import_job_id=job_id,
@@ -1578,7 +1607,7 @@ class TestListImportItemsCursor:
             )
             for i in range(60)
         ]
-        mock_db.db.query.return_value = MockQuery(items)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=items)
         cursor = encode_cursor(
             1_750_000_000_000, 1_700_000_000_000, "seed"
         )
@@ -1594,9 +1623,9 @@ class TestListImportJobsCursor:
     """afh-1b: cursor pagination on GET /v1/import-jobs."""
 
     def test_cursor_and_offset_both_present_returns_400(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-jobs?cursor=abc&offset=5")
         assert response.status_code == 400
         assert (
@@ -1604,26 +1633,26 @@ class TestListImportJobsCursor:
             == "cursor_and_offset_mutually_exclusive"
         )
 
-    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_invalid_cursor_returns_400(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-jobs?cursor=%21%21%21%21")
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
-    def test_cursor_default_mode_decodes(self, client, mock_db, mock_user):
+    def test_cursor_default_mode_decodes(self, client, mock_async_db, mock_user):
         import uuid as _uuid
 
         from pagination import encode_cursor
 
         cursor = encode_cursor(None, 1_700_000_000_000, str(_uuid.uuid4()))
         job = MockImportJob(user_id=str(mock_user.id))
-        mock_db.db.query.return_value = MockQuery([job])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[job])
 
         response = client.get(f"/v1/import-jobs?cursor={cursor}")
         assert response.status_code == 200
 
     def test_cursor_see_all_mode_archived_only(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """archived_only=true also counts as See-all mode."""
         import uuid as _uuid
@@ -1638,7 +1667,7 @@ class TestListImportJobsCursor:
             user_id=str(mock_user.id),
             archived_at=datetime(2025, 6, 1, tzinfo=UTC),
         )
-        mock_db.db.query.return_value = MockQuery([job])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[job])
         response = client.get(
             "/v1/import-jobs?include_archived=true&archived_only=true"
             f"&cursor={cursor}"
@@ -1646,26 +1675,26 @@ class TestListImportJobsCursor:
         assert response.status_code == 200
 
     def test_cursor_see_all_null_archived_cursor(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         import uuid as _uuid
 
         from pagination import encode_cursor
 
         cursor = encode_cursor(None, 1_699_000_000_000, str(_uuid.uuid4()))
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get(
             f"/v1/import-jobs?include_archived=true&cursor={cursor}"
         )
         assert response.status_code == 200
 
     def test_next_cursor_present_when_more_results(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from pagination import encode_cursor
 
         jobs = [MockImportJob(user_id=str(mock_user.id)) for _ in range(60)]
-        mock_db.db.query.return_value = MockQuery(jobs)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=jobs)
         cursor = encode_cursor(None, 1_700_000_000_000, "seed")
         response = client.get(f"/v1/import-jobs?cursor={cursor}&limit=50")
         assert response.status_code == 200
@@ -1677,8 +1706,12 @@ class TestListImportJobsCursor:
 class TestImportSeeAllCount:
     """afh-2: GET /v1/import-items/see-all-count."""
 
-    def test_zero_when_no_rows(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_zero_when_no_rows(self, client, mock_async_db, mock_user):
+        # Two scalar count queries: archived, then read_and_old_completed.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
+        ]
         response = client.get("/v1/import-items/see-all-count")
         assert response.status_code == 200
         assert response.json() == {
@@ -1688,11 +1721,13 @@ class TestImportSeeAllCount:
         }
 
     def test_sums_archived_and_read_and_old_completed(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.return_value = MockQuery(
-            [MockImportItem() for _ in range(3)]
-        )
+        # Two scalar count queries — both return 3, total surfaces as 6.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[3]),
+            MockExecuteResult(items=[3]),
+        ]
         response = client.get("/v1/import-items/see-all-count")
         assert response.status_code == 200
         body = response.json()
@@ -1704,8 +1739,8 @@ class TestImportSeeAllCount:
 class TestListSeeAllImportItems:
     """GET /v1/import-items/see-all — paginated See-all feed."""
 
-    def test_empty(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_empty(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-items/see-all")
         assert response.status_code == 200
         body = response.json()
@@ -1713,7 +1748,7 @@ class TestListSeeAllImportItems:
         assert body["next_cursor"] is None
 
     def test_items_surface_with_job_source_type_fallback(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from datetime import UTC, datetime
 
@@ -1729,7 +1764,7 @@ class TestListSeeAllImportItems:
         )
         # Endpoint selects (ImportItem, ImportJob.source_type) — mock the
         # tuple shape the ORM returns.
-        mock_db.db.query.return_value = MockQuery([(item, "url")])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[(item, "url")])
 
         response = client.get("/v1/import-items/see-all?limit=5")
         assert response.status_code == 200
@@ -1742,7 +1777,7 @@ class TestListSeeAllImportItems:
         assert row["status"] == "completed"
         assert row["archived_at"] is not None
 
-    def test_next_cursor_when_page_full(self, client, mock_db, mock_user):
+    def test_next_cursor_when_page_full(self, client, mock_async_db, mock_user):
         from datetime import UTC, datetime
 
         rows = [
@@ -1757,37 +1792,37 @@ class TestListSeeAllImportItems:
             )
             for i in range(6)
         ]
-        mock_db.db.query.return_value = MockQuery(rows)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=rows)
         response = client.get("/v1/import-items/see-all?limit=5")
         assert response.status_code == 200
         body = response.json()
         assert len(body["items"]) == 5
         assert body["next_cursor"] is not None
 
-    def test_invalid_cursor_returns_400(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_invalid_cursor_returns_400(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-items/see-all?cursor=%21%21%21%21")
         assert response.status_code == 400
         assert response.json()["error_message"] == "invalid_cursor"
 
-    def test_cursor_decodes_and_is_applied(self, client, mock_db, mock_user):
+    def test_cursor_decodes_and_is_applied(self, client, mock_async_db, mock_user):
         from pagination import encode_cursor
 
         cursor = encode_cursor(
             1_750_000_000_000, 1_700_000_000_000, str(uuid.uuid4())
         )
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get(
             f"/v1/import-items/see-all?cursor={cursor}&limit=10"
         )
         assert response.status_code == 200
         assert response.json()["items"] == []
 
-    def test_cursor_with_null_archived_at(self, client, mock_db, mock_user):
+    def test_cursor_with_null_archived_at(self, client, mock_async_db, mock_user):
         from pagination import encode_cursor
 
         cursor = encode_cursor(None, 1_700_000_000_000, str(uuid.uuid4()))
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get(f"/v1/import-items/see-all?cursor={cursor}")
         assert response.status_code == 200
 
@@ -1795,7 +1830,7 @@ class TestListSeeAllImportItems:
 class TestGetImportItem:
     """Tests for GET /v1/import-items/{item_id}."""
 
-    def test_get_import_item_success(self, client, mock_db, mock_user):
+    def test_get_import_item_success(self, client, mock_async_db, mock_user):
         """Test getting an import item."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -1828,8 +1863,8 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         # ffm-10: default response omits `parsed_recipe` (heavy JSON);
         # include=parsed_recipe opts back in (see test below). All
@@ -1860,12 +1895,12 @@ class TestGetImportItem:
         assert data["last_retry_at"] is None
         assert data["awaiting_review_reason"] == "unmatched_ingredients"
 
-    def test_get_import_item_not_found(self, client, mock_db, mock_user):
+    def test_get_import_item_not_found(self, client, mock_async_db, mock_user):
         """Test getting a nonexistent import item."""
         response = client.get("/v1/import-items/nonexistent")
         assert response.status_code == 404
 
-    def test_get_import_item_job_not_found(self, client, mock_db, mock_user):
+    def test_get_import_item_job_not_found(self, client, mock_async_db, mock_user):
         """Test getting item when its parent job doesn't exist."""
         item_id = "test-item-id"
         item = MockImportItem(
@@ -1880,13 +1915,13 @@ class TestGetImportItem:
 
         from utils.models.import_item import ImportItem
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
         # No job registered -> job not found
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 404
 
-    def test_get_import_item_access_denied(self, client, mock_db, mock_user):
+    def test_get_import_item_access_denied(self, client, mock_async_db, mock_user):
         """Test getting item when user has no membership and is not job owner."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -1909,14 +1944,14 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         # No membership and job.user_id != mock_user.id
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 403
 
-    def test_get_import_item_access_via_membership(self, client, mock_db, mock_user):
+    def test_get_import_item_access_via_membership(self, client, mock_async_db, mock_user):
         """Test getting item when user has membership but is not the job owner."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -1952,16 +1987,16 @@ class TestGetImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
 
-    def test_get_import_item_access_as_job_owner(self, client, mock_db, mock_user):
+    def test_get_import_item_access_as_job_owner(self, client, mock_async_db, mock_user):
         """Test getting item when user is the job owner but has no membership."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -1991,14 +2026,14 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         # No membership, but job.user_id == mock_user.id
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
 
-    def test_get_import_item_with_created_recipe_id(self, client, mock_db, mock_user):
+    def test_get_import_item_with_created_recipe_id(self, client, mock_async_db, mock_user):
         """Test getting item that has a created_recipe_id (not None)."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2029,8 +2064,8 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
@@ -2039,7 +2074,7 @@ class TestGetImportItem:
         assert data["user_edits"] == {"name": "My Recipe"}
 
     def test_get_import_item_does_not_emit_pending_review_ingredient(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """epic-ingredients-string-simplification: the pending_review_ingredient
         annotation (riip-4) is retired. Responses must never include the key."""
@@ -2072,8 +2107,8 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         # ffm-10: opt in so `parsed_recipe` is still present for
         # this regression assertion.
@@ -2086,7 +2121,7 @@ class TestGetImportItem:
             assert "pending_review_ingredient" not in ing
 
     def test_get_import_item_surfaces_confidence_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """irrd-3 AC6: confidence_score + confidence_source hoist to root."""
         item_id = "test-item-id"
@@ -2120,8 +2155,8 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
@@ -2130,7 +2165,7 @@ class TestGetImportItem:
         assert data["confidence_source"] == "model"
 
     def test_get_import_item_drops_malformed_confidence(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Legacy / future-out-of-range rows never leak bad scores to UI."""
         item_id = "test-item-id"
@@ -2164,8 +2199,8 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
@@ -2173,7 +2208,7 @@ class TestGetImportItem:
         assert data["confidence_score"] is None
         assert data["confidence_source"] is None
 
-    def test_get_import_item_with_empty_raw_data(self, client, mock_db, mock_user):
+    def test_get_import_item_with_empty_raw_data(self, client, mock_async_db, mock_user):
         """Test getting item where raw_data is None (should default to {})."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2203,8 +2238,8 @@ class TestGetImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
@@ -2222,7 +2257,7 @@ class TestGetImportItemLeanDefault:
 
     def _setup(
         self,
-        mock_db,
+        mock_async_db,
         mock_user,
         *,
         item_id="i-ffm10",
@@ -2249,17 +2284,17 @@ class TestGetImportItemLeanDefault:
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         return item_id
 
     def test_default_omits_parsed_recipe(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """No ?include → parsed_recipe is ABSENT (not null). Keys that
         ride the default (id, status, confidence hoists, etc.) stay."""
         rid = self._setup(
-            mock_db,
+            mock_async_db,
             mock_user,
             parsed_recipe={"name": "Pad Thai"},
         )
@@ -2272,11 +2307,11 @@ class TestGetImportItemLeanDefault:
         assert data["status"] == "completed"
 
     def test_include_parsed_recipe_returns_full_blob(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """?include=parsed_recipe → blob is present."""
         rid = self._setup(
-            mock_db,
+            mock_async_db,
             mock_user,
             parsed_recipe={"name": "Tacos", "source": "test"},
         )
@@ -2288,14 +2323,14 @@ class TestGetImportItemLeanDefault:
         assert data["parsed_recipe"] == {"name": "Tacos", "source": "test"}
 
     def test_include_unknown_token_still_omits_parsed_recipe(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Unknown include tokens don't accidentally unlock
         parsed_recipe — only the exact ``parsed_recipe`` token opts
         in. Protects against typos like ``parsedRecipe`` silently
         enabling the heavy blob."""
         rid = self._setup(
-            mock_db,
+            mock_async_db,
             mock_user,
             parsed_recipe={"name": "Sushi"},
         )
@@ -2306,11 +2341,11 @@ class TestGetImportItemLeanDefault:
         assert "parsed_recipe" not in response.json()
 
     def test_default_with_no_parsed_recipe_still_omits_key(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Even when the server-side value is None (extraction hasn't
         run), the key is absent on the default — no null leak."""
-        rid = self._setup(mock_db, mock_user, parsed_recipe=None)
+        rid = self._setup(mock_async_db, mock_user, parsed_recipe=None)
         response = client.get(f"/v1/import-items/{rid}")
         assert response.status_code == 200
         assert "parsed_recipe" not in response.json()
@@ -2319,7 +2354,7 @@ class TestGetImportItemLeanDefault:
 class TestUpdateImportItem:
     """Tests for PUT /v1/import-items/{item_id}."""
 
-    def test_update_import_item_success(self, client, mock_db, mock_user):
+    def test_update_import_item_success(self, client, mock_async_db, mock_user):
         """Test updating an import item with user edits."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2345,9 +2380,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2362,7 +2397,7 @@ class TestUpdateImportItem:
         assert data["user_edits"] == edits
         assert data["status"] == "awaiting_review"
 
-    def test_update_import_item_not_found(self, client, mock_db, mock_user):
+    def test_update_import_item_not_found(self, client, mock_async_db, mock_user):
         """Test updating a nonexistent import item."""
         response = client.put(
             "/v1/import-items/nonexistent",
@@ -2370,7 +2405,7 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 404
 
-    def test_update_import_item_job_not_found(self, client, mock_db, mock_user):
+    def test_update_import_item_job_not_found(self, client, mock_async_db, mock_user):
         """Test updating item when its parent job doesn't exist."""
         item_id = "test-item-id"
         item = MockImportItem(
@@ -2380,7 +2415,7 @@ class TestUpdateImportItem:
 
         from utils.models.import_item import ImportItem
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
 
         response = client.put(
             f"/v1/import-items/{item_id}",
@@ -2388,7 +2423,7 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 404
 
-    def test_update_import_item_no_membership(self, client, mock_db, mock_user):
+    def test_update_import_item_no_membership(self, client, mock_async_db, mock_user):
         """Test updating item when user has no membership."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2406,8 +2441,8 @@ class TestUpdateImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.put(
             f"/v1/import-items/{item_id}",
@@ -2415,7 +2450,7 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 403
 
-    def test_update_import_item_viewer_role(self, client, mock_db, mock_user):
+    def test_update_import_item_viewer_role(self, client, mock_async_db, mock_user):
         """Test updating item when user has viewer role (not owner/editor)."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2439,9 +2474,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2452,7 +2487,7 @@ class TestUpdateImportItem:
         assert response.status_code == 403
 
     def test_update_import_item_normalizes_ingredient_units(
-        self, client, mock_db, mock_user, monkeypatch
+        self, client, mock_async_db, mock_user, monkeypatch
     ):
         """riip-2: PUT writes user_edits with each ingredient unit normalized."""
         item_id = "test-item-id"
@@ -2479,9 +2514,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2517,7 +2552,7 @@ class TestUpdateImportItem:
         # Ingredient with no unit key is unchanged.
         assert "unit" not in data["user_edits"]["ingredients"][1]
 
-    def test_update_import_item_editor_role(self, client, mock_db, mock_user):
+    def test_update_import_item_editor_role(self, client, mock_async_db, mock_user):
         """Test updating item succeeds with editor role."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2543,9 +2578,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2555,7 +2590,7 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 200
 
-    def test_update_import_item_completed_status(self, client, mock_db, mock_user):
+    def test_update_import_item_completed_status(self, client, mock_async_db, mock_user):
         """Test updating item in completed status is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2580,9 +2615,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2592,7 +2627,7 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 400
 
-    def test_update_import_item_skipped_status(self, client, mock_db, mock_user):
+    def test_update_import_item_skipped_status(self, client, mock_async_db, mock_user):
         """Test updating item in skipped status is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2617,9 +2652,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2629,7 +2664,7 @@ class TestUpdateImportItem:
         )
         assert response.status_code == 400
 
-    def test_update_import_item_pending_status(self, client, mock_db, mock_user):
+    def test_update_import_item_pending_status(self, client, mock_async_db, mock_user):
         """Test updating item in pending status succeeds."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2655,9 +2690,9 @@ class TestUpdateImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2672,7 +2707,7 @@ class TestApproveImportItem:
     """Tests for POST /v1/import-items/{item_id}/approve."""
 
     @patch("api.v1.import_job.approve_import_item.create_recipe_task")
-    def test_approve_import_item_success(self, mock_task, client, mock_db, mock_user):
+    def test_approve_import_item_success(self, mock_task, client, mock_async_db, mock_user):
         """Test approving an import item."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2699,11 +2734,15 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
+        # `recompute_import_job_counters` runs 3 scalar count queries —
+        # all return 0 here (no peer items), which is what the success
+        # path expects for the lone item being approved.
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
 
         mock_task.delay.return_value = None
 
@@ -2718,12 +2757,12 @@ class TestApproveImportItem:
             user_id=str(mock_user.id),
         )
 
-    def test_approve_import_item_not_found(self, client, mock_db, mock_user):
+    def test_approve_import_item_not_found(self, client, mock_async_db, mock_user):
         """Test approving a nonexistent import item."""
         response = client.post("/v1/import-items/nonexistent/approve")
         assert response.status_code == 404
 
-    def test_approve_import_item_job_not_found(self, client, mock_db, mock_user):
+    def test_approve_import_item_job_not_found(self, client, mock_async_db, mock_user):
         """Test approving item when its parent job doesn't exist."""
         item_id = "test-item-id"
         item = MockImportItem(
@@ -2733,12 +2772,12 @@ class TestApproveImportItem:
 
         from utils.models.import_item import ImportItem
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 404
 
-    def test_approve_import_item_no_membership(self, client, mock_db, mock_user):
+    def test_approve_import_item_no_membership(self, client, mock_async_db, mock_user):
         """Test approving item when user has no membership."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2756,13 +2795,13 @@ class TestApproveImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 403
 
-    def test_approve_import_item_viewer_role(self, client, mock_db, mock_user):
+    def test_approve_import_item_viewer_role(self, client, mock_async_db, mock_user):
         """Test approving item when user has viewer role (not owner/editor)."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2786,9 +2825,9 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -2796,7 +2835,7 @@ class TestApproveImportItem:
         assert response.status_code == 403
 
     @patch("api.v1.import_job.approve_import_item.create_recipe_task")
-    def test_approve_import_item_editor_role(self, mock_task, client, mock_db, mock_user):
+    def test_approve_import_item_editor_role(self, mock_task, client, mock_async_db, mock_user):
         """Test approving item succeeds with editor role."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2822,17 +2861,18 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
         mock_task.delay.return_value = None
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 200
 
-    def test_approve_import_item_completed_status(self, client, mock_db, mock_user):
+    def test_approve_import_item_completed_status(self, client, mock_async_db, mock_user):
         """Test approving item in completed status is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2857,16 +2897,16 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 400
 
-    def test_approve_import_item_skipped_status(self, client, mock_db, mock_user):
+    def test_approve_import_item_skipped_status(self, client, mock_async_db, mock_user):
         """Test approving item in skipped status is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2891,16 +2931,16 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 400
 
-    def test_approve_import_item_pending_status(self, client, mock_db, mock_user):
+    def test_approve_import_item_pending_status(self, client, mock_async_db, mock_user):
         """Test approving item in pending status is not allowed (not awaiting_review/matching)."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2925,16 +2965,16 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 400
 
-    def test_approve_import_item_approved_status(self, client, mock_db, mock_user):
+    def test_approve_import_item_approved_status(self, client, mock_async_db, mock_user):
         """Test approving item in approved status is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2959,16 +2999,16 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
         assert response.status_code == 400
 
-    def test_approve_import_item_no_recipe_data(self, client, mock_db, mock_user):
+    def test_approve_import_item_no_recipe_data(self, client, mock_async_db, mock_user):
         """Test approving item with no parsed_recipe and no user_edits."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -2995,9 +3035,9 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
@@ -3005,7 +3045,7 @@ class TestApproveImportItem:
         assert response.status_code == 400
 
     @patch("api.v1.import_job.approve_import_item.create_recipe_task")
-    def test_approve_import_item_with_user_edits_only(self, mock_task, client, mock_db, mock_user):
+    def test_approve_import_item_with_user_edits_only(self, mock_task, client, mock_async_db, mock_user):
         """Test approving item that has user_edits but no parsed_recipe."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3032,11 +3072,12 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
         mock_task.delay.return_value = None
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
@@ -3044,7 +3085,7 @@ class TestApproveImportItem:
         assert response.json()["status"] == "approved"
 
     @patch("api.v1.import_job.approve_import_item.create_recipe_task")
-    def test_approve_import_item_matching_status(self, mock_task, client, mock_db, mock_user):
+    def test_approve_import_item_matching_status(self, mock_task, client, mock_async_db, mock_user):
         """Test approving item in matching status succeeds."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3070,11 +3111,12 @@ class TestApproveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[0])
         mock_task.delay.return_value = None
 
         response = client.post(f"/v1/import-items/{item_id}/approve")
@@ -3085,7 +3127,7 @@ class TestApproveImportItem:
 class TestSkipImportItem:
     """Tests for POST /v1/import-items/{item_id}/skip."""
 
-    def test_skip_import_item_success(self, client, mock_db, mock_user):
+    def test_skip_import_item_success(self, client, mock_async_db, mock_user):
         """Test skipping an import item."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3111,14 +3153,14 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # Mock the query for _update_job_counts
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("skipped", 1),
             ("awaiting_review", 2),
         ])
@@ -3129,12 +3171,12 @@ class TestSkipImportItem:
         assert data["id"] == item_id
         assert data["status"] == "skipped"
 
-    def test_skip_import_item_not_found(self, client, mock_db, mock_user):
+    def test_skip_import_item_not_found(self, client, mock_async_db, mock_user):
         """Test skipping a nonexistent import item."""
         response = client.post("/v1/import-items/nonexistent/skip")
         assert response.status_code == 404
 
-    def test_skip_import_item_job_not_found(self, client, mock_db, mock_user):
+    def test_skip_import_item_job_not_found(self, client, mock_async_db, mock_user):
         """Test skipping item when its parent job doesn't exist."""
         item_id = "test-item-id"
         item = MockImportItem(
@@ -3144,12 +3186,12 @@ class TestSkipImportItem:
 
         from utils.models.import_item import ImportItem
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 404
 
-    def test_skip_import_item_no_membership(self, client, mock_db, mock_user):
+    def test_skip_import_item_no_membership(self, client, mock_async_db, mock_user):
         """Test skipping item when user has no membership."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3167,13 +3209,13 @@ class TestSkipImportItem:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 403
 
-    def test_skip_import_item_viewer_role(self, client, mock_db, mock_user):
+    def test_skip_import_item_viewer_role(self, client, mock_async_db, mock_user):
         """Test skipping item when user has viewer role (not owner/editor)."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3197,16 +3239,16 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 403
 
-    def test_skip_import_item_editor_role(self, client, mock_db, mock_user):
+    def test_skip_import_item_editor_role(self, client, mock_async_db, mock_user):
         """Test skipping item succeeds with editor role."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3232,21 +3274,21 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # Mock the query for _update_job_counts
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("skipped", 1),
         ])
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 200
 
-    def test_skip_import_item_completed_status(self, client, mock_db, mock_user):
+    def test_skip_import_item_completed_status(self, client, mock_async_db, mock_user):
         """Test skipping item in completed status is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3271,16 +3313,16 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 400
 
-    def test_skip_import_item_already_skipped(self, client, mock_db, mock_user):
+    def test_skip_import_item_already_skipped(self, client, mock_async_db, mock_user):
         """Test skipping item that is already skipped is not allowed."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3305,16 +3347,16 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         response = client.post(f"/v1/import-items/{item_id}/skip")
         assert response.status_code == 400
 
-    def test_skip_import_item_pending_status(self, client, mock_db, mock_user):
+    def test_skip_import_item_pending_status(self, client, mock_async_db, mock_user):
         """Test skipping item in pending status succeeds."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3340,14 +3382,14 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # Mock the query for _update_job_counts - more items still pending
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("skipped", 1),
             ("awaiting_review", 2),
             ("pending", 2),
@@ -3357,7 +3399,7 @@ class TestSkipImportItem:
         assert response.status_code == 200
         assert response.json()["status"] == "skipped"
 
-    def test_skip_import_item_job_completes(self, client, mock_db, mock_user):
+    def test_skip_import_item_job_completes(self, client, mock_async_db, mock_user):
         """Test skipping the last item completes the job."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3383,14 +3425,14 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # All items are in final states, total_final >= total_items
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("completed", 1),
             ("skipped", 1),
         ])
@@ -3400,7 +3442,7 @@ class TestSkipImportItem:
         # Job should be marked as completed since total_final (2) >= total_items (2)
         assert job.status == "completed"
 
-    def test_skip_import_item_job_awaiting_review(self, client, mock_db, mock_user):
+    def test_skip_import_item_job_awaiting_review(self, client, mock_async_db, mock_user):
         """Test skipping an item when other items are awaiting review sets job to awaiting_review."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3426,14 +3468,14 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # Not all items final, but some awaiting review
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("skipped", 1),
             ("awaiting_review", 2),
         ])
@@ -3444,7 +3486,7 @@ class TestSkipImportItem:
         assert job.status == "awaiting_review"
         assert job.pending_review_items == 2
 
-    def test_skip_import_item_job_no_awaiting_review(self, client, mock_db, mock_user):
+    def test_skip_import_item_job_no_awaiting_review(self, client, mock_async_db, mock_user):
         """Test skipping an item when no items are awaiting review and job is not complete."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3471,14 +3513,14 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # Not all items final, no awaiting_review
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("skipped", 1),
             ("completed", 2),
         ])
@@ -3490,7 +3532,7 @@ class TestSkipImportItem:
         # pending_review_items = 0, so neither branch triggers
         assert job.status == "processing"  # unchanged
 
-    def test_skip_import_item_update_counts_with_failed(self, client, mock_db, mock_user):
+    def test_skip_import_item_update_counts_with_failed(self, client, mock_async_db, mock_user):
         """Test _update_job_counts correctly tracks failed items."""
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3516,14 +3558,14 @@ class TestSkipImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(RecipeBookUser, membership,
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(RecipeBookUser, membership,
                            user_id=str(mock_user.id),
                            recipe_book_id=book_id)
 
         # All items final with mixed statuses
-        mock_db.db.query.return_value = MockQuery([
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[
             ("completed", 1),
             ("failed", 1),
             ("skipped", 2),
@@ -3542,7 +3584,7 @@ class TestRetryImportItem:
 
     def _setup_retryable_item(
         self,
-        mock_db,
+        mock_async_db,
         mock_user,
         *,
         last_successful_stage=None,
@@ -3551,7 +3593,7 @@ class TestRetryImportItem:
         role="owner",
         owner_user_id=None,
     ):
-        """Build a retryable item/job/membership triple and wire it into mock_db."""
+        """Build a retryable item/job/membership triple and wire it into mock_async_db."""
         item_id = "test-item-id"
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -3582,9 +3624,9 @@ class TestRetryImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
@@ -3594,11 +3636,11 @@ class TestRetryImportItem:
 
     # ---- not found / permission gates ------------------------------------
 
-    def test_retry_item_not_found(self, client, mock_db, mock_user):
+    def test_retry_item_not_found(self, client, mock_async_db, mock_user):
         response = client.post("/v1/import-items/nonexistent/retry")
         assert response.status_code == 404
 
-    def test_retry_job_not_found(self, client, mock_db, mock_user):
+    def test_retry_job_not_found(self, client, mock_async_db, mock_user):
         item_id = "test-item-id"
         item = MockImportItem(
             id=item_id,
@@ -3606,12 +3648,12 @@ class TestRetryImportItem:
             status="failed",
         )
         from utils.models.import_item import ImportItem
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
 
         response = client.post(f"/v1/import-items/{item_id}/retry")
         assert response.status_code == 404
 
-    def test_retry_forbidden_no_membership(self, client, mock_db, mock_user):
+    def test_retry_forbidden_no_membership(self, client, mock_async_db, mock_user):
         item_id = "test-item-id"
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -3623,25 +3665,25 @@ class TestRetryImportItem:
         )
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.post(f"/v1/import-items/{item_id}/retry")
         assert response.status_code == 403
 
-    def test_retry_forbidden_viewer_role(self, client, mock_db, mock_user):
+    def test_retry_forbidden_viewer_role(self, client, mock_async_db, mock_user):
         self._setup_retryable_item(
-            mock_db, mock_user, role="viewer", owner_user_id="other-user"
+            mock_async_db, mock_user, role="viewer", owner_user_id="other-user"
         )
         response = client.post("/v1/import-items/test-item-id/retry")
         assert response.status_code == 403
 
     def test_retry_rejected_non_failed_status(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Item and job both non-failed → 400."""
         self._setup_retryable_item(
-            mock_db, mock_user,
+            mock_async_db, mock_user,
             item_status="completed",
             job_status="completed",
         )
@@ -3652,10 +3694,10 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.parse_source_task")
     def test_retry_null_stage_dispatches_parse_source_task(
-        self, mock_parse, client, mock_db, mock_user
+        self, mock_parse, client, mock_async_db, mock_user
     ):
         item, job, item_id = self._setup_retryable_item(
-            mock_db, mock_user, last_successful_stage=None
+            mock_async_db, mock_user, last_successful_stage=None
         )
 
         response = client.post(f"/v1/import-items/{item_id}/retry")
@@ -3678,10 +3720,10 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.extract_task")
     def test_retry_parsed_stage_dispatches_extract_task(
-        self, mock_extract, client, mock_db, mock_user
+        self, mock_extract, client, mock_async_db, mock_user
     ):
         item, _job, item_id = self._setup_retryable_item(
-            mock_db, mock_user, last_successful_stage="parsed"
+            mock_async_db, mock_user, last_successful_stage="parsed"
         )
 
         response = client.post(f"/v1/import-items/{item_id}/retry")
@@ -3698,13 +3740,13 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.create_recipe_task")
     def test_retry_extracted_stage_dispatches_create_recipe_task(
-        self, mock_create, client, mock_db, mock_user
+        self, mock_create, client, mock_async_db, mock_user
     ):
         """Post-epic-ingredients-string-simplification: STAGE_EXTRACTED
         routes straight to create_recipe_task (the former match stage is
         retired)."""
         item, _job, item_id = self._setup_retryable_item(
-            mock_db, mock_user, last_successful_stage="extracted"
+            mock_async_db, mock_user, last_successful_stage="extracted"
         )
 
         response = client.post(f"/v1/import-items/{item_id}/retry")
@@ -3720,10 +3762,10 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.create_recipe_task")
     def test_retry_matched_stage_dispatches_create_recipe_task(
-        self, mock_create, client, mock_db, mock_user
+        self, mock_create, client, mock_async_db, mock_user
     ):
         item, _job, item_id = self._setup_retryable_item(
-            mock_db, mock_user, last_successful_stage="matched"
+            mock_async_db, mock_user, last_successful_stage="matched"
         )
 
         response = client.post(f"/v1/import-items/{item_id}/retry")
@@ -3739,13 +3781,13 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.extract_task")
     def test_retry_accepted_when_job_failed_but_item_mid_pipeline(
-        self, mock_extract, client, mock_db, mock_user
+        self, mock_extract, client, mock_async_db, mock_user
     ):
         """Sweeper case: item.status is still 'extracting', but parent job
         was marked failed by the sweeper. Retry must be accepted and resume
         based on last_successful_stage."""
         item, _job, item_id = self._setup_retryable_item(
-            mock_db,
+            mock_async_db,
             mock_user,
             item_status="extracting",
             job_status="failed",
@@ -3759,12 +3801,12 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.parse_source_task")
     def test_retry_item_failed_but_job_processing_does_not_touch_job(
-        self, mock_parse, client, mock_db, mock_user
+        self, mock_parse, client, mock_async_db, mock_user
     ):
         """Retry on a failed item whose parent job is still 'processing'
         must not flip the job status — item-level retry is sufficient."""
         item, job, item_id = self._setup_retryable_item(
-            mock_db,
+            mock_async_db,
             mock_user,
             item_status="failed",
             job_status="processing",
@@ -3782,12 +3824,12 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.parse_source_task")
     def test_retry_unknown_stage_marker_falls_back_to_full_restart(
-        self, mock_parse, client, mock_db, mock_user
+        self, mock_parse, client, mock_async_db, mock_user
     ):
         """An unknown / forward-compat stage value should fall back to a
         full restart rather than crashing the endpoint."""
         item, job, item_id = self._setup_retryable_item(
-            mock_db,
+            mock_async_db,
             mock_user,
             last_successful_stage="this-stage-does-not-exist",
         )
@@ -3803,7 +3845,7 @@ class TestRetryImportItem:
 
     @patch("api.v1.import_job.retry_import_item.parse_source_task")
     def test_retry_stamps_last_retry_at_and_clears_awaiting_review_reason(
-        self, mock_parse, client, mock_db, mock_user
+        self, mock_parse, client, mock_async_db, mock_user
     ):
         """irrd-1 AC3 + retry clears any prior awaiting_review_reason.
 
@@ -3812,7 +3854,7 @@ class TestRetryImportItem:
         task can re-tag cleanly if it ends up back in awaiting_review.
         """
         item, _job, item_id = self._setup_retryable_item(
-            mock_db,
+            mock_async_db,
             mock_user,
             last_successful_stage=None,
         )
@@ -3832,7 +3874,7 @@ class TestDismissImportItem:
 
     def _setup(
         self,
-        mock_db,
+        mock_async_db,
         mock_user,
         *,
         item_status="failed",
@@ -3866,9 +3908,9 @@ class TestDismissImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
@@ -3878,14 +3920,14 @@ class TestDismissImportItem:
         # Sibling query returns the current item plus any provided siblings.
         # The endpoint calls db.query(ImportItem).filter(...).all().
         all_items_under_job = [item] + (siblings or [])
-        mock_db.db.query.return_value = MockQuery(all_items_under_job)
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=all_items_under_job)
 
         return item, job, item_id
 
     def test_dismiss_happy_path_last_item_marks_job(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        item, job, item_id = self._setup(mock_db, mock_user)
+        item, job, item_id = self._setup(mock_async_db, mock_user)
 
         response = client.post(f"/v1/import-items/{item_id}/dismiss")
         assert response.status_code == 200
@@ -3896,7 +3938,7 @@ class TestDismissImportItem:
         assert job.dismissed_at is not None
 
     def test_dismiss_with_sibling_not_dismissed_leaves_job(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         sibling = MockImportItem(
             id="sibling-id",
@@ -3905,7 +3947,7 @@ class TestDismissImportItem:
             dismissed_at=None,
         )
         item, job, item_id = self._setup(
-            mock_db, mock_user, siblings=[sibling]
+            mock_async_db, mock_user, siblings=[sibling]
         )
 
         response = client.post(f"/v1/import-items/{item_id}/dismiss")
@@ -3915,11 +3957,11 @@ class TestDismissImportItem:
         assert item.dismissed_at is not None
         assert job.dismissed_at is None
 
-    def test_dismiss_item_not_found(self, client, mock_db, mock_user):
+    def test_dismiss_item_not_found(self, client, mock_async_db, mock_user):
         response = client.post("/v1/import-items/nonexistent/dismiss")
         assert response.status_code == 404
 
-    def test_dismiss_job_not_found(self, client, mock_db, mock_user):
+    def test_dismiss_job_not_found(self, client, mock_async_db, mock_user):
         item_id = "test-item-id"
         item = MockImportItem(
             id=item_id,
@@ -3927,18 +3969,18 @@ class TestDismissImportItem:
             status="failed",
         )
         from utils.models.import_item import ImportItem
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
 
         response = client.post(f"/v1/import-items/{item_id}/dismiss")
         assert response.status_code == 404
 
-    def test_dismiss_forbidden_viewer(self, client, mock_db, mock_user):
-        self._setup(mock_db, mock_user, role="viewer")
+    def test_dismiss_forbidden_viewer(self, client, mock_async_db, mock_user):
+        self._setup(mock_async_db, mock_user, role="viewer")
         response = client.post("/v1/import-items/test-item-id/dismiss")
         assert response.status_code == 403
 
     def test_dismiss_forbidden_no_membership(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id = "test-item-id"
         job_id = "test-job-id"
@@ -3951,15 +3993,15 @@ class TestDismissImportItem:
         )
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
         response = client.post(f"/v1/import-items/{item_id}/dismiss")
         assert response.status_code == 403
 
-    def test_dismiss_rejects_non_failed(self, client, mock_db, mock_user):
+    def test_dismiss_rejects_non_failed(self, client, mock_async_db, mock_user):
         self._setup(
-            mock_db,
+            mock_async_db,
             mock_user,
             item_status="completed",
             job_status="completed",
@@ -3972,17 +4014,17 @@ class TestDismissAllFailedImports:
     """Tests for POST /v1/import-jobs/dismiss-all-failed."""
 
     def test_dismiss_all_zero_failed_returns_zero(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         # Candidate query returns an empty list.
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.post("/v1/import-jobs/dismiss-all-failed")
         assert response.status_code == 200
         assert response.json()["dismissed_count"] == 0
 
     def test_dismiss_all_marks_items_and_jobs(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
@@ -4016,21 +4058,23 @@ class TestDismissAllFailedImports:
             dismissed_at=None,
         )
 
-        mock_db.set_find_by(ImportJob, job_1, id=job_id_1)
-        mock_db.set_find_by(ImportJob, job_2, id=job_id_2)
+        mock_async_db.set_find_by(ImportJob, job_1, id=job_id_1)
+        mock_async_db.set_find_by(ImportJob, job_2, id=job_id_2)
 
         # First call: candidate failed items (initial query with join).
         # Per affected job (2 jobs here):
         #   - 1 sibling query
         #   - 3 counter-recompute queries (succeeded / failed / awaiting_review)
         # Then 2 user_activities update calls (one per dismissed item).
-        candidate_query = MockQuery([item_1, item_2])
-        sibling_query_1 = MockQuery([item_1])
-        sibling_query_2 = MockQuery([item_2])
-        counter_query = MockQuery([])  # recompute_import_job_counters
-        activity_update = MockQuery([])
+        candidate_query = MockExecuteResult(items=[item_1, item_2])
+        sibling_query_1 = MockExecuteResult(items=[item_1])
+        sibling_query_2 = MockExecuteResult(items=[item_2])
+        # `recompute_import_job_counters` runs 3 scalar count queries —
+        # `scalar_one()` requires at least one item in the result.
+        counter_query = MockExecuteResult(items=[0])
+        activity_update = MockExecuteResult(items=[])
 
-        mock_db.db.query.side_effect = [
+        mock_async_db.db.execute.side_effect = [
             candidate_query,
             sibling_query_1,
             counter_query, counter_query, counter_query,
@@ -4049,7 +4093,7 @@ class TestDismissAllFailedImports:
         assert job_2.dismissed_at is not None
 
     def test_dismiss_all_leaves_job_with_remaining_non_dismissed_items(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """If a job has one failed item (dismissed) plus one still-processing
         sibling, the job itself should NOT be marked dismissed."""
@@ -4076,13 +4120,14 @@ class TestDismissAllFailedImports:
             dismissed_at=None,
         )
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
 
-        candidate_query = MockQuery([failed_item])
-        sibling_query = MockQuery([failed_item, sibling])
-        counter_query = MockQuery([])  # recompute_import_job_counters (3 calls)
-        activity_update = MockQuery([])
-        mock_db.db.query.side_effect = [
+        candidate_query = MockExecuteResult(items=[failed_item])
+        sibling_query = MockExecuteResult(items=[failed_item, sibling])
+        # `recompute_import_job_counters` runs 3 scalar count queries.
+        counter_query = MockExecuteResult(items=[0])
+        activity_update = MockExecuteResult(items=[])
+        mock_async_db.db.execute.side_effect = [
             candidate_query,
             sibling_query,
             counter_query, counter_query, counter_query,
@@ -4102,7 +4147,7 @@ class TestArchiveImportItem:
 
     def _setup(
         self,
-        mock_db,
+        mock_async_db,
         mock_user,
         *,
         item_status="awaiting_review",
@@ -4133,9 +4178,9 @@ class TestArchiveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
@@ -4144,13 +4189,13 @@ class TestArchiveImportItem:
 
         # The FOR UPDATE re-read goes through db.query(ImportItem).filter().
         # Return the same row so the locked status matches the initial.
-        mock_db.db.query.return_value = MockQuery([item])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[item])
         return item, job, item_id
 
     def test_archive_happy_path_sets_archived_at(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        item, _, item_id = self._setup(mock_db, mock_user)
+        item, _, item_id = self._setup(mock_async_db, mock_user)
 
         response = client.post(f"/v1/import-items/{item_id}/archive")
         assert response.status_code == 200
@@ -4159,9 +4204,9 @@ class TestArchiveImportItem:
         assert body["archived_at"] is not None
         assert item.archived_at is not None
 
-    def test_archive_in_progress_returns_409(self, client, mock_db, mock_user):
+    def test_archive_in_progress_returns_409(self, client, mock_async_db, mock_user):
         item, _, item_id = self._setup(
-            mock_db, mock_user, item_status="processing"
+            mock_async_db, mock_user, item_status="processing"
         )
 
         response = client.post(f"/v1/import-items/{item_id}/archive")
@@ -4170,32 +4215,32 @@ class TestArchiveImportItem:
         # archived_at unchanged
         assert item.archived_at is None
 
-    def test_archive_already_archived_is_noop(self, client, mock_db, mock_user):
+    def test_archive_already_archived_is_noop(self, client, mock_async_db, mock_user):
         from datetime import UTC, datetime
 
         fixed_ts = datetime(2026, 4, 1, tzinfo=UTC)
         item, _, item_id = self._setup(
-            mock_db, mock_user, archived_at=fixed_ts
+            mock_async_db, mock_user, archived_at=fixed_ts
         )
 
         response = client.post(f"/v1/import-items/{item_id}/archive")
         assert response.status_code == 200
         assert item.archived_at == fixed_ts
 
-    def test_archive_not_owner_returns_403(self, client, mock_db, mock_user):
+    def test_archive_not_owner_returns_403(self, client, mock_async_db, mock_user):
         item, _, item_id = self._setup(
-            mock_db, mock_user, role="viewer"
+            mock_async_db, mock_user, role="viewer"
         )
 
         response = client.post(f"/v1/import-items/{item_id}/archive")
         assert response.status_code == 403
 
-    def test_archive_not_found(self, client, mock_db, mock_user):
+    def test_archive_not_found(self, client, mock_async_db, mock_user):
         response = client.post("/v1/import-items/missing/archive")
         assert response.status_code == 404
 
     def test_archive_job_not_found_returns_404(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """If the parent ImportJob is missing, return 404 before acl/status checks."""
         from utils.models.import_item import ImportItem
@@ -4207,14 +4252,14 @@ class TestArchiveImportItem:
             status="awaiting_review",
             archived_at=None,
         )
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
         # ImportJob find_by returns None — not configured.
 
         response = client.post(f"/v1/import-items/{item_id}/archive")
         assert response.status_code == 404
 
     def test_archive_locked_row_missing_returns_404(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """If the FOR UPDATE re-read returns None (concurrent delete),
         the endpoint responds with 404."""
@@ -4242,16 +4287,16 @@ class TestArchiveImportItem:
             role="owner",
         )
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
         # The FOR UPDATE re-read returns empty.
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
 
         response = client.post(f"/v1/import-items/{item_id}/archive")
         assert response.status_code == 404
@@ -4260,7 +4305,7 @@ class TestArchiveImportItem:
 class TestUnarchiveImportItem:
     """Tests for POST /v1/import-items/{item_id}/unarchive."""
 
-    def test_unarchive_happy_path(self, client, mock_db, mock_user):
+    def test_unarchive_happy_path(self, client, mock_async_db, mock_user):
         from datetime import UTC, datetime
 
         item_id = "test-item-id"
@@ -4287,9 +4332,9 @@ class TestUnarchiveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
@@ -4300,7 +4345,7 @@ class TestUnarchiveImportItem:
         assert response.status_code == 200
         assert item.archived_at is None
 
-    def test_unarchive_already_active_is_noop(self, client, mock_db, mock_user):
+    def test_unarchive_already_active_is_noop(self, client, mock_async_db, mock_user):
         item_id = "test-item-id"
         job_id = "test-job-id"
         book_id = "test-book-id"
@@ -4325,9 +4370,9 @@ class TestUnarchiveImportItem:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
@@ -4338,11 +4383,11 @@ class TestUnarchiveImportItem:
         assert response.status_code == 200
         assert item.archived_at is None
 
-    def test_unarchive_not_found(self, client, mock_db, mock_user):
+    def test_unarchive_not_found(self, client, mock_async_db, mock_user):
         response = client.post("/v1/import-items/missing/unarchive")
         assert response.status_code == 404
 
-    def test_unarchive_job_not_found_returns_404(self, client, mock_db, mock_user):
+    def test_unarchive_job_not_found_returns_404(self, client, mock_async_db, mock_user):
         from utils.models.import_item import ImportItem
 
         item_id = "test-item-id"
@@ -4352,12 +4397,12 @@ class TestUnarchiveImportItem:
             status="completed",
             archived_at=None,
         )
-        mock_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
 
         response = client.post(f"/v1/import-items/{item_id}/unarchive")
         assert response.status_code == 404
 
-    def test_unarchive_not_owner_returns_403(self, client, mock_db, mock_user):
+    def test_unarchive_not_owner_returns_403(self, client, mock_async_db, mock_user):
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
@@ -4381,9 +4426,9 @@ class TestUnarchiveImportItem:
             recipe_book_id=book_id,
             role="viewer",
         )
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
@@ -4397,28 +4442,28 @@ class TestUnarchiveImportItem:
 class TestListImportJobsArchiveFilters:
     """Tests for ?include_archived and ?archived_only on list endpoints."""
 
-    def test_default_excludes_archived(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_default_excludes_archived(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get("/v1/import-jobs")
         assert response.status_code == 200
 
-    def test_include_archived_true(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_include_archived_true(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get("/v1/import-jobs?include_archived=true")
         assert response.status_code == 200
 
-    def test_archived_only_true_implicitly_includes(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_archived_only_true_implicitly_includes(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get(
             "/v1/import-jobs?archived_only=true&include_archived=true"
         )
         assert response.status_code == 200
 
-    def test_contradictory_filters_returns_400(self, client, mock_db, mock_user):
-        mock_db.db.query.return_value = MockQuery([])
+    def test_contradictory_filters_returns_400(self, client, mock_async_db, mock_user):
+        mock_async_db.db.execute.side_effect = _paginated([])
 
         response = client.get(
             "/v1/import-jobs?archived_only=true&include_archived=false"
@@ -4436,15 +4481,15 @@ class TestGetImportUploadUrl:
 
     @staticmethod
     def _mock_aws():
-        """Build a MagicMock AWSService whose presign_put_url echoes the
-        bucket / key / required headers — lets tests assert what was
+        """Build a MagicMock AWSService whose presign_put_url_async echoes
+        the bucket / key / required headers — lets tests assert what was
         signed without needing real boto3."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         service = MagicMock()
 
-        def fake_presign(s3_key, bucket, content_type, content_length,
-                         tagging=None, expires_in=3600):
+        async def fake_presign(s3_key, bucket, content_type, content_length,
+                               tagging=None, expires_in=3600):
             url = (
                 f"https://{bucket}.s3.us-east-1.amazonaws.com/{s3_key}"
                 f"?X-Amz-Expires={expires_in}"
@@ -4457,12 +4502,12 @@ class TestGetImportUploadUrl:
                 required["x-amz-tagging"] = tagging
             return url, required
 
-        service.presign_put_url.side_effect = fake_presign
+        service.presign_put_url_async = AsyncMock(side_effect=fake_presign)
         return service
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_happy_path(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         import re
         mock_get_service.return_value = self._mock_aws()
@@ -4488,7 +4533,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_rejects_oversize(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         from utils.classes.error_code import ErrorCode
 
@@ -4507,7 +4552,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_accepts_exact_max(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         mock_get_service.return_value = self._mock_aws()
 
@@ -4523,7 +4568,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_rejects_zero_bytes(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         from utils.classes.error_code import ErrorCode
 
@@ -4542,7 +4587,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_rejects_negative_bytes(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         from utils.classes.error_code import ErrorCode
 
@@ -4561,7 +4606,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_rejects_unknown_mime(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         from utils.classes.error_code import ErrorCode
 
@@ -4580,7 +4625,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_canonical_extension_for_each_mime(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         """Every allowed mime resolves to its canonical extension in s3_key."""
         from api.v1.import_job.get_upload_url import _MIME_EXT
@@ -4601,7 +4646,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_signs_against_imports_bucket(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         """Verify the AWSService is called with the imports bucket and
         the exact ContentType/Length/Tagging the client declared."""
@@ -4617,8 +4662,8 @@ class TestGetImportUploadUrl:
             },
         )
         assert response.status_code == 200
-        service.presign_put_url.assert_called_once()
-        call_kwargs = service.presign_put_url.call_args.kwargs
+        service.presign_put_url_async.assert_called_once()
+        call_kwargs = service.presign_put_url_async.call_args.kwargs
         assert call_kwargs["bucket"].startswith("palateful-imports-")
         assert call_kwargs["content_type"] == "application/pdf"
         assert call_kwargs["content_length"] == 2_345_678
@@ -4628,7 +4673,7 @@ class TestGetImportUploadUrl:
 
     @patch("api.v1.import_job.get_upload_url._get_aws_service")
     def test_upload_url_required_headers_match_signed(
-        self, mock_get_service, client, mock_db, mock_user
+        self, mock_get_service, client, mock_async_db, mock_user
     ):
         """The required_headers map mirrors what was signed — no drift."""
         service = self._mock_aws()
@@ -4653,7 +4698,7 @@ class TestGetImportUploadUrl:
         assert body["required_headers"]["Content-Type"] == "video/quicktime"
         assert body["required_headers"]["Content-Length"] == str(50 * 1024 * 1024)
 
-    def test_upload_url_requires_auth(self, unauthed_client, mock_db):
+    def test_upload_url_requires_auth(self, unauthed_client, mock_async_db):
         """No JWT → unauthorized (FastAPI security dep returns 422 when
         Authorization header is missing; 401/403 once a token is present
         but invalid)."""
@@ -4672,7 +4717,7 @@ class TestStartImportS3Key:
     """sbf-3: `/import` with {s3_key, etag, mime_type}."""
 
     @staticmethod
-    def _setup_access(mock_db, mock_user, book_id):
+    def _setup_access(mock_async_db, mock_user, book_id):
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
@@ -4682,11 +4727,11 @@ class TestStartImportS3Key:
             recipe_book_id=book_id,
             role="owner",
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             RecipeBookUser, membership,
             user_id=str(mock_user.id), recipe_book_id=book_id,
         )
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
     @staticmethod
     def _reset_rate_limit():
@@ -4695,23 +4740,23 @@ class TestStartImportS3Key:
 
     @staticmethod
     def _ok_aws():
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         service = MagicMock()
-        service.head_object.return_value = {
+        service.head_object_async = AsyncMock(return_value={
             "ContentLength": 12345,
             "ETag": '"abc123"',
-        }
+        })
         return service
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_s3_key_happy_path_audio(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         self._reset_rate_limit()
         book_id = "book-s3-audio"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
         mock_task.delay.return_value = None
 
@@ -4734,13 +4779,13 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_s3_key_cross_user_returns_403(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from utils.classes.error_code import ErrorCode
 
         self._reset_rate_limit()
         book_id = "book-s3-cross"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
 
         response = client.post(
@@ -4758,16 +4803,16 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_s3_key_object_not_ready_returns_409(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from botocore.exceptions import ClientError
         from utils.classes.error_code import ErrorCode
 
         self._reset_rate_limit()
         book_id = "book-s3-notready"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         service = self._ok_aws()
-        service.head_object.side_effect = ClientError(
+        service.head_object_async.side_effect = ClientError(
             {"Error": {"Code": "404", "Message": "Not Found"}},
             "HeadObject",
         )
@@ -4788,18 +4833,18 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_s3_key_duplicate_via_dedupe_query_returns_409(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from utils.classes.error_code import ErrorCode
 
         self._reset_rate_limit()
         book_id = "book-s3-dupe"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
 
         s3_key = f"imports/{mock_user.id}/dup.pdf"
         existing = MockImportItem(s3_key=s3_key)
-        mock_db.db.query.return_value = MockQuery([existing])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[existing])
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -4816,13 +4861,13 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_s3_key_mutual_exclusion_with_base64_returns_400(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from utils.classes.error_code import ErrorCode
 
         self._reset_rate_limit()
         book_id = "book-s3-mutex"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
 
         response = client.post(
@@ -4842,13 +4887,13 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_s3_key_rate_limit_returns_429(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from utils.classes.error_code import ErrorCode
 
         self._reset_rate_limit()
         book_id = "book-s3-rl"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
         mock_task.delay.return_value = None
 
@@ -4891,12 +4936,12 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_video_file_s3_key_accepted(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         """sbf-4: video_file must be accepted as a source_type."""
         self._reset_rate_limit()
         book_id = "book-vf"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
         mock_task.delay.return_value = None
 
@@ -4917,14 +4962,14 @@ class TestStartImportS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_video_file_without_s3_key_rejected(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         """video_file only accepts the s3_key path — no base64 fallback."""
         from utils.classes.error_code import ErrorCode
 
         self._reset_rate_limit()
         book_id = "book-vf-no-key"
-        self._setup_access(mock_db, mock_user, book_id)
+        self._setup_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = self._ok_aws()
 
         response = client.post(
@@ -4944,7 +4989,7 @@ class TestStartImportSocialUrlRouting:
     """sbf-5: social URL promoted to source_type='video' at creation."""
 
     @staticmethod
-    def _setup_access(mock_db, mock_user, book_id):
+    def _setup_access(mock_async_db, mock_user, book_id):
         from utils.models.recipe_book import RecipeBook
         from utils.models.recipe_book_user import RecipeBookUser
 
@@ -4954,11 +4999,11 @@ class TestStartImportSocialUrlRouting:
             recipe_book_id=book_id,
             role="owner",
         )
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(
             RecipeBookUser, membership,
             user_id=str(mock_user.id), recipe_book_id=book_id,
         )
-        mock_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
     @staticmethod
     def _reset_rate_limit():
@@ -4966,29 +5011,29 @@ class TestStartImportSocialUrlRouting:
         _reset_rate_limit_for_test()
 
     @staticmethod
-    def _track_created(mock_db):
-        """Wrap mock_db.create so we can inspect the ImportItem it saw."""
+    def _track_created(mock_async_db):
+        """Wrap mock_async_db.create so we can inspect the ImportItem it saw."""
         from utils.models.import_item import ImportItem
 
         created: list[ImportItem] = []
-        real_create = mock_db.create
+        real_create = mock_async_db.create
 
-        def _wrapped(model):
+        async def _wrapped(model):
             if isinstance(model, ImportItem):
                 created.append(model)
-            return real_create(model)
+            return await real_create(model)
 
-        mock_db.create = _wrapped
+        mock_async_db.create = _wrapped
         return created
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     def test_tiktok_url_promoted_to_video(
-        self, mock_task, client, mock_db, mock_user,
+        self, mock_task, client, mock_async_db, mock_user,
     ):
         self._reset_rate_limit()
         book_id = "book-tt"
-        self._setup_access(mock_db, mock_user, book_id)
-        created = self._track_created(mock_db)
+        self._setup_access(mock_async_db, mock_user, book_id)
+        created = self._track_created(mock_async_db)
         mock_task.delay.return_value = None
 
         url = "https://www.tiktok.com/@chef/video/7123456789012345678"
@@ -5006,12 +5051,12 @@ class TestStartImportSocialUrlRouting:
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     def test_instagram_url_promoted(
-        self, mock_task, client, mock_db, mock_user,
+        self, mock_task, client, mock_async_db, mock_user,
     ):
         self._reset_rate_limit()
         book_id = "book-ig"
-        self._setup_access(mock_db, mock_user, book_id)
-        created = self._track_created(mock_db)
+        self._setup_access(mock_async_db, mock_user, book_id)
+        created = self._track_created(mock_async_db)
         mock_task.delay.return_value = None
 
         response = client.post(
@@ -5027,12 +5072,12 @@ class TestStartImportSocialUrlRouting:
 
     @patch("api.v1.import_job.start_import.parse_source_task")
     def test_web_url_stays_url(
-        self, mock_task, client, mock_db, mock_user,
+        self, mock_task, client, mock_async_db, mock_user,
     ):
         self._reset_rate_limit()
         book_id = "book-web"
-        self._setup_access(mock_db, mock_user, book_id)
-        created = self._track_created(mock_db)
+        self._setup_access(mock_async_db, mock_user, book_id)
+        created = self._track_created(mock_async_db)
         mock_task.delay.return_value = None
 
         response = client.post(
@@ -5053,7 +5098,7 @@ class TestInferredFieldsHoist:
     """efi-4 — `inferred_fields` hoisted to the item-object root on
     GetImportItem + ListImportItems."""
 
-    def _setup_item(self, mock_db, mock_user, *, parsed_recipe):
+    def _setup_item(self, mock_async_db, mock_user, *, parsed_recipe):
         item_id = "hoist-item"
         job_id = "hoist-job"
         book_id = "hoist-book"
@@ -5076,15 +5121,15 @@ class TestInferredFieldsHoist:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         return item_id, job_id
 
     def test_get_import_item_hoists_inferred_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         item_id, _ = self._setup_item(
-            mock_db,
+            mock_async_db,
             mock_user,
             parsed_recipe={
                 "name": "X",
@@ -5098,24 +5143,24 @@ class TestInferredFieldsHoist:
         assert data["inferred_fields"] == ["cook_time_minutes", "servings"]
 
     def test_get_import_item_legacy_returns_empty(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Row with no inferred_fields key (pre-efi-3 extraction) decodes
         to `[]` at the response root."""
         item_id, _ = self._setup_item(
-            mock_db, mock_user, parsed_recipe={"name": "X"}
+            mock_async_db, mock_user, parsed_recipe={"name": "X"}
         )
         response = client.get(f"/v1/import-items/{item_id}")
         assert response.status_code == 200
         assert response.json()["inferred_fields"] == []
 
     def test_get_import_item_filters_non_allowlist_in_legacy_row(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Malformed legacy row with a non-inferable field smuggled into
         `inferred_fields` → filtered out at the response edge."""
         item_id, _ = self._setup_item(
-            mock_db,
+            mock_async_db,
             mock_user,
             parsed_recipe={
                 "name": "X",
@@ -5132,7 +5177,7 @@ class TestInferredFieldsHoist:
         assert response.json()["inferred_fields"] == ["cook_time_minutes"]
 
     def test_list_import_items_hoists_inferred_fields(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         job_id = "hoist-job"
         book_id = "hoist-book"
@@ -5173,8 +5218,8 @@ class TestInferredFieldsHoist:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             MockRecipeBookUser(
                 user_id=str(mock_user.id),
@@ -5183,7 +5228,7 @@ class TestInferredFieldsHoist:
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.db.query.return_value = MockQuery([item_a, item_b, item_c])
+        mock_async_db.db.execute.side_effect = _paginated([item_a, item_b, item_c])
 
         response = client.get(f"/v1/import-jobs/{job_id}/items")
         assert response.status_code == 200
@@ -5199,7 +5244,7 @@ class TestSubmitCorrection:
 
     def _setup(
         self,
-        mock_db,
+        mock_async_db,
         mock_user,
         *,
         parsed_recipe=None,
@@ -5227,15 +5272,15 @@ class TestSubmitCorrection:
         from utils.models.import_item import ImportItem
         from utils.models.import_job import ImportJob
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
         return item, job, item_id
 
-    def test_happy_path_writes_audit_row(self, client, mock_db, mock_user):
-        _, _, item_id = self._setup(mock_db, mock_user)
+    def test_happy_path_writes_audit_row(self, client, mock_async_db, mock_user):
+        _, _, item_id = self._setup(mock_async_db, mock_user)
 
         added = []
-        mock_db.db.add.side_effect = lambda r: added.append(r)
+        mock_async_db.db.add.side_effect = lambda r: added.append(r)
 
         response = client.post(
             f"/v1/import-items/{item_id}/corrections",
@@ -5253,11 +5298,11 @@ class TestSubmitCorrection:
         assert meta["corrected"] == 45
         assert meta["was_inferred"] is True
 
-    def test_not_inferred_still_logs(self, client, mock_db, mock_user):
+    def test_not_inferred_still_logs(self, client, mock_async_db, mock_user):
         """was_inferred=false path — correction data is valuable
         regardless of whether the field was inferred."""
         _, _, item_id = self._setup(
-            mock_db,
+            mock_async_db,
             mock_user,
             parsed_recipe={
                 "cook_time_minutes": 30,
@@ -5265,7 +5310,7 @@ class TestSubmitCorrection:
             },
         )
         added = []
-        mock_db.db.add.side_effect = lambda r: added.append(r)
+        mock_async_db.db.add.side_effect = lambda r: added.append(r)
 
         response = client.post(
             f"/v1/import-items/{item_id}/corrections",
@@ -5276,8 +5321,8 @@ class TestSubmitCorrection:
         meta = _json.loads(added[0].error_message)
         assert meta["was_inferred"] is False
 
-    def test_field_not_inferable(self, client, mock_db, mock_user):
-        _, _, item_id = self._setup(mock_db, mock_user)
+    def test_field_not_inferable(self, client, mock_async_db, mock_user):
+        _, _, item_id = self._setup(mock_async_db, mock_user)
         response = client.post(
             f"/v1/import-items/{item_id}/corrections",
             json={"field": "name", "corrected": "Renamed"},
@@ -5288,15 +5333,15 @@ class TestSubmitCorrection:
         # Response carries the allow-list so the client can self-correct.
         assert "cook_time_minutes" in body["data"]["allowed"]
 
-    def test_item_not_found(self, client, mock_db, mock_user):
+    def test_item_not_found(self, client, mock_async_db, mock_user):
         response = client.post(
             "/v1/import-items/nonexistent/corrections",
             json={"field": "cook_time_minutes", "corrected": 10},
         )
         assert response.status_code == 404
 
-    def test_wrong_user(self, client, mock_db, mock_user):
-        self._setup(mock_db, mock_user, job_user_id="someone-else")
+    def test_wrong_user(self, client, mock_async_db, mock_user):
+        self._setup(mock_async_db, mock_user, job_user_id="someone-else")
         response = client.post(
             "/v1/import-items/corr-item/corrections",
             json={"field": "cook_time_minutes", "corrected": 10},
@@ -5304,18 +5349,18 @@ class TestSubmitCorrection:
         assert response.status_code == 403
 
     def test_missing_parsed_recipe_still_logs(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Item with empty parsed_recipe (extraction failed mid-flight)
         → still logs, but original resolves to None + was_inferred=False."""
         item, _job, item_id = self._setup(
-            mock_db, mock_user, parsed_recipe={"_": "_"},
+            mock_async_db, mock_user, parsed_recipe={"_": "_"},
         )
         # Force the actual stored value to None — `_setup`'s `or {...}`
         # swaps None for a default, so set it explicitly afterwards.
         item.parsed_recipe = None
         added = []
-        mock_db.db.add.side_effect = lambda r: added.append(r)
+        mock_async_db.db.add.side_effect = lambda r: added.append(r)
 
         response = client.post(
             f"/v1/import-items/{item_id}/corrections",
@@ -5339,47 +5384,47 @@ class TestListImportItemsBatch:
         )
 
     def test_missing_job_ids_returns_400(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         # Query param is required → FastAPI 422 before our handler runs.
         response = client.get("/v1/import-items")
         assert response.status_code == 422
 
-    def test_empty_csv_returns_400(self, client, mock_db, mock_user):
+    def test_empty_csv_returns_400(self, client, mock_async_db, mock_user):
         response = client.get("/v1/import-items?job_ids=")
         assert response.status_code == 400
         assert response.json()["error_message"] == "job_ids_required"
 
     def test_whitespace_only_csv_returns_400(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         response = client.get("/v1/import-items?job_ids=%20,%20,%20")
         assert response.status_code == 400
         assert response.json()["error_message"] == "job_ids_required"
 
-    def test_overflow_returns_400(self, client, mock_db, mock_user):
+    def test_overflow_returns_400(self, client, mock_async_db, mock_user):
         many = ",".join([f"id-{i}" for i in range(51)])
         response = client.get(f"/v1/import-items?job_ids={many}")
         assert response.status_code == 400
         assert "job_ids_over_cap" in response.json()["error_message"]
 
-    def test_cap_accepts_exactly_50(self, client, mock_db, mock_user):
+    def test_cap_accepts_exactly_50(self, client, mock_async_db, mock_user):
         fifty = ",".join([f"id-{i}" for i in range(50)])
         # No jobs match → empty list, 200
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get(f"/v1/import-items?job_ids={fifty}")
         assert response.status_code == 200
         assert response.json() == {"items": []}
 
     def test_no_matching_jobs_returns_empty(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        mock_db.db.query.return_value = MockQuery([])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
         response = client.get("/v1/import-items?job_ids=a,b,c")
         assert response.status_code == 200
         assert response.json() == {"items": []}
 
-    def test_single_job_success(self, client, mock_db, mock_user):
+    def test_single_job_success(self, client, mock_async_db, mock_user):
         job = self._job(mock_user, job_id="job-1")
         item = MockImportItem(
             import_job_id="job-1",
@@ -5391,10 +5436,10 @@ class TestListImportItemsBatch:
         # the job directly, so book_ids is still collected but no
         # RecipeBookUser rows need to be returned; the membership
         # query still executes and MUST be stubbed.)
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get("/v1/import-items?job_ids=job-1")
         assert response.status_code == 200
@@ -5406,7 +5451,7 @@ class TestListImportItemsBatch:
         assert data["items"][0]["created_recipe_id"] == "recipe-7"
 
     def test_multi_job_success_groups_by_job_id(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Flat list with job_id on each item — client groups."""
         j1 = self._job(mock_user, job_id="job-1", book_id="book-1")
@@ -5415,10 +5460,10 @@ class TestListImportItemsBatch:
             import_job_id="job-1", status="awaiting_review"
         )
         i2 = MockImportItem(import_job_id="job-2", status="completed")
-        mock_db.db.query.side_effect = [
-            MockQuery([j1, j2]),
-            MockQuery([]),
-            MockQuery([i1, i2]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[j1, j2]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[i1, i2]),
         ]
         response = client.get("/v1/import-items?job_ids=job-1,job-2")
         assert response.status_code == 200
@@ -5429,7 +5474,7 @@ class TestListImportItemsBatch:
         assert "job-2" in grouped
 
     def test_inaccessible_jobs_silently_dropped(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """A job the caller neither owns nor has book-membership for
         must not surface any items — and must NOT 403 the whole
@@ -5443,10 +5488,10 @@ class TestListImportItemsBatch:
         mine = MockImportItem(
             import_job_id="job-mine", status="completed"
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([owned, stranger]),
-            MockQuery([]),
-            MockQuery([mine]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[owned, stranger]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[mine]),
         ]
         response = client.get(
             "/v1/import-items?job_ids=job-mine,job-stranger"
@@ -5457,7 +5502,7 @@ class TestListImportItemsBatch:
         assert items[0]["job_id"] == "job-mine"
 
     def test_access_via_book_membership(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Non-owner job + user has book membership → accessible."""
         other_owned = MockImportJob(
@@ -5472,17 +5517,17 @@ class TestListImportItemsBatch:
         item = MockImportItem(
             import_job_id="job-shared", status="completed"
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([other_owned]),
-            MockQuery([membership]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[other_owned]),
+            MockExecuteResult(items=[membership]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get("/v1/import-items?job_ids=job-shared")
         assert response.status_code == 200
         assert len(response.json()["items"]) == 1
 
     def test_status_filter_passes_through(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Status filter reaches the query (MockQuery ignores filters
         but the query chain must not throw)."""
@@ -5490,10 +5535,10 @@ class TestListImportItemsBatch:
         item = MockImportItem(
             import_job_id="job-1", status="awaiting_review"
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get(
             "/v1/import-items?job_ids=job-1&status=awaiting_review"
@@ -5501,7 +5546,7 @@ class TestListImportItemsBatch:
         assert response.status_code == 200
         assert response.json()["items"][0]["status"] == "awaiting_review"
 
-    def test_include_archived_true(self, client, mock_db, mock_user):
+    def test_include_archived_true(self, client, mock_async_db, mock_user):
         from datetime import UTC, datetime
 
         job = self._job(mock_user, job_id="job-1")
@@ -5510,10 +5555,10 @@ class TestListImportItemsBatch:
             status="completed",
             archived_at=datetime.now(UTC),
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([archived_item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[archived_item]),
         ]
         response = client.get(
             "/v1/import-items?job_ids=job-1&include_archived=true"
@@ -5522,16 +5567,16 @@ class TestListImportItemsBatch:
         assert response.json()["items"][0]["archived_at"] is not None
 
     def test_duplicate_job_ids_deduped(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Duplicate CSV entries collapse — user isn't penalized
         against the 50-ID cap for retry-style repeats."""
         job = self._job(mock_user, job_id="job-1")
         item = MockImportItem(import_job_id="job-1")
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[item]),
         ]
         # 51 duplicates of the same id → dedup to 1, no 400.
         ids = ",".join(["job-1"] * 51)
@@ -5540,16 +5585,16 @@ class TestListImportItemsBatch:
         assert response.status_code == 400
 
         # But 3 distinct uses of 2 unique IDs should work.
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get("/v1/import-items?job_ids=job-1,job-1,job-1")
         assert response.status_code == 200
 
     def test_item_shape_matches_per_job_endpoint(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Per-item response fields (minus the new job_id) are the
         same keys the per-job endpoint returns, so client migration
@@ -5570,10 +5615,10 @@ class TestListImportItemsBatch:
             last_successful_stage="extraction",
             awaiting_review_reason=None,
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get("/v1/import-items?job_ids=job-1")
         assert response.status_code == 200
@@ -5592,15 +5637,15 @@ class TestListImportItemsBatch:
         assert "job_id" in it
 
     def test_trims_whitespace_in_csv(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """CSV with spaces after commas still parses cleanly."""
         job = self._job(mock_user, job_id="job-1")
         item = MockImportItem(import_job_id="job-1")
-        mock_db.db.query.side_effect = [
-            MockQuery([job]),
-            MockQuery([]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[job]),
+            MockExecuteResult(items=[]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get(
             "/v1/import-items?job_ids=%20job-1%20"
@@ -5609,7 +5654,7 @@ class TestListImportItemsBatch:
         assert response.json()["items"][0]["job_id"] == "job-1"
 
     def test_all_jobs_inaccessible_returns_empty(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Every requested job is owned by someone else with no
         membership → return empty, not 403. Confirms the batch is
@@ -5620,16 +5665,16 @@ class TestListImportItemsBatch:
         stranger2 = MockImportJob(
             id="s2", user_id="other", recipe_book_id="b2"
         )
-        mock_db.db.query.side_effect = [
-            MockQuery([stranger1, stranger2]),
-            MockQuery([]),  # no memberships
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[stranger1, stranger2]),
+            MockExecuteResult(items=[]),  # no memberships
         ]
         response = client.get("/v1/import-items?job_ids=s1,s2")
         assert response.status_code == 200
         assert response.json() == {"items": []}
 
     def test_jobs_without_recipe_book_id(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
         """Legacy jobs that predate recipe_book_id (or have it as
         NULL) → skip the membership probe (book_ids is empty) and
@@ -5642,9 +5687,9 @@ class TestListImportItemsBatch:
         item = MockImportItem(import_job_id="orphan-job")
         # Only 2 queries: jobs, items. No membership query because
         # book_ids is empty, so the `if book_ids:` branch is skipped.
-        mock_db.db.query.side_effect = [
-            MockQuery([orphan]),
-            MockQuery([item]),
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[orphan]),
+            MockExecuteResult(items=[item]),
         ]
         response = client.get("/v1/import-items?job_ids=orphan-job")
         assert response.status_code == 200

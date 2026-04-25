@@ -1,4 +1,9 @@
-"""Import job endpoints router."""
+"""Import job endpoints router.
+
+aam-18: handlers flipped to ``async def`` + ``get_async_database`` +
+``get_current_user_async``. Every endpoint dispatches through
+``await Foo.call(...)`` on an ``AsyncEndpoint`` subclass.
+"""
 
 from api.v1.import_job import (
     ApproveImportItem,
@@ -22,23 +27,23 @@ from api.v1.import_job import (
     UnarchiveImportItem,
     UpdateImportItem,
 )
-from dependencies import get_current_user, get_database
+from dependencies import get_async_database, get_current_user_async
 from fastapi import APIRouter, Depends, Query
 from utils.models.user import User
-from utils.services.database import Database
+from utils.services.async_database import AsyncDatabase
 
 import_router = APIRouter(tags=["import"])
 
 
 @import_router.post("/recipe-books/{book_id}/import")
-def start_import(
+async def start_import(
     book_id: str,
     params: StartImport.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Start a new recipe import job."""
-    return StartImport.call(
+    return await StartImport.call(
         book_id=book_id,
         params=params,
         user=user,
@@ -47,13 +52,13 @@ def start_import(
 
 
 @import_router.post("/imports/upload-url")
-def get_import_upload_url(
+async def get_import_upload_url(
     params: GetImportUploadUrl.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Mint a presigned S3 PUT URL for a file-based import."""
-    return GetImportUploadUrl.call(
+    return await GetImportUploadUrl.call(
         params=params,
         user=user,
         database=database,
@@ -61,7 +66,7 @@ def get_import_upload_url(
 
 
 @import_router.get("/import-jobs")
-def list_import_jobs(
+async def list_import_jobs(
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -82,11 +87,11 @@ def list_import_jobs(
             "Mutually exclusive with offset — both-present returns 400."
         ),
     ),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List all import jobs for the current user."""
-    return ListImportJobs.call(
+    return await ListImportJobs.call(
         status=status,
         limit=limit,
         offset=offset,
@@ -99,13 +104,13 @@ def list_import_jobs(
 
 
 @import_router.get("/import-jobs/{job_id}")
-def get_import_job(
+async def get_import_job(
     job_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get import job details and status."""
-    return GetImportJob.call(
+    return await GetImportJob.call(
         job_id=job_id,
         user=user,
         database=database,
@@ -113,13 +118,13 @@ def get_import_job(
 
 
 @import_router.delete("/import-jobs/{job_id}")
-def cancel_import_job(
+async def cancel_import_job(
     job_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Cancel an import job."""
-    return CancelImportJob.call(
+    return await CancelImportJob.call(
         job_id=job_id,
         user=user,
         database=database,
@@ -127,7 +132,7 @@ def cancel_import_job(
 
 
 @import_router.get("/import-jobs/{job_id}/items")
-def list_import_items(
+async def list_import_items(
     job_id: str,
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100),
@@ -142,11 +147,11 @@ def list_import_items(
             "Mutually exclusive with offset — both-present returns 400."
         ),
     ),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """List import items for a job."""
-    return ListImportItems.call(
+    return await ListImportItems.call(
         job_id=job_id,
         status=status,
         limit=limit,
@@ -159,7 +164,7 @@ def list_import_items(
 
 
 @import_router.get("/import-items")
-def list_import_items_batch(
+async def list_import_items_batch(
     job_ids: str = Query(
         ...,
         description=(
@@ -176,8 +181,8 @@ def list_import_items_batch(
             "feed hides archived rows — See-all pagination flips it on)."
         ),
     ),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Batch-list import items across multiple jobs (ffm-2).
 
@@ -185,7 +190,7 @@ def list_import_items_batch(
     so FastAPI's literal-path-first matcher routes the base path here
     instead of into the ``item_id`` path param.
     """
-    return ListImportItemsBatch.call(
+    return await ListImportItemsBatch.call(
         job_ids=job_ids,
         status=status,
         include_archived=include_archived,
@@ -195,9 +200,9 @@ def list_import_items_batch(
 
 
 @import_router.get("/import-items/see-all-count")
-def import_see_all_count(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def import_see_all_count(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Imports See-all triple (archived, read_and_old_completed, total).
 
@@ -205,11 +210,11 @@ def import_see_all_count(
     literal-path-first matcher doesn't route ``see-all-count`` into the
     ``item_id`` path param.
     """
-    return ImportSeeAllCount.call(user=user, database=database)
+    return await ImportSeeAllCount.call(user=user, database=database)
 
 
 @import_router.get("/import-items/see-all")
-def list_see_all_import_items(
+async def list_see_all_import_items(
     limit: int = Query(50, ge=1, le=100),
     cursor: str | None = Query(
         None,
@@ -218,15 +223,15 @@ def list_see_all_import_items(
             "the first page."
         ),
     ),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Paginated See-all items (same predicate as /see-all-count).
 
     Registered BEFORE ``/import-items/{item_id}`` so FastAPI's
     literal-path-first matcher routes ``see-all`` here.
     """
-    return ListSeeAllImportItems.call(
+    return await ListSeeAllImportItems.call(
         limit=limit,
         cursor=cursor,
         user=user,
@@ -235,7 +240,7 @@ def list_see_all_import_items(
 
 
 @import_router.get("/import-items/{item_id}")
-def get_import_item(
+async def get_import_item(
     item_id: str,
     include: str | None = Query(
         None,
@@ -245,11 +250,11 @@ def get_import_item(
             " Omitted by default."
         ),
     ),
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get import item details."""
-    return GetImportItem.call(
+    return await GetImportItem.call(
         item_id=item_id,
         include=include,
         user=user,
@@ -258,13 +263,13 @@ def get_import_item(
 
 
 @import_router.get("/import-items/{item_id}/telemetry")
-def get_import_item_telemetry(
+async def get_import_item_telemetry(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Per-stage telemetry for the Flutter caret expansion (irrd-2)."""
-    return GetImportItemTelemetry.call(
+    return await GetImportItemTelemetry.call(
         item_id=item_id,
         user=user,
         database=database,
@@ -272,14 +277,14 @@ def get_import_item_telemetry(
 
 
 @import_router.put("/import-items/{item_id}")
-def update_import_item(
+async def update_import_item(
     item_id: str,
     params: UpdateImportItem.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Update import item with user edits."""
-    return UpdateImportItem.call(
+    return await UpdateImportItem.call(
         item_id=item_id,
         params=params,
         user=user,
@@ -288,13 +293,13 @@ def update_import_item(
 
 
 @import_router.post("/import-items/{item_id}/approve")
-def approve_import_item(
+async def approve_import_item(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Approve import item and create recipe."""
-    return ApproveImportItem.call(
+    return await ApproveImportItem.call(
         item_id=item_id,
         user=user,
         database=database,
@@ -302,13 +307,13 @@ def approve_import_item(
 
 
 @import_router.post("/import-items/{item_id}/skip")
-def skip_import_item(
+async def skip_import_item(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Skip import item (don't import this recipe)."""
-    return SkipImportItem.call(
+    return await SkipImportItem.call(
         item_id=item_id,
         user=user,
         database=database,
@@ -316,13 +321,13 @@ def skip_import_item(
 
 
 @import_router.post("/import-items/{item_id}/retry")
-def retry_import_item(
+async def retry_import_item(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Retry a failed import item from its last successful stage."""
-    return RetryImportItem.call(
+    return await RetryImportItem.call(
         item_id=item_id,
         user=user,
         database=database,
@@ -330,13 +335,13 @@ def retry_import_item(
 
 
 @import_router.post("/import-items/{item_id}/dismiss")
-def dismiss_import_item(
+async def dismiss_import_item(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Hide a failed import item from the UI. Hard dismiss — no undo."""
-    return DismissImportItem.call(
+    return await DismissImportItem.call(
         item_id=item_id,
         user=user,
         database=database,
@@ -344,11 +349,11 @@ def dismiss_import_item(
 
 
 @import_router.post("/import-items/{item_id}/corrections")
-def submit_import_correction(
+async def submit_import_correction(
     item_id: str,
     params: SubmitCorrection.Params,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """efi-4 — log a user override on an inferred recipe field.
 
@@ -357,7 +362,7 @@ def submit_import_correction(
     returns 204. Does NOT mutate ``parsed_recipe``; the real user edits
     flow through ``approve_import_item`` at save time.
     """
-    return SubmitCorrection.call(
+    return await SubmitCorrection.call(
         item_id=item_id,
         params=params,
         user=user,
@@ -366,25 +371,25 @@ def submit_import_correction(
 
 
 @import_router.post("/import-jobs/dismiss-all-failed")
-def dismiss_all_failed_imports(
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+async def dismiss_all_failed_imports(
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Hide all failed import items owned by the current user."""
-    return DismissAllFailedImports.call(
+    return await DismissAllFailedImports.call(
         user=user,
         database=database,
     )
 
 
 @import_router.post("/import-items/{item_id}/archive")
-def archive_import_item(
+async def archive_import_item(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Archive an import item. 409 if status is in-progress."""
-    return ArchiveImportItem.call(
+    return await ArchiveImportItem.call(
         item_id=item_id,
         user=user,
         database=database,
@@ -392,13 +397,13 @@ def archive_import_item(
 
 
 @import_router.post("/import-items/{item_id}/unarchive")
-def unarchive_import_item(
+async def unarchive_import_item(
     item_id: str,
-    user: User = Depends(get_current_user),
-    database: Database = Depends(get_database),
+    user: User = Depends(get_current_user_async),
+    database: AsyncDatabase = Depends(get_async_database),
 ):
     """Restore an archived import item to the default feed."""
-    return UnarchiveImportItem.call(
+    return await UnarchiveImportItem.call(
         item_id=item_id,
         user=user,
         database=database,

@@ -15,7 +15,8 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel
 from schemas.import_job import ImportItemSummary
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select, update
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -26,13 +27,13 @@ from utils.models.user_activity import UserActivity
 from .counters import recompute_import_job_counters
 
 
-class DismissImportItem(Endpoint):
+class DismissImportItem(AsyncEndpoint):
     """Mark a failed ImportItem as dismissed so the UI hides it."""
 
-    def execute(self, item_id: str):
+    async def execute(self, item_id: str):
         user: User = self.user
 
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -40,7 +41,7 @@ class DismissImportItem(Endpoint):
                 code=ErrorCode.IMPORT_ITEM_NOT_FOUND,
             )
 
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -48,7 +49,7 @@ class DismissImportItem(Endpoint):
                 code=ErrorCode.IMPORT_JOB_NOT_FOUND,
             )
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -76,30 +77,33 @@ class DismissImportItem(Endpoint):
 
         # If every sibling item under the same job is now dismissed, also
         # mark the job as dismissed so it disappears from batch-level lists.
-        siblings = (
-            self.database.db.query(ImportItem)
-            .filter(ImportItem.import_job_id == job.id)
-            .all()
+        siblings_result = await self.database.db.execute(
+            select(ImportItem).where(ImportItem.import_job_id == job.id)
         )
+        siblings = list(siblings_result.scalars().all())
         if all(sib.dismissed_at is not None for sib in siblings):
             job.dismissed_at = now
 
         # Recompute the job's cached counters so the activity-screen
         # badge decrements when failed items are dismissed.
-        recompute_import_job_counters(self.database.db, job)
+        await recompute_import_job_counters(self.database.db, job)
 
         # Auto-mark any linked import_failed activities as read. Dismissing
         # the import is a stronger action than reading the notification.
-        self.database.db.query(UserActivity).filter(
-            UserActivity.user_id == user.id,
-            UserActivity.type == "import_failed",
-            UserActivity.metadata_json["import_item_id"].astext == str(item.id),
-        ).update(
-            {UserActivity.read: True},
-            synchronize_session=False,
+        activity_stmt = (
+            update(UserActivity)
+            .where(
+                UserActivity.user_id == user.id,
+                UserActivity.type == "import_failed",
+                UserActivity.metadata_json["import_item_id"].astext
+                == str(item.id),
+            )
+            .values(read=True)
+            .execution_options(synchronize_session=False)
         )
+        await self.database.db.execute(activity_stmt)
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=DismissImportItem.Response(

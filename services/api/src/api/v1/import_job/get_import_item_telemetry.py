@@ -14,8 +14,8 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
-from sqlalchemy import and_, asc
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import and_, asc, select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.constants import (
     STAGE_CREATED,
@@ -140,7 +140,7 @@ class StageEntry(BaseModel):
     truncated: bool = False
 
 
-class GetImportItemTelemetry(Endpoint):
+class GetImportItemTelemetry(AsyncEndpoint):
     """Return a per-stage log for one import item.
 
     Response shape: `{ "stages": [ {stage, status, started_at,
@@ -148,10 +148,10 @@ class GetImportItemTelemetry(Endpoint):
     The array is always 4 entries long in canonical stage order.
     """
 
-    def execute(self, item_id: str) -> dict:
+    async def execute(self, item_id: str) -> dict:
         user: User = self.user
 
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -159,7 +159,7 @@ class GetImportItemTelemetry(Endpoint):
                 code=ErrorCode.IMPORT_ITEM_NOT_FOUND,
             )
 
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -167,7 +167,7 @@ class GetImportItemTelemetry(Endpoint):
                 code=ErrorCode.IMPORT_JOB_NOT_FOUND,
             )
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -183,17 +183,17 @@ class GetImportItemTelemetry(Endpoint):
         # query (WHERE import_item_id = ? AND stage IS NOT NULL, ordered
         # by created_at). Legacy rows without a stage tag are filtered by
         # the `stage IN (_STAGE_ORDER)` predicate.
-        rows = (
-            self.database.db.query(ErrorLog)
-            .filter(
+        rows_result = await self.database.db.execute(
+            select(ErrorLog)
+            .where(
                 and_(
                     ErrorLog.import_item_id == item.id,
                     ErrorLog.stage.in_(_STAGE_ORDER),
                 )
             )
             .order_by(asc(ErrorLog.created_at))
-            .all()
         )
+        rows = list(rows_result.scalars().all())
 
         accumulators: dict[str, _StageAccumulator] = {
             stage: _StageAccumulator() for stage in _STAGE_ORDER

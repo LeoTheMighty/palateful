@@ -6,7 +6,7 @@ successfully, so we don't re-run OCR or extraction that already worked.
 
 from pydantic import BaseModel
 from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.constants import STAGE_EXTRACTED, STAGE_MATCHED, STAGE_PARSED
 from utils.models.import_item import ImportItem
@@ -57,13 +57,13 @@ def _lookup_stage(stage: str | None) -> tuple[str, str, callable]:
     return _STAGE_PLAN.get(stage, _FULL_RESTART_PLAN)
 
 
-class RetryImportItem(Endpoint):
+class RetryImportItem(AsyncEndpoint):
     """Retry a failed import item from its last successful stage."""
 
-    def execute(self, item_id: str):
+    async def execute(self, item_id: str):
         user: User = self.user
 
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -71,7 +71,7 @@ class RetryImportItem(Endpoint):
                 code=ErrorCode.IMPORT_ITEM_NOT_FOUND,
             )
 
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -80,7 +80,7 @@ class RetryImportItem(Endpoint):
             )
 
         # Ownership: must be owner or editor of the book.
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -130,7 +130,7 @@ class RetryImportItem(Endpoint):
             job.error_message = None
             job.completed_at = None
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
         # Dispatch outside the commit so a broker failure doesn't lose the
         # state reset. Concurrent retries are an accepted risk for MVP (see

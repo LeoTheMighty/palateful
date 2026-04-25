@@ -3,17 +3,17 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_job import ImportJob
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class GetImportJob(Endpoint):
+class GetImportJob(AsyncEndpoint):
     """Get import job details and status."""
 
-    def execute(self, job_id: str):
+    async def execute(self, job_id: str):
         """
         Get import job details.
 
@@ -26,7 +26,7 @@ class GetImportJob(Endpoint):
         user: User = self.user
 
         # Load import job
-        job = self.database.find_by(ImportJob, id=job_id)
+        job = await self.database.find_by(ImportJob, id=job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -35,7 +35,7 @@ class GetImportJob(Endpoint):
             )
 
         # Check access
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,

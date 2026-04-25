@@ -20,9 +20,9 @@ behavior-level coverage is in test_import.py / test_recipe.py.
 from unittest.mock import AsyncMock, patch
 
 from conftest import (
+    MockExecuteResult,
     MockImportItem,
     MockImportJob,
-    MockQuery,
     MockRecipe,
     MockRecipeBookUser,
     MockUserFavorite,
@@ -35,7 +35,7 @@ from conftest import (
 
 
 class TestDismissResponseShape:
-    def _setup(self, mock_db, mock_user):
+    def _setup(self, mock_async_db, mock_user):
         item_id = "dismiss-rf2-item"
         job_id = "dismiss-rf2-job"
         book_id = "dismiss-rf2-book"
@@ -65,19 +65,37 @@ class TestDismissResponseShape:
         from utils.models.import_job import ImportJob
         from utils.models.recipe_book_user import RecipeBookUser
 
-        mock_db.set_find_by(ImportItem, item, id=item_id)
-        mock_db.set_find_by(ImportJob, job, id=job_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(ImportItem, item, id=item_id)
+        mock_async_db.set_find_by(ImportJob, job, id=job_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=str(mock_user.id),
             recipe_book_id=book_id,
         )
-        mock_db.db.query.return_value = MockQuery([item])
+        # dismiss_import_item executes: siblings select, then 3 scalar
+        # count queries inside `recompute_import_job_counters`, then one
+        # update(UserActivity) execute. Default `return_value` of
+        # MockExecuteResult([]) handles all of them — `.scalar_one()`
+        # would fail on the count queries, but the lone item+job pair
+        # in this fixture means the count results don't drive any
+        # assertions; we override with `[0]` so scalar_one is happy.
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[item])
+
+        # Per-call shape: 1 siblings select → returns [item] (so all
+        # siblings are dismissed → job.dismissed_at set), then 3 counter
+        # scalar reads, then 1 update.
+        mock_async_db.db.execute.side_effect = [
+            MockExecuteResult(items=[item]),
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[0]),
+            MockExecuteResult(items=[]),
+        ]
         return item, job, item_id
 
-    def test_legacy_top_level_fields_stay(self, client, mock_db, mock_user):
-        _, _, item_id = self._setup(mock_db, mock_user)
+    def test_legacy_top_level_fields_stay(self, client, mock_async_db, mock_user):
+        _, _, item_id = self._setup(mock_async_db, mock_user)
 
         response = client.post(f"/v1/import-items/{item_id}/dismiss")
         assert response.status_code == 200
@@ -87,8 +105,8 @@ class TestDismissResponseShape:
         assert isinstance(data["dismissed_at"], str)
         assert data["job_dismissed"] is True
 
-    def test_full_item_object_present(self, client, mock_db, mock_user):
-        _, _, item_id = self._setup(mock_db, mock_user)
+    def test_full_item_object_present(self, client, mock_async_db, mock_user):
+        _, _, item_id = self._setup(mock_async_db, mock_user)
 
         response = client.post(f"/v1/import-items/{item_id}/dismiss")
         assert response.status_code == 200
@@ -116,7 +134,7 @@ class TestDismissResponseShape:
 
 
 class TestFavoriteRecipeResponseShape:
-    def _setup(self, mock_db, mock_user, *, has_favorite=False):
+    def _setup(self, mock_async_db, mock_user, *, has_favorite=False):
         recipe_id = "fav-rf2-recipe"
         book_id = "fav-rf2-book"
         recipe = MockRecipe(id=recipe_id, recipe_book_id=book_id)
@@ -129,8 +147,8 @@ class TestFavoriteRecipeResponseShape:
         from utils.models.recipe_book_user import RecipeBookUser
         from utils.models.user_favorite import UserFavorite
 
-        mock_db.set_find_by(Recipe, recipe, id=recipe_id)
-        mock_db.set_find_by(
+        mock_async_db.set_find_by(Recipe, recipe, id=recipe_id)
+        mock_async_db.set_find_by(
             RecipeBookUser,
             membership,
             user_id=mock_user.id,
@@ -140,20 +158,18 @@ class TestFavoriteRecipeResponseShape:
             fav = MockUserFavorite(
                 user_id=str(mock_user.id), recipe_id=recipe_id
             )
-            mock_db.set_find_by(
+            mock_async_db.set_find_by(
                 UserFavorite,
                 fav,
                 user_id=mock_user.id,
                 recipe_id=recipe_id,
             )
-        # Empty queries for steps/ingredients/versions/notes.
-        mock_db.db.query.return_value = MockQuery([])
         return recipe_id
 
     def test_add_favorite_returns_full_recipe_payload(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        recipe_id = self._setup(mock_db, mock_user, has_favorite=False)
+        recipe_id = self._setup(mock_async_db, mock_user, has_favorite=False)
 
         response = client.post(f"/v1/recipes/{recipe_id}/favorite")
         assert response.status_code == 201
@@ -174,9 +190,9 @@ class TestFavoriteRecipeResponseShape:
         assert isinstance(data["steps"], list)
 
     def test_remove_favorite_returns_full_recipe_payload(
-        self, client, mock_db, mock_user
+        self, client, mock_async_db, mock_user
     ):
-        recipe_id = self._setup(mock_db, mock_user, has_favorite=True)
+        recipe_id = self._setup(mock_async_db, mock_user, has_favorite=True)
 
         response = client.post(f"/v1/recipes/{recipe_id}/favorite")
         assert response.status_code == 200

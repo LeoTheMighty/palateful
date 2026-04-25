@@ -3,8 +3,8 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import func
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -12,10 +12,10 @@ from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class SkipImportItem(Endpoint):
+class SkipImportItem(AsyncEndpoint):
     """Skip import item."""
 
-    def execute(self, item_id: str):
+    async def execute(self, item_id: str):
         """
         Skip import item (don't import this recipe).
 
@@ -28,7 +28,7 @@ class SkipImportItem(Endpoint):
         user: User = self.user
 
         # Load import item
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -37,7 +37,7 @@ class SkipImportItem(Endpoint):
             )
 
         # Load job for access check
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -46,7 +46,7 @@ class SkipImportItem(Endpoint):
             )
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -68,10 +68,10 @@ class SkipImportItem(Endpoint):
 
         # Update status to skipped
         item.status = "skipped"
-        self.database.db.commit()
+        await self.database.db.commit()
 
         # Update job counts
-        self._update_job_counts(job)
+        await self._update_job_counts(job)
 
         return success(
             data=SkipImportItem.Response(
@@ -81,14 +81,14 @@ class SkipImportItem(Endpoint):
             )
         )
 
-    def _update_job_counts(self, job: ImportJob):
+    async def _update_job_counts(self, job: ImportJob):
         """Update import job counts."""
-        counts = self.database.db.query(
-            ImportItem.status,
-            func.count(ImportItem.id)
-        ).filter(
-            ImportItem.import_job_id == job.id
-        ).group_by(ImportItem.status).all()
+        counts_result = await self.database.db.execute(
+            select(ImportItem.status, func.count(ImportItem.id))
+            .where(ImportItem.import_job_id == job.id)
+            .group_by(ImportItem.status)
+        )
+        counts = counts_result.all()
 
         status_counts = dict(counts)
 
@@ -107,7 +107,7 @@ class SkipImportItem(Endpoint):
         elif job.pending_review_items > 0:
             job.status = "awaiting_review"
 
-        self.database.db.commit()
+        await self.database.db.commit()
 
     class Response(BaseModel):
         id: str

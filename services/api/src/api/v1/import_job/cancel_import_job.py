@@ -3,17 +3,17 @@
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_job import ImportJob
 from utils.models.recipe_book_user import RecipeBookUser
 from utils.models.user import User
 
 
-class CancelImportJob(Endpoint):
+class CancelImportJob(AsyncEndpoint):
     """Cancel an import job."""
 
-    def execute(self, job_id: str):
+    async def execute(self, job_id: str):
         """
         Cancel an import job.
 
@@ -26,7 +26,7 @@ class CancelImportJob(Endpoint):
         user: User = self.user
 
         # Load import job
-        job = self.database.find_by(ImportJob, id=job_id)
+        job = await self.database.find_by(ImportJob, id=job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -35,7 +35,7 @@ class CancelImportJob(Endpoint):
             )
 
         # Check access - must be owner or the user who started the import
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -58,7 +58,7 @@ class CancelImportJob(Endpoint):
         # Update status
         job.status = "cancelled"
         job.completed_at = datetime.now(UTC)
-        self.database.db.commit()
+        await self.database.db.commit()
 
         return success(
             data=CancelImportJob.Response(

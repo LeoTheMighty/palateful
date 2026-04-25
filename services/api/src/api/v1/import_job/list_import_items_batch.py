@@ -12,7 +12,8 @@ from api.v1.import_job.list_import_items import (
     _extract_inferred_fields,
 )
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import select
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -22,7 +23,7 @@ from utils.models.user import User
 MAX_JOB_IDS = 50
 
 
-class ListImportItemsBatch(Endpoint):
+class ListImportItemsBatch(AsyncEndpoint):
     """Return a flat list of import items across multiple jobs.
 
     Access is checked per-job. Jobs the caller cannot access are
@@ -37,7 +38,7 @@ class ListImportItemsBatch(Endpoint):
     flips it off for the See-all pagination path.
     """
 
-    def execute(
+    async def execute(
         self,
         job_ids: str,
         status: str | None = None,
@@ -67,11 +68,10 @@ class ListImportItemsBatch(Endpoint):
                 deduped.append(x)
         ids = deduped
 
-        jobs = (
-            self.database.db.query(ImportJob)
-            .filter(ImportJob.id.in_(ids))
-            .all()
+        jobs_result = await self.database.db.execute(
+            select(ImportJob).where(ImportJob.id.in_(ids))
         )
+        jobs = list(jobs_result.scalars().all())
         if not jobs:
             return success(
                 data=ListImportItemsBatch.Response(items=[]),
@@ -82,14 +82,13 @@ class ListImportItemsBatch(Endpoint):
         )
         accessible_book_ids: set[str] = set()
         if book_ids:
-            memberships = (
-                self.database.db.query(RecipeBookUser)
-                .filter(
+            memberships_result = await self.database.db.execute(
+                select(RecipeBookUser).where(
                     RecipeBookUser.user_id == user.id,
                     RecipeBookUser.recipe_book_id.in_(book_ids),
                 )
-                .all()
             )
+            memberships = list(memberships_result.scalars().all())
             accessible_book_ids = {
                 str(m.recipe_book_id) for m in memberships
             }
@@ -104,20 +103,21 @@ class ListImportItemsBatch(Endpoint):
                 data=ListImportItemsBatch.Response(items=[]),
             )
 
-        query = self.database.db.query(ImportItem).filter(
+        stmt = select(ImportItem).where(
             ImportItem.import_job_id.in_(accessible_job_ids)
         )
         if status:
-            query = query.filter(ImportItem.status == status)
+            stmt = stmt.where(ImportItem.status == status)
         if not include_archived:
-            query = query.filter(ImportItem.archived_at.is_(None))
+            stmt = stmt.where(ImportItem.archived_at.is_(None))
 
-        query = query.order_by(
+        stmt = stmt.order_by(
             ImportItem.import_job_id,
             ImportItem.created_at.desc(),
             ImportItem.id.desc(),
         )
-        items = query.all()
+        items_result = await self.database.db.execute(stmt)
+        items = list(items_result.scalars().all())
 
         item_responses: list[ListImportItemsBatch.BatchItem] = []
         for item in items:

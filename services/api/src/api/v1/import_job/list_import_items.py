@@ -9,8 +9,8 @@ from pagination import (
     encode_cursor,
 )
 from pydantic import BaseModel
-from sqlalchemy import text, tuple_
-from utils.api.endpoint import APIException, Endpoint, success
+from sqlalchemy import func, select, text, tuple_
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -73,10 +73,10 @@ def _extract_inferred_fields(parsed_recipe: dict | None) -> list[str]:
     return clean
 
 
-class ListImportItems(Endpoint):
+class ListImportItems(AsyncEndpoint):
     """List import items for a job."""
 
-    def execute(
+    async def execute(
         self,
         job_id: str,
         status: str | None = None,
@@ -105,7 +105,7 @@ class ListImportItems(Endpoint):
             )
         limit = max(1, min(limit, _MAX_LIMIT))
 
-        job = self.database.find_by(ImportJob, id=job_id)
+        job = await self.database.find_by(ImportJob, id=job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -113,7 +113,7 @@ class ListImportItems(Endpoint):
                 code=ErrorCode.IMPORT_JOB_NOT_FOUND,
             )
 
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -125,15 +125,13 @@ class ListImportItems(Endpoint):
                 code=ErrorCode.IMPORT_JOB_ACCESS_DENIED,
             )
 
-        query = self.database.db.query(ImportItem).filter(
-            ImportItem.import_job_id == job_id
-        )
+        stmt = select(ImportItem).where(ImportItem.import_job_id == job_id)
 
         if status:
-            query = query.filter(ImportItem.status == status)
+            stmt = stmt.where(ImportItem.status == status)
 
         if not include_archived:
-            query = query.filter(ImportItem.archived_at.is_(None))
+            stmt = stmt.where(ImportItem.archived_at.is_(None))
 
         see_all_mode = include_archived
 
@@ -153,7 +151,7 @@ class ListImportItems(Endpoint):
                     if cur_arch_ms is None
                     else datetime.fromtimestamp(cur_arch_ms / 1000, tz=UTC)
                 )
-                query = query.filter(
+                stmt = stmt.where(
                     tuple_(
                         text(
                             "COALESCE(import_items.archived_at, "
@@ -165,15 +163,21 @@ class ListImportItems(Endpoint):
                     < tuple_(cur_arch_ts, cur_created, cur_id)
                 )
             else:
-                query = query.filter(
+                stmt = stmt.where(
                     tuple_(ImportItem.created_at, ImportItem.id)
                     < tuple_(cur_created, cur_id)
                 )
 
-        total = query.count() if cursor is None else 0
+        if cursor is None:
+            total_result = await self.database.db.execute(
+                select(func.count()).select_from(stmt.subquery())
+            )
+            total = int(total_result.scalar_one())
+        else:
+            total = 0
 
         if see_all_mode:
-            query = query.order_by(
+            stmt = stmt.order_by(
                 text(
                     "COALESCE(import_items.archived_at, "
                     "'-infinity'::timestamptz) DESC"
@@ -182,20 +186,24 @@ class ListImportItems(Endpoint):
                 ImportItem.id.desc(),
             )
         elif cursor is not None:
-            query = query.order_by(
+            stmt = stmt.order_by(
                 ImportItem.created_at.desc(), ImportItem.id.desc()
             )
         else:
             # Legacy ASC ordering preserved for one release so existing
             # offset-paginated clients don't regress.
-            query = query.order_by(ImportItem.created_at)
+            stmt = stmt.order_by(ImportItem.created_at)
 
         if cursor is not None:
-            rows = query.limit(limit + 1).all()
+            rows_result = await self.database.db.execute(stmt.limit(limit + 1))
+            rows = list(rows_result.scalars().all())
             has_more = len(rows) > limit
             items = rows[:limit]
         else:
-            items = query.offset(offset).limit(limit).all()
+            items_result = await self.database.db.execute(
+                stmt.offset(offset).limit(limit)
+            )
+            items = list(items_result.scalars().all())
             has_more = offset + len(items) < total
 
         item_responses = []

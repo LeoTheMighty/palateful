@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from config import settings
 from pydantic import BaseModel, Field
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.services.aws import AWSService
 
@@ -65,10 +65,10 @@ def _get_aws_service() -> AWSService:  # pragma: no cover — singleton init, mo
     return _aws_service
 
 
-class GetImportUploadUrl(Endpoint):
+class GetImportUploadUrl(AsyncEndpoint):
     """Generate a presigned S3 PUT URL for uploading a file-based import."""
 
-    def execute(self, params: "GetImportUploadUrl.Params"):
+    async def execute(self, params: "GetImportUploadUrl.Params"):
         # Size validation — explicit error codes, not Pydantic 422.
         if params.size_bytes <= 0:
             raise APIException(
@@ -99,7 +99,7 @@ class GetImportUploadUrl(Endpoint):
         object_uuid = str(uuid.uuid4())
         s3_key = f"imports/{self.user.id}/{object_uuid}.{ext}"
 
-        upload_url, required_headers = _get_aws_service().presign_put_url(
+        upload_url, required_headers = await _get_aws_service().presign_put_url_async(
             s3_key=s3_key,
             bucket=settings.s3_imports_bucket,
             content_type=params.mime_type,

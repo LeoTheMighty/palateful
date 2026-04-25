@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -14,10 +14,10 @@ from utils.tasks.import_tasks.create_recipe_task import create_recipe_task
 from .counters import recompute_import_job_counters
 
 
-class ApproveImportItem(Endpoint):
+class ApproveImportItem(AsyncEndpoint):
     """Approve import item and create recipe."""
 
-    def execute(self, item_id: str):
+    async def execute(self, item_id: str):
         """
         Approve import item and trigger recipe creation.
 
@@ -30,7 +30,7 @@ class ApproveImportItem(Endpoint):
         user: User = self.user
 
         # Load import item
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -39,7 +39,7 @@ class ApproveImportItem(Endpoint):
             )
 
         # Load job for access check
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -48,7 +48,7 @@ class ApproveImportItem(Endpoint):
             )
 
         # Check access - must be owner or editor
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
@@ -81,8 +81,8 @@ class ApproveImportItem(Endpoint):
         # otherwise the caller sees "(1)" lingering after every item
         # in the job is reviewed.
         item.status = "approved"
-        recompute_import_job_counters(self.database.db, job)
-        self.database.db.commit()
+        await recompute_import_job_counters(self.database.db, job)
+        await self.database.db.commit()
 
         # Dispatch recipe creation task
         create_recipe_task.delay(

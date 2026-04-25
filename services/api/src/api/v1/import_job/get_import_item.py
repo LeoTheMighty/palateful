@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from utils.api.endpoint import APIException, Endpoint, success
+from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
@@ -67,10 +67,10 @@ def _extract_inferred_fields(parsed_recipe: dict | None) -> list[str]:
 _PARSED_RECIPE_KEY = "parsed_recipe"
 
 
-class GetImportItem(Endpoint):
+class GetImportItem(AsyncEndpoint):
     """Get import item details."""
 
-    def execute(self, item_id: str, include: str | None = None):
+    async def execute(self, item_id: str, include: str | None = None):
         """
         Get import item details.
 
@@ -91,7 +91,7 @@ class GetImportItem(Endpoint):
         user: User = self.user
 
         # Load import item
-        item = self.database.find_by(ImportItem, id=item_id)
+        item = await self.database.find_by(ImportItem, id=item_id)
         if not item:
             raise APIException(
                 status_code=404,
@@ -100,7 +100,7 @@ class GetImportItem(Endpoint):
             )
 
         # Load job for access check
-        job = self.database.find_by(ImportJob, id=item.import_job_id)
+        job = await self.database.find_by(ImportJob, id=item.import_job_id)
         if not job:
             raise APIException(
                 status_code=404,
@@ -109,7 +109,7 @@ class GetImportItem(Endpoint):
             )
 
         # Check access
-        membership = self.database.find_by(
+        membership = await self.database.find_by(
             RecipeBookUser,
             user_id=user.id,
             recipe_book_id=job.recipe_book_id,
