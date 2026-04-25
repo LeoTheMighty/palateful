@@ -20,6 +20,7 @@ import '../../features/meals/meal_detail_screen.dart';
 import '../../features/meals/meal_edit_screen.dart';
 import '../../features/recipes/recipe_detail_screen.dart';
 import '../../features/recipes/archived_recipes_screen.dart';
+import '../../features/recipes/favorites_screen.dart';
 import '../../features/recipes/cook_mode/cook_mode_screen.dart';
 import '../../features/recipes/cook_mode/meal/meal_cook_mode_screen.dart';
 import '../../features/recipes/edit_recipe_screen.dart';
@@ -200,6 +201,13 @@ GoRouter get appRouter {
         path: '/recipes/archived',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (context, state) => const ArchivedRecipesScreen(),
+      ),
+      // Favorites — destination for the System "Favorites" tile on
+      // RecipeBooksScreen (recipe-defaults-3).
+      GoRoute(
+        path: '/favorites',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (context, state) => const FavoritesScreen(),
       ),
       // Version history (must be before /recipes/:id to avoid path collision)
       GoRoute(

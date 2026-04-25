@@ -232,11 +232,76 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                             ),
                           ],
                         )
-                      : ListView.builder(
+                      : Builder(builder: (context) {
+                        // recipe-defaults-3: System section pinned at top.
+                        // The Trying Out book lives in `_recipeBooks` with
+                        // `is_system=true`; we surface it in the System
+                        // section and exclude it from the user-books list
+                        // so it isn't rendered twice.
+                        final tryingOut = _recipeBooks.firstWhere(
+                          (b) => b['is_system'] == true,
+                          orElse: () => null,
+                        );
+                        final userBooks = _recipeBooks
+                            .where((b) => b['is_system'] != true)
+                            .toList();
+                        const systemHeaderItems = 4; // header, fav, trying-out, divider
+                        return ListView.builder(
                           padding: const EdgeInsets.all(16),
-                          itemCount: _recipeBooks.length,
+                          itemCount: systemHeaderItems + userBooks.length,
                           itemBuilder: (context, index) {
-                            final book = _recipeBooks[index];
+                            if (index == 0) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Text(
+                                  'System',
+                                  style: textTheme.labelLarge?.copyWith(
+                                    color: colorScheme.outline,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              );
+                            }
+                            if (index == 1) {
+                              return _SystemBookTile(
+                                key: const Key('system-tile-favorites'),
+                                icon: Icons.favorite,
+                                iconColor: Colors.red.shade400,
+                                label: 'Favorites',
+                                subtitle: 'All recipes you love',
+                                onTap: () => context.push('/favorites'),
+                              );
+                            }
+                            if (index == 2) {
+                              if (tryingOut == null) {
+                                return const SizedBox.shrink();
+                              }
+                              final tryingOutId =
+                                  tryingOut['id']?.toString() ?? '';
+                              final tryingOutCount =
+                                  tryingOut['recipe_count'] ?? 0;
+                              return _SystemBookTile(
+                                key: const Key('system-tile-trying-out'),
+                                icon: Icons.science_outlined,
+                                iconColor: colorScheme.tertiary,
+                                label: 'Trying Out',
+                                subtitle:
+                                    '$tryingOutCount ${tryingOutCount == 1 ? 'recipe' : 'recipes'}',
+                                onTap: () async {
+                                  await context
+                                      .push('/recipe-books/$tryingOutId');
+                                  _loadRecipeBooks();
+                                },
+                              );
+                            }
+                            if (index == 3) {
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                    top: 8, bottom: 16),
+                                child: Divider(color: colorScheme.outlineVariant),
+                              );
+                            }
+                            final book = userBooks[index - systemHeaderItems];
                             final recipeCount = book['recipe_count'] ?? 0;
                             final description = book['description'] as String?;
                             final updatedAt = _formatUpdatedAt(book['updated_at']?.toString());
@@ -430,8 +495,80 @@ class _RecipeBooksScreenState extends State<RecipeBooksScreen> {
                               ),
                             );
                           },
-                        ),
+                        );
+                      }),
                 ),
+    );
+  }
+}
+
+/// recipe-defaults-3 — system-book tile rendered above the divider on
+/// `RecipeBooksScreen`. Used for ❤️ Favorites and 📒 Trying Out.
+/// Distinct lighter background + system-style icon so users can see at
+/// a glance these aren't ordinary user-created books.
+class _SystemBookTile extends StatelessWidget {
+  const _SystemBookTile({
+    super.key,
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: colorScheme.surfaceContainerLow,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: textTheme.bodySmall
+                          ?.copyWith(color: colorScheme.outline),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colorScheme.outline),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

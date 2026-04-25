@@ -901,16 +901,19 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                       }
                     },
                     itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit_outlined),
-                            SizedBox(width: 8),
-                            Text('Edit'),
-                          ],
+                      // recipe-defaults-3: hide Edit on system books — the
+                      // backend (recipe-defaults-1) returns 400 on PUT.
+                      if (_recipeBook?['is_system'] != true)
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined),
+                              SizedBox(width: 8),
+                              Text('Edit'),
+                            ],
+                          ),
                         ),
-                      ),
                       const PopupMenuItem(
                         value: 'new_meal',
                         child: Row(
@@ -951,7 +954,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           ],
                         ),
                       ),
-                      if (_userRole == 'owner')
+                      // recipe-defaults-3: hide Archive on system books —
+                      // backend returns 400.
+                      if (_userRole == 'owner' &&
+                          _recipeBook?['is_system'] != true)
                         PopupMenuItem(
                           value: 'archive',
                           child: Row(

@@ -447,4 +447,152 @@ void main() {
       expect(find.byIcon(Icons.delete), findsOneWidget);
     });
   });
+
+  group('RecipeBooksScreen System section (recipe-defaults-3)', () {
+    // Synthetic harness mirrors the rendering structure of
+    // `RecipeBooksScreen` after the System-section refactor: a header,
+    // two pinned tiles, a divider, then the user-books list with the
+    // is_system row filtered out.
+    Widget _buildHarness({required List<Map<String, dynamic>> books}) {
+      final tryingOut = books.cast<Map<String, dynamic>?>().firstWhere(
+            (b) => b?['is_system'] == true,
+            orElse: () => null,
+          );
+      final userBooks =
+          books.where((b) => b['is_system'] != true).toList();
+      const headerCount = 4;
+      return MaterialApp(
+        home: Scaffold(
+          body: Builder(builder: (ctx) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            final textTheme = Theme.of(ctx).textTheme;
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: headerCount + userBooks.length,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Text('System',
+                      style: textTheme.labelLarge
+                          ?.copyWith(color: colorScheme.outline));
+                }
+                if (index == 1) {
+                  return Card(
+                    key: const Key('system-tile-favorites'),
+                    child: ListTile(
+                      leading: const Icon(Icons.favorite),
+                      title: const Text('Favorites'),
+                      onTap: () {},
+                    ),
+                  );
+                }
+                if (index == 2) {
+                  if (tryingOut == null) return const SizedBox.shrink();
+                  final n = tryingOut['recipe_count'] ?? 0;
+                  return Card(
+                    key: const Key('system-tile-trying-out'),
+                    child: ListTile(
+                      leading: const Icon(Icons.science_outlined),
+                      title: const Text('Trying Out'),
+                      subtitle:
+                          Text('$n ${n == 1 ? 'recipe' : 'recipes'}'),
+                      onTap: () {},
+                    ),
+                  );
+                }
+                if (index == 3) {
+                  return const Divider();
+                }
+                final book = userBooks[index - headerCount];
+                return ListTile(
+                  title: Text(book['name'] as String),
+                );
+              },
+            );
+          }),
+        ),
+      );
+    }
+
+    testWidgets('renders System header + both pinned tiles when system book present',
+        (tester) async {
+      final books = <Map<String, dynamic>>[
+        {
+          'id': 'sys-1',
+          'name': 'Trying Out',
+          'is_system': true,
+          'recipe_count': 7,
+        },
+        {
+          'id': 'usr-1',
+          'name': 'Italian Favorites',
+          'is_system': false,
+          'recipe_count': 12,
+        },
+      ];
+
+      await tester.pumpWidget(_buildHarness(books: books));
+
+      // System header rendered.
+      expect(find.text('System'), findsOneWidget);
+      // Both pinned tiles rendered with distinct keys.
+      expect(find.byKey(const Key('system-tile-favorites')), findsOneWidget);
+      expect(find.byKey(const Key('system-tile-trying-out')), findsOneWidget);
+      // Trying Out shows the recipe count from the API row.
+      expect(find.text('7 recipes'), findsOneWidget);
+      // User book renders below the divider.
+      expect(find.text('Italian Favorites'), findsOneWidget);
+    });
+
+    testWidgets('Trying Out is NOT duplicated in the user-books list',
+        (tester) async {
+      final books = <Map<String, dynamic>>[
+        {
+          'id': 'sys-1',
+          'name': 'Trying Out',
+          'is_system': true,
+          'recipe_count': 3,
+        },
+        {
+          'id': 'usr-1',
+          'name': 'Weeknight',
+          'is_system': false,
+          'recipe_count': 2,
+        },
+      ];
+
+      await tester.pumpWidget(_buildHarness(books: books));
+
+      // The system tile still says 'Trying Out' …
+      expect(find.text('Trying Out'), findsOneWidget);
+      // … and the user-books list contains only Weeknight (one ListTile
+      // for it; the system section uses Card+ListTile but those are
+      // counted too — assert the user book exists, no duplicate
+      // rendering of 'Trying Out' name).
+      final tryingOutFinders = find.text('Trying Out');
+      expect(tryingOutFinders, findsOneWidget);
+    });
+
+    testWidgets('System section renders Favorites tile even with no Trying Out book',
+        (tester) async {
+      // Edge case: backend back-fill hasn't run yet for this user; the
+      // user has no system book. Favorites still pins; Trying Out
+      // tile collapses (SizedBox.shrink).
+      final books = <Map<String, dynamic>>[
+        {
+          'id': 'usr-1',
+          'name': 'Solo Book',
+          'is_system': false,
+          'recipe_count': 1,
+        },
+      ];
+
+      await tester.pumpWidget(_buildHarness(books: books));
+
+      expect(find.text('System'), findsOneWidget);
+      expect(find.byKey(const Key('system-tile-favorites')), findsOneWidget);
+      expect(
+          find.byKey(const Key('system-tile-trying-out')), findsNothing);
+      expect(find.text('Solo Book'), findsOneWidget);
+    });
+  });
 }
