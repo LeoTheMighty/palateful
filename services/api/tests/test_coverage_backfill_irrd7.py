@@ -441,3 +441,38 @@ class TestStageBucketEarlierStartedOverride:
         bucket.ingest("started", t_first)
         bucket.ingest("started", t_after)
         assert bucket.started_at == t_first
+
+
+# ---------------------------------------------------------------------------
+# meal_event_router._notify_rsvp_on_threadpool — back-fan threadpool helper
+# (aam-trunk: covers lines 54-63; the early-return branch keeps `# pragma`)
+# ---------------------------------------------------------------------------
+
+
+class TestNotifyRsvpOnThreadpool:
+    def test_dispatches_when_event_and_responder_resolve(self):
+        from unittest.mock import MagicMock, patch
+
+        from routers.v1.meal_event_router import _notify_rsvp_on_threadpool
+
+        meal_event = MagicMock()
+        responder = MagicMock()
+        database = MagicMock()
+        database.find_by.side_effect = [meal_event, responder]
+
+        with patch(
+            "routers.v1.meal_event_router.notify_meal_event_invite_accepted"
+        ) as mock_notify:
+            _notify_rsvp_on_threadpool(
+                meal_event_id="evt-1",
+                responder_id="user-1",
+                status="yes",
+                database=database,
+            )
+
+        mock_notify.assert_called_once_with(
+            meal_event=meal_event,
+            responder=responder,
+            status="yes",
+            database=database,
+        )
