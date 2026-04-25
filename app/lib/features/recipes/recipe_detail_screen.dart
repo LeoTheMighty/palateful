@@ -21,9 +21,12 @@ import '../shopping_cart/services/shopping_cart_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/state/mutation_failure_copy.dart';
 import '../../core/state/mutation_snackbar.dart';
+import '../recipe_books/services/recipe_book_service.dart';
+import '../home/widgets/bulk_move_undo_toast.dart';
 import 'providers/recipe_provider.dart';
 import 'services/recipe_service.dart';
 import 'widgets/meals_using_this_recipe.dart';
+import 'widgets/recipe_book_pill_row.dart';
 import '../../shared/widgets/error_banner.dart';
 
 class RecipeDetailScreen extends ConsumerStatefulWidget {
@@ -49,6 +52,8 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
   bool _isMovingOrCopying = false;
   bool _isAddingNote = false;
   final _noteController = TextEditingController();
+  final GlobalKey<RecipeBookPillRowState> _pillRowKey =
+      GlobalKey<RecipeBookPillRowState>();
   int _currentServings = 0;
   int _originalServings = 0;
 
@@ -399,38 +404,182 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
     }
   }
 
-  Future<void> _moveRecipe() async {
+  /// recipe-bulk-org-4 — render the collapsed-by-default book pill row.
+  /// Loaded async via [recipeBooksProvider]; while loading we render a
+  /// slim placeholder so the layout doesn't jump when it pops in.
+  Widget _buildBookPillRow() {
+    final asyncBooks = ref.watch(recipeBooksProvider);
+    final currentBookId = _recipe?['recipe_book_id']?.toString() ?? '';
+    return asyncBooks.when(
+      loading: () => const SizedBox(height: 32),
+      error: (e, _) => const SizedBox.shrink(),
+      data: (books) {
+        final writable = books
+            .where((b) =>
+                b['user_role'] == 'owner' || b['user_role'] == 'editor')
+            .toList();
+        if (writable.isEmpty) return const SizedBox.shrink();
+        return RecipeBookPillRow(
+          key: _pillRowKey,
+          books: writable,
+          currentBookId: currentBookId,
+          isWorking: _isMovingOrCopying,
+          onSelect: _handleBookPillSelect,
+        );
+      },
+    );
+  }
+
+  /// recipe-bulk-org-4 — handle a tap on a pill in the book pill row.
+  /// `bookId == null` → user tapped "+ New book"; create one inline,
+  /// then move the recipe into it.
+  Future<void> _handleBookPillSelect(String? bookId) async {
     if (_isMovingOrCopying) return;
-    final currentBookId = _recipe?['recipe_book_id']?.toString();
-    final book = await _showBookPicker(excludeBookId: currentBookId);
-    if (book == null) return;
+    if (bookId == null) {
+      await _createBookAndMove();
+      return;
+    }
+    final priorBookId = _recipe?['recipe_book_id']?.toString() ?? '';
+    if (priorBookId == bookId) return;
 
     setState(() => _isMovingOrCopying = true);
     try {
       HapticFeedback.selectionClick();
       await getIt<RecipeService>().moveRecipe(
         widget.recipeId,
-        book['id'],
-        oldBookId: currentBookId ?? '',
+        bookId,
+        oldBookId: priorBookId,
       );
       invalidateRecipe(ref, widget.recipeId);
-      if (mounted) {
-        context.pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Recipe moved to ${book['name']}')),
-        );
-      }
+      _pillRowKey.currentState?.collapse();
+      if (!mounted) return;
+      final destName = _bookNameFromBooks(bookId) ?? 'book';
+      showBulkMoveUndoToast(
+        context,
+        movedCount: 1,
+        destinationName: destName,
+        onUndo: () => _undoSingleMove(priorBookId, bookId),
+      );
     } catch (_) {
       if (mounted) {
         showMutationFailureSnackbar(
           context,
           MutationType.moveRecipe,
-          _moveRecipe,
+          () => _handleBookPillSelect(bookId),
         );
       }
     } finally {
       if (mounted) setState(() => _isMovingOrCopying = false);
     }
+  }
+
+  /// Inline-create flow for the "+ New book" pill. Prompts for a name,
+  /// creates the book via [RecipeBookService], then moves the recipe
+  /// into it (two sequential calls — accept the small flicker for v1).
+  Future<void> _createBookAndMove() async {
+    final controller = TextEditingController();
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('New book'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'e.g. Weeknight dinners',
+            ),
+            onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      );
+      if (name == null || name.isEmpty || !mounted) return;
+      setState(() => _isMovingOrCopying = true);
+      final created = await getIt<RecipeBookService>()
+          .createRecipeBook({'name': name});
+      final newId = created['id']?.toString();
+      if (newId == null || newId.isEmpty) return;
+      final priorBookId = _recipe?['recipe_book_id']?.toString() ?? '';
+      await getIt<RecipeService>().moveRecipe(
+        widget.recipeId,
+        newId,
+        oldBookId: priorBookId,
+      );
+      invalidateRecipe(ref, widget.recipeId);
+      _pillRowKey.currentState?.collapse();
+      if (!mounted) return;
+      showBulkMoveUndoToast(
+        context,
+        movedCount: 1,
+        destinationName: name,
+        onUndo: () => _undoSingleMove(priorBookId, newId),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't create book")),
+        );
+      }
+    } finally {
+      controller.dispose();
+      if (mounted) setState(() => _isMovingOrCopying = false);
+    }
+  }
+
+  /// Inverse of a single-recipe move (story 4 undo).
+  Future<void> _undoSingleMove(
+    String priorBookId,
+    String newBookId,
+  ) async {
+    if (_isMovingOrCopying || priorBookId.isEmpty) return;
+    setState(() => _isMovingOrCopying = true);
+    try {
+      await getIt<RecipeService>().moveRecipe(
+        widget.recipeId,
+        priorBookId,
+        oldBookId: newBookId,
+      );
+      invalidateRecipe(ref, widget.recipeId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Move undone')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't undo — try again")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isMovingOrCopying = false);
+    }
+  }
+
+  String? _bookNameFromBooks(String bookId) {
+    final asyncBooks = ref.read(recipeBooksProvider);
+    return asyncBooks.maybeWhen(
+      data: (list) {
+        for (final b in list) {
+          if (b['id']?.toString() == bookId) return b['name']?.toString();
+        }
+        return null;
+      },
+      orElse: () => null,
+    );
   }
 
   Future<void> _copyRecipe() async {
@@ -674,8 +823,6 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
                               _addIngredientsToCart();
                             } else if (value == 'plan') {
                               _planForDate();
-                            } else if (value == 'move') {
-                              _moveRecipe();
                             } else if (value == 'copy') {
                               _copyRecipe();
                             } else if (value == 'fork') {
@@ -705,17 +852,9 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
                                 ],
                               ),
                             ),
-                            if (_recipe?['can_edit'] == true)
-                              const PopupMenuItem(
-                                value: 'move',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.drive_file_move_outlined),
-                                    SizedBox(width: 8),
-                                    Text('Move to Book...'),
-                                  ],
-                                ),
-                              ),
+                            // recipe-bulk-org-4: Move-to-Book is now
+                            // surfaced as a tap-to-reveal pill row
+                            // beneath the title — see _buildBookPillRow.
                             const PopupMenuItem(
                               value: 'copy',
                               child: Row(
@@ -760,6 +899,13 @@ class _RecipeDetailScreenState extends ConsumerState<RecipeDetailScreen> {
                       padding: const EdgeInsets.all(16),
                       sliver: SliverList(
                         delegate: SliverChildListDelegate([
+                          // recipe-bulk-org-4: tap-to-reveal book picker
+                          // pill row. Replaces the old "Move to Book..."
+                          // popup-menu modal.
+                          if (_recipe?['can_edit'] == true) ...[
+                            _buildBookPillRow(),
+                            const SizedBox(height: 12),
+                          ],
                           // Lineage badge (fork provenance)
                           if (_recipe?['forked_from_recipe_name'] != null) ...[
                             Container(
