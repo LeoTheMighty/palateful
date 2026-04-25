@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from conftest import (
+    MockExecuteResult,
     MockImportItem,
     MockQuery,
     MockRecipeBook,
@@ -86,15 +87,22 @@ class TestGetPushHealthErrorLimitOutOfRange:
 # ---------------------------------------------------------------------------
 
 def _ok_aws():
+    # aam-18: start_import calls `head_object_async` (boto3 wrapped in
+    # `run_in_threadpool`), so the mock must be awaitable. AsyncMock with
+    # the same return_value preserves test contract.
+    from unittest.mock import AsyncMock
+
     service = MagicMock()
-    service.head_object.return_value = {
+    service.head_object_async = AsyncMock(return_value={
         "ContentLength": 4096,
         "ETag": '"deadbeef"',
-    }
+    })
     return service
 
 
-def _setup_book_access(mock_db, mock_user, book_id):
+def _setup_book_access(mock_async_db, mock_user, book_id):
+    # aam-18: start_import is now AsyncEndpoint — find_by lookups go
+    # through `mock_async_db`, not `mock_db`.
     from utils.models.recipe_book import RecipeBook
     from utils.models.recipe_book_user import RecipeBookUser
 
@@ -104,11 +112,11 @@ def _setup_book_access(mock_db, mock_user, book_id):
         recipe_book_id=book_id,
         role="owner",
     )
-    mock_db.set_find_by(
+    mock_async_db.set_find_by(
         RecipeBookUser, membership,
         user_id=str(mock_user.id), recipe_book_id=book_id,
     )
-    mock_db.set_find_by(RecipeBook, book, id=book_id)
+    mock_async_db.set_find_by(RecipeBook, book, id=book_id)
 
 
 def _reset_rate_limit():
@@ -123,11 +131,11 @@ class TestStartImportPdfSpreadsheetS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_pdf_with_s3_key_happy_path_sets_source_filename(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         _reset_rate_limit()
         book_id = "book-irrd7-pdf"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = _ok_aws()
         mock_task.delay.return_value = None
 
@@ -148,11 +156,11 @@ class TestStartImportPdfSpreadsheetS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_pdf_with_s3_key_missing_file_name_falls_back_to_key(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         _reset_rate_limit()
         book_id = "book-irrd7-pdf-nofn"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = _ok_aws()
         mock_task.delay.return_value = None
 
@@ -171,11 +179,11 @@ class TestStartImportPdfSpreadsheetS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_spreadsheet_with_s3_key_happy_path(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         _reset_rate_limit()
         book_id = "book-irrd7-sheet"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = _ok_aws()
         mock_task.delay.return_value = None
 
@@ -195,11 +203,11 @@ class TestStartImportPdfSpreadsheetS3Key:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_spreadsheet_with_s3_key_missing_file_name_falls_back(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         _reset_rate_limit()
         book_id = "book-irrd7-sheet-nofn"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = _ok_aws()
         mock_task.delay.return_value = None
 
@@ -224,7 +232,7 @@ class TestStartImportS3ValidationEdges:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_nosuchkey_error_raises_object_not_ready_409(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from botocore.exceptions import ClientError
 
@@ -232,9 +240,9 @@ class TestStartImportS3ValidationEdges:
 
         _reset_rate_limit()
         book_id = "book-irrd7-nokey"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         service = _ok_aws()
-        service.head_object.side_effect = ClientError(
+        service.head_object_async.side_effect = ClientError(
             {"Error": {"Code": "NoSuchKey", "Message": "not yet"}},
             "HeadObject",
         )
@@ -257,7 +265,7 @@ class TestStartImportS3ValidationEdges:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_unexpected_s3_error_propagates(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         """A ClientError with an unrecognized code hits the bare
         ``raise`` on line 488 and bubbles out as a 500."""
@@ -265,9 +273,9 @@ class TestStartImportS3ValidationEdges:
 
         _reset_rate_limit()
         book_id = "book-irrd7-unexpected"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         service = _ok_aws()
-        service.head_object.side_effect = ClientError(
+        service.head_object_async.side_effect = ClientError(
             {"Error": {"Code": "AccessDenied", "Message": "nope"}},
             "HeadObject",
         )
@@ -287,7 +295,7 @@ class TestStartImportS3ValidationEdges:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_duplicate_s3_key_via_dedupe_query_returns_409(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         """Seeds an existing ImportItem with the same s3_key so the
         endpoint's in-validator dedupe query fires."""
@@ -295,12 +303,12 @@ class TestStartImportS3ValidationEdges:
 
         _reset_rate_limit()
         book_id = "book-irrd7-dup"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = _ok_aws()
 
         s3_key = f"imports/{mock_user.id}/dup.pdf"
         existing = MockImportItem(s3_key=s3_key)
-        mock_db.db.query.return_value = MockQuery([existing])
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[existing])
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
@@ -322,7 +330,7 @@ class TestStartImportIntegrityErrorFallback:
 
     The partial UNIQUE index on ``import_items.s3_key`` raises when a
     second concurrent request wins the race past the in-endpoint
-    dedupe query. Here we patch ``mock_db.create`` to raise on the
+    dedupe query. Here we patch ``mock_async_db.create`` to raise on the
     second create (ImportItem, after ImportJob) so the commit path
     hits the IntegrityError branch.
     """
@@ -330,7 +338,7 @@ class TestStartImportIntegrityErrorFallback:
     @patch("api.v1.import_job.start_import.parse_source_task")
     @patch("api.v1.import_job.start_import._get_aws_service")
     def test_integrity_error_rollback_returns_409_duplicate(
-        self, mock_get_service, mock_task, client, mock_db, mock_user,
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
     ):
         from sqlalchemy.exc import IntegrityError
 
@@ -338,13 +346,13 @@ class TestStartImportIntegrityErrorFallback:
 
         _reset_rate_limit()
         book_id = "book-irrd7-integrity"
-        _setup_book_access(mock_db, mock_user, book_id)
+        _setup_book_access(mock_async_db, mock_user, book_id)
         mock_get_service.return_value = _ok_aws()
 
-        original_create = mock_db.create
+        original_create = mock_async_db.create
         call_count = {"n": 0}
 
-        def create_side_effect(obj):
+        async def create_side_effect(obj):
             call_count["n"] += 1
             if call_count["n"] >= 2:
                 raise IntegrityError(
@@ -352,9 +360,9 @@ class TestStartImportIntegrityErrorFallback:
                     params=None,
                     orig=Exception("duplicate"),
                 )
-            return original_create(obj)
+            return await original_create(obj)
 
-        mock_db.create = create_side_effect
+        mock_async_db.create = create_side_effect
 
         response = client.post(
             f"/v1/recipe-books/{book_id}/import",
