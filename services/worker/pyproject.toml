@@ -9,6 +9,13 @@ packages = [{include = "src"}]
 python = "^3.13"
 celery = {extras = ["sqs"], version = "^5.5"}
 psycopg2-binary = "^2.9.11"
+# aam-2 (2026-04-23) introduced an unconditional create_async_engine
+# call at module load in libraries/utils/utils/services/database.py
+# whenever ASYNC_DATABASE_URL resolves. The worker prod env builds
+# DATABASE_URL from DB_* component vars, so the async engine path
+# fires at import and SQLAlchemy eager-loads the asyncpg dialect.
+# Pin asyncpg here to keep the worker container importable.
+asyncpg = "^0.30"
 pymupdf = "^1.25"
 yt-dlp = "^2025.3"
 utils = {path = "../../libraries/utils", develop = true}
