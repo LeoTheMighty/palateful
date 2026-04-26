@@ -1456,7 +1456,7 @@ development_status:
   # to pick up utils doesn't repeat the prod incident.
   epic-worker-async-engine-cleanup: in-progress
   worker-async-cleanup-1-audit-and-classify: done
-  worker-async-cleanup-2-add-asyncpg-to-affected-services: backlog
+  worker-async-cleanup-2-add-asyncpg-to-affected-services: done
   worker-async-cleanup-3-defensive-guard-in-database-py: backlog
   epic-worker-async-engine-cleanup-retrospective: optional
 
