@@ -465,7 +465,7 @@ questionnaire**.
 | User-generated content shared between users                   | **Yes** — household members share recipes and notes                                                     |
 | Unrestricted internet access (i.e. web browser)               | **No** — app communicates with a fixed Palateful backend + sign-in providers + subprocessors (Auth0, S3, Firebase, OpenAI, Anthropic) |
 | Location sharing                                              | **No**                                                                                                  |
-| Digital purchases                                             | **No** (v1 — change to **Yes** when Play Billing ships)                                                 |
+| Digital purchases                                             | **No** — Palateful is free, no in-app purchases, and committed to staying that way                      |
 
 **Expected rating:** Teen (13+) in ESRB / IARC 12+ in most regions,
 due to the alcohol ingredient reference.
@@ -476,9 +476,9 @@ Path: **Play Console → App content → Data safety**. Each block below
 maps 1:1 to a "Data type" row in the form. Every subprocessor listed
 in `app/web/privacy.html` has a corresponding block — consistency
 between this form and the privacy policy is what Play reviewers
-check first. For v1 you can skip Block 8 (Play Billing — reserved
-for future subscriptions); the form accepts "not currently
-collected" for that data type.
+check first. You can skip Block 8 (Play Billing — Palateful is free,
+no in-app purchases, and committed to staying that way); the form
+accepts "not currently collected" for that data type.
 
 Block 7 (Diagnostic performance data) was added by cla-13 for the
 `epic-perf-client-analytics` rollout. Paste it alongside the
@@ -642,19 +642,19 @@ Notes:                Palateful measures cold-start time, per-screen
 
 ```
 Data type:            Financial info — purchase history
-Collected:            No (v1 — Palateful is free, no in-app purchases)
+Collected:            No (Palateful is free, no in-app purchases —
+                      and committed to staying that way)
 Shared:               N/A
 Optional / Required:  N/A
-Purpose(s):           App functionality + Fraud prevention
-                      (when enabled)
+Purpose(s):           N/A
 Encrypted in transit: N/A
 Deletion request:     N/A
-Notes:                Block reserved. Flip "Collected" to Yes once
-                      subscription entitlements ship via Play
-                      Billing. At that point, collection is
-                      implicit (Google Play Billing Library handles
-                      the PII side — Palateful stores only a
-                      purchase token + entitlement state).
+Notes:                Block kept on file because Play's "Financial
+                      info" data type is enumerated in the form.
+                      Palateful does not collect Play Billing data;
+                      the free-forever commitment is enforced by
+                      tools/copy-grep-guard.sh in CI (story pos-6a).
+                      No flip to "Yes" is anticipated.
 ```
 
 ## Section 16 — Sensitive Permissions Declaration
