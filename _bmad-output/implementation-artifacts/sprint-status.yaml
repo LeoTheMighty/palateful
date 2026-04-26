@@ -1474,8 +1474,8 @@ development_status:
   # each via party-mode.
 
   # --- Epic A: Recime Positioning (foundation; ship first to lock copy) ---
-  epic-recime-positioning: backlog
-  pos-1-content-copy-for-all-surfaces: backlog
+  epic-recime-positioning: in-progress
+  pos-1-content-copy-for-all-surfaces: done
   pos-2-frontend-why-we-are-free-page-and-onboarding-line: backlog
   pos-3-web-real-landing-page-replacing-flutter-shell: backlog
   pos-4-privacy-and-android-md-and-readme-updates: backlog
