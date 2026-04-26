@@ -856,6 +856,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
           const SizedBox(height: 32),
 
+          // About section
+          _buildSectionHeader('About', textTheme),
+          const SizedBox(height: 12),
+          _buildProfileTile(
+            icon: Icons.favorite_outline,
+            label: 'Why we\'re free',
+            value: 'Founder-funded, no premium tier — ever',
+            onTap: () => context.push('/profile/why-we-are-free'),
+            colorScheme: colorScheme,
+            textTheme: textTheme,
+          ),
+
+          const SizedBox(height: 32),
+
           // Account section
           _buildSectionHeader('Account', textTheme),
           const SizedBox(height: 12),

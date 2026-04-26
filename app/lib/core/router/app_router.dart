@@ -60,6 +60,7 @@ import '../../features/admin/admin_errors_screen.dart';
 import '../../features/admin/admin_error_detail_screen.dart';
 import '../../features/admin/admin_users_screen.dart';
 import '../../features/chat/chat_screen.dart';
+import '../../features/about/why_we_are_free_page.dart';
 import '../../features/profile/notification_preferences_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/profile/recurring_plans/recurring_plans_screen.dart';
@@ -748,6 +749,10 @@ GoRouter get appRouter {
                     path: 'notifications',
                     builder: (context, state) =>
                         const NotificationPreferencesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'why-we-are-free',
+                    builder: (context, state) => const WhyWeAreFreePage(),
                   ),
                 ],
               ),

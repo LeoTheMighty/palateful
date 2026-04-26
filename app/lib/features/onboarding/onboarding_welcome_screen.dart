@@ -146,6 +146,14 @@ class _OnboardingWelcomeScreenState extends State<OnboardingWelcomeScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 6),
+              Text(
+                '100% free, no ads, no premium tier — ever.',
+                style: textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 32),
               // Feature highlight cards
               _FeatureCard(
