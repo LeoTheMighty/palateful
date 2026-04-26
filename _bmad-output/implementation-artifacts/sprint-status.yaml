@@ -1474,7 +1474,7 @@ development_status:
   # each via party-mode.
 
   # --- Epic A: Recime Positioning (foundation; ship first to lock copy) ---
-  epic-recime-positioning: in-progress
+  epic-recime-positioning: done
   pos-1-content-copy-for-all-surfaces: done
   pos-2-frontend-why-we-are-free-page-and-onboarding-line: done
   pos-3-web-real-landing-page-replacing-flutter-shell: done
@@ -1532,8 +1532,8 @@ development_status:
   # Sub-stories + new stories all enter at backlog.
 
   # --- epic-recime-positioning splits + additions ---
-  pos-6a-share-text-tagline-and-grep-guard-ci-wiring: backlog
-  pos-6b-free-forever-chip-on-limit-shaped-surfaces: backlog
+  pos-6a-share-text-tagline-and-grep-guard-ci-wiring: done
+  pos-6b-free-forever-chip-on-limit-shaped-surfaces: done
   pos-7-web-relocation-safety-net-redirects-and-auth0-callbacks: done
 
   # --- epic-social-video-import addition ---
