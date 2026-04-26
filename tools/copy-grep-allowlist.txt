@@ -1,0 +1,40 @@
+# pos-6a — copy-grep-guard allowlist.
+#
+# Format: file:lineno:rationale (colon-separated; trailing rationale is
+# free-form). Lines starting with `#` are comments.
+#
+# Entries require a code-review comment on the PR that adds them
+# (enforced by the checklist in `.claude/commands/review.md`).
+#
+# Line numbers drift across refactors. If the grep guard flags an
+# existing file:lineno because the line moved, re-verify the context
+# still satisfies the allowlist rationale, then update the line number
+# here.
+#
+# Forbidden tokens hit in negation contexts ("no premium tier ever,"
+# "behind a paywall," "introduces words like 'premium'") are the
+# canonical positioning hook from pos-1 — Palateful's commitment is
+# meta-text *about* what we forbid, so each negation site needs an
+# entry below.
+
+# --- privacy.html (pos-4 Free-forever section) ---------------------------
+app/web/privacy.html:381:negation — "no premium tier awaiting activation" (canonical free-forever paragraph)
+app/web/privacy.html:386:negation — "common paywall language" references the grep guard itself
+
+# --- pos-3 static web landing ------------------------------------------
+app/web-landing/index.html:7:negation — meta description "no premium tier, ever"
+app/web-landing/index.html:12:negation — og:description "no premium tier, ever"
+app/web-landing/index.html:32:negation — pill commitment "no premium tier — ever"
+app/web-landing/index.html:140:negation — "behind a paywall" in Why-we're-free body
+app/web-landing/index.html:144:negation — meta-quote "introduces words like 'premium', 'subscription', or"
+app/web-landing/index.html:145:negation — meta-quote "'upgrade.'"
+
+# --- pos-2 in-app surfaces ---------------------------------------------
+app/lib/features/onboarding/onboarding_welcome_screen.dart:151:negation — canonical reassurance line
+app/lib/features/profile/profile_screen.dart:865:negation — Profile→About→Why-we're-free tile subtitle
+app/lib/features/about/why_we_are_free_page.dart:91:negation — "Most recipe apps charge a subscription. Palateful doesn't."
+app/lib/features/about/why_we_are_free_page.dart:99:negation — "feature behind a paywall" in Why-we're-free body
+app/lib/features/about/why_we_are_free_page.dart:107:negation — "premium tier sitting behind a coming-soon door"
+app/lib/features/about/why_we_are_free_page.dart:109:negation — "never a paywall on the recipes you've already imported"
+app/lib/features/about/why_we_are_free_page.dart:116:negation — meta-quote "introduces words like 'premium,'"
+app/lib/features/about/why_we_are_free_page.dart:117:negation — meta-quote "'subscription,' or 'upgrade.'"

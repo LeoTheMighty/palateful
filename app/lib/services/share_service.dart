@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../core/di/injection.dart';
@@ -32,7 +33,9 @@ class ShareService {
     final token = response.data['share_token'] as String?;
 
     final link = deepLink ?? 'https://palateful.app/recipes/shared/$token';
-    final text = 'Check out "$recipeName" on Palateful!\n$link';
+    final text = _withTagline(
+      'Check out "$recipeName" on Palateful!\n$link',
+    );
 
     await Share.share(
       text,
@@ -55,7 +58,9 @@ class ShareService {
 
     final data = response.data as Map<String, dynamic>;
     final link = data['link'] as String? ?? data['deep_link'] as String? ?? '';
-    final text = 'Join my recipe book "$recipeBookName" on Palateful!\n$link';
+    final text = _withTagline(
+      'Join my recipe book "$recipeBookName" on Palateful!\n$link',
+    );
 
     await Share.share(
       text,
@@ -76,7 +81,9 @@ class ShareService {
     final deepLink = data['deep_link'] as String?;
 
     final link = deepLink ?? 'palateful://shopping-list/join/$shareCode';
-    final text = 'Join my shopping list "$listName" on Palateful!\n$link';
+    final text = _withTagline(
+      'Join my shopping list "$listName" on Palateful!\n$link',
+    );
 
     await Share.share(
       text,
@@ -84,4 +91,13 @@ class ShareService {
       sharePositionOrigin: originFrom(context),
     );
   }
+
+  /// pos-6a: append the canonical free-forever tagline to every shared
+  /// payload. Plain text — no markdown, no emoji, fits in SMS / Slack /
+  /// Messages without weird wrapping.
+  @visibleForTesting
+  static String appendTagline(String body) => _withTagline(body);
+
+  static String _withTagline(String body) =>
+      '$body\n\nGet Palateful — free forever: https://palateful.app';
 }

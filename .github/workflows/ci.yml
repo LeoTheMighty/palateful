@@ -345,6 +345,9 @@ jobs:
       - name: No direct getRecipeBooks() (ffm-1 grep guard)
         run: bash tools/no-direct-get-recipe-books-check.sh
 
+      - name: No paywall language (pos-6a grep guard)
+        run: bash tools/copy-grep-guard.sh
+
       - name: Test
         working-directory: app
         run: flutter test
