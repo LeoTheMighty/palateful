@@ -19,6 +19,7 @@ import '../meals/services/meal_service.dart';
 import '../meals/widgets/create_meal_sheet.dart';
 import '../meals/widgets/meal_tile.dart';
 import 'providers/home_content_provider.dart';
+import 'recipe_list_view.dart';
 import 'widgets/batch_import_status_widget.dart';
 import 'widgets/book_picker_sheet.dart';
 import 'widgets/bulk_dispatcher.dart';
@@ -30,6 +31,8 @@ import 'widgets/filter_pill.dart';
 import 'widgets/home_bulk_action_bar.dart';
 import 'widgets/home_selection_controller.dart';
 import 'widgets/meal_filter_bar.dart';
+import 'widgets/recipe_list_view_toggle_button.dart';
+import 'widgets/recipe_table_tile.dart';
 import 'widgets/selection_app_bar.dart';
 import '../../core/theme/theme.dart';
 import 'widgets/recipe_card.dart';
@@ -1087,6 +1090,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ).isDefault,
             onTap: _openFilterSheet,
           ),
+          const SizedBox(width: 8),
+          const RecipeListViewToggleButton(),
         ],
       ),
     );
@@ -1422,71 +1427,136 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return _buildEmptyState();
     }
 
+    final view = ref.watch(recipeListViewProvider);
     return RefreshIndicator(
       onRefresh: () => ref.refresh(homeContentProvider.future),
       color: Theme.of(context).colorScheme.primary,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
-          childAspectRatio: 0.7,
-        ),
-        itemCount: _recipes.length,
-        itemBuilder: (context, index) {
-          final item = _recipes[index];
-          final selection = ref.watch(homeSelectionProvider);
-          if (item is Map && item['kind'] == 'meal') {
-            final meal = _mealSummaryFrom(item);
-            final isSelected = selection.isMealSelected(meal.id);
-            return MealTile(
-              meal: meal,
-              onTap: selection.isActive
-                  ? () => ref
-                      .read(homeSelectionProvider.notifier)
-                      .toggleMeal(meal.id)
-                  : () => context.push('/meals/${meal.id}'),
-              onLongPress: () {
-                HapticFeedback.selectionClick();
-                ref
-                    .read(homeSelectionProvider.notifier)
-                    .enterWith(kind: 'meal', id: meal.id);
-              },
-              componentNameResolver: _resolveComponentName,
-              isFavorited: _favoriteMealIds.contains(meal.id),
-              onFavoriteToggle: selection.isActive
-                  ? null
-                  : () => _toggleMealFavorite(meal),
-              selected: isSelected,
-            );
-          }
-          final recipeId = item['id']?.toString();
-          final isSelected =
-              recipeId != null && selection.isRecipeSelected(recipeId);
-          return RecipeCard(
-            recipe: item,
-            selected: isSelected,
-            onTap: selection.isActive && recipeId != null
+      child: view == RecipeListView.table
+          ? _buildRecipeTable()
+          : _buildRecipeGridView(),
+    );
+  }
+
+  Widget _buildRecipeGridView() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 0.7,
+      ),
+      itemCount: _recipes.length,
+      itemBuilder: (context, index) {
+        final item = _recipes[index];
+        final selection = ref.watch(homeSelectionProvider);
+        if (item is Map && item['kind'] == 'meal') {
+          final meal = _mealSummaryFrom(item);
+          final isSelected = selection.isMealSelected(meal.id);
+          return MealTile(
+            meal: meal,
+            onTap: selection.isActive
                 ? () => ref
                     .read(homeSelectionProvider.notifier)
-                    .toggleRecipe(recipeId)
-                : () => context.push('/recipes/${item['id']}'),
-            onLongPress: recipeId == null
-                ? null
-                : () {
-                    HapticFeedback.selectionClick();
-                    ref.read(homeSelectionProvider.notifier).enterWith(
-                          kind: 'recipe',
-                          id: recipeId,
-                        );
-                  },
+                    .toggleMeal(meal.id)
+                : () => context.push('/meals/${meal.id}'),
+            onLongPress: () {
+              HapticFeedback.selectionClick();
+              ref
+                  .read(homeSelectionProvider.notifier)
+                  .enterWith(kind: 'meal', id: meal.id);
+            },
+            componentNameResolver: _resolveComponentName,
+            isFavorited: _favoriteMealIds.contains(meal.id),
             onFavoriteToggle: selection.isActive
                 ? null
-                : () => _toggleFavorite(item),
+                : () => _toggleMealFavorite(meal),
+            selected: isSelected,
           );
-        },
+        }
+        final recipeId = item['id']?.toString();
+        final isSelected =
+            recipeId != null && selection.isRecipeSelected(recipeId);
+        return RecipeCard(
+          recipe: item,
+          selected: isSelected,
+          onTap: selection.isActive && recipeId != null
+              ? () => ref
+                  .read(homeSelectionProvider.notifier)
+                  .toggleRecipe(recipeId)
+              : () => context.push('/recipes/${item['id']}'),
+          onLongPress: recipeId == null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  ref.read(homeSelectionProvider.notifier).enterWith(
+                        kind: 'recipe',
+                        id: recipeId,
+                      );
+                },
+          onFavoriteToggle: selection.isActive
+              ? null
+              : () => _toggleFavorite(item),
+        );
+      },
+    );
+  }
+
+  /// Story 3: table-density alternative to the grid. Renders the same
+  /// merged recipe + meal list as `_buildRecipeGridView`, just at row
+  /// density. Long-press still opens multi-select; tapping a row in
+  /// selection mode toggles inclusion (same wiring as the grid path).
+  Widget _buildRecipeTable() {
+    final selection = ref.watch(homeSelectionProvider);
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _recipes.length,
+      separatorBuilder: (_, __) => Divider(
+        height: 1,
+        thickness: 1,
+        color: Theme.of(context).colorScheme.outlineVariant,
       ),
+      itemBuilder: (context, index) {
+        final item = _recipes[index];
+        if (item is Map && item['kind'] == 'meal') {
+          final meal = _mealSummaryFrom(item);
+          final isSelected = selection.isMealSelected(meal.id);
+          return RecipeTableTile(
+            item: item,
+            selected: isSelected,
+            onTap: selection.isActive
+                ? () => ref
+                    .read(homeSelectionProvider.notifier)
+                    .toggleMeal(meal.id)
+                : () => context.push('/meals/${meal.id}'),
+            onLongPress: () {
+              ref
+                  .read(homeSelectionProvider.notifier)
+                  .enterWith(kind: 'meal', id: meal.id);
+            },
+          );
+        }
+        final recipeId = item['id']?.toString();
+        final isSelected =
+            recipeId != null && selection.isRecipeSelected(recipeId);
+        return RecipeTableTile(
+          item: item,
+          selected: isSelected,
+          onTap: selection.isActive && recipeId != null
+              ? () => ref
+                  .read(homeSelectionProvider.notifier)
+                  .toggleRecipe(recipeId)
+              : () => context.push('/recipes/${item['id']}'),
+          onLongPress: recipeId == null
+              ? null
+              : () {
+                  ref.read(homeSelectionProvider.notifier).enterWith(
+                        kind: 'recipe',
+                        id: recipeId,
+                      );
+                },
+        );
+      },
     );
   }
 

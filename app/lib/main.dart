@@ -30,6 +30,7 @@ import 'core/services/metrickit_bridge.dart';
 import 'core/services/perf_flags_service.dart';
 import 'core/config/environment.dart';
 import 'core/theme/app_theme.dart';
+import 'features/home/recipe_list_view.dart';
 import 'features/recipes/cook_mode/services/cook_session_persister.dart';
 import 'providers/theme_mode_provider.dart';
 
@@ -261,6 +262,7 @@ void main() async {
   }
 
   final appearance = await loadSavedAppearance();
+  final savedRecipeListView = await loadSavedRecipeListView();
   runApp(
     ProviderScope(
       overrides: [
@@ -268,6 +270,8 @@ void main() async {
             .overrideWith(() => ThemeModeNotifier(appearance.themeMode)),
         fontStyleProvider
             .overrideWith(() => FontStyleNotifier(appearance.fontStyle)),
+        recipeListViewProvider
+            .overrideWith(() => RecipeListViewNotifier(savedRecipeListView)),
       ],
       child: const PalatefulApp(),
     ),

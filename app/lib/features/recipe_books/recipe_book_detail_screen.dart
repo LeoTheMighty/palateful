@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/api_client.dart';
@@ -10,6 +11,9 @@ import '../../core/theme/theme.dart';
 import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
+import '../home/recipe_list_view.dart';
+import '../home/widgets/recipe_list_view_toggle_button.dart';
+import '../home/widgets/recipe_table_tile.dart';
 import '../meals/models/meal.dart';
 import '../meals/services/meal_service.dart';
 import '../meals/widgets/create_meal_sheet.dart';
@@ -24,16 +28,18 @@ import '../../core/state/mutation_failure_copy.dart';
 import '../../core/state/mutation_snackbar.dart';
 import '../../shared/widgets/error_banner.dart';
 
-class RecipeBookDetailScreen extends StatefulWidget {
+class RecipeBookDetailScreen extends ConsumerStatefulWidget {
   final String recipeBookId;
 
   const RecipeBookDetailScreen({super.key, required this.recipeBookId});
 
   @override
-  State<RecipeBookDetailScreen> createState() => _RecipeBookDetailScreenState();
+  ConsumerState<RecipeBookDetailScreen> createState() =>
+      _RecipeBookDetailScreenState();
 }
 
-class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
+class _RecipeBookDetailScreenState
+    extends ConsumerState<RecipeBookDetailScreen> {
   final _apiClient = getIt<ApiClient>();
   final _mealService = getIt<MealService>();
   final _bookService = getIt<RecipeBookService>();
@@ -277,6 +283,104 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
               },
       );
     }).toList();
+  }
+
+  /// Story 3: table-density alternative to `_buildMixedCards`. Same
+  /// recipe + meal merge + sort, just rendered as one row per entry.
+  /// Selection mode wires to `_toggleRecipeSelection` for recipes;
+  /// meals stay tap-no-op in select mode (parity with the grid path).
+  Widget _buildMixedTable() {
+    final filteredRecipes = _vibeFilter == null
+        ? _recipes
+        : _recipes
+            .where((r) =>
+                r['primary_vibe'] == _vibeFilter ||
+                r['secondary_vibe'] == _vibeFilter)
+            .toList();
+    final meals = _vibeFilter == null ? _meals : const <MealSummary>[];
+
+    final entries = <_GridEntry>[];
+    for (final recipe in filteredRecipes) {
+      final raw = recipe['updated_at'] as String? ??
+          recipe['created_at'] as String?;
+      final updatedAt = raw != null
+          ? DateTime.tryParse(raw) ?? DateTime(1970)
+          : DateTime(1970);
+      entries.add(_GridEntry.recipe(recipe, updatedAt));
+    }
+    for (final meal in meals) {
+      entries.add(_GridEntry.meal(meal, meal.updatedAt));
+    }
+    entries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final tiles = <Widget>[];
+    for (var i = 0; i < entries.length; i++) {
+      if (i > 0) {
+        tiles.add(Divider(
+          height: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant,
+        ));
+      }
+      final e = entries[i];
+      if (e.isRecipe) {
+        final recipe = e.recipe!;
+        // Surface the active book name on the row pill (the home pulls
+        // it from the cross-book payload; here we know it locally —
+        // book detail is single-book by definition).
+        final pillRecipe = {
+          ...recipe,
+          if (_recipeBook?['name'] is String)
+            'recipe_book_name': _recipeBook!['name'],
+        };
+        final recipeId = recipe['id']?.toString();
+        final isSelected =
+            recipeId != null && _selectedRecipeIds.contains(recipeId);
+        tiles.add(RecipeTableTile(
+          item: pillRecipe,
+          selected: isSelected,
+          onTap: _isSelectMode
+              ? () {
+                  if (recipeId != null) _toggleRecipeSelection(recipeId);
+                }
+              : () async {
+                  await context.push('/recipes/${recipe['id']}');
+                  _loadRecipeBook();
+                },
+          onLongPress: _isSelectMode || _userRole == 'viewer'
+              ? null
+              : () {
+                  if (recipeId != null) {
+                    _enterSelectMode(initialRecipeId: recipeId);
+                  }
+                },
+        ));
+      } else {
+        final meal = e.meal!;
+        final mealMap = <String, dynamic>{
+          'id': meal.id,
+          'name': meal.name,
+          'kind': 'meal',
+          'component_image_urls': meal.componentImageUrls,
+          if (_recipeBook?['name'] is String)
+            'recipe_book_name': _recipeBook!['name'],
+        };
+        tiles.add(RecipeTableTile(
+          item: mealMap,
+          onTap: _isSelectMode
+              ? () {}
+              : () async {
+                  await context.push('/meals/${meal.id}');
+                  if (mounted) _loadRecipeBook();
+                },
+        ));
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: tiles,
+    );
   }
 
   Future<void> _openCreateMealSheet({
@@ -870,6 +974,10 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                       );
                     },
                   ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4),
+                  child: Center(child: RecipeListViewToggleButton()),
+                ),
                 if (_recipes.isNotEmpty && _userRole != 'viewer')
                   IconButton(
                     icon: const Icon(Icons.checklist),
@@ -1093,6 +1201,11 @@ class _RecipeBookDetailScreenState extends State<RecipeBookDetailScreen> {
                           else
                             Builder(
                               builder: (context) {
+                                final view =
+                                    ref.watch(recipeListViewProvider);
+                                if (view == RecipeListView.table) {
+                                  return _buildMixedTable();
+                                }
                                 final columns =
                                     ResponsiveUtils.recipeGridColumns(context);
                                 final cards = _buildMixedCards();
