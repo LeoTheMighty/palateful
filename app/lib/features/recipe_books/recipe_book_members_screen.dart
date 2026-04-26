@@ -9,6 +9,7 @@ import '../../core/state/mutation_snackbar.dart';
 import '../../services/share_service.dart';
 import '../../core/services/error_reporter.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/free_forever_chip.dart';
 import 'services/recipe_book_service.dart';
 
 class RecipeBookMembersScreen extends StatefulWidget {
@@ -405,6 +406,14 @@ class _RecipeBookMembersScreenState extends State<RecipeBookMembersScreen> {
                               ],
                             ),
                           ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Row(
+                        children: const [
+                          Expanded(child: FreeForeverChip.household()),
                         ],
                       ),
                     ),

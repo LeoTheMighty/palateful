@@ -38,3 +38,9 @@ app/lib/features/about/why_we_are_free_page.dart:107:negation — "premium tier 
 app/lib/features/about/why_we_are_free_page.dart:109:negation — "never a paywall on the recipes you've already imported"
 app/lib/features/about/why_we_are_free_page.dart:116:negation — meta-quote "introduces words like 'premium,'"
 app/lib/features/about/why_we_are_free_page.dart:117:negation — meta-quote "'subscription,' or 'upgrade.'"
+
+# --- pos-6b FreeForeverChip widget (canonical limit-shaped affordance) ---
+app/lib/shared/widgets/free_forever_chip.dart:5:negation — doc comment "where a competitor app would show a paywall"
+app/lib/shared/widgets/free_forever_chip.dart:9:negation — doc comment "competitors paywall must mount this widget"
+app/lib/shared/widgets/free_forever_chip.dart:18:negation — import variant subtitle "No 5/week cap. No premium tier."
+app/lib/shared/widgets/free_forever_chip.dart:34:negation — import variant subtitle string "No 5/week cap. No premium tier."

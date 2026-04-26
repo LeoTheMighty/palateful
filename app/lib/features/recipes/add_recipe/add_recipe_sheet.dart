@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/widgets/free_forever_chip.dart';
 import 'widgets/live_import_strip.dart';
 
 class AddRecipeSheet extends ConsumerStatefulWidget {
@@ -203,6 +204,11 @@ class _AddRecipeSheetState extends ConsumerState<AddRecipeSheet> {
                     ? CrossFadeState.showSecond
                     : CrossFadeState.showFirst,
                 duration: const Duration(milliseconds: 200),
+              ),
+              const SizedBox(height: 12),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: FreeForeverChip.import(),
               ),
               ],
             ),
