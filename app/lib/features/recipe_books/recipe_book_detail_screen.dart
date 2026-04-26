@@ -13,6 +13,7 @@ import '../../services/share_service.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
 import '../home/recipe_list_view.dart';
 import '../home/widgets/dynamic_column.dart';
+import '../home/widgets/hide_in_meals_chip.dart';
 import '../home/widgets/recipe_list_view_toggle_button.dart';
 import '../home/widgets/recipe_table_tile.dart';
 import '../meals/models/meal.dart';
@@ -71,6 +72,11 @@ class _RecipeBookDetailScreenState
   bool _isSelectMode = false;
   final Set<String> _selectedRecipeIds = {};
   bool _isBulkOperating = false;
+
+  // Story 5: hide-in-meals filter (default ON). Local to the detail
+  // screen — the home screen has its own toggle that lives on home's
+  // state. The chip + empty-state mirror home's surface.
+  bool _hideInMeals = true;
 
   @override
   void initState() {
@@ -211,19 +217,76 @@ class _RecipeBookDetailScreenState
     if (mounted) _exitSelectMode();
   }
 
+  /// Story 5: collapse the vibe + hide-in-meals filters into the
+  /// recipe list both grid and table render. Hide-in-meals reads
+  /// `is_in_meal` (added per-row by the Story 2 backend); falls back
+  /// to checking the loaded `_meals`' component lists if the field
+  /// is missing (older payloads / rolling deploy).
+  List<dynamic> _filteredRecipesForRender() {
+    var out = _recipes;
+    if (_vibeFilter != null) {
+      out = out
+          .where((r) =>
+              r['primary_vibe'] == _vibeFilter ||
+              r['secondary_vibe'] == _vibeFilter)
+          .toList();
+    }
+    if (_hideInMeals) {
+      final fallbackComponentIds = <String>{};
+      final hasIsInMeal =
+          out.isNotEmpty && (out.first as Map).containsKey('is_in_meal');
+      if (!hasIsInMeal) {
+        for (final m in _meals) {
+          for (final id in m.componentRecipeIds) {
+            fallbackComponentIds.add(id);
+          }
+        }
+      }
+      out = out.where((r) {
+        if (r is! Map) return true;
+        if (r['is_in_meal'] == true) return false;
+        if (!hasIsInMeal) {
+          final id = r['id']?.toString();
+          if (id != null && fallbackComponentIds.contains(id)) return false;
+        }
+        return true;
+      }).toList();
+    }
+    return out;
+  }
+
+  /// Story 5: meal-attached recipe count for the chip. Prefers the
+  /// `total_in_meals` field on the response (Story 2 backend); falls
+  /// back to deriving from the loaded recipes' `is_in_meal` flag, or
+  /// finally the union of `_meals` component lists.
+  int _hiddenInMealsCount() {
+    final fromResponse = _recipeBook?['total_in_meals'];
+    if (fromResponse is num) return fromResponse.toInt();
+    var count = 0;
+    var sawFlag = false;
+    for (final r in _recipes) {
+      if (r is! Map) continue;
+      if (r.containsKey('is_in_meal')) {
+        sawFlag = true;
+        if (r['is_in_meal'] == true) count++;
+      }
+    }
+    if (sawFlag) return count;
+    final ids = <String>{};
+    for (final m in _meals) {
+      for (final id in m.componentRecipeIds) {
+        ids.add(id);
+      }
+    }
+    return ids.length;
+  }
+
   /// Build the mixed recipe + meal card list, sorted by `updated_at`
   /// DESC. Recipe widgets are `_RecipeCard`; meals are `MealTile`.
   /// Vibe filter applies to recipes only — meals have no vibe field,
   /// so they are hidden when a filter is active.
   List<Widget> _buildMixedCards() {
-    final filteredRecipes = _vibeFilter == null
-        ? _recipes
-        : _recipes
-            .where((r) =>
-                r['primary_vibe'] == _vibeFilter ||
-                r['secondary_vibe'] == _vibeFilter)
-            .toList();
-
+    final filteredRecipes = _filteredRecipesForRender();
     final meals = _vibeFilter == null ? _meals : const <MealSummary>[];
 
     // Pack into a unified list with `updated_at` for sort, then emit
@@ -294,13 +357,7 @@ class _RecipeBookDetailScreenState
   /// has no sort menu (always `updated_at DESC`), so tap-to-flip is
   /// suppressed here.
   Widget _buildMixedTable() {
-    final filteredRecipes = _vibeFilter == null
-        ? _recipes
-        : _recipes
-            .where((r) =>
-                r['primary_vibe'] == _vibeFilter ||
-                r['secondary_vibe'] == _vibeFilter)
-            .toList();
+    final filteredRecipes = _filteredRecipesForRender();
     final meals = _vibeFilter == null ? _meals : const <MealSummary>[];
 
     final entries = <_GridEntry>[];
@@ -1211,6 +1268,20 @@ class _RecipeBookDetailScreenState
                           ),
                           const SizedBox(height: 8),
 
+                          // Story 5: hide-in-meals chip + counter,
+                          // visible only outside select mode so the
+                          // bulk bar surface is unobstructed.
+                          if (!_isSelectMode)
+                            HideInMealsChip(
+                              visibleCount:
+                                  _filteredRecipesForRender().length,
+                              hiddenCount: _hiddenInMealsCount(),
+                              active: _hideInMeals,
+                              onTap: () => setState(() {
+                                _hideInMeals = !_hideInMeals;
+                              }),
+                            ),
+
                           // Grid — mixed recipe + meal tiles, sorted by
                           // updated_at DESC.
                           if (_recipes.isEmpty && _meals.isEmpty)
@@ -1221,6 +1292,26 @@ class _RecipeBookDetailScreenState
                           else
                             Builder(
                               builder: (context) {
+                                final filtered = _filteredRecipesForRender();
+                                final mealsForRender = _vibeFilter == null
+                                    ? _meals
+                                    : const <MealSummary>[];
+                                if (filtered.isEmpty &&
+                                    mealsForRender.isEmpty &&
+                                    _hideInMeals &&
+                                    _hiddenInMealsCount() > 0) {
+                                  return SizedBox(
+                                    height: MediaQuery.of(context)
+                                            .size
+                                            .height *
+                                        0.4,
+                                    child: HideInMealsEmptyState(
+                                      onShowAll: () => setState(() {
+                                        _hideInMeals = false;
+                                      }),
+                                    ),
+                                  );
+                                }
                                 final view =
                                     ref.watch(recipeListViewProvider);
                                 if (view == RecipeListView.table) {

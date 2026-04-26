@@ -1,7 +1,10 @@
-// hmp-4 — FilterBottomSheet extensions: Show type + Hide components.
+// hmp-4 — FilterBottomSheet extensions: Show type. (The "Hide
+// components" toggle previously lived in the sheet too; it moved to
+// the HideInMealsChip surface in epic recipe-list-organization /
+// Story 5. The default value is now ON.)
 //
-// Pure widget tests. Validates the sheet exposes the two new controls,
-// that state plumbs through onApply, and that Clear all resets both.
+// Pure widget tests. Validates the sheet exposes the Show control,
+// that state plumbs through onApply, and that Clear all resets it.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,7 +48,7 @@ Future<HomeFilterState?> _openSheetAndApply(
 }
 
 void main() {
-  testWidgets('defaults — sheet renders Show + Hide rows at their defaults',
+  testWidgets('defaults — sheet renders Show row; Hide toggle removed',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -68,13 +71,12 @@ void main() {
     expect(find.text('All'), findsWidgets); // Show's "All" + Meals' "All"
     expect(find.text('Recipes only'), findsOneWidget);
     expect(find.text('Meals only'), findsOneWidget);
-    expect(find.text('Hide components of Meals'), findsOneWidget);
-
-    // Switch renders OFF by default.
-    final sw = tester.widget<SwitchListTile>(
+    // Story 5: the hide-components toggle moved to HideInMealsChip.
+    expect(find.text('Hide components of Meals'), findsNothing);
+    expect(
       find.byKey(const ValueKey('hide-components-of-meals-toggle')),
+      findsNothing,
     );
-    expect(sw.value, isFalse);
   });
 
   testWidgets('Apply "Meals only" — state flows through onApply',
@@ -89,28 +91,13 @@ void main() {
     );
     expect(state, isNotNull);
     expect(state!.showType, ShowTypeFilter.mealsOnly);
-    expect(state.hideComponentsOfMeals, isFalse);
+    // Story 5: hide-components default flipped to ON; the sheet
+    // round-trips the value but no longer surfaces a control for it.
+    expect(state.hideComponentsOfMeals, isTrue);
     expect(state.isDefault, isFalse);
   });
 
-  testWidgets('Apply hide-components toggle ON — flows through', (tester) async {
-    final state = await _openSheetAndApply(
-      tester,
-      initial: HomeFilterState.defaults,
-      interact: (t) async {
-        await t.tap(
-          find.byKey(const ValueKey('hide-components-of-meals-toggle')),
-        );
-        await t.pumpAndSettle();
-      },
-    );
-    expect(state, isNotNull);
-    expect(state!.hideComponentsOfMeals, isTrue);
-    expect(state.showType, ShowTypeFilter.all);
-    expect(state.isDefault, isFalse);
-  });
-
-  testWidgets('Clear all resets new fields alongside existing ones',
+  testWidgets('Clear all resets fields to (now hide-ON) defaults',
       (tester) async {
     final state = await _openSheetAndApply(
       tester,
@@ -119,7 +106,9 @@ void main() {
         vibe: null,
         sort: SortOption.newest,
         showType: ShowTypeFilter.mealsOnly,
-        hideComponentsOfMeals: true,
+        // Story 5: cleared defaults put hide back to ON, so we start
+        // from hide=false to make Clear All visibly different.
+        hideComponentsOfMeals: false,
       ),
       interact: (t) async {
         await t.tap(find.text('Clear all'));
@@ -128,29 +117,33 @@ void main() {
     );
     expect(state, isNotNull);
     expect(state!.isDefault, isTrue);
+    expect(state.hideComponentsOfMeals, isTrue);
   });
 
-  test('HomeFilterState.isDefault reflects new fields', () {
+  test('HomeFilterState.isDefault reflects new defaults', () {
     expect(
       const HomeFilterState(
         meal: MealFilter.all,
         vibe: null,
         sort: SortOption.best,
         showType: ShowTypeFilter.mealsOnly,
-        hideComponentsOfMeals: false,
+        hideComponentsOfMeals: true,
       ).isDefault,
       isFalse,
     );
+    // Story 5: hide-components default is now true, so an explicit
+    // false value is non-default.
     expect(
       const HomeFilterState(
         meal: MealFilter.all,
         vibe: null,
         sort: SortOption.best,
         showType: ShowTypeFilter.all,
-        hideComponentsOfMeals: true,
+        hideComponentsOfMeals: false,
       ).isDefault,
       isFalse,
     );
     expect(HomeFilterState.defaults.isDefault, isTrue);
+    expect(HomeFilterState.defaults.hideComponentsOfMeals, isTrue);
   });
 }

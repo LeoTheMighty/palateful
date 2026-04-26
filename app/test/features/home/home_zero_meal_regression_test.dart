@@ -196,21 +196,16 @@ void main() {
       expect(find.text('Bulk action unavailable'), findsOneWidget);
     });
 
-    testWidgets('filter sheet\'s two new rows are no-ops with zero Meals',
+    testWidgets('hide-in-meals chip is a no-op with zero Meals',
         (tester) async {
       _registerFakes(_FakeApi(
         recipes: [_recipe(id: 'r1', name: 'Kale Salad')],
       ));
       await _pumpHome(tester);
 
-      await tester.tap(find.byTooltip('Sort & filter'));
-      await tester.pumpAndSettle();
-      // Hide components toggle flips ON but doesn't change the grid.
-      await tester.tap(
-        find.byKey(const ValueKey('hide-components-of-meals-toggle')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Apply'));
+      // Story 5: hide-in-meals chip lives above the grid. Toggling it
+      // doesn't change the grid when no meals exist.
+      await tester.tap(find.byKey(const ValueKey('hide_in_meals_chip')));
       await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 300));
 

@@ -147,12 +147,12 @@ Future<void> _pumpHome(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 300));
 }
 
-Future<void> _applyHideComponents(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Sort & filter'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('hide-components-of-meals-toggle')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('Apply'));
+/// Story 5: the hide-components toggle moved to HideInMealsChip.
+/// Default is now ON, so this helper *toggles* whichever direction
+/// the chip is currently in. Tests should call it deliberately based
+/// on the assertion they want.
+Future<void> _toggleHideInMealsChip(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('hide_in_meals_chip')));
   await tester.pumpAndSettle();
   await tester.pump(const Duration(milliseconds: 300));
 }
@@ -182,7 +182,7 @@ void main() {
     _unregister();
   });
 
-  testWidgets('zero Meals — hide-components toggle is a no-op',
+  testWidgets('zero Meals — hide chip is visually present but a no-op',
       (tester) async {
     _registerFakes(_FakeApi(
       recipes: [
@@ -191,16 +191,15 @@ void main() {
       ],
     ));
     await _pumpHome(tester);
+    // Default is hide=ON but no meals → nothing to hide.
     expect(find.byType(RecipeCard), findsNWidgets(2));
-
-    await _applyHideComponents(tester);
-
-    // Grid unchanged — still 2 recipes, no meals.
+    // Toggling the chip should still leave 2 recipes visible.
+    await _toggleHideInMealsChip(tester);
     expect(find.byType(RecipeCard), findsNWidgets(2));
     expect(find.byType(MealTile), findsNothing);
   });
 
-  testWidgets('1 Meal with 2 components — those 2 recipes disappear',
+  testWidgets('1 Meal with 2 components — components hidden by default',
       (tester) async {
     _registerFakes(_FakeApi(
       recipes: [
@@ -217,12 +216,17 @@ void main() {
       ],
     ));
     await _pumpHome(tester);
-    expect(find.byType(RecipeCard), findsNWidgets(3));
+    // Story 5: hide is ON by default → r1 + r2 are hidden from start.
+    expect(find.byType(RecipeCard), findsOneWidget);
+    expect(find.text('Uncombined Recipe'), findsOneWidget);
     expect(find.byType(MealTile), findsOneWidget);
 
-    await _applyHideComponents(tester);
+    // Tap the chip → hide turns OFF → all 3 recipes reappear.
+    await _toggleHideInMealsChip(tester);
+    expect(find.byType(RecipeCard), findsNWidgets(3));
 
-    // r1 + r2 disappear; r3 stays; Meal stays.
+    // Tap again → hide back ON → r1 + r2 hidden again.
+    await _toggleHideInMealsChip(tester);
     expect(find.byType(RecipeCard), findsOneWidget);
     expect(find.text('Uncombined Recipe'), findsOneWidget);
     expect(find.byType(MealTile), findsOneWidget);

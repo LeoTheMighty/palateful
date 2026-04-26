@@ -27,7 +27,7 @@ class HomeFilterState {
     required this.vibe,
     required this.sort,
     this.showType = ShowTypeFilter.all,
-    this.hideComponentsOfMeals = false,
+    this.hideComponentsOfMeals = true,
   });
 
   static const defaults = HomeFilterState(
@@ -35,7 +35,7 @@ class HomeFilterState {
     vibe: null,
     sort: SortOption.best,
     showType: ShowTypeFilter.all,
-    hideComponentsOfMeals: false,
+    hideComponentsOfMeals: true,
   );
 
   bool get isDefault =>
@@ -176,18 +176,6 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               _ShowTypeChipWrap(
                 selected: _draftShowType,
                 onChanged: (s) => setState(() => _draftShowType = s),
-              ),
-              const SizedBox(height: 8),
-              SwitchListTile(
-                key: const ValueKey('hide-components-of-meals-toggle'),
-                value: _draftHideComponents,
-                onChanged: (v) => setState(() => _draftHideComponents = v),
-                title: const Text('Hide components of Meals'),
-                subtitle: const Text(
-                  'Hide recipes that are part of any Meal.',
-                ),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
               ),
               const SizedBox(height: 20),
 

@@ -29,6 +29,7 @@ import 'widgets/dynamic_column.dart';
 import 'widgets/move_source_disambiguation_sheet.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
+import 'widgets/hide_in_meals_chip.dart';
 import 'widgets/home_bulk_action_bar.dart';
 import 'widgets/home_selection_controller.dart';
 import 'widgets/meal_filter_bar.dart';
@@ -80,7 +81,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _vibeFilter;
   SortOption _sortOption = SortOption.best;
   ShowTypeFilter _showTypeFilter = ShowTypeFilter.all;
-  bool _hideComponentsOfMeals = false;
+  // Story 5: default ON. The chip above the list (HideInMealsChip)
+  // owns toggling; the bottom sheet's previous toggle is removed.
+  bool _hideComponentsOfMeals = true;
 
   /// Story 4: direction flip applied on top of each [SortOption]'s
   /// natural direction. `false` = natural (best descending, quickest
@@ -508,6 +511,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // Favorites Section
             if (!selection.isActive && _favorites.isNotEmpty)
               _buildFavoritesSection(),
+
+            // Story 5: hide-in-meals chip + counter, above the list in
+            // both grid + table views. Hidden during selection mode so
+            // the bulk bar surface is unobstructed.
+            if (!selection.isActive) _buildHideInMealsChip(),
 
             // Recipe Grid
             Expanded(
@@ -1436,6 +1444,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// Story 5: render the chip above the list. The two counts are
+  /// derived from the pristine sources:
+  ///   - visibleCount = recipes (only) currently rendered post-filter.
+  ///   - hiddenCount = unique recipe ids that appear in any meal's
+  ///     component_recipe_ids (the pool the filter operates on).
+  /// Re-derived on every build so a meal-component add/remove
+  /// updates the count copy without a refetch.
+  Widget _buildHideInMealsChip() {
+    final inAnyMealIds = <String>{};
+    for (final m in _allMeals) {
+      if (m is! Map) continue;
+      final ids = (m['component_recipe_ids'] as List?) ?? const [];
+      for (final id in ids) {
+        inAnyMealIds.add(id.toString());
+      }
+    }
+    final hiddenCount = inAnyMealIds.length;
+    final visibleCount = _recipes
+        .where((i) => i is! Map || i['kind'] != 'meal')
+        .length;
+    return HideInMealsChip(
+      visibleCount: visibleCount,
+      hiddenCount: hiddenCount,
+      active: _hideComponentsOfMeals,
+      onTap: () {
+        setState(() {
+          _hideComponentsOfMeals = !_hideComponentsOfMeals;
+        });
+        _reapplyFilters();
+      },
+    );
+  }
+
   Widget _buildRecipeGrid() {
     final async = ref.watch(homeContentProvider);
     // rf-3 AC #5: while refetching, keep showing the stale grid rather
@@ -1460,6 +1501,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     if (_recipes.isEmpty) {
+      // Story 5: when the hide-in-meals filter is the *cause* of the
+      // empty list (any recipe attached to a meal), surface the
+      // celebratory state with a one-tap path to disable the filter.
+      // Falling through to the generic "no recipes" state would be
+      // misleading.
+      final loosePool = _allRecipes
+          .whereType<Map>()
+          .map((r) => (r['id'] ?? '').toString())
+          .toSet();
+      if (_hideComponentsOfMeals && loosePool.isNotEmpty) {
+        final inAnyMealIds = <String>{};
+        for (final m in _allMeals) {
+          if (m is! Map) continue;
+          final ids = (m['component_recipe_ids'] as List?) ?? const [];
+          for (final id in ids) {
+            inAnyMealIds.add(id.toString());
+          }
+        }
+        if (loosePool.every(inAnyMealIds.contains)) {
+          return HideInMealsEmptyState(
+            onShowAll: () {
+              setState(() {
+                _hideComponentsOfMeals = false;
+              });
+              _reapplyFilters();
+            },
+          );
+        }
+      }
       return _buildEmptyState();
     }
 

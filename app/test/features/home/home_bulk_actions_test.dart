@@ -280,6 +280,11 @@ void main() {
       _registerFakes(api);
       await _pumpHome(tester);
 
+      // Story 5: hide-in-meals defaults ON, so r1 (in m1) is hidden
+      // from the grid. Tap the chip to surface it for this test.
+      await tester.tap(find.byKey(const ValueKey('hide_in_meals_chip')));
+      await tester.pumpAndSettle();
+
       // Long-press the Meal, then tap the recipe that's already inside it.
       await tester.longPress(find.byType(MealTile).first);
       await tester.pumpAndSettle();
