@@ -1424,7 +1424,7 @@ development_status:
   recipe-list-org-1-backend-last-cooked-on-list-responses-sort-and-index: done
   recipe-list-org-2-backend-hide-in-meals-filter-server-or-client-decision: done
   recipe-list-org-3-frontend-view-toggle-button-table-tile-and-persisted-preference: done
-  recipe-list-org-4-frontend-dynamic-column-mirrors-active-sort: backlog
+  recipe-list-org-4-frontend-dynamic-column-mirrors-active-sort: done
   recipe-list-org-5-frontend-hide-in-meals-filter-chip-and-counter: backlog
   recipe-list-org-6-regression-sweep-and-table-view-smoke: backlog
   epic-recipe-list-organization-retrospective: optional

@@ -25,6 +25,7 @@ import 'widgets/book_picker_sheet.dart';
 import 'widgets/bulk_dispatcher.dart';
 import 'widgets/bulk_move_undo_toast.dart';
 import 'widgets/bulk_partial_failure_dialog.dart';
+import 'widgets/dynamic_column.dart';
 import 'widgets/move_source_disambiguation_sheet.dart';
 import 'widgets/filter_bottom_sheet.dart';
 import 'widgets/filter_pill.dart';
@@ -80,6 +81,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   SortOption _sortOption = SortOption.best;
   ShowTypeFilter _showTypeFilter = ShowTypeFilter.all;
   bool _hideComponentsOfMeals = false;
+
+  /// Story 4: direction flip applied on top of each [SortOption]'s
+  /// natural direction. `false` = natural (best descending, quickest
+  /// ascending, last-cooked descending, etc.); `true` reverses it.
+  /// Toggled by tapping the table view's dynamic-column header.
+  bool _sortReversed = false;
 
   dynamic _todayMealEvent;
   List<dynamic> _recentlyCooked = [];
@@ -321,9 +328,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return aTime.compareTo(bTime);
         });
         break;
+      case SortOption.lastCooked:
+        // NULLS LAST when descending (natural); NULLS FIRST when
+        // ascending (reversed). Mirrors the backend's per-page order
+        // (story `recipe-list-org-1`).
+        sorted.sort((a, b) {
+          final aRaw = a['last_cooked']?.toString();
+          final bRaw = b['last_cooked']?.toString();
+          if (aRaw == null && bRaw == null) return 0;
+          if (aRaw == null) return _sortReversed ? -1 : 1;
+          if (bRaw == null) return _sortReversed ? 1 : -1;
+          return _sortReversed
+              ? aRaw.compareTo(bRaw)
+              : bRaw.compareTo(aRaw);
+        });
+        break;
       case SortOption.random:
         sorted.shuffle();
         break;
+    }
+    // `lastCooked` accounts for direction inside its comparator (so
+    // NULLs stay anchored on the right end). `random` has no notion
+    // of direction. All other sorts are descending-first; reverse
+    // them in-place when the user asked for ascending.
+    if (_sortReversed &&
+        _sortOption != SortOption.random &&
+        _sortOption != SortOption.lastCooked) {
+      return sorted.reversed.toList();
     }
     return sorted;
   }
@@ -345,6 +376,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() {
           _mealFilter = state.meal;
           _vibeFilter = state.vibe;
+          if (_sortOption != state.sort) {
+            // New sort wins back its natural direction; the user reaches
+            // the table-view header tap to flip direction explicitly.
+            _sortReversed = false;
+          }
           _sortOption = state.sort;
           _showTypeFilter = state.showType;
           _hideComponentsOfMeals = state.hideComponentsOfMeals;
@@ -1506,57 +1542,91 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// merged recipe + meal list as `_buildRecipeGridView`, just at row
   /// density. Long-press still opens multi-select; tapping a row in
   /// selection mode toggles inclusion (same wiring as the grid path).
+  /// Story 4: prepended with a dynamic-column header — its label
+  /// mirrors the active sort, and tapping it flips sort direction.
   Widget _buildRecipeTable() {
     final selection = ref.watch(homeSelectionProvider);
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _recipes.length,
-      separatorBuilder: (_, __) => Divider(
-        height: 1,
-        thickness: 1,
-        color: Theme.of(context).colorScheme.outlineVariant,
-      ),
-      itemBuilder: (context, index) {
-        final item = _recipes[index];
-        if (item is Map && item['kind'] == 'meal') {
-          final meal = _mealSummaryFrom(item);
-          final isSelected = selection.isMealSelected(meal.id);
-          return RecipeTableTile(
-            item: item,
-            selected: isSelected,
-            onTap: selection.isActive
-                ? () => ref
-                    .read(homeSelectionProvider.notifier)
-                    .toggleMeal(meal.id)
-                : () => context.push('/meals/${meal.id}'),
-            onLongPress: () {
-              ref
-                  .read(homeSelectionProvider.notifier)
-                  .enterWith(kind: 'meal', id: meal.id);
+    final spec = dynamicColumnFor(_sortOption);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DynamicColumnHeader(
+          label: spec.label,
+          ascending: _sortReversed,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _sortReversed = !_sortReversed;
+              _recipes = _applySorting(List.from(_recipes));
+            });
+          },
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.only(top: 4, bottom: 8),
+            itemCount: _recipes.length,
+            separatorBuilder: (_, _) => Divider(
+              height: 1,
+              thickness: 1,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+            itemBuilder: (context, index) {
+              final item = _recipes[index];
+              if (item is Map && item['kind'] == 'meal') {
+                final meal = _mealSummaryFrom(item);
+                final isSelected = selection.isMealSelected(meal.id);
+                return RecipeTableTile(
+                  item: item,
+                  selected: isSelected,
+                  // Meals don't have last_cooked / cook_time / etc — skip
+                  // the dynamic column for them so the row falls back
+                  // to the chevron.
+                  onTap: selection.isActive
+                      ? () => ref
+                          .read(homeSelectionProvider.notifier)
+                          .toggleMeal(meal.id)
+                      : () => context.push('/meals/${meal.id}'),
+                  onLongPress: () {
+                    ref
+                        .read(homeSelectionProvider.notifier)
+                        .enterWith(kind: 'meal', id: meal.id);
+                  },
+                );
+              }
+              final recipeId = item['id']?.toString();
+              final isSelected =
+                  recipeId != null && selection.isRecipeSelected(recipeId);
+              final value = spec.resolveValue(
+                Map<String, dynamic>.from(item as Map),
+              );
+              return RecipeTableTile(
+                item: item,
+                selected: isSelected,
+                trailing: Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                onTap: selection.isActive && recipeId != null
+                    ? () => ref
+                        .read(homeSelectionProvider.notifier)
+                        .toggleRecipe(recipeId)
+                    : () => context.push('/recipes/${item['id']}'),
+                onLongPress: recipeId == null
+                    ? null
+                    : () {
+                        ref.read(homeSelectionProvider.notifier).enterWith(
+                              kind: 'recipe',
+                              id: recipeId,
+                            );
+                      },
+              );
             },
-          );
-        }
-        final recipeId = item['id']?.toString();
-        final isSelected =
-            recipeId != null && selection.isRecipeSelected(recipeId);
-        return RecipeTableTile(
-          item: item,
-          selected: isSelected,
-          onTap: selection.isActive && recipeId != null
-              ? () => ref
-                  .read(homeSelectionProvider.notifier)
-                  .toggleRecipe(recipeId)
-              : () => context.push('/recipes/${item['id']}'),
-          onLongPress: recipeId == null
-              ? null
-              : () {
-                  ref.read(homeSelectionProvider.notifier).enterWith(
-                        kind: 'recipe',
-                        id: recipeId,
-                      );
-                },
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 
@@ -1588,6 +1658,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: const Text('Retry'),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Story 4: tappable header above the table view. Mirrors the active
+/// sort's label and shows a direction arrow; tap fires `onTap` to
+/// flip the home screen's `_sortReversed` flag.
+class _DynamicColumnHeader extends StatelessWidget {
+  final String label;
+  final bool ascending;
+  final VoidCallback onTap;
+
+  const _DynamicColumnHeader({
+    required this.label,
+    required this.ascending,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerLowest,
+      child: InkWell(
+        key: const ValueKey('dynamic_column_header'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              const Spacer(),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                ascending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
         ),
       ),
     );

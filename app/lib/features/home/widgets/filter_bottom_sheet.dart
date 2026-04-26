@@ -6,7 +6,7 @@ import 'meal_filter_bar.dart';
 /// Sort options for the home recipe grid. Moved here from the deleted
 /// sort_chips widget so the combined sort+filter sheet is the single
 /// source of truth.
-enum SortOption { best, newest, popular, quickest, random }
+enum SortOption { best, newest, popular, quickest, lastCooked, random }
 
 /// hmp-4: "Show" axis — filters the grid by tile kind. Radio-style;
 /// only one value at a time. Default `all` keeps pre-epic behavior.
@@ -254,6 +254,7 @@ class _SortRadioList extends StatelessWidget {
     (SortOption.newest, Icons.fiber_new_rounded, 'Newest'),
     (SortOption.popular, Icons.local_fire_department_rounded, 'Popular'),
     (SortOption.quickest, Icons.schedule_rounded, 'Quickest'),
+    (SortOption.lastCooked, Icons.restaurant_rounded, 'Last cooked'),
     (SortOption.random, Icons.shuffle_rounded, 'Random'),
   ];
 

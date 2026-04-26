@@ -12,6 +12,7 @@ import '../../core/utils/responsive.dart';
 import '../../services/share_service.dart';
 import '../../shared/widgets/vibe_filter_bar.dart';
 import '../home/recipe_list_view.dart';
+import '../home/widgets/dynamic_column.dart';
 import '../home/widgets/recipe_list_view_toggle_button.dart';
 import '../home/widgets/recipe_table_tile.dart';
 import '../meals/models/meal.dart';
@@ -285,10 +286,13 @@ class _RecipeBookDetailScreenState
     }).toList();
   }
 
-  /// Story 3: table-density alternative to `_buildMixedCards`. Same
-  /// recipe + meal merge + sort, just rendered as one row per entry.
-  /// Selection mode wires to `_toggleRecipeSelection` for recipes;
-  /// meals stay tap-no-op in select mode (parity with the grid path).
+  /// Story 3 + 4: table-density alternative to `_buildMixedCards`.
+  /// Same recipe + meal merge + sort as the grid path, rendered as
+  /// one row per entry. Each row's trailing slot shows the entry's
+  /// `updated_at` as a relative date so the user sees the lens the
+  /// book is sorted on. The header is informational — book-detail
+  /// has no sort menu (always `updated_at DESC`), so tap-to-flip is
+  /// suppressed here.
   Widget _buildMixedTable() {
     final filteredRecipes = _vibeFilter == null
         ? _recipes
@@ -314,7 +318,9 @@ class _RecipeBookDetailScreenState
     entries.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     final colorScheme = Theme.of(context).colorScheme;
-    final tiles = <Widget>[];
+    final tiles = <Widget>[
+      _BookDetailColumnHeader(label: 'Updated'),
+    ];
     for (var i = 0; i < entries.length; i++) {
       if (i > 0) {
         tiles.add(Divider(
@@ -340,6 +346,13 @@ class _RecipeBookDetailScreenState
         tiles.add(RecipeTableTile(
           item: pillRecipe,
           selected: isSelected,
+          trailing: Text(
+            formatDynamicColumnRelativeDate(e.updatedAt),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           onTap: _isSelectMode
               ? () {
                   if (recipeId != null) _toggleRecipeSelection(recipeId);
@@ -368,6 +381,13 @@ class _RecipeBookDetailScreenState
         };
         tiles.add(RecipeTableTile(
           item: mealMap,
+          trailing: Text(
+            formatDynamicColumnRelativeDate(e.updatedAt),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
           onTap: _isSelectMode
               ? () {}
               : () async {
@@ -1248,6 +1268,44 @@ class _GridEntry {
         meal = m;
 
   bool get isRecipe => recipe != null;
+}
+
+/// Story 4: tight non-tappable column header rendered above book-
+/// detail's table view. Mirrors home's `_DynamicColumnHeader` shape
+/// minus the tap affordance — book detail has no sort menu, so
+/// flipping direction has no UX surface here.
+class _BookDetailColumnHeader extends StatelessWidget {
+  final String label;
+
+  const _BookDetailColumnHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          const Spacer(),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(
+            Icons.arrow_downward,
+            size: 14,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _BulkActionButton extends StatelessWidget {
