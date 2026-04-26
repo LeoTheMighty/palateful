@@ -57,29 +57,55 @@ else:
     SessionLocal = None
 
 
-# aam-1: async engine + session factory. Built alongside the sync engine
-# (both target the same Postgres). services/api will flip handlers to the
-# async path incrementally; services/worker + parser + scripts keep using
-# the sync surface. Only created when an async URL is available so the
-# worker test DB (no asyncpg driver in that image) doesn't pay for it.
-if ASYNC_DATABASE_URL:
-    async_db_engine = create_async_engine(
-        ASYNC_DATABASE_URL,
+def _build_async_engine_and_session(async_url: str | None):
+    """Build the async engine + sessionmaker, or return (None, None).
+
+    aam-1: services/api will flip handlers to the async path
+    incrementally; services/worker + parser + scripts keep using the
+    sync surface. Only created when an async URL is available so the
+    worker test DB (no asyncpg driver in that image) doesn't pay for it.
+
+    worker-async-cleanup-3 (2026-04-26): probe-import asyncpg before
+    invoking `create_async_engine`. Pre-cleanup, a service that imported
+    `utils.services.database` while ASYNC_DATABASE_URL resolved (i.e.
+    the DB_* env vars were present) but didn't have asyncpg in its venv
+    crashed at module load — SQLAlchemy eager-loads the asyncpg dialect
+    inside `create_async_engine` and that import bubbles. Caught the
+    worker this way in 9704240; this guard converts the hard crash into
+    a logged warning + sync-only Database surface so the next service
+    that picks up this module doesn't repeat the prod incident.
+    """
+    if not async_url:
+        return None, None
+    try:
+        import asyncpg  # noqa: F401
+    except ImportError as exc:
+        logger.warning(
+            "ASYNC_DATABASE_URL set but asyncpg not installed; "
+            "skipping async engine. Sync Database surface remains "
+            "available; install asyncpg if this service needs async "
+            "I/O. (%s)",
+            exc,
+        )
+        return None, None
+    engine = create_async_engine(
+        async_url,
         pool_size=DB_ASYNC_POOL_SIZE,
         max_overflow=DB_ASYNC_MAX_OVERFLOW,
         pool_pre_ping=True,
         pool_recycle=3600,
         connect_args=ASYNC_DB_CONNECT_ARGS,
     )
-    AsyncSessionLocal = async_sessionmaker(
-        bind=async_db_engine,
+    session_factory = async_sessionmaker(
+        bind=engine,
         class_=AsyncSession,
         expire_on_commit=False,
         autoflush=False,
     )
-else:
-    async_db_engine = None
-    AsyncSessionLocal = None
+    return engine, session_factory
+
+
+async_db_engine, AsyncSessionLocal = _build_async_engine_and_session(ASYNC_DATABASE_URL)
 
 
 # aam-3: dedicated small sync engine for error-log writes from the async
