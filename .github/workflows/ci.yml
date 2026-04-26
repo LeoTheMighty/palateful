@@ -32,11 +32,12 @@
 #   deploy-web      - Flutter web → Cloudflare Pages (palateful.app); runs in
 #                     parallel with detect-changes — web is independent of
 #                     the ECS image/terraform pipeline.
-#   resolve-tags    - New SHA for affected, current deployed tag for unchanged
-#   deploy-images   - Build + push Docker images for affected services
-#   terraform-prod  - Apply prod infra with resolved image tags
+#   resolve-tags    - Pin every service's tag to ${{ github.sha }} (no live AWS reads)
+#   deploy-images   - Build + push ALL FOUR Docker images when any service is affected
+#                     (race-mitigation: every task-def reference always exists in ECR)
+#   terraform-prod  - Apply prod infra with HEAD_SHA tags (skipped if deploy-images skipped)
 #   run-migrator    - Run Alembic migrations (only when migrator affected)
-#   deploy-services - Force ECS deployments for affected api/worker
+#   deploy-services - Force ECS deployments for affected api/worker (after ECR existence guard)
 #
 # Note: dev infra lives in terraform/environments/dev and uses local state —
 # it's managed from a developer's laptop, not CI.
@@ -570,82 +571,59 @@ jobs:
             echo "parser=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Compose a JSON array of just the services that actually need to
-          # be built. Empty array = deploy-images matrix skips entirely.
-          services=()
+          # Compose the deploy-images matrix. Two valid states:
+          #   - At least one service affected → build ALL FOUR services so
+          #     every task-def reference (`<repo>:<github.sha>`) exists in ECR.
+          #     This intentionally bloats CI for unaffected services to break
+          #     a cross-workflow race (see the resolve-tags comment below):
+          #     under parallel pushes, terraform-prod from one run can land
+          #     after another run's terraform-prod, leaving the ECS service
+          #     pointing at <unaffected-service>:<github.sha> from a workflow
+          #     whose deploy-images never pushed that tag. The cure is to
+          #     guarantee every push that deploys ANYTHING re-pushes ALL
+          #     four images under HEAD_SHA. NX/Docker layer caching makes
+          #     unaffected rebuilds cheap.
+          #   - No service affected (docs / app-only / pure infra) → empty
+          #     array. deploy-images / terraform-prod / deploy-services all
+          #     skip; the deploy lane is a no-op for this push.
+          deploy_anything=false
           for s in api worker migrator parser; do
             if echo "$AFFECTED" | grep -q "^$s\$"; then
-              services+=("\"$s\"")
+              deploy_anything=true
+              break
             fi
           done
-          printf 'services_to_build=[%s]\n' "$(IFS=,; echo "${services[*]}")" >> "$GITHUB_OUTPUT"
+          if [ "$deploy_anything" = "true" ]; then
+            echo 'services_to_build=["api","worker","migrator","parser"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'services_to_build=[]' >> "$GITHUB_OUTPUT"
+          fi
 
+  # All image tags are pinned to the workflow's HEAD SHA. Earlier versions
+  # of this job read the currently-deployed image tag from the live ECS
+  # task-def for unaffected services — that turned out to be race-prone
+  # under parallel pushes (see run 24938122449): two workflows fighting
+  # over the same task-def could leave the service pointing at a SHA the
+  # winning run had never pushed (CannotPullContainerError). The fix is
+  # to never consult live AWS state; every workflow run authoritatively
+  # tags every service's image with its own ${{ github.sha }} (deploy-images
+  # builds and pushes ALL four services for any deploy-triggering push —
+  # see detect-changes.services_to_build), so terraform-prod can apply
+  # HEAD_SHA across the board with confidence.
   resolve-tags:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: detect-changes
-    environment: production
     outputs:
-      api_tag: ${{ steps.tags.outputs.api_tag }}
-      worker_tag: ${{ steps.tags.outputs.worker_tag }}
-      migrator_tag: ${{ steps.tags.outputs.migrator_tag }}
-      parser_tag: ${{ steps.tags.outputs.parser_tag }}
+      api_tag: ${{ github.sha }}
+      worker_tag: ${{ github.sha }}
+      migrator_tag: ${{ github.sha }}
+      parser_tag: ${{ github.sha }}
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Resolve image tags
-        id: tags
-        env:
-          HEAD_SHA: ${{ github.sha }}
-          API_AFFECTED: ${{ needs.detect-changes.outputs.api }}
-          WORKER_AFFECTED: ${{ needs.detect-changes.outputs.worker }}
-          MIGRATOR_AFFECTED: ${{ needs.detect-changes.outputs.migrator }}
-          PARSER_AFFECTED: ${{ needs.detect-changes.outputs.parser }}
+      - name: Tags pinned to HEAD SHA
         run: |
-          get_ecs_tag() {
-            aws ecs describe-task-definition \
-              --task-definition "$1" \
-              --query 'taskDefinition.containerDefinitions[0].image' \
-              --output text | rev | cut -d: -f1 | rev
-          }
-
-          get_batch_tag() {
-            # Parser runs on AWS Batch, not ECS — read current deployed tag
-            # from the job definition's container image.
-            aws batch describe-job-definitions \
-              --job-definition-name "$1" \
-              --status ACTIVE \
-              --query 'reverse(sort_by(jobDefinitions, &revision))[0].containerProperties.image' \
-              --output text | rev | cut -d: -f1 | rev
-          }
-
-          if [ "$API_AFFECTED" = "true" ]; then
-            echo "api_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo "api_tag=$(get_ecs_tag palateful-api-prod)" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ "$WORKER_AFFECTED" = "true" ]; then
-            echo "worker_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo "worker_tag=$(get_ecs_tag palateful-worker-prod)" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ "$MIGRATOR_AFFECTED" = "true" ]; then
-            echo "migrator_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo "migrator_tag=$(get_ecs_tag palateful-migrator-prod)" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ "$PARSER_AFFECTED" = "true" ]; then
-            echo "parser_tag=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo "parser_tag=$(get_batch_tag palateful-parser-job-prod)" >> "$GITHUB_OUTPUT"
-          fi
+          echo "All four service image tags pinned to ${{ github.sha }}."
+          echo "deploy-images will (re)push api/worker/migrator/parser under this tag."
 
   # Dev infra is managed locally — terraform/environments/dev uses local state
   # (backend "s3" block in main.tf is intentionally commented out). CI only
@@ -661,7 +639,10 @@ jobs:
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.detect-changes.outputs.services_to_build != '[]'
     environment: production
-    # Parallel fan-out: one runner per affected service.
+    # Parallel fan-out: one runner per service. detect-changes expands
+    # services_to_build to all four whenever any service is affected, so
+    # every push that deploys also pushes a HEAD_SHA-tagged image for
+    # every service (race-mitigation — see detect-changes / resolve-tags).
     strategy:
       fail-fast: false
       matrix:
@@ -706,12 +687,19 @@ jobs:
     # ECS accumulates CannotPullContainerError attempts, and the deployment
     # circuit breaker rolls back to the old revision even after the image
     # eventually lands. Seen in run 24534239978.
-    # deploy-images is skipped when no services were affected — that's valid;
-    # terraform should still run against the existing (deployed) tags.
+    #
+    # We REQUIRE deploy-images.result == 'success' (no longer accept
+    # 'skipped'). Under the new resolve-tags / always-build-all-four
+    # design, every image tag terraform applies is HEAD_SHA, and HEAD_SHA
+    # only exists in ECR if deploy-images actually built and pushed. If
+    # deploy-images is skipped (no service affected — pubspec/docs/pure
+    # terraform edits), terraform-prod also skips. Terraform-only changes
+    # land via force-deploy.yml, not via passive piggybacking on a
+    # deploy-pipeline that no longer has any image to anchor on.
     needs: [resolve-tags, deploy-images]
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      (needs.deploy-images.result == 'success' || needs.deploy-images.result == 'skipped')
+      needs.deploy-images.result == 'success'
     environment: production
     env:
       API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
@@ -865,6 +853,37 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # Belt-and-suspenders against the parallel-push race that bit run
+      # 24938122449: if any future code path lets terraform-prod point a
+      # task-def at an image tag that isn't actually in ECR, fail loudly
+      # here BEFORE we trigger a force-new-deployment that ECS will
+      # spin-retry-rollback for ~10 minutes. The current resolve-tags
+      # logic + always-build-all matrix should make this guard a no-op.
+      - name: Verify task-def image tags exist in ECR
+        run: |
+          verify_image() {
+            local svc=$1
+            local repo=$2
+            local image
+            image=$(aws ecs describe-task-definition --task-definition "$svc" \
+              --query 'taskDefinition.containerDefinitions[0].image' --output text)
+            local tag="${image##*:}"
+            echo "$svc → $repo:$tag"
+            if ! aws ecr describe-images --repository-name "$repo" \
+                --image-ids imageTag="$tag" >/dev/null 2>&1; then
+              echo "::error::$svc task-def points to $repo:$tag, but that tag is NOT in ECR. This usually means a parallel-workflow race set the task-def to a SHA the winning run never pushed. Fix upstream (resolve-tags / deploy-images) or re-run after racing workflows complete."
+              return 1
+            fi
+          }
+          rc=0
+          if [ "${{ needs.detect-changes.outputs.api }}" = "true" ]; then
+            verify_image palateful-api-prod palateful/api || rc=1
+          fi
+          if [ "${{ needs.detect-changes.outputs.worker }}" = "true" ]; then
+            verify_image palateful-worker-prod palateful/worker || rc=1
+          fi
+          exit "$rc"
 
       - name: Force new deployments (parallel)
         run: |
