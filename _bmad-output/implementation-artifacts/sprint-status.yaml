@@ -1477,7 +1477,7 @@ development_status:
   epic-recime-positioning: in-progress
   pos-1-content-copy-for-all-surfaces: done
   pos-2-frontend-why-we-are-free-page-and-onboarding-line: done
-  pos-3-web-real-landing-page-replacing-flutter-shell: backlog
+  pos-3-web-real-landing-page-replacing-flutter-shell: done
   pos-4-privacy-and-android-md-and-readme-updates: backlog
   pos-5-app-store-and-play-console-listing-assets: backlog
   pos-6-share-card-tagline-and-ci-grep-guard: deleted  # split into pos-6a + pos-6b per party-mode 2026-04-25
