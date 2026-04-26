@@ -1534,7 +1534,7 @@ development_status:
   # --- epic-recime-positioning splits + additions ---
   pos-6a-share-text-tagline-and-grep-guard-ci-wiring: backlog
   pos-6b-free-forever-chip-on-limit-shaped-surfaces: backlog
-  pos-7-web-relocation-safety-net-redirects-and-auth0-callbacks: backlog
+  pos-7-web-relocation-safety-net-redirects-and-auth0-callbacks: done
 
   # --- epic-social-video-import addition ---
   social-vid-7-cost-observability-audit-errors-cost-summary-flag: backlog
