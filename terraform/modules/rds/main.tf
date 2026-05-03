@@ -102,6 +102,21 @@ variable "apply_immediately" {
   EOT
 }
 
+variable "master_password_rotation_days" {
+  type        = number
+  default     = 90
+  description = <<-EOT
+    Rotation cadence for the RDS-managed master user secret (in days).
+    AWS default when `manage_master_user_password = true` is 7 days,
+    which on 2026-05-03 caused a prod outage: ECS resolves DB_PASSWORD
+    at task-start, so a rotation leaves the running task with a stale
+    password. SQLAlchemy's pool masks the failure for hours/days while
+    open connections stay authenticated, then 5xx's once the pool
+    recycles. The /v1/health endpoint now exercises DB so a stale task
+    auto-restarts; this longer cadence reduces the trigger frequency.
+  EOT
+}
+
 # DB Subnet Group
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project}-db-${var.environment}"
@@ -175,6 +190,20 @@ resource "aws_db_instance" "main" {
     Name        = "${var.project}-db-${var.environment}"
     Environment = var.environment
     Project     = var.project
+  }
+}
+
+# Override RDS's default 7-day rotation cadence on the AWS-managed master
+# user secret. No `rotation_lambda_arn` — RDS manages rotation internally
+# for `manage_master_user_password = true`. `rotate_immediately = false`
+# so applying terraform doesn't trigger a fresh rotation that would (a)
+# blow past the cadence change and (b) re-stale all running tasks.
+resource "aws_secretsmanager_secret_rotation" "db_master" {
+  secret_id          = aws_db_instance.main.master_user_secret[0].secret_arn
+  rotate_immediately = false
+
+  rotation_rules {
+    automatically_after_days = var.master_password_rotation_days
   }
 }
 
