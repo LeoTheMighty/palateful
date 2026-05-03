@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 
 class ShoppingListItemCreate(BaseModel):
@@ -42,6 +42,16 @@ class ShoppingListItemResponse(BaseModel):
     ingredient_id: str | None = None
     created_at: datetime
     updated_at: datetime
+
+    # Pydantic v2's default JSON mode renders Decimal as a string, which
+    # breaks Dart's `as num?` cast on the client (see ErrorReporter
+    # area=shopping.cart, operation=loadList — _TypeError "type 'String'
+    # is not a subtype of type 'num?'"). Coerce to float so the wire
+    # payload is a JSON number on both HTTP responses and WS broadcasts
+    # (broadcasts re-encode via json.loads(result.body)).
+    @field_serializer("quantity", "already_have_quantity")
+    def _decimal_to_float(self, value: Decimal | None) -> float | None:
+        return float(value) if value is not None else None
 
     class Config:
         from_attributes = True

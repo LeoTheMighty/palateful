@@ -296,6 +296,57 @@ class TestShoppingListSchemas:
         )
         assert item.name == "Eggs"
 
+    def test_shopping_list_item_response_quantity_serializes_as_number(self):
+        """Decimal must serialize as JSON number, not string.
+
+        The Dart client casts `json['quantity']` as `num?`. Pydantic v2
+        renders Decimal as a JSON string by default, which crashes the
+        cast — root cause of the shopping.cart/_TypeError surfacing in
+        error_logs. Verify both populated and null cases on every
+        Decimal field.
+        """
+        import json
+
+        from schemas.shopping_list import ShoppingListItemResponse
+
+        item = ShoppingListItemResponse(
+            id="i1",
+            name="Eggs",
+            quantity=Decimal("1.5"),
+            unit="cup",
+            is_checked=False,
+            checked_by_user_id=None,
+            category=None,
+            ingredient_id=None,
+            recipe_id=None,
+            already_have_quantity=Decimal("0.25"),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        encoded = json.loads(item.model_dump_json())
+        assert isinstance(encoded["quantity"], float)
+        assert encoded["quantity"] == 1.5
+        assert isinstance(encoded["already_have_quantity"], float)
+        assert encoded["already_have_quantity"] == 0.25
+
+        null_item = ShoppingListItemResponse(
+            id="i2",
+            name="Salt",
+            quantity=None,
+            unit=None,
+            is_checked=False,
+            checked_by_user_id=None,
+            category=None,
+            ingredient_id=None,
+            recipe_id=None,
+            already_have_quantity=None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        null_encoded = json.loads(null_item.model_dump_json())
+        assert null_encoded["quantity"] is None
+        assert null_encoded["already_have_quantity"] is None
+
     def test_shopping_list_create(self):
         from schemas.shopping_list import ShoppingListCreate
 
