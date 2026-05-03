@@ -47,7 +47,7 @@ def _reset_rate_limit_for_test() -> None:
     _rate_limit_events.clear()
 
 
-_S3_KEY_SOURCE_TYPES = {"audio", "pdf", "spreadsheet", "video_file"}
+_S3_KEY_SOURCE_TYPES = {"audio", "pdf", "spreadsheet", "video_file", "image"}
 
 _aws_service: AWSService | None = None
 
@@ -234,6 +234,21 @@ class StartImport(AsyncEndpoint):
                 raise APIException(
                     status_code=400,
                     detail="s3_key is required for video_file import",
+                    code=ErrorCode.INVALID_REQUEST,
+                )
+            await self._validate_s3_key_inputs(params, user)
+            source_filename = params.file_name or params.s3_key
+        elif params.source_type == "image":
+            # share-img-1: iOS share extension uploads photos via the SBF
+            # presigned-PUT contract — same s3_key-only shape as
+            # video_file. No file_base64 fallback (the extension's
+            # 80 MB RSS budget rules out large inline bodies). The
+            # legacy `photo` source_type carries client-side OCR text
+            # and is unrelated.
+            if not params.s3_key:
+                raise APIException(
+                    status_code=400,
+                    detail="s3_key is required for image import",
                     code=ErrorCode.INVALID_REQUEST,
                 )
             await self._validate_s3_key_inputs(params, user)

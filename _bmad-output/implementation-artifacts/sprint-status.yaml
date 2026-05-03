@@ -300,6 +300,18 @@ development_status:
   # root-cause diagnosis is downstream once this lands.
   bugs-import-400-retries: done
 
+  # Epic Bugs — Import: share-extension `image` source_type (created
+  # from /audit triage 2026-05-03). The iOS share extension uploads a
+  # photo to S3 via SBF presigned upload then POSTs source_type=image,
+  # but the server only knows audio|pdf|spreadsheet|video_file for the
+  # s3_key path — every image is silently dropped (error_code=168).
+  # Adds the `image` branch end-to-end: start_import → parse no-op →
+  # extract_recipe_task fetches S3 bytes and calls
+  # extract_recipe_from_image (gpt-4o-mini vision).
+  epic-bugs-import-share-extension-image-source-type: in-progress
+  share-img-1-image-source-type-end-to-end: ready-for-dev
+  epic-bugs-import-share-extension-image-source-type-retrospective: optional
+
   # Epic Bugs — Recipe-Images Bucket Migration (planned 2026-04-17, placeholder)
   # Deferred from epic-bugs-import-photo-pipeline workshop. Today recipe hero
   # photos (Story 2.3 + new FR87 source-photo promotion) piggyback on

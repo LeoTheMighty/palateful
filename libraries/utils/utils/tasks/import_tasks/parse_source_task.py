@@ -69,9 +69,13 @@ class ParseSourceTask(BaseTask):
                 # spreadsheets so the existing extractor pipeline runs
                 # unchanged.
                 items_created = self._parse_s3_keyed_files(job)
-            elif job.source_type in ("photo", "text", "spreadsheet", "audio", "pdf", "video_file"):
+            elif job.source_type in ("photo", "text", "spreadsheet", "audio", "pdf", "video_file", "image"):
                 # Items are already created by StartImport with text in raw_data.
                 # total_items is already set by StartImport, so just read the count.
+                # share-img-1: `image` is intentionally a no-op at the parse
+                # stage — vision extraction is a single round-trip and runs
+                # in `extract_recipe_task` directly off the s3_key, so there
+                # is nothing to decode here.
                 items_created = job.total_items
             else:
                 job.status = "failed"

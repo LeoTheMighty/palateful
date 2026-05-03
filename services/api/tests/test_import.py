@@ -5354,6 +5354,115 @@ class TestStartImportS3Key:
         assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
         mock_task.delay.assert_not_called()
 
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_image_s3_key_accepted(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """share-img-1: iOS share extension submits image → 201 + dispatch."""
+        self._reset_rate_limit()
+        book_id = "book-img"
+        self._setup_access(mock_async_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+        mock_task.delay.return_value = None
+
+        s3_key = f"imports/{mock_user.id}/photo.jpg"
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "image",
+                "s3_key": s3_key,
+                "etag": '"abc123"',
+                "mime_type": "image/jpeg",
+                "file_name": "recipe.jpg",
+            },
+        )
+        assert response.status_code == 201, response.json()
+        body = response.json()
+        assert body["source_type"] == "image"
+        mock_task.delay.assert_called_once()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_image_without_s3_key_rejected_with_invalid_request(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """Regression: missing s3_key surfaces INVALID_REQUEST, NOT the
+        falling-through IMPORT_INVALID_SOURCE_TYPE 168 that broke the
+        share extension for a week.
+        """
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-img-no-key"
+        self._setup_access(mock_async_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "image",
+                "mime_type": "image/jpeg",
+            },
+        )
+        assert response.status_code == 400
+        body = response.json()
+        assert body["error_code"] == ErrorCode.INVALID_REQUEST.value
+        assert body["error_code"] != ErrorCode.IMPORT_INVALID_SOURCE_TYPE.value
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_image_s3_key_mutual_exclusion_with_base64(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """share-img-1: image cannot send both s3_key and file_base64."""
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-img-mutex"
+        self._setup_access(mock_async_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "image",
+                "s3_key": f"imports/{mock_user.id}/x.jpg",
+                "file_base64": "Zm9v",
+                "file_name": "x.jpg",
+                "mime_type": "image/jpeg",
+            },
+        )
+        assert response.status_code == 400
+        assert response.json()["error_code"] == ErrorCode.INVALID_REQUEST.value
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_image_cross_user_s3_key_returns_403(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """share-img-1: cross-user s3_key still rejected for image."""
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        book_id = "book-img-cross"
+        self._setup_access(mock_async_db, mock_user, book_id)
+        mock_get_service.return_value = self._ok_aws()
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "image",
+                "s3_key": "imports/00000000-0000-0000-0000-000000000000/foo.jpg",
+                "mime_type": "image/jpeg",
+            },
+        )
+        assert response.status_code == 403
+        assert response.json()["error_code"] == ErrorCode.CROSS_USER_KEY.value
+        mock_task.delay.assert_not_called()
+
 
 class TestStartImportSocialUrlRouting:
     """sbf-5: social URL promoted to source_type='video' at creation."""

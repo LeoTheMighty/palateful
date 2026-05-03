@@ -280,6 +280,61 @@ class TestParseS3KeyedVideoFile:
         mock_transcribe.assert_not_called()
 
 
+class TestParseImageIsNoOp:
+    """share-img-1: parse stage is a no-op for `image`.
+
+    Vision extraction is a single round-trip and runs in
+    extract_recipe_task directly off the s3_key. The parse stage just
+    leaves the item alone (status=pending, raw_data unchanged) and
+    fans out to extract.
+    """
+
+    def test_image_does_not_call_s3_keyed_parser(self, mock_db, mock_user):
+        from utils.tasks.import_tasks.parse_source_task import ParseSourceTask
+
+        job = MockImportJob(
+            id="job-img",
+            source_type="image",
+            user_id=str(mock_user.id),
+            total_items=1,
+        )
+        item = MockImportItem(
+            import_job_id="job-img",
+            source_type="image",
+            s3_key=f"imports/{mock_user.id}/photo.jpg",
+            raw_data={"s3_key": f"imports/{mock_user.id}/photo.jpg"},
+            status="pending",
+        )
+        # _dispatch_extraction_tasks reads pending items via this query.
+        query = MagicMock()
+        query.filter.return_value.all.return_value = [item]
+        mock_db.db.query.return_value = query
+        mock_db.find_by = lambda model, **_kw: job
+
+        task = ParseSourceTask()
+        task.database = mock_db
+
+        # If the parse stage tried to fetch S3, _aws_service would be
+        # called and the lambda below would record it. Assert it isn't.
+        called_aws = []
+        with patch.object(
+            task, "_aws_service",
+            side_effect=lambda: (called_aws.append(1), MagicMock())[1],
+        ), patch(
+            "utils.logging.log_stage_transition"
+        ), patch(
+            "utils.tasks.import_tasks.extract_recipe_task.extract_task"
+        ) as mock_extract:
+            task.execute(import_job_id="job-img")
+
+        assert called_aws == []
+        # Item was not touched: still source_type='image', still pending.
+        assert item.source_type == "image"
+        assert item.status == "pending"
+        # Extract task fanned out.
+        mock_extract.delay.assert_called_once()
+
+
 class TestVideoFileExtractor:
     """sbf-4: ffmpeg subprocess wrapper unit tests."""
 

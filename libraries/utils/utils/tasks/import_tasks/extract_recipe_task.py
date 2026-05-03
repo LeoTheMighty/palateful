@@ -4,14 +4,17 @@ import asyncio
 import json
 import logging
 
+from utils import constants
 from utils.api.endpoint import success
 from utils.constants import STAGE_EXTRACTED
 from utils.logging import log_stage_transition
 from utils.models.import_item import ImportItem
 from utils.models.import_job import ImportJob
+from utils.services.aws import AWSService
 from utils.services.celery import celery_app
 from utils.services.recipe_extractors import (
     ExtractionResult,
+    extract_recipe_from_image,
     extract_recipe_from_text,
     extract_recipe_from_url,
 )
@@ -134,6 +137,9 @@ class ExtractRecipeTask(BaseTask):
 
     name = "extract_recipe_task"
 
+    def _aws_service(self) -> AWSService:  # pragma: no cover — mocked in tests
+        return AWSService(region=constants.AWS_REGION)
+
     def execute(self, item_ids: list[str]):
         """Extract recipe data from the given items.
 
@@ -176,6 +182,22 @@ class ExtractRecipeTask(BaseTask):
                 # Extract from OCR text using AI
                 ocr_text = (item.raw_data or {}).get("text", "")
                 result = extract_recipe_from_text(ocr_text)
+                self._update_item_from_result(item, result)
+            elif item.source_type == "image":
+                # share-img-1: iOS share-extension photos. Bytes live in
+                # S3 (`imports/{user_id}/<uuid>.<ext>`); fetch and pass
+                # straight to gpt-4o-mini vision. ParseSourceTask is a
+                # no-op for `image`, so this is the first place the
+                # bytes are read. s3_key is stored both on the dedicated
+                # column and inside raw_data (start_import writes both);
+                # prefer the column.
+                s3_key = item.s3_key or (item.raw_data or {}).get("s3_key")
+                if not s3_key:
+                    raise ValueError("image ImportItem missing s3_key")
+                bucket = constants.S3_IMPORTS_BUCKET
+                aws = self._aws_service()
+                image_bytes = aws.read_object(s3_key, bucket)
+                result = extract_recipe_from_image(image_bytes)
                 self._update_item_from_result(item, result)
             elif item.source_url and is_social_media_url(item.source_url):
                 # Extract from social media video metadata
