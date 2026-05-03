@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from sqlalchemy import select
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -132,6 +132,14 @@ class GetPublicRecipe(AsyncEndpoint):
         notes: str | None = None
         is_optional: bool = False
         order_index: int = 0
+
+        # ifh-2: same Decimal-as-string fix as the GetRecipe sibling
+        # (see commit a5c8438 for the cart-bug root cause this prevents).
+        @field_serializer("quantity_normalized")
+        def _quantity_normalized_to_float(
+            self, value: Decimal | None
+        ) -> float | None:
+            return float(value) if value is not None else None
 
     class StepResponse(BaseModel):
         id: str

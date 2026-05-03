@@ -484,3 +484,92 @@ class TestTimerSchemas:
 
         resp = TimerListResponse(items=[], total=0)
         assert resp.total == 0
+
+
+class TestRecipeIngredientDecimalSerialization:
+    """ifh-2: ``GetRecipe.IngredientResponse.quantity_normalized`` (and the
+    same field on ``GetPublicRecipe``) must serialize as a JSON number,
+    not a JSON string. Same Pydantic v2 default-serialization footgun
+    that crashed shopping.cart loadList in prod (root-caused 2026-05-03,
+    fixed for the cart in commit a5c8438). Pinning the wire shape so the
+    next Dart consumer that does the obvious `as num?` cast doesn't
+    crash on a populated normalized quantity.
+    """
+
+    def test_get_recipe_ingredient_quantity_normalized_serializes_as_number(
+        self,
+    ):
+        import json
+
+        from api.v1.recipe.get_recipe import GetRecipe
+
+        ing = GetRecipe.IngredientResponse(
+            id="ri1",
+            ingredient=GetRecipe.IngredientSummary(id="i1", canonical_name="Flour"),
+            quantity_display="1 1/2",
+            unit_display="cups",
+            quantity_normalized=Decimal("1.5"),
+            unit_normalized="cup",
+        )
+        encoded = json.loads(ing.model_dump_json())
+        assert isinstance(encoded["quantity_normalized"], float)
+        assert encoded["quantity_normalized"] == 1.5
+
+    def test_get_recipe_ingredient_quantity_normalized_null_serializes_as_null(
+        self,
+    ):
+        import json
+
+        from api.v1.recipe.get_recipe import GetRecipe
+
+        ing = GetRecipe.IngredientResponse(
+            id="ri1",
+            ingredient=GetRecipe.IngredientSummary(id="i1", canonical_name="Salt"),
+            quantity_display="to taste",
+            unit_display="",
+            quantity_normalized=None,
+            unit_normalized=None,
+        )
+        encoded = json.loads(ing.model_dump_json())
+        assert encoded["quantity_normalized"] is None
+
+    def test_get_public_recipe_ingredient_quantity_normalized_serializes_as_number(
+        self,
+    ):
+        """The public-recipe endpoint mirrors GetRecipe — same fix
+        applied so the shareable-link recipe view doesn't drift."""
+        import json
+
+        from api.v1.recipe.get_public_recipe import GetPublicRecipe
+
+        ing = GetPublicRecipe.IngredientResponse(
+            id="ri1",
+            ingredient=GetPublicRecipe.IngredientSummary(
+                id="i1", canonical_name="Sugar",
+            ),
+            quantity_display="0.75",
+            unit_display="cup",
+            quantity_normalized=Decimal("0.75"),
+            unit_normalized="cup",
+        )
+        encoded = json.loads(ing.model_dump_json())
+        assert isinstance(encoded["quantity_normalized"], float)
+        assert encoded["quantity_normalized"] == 0.75
+
+    def test_get_public_recipe_ingredient_quantity_normalized_null(self):
+        import json
+
+        from api.v1.recipe.get_public_recipe import GetPublicRecipe
+
+        ing = GetPublicRecipe.IngredientResponse(
+            id="ri1",
+            ingredient=GetPublicRecipe.IngredientSummary(
+                id="i1", canonical_name="Pepper",
+            ),
+            quantity_display="to taste",
+            unit_display="",
+            quantity_normalized=None,
+            unit_normalized=None,
+        )
+        encoded = json.loads(ing.model_dump_json())
+        assert encoded["quantity_normalized"] is None

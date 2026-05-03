@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from api.v1.recipe._response import build_recipe_response
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
 from utils.models.recipe import Recipe
@@ -156,6 +156,21 @@ class GetRecipe(AsyncEndpoint):
         notes: str | None = None
         is_optional: bool = False
         order_index: int = 0
+
+        # ifh-2: Pydantic v2's default JSON mode renders Decimal as a
+        # JSON string. The Dart pantry parser
+        # (PantryIngredient.fromJson via `_asDouble`) is tolerant — it
+        # accepts num OR String — but recipe-detail and any future Dart
+        # consumer that does the obvious `(json['quantity_normalized']
+        # as num?)?.toDouble()` would crash on the same _TypeError that
+        # killed shopping.cart loadList (root-caused in commit a5c8438
+        # and triaged by /audit on 2026-05-03). Pin the wire as a JSON
+        # number so the contract is independent of Pydantic's default.
+        @field_serializer("quantity_normalized")
+        def _quantity_normalized_to_float(
+            self, value: Decimal | None
+        ) -> float | None:
+            return float(value) if value is not None else None
 
     class StepResponse(BaseModel):
         id: str

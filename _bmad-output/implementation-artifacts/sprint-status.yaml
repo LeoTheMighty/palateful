@@ -1584,8 +1584,8 @@ development_status:
   # to prevent recurrence of the cart bug class (commit a5c8438) on
   # quantity_normalized / quantity_display / quantity.
   epic-import-flow-hardening: in-progress
-  ifh-1-backend-request-id-propagation-and-retryable-classification: review
-  ifh-2-backend-decimal-typed-response-serialization-sweep: backlog
+  ifh-1-backend-request-id-propagation-and-retryable-classification: done
+  ifh-2-backend-decimal-typed-response-serialization-sweep: done
   ifh-3-ios-share-extension-persist-failure-state-and-system-notification: backlog
   ifh-4-dart-reconciler-exponential-backoff-and-permanent-failure-ux: backlog
   ifh-5-frontend-failed-imports-banner-and-sheet-in-activity-hub: backlog
