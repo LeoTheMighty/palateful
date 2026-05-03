@@ -1568,3 +1568,26 @@ development_status:
   nutri-0-ops-decision-s3-snapshot-upload-and-usda-data-version-env-var: backlog
   nutri-1a-backend-ingredients-nutrition-per-unit-migration: backlog
   nutri-1b-backend-load-usda-script-s3-read-and-rollback-script-and-audit-row: backlog
+
+  # =====================================================================
+  # NEW 2026-05-03 — epic-import-flow-hardening (from /audit triage)
+  # =====================================================================
+  # Source: _bmad-output/planning-artifacts/epic-import-flow-hardening.md
+  # Trigger: image-share imports silently failed for ~1 week. The
+  # specific image source-type bug landed via share-img-1 (commit
+  # c2f7982 — orthogonal). THIS epic addresses the four structural
+  # gaps that let the failure stay invisible: silent extension-side
+  # markFailed, reconciler-side null UI, no permanent-vs-transient
+  # retry classification, null request_id on every error_logs row from
+  # /import (router didn't forward Request).
+  # AC 6 folds in the Decimal-serialization sweep on recipe responses
+  # to prevent recurrence of the cart bug class (commit a5c8438) on
+  # quantity_normalized / quantity_display / quantity.
+  epic-import-flow-hardening: in-progress
+  ifh-1-backend-request-id-propagation-and-retryable-classification: review
+  ifh-2-backend-decimal-typed-response-serialization-sweep: backlog
+  ifh-3-ios-share-extension-persist-failure-state-and-system-notification: backlog
+  ifh-4-dart-reconciler-exponential-backoff-and-permanent-failure-ux: backlog
+  ifh-5-frontend-failed-imports-banner-and-sheet-in-activity-hub: backlog
+  ifh-6-regression-sweep-and-e2e: backlog
+  epic-import-flow-hardening-retrospective: optional

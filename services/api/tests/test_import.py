@@ -6173,3 +6173,588 @@ class TestListImportItemsBatch:
         response = client.get("/v1/import-items?job_ids=orphan-job")
         assert response.status_code == 200
         assert len(response.json()["items"]) == 1
+
+
+class TestImportFlowHardeningRetryable:
+    """ifh-1: every failure path on /import + /upload-url surfaces a
+    ``retryable: bool`` field at the top level of the JSON body so the
+    iOS Share Extension and the Flutter PendingImportsReconciler can
+    distinguish permanent input failures from transient ones without a
+    parallel client-side classification taxonomy.
+
+    Classification rules under test:
+      - 400 INVALID_REQUEST                 → retryable=False
+      - 400 IMPORT_INVALID_SOURCE_TYPE      → retryable=False
+      - 403 RECIPE_BOOK_ACCESS_DENIED       → retryable=False
+      - 403 CROSS_USER_KEY                  → retryable=False
+      - 404 RECIPE_BOOK_NOT_FOUND           → retryable=False
+      - 409 OBJECT_NOT_READY                → retryable=True
+      - 409 DUPLICATE_IMPORT                → retryable=False
+      - 413 FILE_TOO_LARGE                  → retryable=False
+      - 400 UNSUPPORTED_MIME                → retryable=False
+      - 429 RATE_LIMITED                    → retryable=True
+    """
+
+    def _reset_rate_limit(self):
+        from api.v1.import_job.start_import import _reset_rate_limit_for_test
+
+        _reset_rate_limit_for_test()
+
+    def test_no_access_403_is_permanent(
+        self, client, mock_async_db, mock_user
+    ):
+        """User without recipe-book membership → permanent failure."""
+        from utils.classes.error_code import ErrorCode
+
+        self._reset_rate_limit()
+        response = client.post(
+            "/v1/recipe-books/no-access/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 403
+        assert body["error_code"] == ErrorCode.RECIPE_BOOK_ACCESS_DENIED.value
+        assert body["retryable"] is False
+
+    def test_book_not_found_404_is_permanent(
+        self, client, mock_async_db, mock_user
+    ):
+        """Owner of a missing book → 404, permanent."""
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-missing-book"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, None, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "url",
+                "url": "https://example.com/recipe",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 404
+        assert body["error_code"] == ErrorCode.RECIPE_BOOK_NOT_FOUND.value
+        assert body["retryable"] is False
+
+    def test_invalid_request_url_missing_is_permanent(
+        self, client, mock_async_db, mock_user
+    ):
+        """source_type=url without ``url`` → permanent INVALID_REQUEST."""
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-bad-url"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "url"},  # missing url
+        )
+        body = response.json()
+        assert response.status_code == 400
+        assert body["error_code"] == ErrorCode.INVALID_REQUEST.value
+        assert body["retryable"] is False
+
+    def test_unsupported_source_type_is_permanent(
+        self, client, mock_async_db, mock_user
+    ):
+        """Unknown source_type → IMPORT_INVALID_SOURCE_TYPE, permanent."""
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-bad-source-type"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "made-up-type"},
+        )
+        body = response.json()
+        assert response.status_code == 400
+        assert body["error_code"] == (
+            ErrorCode.IMPORT_INVALID_SOURCE_TYPE.value
+        )
+        assert body["retryable"] is False
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_object_not_ready_409_is_transient(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """S3 visibility lag (HeadObject 404) → transient. Reconciler
+        should back off + retry rather than mark the import failed."""
+        from botocore.exceptions import ClientError
+
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-not-ready"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        from unittest.mock import AsyncMock, MagicMock
+
+        service = MagicMock()
+        service.head_object_async = AsyncMock(
+            side_effect=ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}},
+                "HeadObject",
+            )
+        )
+        mock_get_service.return_value = service
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "s3_key": f"imports/{mock_user.id}/late.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 409
+        assert body["error_code"] == ErrorCode.OBJECT_NOT_READY.value
+        assert body["retryable"] is True
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_duplicate_import_409_is_permanent(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """File already imported → permanent. Re-POST would just
+        409 forever; reconciler should drop the pending record."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-dup"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        service = MagicMock()
+        service.head_object_async = AsyncMock(return_value=None)
+        mock_get_service.return_value = service
+
+        s3_key = f"imports/{mock_user.id}/already-imported.pdf"
+        existing = MockImportItem(s3_key=s3_key)
+        mock_async_db.db.execute.return_value = MockExecuteResult(
+            items=[existing]
+        )
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "s3_key": s3_key,
+                "mime_type": "application/pdf",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 409
+        assert body["error_code"] == ErrorCode.DUPLICATE_IMPORT.value
+        assert body["retryable"] is False
+        mock_task.delay.assert_not_called()
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    @patch("api.v1.import_job.start_import._get_aws_service")
+    def test_cross_user_key_403_is_permanent(
+        self, mock_get_service, mock_task, client, mock_async_db, mock_user,
+    ):
+        """s3_key under another user's prefix → CROSS_USER_KEY 403,
+        permanent (it'll never become this user's key)."""
+        from unittest.mock import MagicMock
+
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-xuser"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        service = MagicMock()
+        mock_get_service.return_value = service
+
+        # Note: prefix is some other user's id.
+        other_user_id = uuid.uuid4()
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "pdf",
+                "s3_key": f"imports/{other_user_id}/sneak.pdf",
+                "mime_type": "application/pdf",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 403
+        assert body["error_code"] == ErrorCode.CROSS_USER_KEY.value
+        assert body["retryable"] is False
+        mock_task.delay.assert_not_called()
+
+    def test_s3_and_base64_mutex_400_is_permanent(
+        self, client, mock_async_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-mutex"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={
+                "source_type": "audio",
+                "s3_key": f"imports/{mock_user.id}/x.m4a",
+                "file_base64": "Zm9v",
+                "file_name": "x.m4a",
+                "mime_type": "audio/mp4",
+            },
+        )
+        body = response.json()
+        assert response.status_code == 400
+        assert body["error_code"] == ErrorCode.INVALID_REQUEST.value
+        assert body["retryable"] is False
+
+    @patch("api.v1.import_job.start_import.parse_source_task")
+    def test_rate_limit_429_is_transient(
+        self, mock_task, client, mock_async_db, mock_user,
+    ):
+        """Per-user rate limit → transient. Honors retry_after; the
+        client should back off, not surface a permanent failure."""
+        from utils.classes.error_code import ErrorCode
+        from utils.models.recipe_book import RecipeBook
+        from utils.models.recipe_book_user import RecipeBookUser
+
+        self._reset_rate_limit()
+        book_id = "ifh-rl"
+        membership = MockRecipeBookUser(
+            user_id=str(mock_user.id),
+            recipe_book_id=book_id,
+            role="owner",
+        )
+        book = MockRecipeBook(id=book_id)
+        mock_async_db.set_find_by(
+            RecipeBookUser, membership,
+            user_id=str(mock_user.id), recipe_book_id=book_id,
+        )
+        mock_async_db.set_find_by(RecipeBook, book, id=book_id)
+        mock_task.delay.return_value = None
+
+        for i in range(30):
+            r = client.post(
+                f"/v1/recipe-books/{book_id}/import",
+                json={
+                    "source_type": "url",
+                    "url": f"https://example.com/r{i}",
+                },
+            )
+            assert r.status_code == 201, (i, r.json())
+
+        response = client.post(
+            f"/v1/recipe-books/{book_id}/import",
+            json={"source_type": "url", "url": "https://example.com/over"},
+        )
+        body = response.json()
+        assert response.status_code == 429
+        assert body["error_code"] == ErrorCode.RATE_LIMITED.value
+        assert body["retryable"] is True
+        # retry_after must still be there — clients use it as the lower
+        # bound on their backoff window even though they apply their own
+        # exponential schedule on top.
+        assert "retry_after" in body["data"]
+
+    def test_upload_url_zero_bytes_400_is_permanent(
+        self, client, mock_async_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "x.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 0,
+            },
+        )
+        body = response.json()
+        assert response.status_code == 400
+        assert body["error_code"] == ErrorCode.INVALID_REQUEST.value
+        assert body["retryable"] is False
+
+    def test_upload_url_too_large_413_is_permanent(
+        self, client, mock_async_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "huge.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 100 * 1024 * 1024 + 1,
+            },
+        )
+        body = response.json()
+        assert response.status_code == 413
+        assert body["error_code"] == ErrorCode.FILE_TOO_LARGE.value
+        assert body["retryable"] is False
+
+    def test_upload_url_unsupported_mime_400_is_permanent(
+        self, client, mock_async_db, mock_user,
+    ):
+        from utils.classes.error_code import ErrorCode
+
+        response = client.post(
+            "/v1/imports/upload-url",
+            json={
+                "filename": "bin.dat",
+                "mime_type": "application/octet-stream",
+                "size_bytes": 1024,
+            },
+        )
+        body = response.json()
+        assert response.status_code == 400
+        assert body["error_code"] == ErrorCode.UNSUPPORTED_MIME.value
+        assert body["retryable"] is False
+
+
+class TestImportFlowHardeningRequestId:
+    """ifh-1: import_router now forwards ``request: Request`` to every
+    ``.call(...)``, so the audit writer (`_log_api_error_to_db`) can
+    pick up ``request.state.request_id`` and write it into ``error_logs``.
+
+    Direct assertion that the writer captures request_id when ``self.request``
+    is wired. Without these tests passing, the router-side fix is silent —
+    nothing else in the suite would catch a regression.
+    """
+
+    def test_log_api_error_writes_request_id_when_request_wired(self):
+        from unittest.mock import MagicMock, patch
+
+        from utils.api.endpoint import APIException, Endpoint
+        from utils.classes.error_code import ErrorCode
+
+        ep = Endpoint()
+        request = MagicMock()
+        request.method = "POST"
+        request.url.path = "/v1/recipe-books/abc/import"
+        request.state.request_id = "req-abc-123"
+        ep.request = request
+
+        captured: dict = {}
+
+        class _CapturingDb:
+            def __init__(self):
+                self.captured = captured
+
+            def create(self, row):
+                self.captured["row"] = row
+
+            def close(self):
+                pass
+
+        with (
+            patch(
+                "utils.constants.ENVIRONMENT", "prod"
+            ),
+            patch(
+                "utils.services.database.ErrorLogSessionLocal", None
+            ),
+            patch(
+                "utils.services.database.Database", _CapturingDb
+            ),
+        ):
+            err = APIException(
+                status_code=400,
+                detail="bad payload",
+                code=ErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
+            ep._log_api_error_to_db(err)
+
+        assert captured["row"].request_id == "req-abc-123"
+        assert captured["row"].path == "/v1/recipe-books/abc/import"
+        assert captured["row"].method == "POST"
+        assert captured["row"].status_code == 400
+        assert captured["row"].error_code == ErrorCode.INVALID_REQUEST.value
+
+    def test_log_api_error_request_id_none_when_request_missing(self):
+        """Backstop: with self.request still None (the pre-ifh-1 state
+        of every non-import router), the writer must not crash — it
+        records a null request_id, exactly the symptom the audit
+        triage surfaced."""
+        from unittest.mock import patch
+
+        from utils.api.endpoint import APIException, Endpoint
+        from utils.classes.error_code import ErrorCode
+
+        ep = Endpoint()
+        ep.request = None
+
+        captured: dict = {}
+
+        class _CapturingDb:
+            def create(self, row):
+                captured["row"] = row
+
+            def close(self):
+                pass
+
+        with (
+            patch("utils.constants.ENVIRONMENT", "prod"),
+            patch("utils.services.database.ErrorLogSessionLocal", None),
+            patch("utils.services.database.Database", _CapturingDb),
+        ):
+            err = APIException(
+                status_code=400,
+                detail="x",
+                code=ErrorCode.INVALID_REQUEST,
+                retryable=False,
+            )
+            ep._log_api_error_to_db(err)
+
+        assert captured["row"].request_id is None
+
+
+class TestFailureHelperRetryable:
+    """ifh-1: ``failure(retryable=...)`` threads the kwarg into the
+    response dict so endpoint dispatch can lift it into the wire body.
+    Defaulting ``retryable=None`` keeps the wire shape backwards-
+    compatible for endpoints that haven't classified yet (every endpoint
+    outside the import path today)."""
+
+    def test_failure_with_retryable_true_includes_field(self):
+        from utils.api.endpoint import failure
+
+        result = failure(
+            error_code=429,
+            error_message="slow down",
+            status=429,
+            retryable=True,
+        )
+        assert result["retryable"] is True
+
+    def test_failure_with_retryable_false_includes_field(self):
+        from utils.api.endpoint import failure
+
+        result = failure(
+            error_code=400,
+            error_message="bad",
+            status=400,
+            retryable=False,
+        )
+        assert result["retryable"] is False
+
+    def test_failure_without_retryable_omits_field(self):
+        """Default — `retryable` not in result dict, so wire shape is
+        unchanged for every non-classified endpoint."""
+        from utils.api.endpoint import failure
+
+        result = failure(error_code=500, error_message="x", status=500)
+        assert "retryable" not in result
+
+    def test_handle_result_lifts_retryable_to_top_level(self):
+        """End-to-end: APIException(retryable=False) must produce a wire
+        body with ``"retryable": false`` at the top level (not nested
+        under ``data``)."""
+        import json
+
+        from utils.api.endpoint import APIException, Endpoint, failure
+        from utils.classes.error_code import ErrorCode
+
+        result = failure(
+            error_code=ErrorCode.INVALID_REQUEST.value,
+            error_message="bad",
+            status=400,
+            retryable=False,
+        )
+        response = Endpoint.handle_result(result)
+        body = json.loads(response.body)
+        assert body["retryable"] is False
+        assert body["error_code"] == ErrorCode.INVALID_REQUEST.value

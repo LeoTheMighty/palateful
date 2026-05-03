@@ -41,12 +41,18 @@ class APIException(Exception):
         self,
         status_code: int,
         detail: str,
-        code: ErrorCode = ErrorCode.INTERNAL_ERROR
+        code: ErrorCode = ErrorCode.INTERNAL_ERROR,
+        retryable: bool | None = None,
     ):
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
         self.code = code.value if isinstance(code, ErrorCode) else code
+        # ifh-1: when set, `Endpoint.run()` threads this into the
+        # `failure(...)` response body so clients (iOS share extension,
+        # Dart reconciler) know whether to back off and retry vs. surface
+        # a permanent failure to the user. None = caller hasn't classified.
+        self.retryable = retryable
 
     def __str__(self):
         return f"APIException(code={self.code}): {self.detail}"
@@ -118,12 +124,18 @@ class Endpoint:
         # Log error
         if result.get('error'):
             logger.exception(result['error'])
+        body: dict = {
+            'error_code': result['error_code'],
+            'error_message': result['error_message'],
+            'data': result.get('data', {}),
+        }
+        # ifh-1: lift retryable to top-level alongside error_code so
+        # iOS/Dart clients can read it the same way they read error_code
+        # (no parallel taxonomy, no "data" envelope hop).
+        if 'retryable' in result:
+            body['retryable'] = result['retryable']
         return CustomJSONResponse(
-            content={
-                'error_code': result['error_code'],
-                'error_message': result['error_message'],
-                'data': result.get('data', {}),
-            },
+            content=body,
             status_code=result['status'],
         )
 
@@ -155,7 +167,8 @@ class Endpoint:
                 error_message=e.detail,
                 status=e.status_code,
                 data={},
-                error=e
+                error=e,
+                retryable=e.retryable,
             )
         except Exception as e:
             logger.error("Endpoint %s failed with error: %s",
@@ -400,6 +413,7 @@ class AsyncEndpoint(Endpoint):
                 status=e.status_code,
                 data={},
                 error=e,
+                retryable=e.retryable,
             )
         except Exception as e:
             logger.error(
@@ -488,7 +502,8 @@ def failure(
     error: Exception = None,
     data: dict = None,
     retry_after: int = None,
-    status: int = 500
+    status: int = 500,
+    retryable: bool | None = None,
 ):
     """
     A failed response to the service worker.
@@ -498,6 +513,16 @@ def failure(
     :param data: The data to handle the failed response with.
     :param retry_after: The number of seconds to wait before retrying the request.
     :param status: The status code of the response.
+    :param retryable: ifh-1 — when not None, surfaces ``"retryable": <bool>``
+        at the **top level** of the wire body (alongside ``error_code``,
+        not nested under ``data``), so iOS/Dart clients can read it the
+        same way they read ``error_code``. Lets the iOS share extension
+        and the Dart PendingImportsReconciler distinguish permanent
+        failures (4xx with retryable=False) from transient ones
+        (5xx, 429, 408, OBJECT_NOT_READY → True) without maintaining a
+        parallel client-side error taxonomy. ``None`` keeps the wire
+        shape unchanged for endpoints that haven't classified yet, so
+        rolling out per-endpoint is safe and incremental.
     :return: A failed response to send to the service worker.
     """
     if error_message is None:
@@ -506,7 +531,7 @@ def failure(
         data = {}
     if isinstance(retry_after, int):
         data["retry_after"] = str(retry_after)
-    return {
+    result = {
         "success": False,
         "data": data,
         "error_code": error_code,
@@ -514,6 +539,9 @@ def failure(
         "error": error,
         "status": status,
     }
+    if retryable is not None:
+        result["retryable"] = retryable
+    return result
 
 
 def endpoint_result_is_valid(result):

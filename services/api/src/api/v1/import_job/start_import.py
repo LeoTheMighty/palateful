@@ -120,6 +120,7 @@ class StartImport(AsyncEndpoint):
                     f"Retry in {retry_after}s."
                 ),
                 retry_after=retry_after,
+                retryable=True,
             )
 
         # sbf-3: mutual exclusion between s3_key and file_base64 paths.
@@ -128,6 +129,7 @@ class StartImport(AsyncEndpoint):
                 status_code=400,
                 detail="s3_key and file_base64 are mutually exclusive",
                 code=ErrorCode.INVALID_REQUEST,
+                retryable=False,
             )
 
         # Check access - must be owner or editor
@@ -141,6 +143,7 @@ class StartImport(AsyncEndpoint):
                 status_code=403,
                 detail="You don't have permission to import recipes to this book",
                 code=ErrorCode.RECIPE_BOOK_ACCESS_DENIED,
+                retryable=False,
             )
 
         # Verify recipe book exists
@@ -150,15 +153,20 @@ class StartImport(AsyncEndpoint):
                 status_code=404,
                 detail=f"Recipe book with ID '{book_id}' not found",
                 code=ErrorCode.RECIPE_BOOK_NOT_FOUND,
+                retryable=False,
             )
 
         # Validate input based on source type
+        # ifh-1: every malformed-input branch is permanent (retryable=False).
+        # Re-POSTing the same bad payload will fail the same way; clients
+        # must surface to the user instead of looping.
         if params.source_type == "url":
             if not params.url:
                 raise APIException(
                     status_code=400,
                     detail="URL is required for url source type",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             source_filename = params.url
         elif params.source_type == "url_list":
@@ -167,6 +175,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="URLs are required for url_list source type",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             source_filename = None
         elif params.source_type == "photo":
@@ -175,6 +184,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="OCR texts are required for photo source type",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             source_filename = "photo_import"
         elif params.source_type == "text":
@@ -183,12 +193,14 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="raw_text is required for text source type",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             if len(params.raw_text) > 16000:
                 raise APIException(
                     status_code=400,
                     detail="Text too long — maximum 16,000 characters",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             source_filename = "text_paste"
         elif params.source_type == "audio":
@@ -200,6 +212,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="file_base64 and file_name (or s3_key) are required for audio import",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             else:
                 source_filename = params.file_name
@@ -212,6 +225,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="file_base64 and file_name (or s3_key) are required for PDF import",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             else:
                 source_filename = params.file_name
@@ -224,6 +238,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="file_base64 and file_name (or s3_key) are required for spreadsheet import",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             else:
                 source_filename = params.file_name
@@ -235,6 +250,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="s3_key is required for video_file import",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             await self._validate_s3_key_inputs(params, user)
             source_filename = params.file_name or params.s3_key
@@ -250,6 +266,7 @@ class StartImport(AsyncEndpoint):
                     status_code=400,
                     detail="s3_key is required for image import",
                     code=ErrorCode.INVALID_REQUEST,
+                    retryable=False,
                 )
             await self._validate_s3_key_inputs(params, user)
             source_filename = params.file_name or params.s3_key
@@ -258,6 +275,7 @@ class StartImport(AsyncEndpoint):
                 status_code=400,
                 detail=f"Unsupported source type: {params.source_type}",
                 code=ErrorCode.IMPORT_INVALID_SOURCE_TYPE,
+                retryable=False,
             )
 
         # NYT / Substack / mailer-tracking URLs routinely exceed
@@ -492,6 +510,11 @@ class StartImport(AsyncEndpoint):
                     status=409,
                     error_code=ErrorCode.DUPLICATE_IMPORT.value,
                     error_message="This file has already been imported.",
+                    # ifh-1: the file already exists server-side. Re-POSTing
+                    # would just hit the same UNIQUE constraint forever —
+                    # client should drop the pending record (the import is,
+                    # from the user's POV, already succeeded).
+                    retryable=False,
                 )
 
         # abi-2a: no longer writes an `import_started` user_activity
@@ -552,6 +575,7 @@ class StartImport(AsyncEndpoint):
                 status_code=403,
                 detail="s3_key does not belong to the current user",
                 code=ErrorCode.CROSS_USER_KEY,
+                retryable=False,
             )
 
         aws = _get_aws_service()
@@ -565,6 +589,10 @@ class StartImport(AsyncEndpoint):
                     status_code=409,
                     detail="Upload is not yet visible in S3. Retry shortly.",
                     code=ErrorCode.OBJECT_NOT_READY,
+                    # ifh-1: S3 visibility lag is the canonical transient.
+                    # The detail message already says "Retry shortly" —
+                    # the client should honor that with backoff, not give up.
+                    retryable=True,
                 ) from exc
             raise
 
@@ -577,6 +605,7 @@ class StartImport(AsyncEndpoint):
                 status_code=409,
                 detail="This file has already been imported.",
                 code=ErrorCode.DUPLICATE_IMPORT,
+                retryable=False,
             )
 
     class Params(BaseModel):

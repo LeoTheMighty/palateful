@@ -70,11 +70,16 @@ class GetImportUploadUrl(AsyncEndpoint):
 
     async def execute(self, params: "GetImportUploadUrl.Params"):
         # Size validation — explicit error codes, not Pydantic 422.
+        # ifh-1: every malformed-input failure here is permanent. The
+        # client's only recovery is to either pick a different file or
+        # surface to the user — re-POSTing the same payload will fail
+        # the same way every time.
         if params.size_bytes <= 0:
             raise APIException(
                 status_code=400,
                 detail="size_bytes must be greater than 0",
                 code=ErrorCode.INVALID_REQUEST,
+                retryable=False,
             )
         if params.size_bytes > MAX_UPLOAD_BYTES:
             raise APIException(
@@ -84,6 +89,7 @@ class GetImportUploadUrl(AsyncEndpoint):
                     f"(received {params.size_bytes})"
                 ),
                 code=ErrorCode.FILE_TOO_LARGE,
+                retryable=False,
             )
 
         ext = _MIME_EXT.get(params.mime_type)
@@ -92,6 +98,7 @@ class GetImportUploadUrl(AsyncEndpoint):
                 status_code=400,
                 detail=f"Unsupported mime type: {params.mime_type}",
                 code=ErrorCode.UNSUPPORTED_MIME,
+                retryable=False,
             )
 
         # imports/{user_id}/{object_uuid}.{ext} — ownership is encoded in

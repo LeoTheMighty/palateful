@@ -3,6 +3,14 @@
 aam-18: handlers flipped to ``async def`` + ``get_async_database`` +
 ``get_current_user_async``. Every endpoint dispatches through
 ``await Foo.call(...)`` on an ``AsyncEndpoint`` subclass.
+
+ifh-1: every handler now accepts ``request: Request`` and forwards it
+into the endpoint via ``request=request``. Without this, the endpoint
+base class's ``self.request`` is ``None`` and the audit writer
+(``_log_api_error_to_db``) drops ``request_id`` — leaving every
+``error_logs`` row from the import path with a null correlation handle
+and forcing triage to fall back to ``user_id + path`` queries. See the
+2026-05-03 ``/audit`` handoff.
 """
 
 from api.v1.import_job import (
@@ -28,7 +36,7 @@ from api.v1.import_job import (
     UpdateImportItem,
 )
 from dependencies import get_async_database, get_current_user_async
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from utils.models.user import User
 from utils.services.async_database import AsyncDatabase
 
@@ -39,6 +47,7 @@ import_router = APIRouter(tags=["import"])
 async def start_import(
     book_id: str,
     params: StartImport.Params,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
@@ -46,6 +55,7 @@ async def start_import(
     return await StartImport.call(
         book_id=book_id,
         params=params,
+        request=request,
         user=user,
         database=database,
     )
@@ -54,12 +64,14 @@ async def start_import(
 @import_router.post("/imports/upload-url")
 async def get_import_upload_url(
     params: GetImportUploadUrl.Params,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Mint a presigned S3 PUT URL for a file-based import."""
     return await GetImportUploadUrl.call(
         params=params,
+        request=request,
         user=user,
         database=database,
     )
@@ -67,6 +79,7 @@ async def get_import_upload_url(
 
 @import_router.get("/import-jobs")
 async def list_import_jobs(
+    request: Request,
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -98,6 +111,7 @@ async def list_import_jobs(
         include_archived=include_archived,
         archived_only=archived_only,
         cursor=cursor,
+        request=request,
         user=user,
         database=database,
     )
@@ -106,12 +120,14 @@ async def list_import_jobs(
 @import_router.get("/import-jobs/{job_id}")
 async def get_import_job(
     job_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Get import job details and status."""
     return await GetImportJob.call(
         job_id=job_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -120,12 +136,14 @@ async def get_import_job(
 @import_router.delete("/import-jobs/{job_id}")
 async def cancel_import_job(
     job_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Cancel an import job."""
     return await CancelImportJob.call(
         job_id=job_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -134,6 +152,7 @@ async def cancel_import_job(
 @import_router.get("/import-jobs/{job_id}/items")
 async def list_import_items(
     job_id: str,
+    request: Request,
     status: str | None = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -158,6 +177,7 @@ async def list_import_items(
         offset=offset,
         include_archived=include_archived,
         cursor=cursor,
+        request=request,
         user=user,
         database=database,
     )
@@ -165,6 +185,7 @@ async def list_import_items(
 
 @import_router.get("/import-items")
 async def list_import_items_batch(
+    request: Request,
     job_ids: str = Query(
         ...,
         description=(
@@ -194,6 +215,7 @@ async def list_import_items_batch(
         job_ids=job_ids,
         status=status,
         include_archived=include_archived,
+        request=request,
         user=user,
         database=database,
     )
@@ -201,6 +223,7 @@ async def list_import_items_batch(
 
 @import_router.get("/import-items/see-all-count")
 async def import_see_all_count(
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
@@ -210,11 +233,14 @@ async def import_see_all_count(
     literal-path-first matcher doesn't route ``see-all-count`` into the
     ``item_id`` path param.
     """
-    return await ImportSeeAllCount.call(user=user, database=database)
+    return await ImportSeeAllCount.call(
+        request=request, user=user, database=database
+    )
 
 
 @import_router.get("/import-items/see-all")
 async def list_see_all_import_items(
+    request: Request,
     limit: int = Query(50, ge=1, le=100),
     cursor: str | None = Query(
         None,
@@ -234,6 +260,7 @@ async def list_see_all_import_items(
     return await ListSeeAllImportItems.call(
         limit=limit,
         cursor=cursor,
+        request=request,
         user=user,
         database=database,
     )
@@ -242,6 +269,7 @@ async def list_see_all_import_items(
 @import_router.get("/import-items/{item_id}")
 async def get_import_item(
     item_id: str,
+    request: Request,
     include: str | None = Query(
         None,
         description=(
@@ -257,6 +285,7 @@ async def get_import_item(
     return await GetImportItem.call(
         item_id=item_id,
         include=include,
+        request=request,
         user=user,
         database=database,
     )
@@ -265,12 +294,14 @@ async def get_import_item(
 @import_router.get("/import-items/{item_id}/telemetry")
 async def get_import_item_telemetry(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Per-stage telemetry for the Flutter caret expansion (irrd-2)."""
     return await GetImportItemTelemetry.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -280,6 +311,7 @@ async def get_import_item_telemetry(
 async def update_import_item(
     item_id: str,
     params: UpdateImportItem.Params,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
@@ -287,6 +319,7 @@ async def update_import_item(
     return await UpdateImportItem.call(
         item_id=item_id,
         params=params,
+        request=request,
         user=user,
         database=database,
     )
@@ -295,12 +328,14 @@ async def update_import_item(
 @import_router.post("/import-items/{item_id}/approve")
 async def approve_import_item(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Approve import item and create recipe."""
     return await ApproveImportItem.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -309,12 +344,14 @@ async def approve_import_item(
 @import_router.post("/import-items/{item_id}/skip")
 async def skip_import_item(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Skip import item (don't import this recipe)."""
     return await SkipImportItem.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -323,12 +360,14 @@ async def skip_import_item(
 @import_router.post("/import-items/{item_id}/retry")
 async def retry_import_item(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Retry a failed import item from its last successful stage."""
     return await RetryImportItem.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -337,12 +376,14 @@ async def retry_import_item(
 @import_router.post("/import-items/{item_id}/dismiss")
 async def dismiss_import_item(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Hide a failed import item from the UI. Hard dismiss — no undo."""
     return await DismissImportItem.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -352,6 +393,7 @@ async def dismiss_import_item(
 async def submit_import_correction(
     item_id: str,
     params: SubmitCorrection.Params,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
@@ -365,6 +407,7 @@ async def submit_import_correction(
     return await SubmitCorrection.call(
         item_id=item_id,
         params=params,
+        request=request,
         user=user,
         database=database,
     )
@@ -372,11 +415,13 @@ async def submit_import_correction(
 
 @import_router.post("/import-jobs/dismiss-all-failed")
 async def dismiss_all_failed_imports(
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Hide all failed import items owned by the current user."""
     return await DismissAllFailedImports.call(
+        request=request,
         user=user,
         database=database,
     )
@@ -385,12 +430,14 @@ async def dismiss_all_failed_imports(
 @import_router.post("/import-items/{item_id}/archive")
 async def archive_import_item(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Archive an import item. 409 if status is in-progress."""
     return await ArchiveImportItem.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
@@ -399,12 +446,14 @@ async def archive_import_item(
 @import_router.post("/import-items/{item_id}/unarchive")
 async def unarchive_import_item(
     item_id: str,
+    request: Request,
     user: User = Depends(get_current_user_async),
     database: AsyncDatabase = Depends(get_async_database),
 ):
     """Restore an archived import item to the default feed."""
     return await UnarchiveImportItem.call(
         item_id=item_id,
+        request=request,
         user=user,
         database=database,
     )
