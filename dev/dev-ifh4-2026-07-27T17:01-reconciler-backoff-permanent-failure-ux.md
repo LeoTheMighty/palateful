@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:01:00-06:00
 title: Dart Reconciler — exponential backoff + permanent-failure UX
 from: _bmad-output/planning-artifacts/epic-import-flow-hardening.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/dev-ifh4
 ---
 
@@ -30,3 +31,4 @@ Give `PendingImportsReconciler` a real retry policy instead of telemetry-and-dro
 
 ## Status log
 - 2026-07-27T17:00 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; predecessor stories ifh-1 (88c04d7), ifh-2 (51f76f1) already on main
+- 2026-07-27T13:01:58-06:00 — claimed by /devx in session /devx-loop-2026-07-27T17-03-31-550-87857
