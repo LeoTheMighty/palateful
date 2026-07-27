@@ -1,8 +1,6 @@
 """Tests for the fixture runner module."""
 
 import json
-import os
-from pathlib import Path
 
 import pytest
 

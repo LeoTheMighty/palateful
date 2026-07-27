@@ -76,3 +76,49 @@ def test_every_non_opt_in_suite_has_a_target():
         assert f"--suite {suite}" in commands, f"no nx target runs the {suite} suite"
 
     assert OPT_IN_SUITES == ["vision_extraction"]
+
+
+# ---------------------------------------------------------------------
+# lint coverage
+#
+# `eval:lint` originally checked only `src/`, so the ~2.5k lines of
+# `tests/` and the two `scripts/` this suite added were never linted by
+# the sanctioned entry point — four violations had accumulated there
+# unnoticed. `services/ingredient-scraper` already lints `src tests`;
+# these tests pin eval to the same rule so the target cannot silently
+# narrow again as new Python dirs are added.
+# ---------------------------------------------------------------------
+
+IGNORED_LINT_DIRS = {"__pycache__", ".venv", "results", "datasets"}
+
+
+def _python_source_dirs() -> list[str]:
+    """Top-level dirs the service owns that actually contain .py files."""
+    dirs = []
+    for child in sorted(SERVICE_DIR.iterdir()):
+        if not child.is_dir() or child.name.startswith(".") or child.name in IGNORED_LINT_DIRS:
+            continue
+        if any(
+            p for p in child.rglob("*.py") if "__pycache__" not in p.parts
+        ):
+            dirs.append(child.name)
+    return dirs
+
+
+def test_lint_target_covers_every_python_source_dir():
+    command = _command("lint")
+    for name in _python_source_dirs():
+        assert f"/{name}/" in command, (
+            f"eval:lint does not check {name}/ — code there is invisible to CI"
+        )
+
+
+def test_lint_target_checks_tests_and_scripts():
+    """Explicit, non-derived assertion: the two dirs that were missing."""
+    command = _command("lint")
+    assert "{projectRoot}/tests/" in command
+    assert "{projectRoot}/scripts/" in command
+
+
+def test_lint_target_still_checks_src():
+    assert "{projectRoot}/src/" in _command("lint")

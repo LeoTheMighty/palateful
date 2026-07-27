@@ -371,7 +371,7 @@ Exit codes:
 # Install deps into the service venv (first run, or after a lock change)
 npx nx run eval:install
 
-# Lint
+# Lint (covers src/, scripts/ and tests/ — not src/ alone)
 npx nx run eval:lint
 
 # Run tests (no API calls; writes coverage/ and reports/ like every other service)
