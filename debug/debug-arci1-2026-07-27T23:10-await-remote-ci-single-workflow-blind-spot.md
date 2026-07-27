@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-27T23:10:00-06:00
 title: await-remote-ci reports success while a sibling workflow is red
 from: dev/dev-rsh101-2026-07-27T12:30-unblock-deploy-path.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: null
 ---
 
@@ -67,3 +67,4 @@ they disagree hits this.
   and `await-remote-ci` disagreed on commit `408aeaf`; investigating the
   disagreement is also what surfaced the imptab1 collision, so the false
   green cost nothing this time and saved something.
+- 2026-07-27T17:20:14-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
