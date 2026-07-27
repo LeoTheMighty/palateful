@@ -106,6 +106,13 @@ projects:
   - name: api
     path: services/api
     test: poetry run pytest
+  # rotation-self-heal RED (462355): E-5 and E-6 are P0 and name artifacts
+  # under libraries/utils/test/, which resolved to `command: null` because
+  # the package had no runner. Poetry env verified from this cwd; matches
+  # the nx `utils:test` target (`poetry run pytest libraries/utils/`).
+  - name: utils
+    path: libraries/utils
+    test: poetry run pytest
   - name: app
     path: app
     test: flutter test

@@ -4,13 +4,13 @@ type: plan
 created: 2026-07-27T10:51:32-06:00
 title: Rotation Self Heal
 status: in-progress
-stage: red
+stage: executing
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
   plan_verified: true
-  evals_red: false
+  evals_red: true
 outcome:
   status: null
   measure_by: null
@@ -19,7 +19,7 @@ gate_verdicts:
   prd: PASS
   design: CONCERNS
   plan: PASS
-  evals: null
+  evals: PASS
 ---
 
 ## Goal
@@ -121,3 +121,53 @@ Workstream 'Rotation Self Heal' — PRD stage next. Artifacts live in `_devx/wor
   Carried into RED: the `Secret Label Updated` event shape is still
   unconfirmed (blocks E-5, P0) — Phase 4's T4.1 owns it, with the CloudTrail
   `RotationSucceeded` signal as the proven fallback.
+- 2026-07-27T12:4x — stage RED. Ran `devx gate evals 462355` → **PASS**
+  (6 run / 2 deferred; every runnable expectation observed RED for the right
+  reason), flipped `evals_red: true`, `stage: executing`. Artifacts:
+  `evals/RED-report.md`, `evals/E-7_deploy-freeze-visibility.md`,
+  `evals/E-8_worker-healthcheck.md`, `services/api/tests/test_health.py`,
+  `libraries/utils/test/test_rotation_redeploy_handler.py`,
+  `libraries/utils/test/test_db_credential_provider.py`.
+  **Config change the gate required:** E-5 and E-6 are P0 and name artifacts
+  under `libraries/utils/test/`, which had no `projects:` runner — both
+  resolved `command: null`, a P0 floor breach. Added a `utils` runner
+  (`poetry run pytest`, cwd `libraries/utils`), verified against the existing
+  suite and matching the nx `utils:test` target.
+  Right-reason confirmation, run directly before the gate as well as through
+  it: E-1 fails on the 30-day cutoff (fixtures frozen 2026-04-18) — pre-existing
+  RED, not re-authored; E-2/E-3/E-4 on `ModuleNotFoundError:
+  utils.services.db_probe` plus `test_health_check` failing the new `db` body
+  field; E-5 on `ModuleNotFoundError: utils.services.rotation_redeploy` plus
+  explicit module-absent AST assertions; E-6 on `ModuleNotFoundError:
+  utils.services.db_credentials` plus the three source-level wiring
+  assertions. `test_readiness_check` still passes in each file, so the RED is
+  scoped to the missing feature rather than broken collection.
+  **Three findings the authoring surfaced, all recorded rather than silently
+  applied.** (1) **T6.3b's stated mechanism is impossible.** plan.md:735 has it
+  "import the real `database.py`, `runner.py` and `tasks.py` … against the live
+  engines"; `agent` is not installed in the `libraries/utils` venv
+  (`find_spec("agent")` is `None`) and both agent modules build their engines
+  *lazily* inside `_get_session_factory()`, so an import constructs nothing to
+  inspect. E-6's artifact path is unchanged (no `devx revise` owed); the clause
+  is proven live for `database.py`'s three sites — reloaded against a
+  file-backed SQLite URL, which yields real QueuePool `Engine`s without pinning
+  psycopg2 — and at the source level for the two agent sites, with the runtime
+  guarantee left to T6.3's enumeration guard under the `agent` project's own
+  test target. Recorded in rsh106. (2) **The api suite cannot run without
+  `DATABASE_URL` in the environment.** `conftest.py:15` does
+  `setdefault("DATABASE_URL", "")` and `config.Settings` rejects the empty
+  string, so a bare run errors at fixture setup on a pydantic
+  `ValidationError` — a wrong-reason failure. CI sets it at `ci.yml:176`/`:260`;
+  the gate was run the same way. This corrects plan.md:341-347, which reads as
+  though `""` is the working state (the probe's unset-URL → `OK` contract still
+  stands — that is `utils.constants`, not the app settings). (3) **`services/api`
+  sets `fail_under = 100`**, so *any* single-file api pytest run exits non-zero
+  on coverage alone; E-2/E-3/E-4's RED verdict rests on the captured failure
+  excerpt, which was independently reproduced with `--no-cov`, not on the exit
+  code. (2) and (3) are recorded in rsh102.
+  Emitted 9 dev specs (rsh101–rsh109) + retro (rshret) via
+  `devx plan-helper emit-retro-story`; `devx plan-helper validate-emit
+  rotation-self-heal` → ok. DEV.md carries the epic section with the dependency
+  shape and the two Force-Deploy-only phases called out. No PLAN.md checkbox to
+  flip — this workstream was created by `devx workstream new`, not from a
+  PLAN.md row.

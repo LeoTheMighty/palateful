@@ -50,8 +50,43 @@
   - [x] Coverage judge pass 2 → 8/8 covered
   - [x] `devx gate coverage 462355` (plan mode) → **PASS**
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+  - [x] Add a `utils` runner to `devx.config.yaml` — E-5/E-6 are P0 but
+        `libraries/utils` had no `projects:` entry, so both resolved
+        `command: null` (a P0 floor breach)
+  - [x] E-1: confirmed pre-existing RED (3 failures; fixtures frozen at
+        2026-04-18 vs a 30-day `DateTime.now()` cutoff) — not re-authored
+  - [x] E-2/E-3/E-4: authored `services/api/tests/test_health.py` at the
+        **connect seam** (`db_probe._connect_once`), so `is_auth_error` runs
+        for real inside the API test; includes the interleaved 30s/60s
+        single-flight case that actually tests the design
+  - [x] E-5: authored `libraries/utils/test/test_rotation_redeploy_handler.py`
+        — both candidate event shapes (Secret Label Updated + CloudTrail
+        `RotationSucceeded`), so T4.1's fallback needs no re-author
+  - [x] E-6: authored `libraries/utils/test/test_db_credential_provider.py`
+        — do_connect driven via `engine.pool._creator()` on a SQLite engine
+        (driver-free; `engine.connect()` would fire `dialect.initialize()`)
+  - [x] E-7/E-8: human stubs with full observation protocols
+  - [x] **Found at RED:** T6.3b's stated mechanism is impossible — `agent` is
+        not installed in the `libraries/utils` venv and its engines are built
+        lazily, so importing `runner.py`/`tasks.py` inspects nothing.
+        Recorded in rsh106; clause proven live for `database.py`'s 3 sites,
+        source-level for the 2 agent sites
+  - [x] **Found at RED:** the api suite needs `DATABASE_URL` in the env
+        (`ci.yml:176`) or every test errors on a pydantic `Settings`
+        validation; and `fail_under = 100` makes any single-file api run exit
+        non-zero on coverage alone. Both recorded in rsh102
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Unblock the deploy path on `main` (FR-1) → rsh101
+  - [ ] Phase 2: Credential-aware health probe (FR-2) → rsh102
+  - [ ] Phase 3: Rotation-redeploy Lambda handler (FR-4a) → rsh103
+  - [ ] Phase 4: EventBridge rule + Lambda infrastructure (FR-4b) → rsh104
+  - [ ] Phase 5: Secrets Manager password provider (FR-5a) → rsh105
+  - [ ] Phase 6: Engine-site registration + task-role IAM (FR-5b) → rsh106
+  - [ ] Phase 7: Worker health check (FR-3) → rsh107
+  - [ ] Phase 8: Deploy-freeze visibility (FR-6) → rsh108
+  - [ ] Phase 9: Rotation drill — measure G-2, G-3, G-4 → rsh109
+  - [ ] Retro → rshret
 - [ ] Stage: Retro
 - [ ] Stage: Outcome
