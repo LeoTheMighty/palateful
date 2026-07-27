@@ -24,7 +24,42 @@ Bugs/Improvements:
 * Change language to be "dismiss" in imports/notifs instead of archive (for successful ones it's weird language)
 * Shopping cart still broken
     * Can't open at all because of "Import all from calendar" bug
+        * **btri01 2026-07-27 — CLOSED, cause removed.** The bulk "import all
+          from calendar" path was `POST /v1/shopping-lists/{id}/populate-from-
+          calendar`; cpms-2 (`e94a48c`, 2026-04-18) deleted the endpoint, its
+          `PopulateFromCalendar` class, router handler and tests outright and
+          replaced it with the per-event `POST /v1/meal-events/{id}/add-to-
+          shopping-list`. Nothing in `app/` references the old path any more
+          (grep for `populate-from-calendar` / `populateFromCalendar` is clean
+          outside two prose comments). The list-load path it used to poison is
+          also hardened: bas-3 made `ShoppingListItem.fromJson` tolerate a
+          null `name` and malformed dates, and bas-3's AC7 priority audit
+          checks out — `shopping_list_items.priority` is `nullable=False,
+          server_default="3"` (`20260130000001_add_shared_shopping_cart.py:110`),
+          so `ItemResponse.priority: int` can't raise on a NULL row.
     * Also still seeing the Websocket errors in crashlytics
+        * **btri01 2026-07-27 — WAS STILL BROKEN, fixed here.** bas-3's AC5
+          added "refresh once on a 4xxx close code before reconnecting", but
+          the hand-off never happened: `AuthService.refreshToken()` only
+          rotates its own credentials, and the sole runtime writer of
+          `ApiClient._authToken` is the Dio 401 interceptor (bas-4), which
+          needs an HTTP 401 to fire. A WS-only rejection never produces one,
+          so `_doConnect` re-read the same rejected token from
+          `_apiClient.authToken`, the backend closed 4003 again, and the 5s
+          reconnect + `ErrorReporter.report` pair repeated forever — exactly
+          the Crashlytics noise reported here. `_refreshTokenThenReconnect`
+          now installs the refreshed token via `_apiClient.setAuthToken`;
+          pinned by `app/test/features/shopping_cart/ws_refresh_token_propagation_test.dart`
+          (4 tests, verified failing before the fix).
+        * Follow-up worth watching, deliberately not changed: the reconnect
+          has no backoff and no give-up, so any permanently-failing socket
+          still reports once every 5s. The bas epic locked the 5s timer, so
+          re-tuning it is a separate item, not a btri01 fix. Same for the
+          dangling `_errorDetail` field + unused `error_banner.dart` import on
+          both `shopping_list_screen.dart` and `floating_cart_widget.dart` —
+          bas-3 captures `ErrorReporter.detail(e)` but never renders it, so the
+          user still gets a bare "Failed to load shopping list" + Retry. Cosmetic;
+          the cart is not a dead end.
 * When token needs a refresh sometimes get very strange errors in the app, should detect "need to refresh auth" errors everywhere
     * **btri01 2026-07-27 — CLOSED, fixed by bas-4 (`db1a8e4`).** The Dio
       interceptor now logs out (→ app-level redirect to `/login`) whenever the
