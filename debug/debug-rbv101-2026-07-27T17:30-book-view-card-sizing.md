@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T17:30:00-06:00
 title: Recipe-book view renders meal and recipe cards at different sizes
 from: BUGS.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/debug-rbv101
 ---
 
@@ -22,3 +23,4 @@ Everything in the recipe-book detail view renders at the same card size — meal
 
 ## Status log
 - 2026-07-27T17:30 — imported from BUGS.md during BMAD→devx migration
+- 2026-07-27T11:03:31-06:00 — claimed by /devx in session /devx-loop-2026-07-27T17-03-31-550-87857
