@@ -12,13 +12,16 @@ npx nx run eval:install
 cp .env.eval.example .env.eval
 # Edit .env.eval with your API keys
 
-# Run all evaluations
+# Run all default evaluations (vision_extraction is opt-in — see below)
 npx nx run eval:run
 
 # Run specific suite
 npx nx run eval:run-ocr
 npx nx run eval:run-recipe
 npx nx run eval:run-matching
+
+# Opt-in suite: every case is a live gpt-4o-mini vision call
+npx nx run eval:run-vision
 
 # Generate HTML report
 npx nx run eval:report -- --format html --open
@@ -60,7 +63,7 @@ Tests HTML-to-recipe conversion using JSON-LD and AI extractors.
 
 Multi-recipe expected files use `{"recipes": [recipe_a, recipe_b, ...]}`. Single-recipe expected files keep the legacy bare-recipe shape; the evaluator wraps both transparently, pair-wise aligns expected-vs-actual in source order, and grades accordingly.
 
-### Vision Extraction (`--suite vision_extraction`)
+### Vision Extraction (`npx nx run eval:run-vision`)
 
 Tests **image**-to-recipe conversion — `extract_recipe_from_image`
 (gpt-4o-mini vision), the path behind photo import. It is the vision twin
@@ -71,10 +74,13 @@ the extractor call differ.
 
 ```bash
 # Opt-in: not part of the default `run` (every case is a live vision call).
-poetry run python -m src.main run --suite vision_extraction
+npx nx run eval:run-vision
 
 # Just the fan-out cases.
-poetry run python -m src.main run --suite vision_extraction --tags multi_recipe
+npx nx run eval:run-vision --tags multi_recipe
+
+# Discover the fixtures without spending anything (cold cache = all skipped).
+EVAL_MOCK_AI=true npx nx run eval:run-vision
 ```
 
 | Metric | Description |
@@ -106,12 +112,13 @@ regression reference. It ships with NULL placeholders — the first live run
 populates it. Do not hand-transcribe the console table; capture it:
 
 ```bash
-# The one live run (bills ~5 gpt-4o-mini vision calls).
-OPENAI_API_KEY=<key> poetry run python -m src.main run \
-    --suite vision_extraction --output results/vision-baseline.json
+# The one live run (bills ~5 gpt-4o-mini vision calls). The key can also
+# live in services/eval/.env.eval, which the target loads automatically.
+OPENAI_API_KEY=<key> npx nx run eval:run-vision \
+    --output results/vision-baseline.json
 
 # Rewrite the baseline file + print the PR-pasteable markdown block.
-poetry run python scripts/capture_vision_baseline.py \
+npx nx run eval:capture-vision-baseline \
     --results results/vision-baseline.json --markdown
 ```
 

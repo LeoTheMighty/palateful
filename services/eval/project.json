@@ -21,49 +21,63 @@
     "run": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main run --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval run",
         "cwd": "{projectRoot}"
       }
     },
     "eval-llm": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main eval-llm --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval eval-llm",
         "cwd": "{projectRoot}"
       }
     },
     "run-ocr": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main run --suite ocr --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval run --suite ocr",
         "cwd": "{projectRoot}"
       }
     },
     "run-recipe": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main run --suite recipe_extraction --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval run --suite recipe_extraction",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "run-vision": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main --env-file .env.eval run --suite vision_extraction",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "capture-vision-baseline": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python scripts/capture_vision_baseline.py",
         "cwd": "{projectRoot}"
       }
     },
     "run-matching": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main run --suite ingredient_matching --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval run --suite ingredient_matching",
         "cwd": "{projectRoot}"
       }
     },
     "run-recipe-parse": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main eval-llm --cases recipe_parse --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval eval-llm --cases recipe_parse",
         "cwd": "{projectRoot}"
       }
     },
     "run-chat-agent": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main eval-llm --cases chat_agent --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval eval-llm --cases chat_agent",
         "cwd": "{projectRoot}"
       }
     },
@@ -84,7 +98,7 @@
     "run-fixtures": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "poetry run python -m src.main run-fixtures --env-file .env.eval",
+        "command": "poetry run python -m src.main --env-file .env.eval run-fixtures",
         "cwd": "{projectRoot}"
       }
     },

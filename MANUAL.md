@@ -13,16 +13,17 @@
   `vision_extraction` run pasted into the PR description as the
   `field_accuracy` regression baseline. It needs a real `OPENAI_API_KEY`
   and bills 5 live gpt-4o-mini vision calls, so no unattended agent can
-  do it. Run from `services/eval/`:
+  do it. Run from the repo root (the key can also live in
+  `services/eval/.env.eval`, which the target loads automatically):
 
   ```bash
   # 1. The one live run.
-  OPENAI_API_KEY=<key> poetry run python -m src.main run \
-      --suite vision_extraction --output results/vision-baseline.json
+  OPENAI_API_KEY=<key> npx nx run eval:run-vision \
+      --output results/vision-baseline.json
 
   # 2. Capture it: rewrites baselines/vision_extraction_baseline.json
   #    and prints the PR-pasteable markdown block. No API calls.
-  poetry run python scripts/capture_vision_baseline.py \
+  npx nx run eval:capture-vision-baseline \
       --results results/vision-baseline.json --markdown
   ```
 
