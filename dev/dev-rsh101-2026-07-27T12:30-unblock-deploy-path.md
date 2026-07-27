@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T12:30:00-06:00
 title: Unblock the deploy path on main — repair the date-fused Flutter fixtures
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: in-progress
+status: done
 owner: /devx-2026-07-27T1253-25281
 branch: feat/dev-rsh101
 ---
@@ -170,3 +170,18 @@ cutoff. Fix belongs in the test, not the widget.
   exists on `main`, instead of the `_recent()` this branch no longer ships.
   Post-merge: `flutter test` on the two affected files — 20 passed, 0 failures;
   analyze clean.
+- phase 8: all PR checks terminal and green across both workflows
+  (`CI & Deploy`: setup / lint / test / check-models / flutter-test /
+  terraform / perf-budget-label; `devx-ci`: lint / test / coverage).
+  `devx devx-helper check-hold 7` → `{"hold":false}`;
+  `devx merge-gate rsh101` → `{"merge":true}`. Merged via PR #7
+  (squash → `0a5c3d4`). Note `gh pr merge` exited non-zero — it could not
+  delete the local branch while the worktree still held it — but
+  `gh pr view 7` returned `state: MERGED` with a `mergeCommit.oid`, which is
+  the authoritative signal. Worktree removed, branch deleted.
+- phase 8: filed `debug/debug-arci1-…-await-remote-ci-single-workflow-blind-spot.md`
+  + DEBUG.md row for the CI-only failure pattern found here:
+  `await-remote-ci` reads only the newest workflow run, so it returned
+  `conclusion=success` on `408aeaf` while `devx-ci` was red at the same
+  `headSha`. `merge-gate` caught it, so nothing shipped red — but Phase 7 is
+  documented as the step that waits for CI, and it was wrong.

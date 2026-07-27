@@ -79,6 +79,21 @@
 - [x] Gate: evals
 - [ ] Stage: Execute
   - [ ] Phase 1: Unblock the deploy path on `main` (FR-1) → rsh101
+    - [x] T1.1 Re-ran E-1's artifact and watched it fail NOW (3 failures,
+          right-reason) before touching code — not re-authored
+    - [x] T1.2 Four age-gated fixtures (`:277`, `:445`, `:518`, `:525`) →
+          `_recent(Duration)`; widget untouched, `:510` left hardcoded
+    - [x] T1.3 The masked `:543` + `:544` assertions now run and pass
+    - [x] T1.4 Guard: `app/test/fixture_date_guard_test.dart` + a 29-file
+          count baseline; lives inside `flutter-test` so it has real teeth.
+          Demonstrated failing on a live reintroduction, then green.
+    - [x] Local gates: `flutter test` 1536 passed / 0 failures (was 1524
+          with 3 failures); analyze clean on both touched files
+    - [x] PR #7 + review tour published
+    - [ ] T1.5 Watch `flutter-test` → `deploy-web` → `detect-changes` on the
+          `main` push (post-merge — `deploy-web` is main-push-gated)
+    - [ ] T1.6 Record the 2026-05-03 `deploy-web` outcome (AC #6); if it
+          reproduces, pin `flutter-version` + `wrangler@latest` and re-run
   - [ ] Phase 2: Credential-aware health probe (FR-2) → rsh102
   - [ ] Phase 3: Rotation-redeploy Lambda handler (FR-4a) → rsh103
   - [ ] Phase 4: EventBridge rule + Lambda infrastructure (FR-4b) → rsh104
