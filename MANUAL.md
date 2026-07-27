@@ -20,6 +20,20 @@
   doc is stale and the real list is the only way to know which URL the fix
   should send. No agent can read the dashboard.
 
+- [ ] **Confirm a real push lands after the quiet-hours fix deploys** — the
+  btri01 push-notification verdict rests on code + unit tests, not on a
+  device. Two steps, both human-only: (1) run
+  `DATABASE_URL=<prod-url> python services/api/scripts/inspect_user_push.py
+  --id-or-email leonid@ac93.org` to confirm your row actually has an FCM
+  token registered (the agent's prod-script runs are blocked by the
+  permission classifier whenever the script text touches `push_tokens`);
+  (2) after the next backend deploy, trigger a *non-forced* push in the
+  evening — e.g. start a recipe import and let it reach `awaiting_review`
+  around 5–8pm Denver. Before the fix that window was 100% suppressed, so
+  it is the sharpest possible check. The admin "Send test push" button is
+  NOT a valid check here: it passes `force=True` and bypasses the exact
+  code path that was broken.
+
 ## /devx-init deferred work
 
 - [ ] **devx-init: supervisor-install-deferred** — OS-supervisor install deferred by non-interactive `devx init`

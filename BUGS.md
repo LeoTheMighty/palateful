@@ -1,8 +1,14 @@
 > **⚠️ Imported into devx 2026-07-27.** Live items now tracked in
-> `DEBUG.md` (rbv101 card sizing, btri01 legacy triage) and
-> `INTERVIEW.md` (RDS Performance Insights decision). New bug reports go
-> to `DEBUG.md` via `/devx`; this file is a historical inbox. See
+> `DEBUG.md` (rbv101 card sizing, btri01 legacy triage, plus lgort1 /
+> cldb01 / imptb1 / rcres1 filed during that triage) and `INTERVIEW.md`
+> (RDS Performance Insights decision). New bug reports go to `DEBUG.md`
+> via `/devx`; this file is a historical inbox. See
 > `_devx/import-2026-07-27.md`.
+>
+> **btri01 triage complete (2026-07-27).** All five reports in the second
+> section below now carry a dated verdict inline. Nothing in that section
+> is double-tracked: where a report is still alive it points at its
+> `DEBUG.md` spec rather than restating the bug.
 
 Bugs/Improvements:
 
@@ -47,6 +53,57 @@ Bugs/Improvements:
       throws `MealComponentUnavailableException` from a fake service, and
       `meal_service_test` fed itself a 422/306 body no endpoint produces.
 * PUSH NOTIFICATIONS
+    * **btri01 2026-07-27 — plumbing CLOSED, delivery bug found and fixed
+      here.** Everything the two notification epics built is present and
+      correct on current main: `Runner.entitlements` carries
+      `aps-environment=production`, `Info.plist` declares
+      `UIBackgroundModes=remote-notification`, `AppDelegate.swift` forwards
+      the APNs device token into `Messaging.messaging().apnsToken` with a
+      10s watchdog reported over the `palateful/push` MethodChannel,
+      `main.dart` calls `ensureRegistered` at boot **and** on every
+      `AppLifecycleState.resumed`, `RegisterPushToken` persists to the
+      `push_tokens` JSONB, terraform pipes `FIREBASE_CREDENTIALS_JSON` from
+      Secrets Manager into both the api and worker task definitions, and
+      every deep-link route `_routeForNotification` can emit exists in
+      `app_router.dart`. So "do we even have firebase set up correctly?" —
+      yes, since `epic-notifications-ios-proofoflife`.
+    * **What was still broken: quiet hours were evaluated in the
+      container's timezone, not the user's.** Every `users` row is created
+      with `notification_preferences` defaulting (ORM default *and* the
+      `20260117041822` migration's `server_default`) to
+      `quiet_hours_start: "22:00"`, `quiet_hours_end: "08:00"`,
+      `timezone: "America/Denver"`. But `PushNotificationService.
+      _is_quiet_hours` called bare `datetime.now()` and never read the
+      `timezone` key at all. ECS Fargate containers run UTC (nothing sets
+      `TZ` in terraform or either Dockerfile), so the window was applied as
+      22:00–08:00 **UTC** — i.e. **16:00–02:00 America/Denver**. Net effect:
+      every non-forced push to a default-prefs user between 4pm and 2am
+      local returned `suppressed_by_quiet_hours: True` and was never sent.
+      That is the entire dogfooding window (evening meal planning, evening
+      imports, evening shopping-list edits). Symmetrically, pushes leaked at
+      07:00 local, which is inside the window the user actually asked for.
+    * Why the proof-of-life epic looked green anyway: the admin test-push
+      endpoint (`send_test_push.py`) defaults `force: bool = True`, and
+      `force` is precisely the flag that bypasses the quiet-hours check. The
+      one push path that was ever manually verified is the one path that
+      skips the broken code. The unit tests missed it for the same reason —
+      they only ever used windows like `00:00`–`23:59`, where the timezone
+      offset cannot change the answer.
+    * **Fixed here:** `_is_quiet_hours` now resolves the user's IANA tz via
+      a new `_resolve_timezone` helper and evaluates `datetime.now(tz)`.
+      Missing / malformed `timezone` falls back to `ZoneInfo("UTC")`,
+      matching the existing `_owner_timezone` convention in
+      `send_meal_reminders.py` and preserving the old behaviour for the
+      (nonexistent) rows without the key. Pinned by 4 parametrised cases +
+      an end-to-end `send_to_user` case + 5 bad-timezone fallback cases in
+      `libraries/utils/test/test_push_notification.py`; the 3 that matter
+      were verified failing against the pre-fix `datetime.now()`.
+    * Follow-up worth watching, deliberately not changed:
+      `users.notification_permission_status` is written in exactly one
+      place — `complete_onboarding.py`. Nothing updates it when the user
+      later grants or revokes permission in OS Settings, so the admin push
+      health panel and `inspect_user_push.py` can both report a status
+      that is months stale. Observability gap, not a delivery bug.
 * Logging out shows a weird auth0 page
     * **btri01 2026-07-27 — STILL BROKEN, refiled.** bas-1 (`f839f67`) is not a
       fix: it hand-builds a `returnTo` with `Environment.auth0Scheme`
@@ -127,6 +184,10 @@ Bugs/Improvements:
 
 * Remove the "add image" icon from the top, not useful.
 * Really need to get notifications going, I haven't seen a single one work yet. Do we even have firebase setup correctly?
+    * **btri01 2026-07-27 — same report as "PUSH NOTIFICATIONS" above; see
+      that entry for the verdict.** Short version: Firebase *was* set up
+      correctly, but the UTC-vs-user-timezone quiet-hours bug suppressed
+      every real push during evening hours. Fixed in this item.
 * After you add a recipe, should go back to the current page (like from Photo) going back to the home page is little jarring, esp if we want to add another
 * I wonder what would happen if we had two recipes in one image? Would we be smart enough to do it correctly? This feels like something HunyuanOCR could handle, we might be able to have it return separate recipes via a prompt.
 * Review Import definitely need to see the unit and quantity and notes here. After extractor changes don't see it at all, probably should be in separate dropdown/unit fields.
