@@ -15,7 +15,7 @@
 
 - [x] Stage: PRD
 - [x] Gate: prd
-- [ ] Stage: Design
+- [x] Stage: Design
   - [x] Research: API db/health surfaces, terraform ECS/secrets, CI + failing tests
   - [x] User decision: FR-6 → scheduled GitHub Action (not CloudWatch alarm)
   - [x] User decision: pre-07-29 scope → FR-1 + FR-2 + FR-4; FR-3/5/6 after
@@ -30,7 +30,7 @@
   - [ ] **Carry into Plan:** the 5 partials (G-1..G-4, CAP-1) are all
         "unproven until CI actually runs / until a real rotation" — they
         need phases that produce evidence, not more design
-- [ ] Gate: coverage(design)
+- [x] Gate: coverage(design)
 - [ ] Stage: Plan
 - [ ] Gate: coverage(plan)
 - [ ] Stage: RED
