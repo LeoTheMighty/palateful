@@ -28,8 +28,14 @@
   - [x] Coverage-judge subagent → table JSON
   - [x] Gate 2 run (`devx gate coverage 41ee13 --table …`) + pass (CONCERNS → persona rows thickened → revise → PASS)
 - [x] Gate: coverage(design)
-- [ ] Stage: Plan
-- [ ] Gate: coverage(plan)
+- [x] Stage: Plan
+  - [x] Deferred design question closed: `writeEngineTemplates` runs on init upgrade (init-upgrade.ts:688) — template installs; no fallback needed
+  - [x] plan.md drafted (7 phases; 1∥2∥3, 4→5→6→7)
+  - [x] Critique pass: 4 lens subagents (pm/architect/dev/qa); 17 findings applied incl. RED-prereq hoist, prod-API define, INFRA: sentinel, E-5 wrapper split → decisions/2026-07-27-plan-critique.md
+  - [x] Coverage-judge subagent → table JSON (E-5 partial, rest covered)
+  - [x] Gate 3 run (`devx gate coverage 41ee13 --table …`) → CONCERNS (E-5 substitution caveat recorded; P0 floor passed) → plan_verified, stage: red
+  - [x] Commit + status log
+- [x] Gate: coverage(plan)
 - [ ] Stage: RED
 - [ ] Gate: evals
 - [ ] Stage: Execute
