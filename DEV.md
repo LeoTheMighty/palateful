@@ -8,7 +8,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 
 ## Epic — import-flow-hardening (active; ifh-1/2 already on main)
 
-- [ ] `dev/dev-ifh3-2026-07-27T17:00-ios-share-extension-failure-state.md` — iOS Share Extension — persist failure state + system notification on permanent failures. Status: ready. Blocked-by: —. Parallel-safe with ifh4 (disjoint files: Swift vs Dart).
+- [/] `dev/dev-ifh3-2026-07-27T17:00-ios-share-extension-failure-state.md` — iOS Share Extension — persist failure state + system notification on permanent failures. Status: in-progress. Blocked-by: —. Parallel-safe with ifh4 (disjoint files: Swift vs Dart).
 - [ ] `dev/dev-ifh4-2026-07-27T17:01-reconciler-backoff-permanent-failure-ux.md` — Dart Reconciler — exponential backoff + permanent-failure UX. Status: ready. Blocked-by: —. Parallel-safe with ifh3.
 - [ ] `dev/dev-ifh5-2026-07-27T17:02-failed-imports-banner-and-sheet.md` — Frontend — FailedImportsBanner + FailedImportsSheet wired into Import Activity Hub. Status: ready. Blocked-by: ifh3, ifh4 (consumes their `failed: true` App Group records + attempt_count reset).
 - [ ] `dev/dev-ifh6-2026-07-27T17:03-regression-sweep-and-e2e.md` — Regression sweep + e2e. Status: ready. Blocked-by: ifh3, ifh4, ifh5. One AC needs a staging deploy that includes ifh-1 (already on main).
