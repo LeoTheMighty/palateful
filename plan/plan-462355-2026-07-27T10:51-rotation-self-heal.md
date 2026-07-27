@@ -18,6 +18,8 @@ workstream: _devx/workstreams/rotation-self-heal
 gate_verdicts:
   prd: PASS
   design: CONCERNS
+  plan: null
+  evals: null
 ---
 
 ## Goal
@@ -68,3 +70,16 @@ Workstream 'Rotation Self Heal' — PRD stage next. Artifacts live in `_devx/wor
   The 5 partials (G-1..G-4, CAP-1) are all of one kind — unproven until CI
   actually runs green and until a real rotation is observed — so they are
   Plan-stage evidence work, not design gaps.
+- 2026-07-27T11:40 — stage DESIGN (cont). Closed the owed PRD revision
+  rather than carrying it into Plan: rewrote the "Changing the rotation
+  cadence" non-goal in `prd.md` to record the 90-day decision and why
+  the original bullet was unholdable (FR-4's `terraform apply` lands
+  `e74303f`'s pending cadence change whether or not we choose it). Ran
+  `devx revise 462355 --touched prd.md` → reset 4 flags as designed, then
+  replayed the cascade: `devx gate prd 462355` → **PASS**,
+  `devx gate coverage 462355 --table decisions/2026-07-27-design-coverage-table.json`
+  → **CONCERNS**. Both gates back to their pre-revise verdicts;
+  `design_verified: true`, `stage: plan`. Done now, at Design, because the
+  cascade resets `design_verified` whenever it runs — so the cost is
+  identical at Plan, but the contradiction would have been baked into
+  plan.md first.

@@ -25,8 +25,9 @@
   - [x] Coverage judge pass 2 → FR-1/FR-3/FR-6 upgraded to covered
   - [x] UC-5 folded into existing `bin/prod-status` (dropped net-new script)
   - [x] `devx gate coverage 462355` → **CONCERNS** (16 covered / 5 partial / 0 missing)
-  - [ ] **Follow-up owed:** `devx revise` the PRD non-goal on rotation cadence
-        (90d decision contradicts it) — before the Plan gate
+  - [x] `devx revise 462355 --touched prd.md` — rewrote the rotation-cadence
+        non-goal to match the 90d decision; replayed `gate prd` (PASS) and
+        `gate coverage` design mode (CONCERNS) back to prior state
   - [ ] **Carry into Plan:** the 5 partials (G-1..G-4, CAP-1) are all
         "unproven until CI actually runs / until a real rotation" — they
         need phases that produce evidence, not more design

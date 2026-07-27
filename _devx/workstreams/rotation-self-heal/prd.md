@@ -53,8 +53,28 @@ credential path stops depending on task start time.
 
 ## Non-goals
 
-- **Changing the rotation cadence.** 7-day rotation is a security
-  control; the system should tolerate it, not slow it down.
+- **Designing a rotation cadence.** The system must tolerate rotation at
+  whatever cadence is configured; rotating less often is not a fix and is
+  not what this workstream builds.
+
+  Revised at Design (2026-07-27). This bullet originally read "Changing the
+  rotation cadence" and put the 7-day cadence out of scope entirely. That
+  turned out to be unholdable: commit `e74303f` (2026-05-03) already
+  authored `aws_secretsmanager_secret_rotation.db_master` with
+  `master_password_rotation_days = 90`
+  (`terraform/modules/rds/main.tf:105-118`, `:201-208`), undeployed only
+  because `main` has been un-deployable since 2026-04-26. FR-4 requires a
+  `terraform apply`, which necessarily lands that pending change too — so
+  "leave the cadence alone" was never an available option, merely an
+  unstated one. Decided with the user at Design: **let the 90-day cadence
+  apply, as `e74303f` intended.**
+
+  Consequences, recorded so they are not rediscovered: the next rotation
+  moves from 2026-07-29 to roughly 2026-10; the two-day deadline pressure
+  behind G-1 disappears; and the self-heal path is exercised ~4×/year
+  rather than weekly, so its regressions will surface late unless the RED
+  artifacts stand in for real rotations. G-2's and G-3's measurement dates
+  are affected — see Design § Assumptions.
 - **Reworking the Flutter error surface.** `login_screen.dart:96`
   swallowing the error into a `debugPrint` is a real diagnosability gap,
   but it is a client-side concern tracked separately — it did not cause
