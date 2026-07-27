@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:09:00-06:00
 title: Confidence eval metric module plus heuristic calibration and soft eval regression gates
 from: _bmad-output/planning-artifacts/epic-import-row-rich-detail.md
-status: in-progress
+status: blocked
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-irrd3a
 ---
@@ -31,3 +31,4 @@ Land the eval-side work deferred out of irrd-3 (ACs 8, 9, 11): a confidence-cali
 ## Status log
 - 2026-07-27T17:09 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration
 - 2026-07-27T16:27:05-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
+- 2026-07-27T23:20:12.046Z — [FAIL] loop abandoned irrd3a: iteration budget exhausted (8 iterations without acs_met); worktree preserved at .worktrees/dev-irrd3a
