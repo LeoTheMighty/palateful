@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:06:00-06:00
 title: Vision-extraction eval suite with image fixtures and recipe-count gate
 from: _bmad-output/planning-artifacts/epic-bugs-import-photo-pipeline.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-bugsimppho7
 ---
 
@@ -30,3 +31,4 @@ Stories bugs-imp-pho-1..6 shipped multi-recipe fan-out and eval gating, but only
 ## Status log
 - 2026-07-27T17:06 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration
 - 2026-07-27T17:06 — verified prerequisites on main: recipe_count_accuracy gate (config.py:22, runner.py:274) and fixtures/images/ dir already exist; stories pho-1..6 confirmed done despite stale backlog markers in sprint-status.yaml
+- 2026-07-27T15:15:34-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
