@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T18:21:00-06:00
 title: Deleted recurring-meal occurrence resurrects on next materialize pass
 from: dev/dev-bugscal3b-2026-07-27T17:07-backend-recurrence-expansion.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/debug-rcres1
 ---
 
@@ -24,3 +25,4 @@ Deleting a single occurrence of a recurring meal stays deleted. Today the delete
 
 ## Status log
 - 2026-07-27T18:21 — filed from bugs-cal-3b verification findings during BMAD→devx migration
+- 2026-07-27T12:26:13-06:00 — claimed by /devx in session /devx-loop-2026-07-27T17-03-31-550-87857
