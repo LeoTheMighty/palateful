@@ -26,3 +26,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. St
 
 - [/] `debug/debug-rcres1-2026-07-27T18:21-deleted-occurrence-resurrection.md` — Deleted recurring-meal occurrence resurrects on next materialize pass (delete detaches the row from its rule → invisible to the materializer's dedup → slot re-inserts; also `is_recurring` never set on materialized rows). Status: in-progress. From: bugs-cal-3b verification.
 
+## Pre-existing red suite (2026-07-27)
+
+- [ ] `app/test/features/activity/imports_tab_test.dart` — 3 failing widget tests on `feat/dev-ifh4` (branched from main), untriaged, no spec file yet: "renders all four sections with one row each" (expects text `Auto-Imported · 1`, finds 0 widgets, line 294), "green row taps navigate to /recipes/:id", and "buckets by item.status — items still render when parent job.status differs" (both tap a `Ship it` row that never renders, line 456). Looks like the Auto-Imported section stopped rendering in `lib/features/activity/imports_tab.dart`. Status: ready. From: ifh-4 full-suite verification — the file has no dependency on `pending_imports_reconciler.dart`, so these are unrelated to that story but will keep CI red until fixed.
+

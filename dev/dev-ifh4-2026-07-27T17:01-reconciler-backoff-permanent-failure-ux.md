@@ -32,3 +32,15 @@ Give `PendingImportsReconciler` a real retry policy instead of telemetry-and-dro
 ## Status log
 - 2026-07-27T17:00 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; predecessor stories ifh-1 (88c04d7), ifh-2 (51f76f1) already on main
 - 2026-07-27T13:01:58-06:00 — claimed by /devx in session /devx-loop-2026-07-27T17-03-31-550-87857
+- 2026-07-27T19:10:42.080Z — loop iteration 1: Implemented the full ifh-4 exponential-backoff + permanent-failure retry policy in PendingImportsReconciler with 28 new unit tests, all passing.
+  - Change: PendingImportsReconciler now classifies failures via the server's `retryable` field (read off DioException.response, with a JSON-string body fallback) and falls back to a 5xx/429/408/409-transient vs other-4xx-permanent status heuristic
+  - Change: Transient failures increment `attempt_count` and push `next_attempt_at` along the published backoff curve (1s/4s/16s/1m/5m/30m), flipping to `failed: true` with `error_code: retries_exhausted` at 6 attempts; permanent failures set `failed: true` + server `error_code` with no re-POST
+  - Change: reconcile() skips both `failed: true` records and records inside an open backoff window, leaving them byte-identical in the App Group; legacy records with no retry fields or a garbled timestamp stay eligible
+  - Change: Added an injectable clock to both constructors and exposed `backoffSchedule`/`maxAttempts` as public constants so the schedule is directly assertable
+  - Change: New app/test/features/imports/pending_imports_reconciler_backoff_test.dart with 28 tests covering all five AC scenarios plus edge cases
+  - Change: Logged 3 pre-existing unrelated imports_tab_test.dart failures in DEBUG.md
+  - Learning: ifh-3 has not landed: app/ios/PalatefulShare/PendingImports.swift still has no failed/retryable/attempt_count/next_attempt_at fields, so Dart currently defines the record contract unilaterally. Worse, PendingImport is a strict Codable with fixed CodingKeys — when the extension re-encodes the list it will DROP any Dart-written retry fields. ifh-3 must add matching fields or the backoff state gets wiped on the next share.
+  - Learning: The epic's '6 attempts ~= 36 minutes' arithmetic only holds if all six delays elapse (1+4+16+60+300+1800 = 36.4 min), which needs 7 POSTs. Implemented the literal AC instead — failed at attempt_count == 6 — so the last delay actually applied is 5m and the 30m tail is documented as the schedule's kept-but-unreached entry.
+  - Learning: error_code on the wire is an INT (libraries/utils/utils/api/endpoint.py failure() defaults to ErrorCode.INTERNAL_ERROR.value), not the snake_case string ifh-5's importFailureCopy map is specced against (`file_too_large`, `unsupported_mime`, ...). ifh-5 will need to key on ints or map them.
+  - Learning: app/ has no NX project.json — Flutter tests run via bare `flutter test`, not `npx nx`.
+  - Learning: Pre-existing red on this branch: 3 failures in test/features/activity/imports_tab_test.dart (Auto-Imported section renders 0 widgets). Inherited from main, unrelated to the reconciler, but will keep CI red on the merge tail.
