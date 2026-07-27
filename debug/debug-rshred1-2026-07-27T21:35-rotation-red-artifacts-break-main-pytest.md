@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T21:35:00-06:00
 title: rotation-self-heal RED artifacts break the `test` job on main
 from: dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 ---
 
 ## Goal
@@ -81,3 +82,4 @@ workstream lands.
   job conclusion across the last 8 `main` runs — green at `2f4b699`, red on
   everything after the RED-stage merge. Not root-caused further because the
   fix is a policy decision, not a code defect.
+- 2026-07-27T16:13:10-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
