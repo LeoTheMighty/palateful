@@ -14,5 +14,5 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. St
 
 ## Found during import verification (2026-07-27)
 
-- [ ] `debug/debug-rcres1-2026-07-27T18:21-deleted-occurrence-resurrection.md` — Deleted recurring-meal occurrence resurrects on next materialize pass (delete detaches the row from its rule → invisible to the materializer's dedup → slot re-inserts; also `is_recurring` never set on materialized rows). Status: ready. From: bugs-cal-3b verification.
+- [/] `debug/debug-rcres1-2026-07-27T18:21-deleted-occurrence-resurrection.md` — Deleted recurring-meal occurrence resurrects on next materialize pass (delete detaches the row from its rule → invisible to the materializer's dedup → slot re-inserts; also `is_recurring` never set on materialized rows). Status: in-progress. From: bugs-cal-3b verification.
 

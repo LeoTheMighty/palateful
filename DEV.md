@@ -8,15 +8,15 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 
 ## Epic — import-flow-hardening (active; ifh-1/2 already on main)
 
-- [ ] `dev/dev-ifh3-2026-07-27T17:00-ios-share-extension-failure-state.md` — iOS Share Extension — persist failure state + system notification on permanent failures. Status: ready. Blocked-by: —. Parallel-safe with ifh4 (disjoint files: Swift vs Dart).
-- [ ] `dev/dev-ifh4-2026-07-27T17:01-reconciler-backoff-permanent-failure-ux.md` — Dart Reconciler — exponential backoff + permanent-failure UX. Status: ready. Blocked-by: —. Parallel-safe with ifh3.
+- [/] `dev/dev-ifh3-2026-07-27T17:00-ios-share-extension-failure-state.md` — iOS Share Extension — persist failure state + system notification on permanent failures. Status: in-progress. Blocked-by: —. Parallel-safe with ifh4 (disjoint files: Swift vs Dart).
+- [/] `dev/dev-ifh4-2026-07-27T17:01-reconciler-backoff-permanent-failure-ux.md` — Dart Reconciler — exponential backoff + permanent-failure UX. Status: in-progress. Blocked-by: —. Parallel-safe with ifh3.
 - [ ] `dev/dev-ifh5-2026-07-27T17:02-failed-imports-banner-and-sheet.md` — Frontend — FailedImportsBanner + FailedImportsSheet wired into Import Activity Hub. Status: ready. Blocked-by: ifh3, ifh4 (consumes their `failed: true` App Group records + attempt_count reset).
 - [ ] `dev/dev-ifh6-2026-07-27T17:03-regression-sweep-and-e2e.md` — Regression sweep + e2e. Status: ready. Blocked-by: ifh3, ifh4, ifh5. One AC needs a staging deploy that includes ifh-1 (already on main).
 
 ## Loose ends from executed epics (independent, parallel-safe)
 
 - [-] `dev/dev-mvp1-2026-07-27T17:04-multi-image-group-index-fix.md` — Fix multi-image group_index so one upload session yields one recipe. Status: blocked (awaiting diagnostic info from Leo — initial one-line client-fix hypothesis invalidated in review; see spec status log). From: epic-mvp-finalization.
-- [ ] `dev/dev-bugsimppho7-2026-07-27T17:06-vision-extraction-eval-suite.md` — Vision-extraction eval suite with image fixtures and recipe-count gate. Status: ready. Blocked-by: —. From: epic-bugs-import-photo-pipeline (pho-1..6 done).
+- [/] `dev/dev-bugsimppho7-2026-07-27T17:06-vision-extraction-eval-suite.md` — Vision-extraction eval suite with image fixtures and recipe-count gate. Status: in-progress. Blocked-by: —. From: epic-bugs-import-photo-pipeline (pho-1..6 done).
 - ~~`dev/dev-bugscal3b-2026-07-27T17:07-backend-recurrence-expansion.md` — Backend server-side recurrence expansion in ListMealEvents.~~ Status: superseded (2026-07-27 verification: recurring-meals epics deliver this via slot-rule + materialization; residual resurrection bug filed as debug rcres1; the deferred bugs-cal-3 recurrence UI is no longer blocked).
 - [x] `dev/dev-bugsact2a-2026-07-27T17:08-backend-fields-addendum.md` — Backend fields addendum for import-item detail (last_successful_stage, last_retry_at, confidence_score). Status: done (2026-07-27 verification: all three fields already landed via irrd-1/irrd-3 incl. tests — see spec status log).
 - [ ] `dev/dev-irrd3a-2026-07-27T17:09-confidence-eval-calibration-gate.md` — Confidence eval metric module plus heuristic calibration and soft eval regression gates. Status: ready. Blocked-by: —. Needs real LLM API calls (~10 min runtime).
@@ -48,3 +48,18 @@ Dependency shape: bqa101 ∥ bqa102 ∥ bqa103 (disjoint files/repos) → bqa104
 - [ ] `dev/dev-bqa106-2026-07-27T11:44-first-attended-pass.md` — First attended pass — walkthrough emission + recipe-import journey (E-3, E-4). Status: ready. Blocked-by: bqa105. Needs Leo attended.
 - [ ] `dev/dev-bqa107-2026-07-27T11:45-persona-seeded-passes.md` — Persona-seeded passes — --persona flag + one seeded pass (E-6). Status: ready. Blocked-by: bqa106. Needs Leo attended; cross-repo skill change.
 - [ ] `dev/dev-bqaret-2026-07-27T11:41-retro-browser-qa-agent.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: bqa101, bqa102, bqa103, bqa104, bqa105, bqa106, bqa107.
+
+### Epic — rotation-self-heal (workstream 462355; RED gate passed 2026-07-27)
+
+Seeded from the 2026-07-21 credential-rotation outage (6 days; prod frozen on image `c85e350` since 2026-04-26 because `main` has been un-deployable). Critical path: rsh101 → rsh102 → {rsh105 → rsh106} ∥ {rsh103 → rsh104} → rsh107 → rsh109. **rsh101–rsh104 are deadline-bound to 2026-07-29** (next scheduled rotation under the current 7-day cadence); rsh105–rsh109 land after. rsh103 and rsh108 are parallel-safe with everything. Note rsh102's push carries the **first `terraform apply` since 2026-04-26** — including the pending 90-day rotation cadence from `e74303f` — because `terraform-prod` runs `-auto-approve` (`ci.yml:748`); its T2.1 line-by-line plan review is the only gate. rsh104 and rsh107 are terraform-only and need **Actions → Force Deploy**, not a `main` push. RED artifacts were authored at RED — stories re-run them, never re-author them.
+
+- [/] `dev/dev-rsh101-2026-07-27T12:30-unblock-deploy-path.md` — Unblock the deploy path on main — repair the date-fused Flutter fixtures. Status: in-progress. Blocked-by: —. Deadline 2026-07-29. Parallel-safe with rsh103, rsh108.
+- [ ] `dev/dev-rsh102-2026-07-27T12:31-credential-aware-health-probe.md` — Credential-aware health probe — fresh connection, fail-open classifier. Status: ready. Blocked-by: rsh101 (needs a green `flutter-test` to reach the deploy lane at all). Deadline 2026-07-29. Carries the first `terraform apply` since 2026-04-26.
+- [ ] `dev/dev-rsh103-2026-07-27T12:32-rotation-redeploy-lambda-handler.md` — Rotation-redeploy Lambda handler — pure, unit-testable Python. Status: ready. Blocked-by: —. Deadline 2026-07-29. Parallel-safe with rsh101, rsh102, rsh108.
+- [ ] `dev/dev-rsh104-2026-07-27T12:33-eventbridge-rule-and-lambda-infra.md` — EventBridge rule + Lambda infrastructure for rotation redeploy. Status: ready. Blocked-by: rsh103 (consumes its pinned runtime + handler string, and packages its module). Deadline 2026-07-29. Terraform-only — applies via Force Deploy.
+- [ ] `dev/dev-rsh105-2026-07-27T12:34-secrets-manager-password-provider.md` — Secrets Manager password provider — connect-time credential resolution. Status: ready. Blocked-by: rsh102 (extends the `db_credentials.py` module rsh102 creates).
+- [ ] `dev/dev-rsh106-2026-07-27T12:35-engine-site-registration-and-iam.md` — Engine-site registration + task-role IAM — wire FR-5, ship disabled. Status: ready. Blocked-by: rsh105.
+- [ ] `dev/dev-rsh107-2026-07-27T12:36-worker-health-check.md` — Worker health check — remove `healthStatus: UNKNOWN` without a crash loop. Status: ready. Blocked-by: rsh102 (the probe module + its deployed image), rsh106 (the `get_secret_value`/hour leg of E-4 is only measurable once FR-5 is enabled). Terraform-only apply — Force Deploy.
+- [ ] `dev/dev-rsh108-2026-07-27T12:37-deploy-freeze-visibility.md` — Deploy-freeze visibility — scheduled freshness check plus prod-status age. Status: ready. Blocked-by: —. Parallel-safe with every other story.
+- [ ] `dev/dev-rsh109-2026-07-27T12:38-rotation-drill.md` — Rotation drill — force a rotation and measure G-2, G-3, G-4. Status: ready. Blocked-by: rsh104, rsh106, rsh107, rsh108. Attended production action; needs Leo.
+- [ ] `dev/dev-rshret-2026-07-27T12:31-retro-rotation-self-heal.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: rsh101, rsh102, rsh103, rsh104, rsh105, rsh106, rsh107, rsh108, rsh109.

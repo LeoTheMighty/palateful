@@ -135,6 +135,24 @@ void _unregister() {
   }
 }
 
+/// Base instant for every fixture timestamp in this file.
+///
+/// Fixtures MUST stay inside the tab's 30-day recency window: `imports_tab`
+/// drops `completed` + `skipped` items older than the cutoff (they stay
+/// reachable via See-all), while `awaiting_review` + `failed` are exempt
+/// because they're actionable. Absolute dates therefore rot silently — once
+/// they aged past 30 days the Auto-Imported and Skipped sections stopped
+/// rendering and three tests went red, months after the commit that "broke"
+/// them (imptab1). Anchor to `now` so they can't rot again.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// preserve the original fixtures' relative ordering, which the
+/// created-at-descending sort assertions depend on.
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Widget _wrap(Widget child) => ProviderScope(
       child: MaterialApp(home: Scaffold(body: child)),
     );
@@ -219,7 +237,7 @@ void main() {
             'source_url': 'https://example.com/recipe',
             'total_items': 2,
             'processed_items': 1,
-            'created_at': '2026-04-18T10:00:00Z',
+            'created_at': _at(0),
           },
         ],
         'awaiting_review': [
@@ -227,7 +245,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': _at(10),
           },
         ],
         'failed': [
@@ -235,7 +253,7 @@ void main() {
             'id': 'job-f',
             'status': 'failed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:20:00Z',
+            'created_at': _at(20),
           },
         ],
         'completed': [
@@ -243,7 +261,7 @@ void main() {
             'id': 'job-c',
             'status': 'completed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:30:00Z',
+            'created_at': _at(30),
           },
         ],
       },
@@ -254,7 +272,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Review me',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': _at(15),
           },
         ],
         'job-f': [
@@ -264,7 +282,7 @@ void main() {
             'recipe_name': 'I died',
             'source_type': 'url',
             'error_message': 'boom',
-            'created_at': '2026-04-18T10:25:00Z',
+            'created_at': _at(25),
           },
         ],
         'job-c': [
@@ -274,7 +292,7 @@ void main() {
             'recipe_name': 'Green goodness',
             'source_type': 'url',
             'created_recipe_id': 'recipe-42',
-            'created_at': '2026-04-18T10:35:00Z',
+            'created_at': _at(35),
           },
         ],
       },
@@ -309,7 +327,7 @@ void main() {
           'source_url': 'https://example.com/recipe',
           'total_items': 2,
           'processed_items': 1,
-          'created_at': '2026-04-18T10:00:00Z',
+          'created_at': _at(0),
         },
       ],
     });
@@ -340,7 +358,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': _at(10),
           },
         ],
       },
@@ -351,7 +369,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Swipe me',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': _at(15),
           },
         ],
       },
@@ -383,7 +401,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': _at(10),
           },
         ],
       },
@@ -394,7 +412,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Flipped mid-swipe',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': _at(15),
           },
         ],
       },
@@ -430,7 +448,7 @@ void main() {
             'id': 'job-c',
             'status': 'completed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:30:00Z',
+            'created_at': _at(30),
           },
         ],
       },
@@ -442,7 +460,7 @@ void main() {
             'recipe_name': 'Ship it',
             'source_type': 'url',
             'created_recipe_id': 'recipe-42',
-            'created_at': '2026-04-18T10:35:00Z',
+            'created_at': _at(35),
           },
         ],
       },
@@ -477,7 +495,7 @@ void main() {
             'id': 'job-ar-holding-failed',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': _at(10),
           },
         ],
         // Job.status=completed, but items inside have mixed statuses.
@@ -486,7 +504,7 @@ void main() {
             'id': 'job-c-mixed',
             'status': 'completed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:30:00Z',
+            'created_at': _at(30),
           },
         ],
       },
@@ -498,7 +516,7 @@ void main() {
             'recipe_name': 'Buried failure',
             'source_type': 'photo',
             'error_message': 'boom',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': _at(15),
           },
         ],
         'job-c-mixed': [
@@ -507,7 +525,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Buried review',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:31:00Z',
+            'created_at': _at(31),
           },
           {
             'id': 'item-done',
@@ -515,14 +533,14 @@ void main() {
             'recipe_name': 'Done',
             'source_type': 'url',
             'created_recipe_id': 'recipe-42',
-            'created_at': '2026-04-18T10:32:00Z',
+            'created_at': _at(32),
           },
           {
             'id': 'item-skip',
             'status': 'skipped',
             'recipe_name': 'Skipped photo',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:33:00Z',
+            'created_at': _at(33),
           },
         ],
       },
@@ -555,7 +573,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': _at(10),
           },
         ],
       },
@@ -566,7 +584,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Tap for review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': _at(15),
           },
         ],
       },
