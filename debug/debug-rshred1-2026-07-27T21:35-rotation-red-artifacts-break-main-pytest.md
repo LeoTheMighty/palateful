@@ -83,3 +83,13 @@ workstream lands.
   everything after the RED-stage merge. Not root-caused further because the
   fix is a policy decision, not a code defect.
 - 2026-07-27T16:13:10-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
+- 2026-07-27T22:18:44.826Z — loop iteration 1: Decided and implemented the RED-artifact policy (registry-driven exclusion from default pytest collection), turning the utils test suite green locally (608 passed) without touching any rotation-self-heal-owned file.
+  - Change: Added tools/red-artifacts.txt — a registry of tests-first RED artifacts merged to main ahead of their implementation, in the same path:hash:rationale format as the existing silent-catch allowlist, with the full policy (register on merge, delete entry on GREEN) in its header.
+  - Change: Added libraries/utils/test/conftest.py, which reads the registry into collect_ignore, hard-errors on a registered path that does not exist, and honours PYTEST_RUN_RED=1 as the opt-in for directory runs.
+  - Change: Registered the two rotation-self-heal RED files against their implementing stories (rsh105, rsh103), taking the utils suite from 5 failed / 23 errors to 608 passed.
+  - Change: Documented the mechanism in CLAUDE.md Key References so the next /devx-plan RED stage registers rather than reintroducing the standing red.
+  - Learning: The spec's root cause is slightly off: the missing-module imports are inside pytest fixtures (test_db_credential_provider.py:120, test_rotation_redeploy_handler.py:129), not at module scope. The modules import fine — the failures are ERROR-at-setup, not collection errors. A marker-based deselection would therefore have worked too; the spec's 'collection-time import failure' framing would have ruled that option out incorrectly.
+  - Learning: collect_ignore does NOT suppress a file named explicitly on the command line — only directory recursion. That is a feature here: the implementing story can run its own RED artifact with a plain path and no env var, while the CI directory run stays clean.
+  - Learning: Blast radius is naturally contained: every other Python test target (api, worker, parser, agent, migrator) is scoped to its own testpaths or an explicit path, so none of them can ever collect libraries/utils. Only the utils target and a bare root-level pytest were ever affected.
+  - Learning: This worktree has no libraries/agent venv, so `npx nx run agent:test` fails locally with 'unrecognized arguments: --cov'. Pre-existing environment gap, unrelated to this spec — future iterations should not chase it as a regression.
+  - Learning: Local api tests are unrunnable in this worktree (Docker daemon down, so no Postgres); AC #2 can only be closed by CI on main.
