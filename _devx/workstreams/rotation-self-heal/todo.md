@@ -90,10 +90,19 @@
     - [x] Local gates: `flutter test` 1536 passed / 0 failures (was 1524
           with 3 failures); analyze clean on both touched files
     - [x] PR #7 + review tour published
-    - [ ] T1.5 Watch `flutter-test` → `deploy-web` → `detect-changes` on the
-          `main` push (post-merge — `deploy-web` is main-push-gated)
-    - [ ] T1.6 Record the 2026-05-03 `deploy-web` outcome (AC #6); if it
-          reproduces, pin `flutter-version` + `wrangler@latest` and re-run
+    - [x] T1.5 Watched the `main` push (run 30312803900): `flutter-test`
+          **success**; `test` (pytest) **failure**; `deploy-web` and
+          `detect-changes` both **skipped**. AC #5 is 1-of-3.
+    - [ ] T1.6 **Blocked, not deferred** — AC #6 needs `deploy-web` to run,
+          and it skipped. Nothing reproduced or ruled out; versions not
+          pinned. Carries to the first `main` push after rshred1 lands.
+  - [ ] **Deploy lane still shut — blocker is `debug-rshred1`, not Phase 1.**
+        `deploy-web`/`detect-changes` need `test` as well as `flutter-test`
+        (`ci.yml:462`, `:521`). This workstream's own RED artifacts, merged at
+        `5a6174d`, fail pytest at collection
+        (`ModuleNotFoundError: utils.services.db_credentials`). Phase 1's Goal
+        assumed `flutter-test` was the only root gate; it is not.
+        rsh102 (deadline 2026-07-29) is blocked behind this.
   - [ ] Phase 2: Credential-aware health probe (FR-2) → rsh102
   - [ ] Phase 3: Rotation-redeploy Lambda handler (FR-4a) → rsh103
   - [ ] Phase 4: EventBridge rule + Lambda infrastructure (FR-4b) → rsh104

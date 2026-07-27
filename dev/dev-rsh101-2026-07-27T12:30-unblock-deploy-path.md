@@ -185,3 +185,38 @@ cutoff. Fix belongs in the test, not the widget.
   `conclusion=success` on `408aeaf` while `devx-ci` was red at the same
   `headSha`. `merge-gate` caught it, so nothing shipped red — but Phase 7 is
   documented as the step that waits for CI, and it was wrong.
+- phase 8 (**AC #5: 1 of 3 clauses met — the deploy path is NOT unblocked**).
+  Observed on the `main` push, run 30312803900 (`3052b41`):
+  - `flutter-test`: **success** ✅ — this spec's clause, met.
+  - `test` (pytest): **failure** ❌ —
+    `ModuleNotFoundError: No module named 'utils.services.db_credentials'` at
+    `libraries/utils/test/test_db_credential_provider.py:120`.
+  - `deploy-web`: **skipped** ❌
+  - `detect-changes`: **skipped** ❌
+  Root cause of the remaining block: `deploy-web` (`ci.yml:462`) and
+  `detect-changes` (`ci.yml:521`) declare
+  `needs: [setup, lint, test, check-models, flutter-test, terraform]` — so
+  `test` is a root job of the deploy graph on exactly the same footing as
+  `flutter-test`. **This spec's Goal was wrong about the shape of the
+  problem**: "nothing can reach production until `flutter-test` is green" is
+  necessary but not sufficient. Green `flutter-test` is now proven; the lane
+  is still shut.
+  The blocker is `debug-rshred1` (in-progress, another session): this
+  workstream's own RED artifacts were merged to `main` at `5a6174d` and
+  import modules that rsh103/rsh105 have not written yet, so pytest fails at
+  collection for every commit. **rsh101 cannot fix it** — the fix is a policy
+  decision (don't merge RED to `main`, vs. exclude RED from default
+  collection) and rshred1 owns it.
+- phase 8 (**AC #6: unanswerable, not deferred by choice**). The 2026-05-03
+  `deploy-web` question needs `deploy-web` to *run*. It skipped, so nothing
+  was reproduced or ruled out, and `flutter-version` (`ci.yml:467-470`) /
+  `wrangler@latest` (`:493`) were correspondingly not pinned. This carries to
+  whoever lands after rshred1 — it is the first `main` push where the
+  question becomes answerable at all. Recorded rather than closed.
+- phase 8 (self-inflicted, worth not repeating): the `CI & Deploy` run on the
+  merge commit `0a5c3d4` was **cancelled**, because pushing the bookkeeping
+  commit `3052b41` a minute later hit `concurrency.cancel-in-progress: true`
+  keyed on `github.ref` (`ci.yml:55-57`). No information was lost — the
+  `3052b41` run answers the same questions — but the merge commit itself has
+  no green run of record. Post-merge bookkeeping should either be pushed
+  before the merge lands or wait for the merge run to finish.
