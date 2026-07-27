@@ -220,6 +220,28 @@ def evaluate_gates(
     }
 
 
+def _format_replay_line(replay: dict[str, Any]) -> str:
+    """One line saying this report came from a saved run, not a live one.
+
+    Without it a replayed FAILED report is indistinguishable from a fresh
+    one, and the operator can't tell whether their weight edit was even
+    exercised.
+    """
+    recomputed = replay.get("recomputed_fixtures") or []
+    moved = replay.get("moved_fixtures") or []
+    origin = f"REPLAY: saved run {replay.get('source_path', '?')}"
+    recorded_at = replay.get("recorded_at")
+    if recorded_at:
+        origin += f" (recorded {recorded_at})"
+    if not replay.get("recompute_heuristic"):
+        return origin + " — confidences used exactly as recorded (--as-recorded)"
+    return (
+        f"{origin} — {len(recomputed)} heuristic confidence(s) recomputed under "
+        f"the current weights, {len(moved)} changed; model-sourced scores replayed "
+        "verbatim"
+    )
+
+
 def format_gate_report(report: dict[str, Any]) -> str:
     """Render both gate summaries plus a combined verdict.
 
@@ -237,6 +259,9 @@ def format_gate_report(report: dict[str, Any]) -> str:
         f"Run: strategy={report.get('strategy', 'unknown')} "
         f"fixtures={report.get('fixture_count', 0)}",
     ]
+    replay = report.get("replay")
+    if isinstance(replay, dict):
+        lines.append(_format_replay_line(replay))
     if errored:
         lines.append(
             f"Extraction errors ({len(errored)}): {', '.join(errored)} "
@@ -409,11 +434,24 @@ def write_baselines(
 # The opt-in run
 # ---------------------------------------------------------------------------
 
+def _emit_confidence_state() -> bool | None:
+    """Whether ``EXTRACTOR_EMIT_CONFIDENCE`` was on for this run."""
+    try:
+        from utils.services.recipe_extractors.confidence_prompt import emit_confidence
+
+        return bool(emit_confidence())
+    except Exception:
+        return None
+
+
 def run_confidence_gates(
     fixtures_dir: str | Path,
     strategy: str = "text_extractor",
     calibration_baseline_path: str | Path = CALIBRATION_BASELINE_PATH,
     extraction_baseline_path: str | Path = EXTRACTION_BASELINE_PATH,
+    save_run_path: str | Path | None = None,
+    generated_at: str | None = None,
+    generated_commit: str | None = None,
 ) -> dict[str, Any]:
     """Run the fixtures for real, then apply both gates.
 
@@ -421,14 +459,87 @@ def run_confidence_gates(
     means ``OPENAI_API_KEY`` and roughly ten minutes for the checked-in
     fixture set. Returns the report dict; rendering and exit codes are
     the caller's job.
+
+    ``save_run_path`` persists the run's raw payloads so :func:`replay_gates`
+    can re-apply both gates offline after a weight retune — the difference
+    between AC9's tuning loop costing one API run and costing one per
+    candidate.
     """
     from src.fixture_runner import run_eval
 
     summary = run_eval(fixtures_dir, strategy=strategy, include_payloads=True)
-    return evaluate_gates(
+    report = evaluate_gates(
         summary.get("fixtures") or [],
         calibration_baseline=load_baseline(calibration_baseline_path),
         extraction_baseline=load_baseline(extraction_baseline_path),
         aggregate=summary.get("aggregate") or {},
         strategy=strategy,
     )
+
+    if save_run_path is not None:
+        from src.run_artifact import save_run_artifact
+
+        saved = save_run_artifact(
+            summary,
+            save_run_path,
+            generated_at=generated_at,
+            generated_commit=generated_commit,
+            emit_confidence=_emit_confidence_state(),
+        )
+        # Only the path — the payloads themselves stay out of the report
+        # so `--output` keeps writing a readable verdict, not a run dump.
+        report["saved_run_path"] = str(saved)
+
+    return report
+
+
+# ---------------------------------------------------------------------------
+# The free re-run
+# ---------------------------------------------------------------------------
+
+def replay_gates(
+    artifact: dict[str, Any],
+    calibration_baseline_path: str | Path = CALIBRATION_BASELINE_PATH,
+    extraction_baseline_path: str | Path = EXTRACTION_BASELINE_PATH,
+    recompute_heuristic: bool = True,
+    source_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Apply both gates to a run saved by ``--save-run``. No API key, no network.
+
+    This is the loop AC9 actually needs: edit the weights in
+    ``confidence_heuristic.py``, replay, read the new MAE. With
+    ``recompute_heuristic`` on (the default) every heuristic-sourced
+    confidence is recomputed from its saved extraction under the current
+    weights — identical to what a fresh run would produce, because the
+    heuristic is a pure function of the extracted recipe and extraction
+    itself doesn't depend on the weights. Model-sourced scores are
+    replayed verbatim; they are exactly the samples a retune cannot move.
+
+    ``recompute_heuristic=False`` reproduces the original run's verdict
+    byte-for-byte, which is the right mode for re-reading an old run
+    rather than testing a change.
+    """
+    from src.run_artifact import moved_changes, recompute_heuristic_confidences
+
+    fixture_results = [f for f in (artifact.get("fixtures") or []) if isinstance(f, dict)]
+    changes: list[dict[str, Any]] = []
+    if recompute_heuristic:
+        fixture_results, changes = recompute_heuristic_confidences(fixture_results)
+
+    report = evaluate_gates(
+        fixture_results,
+        calibration_baseline=load_baseline(calibration_baseline_path),
+        extraction_baseline=load_baseline(extraction_baseline_path),
+        aggregate=artifact.get("aggregate") or {},
+        strategy=artifact.get("strategy") or "unknown",
+    )
+    report["replay"] = {
+        "source_path": str(source_path) if source_path is not None else None,
+        "recorded_at": artifact.get("_generated_at"),
+        "recorded_commit": artifact.get("_generated_commit"),
+        "emit_confidence": artifact.get("emit_confidence"),
+        "recompute_heuristic": recompute_heuristic,
+        "recomputed_fixtures": changes,
+        "moved_fixtures": moved_changes(changes),
+    }
+    return report

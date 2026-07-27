@@ -152,6 +152,31 @@ EXTRACTOR_EMIT_CONFIDENCE=false npx nx run eval:confidence-gate -- --write-basel
 EXTRACTOR_EMIT_CONFIDENCE=true  npx nx run eval:confidence-gate
 ```
 
+### Pay for the run once: `--save-run` / `--from-run`
+
+```bash
+# Pay the ten minutes once, keeping the raw payloads.
+npx nx run eval:confidence-gate -- --save-run /tmp/irrd3a-run.json
+
+# ...edit the weights in confidence_heuristic.py, then re-gate for free.
+npx nx run eval:confidence-gate -- --from-run /tmp/irrd3a-run.json
+```
+
+`--from-run` needs no `OPENAI_API_KEY` and no network. It recomputes every
+**heuristic-sourced** confidence from its saved extraction under the
+weights currently in `confidence_heuristic.py` — identical to what a fresh
+run would produce, because the heuristic is a pure function of the
+extracted recipe and extraction itself doesn't depend on the weights.
+**Model-sourced** scores are replayed verbatim; they are exactly the
+samples a retune cannot move, and the replay line reports how many of each
+there were. Add `--as-recorded` to skip the recompute and re-read the
+original run's verdict unchanged.
+
+So AC9's "retune until MAE ≤ 0.3" loop costs one API run, not one per
+candidate: propose (the report computes it), edit, `--from-run`, confirm.
+The saved run is a debugging record, not a baseline — write it somewhere
+untracked.
+
 `--write-baseline` rewrites both `baselines/confidence_calibration_baseline.json`
 and `baselines/extraction_baseline.json` from the run (stamping the
 timestamp and commit, and mirroring the live heuristic weights), merging

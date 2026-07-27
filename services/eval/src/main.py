@@ -463,6 +463,19 @@ def run_fixtures(
     "--write-baseline", is_flag=True,
     help="Rewrite baselines/*.json from this run instead of comparing against them",
 )
+@click.option(
+    "--save-run", default=None,
+    help="Save this run's raw payloads to JSON so --from-run can replay it offline",
+)
+@click.option(
+    "--from-run", default=None,
+    help="Replay a saved run instead of calling the extractors (no API key needed)",
+)
+@click.option(
+    "--as-recorded", is_flag=True,
+    help="With --from-run: keep the recorded confidences instead of recomputing "
+         "heuristic ones under the current weights",
+)
 @click.pass_context
 def confidence_gate(
     ctx: click.Context,
@@ -470,6 +483,9 @@ def confidence_gate(
     fixtures_dir: str | None,
     output: str | None,
     write_baseline: bool,
+    save_run: str | None,
+    from_run: str | None,
+    as_recorded: bool,
 ) -> None:
     """Run the irrd-3a confidence-calibration + title-regression gates.
 
@@ -481,9 +497,14 @@ def confidence_gate(
     Exits 1 when either gate fails (calibration MAE > 0.3, or
     title_extraction_f1 more than 5% below the recorded baseline).
 
+    Save the run once and replay it for free after every weight edit —
+    AC9's retune loop costs one API run, not one per candidate.
+
     Examples:
 
-        npx nx run eval:confidence-gate
+        npx nx run eval:confidence-gate -- --save-run /tmp/run.json
+
+        npx nx run eval:confidence-gate -- --from-run /tmp/run.json
 
         EXTRACTOR_EMIT_CONFIDENCE=false npx nx run eval:confidence-gate -- --write-baseline
 
@@ -494,22 +515,69 @@ def confidence_gate(
 
     from src.confidence_gates import (
         format_gate_report,
+        replay_gates,
         run_confidence_gates,
         write_baselines,
     )
     from src.strategies import STRATEGIES
 
-    if strategy not in STRATEGIES:
-        console.print(f"[red]Unknown strategy: {strategy}[/red]")
-        console.print(f"Available: {list(STRATEGIES.keys())}")
+    if from_run and save_run:
+        console.print(
+            "[red]--from-run replays a saved run, so there is nothing new to "
+            "--save-run. Pick one.[/red]"
+        )
+        sys.exit(1)
+    if as_recorded and not from_run:
+        console.print("[red]--as-recorded only applies with --from-run.[/red]")
         sys.exit(1)
 
-    fdir = Path(fixtures_dir) if fixtures_dir else Path("./fixtures")
-    if not fdir.is_dir():
-        console.print(f"[red]Error: Fixtures directory not found: {fdir}[/red]")
-        sys.exit(1)
+    def _head_commit() -> str | None:
+        try:
+            return subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+        except (subprocess.SubprocessError, OSError):
+            return None
 
-    report = run_confidence_gates(str(fdir), strategy=strategy)
+    if from_run:
+        from src.run_artifact import load_run_artifact
+
+        try:
+            artifact = load_run_artifact(from_run)
+        except ValueError as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+            sys.exit(1)
+        report = replay_gates(
+            artifact,
+            recompute_heuristic=not as_recorded,
+            source_path=from_run,
+        )
+    else:
+        if strategy not in STRATEGIES:
+            console.print(f"[red]Unknown strategy: {strategy}[/red]")
+            console.print(f"Available: {list(STRATEGIES.keys())}")
+            sys.exit(1)
+
+        fdir = Path(fixtures_dir) if fixtures_dir else Path("./fixtures")
+        if not fdir.is_dir():
+            console.print(f"[red]Error: Fixtures directory not found: {fdir}[/red]")
+            sys.exit(1)
+
+        report = run_confidence_gates(
+            str(fdir),
+            strategy=strategy,
+            save_run_path=save_run,
+            generated_at=datetime.now().astimezone().isoformat() if save_run else None,
+            generated_commit=_head_commit() if save_run else None,
+        )
+        if report.get("saved_run_path"):
+            console.print(
+                f"\n[green]Run saved to: {report['saved_run_path']}[/green]\n"
+                "[green]Replay both gates over it for free with: "
+                f"--from-run {report['saved_run_path']}[/green]"
+            )
+
     console.print(format_gate_report(report))
 
     if output:
@@ -520,17 +588,10 @@ def confidence_gate(
         console.print(f"\n[green]Gate report saved to: {output_path}[/green]")
 
     if write_baseline:
-        try:
-            commit = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                capture_output=True, text=True, check=True,
-            ).stdout.strip()
-        except (subprocess.SubprocessError, OSError):
-            commit = None
         written = write_baselines(
             report,
             generated_at=datetime.now().astimezone().isoformat(),
-            generated_commit=commit,
+            generated_commit=_head_commit(),
         )
         for path in written:
             console.print(f"[green]Baseline written: {path}[/green]")
