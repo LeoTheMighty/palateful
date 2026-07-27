@@ -25,10 +25,13 @@
   ```
 
   Step 2 fails in one of two ways, each self-describing in the run output:
-  calibration MAE > 0.3 → shift the heuristic weights in
+  calibration MAE > 0.3 → the report's `AC9 retune` block prints the exact
+  `_W_INGREDIENTS` / `_W_TITLE` / `_W_STEPS` values to paste into
   `libraries/utils/utils/services/recipe_extractors/confidence_heuristic.py`
-  toward the signal the report names, and re-run (AC9); title F1 more than 5%
-  below the step-1 baseline → retune the confidence-emitting prompts (AC11).
+  (searched offline against the run's own samples, so no extra API spend),
+  and the projected MAE they reach — apply them and re-run to confirm; title
+  F1 more than 5% below the step-1 baseline → retune the confidence-emitting
+  prompts (AC11).
   Commit the regenerated `services/eval/baselines/*.json` with whatever change
   made them pass. Everything deterministic is already covered by
   `npx nx run eval:test` — this step is only about the real numbers.

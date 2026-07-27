@@ -105,6 +105,18 @@ def _coerce_sample(raw: Any) -> CalibrationSample | None:
     )
 
 
+def coerce_samples(samples: Iterable[Any]) -> list[CalibrationSample]:
+    """Parse raw samples with the same rules the metric itself applies.
+
+    Exposed for the AC9 retune search (``src.metrics.heuristic_retune``),
+    which needs the parsed samples — signal breakdown included — rather
+    than the aggregate this module returns. Unparseable entries are
+    dropped, exactly as they are for MAE.
+    """
+    coerced = (_coerce_sample(raw) for raw in samples)
+    return [s for s in coerced if s is not None]
+
+
 def _finite(value: Any) -> float | None:
     """Coerce to float, rejecting bool, NaN, and infinities."""
     if isinstance(value, bool) or value is None:

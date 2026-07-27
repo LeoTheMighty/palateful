@@ -32,6 +32,10 @@ from src.metrics.confidence_calibration import (
     dominant_signal,
     format_calibration_summary,
 )
+from src.metrics.heuristic_retune import (
+    format_retune_proposal,
+    propose_retuned_weights,
+)
 from src.metrics.title_extraction import (
     TITLE_REGRESSION_MAX_RELATIVE_DROP,
     check_title_regression_gate,
@@ -163,19 +167,34 @@ def evaluate_gates(
     aggregate: dict[str, Any] | None = None,
     strategy: str = "text_extractor",
     with_signals: bool = True,
+    current_weights: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Run both gates over one fixture run and combine the verdicts.
 
     The run passes only when *both* gates pass. An empty or fully-errored
     run fails: both metrics report ``None`` on no samples and both gates
     refuse to pass on an unknown value.
+
+    When the calibration gate fails, AC9's retune is computed too — the
+    samples are already in hand, so the weight search costs nothing on top
+    of the run that produced them (see ``src.metrics.heuristic_retune``).
+    It needs the structural signals, so it is skipped when
+    ``with_signals`` is off.
     """
-    calibration_result = compute_confidence_calibration(
-        build_calibration_samples(fixture_results, with_signals=with_signals)
+    calibration_samples = build_calibration_samples(
+        fixture_results, with_signals=with_signals
     )
+    calibration_result = compute_confidence_calibration(calibration_samples)
     calibration_gate = check_calibration_gate(
         calibration_result, baseline=calibration_baseline
     )
+    retune = None
+    if with_signals and not calibration_gate.get("passed"):
+        retune = propose_retuned_weights(
+            calibration_samples,
+            current_weights=current_weights,
+            calibration_result=calibration_result,
+        )
 
     title_result = compute_title_extraction_f1(build_title_pairs(fixture_results))
     title_gate = check_title_regression_gate(title_result, baseline=extraction_baseline)
@@ -191,7 +210,11 @@ def evaluate_gates(
         "fixture_count": len(fixture_results),
         "errored_fixtures": errored,
         "aggregate": dict(aggregate or {}),
-        "calibration": {"result": calibration_result, "gate": calibration_gate},
+        "calibration": {
+            "result": calibration_result,
+            "gate": calibration_gate,
+            "retune": retune,
+        },
         "title": {"result": title_result, "gate": title_gate},
         "passed": bool(calibration_gate.get("passed") and title_gate.get("passed")),
     }
@@ -237,12 +260,20 @@ def format_gate_report(report: dict[str, Any]) -> str:
     )
 
     if not (calibration.get("gate") or {}).get("passed"):
-        winner = dominant_signal(calibration.get("result") or {})
-        if winner:
-            lines.append(
-                f"  AC9 next step: shift heuristic weight toward '{winner}' in "
-                "libraries/utils/utils/services/recipe_extractors/confidence_heuristic.py"
-            )
+        retune = calibration.get("retune")
+        if isinstance(retune, dict):
+            # The computed answer supersedes the "shift toward X" hint:
+            # it names the target, the fraction, the projected MAE, and
+            # the literal constants to commit.
+            lines.append(format_retune_proposal(retune))
+        else:
+            winner = dominant_signal(calibration.get("result") or {})
+            if winner:
+                lines.append(
+                    f"  AC9 next step: shift heuristic weight toward '{winner}' in "
+                    "libraries/utils/utils/services/recipe_extractors/"
+                    "confidence_heuristic.py"
+                )
     if not (title.get("gate") or {}).get("passed"):
         lines.append(
             "  AC11 next step: retune the confidence-emitting prompts "

@@ -158,11 +158,29 @@ timestamp and commit, and mirroring the live heuristic weights), merging
 into the existing files so their explanatory comments survive. Review the
 diff and commit the baselines together with the change that produced them.
 
-On failure the report names the next step: a calibration failure reports
-the per-signal correlation against ground-truth F1 and points at the
-signal to shift weight toward in
-`libraries/utils/utils/services/recipe_extractors/confidence_heuristic.py`;
-a title failure points at the confidence-emitting prompts.
+On failure the report names the next step.
+
+A **calibration failure** does not just point at a signal — it computes
+the retune. Because the heuristic is a pure function of three signals the
+run already recorded, candidate weight vectors are replayed offline
+against those samples, so the report prints the smallest shift that
+reaches MAE ≤ 0.3, the MAE it projects, and the literal constants to
+paste into
+`libraries/utils/utils/services/recipe_extractors/confidence_heuristic.py`.
+Apply them and re-run to confirm — no second API bill is needed to *find*
+the weights, only to verify them.
+
+Two cases the report calls out rather than papering over:
+
+- **Every score came from the model.** No weight vector can move the MAE;
+  the fix is the prompts, not the heuristic. Reported as "not applicable"
+  with the dominant signal kept as evidence.
+- **No vector reaches the threshold.** The best-effort weights are still
+  printed with `still fails`, along with how many samples were
+  model-sourced and therefore immovable.
+
+A **title failure** points at the confidence-emitting prompts
+(`EXTRACTOR_EMIT_CONFIDENCE`).
 
 ## Adding Test Cases
 

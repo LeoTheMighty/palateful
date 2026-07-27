@@ -230,15 +230,51 @@ def test_failed_report_names_the_failing_gate_in_the_overall_line():
     assert "title=pass" in text
 
 
-def test_calibration_failure_points_at_the_signal_to_retune():
+def _signal_spread_results(source="model", confidence=0.99):
+    """Three fixtures whose step count tracks F1 — 'steps' dominates."""
     results = []
     for i, (f1, signal) in enumerate([(0.1, 0), (0.9, 3), (0.5, 1)]):
-        r = _fixture_result(f"f{i}", f1=f1, confidence=0.99)
+        r = _fixture_result(f"f{i}", f1=f1, confidence=confidence, source=source)
         r["extracted"]["steps"] = [{"instruction": "s"} for _ in range(signal)]
         results.append(r)
-    text = format_gate_report(evaluate_gates(results))
-    assert "AC9 next step: shift heuristic weight toward 'steps'" in text
+    return results
+
+
+def test_calibration_failure_names_the_dominant_signal_even_when_immovable():
+    # Every score came from the model, so no weight vector can move MAE —
+    # the report must say so rather than proposing a useless edit.
+    text = format_gate_report(evaluate_gates(_signal_spread_results(source="model")))
+    assert "AC9 retune     : not applicable" in text
+    assert "dominant signal: steps" in text
+    assert "every score came from the model" in text
+
+
+def test_calibration_failure_proposes_concrete_weights_for_heuristic_scores():
+    report = evaluate_gates(_signal_spread_results(source="heuristic"))
+    retune = report["calibration"]["retune"]
+    assert retune["applicable"] is True
+    assert retune["replayable_count"] == 3
+
+    text = format_gate_report(report)
+    assert "AC9 retune" in text
     assert "confidence_heuristic.py" in text
+    # The literal constants an operator commits.
+    assert "_W_INGREDIENTS" in text and "_W_TITLE" in text and "_W_STEPS" in text
+
+
+def test_retune_is_skipped_when_signals_were_not_collected():
+    report = evaluate_gates(_signal_spread_results(), with_signals=False)
+    assert report["calibration"]["retune"] is None
+    text = format_gate_report(report)
+    # Falls back to the evidence-only hint; without signals there is no
+    # correlation either, so only the prose path is exercised.
+    assert "AC9 retune" not in text
+
+
+def test_retune_is_absent_when_the_calibration_gate_passes():
+    report = evaluate_gates([_fixture_result("a", f1=0.8, confidence=0.8)])
+    assert report["calibration"]["gate"]["passed"] is True
+    assert report["calibration"]["retune"] is None
 
 
 def test_title_failure_points_at_the_prompt_retune():
