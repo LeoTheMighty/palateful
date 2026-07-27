@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:08:00-06:00
 title: Backend fields addendum for import-item detail (last_successful_stage, last_retry_at, confidence_score)
 from: _bmad-output/planning-artifacts/epic-bugs-activity-hub.md
-status: ready
+status: done
 branch: feat/dev-bugsact2a
 ---
 
@@ -28,3 +28,4 @@ Close the backend field gaps found by the bugs-act-2 field audit so the import a
 
 ## Status log
 - 2026-07-27T17:08 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration
+- 2026-07-27T18:20 — verified against main: all three fields already landed via irrd-1 + irrd-3 (get_import_item.py:156-160/257-261, import_item.py:133 + migration 20260418050000, retry_import_item.py:120, mirrored on list/batch/see-all endpoints; tests test_import.py:1892-1934, 2165-2204, 4217-4237, 6089-6111). Closed as done, no work performed.

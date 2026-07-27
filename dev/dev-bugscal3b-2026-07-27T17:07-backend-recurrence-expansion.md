@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:07:00-06:00
 title: Backend server-side recurrence expansion in ListMealEvents
 from: _bmad-output/planning-artifacts/epic-bugs-calendar-ux.md
-status: ready
+status: superseded
 branch: feat/dev-bugscal3b
 ---
 
@@ -30,3 +30,4 @@ branch: feat/dev-bugscal3b
 
 ## Status log
 - 2026-07-27T17:07 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration
+- 2026-07-27T18:20 — verified against main: SUPERSEDED by epic-recurring-meals-foundation/-editing, which deliver the user-visible outcome via slot-rule + pre-materialization (list_meal_events.py:86-107, materializer.py:153-247) instead of on-the-fly RRULE expansion. AC1/4/6/7 satisfied; AC2 partially void (grammar is weekly/biweekly/monthly-nth, no DAILY); AC3 void by design (new meal_recurrence_rules table). Residual defect found during verification (single-occurrence delete → detach → materializer re-inserts the slot; is_recurring never set on materialized rows) filed as debug/debug-rcres1. bugs-cal-3 recurrence UI's blocker no longer exists.
