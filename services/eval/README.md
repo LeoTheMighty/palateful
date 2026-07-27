@@ -82,7 +82,8 @@ poetry run python -m src.main run --suite vision_extraction --tags multi_recipe
 | `recipe_count_accuracy` | **Hard gate, 0.80.** Fraction of cases where the vision extractor returned the right *number* of recipes. 1.0 per exact match / 0.0 otherwise. |
 | `multi_recipe_count_accuracy` | Same number, emitted **only** on `multi_recipe`-tagged cases, and gated separately at 0.80. Single-recipe photos score ~1.0 for free, so grading them together would let a fan-out regression hide behind the average. |
 | `field_accuracy` | Per-recipe field match rate. **Reported, not gated** — a first baseline is being collected before a regression bar is set. Also drives per-case pass/fail. |
-| `ingredient_count_accuracy`, `instruction_similarity`, `timer_extraction_f1`, `unit_enum_compliance` | Identical to the text suite. |
+| `ingredient_count_accuracy`, `instruction_similarity`, `timer_extraction_f1` | Identical to the text suite; reported per case and averaged into the suite summary. |
+| `unit_enum_compliance` | Identical to the text suite, but reported as a **dict** (compliance + non-canonical token counts). The runner only averages scalars, so there is no `unit_enum_compliance_avg` — the baseline pins it per case. |
 
 What it measures, in one line: *given a photo of one or more recipes, does
 the extractor emit the right number of recipes, with the right fields on
@@ -98,6 +99,27 @@ Cost and safety:
 - A failed extraction ("no recipe found") is graded `0.0`, not dropped as
   an error — a miss must stay in the average.
 
+Baseline capture:
+
+`baselines/vision_extraction_baseline.json` is the `field_accuracy`
+regression reference. It ships with NULL placeholders — the first live run
+populates it. Do not hand-transcribe the console table; capture it:
+
+```bash
+# The one live run (bills ~5 gpt-4o-mini vision calls).
+OPENAI_API_KEY=<key> poetry run python -m src.main run \
+    --suite vision_extraction --output results/vision-baseline.json
+
+# Rewrite the baseline file + print the PR-pasteable markdown block.
+poetry run python scripts/capture_vision_baseline.py \
+    --results results/vision-baseline.json --markdown
+```
+
+The capture script never calls OpenAI (it only reads the run's JSON), and
+it refuses an all-skipped mock run — an empty baseline would read as
+"measured zero" to the future hardening pass that turns
+`thresholds.field_accuracy` from soft into a hard gate.
+
 Fixtures live in the shared tree (`fixtures/images/` + `fixtures/expected/`)
 and are registered in `datasets/vision_extraction/manifest.yaml`. Because an
 image fixture is a render of its text twin, both grade against one expected
@@ -106,9 +128,15 @@ JSON. To add one, follow the generator procedure in
 `fixtures/text/`, add a `LAYOUTS` entry, run
 `poetry run python scripts/generate_image_fixtures.py`, add the expected
 JSON, then register the case in the vision manifest with
-`single_recipe`/`multi_recipe` + `image` tags. `tests/test_vision_fixtures.py`
-and `tests/test_vision_extraction_evaluator.py` check the whole chain lines
-up without spending a cent.
+`single_recipe`/`multi_recipe` + `image` tags.
+
+Four offline test files cover the chain without spending a cent —
+`tests/test_vision_fixtures.py` (dataset consistency),
+`tests/test_vision_extraction_evaluator.py` (evaluator + gate units),
+`tests/test_vision_suite_end_to_end.py` (the real `EvalRunner` over the
+committed manifest, served from a seeded cache in a tmp dataset dir), and
+`tests/test_vision_baseline_capture.py` (baseline capture). Adding a case
+to the manifest is picked up automatically by the end-to-end tests.
 
 ### Ingredient Matching (`npx nx run eval:run-matching`)
 

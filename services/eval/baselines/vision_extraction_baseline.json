@@ -1,0 +1,31 @@
+{
+  "_comment": "bugs-imp-pho-7 baseline for the `vision_extraction` suite. NULL placeholders until the first live gpt-4o-mini vision run populates them — see MANUAL.md 'Spec-blocking runs'. Populate mechanically (do NOT hand-transcribe): run `poetry run python -m src.main run --suite vision_extraction --output results/vision-baseline.json`, then `poetry run python scripts/capture_vision_baseline.py --results results/vision-baseline.json --markdown`. The script rewrites this file and prints the PR-pasteable table.",
+  "_suite": "vision_extraction",
+  "_generated_at": null,
+  "_generated_commit": null,
+  "_results_file": null,
+  "run": {
+    "total_cases": null,
+    "passed_cases": null,
+    "failed_cases": null,
+    "skipped_cases": null,
+    "cost_cents": null,
+    "duration_seconds": null
+  },
+  "metrics": {
+    "recipe_count_accuracy_avg": null,
+    "multi_recipe_count_accuracy_avg": null,
+    "field_accuracy_avg": null,
+    "ingredient_count_accuracy_avg": null,
+    "instruction_similarity_avg": null,
+    "timer_extraction_f1_avg": null
+  },
+  "per_case": {},
+  "thresholds": {
+    "recipe_count_accuracy": 0.8,
+    "multi_recipe_count_accuracy": 0.8,
+    "_count_enforcement": "hard — gated in src/runner.py::_check_thresholds",
+    "field_accuracy": null,
+    "_field_accuracy_enforcement": "soft — reported only. Once this file carries a real field_accuracy_avg, the follow-up hardening sets the bar at max(0.7, baseline - 0.05) and gates it alongside the count metrics."
+  }
+}

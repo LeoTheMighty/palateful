@@ -16,14 +16,25 @@
   do it. Run from `services/eval/`:
 
   ```bash
+  # 1. The one live run.
   OPENAI_API_KEY=<key> poetry run python -m src.main run \
       --suite vision_extraction --output results/vision-baseline.json
+
+  # 2. Capture it: rewrites baselines/vision_extraction_baseline.json
+  #    and prints the PR-pasteable markdown block. No API calls.
+  poetry run python scripts/capture_vision_baseline.py \
+      --results results/vision-baseline.json --markdown
   ```
 
-  Paste the per-metric summary (especially `recipe_count_accuracy_avg`,
-  `multi_recipe_count_accuracy_avg`, `field_accuracy_avg`) into the PR.
+  Paste step 2's markdown block into the PR and commit the updated
+  `baselines/vision_extraction_baseline.json`. Don't hand-transcribe the
+  console table — the capture script is what pins `field_accuracy_avg`
+  as the soft regression bar for the future hardening pass.
+
   Everything else in the suite — evaluator, 0.80 gate, fixtures, docs,
-  and 48 offline tests — is already green without spending anything.
+  baseline placeholder + capture script, and 78 offline tests (including
+  a seeded end-to-end run through the real `EvalRunner`) — is already
+  green without spending anything.
 
 ## /devx-init deferred work
 
