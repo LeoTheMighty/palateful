@@ -44,4 +44,10 @@ if [ -d "$PSS_DIR" ]; then
   fi
 fi
 
+# Share Extension failure-path unit tests (ifh-3 AC). The extension has no
+# XCTest target; these compile the UIKit-free sources for the host and run
+# them directly, so they cost seconds and no simulator boot.
+echo "--- ci_post_clone: share extension unit tests ---"
+sh "$CI_PRIMARY_REPOSITORY_PATH/tools/share-extension-tests.sh"
+
 echo "--- ci_post_clone: done ---"

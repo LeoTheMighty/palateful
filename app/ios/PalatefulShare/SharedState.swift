@@ -38,7 +38,14 @@ struct SharedContext {
 }
 
 enum SharedState {
-  static let appGroupId = "group.com.palateful.app"
+  static let productionAppGroupId = "group.com.palateful.app"
+
+  /// Test-only redirect for the App Group suite. The unit-test harness
+  /// points this at a throwaway suite so it never scribbles on the real
+  /// shared container. Production code never sets it.
+  static var appGroupIdOverride: String?
+
+  static var appGroupId: String { appGroupIdOverride ?? productionAppGroupId }
 
   static func defaults() -> UserDefaults? {
     UserDefaults(suiteName: appGroupId)

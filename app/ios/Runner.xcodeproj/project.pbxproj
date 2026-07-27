@@ -23,6 +23,7 @@
 		A36958572B879A45F03B9687 /* SharedState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1B0886F056A519C8B058EA /* SharedState.swift */; };
 		B1033FB37005524408E820E9 /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F75F58DDC73B80991A3AC40 /* UploadService.swift */; };
 		BCFB202EC7EDA365A42761A6 /* PendingImports.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09955AEE81E9C175BD8D45DB /* PendingImports.swift */; };
+		1F41A00000000000000000B1 /* FailureNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F41A00000000000000000F1 /* FailureNotifier.swift */; };
 		E4A43878EB14D22433E9872D /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 63698FF7213A20BA75772542 /* GoogleService-Info.plist */; };
 		E6943F5CD058CD625521ECCF /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0F89117EA0D00BFCF1632102 /* Pods_RunnerTests.framework */; };
 		E96D7D84EAB26A9E3F40966D /* Telemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10C1AE7EC4EB7DCD69352271 /* Telemetry.swift */; };
@@ -83,6 +84,7 @@
 		3963787D91FC5C733AFE56EC /* PalatefulShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PalatefulShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		3F75F58DDC73B80991A3AC40 /* UploadService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
+		1F41A00000000000000000F1 /* FailureNotifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FailureNotifier.swift; sourceTree = "<group>"; };
 		57AAF5A2840BB4F07C767309 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		63698FF7213A20BA75772542 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "Runner/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6C1B0886F056A519C8B058EA /* SharedState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SharedState.swift; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 				6C1B0886F056A519C8B058EA /* SharedState.swift */,
 				3F75F58DDC73B80991A3AC40 /* UploadService.swift */,
 				09955AEE81E9C175BD8D45DB /* PendingImports.swift */,
+				1F41A00000000000000000F1 /* FailureNotifier.swift */,
 				10C1AE7EC4EB7DCD69352271 /* Telemetry.swift */,
 				AFEC4E03DC12DC6BFF1E264F /* Info.plist */,
 				B1D9DCF4941712379A6A1044 /* PalatefulShare.entitlements */,
@@ -527,6 +530,7 @@
 				A36958572B879A45F03B9687 /* SharedState.swift in Sources */,
 				B1033FB37005524408E820E9 /* UploadService.swift in Sources */,
 				BCFB202EC7EDA365A42761A6 /* PendingImports.swift in Sources */,
+				1F41A00000000000000000B1 /* FailureNotifier.swift in Sources */,
 				E96D7D84EAB26A9E3F40966D /* Telemetry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

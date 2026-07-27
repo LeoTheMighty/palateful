@@ -26,6 +26,7 @@ import Foundation
 final class UploadService: NSObject {
   private let sessionIdentifier: String
   private let context: SharedContext
+  private let notifier: FailureNotifying
   private lazy var backgroundSession: URLSession = {
     let config = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
     config.sessionSendsLaunchEvents = true
@@ -40,9 +41,17 @@ final class UploadService: NSObject {
   private var inflight: [Int: InflightUpload] = [:]
   private let inflightLock = NSLock()
 
-  init(sessionIdentifier: String, context: SharedContext) {
+  /// `notifier` is injectable so the failure path can be tested without a
+  /// bundle — `UNUserNotificationCenter.current()` traps in a bare test
+  /// binary. Production callers take the default.
+  init(
+    sessionIdentifier: String,
+    context: SharedContext,
+    notifier: FailureNotifying = SystemFailureNotifier()
+  ) {
     self.sessionIdentifier = sessionIdentifier
     self.context = context
+    self.notifier = notifier
     super.init()
   }
 
@@ -296,11 +305,14 @@ final class UploadService: NSObject {
   /// so the only way the user ever learns about this is (a) the failure
   /// block we write into the App Group record — which the main-app
   /// reconciler and the failed-imports UI read on next foreground — and
-  /// (b) for permanent failures, a local notification (ifh-3, next AC).
+  /// (b) for permanent failures, a local notification.
   ///
   /// `retryable` follows the server's top-level `retryable` field when the
   /// error body carried one, else the status-code heuristic.
-  private func markFailed(
+  ///
+  /// Internal rather than private so `PalatefulShareTests` can drive the
+  /// terminal-failure path directly instead of standing up a fake server.
+  func markFailed(
     record: PendingImport,
     errorCode: String,
     errorId: String?,
@@ -324,6 +336,47 @@ final class UploadService: NSObject {
       ],
       context: context
     )
+
+    // Retryable failures stay silent: the main-app reconciler will re-POST
+    // on next foreground, so a notification would cry wolf about something
+    // that fixes itself.
+    guard !retryable else { return }
+    notifyPermanentFailure(record: record, errorCode: errorCode)
+  }
+
+  /// Local notification for a failure that will never resolve on its own.
+  /// Permission is *queried*, never requested — an extension cannot present
+  /// the system prompt, so anything short of already-granted degrades to the
+  /// telemetry + persisted-record surfaces above.
+  private func notifyPermanentFailure(record: PendingImport, errorCode: String) {
+    notifier.currentAuthorization { [weak self] authorization in
+      guard let self else { return }
+      guard authorization == .granted else {
+        Telemetry.emit(
+          "share_extension_failure_notification_skipped",
+          properties: [
+            "reason": authorization.rawValue,
+            "error_code": errorCode,
+            "source_type": record.sourceType
+          ],
+          context: self.context
+        )
+        return
+      }
+      self.notifier.post(
+        title: failureNotificationTitle,
+        body: errorCopy(for: errorCode),
+        // Keyed by record id so a re-failure of the same share replaces the
+        // earlier notification instead of stacking a duplicate.
+        identifier: "share_import_failed_\(record.id)",
+        userInfo: [
+          "import_id": record.id,
+          "book_id": record.bookId,
+          "error_code": errorCode,
+          "source": "share_extension"
+        ]
+      )
+    }
   }
 }
 
