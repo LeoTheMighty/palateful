@@ -21,8 +21,13 @@
   - [x] decisions/2026-07-27-hybrid-qa-driver.md (revises framework QA.md 2026-04-23; propagation = FR-7)
   - [x] Gate 1 run + pass (FAIL on E-4/E-6 Verified-by → fixed → PASS)
 - [x] Gate: prd
-- [ ] Stage: Design
-- [ ] Gate: coverage(design)
+- [x] Stage: Design
+  - [x] User design answers folded in (claude-in-chrome OK; e2e local-only; FR-5 direct to devx main)
+  - [x] Grounding fan-out: e2e harness / devx engine internals / runner idiom (3 Explore agents)
+  - [x] design.md drafted (template-complete, cited paths grep-verified)
+  - [x] Coverage-judge subagent → table JSON
+  - [x] Gate 2 run (`devx gate coverage 41ee13 --table …`) + pass (CONCERNS → persona rows thickened → revise → PASS)
+- [x] Gate: coverage(design)
 - [ ] Stage: Plan
 - [ ] Gate: coverage(plan)
 - [ ] Stage: RED
