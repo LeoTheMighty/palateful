@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T17:31:00-06:00
 title: Triage legacy BUGS.md reports against current main — close fixed, file real
 from: BUGS.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/debug-btri01
 ---
 
@@ -25,3 +26,4 @@ The pre-devx BUGS.md holds five undated bug reports that likely predate epics wh
 
 ## Status log
 - 2026-07-27T17:31 — imported from BUGS.md during BMAD→devx migration
+- 2026-07-27T11:31:30-06:00 — claimed by /devx in session /devx-loop-2026-07-27T17-03-31-550-87857
