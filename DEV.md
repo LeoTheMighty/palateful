@@ -9,17 +9,17 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 ## Epic — import-flow-hardening (active; ifh-1/2 already on main)
 
 - [/] `dev/dev-ifh3-2026-07-27T17:00-ios-share-extension-failure-state.md` — iOS Share Extension — persist failure state + system notification on permanent failures. Status: in-progress. Blocked-by: —. Parallel-safe with ifh4 (disjoint files: Swift vs Dart).
-- [ ] `dev/dev-ifh4-2026-07-27T17:01-reconciler-backoff-permanent-failure-ux.md` — Dart Reconciler — exponential backoff + permanent-failure UX. Status: ready. Blocked-by: —. Parallel-safe with ifh3.
+- [/] `dev/dev-ifh4-2026-07-27T17:01-reconciler-backoff-permanent-failure-ux.md` — Dart Reconciler — exponential backoff + permanent-failure UX. Status: in-progress. Blocked-by: —. Parallel-safe with ifh3.
 - [ ] `dev/dev-ifh5-2026-07-27T17:02-failed-imports-banner-and-sheet.md` — Frontend — FailedImportsBanner + FailedImportsSheet wired into Import Activity Hub. Status: ready. Blocked-by: ifh3, ifh4 (consumes their `failed: true` App Group records + attempt_count reset).
 - [ ] `dev/dev-ifh6-2026-07-27T17:03-regression-sweep-and-e2e.md` — Regression sweep + e2e. Status: ready. Blocked-by: ifh3, ifh4, ifh5. One AC needs a staging deploy that includes ifh-1 (already on main).
 
 ## Loose ends from executed epics (independent, parallel-safe)
 
 - [-] `dev/dev-mvp1-2026-07-27T17:04-multi-image-group-index-fix.md` — Fix multi-image group_index so one upload session yields one recipe. Status: blocked (awaiting diagnostic info from Leo — initial one-line client-fix hypothesis invalidated in review; see spec status log). From: epic-mvp-finalization.
-- [ ] `dev/dev-bugsimppho7-2026-07-27T17:06-vision-extraction-eval-suite.md` — Vision-extraction eval suite with image fixtures and recipe-count gate. Status: ready. Blocked-by: —. From: epic-bugs-import-photo-pipeline (pho-1..6 done).
+- [-] `dev/dev-bugsimppho7-2026-07-27T17:06-vision-extraction-eval-suite.md` — Vision-extraction eval suite with image fixtures and recipe-count gate. Status: blocked. Blocked-by: —. From: epic-bugs-import-photo-pipeline (pho-1..6 done).
 - ~~`dev/dev-bugscal3b-2026-07-27T17:07-backend-recurrence-expansion.md` — Backend server-side recurrence expansion in ListMealEvents.~~ Status: superseded (2026-07-27 verification: recurring-meals epics deliver this via slot-rule + materialization; residual resurrection bug filed as debug rcres1; the deferred bugs-cal-3 recurrence UI is no longer blocked).
 - [x] `dev/dev-bugsact2a-2026-07-27T17:08-backend-fields-addendum.md` — Backend fields addendum for import-item detail (last_successful_stage, last_retry_at, confidence_score). Status: done (2026-07-27 verification: all three fields already landed via irrd-1/irrd-3 incl. tests — see spec status log).
-- [ ] `dev/dev-irrd3a-2026-07-27T17:09-confidence-eval-calibration-gate.md` — Confidence eval metric module plus heuristic calibration and soft eval regression gates. Status: ready. Blocked-by: —. Needs real LLM API calls (~10 min runtime).
+- [/] `dev/dev-irrd3a-2026-07-27T17:09-confidence-eval-calibration-gate.md` — Confidence eval metric module plus heuristic calibration and soft eval regression gates. Status: in-progress. Blocked-by: —. Needs real LLM API calls (~10 min runtime).
 - [ ] `dev/dev-sru4-2026-07-27T17:10-presigned-upload-in-receive-screen.md` — Presigned upload path for PDF / audio / video in the receiving screen. Status: ready. Blocked-by: —. From: epic-share-receiving-ux (sru-1/2/3/5 done).
 - [ ] `dev/dev-msa4-2026-07-27T17:11-create-meal-event-mcp-meal-id-and-evals.md` — create_meal_event MCP tool accepts meal_id plus 7 CI-gated eval fixtures. Status: ready. Blocked-by: —. From: epic-meals-sharing-and-ai (msa-1..3 done).
 
@@ -40,8 +40,8 @@ Critical path: aam7 / aam8 / aam22 / aam23 in parallel → aam24 cutover → aam
 
 Dependency shape: bqa101 ∥ bqa102 ∥ bqa103 (disjoint files/repos) → bqa104 after bqa103 (same devx repo; single version bump) → bqa105 after all four → bqa106 (attended, needs Leo) → bqa107 (attended, needs Leo). bqa103/bqa104/bqa107 land work in `~/personal/devx` (direct to its main — user-locked FR-5). Eval artifacts were authored at RED — stories re-run them, never re-author.
 
-- [/] `dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md` — Config truth — qa flip to installed tools, runner resolution green (E-1). Status: in-progress. Blocked-by: —. Parallel-safe with bqa102/bqa103.
-- [ ] `dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md` — E2E revival — one-command green with lifecycle wrapper + 3 latent-defect fixes (E-2). Status: ready. Blocked-by: —. Parallel-safe with bqa101/bqa103.
+- [x] `dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md` — Config truth — qa flip to installed tools, runner resolution green (E-1). Status: done. Blocked-by: —. Parallel-safe with bqa102/bqa103. PR: https://github.com/LeoTheMighty/palateful/pull/3 (merged 46336bd)
+- [/] `dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md` — E2E revival — one-command green with lifecycle wrapper + 3 latent-defect fixes (E-2). Status: in-progress. Blocked-by: —. Parallel-safe with bqa101/bqa103.
 - [ ] `dev/dev-bqa103-2026-07-27T11:41-upstream-walkthrough-template.md` — Upstream story-derived QA — template, emission wiring, schema enum. Status: ready. Blocked-by: —. Cross-repo (devx main). Parallel-safe with bqa101/bqa102.
 - [ ] `dev/dev-bqa104-2026-07-27T11:42-upstream-devx-test-skill.md` — Upstream attended layer — /devx-test skill, routing, QA.md carve-out, version bump. Status: ready. Blocked-by: bqa103. Cross-repo (devx main).
 - [ ] `dev/dev-bqa105-2026-07-27T11:43-palateful-adoption-eval-convention.md` — Palateful adoption — install, qa flip to claude-in-chrome, browser-flow eval convention (E-5). Status: ready. Blocked-by: bqa101, bqa102, bqa103, bqa104.

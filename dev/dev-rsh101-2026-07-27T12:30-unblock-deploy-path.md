@@ -124,3 +124,49 @@ cutoff. Fix belongs in the test, not the widget.
   `services/api` and therefore the first that can prove the second half.
   AC #6 (the 2026-05-03 `deploy-web` outcome) is answerable here and is
   recorded below once the `main` push runs.
+- phase 7: PR #7 opened against `main`; `devx pr-body` emitted no unresolved
+  placeholders. Review tour built + published (fail-soft path not needed).
+- phase 7: probe-failed (gh-run-list) — `await-remote-ci` run in a background
+  shell hit `error connecting to api.github.com`. Transient, not
+  operator-actionable: `gh auth status` clean, and an immediate foreground
+  re-probe returned `{"state":"completed","conclusion":"success"}`. Recorded
+  because the failure ladder says a probe failure is a signal, not noise.
+- phase 8: **`devx merge-gate rsh101` → merge:false, "CI not green
+  (conclusion=failure)"** — and the gate was right where `await-remote-ci` was
+  not. Two workflows run on this branch. `CI & Deploy` (30296754787) passed
+  including `flutter-test`; `devx-ci` (30296754128) failed its `test` job.
+  `await-remote-ci` reports only the newest run and so reported success. That
+  is a real gap in the helper, filed below. Did not merge.
+- phase 8 (**collision — the important line**): investigating the `devx-ci`
+  red surfaced that `main` had moved twice under this branch, and one of the
+  moves is a direct overlap. `debug-imptab1` (PR #6, merged `640987e`)
+  **already repaired the same 3 tests in the same file**, converting all 22
+  `created_at` literals in `imports_tab_test.dart` to an `_at(n)` helper — a
+  strictly broader conversion than this spec's four-fixture repair, and it
+  landed while rsh101 was in flight. The same PR also ported the `devx-ci`
+  `--if-present` fix (`debug-dvxci1`), which is why my branch point still had
+  the red gate.
+  Resolution: merged `origin/main` and **took main's version of
+  `imports_tab_test.dart` wholesale** (`git checkout --theirs`), discarding
+  this spec's `_recent()` helper, its four fixture edits, and all 18
+  `// age-independent` markers. Re-implementing merged work to match a spec
+  written before it would be strictly worse for the repo. What remains unique
+  to rsh101 — and what this PR now ships — is the **guard**: nothing in PR #6
+  prevents the fuse being relit, which is AC #4 and the reason the other 29
+  files are enumerated.
+- phase 8 (AC deviations forced by the collision, stated rather than hidden):
+  **AC #2 is now met by `main`, not by this PR**, and its second clause is
+  contradicted: it required the `awaiting_review` fixture at `:510` to *stay
+  hardcoded*, but PR #6 converted it along with everything else. Main's uniform
+  approach is defensible and already shipped, so it stands. **AC #3 is
+  likewise already satisfied on `main`.** Neither was reverted to match the
+  spec. Consequence for the guard: `imports_tab_test.dart` now carries zero
+  hardcoded literals, so it needs no markers and is held to the guard's full
+  strength while staying out of the baseline — a better end state than the
+  marker-heavy one this spec first produced.
+- phase 8: baseline regenerated against the merged tree — 29 files, 66
+  literals (was 29/85 pre-merge; `imports_tab_test.dart` drops out entirely).
+  Guard doc + failure message now point at `_at()`, the helper that actually
+  exists on `main`, instead of the `_recent()` this branch no longer ships.
+  Post-merge: `flutter test` on the two affected files — 20 passed, 0 failures;
+  analyze clean.

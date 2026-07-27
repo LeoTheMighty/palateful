@@ -11,21 +11,26 @@
 # clock drifts past that cutoff and then fails — silently reddening
 # `flutter-test`, which is the root job every deploy job hangs off
 # (`ci.yml:304`). That is exactly the failure that froze prod on image
-# `c85e350` from 2026-04-26 to 2026-07-27.
+# `c85e350` from 2026-04-26 to 2026-07-27, and it is what imptab1
+# (PR #6) repaired in `imports_tab_test.dart`. That file is deliberately
+# absent below: it now anchors every fixture to `_at()`, so it carries no
+# literals at all and is held to the guard's full strength.
 #
-# The 29 files below were already on that fuse when the guard landed.
-# Sweeping them was explicitly out of scope for rsh101 (see the plan's
-# "What we're NOT doing"); the baseline exists so that the *next* one to
-# cross the cutoff is a known, enumerated risk rather than a surprise,
-# and so no NEW file joins them.
+# The 29 files below were already on the same fuse when the guard landed
+# — 66 literals in total. Sweeping them was explicitly out of scope for
+# rsh101 (see the plan's "What we're NOT doing"); the baseline exists so
+# that the *next* one to cross the cutoff is a known, enumerated risk
+# rather than a surprise, and so no NEW file joins them.
+# `notifications_tab_test.dart` carries the most (10) and is the likeliest
+# to fire next.
 #
 # To fix a file rather than baseline it: mint the timestamp relative to
-# `DateTime.now()` (see `_recent()` in
+# `DateTime.now()` (see `_fixtureBase` / `_at()` in
 # `test/features/activity/imports_tab_test.dart`), or — if the fixture
-# feeds an age-independent bucket (Needs Review / Failed, which the
-# widget shows regardless of age) — append `// age-independent` to the
-# line. Then ratchet the count here down; the guard fails if a count is
-# stale in either direction.
+# feeds an age-independent bucket (Needs Review / Failed, which the widget
+# shows regardless of age) — append `// age-independent` to the line.
+# Then ratchet the count here down; the guard fails if a count is stale in
+# either direction, so this list can only shrink.
 #
 # Adding a new entry, or raising a count, requires a code-review comment
 # on the PR that does it.

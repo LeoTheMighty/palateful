@@ -27,7 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Matches a `created_at` map entry whose value is a hardcoded date
 /// literal — a quoted value opening with four digits and a dash.
-/// Deliberately narrow: a computed value (`_recent(...)`,
+/// Deliberately narrow: a computed value (`_at(...)`,
 /// `DateTime.now()…`) has no opening quote followed by a year, so it
 /// never matches. Both quote styles count; `notifications_tab_test.dart`
 /// and `rf2_response_parsing_test.dart` use `"` where the rest use `'`.
@@ -167,7 +167,7 @@ void main() {
           'cutoff in imports_tab.dart:168 — which reds flutter-test and '
           'skips every deploy job.\n${added.join('\n')}\n\n'
           'Fix: mint the timestamp relative to DateTime.now() (see '
-          '_recent() in test/features/activity/imports_tab_test.dart), or '
+          '_at() in test/features/activity/imports_tab_test.dart), or '
           'append `// $_marker` if the fixture feeds Needs Review / Failed '
           '(shown regardless of age).',
     );
@@ -239,7 +239,7 @@ void main() {
 
     test('accepts a DateTime.now()-relative value', () {
       write('good_test.dart', """
-        final fixture = {'created_at': _recent(const Duration(hours: 1))};
+        final fixture = {'created_at': _at(35)};
       """);
       expect(scanUnmarked(sandbox), isEmpty);
     });

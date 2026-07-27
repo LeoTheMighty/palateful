@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T11:40:00-06:00
 title: E2E revival — one-command green with lifecycle wrapper
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-27T1648-73151
 branch: feat/dev-bqa102
 ---
 
@@ -30,3 +31,4 @@ Make `npx nx run e2e:test` the full lifecycle (stack up → wait-healthy → all
 
 ## Status log
 - 2026-07-27T11:40 — emitted from plan 41ee13 at RED-gate PASS (tests-first phase; RED artifact `evals/e2_e2e_one_command.sh` observed failing right-reason, see `evals/RED-report.md`).
+- 2026-07-27T16:48:59-06:00 — claimed by /devx in session /devx-2026-07-27T1648-73151
