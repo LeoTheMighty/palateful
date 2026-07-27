@@ -4,8 +4,8 @@ type: dev
 created: 2026-07-27T12:30:00-06:00
 title: Unblock the deploy path on main — repair the date-fused Flutter fixtures
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-07-27T1253-25281
 branch: feat/dev-rsh101
 ---
 
@@ -70,3 +70,4 @@ cutoff. Fix belongs in the test, not the widget.
 - 2026-07-27T12:30 — emitted from plan 462355 at RED-gate PASS. E-1 observed
   RED right-reason (3 failures, fixture dates past the 30-day cutoff); see
   `_devx/workstreams/rotation-self-heal/evals/RED-report.md`.
+- 2026-07-27T12:53:05-06:00 — claimed by /devx in session /devx-2026-07-27T1253-25281
