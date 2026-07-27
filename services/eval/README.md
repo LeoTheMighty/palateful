@@ -183,6 +183,27 @@ timestamp and commit, and mirroring the live heuristic weights), merging
 into the existing files so their explanatory comments survive. Review the
 diff and commit the baselines together with the change that produced them.
 
+### Is the title gate actually answering AC11?
+
+The title gate compares one number against another; it cannot tell on its
+own whether that comparison is the before/after AC11 asked for. So the
+run records `_emit_confidence` in each baseline it writes, and every
+report classifies the pairing:
+
+| Baseline | Run | Verdict |
+|---|---|---|
+| flag off | flag on | valid AC11 before/after |
+| same state on both sides | | drift check — a pass proves nothing about the confidence prompts |
+| flag on | flag off | inverted — re-capture the baseline |
+| either side unrecorded | | cannot be shown to be a before/after |
+
+Anything but the first prints a `WARNING:` line under the title block.
+This matters because the failure mode is silent: capture the baseline
+with `EXTRACTOR_EMIT_CONFIDENCE` left on, and every later comparison is
+confidence-on vs confidence-on, which passes without testing anything.
+The post-merge baseline refresh is legitimately a confidence-on run, so
+the classification is reported rather than enforced.
+
 On failure the report names the next step.
 
 A **calibration failure** does not just point at a signal — it computes

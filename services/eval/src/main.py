@@ -595,6 +595,17 @@ def confidence_gate(
         )
         for path in written:
             console.print(f"[green]Baseline written: {path}[/green]")
+        if report.get("emit_confidence") is True:
+            # AC11's "before" baseline must predate the confidence prompts.
+            # Writing it from a confidence-ON run makes the next comparison
+            # confidence-on vs confidence-on, which passes without testing
+            # anything. Expected for the post-merge refresh, not for step 1.
+            console.print(
+                "[yellow]Note: this baseline was captured with "
+                "EXTRACTOR_EMIT_CONFIDENCE=true. If it is meant to be AC11's "
+                "'before' baseline, re-run with the flag false; if this is the "
+                "post-merge refresh, this is expected.[/yellow]"
+            )
         console.print(
             "[yellow]Review the diff and commit the baselines with the run "
             "that produced them.[/yellow]"

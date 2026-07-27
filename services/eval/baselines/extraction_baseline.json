@@ -3,6 +3,8 @@
   "_generated_at": null,
   "_generated_commit": null,
   "_extractor_flag": "EXTRACTOR_EMIT_CONFIDENCE=false",
+  "_emit_confidence": null,
+  "_emit_confidence_comment": "Machine-readable form of _extractor_flag, stamped by --write-baseline. The gate run reports whether baseline-vs-run is AC11's real before/after (false -> true) or merely a like-for-like drift check; null means the baseline predates this field and the comparison cannot be shown to be a before/after.",
   "_fixture_set": "services/eval/fixtures/expected/*.json",
   "_strategy": "text_extractor",
   "title_extraction": {

@@ -3,6 +3,8 @@
   "_generated_at": null,
   "_generated_commit": null,
   "_extractor_flag": "EXTRACTOR_EMIT_CONFIDENCE=true",
+  "_emit_confidence": null,
+  "_emit_confidence_comment": "Machine-readable form of _extractor_flag, stamped by --write-baseline. Explains the by_source mix: with the flag off every sample is heuristic-sourced, so `mae` is comparable only against another run in the same flag state.",
   "_fixture_set": "services/eval/fixtures/expected/*.json",
   "confidence_calibration": {
     "mae": null,

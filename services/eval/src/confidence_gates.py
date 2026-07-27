@@ -67,6 +67,19 @@ _AGGREGATE_KEYS: tuple[str, ...] = (
 # Baseline I/O
 # ---------------------------------------------------------------------------
 
+def baseline_emit_confidence(baseline: Any) -> bool | None:
+    """The ``EXTRACTOR_EMIT_CONFIDENCE`` state a baseline was captured under.
+
+    ``None`` when the baseline predates this field or never recorded it —
+    which is itself worth reporting, because it means the AC11 comparison
+    cannot be shown to be a genuine before/after.
+    """
+    if not isinstance(baseline, dict):
+        return None
+    value = baseline.get("_emit_confidence")
+    return value if isinstance(value, bool) else None
+
+
 def load_baseline(path: str | Path) -> dict[str, Any] | None:
     """Load a baseline JSON file, or ``None`` when it is absent/unreadable.
 
@@ -157,6 +170,103 @@ def build_title_pairs(
 
 
 # ---------------------------------------------------------------------------
+# AC11 comparison provenance
+# ---------------------------------------------------------------------------
+
+def _flag(state: bool | None) -> str:
+    return "unknown" if state is None else f"EXTRACTOR_EMIT_CONFIDENCE={str(state).lower()}"
+
+
+def classify_ac11_comparison(
+    extraction_baseline: dict[str, Any] | None,
+    run_emit_confidence: bool | None,
+    baseline_missing: bool = False,
+) -> dict[str, Any]:
+    """Say whether the title gate is actually AC11's before/after comparison.
+
+    AC11 asks one question: did turning the confidence-emitting prompts on
+    cost title quality? Answering it needs the baseline captured with
+    ``EXTRACTOR_EMIT_CONFIDENCE=false`` and the run with it ``true``. Every
+    other pairing still produces a numeric verdict, but that verdict
+    answers a *different* question — and a pass would otherwise read as
+    "the prompts are fine" when nothing about the prompts was tested.
+
+    Returns a diagnosis, never a gate result: the numeric comparison is
+    still valid on its own terms (post-merge the baseline is legitimately
+    a confidence-on run, so a same-state pairing is the normal steady
+    state), so this classification is reported, not enforced.
+    """
+    base_state = baseline_emit_confidence(extraction_baseline)
+    common: dict[str, Any] = {
+        "baseline_emit_confidence": base_state,
+        "run_emit_confidence": run_emit_confidence,
+    }
+
+    if baseline_missing:
+        return {
+            **common,
+            "kind": "no_baseline",
+            "is_before_after": False,
+            "note": (
+                "no baseline recorded, so nothing was compared — this run "
+                f"({_flag(run_emit_confidence)}) establishes it. AC11 wants that "
+                "baseline captured with EXTRACTOR_EMIT_CONFIDENCE=false, then a "
+                "second run with it true."
+            ),
+        }
+
+    if base_state is None or run_emit_confidence is None:
+        return {
+            **common,
+            "kind": "unknown",
+            "is_before_after": False,
+            "note": (
+                "cannot confirm this is AC11's before/after: baseline "
+                f"{_flag(base_state)}, run {_flag(run_emit_confidence)}. A pass "
+                "here does not prove the confidence prompts left titles alone."
+            ),
+        }
+
+    if base_state is False and run_emit_confidence is True:
+        return {
+            **common,
+            "kind": "before_after",
+            "is_before_after": True,
+            "note": (
+                "valid AC11 before/after — baseline captured with "
+                "EXTRACTOR_EMIT_CONFIDENCE=false, this run with it true."
+            ),
+        }
+
+    if base_state is True and run_emit_confidence is False:
+        return {
+            **common,
+            "kind": "reversed",
+            "is_before_after": False,
+            "note": (
+                "comparison is inverted: the baseline is the confidence-ON run "
+                "and this run is confidence-OFF. Re-capture the baseline with "
+                "EXTRACTOR_EMIT_CONFIDENCE=false before trusting this as AC11."
+            ),
+        }
+
+    return {
+        **common,
+        "kind": "same_state",
+        "is_before_after": False,
+        "note": (
+            f"baseline and run were both captured with {_flag(base_state)} — this "
+            "is a drift check, not AC11's before/after. "
+            + (
+                "A pass does not prove the confidence prompts left titles alone."
+                if base_state
+                else "The confidence prompts were never exercised."
+            )
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Gate evaluation
 # ---------------------------------------------------------------------------
 
@@ -168,6 +278,7 @@ def evaluate_gates(
     strategy: str = "text_extractor",
     with_signals: bool = True,
     current_weights: dict[str, float] | None = None,
+    emit_confidence: bool | None = None,
 ) -> dict[str, Any]:
     """Run both gates over one fixture run and combine the verdicts.
 
@@ -198,6 +309,11 @@ def evaluate_gates(
 
     title_result = compute_title_extraction_f1(build_title_pairs(fixture_results))
     title_gate = check_title_regression_gate(title_result, baseline=extraction_baseline)
+    ac11_comparison = classify_ac11_comparison(
+        extraction_baseline,
+        emit_confidence,
+        baseline_missing=bool(title_gate.get("baseline_missing")),
+    )
 
     errored = [
         r.get("id", "unknown")
@@ -210,6 +326,8 @@ def evaluate_gates(
         "fixture_count": len(fixture_results),
         "errored_fixtures": errored,
         "aggregate": dict(aggregate or {}),
+        "emit_confidence": emit_confidence,
+        "ac11_comparison": ac11_comparison,
         "calibration": {
             "result": calibration_result,
             "gate": calibration_gate,
@@ -277,6 +395,12 @@ def format_gate_report(report: dict[str, Any]) -> str:
     lines.append(
         format_title_regression_summary(title.get("result") or {}, title.get("gate") or {})
     )
+    comparison = report.get("ac11_comparison")
+    if isinstance(comparison, dict) and comparison.get("note"):
+        # Without this, a title gate that compared confidence-on against
+        # confidence-on reads exactly like a real AC11 pass.
+        prefix = "  AC11 comparison" if comparison.get("is_before_after") else "  WARNING"
+        lines.append(f"{prefix}: {comparison['note']}")
     lines.append("")
     lines.append(
         f"OVERALL: {'PASSED' if report.get('passed') else 'FAILED'} "
@@ -312,6 +436,20 @@ def format_gate_report(report: dict[str, Any]) -> str:
 # Baseline refresh
 # ---------------------------------------------------------------------------
 
+def _stamp_emit_confidence(payload: dict[str, Any], report: dict[str, Any]) -> None:
+    """Record the flag state a baseline was captured under.
+
+    This is what lets a later run say whether its title comparison is
+    AC11's before/after (see :func:`classify_ac11_comparison`). Left
+    untouched when the run couldn't determine the state, so an unknown
+    never overwrites a known one.
+    """
+    emit_state = report.get("emit_confidence")
+    if isinstance(emit_state, bool):
+        payload["_emit_confidence"] = emit_state
+        payload["_extractor_flag"] = f"EXTRACTOR_EMIT_CONFIDENCE={str(emit_state).lower()}"
+
+
 def build_calibration_baseline(
     report: dict[str, Any],
     existing: dict[str, Any] | None = None,
@@ -331,6 +469,10 @@ def build_calibration_baseline(
 
     payload["_generated_at"] = generated_at
     payload["_generated_commit"] = generated_commit
+    # Explains the by_source mix: with the flag off every sample is
+    # heuristic-sourced, which is a different population than a run where
+    # the model answered.
+    _stamp_emit_confidence(payload, report)
 
     section = dict(payload.get("confidence_calibration") or {})
     section.update({
@@ -379,6 +521,8 @@ def build_extraction_baseline(
     payload["_generated_at"] = generated_at
     payload["_generated_commit"] = generated_commit
     payload["_strategy"] = report.get("strategy", payload.get("_strategy"))
+
+    _stamp_emit_confidence(payload, report)
 
     section = dict(payload.get("title_extraction") or {})
     section.update({
@@ -467,6 +611,7 @@ def run_confidence_gates(
     """
     from src.fixture_runner import run_eval
 
+    emit_confidence = _emit_confidence_state()
     summary = run_eval(fixtures_dir, strategy=strategy, include_payloads=True)
     report = evaluate_gates(
         summary.get("fixtures") or [],
@@ -474,6 +619,7 @@ def run_confidence_gates(
         extraction_baseline=load_baseline(extraction_baseline_path),
         aggregate=summary.get("aggregate") or {},
         strategy=strategy,
+        emit_confidence=emit_confidence,
     )
 
     if save_run_path is not None:
@@ -484,7 +630,7 @@ def run_confidence_gates(
             save_run_path,
             generated_at=generated_at,
             generated_commit=generated_commit,
-            emit_confidence=_emit_confidence_state(),
+            emit_confidence=emit_confidence,
         )
         # Only the path — the payloads themselves stay out of the report
         # so `--output` keeps writing a readable verdict, not a run dump.
@@ -526,18 +672,22 @@ def replay_gates(
     if recompute_heuristic:
         fixture_results, changes = recompute_heuristic_confidences(fixture_results)
 
+    recorded_emit = artifact.get("emit_confidence")
     report = evaluate_gates(
         fixture_results,
         calibration_baseline=load_baseline(calibration_baseline_path),
         extraction_baseline=load_baseline(extraction_baseline_path),
         aggregate=artifact.get("aggregate") or {},
         strategy=artifact.get("strategy") or "unknown",
+        # The flag state that produced these extractions, not the one the
+        # replaying shell happens to have set.
+        emit_confidence=recorded_emit if isinstance(recorded_emit, bool) else None,
     )
     report["replay"] = {
         "source_path": str(source_path) if source_path is not None else None,
         "recorded_at": artifact.get("_generated_at"),
         "recorded_commit": artifact.get("_generated_commit"),
-        "emit_confidence": artifact.get("emit_confidence"),
+        "emit_confidence": recorded_emit,
         "recompute_heuristic": recompute_heuristic,
         "recomputed_fixtures": changes,
         "moved_fixtures": moved_changes(changes),

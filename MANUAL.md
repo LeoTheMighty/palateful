@@ -26,6 +26,13 @@
       --save-run /tmp/irrd3a-run.json
   ```
 
+  Step 1's `EXTRACTOR_EMIT_CONFIDENCE=false` is not optional: it is what
+  makes step 2 a before/after rather than a comparison of the confidence
+  prompts against themselves. The baseline records which state it was
+  captured under, and step 2's report says which comparison it actually
+  made — a `WARNING:` line under the title block means the pass proves
+  nothing about the prompts, and step 1 needs redoing.
+
   Step 2 fails in one of two ways, each self-describing in the run output:
   calibration MAE > 0.3 → the report's `AC9 retune` block prints the exact
   `_W_INGREDIENTS` / `_W_TITLE` / `_W_STEPS` values to paste into
