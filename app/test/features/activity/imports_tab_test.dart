@@ -9,6 +9,21 @@ import 'package:palateful/features/activity/imports_tab.dart';
 import 'package:palateful/features/activity/providers/activity_read_provider.dart';
 import 'package:palateful/features/activity/widgets/import_row.dart';
 
+/// Fixture timestamp for an **age-gated** bucket.
+///
+/// `imports_tab.dart:168` cuts Auto-Imported + Skipped off at 30 days,
+/// measured against `DateTime.now()`. A hardcoded literal in one of those
+/// fixtures is therefore a time bomb: it passes until the wall clock drifts
+/// past the cutoff, then reds `flutter-test` — the root job every deploy
+/// job hangs off (`ci.yml:304`). Mint those relative to now instead.
+///
+/// Needs-Review and Failed fixtures are age-independent by design (the
+/// widget shows them regardless of age, `imports_tab.dart:165-167`), so
+/// they keep their hardcoded literals and carry an `// age-independent`
+/// marker. `fixture_date_guard_test.dart` enforces the split.
+String _recent(Duration ago) =>
+    DateTime.now().toUtc().subtract(ago).toIso8601String();
+
 Response<dynamic> _fakeResponse(dynamic data, {int status = 200}) => Response(
       data: data,
       requestOptions: RequestOptions(path: ''),
@@ -219,7 +234,7 @@ void main() {
             'source_url': 'https://example.com/recipe',
             'total_items': 2,
             'processed_items': 1,
-            'created_at': '2026-04-18T10:00:00Z',
+            'created_at': '2026-04-18T10:00:00Z',  // age-independent
           },
         ],
         'awaiting_review': [
@@ -227,7 +242,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': '2026-04-18T10:10:00Z',  // age-independent
           },
         ],
         'failed': [
@@ -235,7 +250,7 @@ void main() {
             'id': 'job-f',
             'status': 'failed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:20:00Z',
+            'created_at': '2026-04-18T10:20:00Z',  // age-independent
           },
         ],
         'completed': [
@@ -243,7 +258,7 @@ void main() {
             'id': 'job-c',
             'status': 'completed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:30:00Z',
+            'created_at': '2026-04-18T10:30:00Z',  // age-independent
           },
         ],
       },
@@ -254,7 +269,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Review me',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': '2026-04-18T10:15:00Z',  // age-independent
           },
         ],
         'job-f': [
@@ -264,7 +279,7 @@ void main() {
             'recipe_name': 'I died',
             'source_type': 'url',
             'error_message': 'boom',
-            'created_at': '2026-04-18T10:25:00Z',
+            'created_at': '2026-04-18T10:25:00Z',  // age-independent
           },
         ],
         'job-c': [
@@ -274,7 +289,7 @@ void main() {
             'recipe_name': 'Green goodness',
             'source_type': 'url',
             'created_recipe_id': 'recipe-42',
-            'created_at': '2026-04-18T10:35:00Z',
+            'created_at': _recent(const Duration(hours: 1)),
           },
         ],
       },
@@ -309,7 +324,7 @@ void main() {
           'source_url': 'https://example.com/recipe',
           'total_items': 2,
           'processed_items': 1,
-          'created_at': '2026-04-18T10:00:00Z',
+          'created_at': '2026-04-18T10:00:00Z',  // age-independent
         },
       ],
     });
@@ -340,7 +355,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': '2026-04-18T10:10:00Z',  // age-independent
           },
         ],
       },
@@ -351,7 +366,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Swipe me',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': '2026-04-18T10:15:00Z',  // age-independent
           },
         ],
       },
@@ -383,7 +398,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': '2026-04-18T10:10:00Z',  // age-independent
           },
         ],
       },
@@ -394,7 +409,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Flipped mid-swipe',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': '2026-04-18T10:15:00Z',  // age-independent
           },
         ],
       },
@@ -430,7 +445,7 @@ void main() {
             'id': 'job-c',
             'status': 'completed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:30:00Z',
+            'created_at': '2026-04-18T10:30:00Z',  // age-independent
           },
         ],
       },
@@ -442,7 +457,7 @@ void main() {
             'recipe_name': 'Ship it',
             'source_type': 'url',
             'created_recipe_id': 'recipe-42',
-            'created_at': '2026-04-18T10:35:00Z',
+            'created_at': _recent(const Duration(hours: 1)),
           },
         ],
       },
@@ -477,7 +492,7 @@ void main() {
             'id': 'job-ar-holding-failed',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': '2026-04-18T10:10:00Z',  // age-independent
           },
         ],
         // Job.status=completed, but items inside have mixed statuses.
@@ -486,7 +501,7 @@ void main() {
             'id': 'job-c-mixed',
             'status': 'completed',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:30:00Z',
+            'created_at': '2026-04-18T10:30:00Z',  // age-independent
           },
         ],
       },
@@ -498,7 +513,7 @@ void main() {
             'recipe_name': 'Buried failure',
             'source_type': 'photo',
             'error_message': 'boom',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': '2026-04-18T10:15:00Z',  // age-independent
           },
         ],
         'job-c-mixed': [
@@ -507,7 +522,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Buried review',
             'source_type': 'url',
-            'created_at': '2026-04-18T10:31:00Z',
+            'created_at': '2026-04-18T10:31:00Z',  // age-independent
           },
           {
             'id': 'item-done',
@@ -515,14 +530,14 @@ void main() {
             'recipe_name': 'Done',
             'source_type': 'url',
             'created_recipe_id': 'recipe-42',
-            'created_at': '2026-04-18T10:32:00Z',
+            'created_at': _recent(const Duration(minutes: 50)),
           },
           {
             'id': 'item-skip',
             'status': 'skipped',
             'recipe_name': 'Skipped photo',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:33:00Z',
+            'created_at': _recent(const Duration(minutes: 40)),
           },
         ],
       },
@@ -555,7 +570,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': '2026-04-18T10:10:00Z',  // age-independent
           },
         ],
       },
@@ -566,7 +581,7 @@ void main() {
             'status': 'awaiting_review',
             'recipe_name': 'Tap for review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': '2026-04-18T10:15:00Z',  // age-independent
           },
         ],
       },

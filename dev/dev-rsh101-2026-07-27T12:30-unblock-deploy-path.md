@@ -71,3 +71,56 @@ cutoff. Fix belongs in the test, not the widget.
   RED right-reason (3 failures, fixture dates past the 30-day cutoff); see
   `_devx/workstreams/rotation-self-heal/evals/RED-report.md`.
 - 2026-07-27T12:53:05-06:00 — claimed by /devx in session /devx-2026-07-27T1253-25281
+- phase 2: spec ACs direct (v2 native); 7 ACs; workstream=rotation-self-heal;
+  red-artifacts=`app/test/features/activity/imports_tab_test.dart`. Re-ran the
+  RED artifact before touching code (T1.1) and watched it fail NOW, not from
+  the RED report: 3 failures, same right-reason — `'Ship it'` not found at
+  `:456` and `find.text('Done')` empty at `:542`, both because the `completed`
+  fixture fell out of the 30-day window. Not re-authored.
+- phase 3: T1.2 — added `_recent(Duration)` to the test file and repointed the
+  four age-gated fixtures (`:277`, `:445`, `:518`, `:525`) at
+  `DateTime.now()`-relative values. The widget was not touched: the 30-day
+  cutoff at `imports_tab.dart:168` is shipped product behavior. T1.3 — the two
+  previously-masked assertions at `:543` (`find.text('Skipped photo')`) and
+  `:544` (`find.textContaining('Skipped · 1')`) now both run and pass; the run
+  no longer aborts at `:542`. T1.4 — added `app/test/fixture_date_guard_test.dart`
+  plus `app/test/fixture_date_guard_baseline.txt`. Guard placement is
+  deliberate: living under `app/test/` puts it inside `flutter-test`, the one
+  job the deploy graph hangs off, rather than in a `tools/` check that gates
+  nothing. Two escapes — an `// age-independent` line marker for Needs
+  Review / Failed fixtures (which the widget shows regardless of age), and a
+  per-file count baseline for the 29 files already on the fuse. Counts ratchet
+  both ways, so the baseline can only shrink. The repo-wide sweep stays out of
+  scope per the plan's "What we're NOT doing".
+- phase 4: single-pass adversarial review (diff ~300 lines, one regex, one
+  marker — under the parallel-agent threshold); 4 findings (2 HIGH, 2 MED), ALL
+  fixed in-place. Load-bearing fix: the guard matched only same-line
+  `'created_at': '<date>'`, so a value dartfmt had wrapped onto the next line
+  slipped through — silent under-detection, the exact failure mode a guard must
+  not have. Added `foldWrappedValues()` and two detection tests covering the
+  wrapped form (flagged) and a wrapped form marked on its continuation line
+  (accepted). Also: the guard was flagging its own source, fixed by assembling
+  the detection fixtures at runtime rather than exempting the file by path — no
+  self-exemption hole. Plus a stale "28 files" comment (baseline is 29) and
+  `raised` reporting counts without the offending lines. Re-review clean.
+- phase 4 (found while reviewing, fixed in-scope): the baseline I first
+  generated used a single-quote-only grep and missed
+  `test/core/services/rf2_response_parsing_test.dart`, which uses `"`. The
+  guard caught my own omission on its first run. Regex now accepts both quote
+  styles; baseline is 29 files, not 28.
+- phase 5: local gates green on the touched surface (`app` only).
+  `flutter analyze --no-fatal-warnings --no-fatal-infos` — no issues in either
+  touched file. `flutter test` — **1536 passed, 0 failures** (baseline was 1524
+  with 3 failures; +12 from the new guard file). AC #1 met. Coverage gate is
+  informational under YOLO. Guard demonstrated failing on a live reintroduction
+  (AC #4): re-freezing the `item-skip` fixture at `'2026-04-18T10:33:00Z'`
+  produced `test/features/activity/imports_tab_test.dart:540: 'created_at':
+  '2026-04-18T10:33:00Z'` with the remediation text; restored, green again.
+- phase 5 (scope note, AC #7): **E-1's `deploy-services` half is deferred to
+  rsh102 — not dropped.** This commit touches only `app/`, so `detect-changes`
+  emits `services_to_build=[]` (`ci.yml:592-604`) and `deploy-images`
+  (`:641-643`), `terraform-prod` (`:703-705`) and `deploy-services`
+  (`:845-851`) all skip by construction. rsh102 is the first phase that touches
+  `services/api` and therefore the first that can prove the second half.
+  AC #6 (the 2026-05-03 `deploy-web` outcome) is answerable here and is
+  recorded below once the `main` push runs.

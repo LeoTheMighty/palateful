@@ -1,0 +1,61 @@
+# rsh101 — hardcoded-fixture-date baseline (grep guard).
+#
+# Format: path:count:rationale (path is relative to `app/`; count is the
+# number of *unmarked* hardcoded `'created_at': '<year>-…'` literals the
+# file is currently allowed to carry). Lines starting with `#` are
+# comments.
+#
+# Why this file exists. `imports_tab.dart:165-168` cuts the Auto-Imported
+# and Skipped buckets off at 30 days measured against `DateTime.now()`.
+# A fixture frozen at a literal date therefore passes until the wall
+# clock drifts past that cutoff and then fails — silently reddening
+# `flutter-test`, which is the root job every deploy job hangs off
+# (`ci.yml:304`). That is exactly the failure that froze prod on image
+# `c85e350` from 2026-04-26 to 2026-07-27.
+#
+# The 29 files below were already on that fuse when the guard landed.
+# Sweeping them was explicitly out of scope for rsh101 (see the plan's
+# "What we're NOT doing"); the baseline exists so that the *next* one to
+# cross the cutoff is a known, enumerated risk rather than a surprise,
+# and so no NEW file joins them.
+#
+# To fix a file rather than baseline it: mint the timestamp relative to
+# `DateTime.now()` (see `_recent()` in
+# `test/features/activity/imports_tab_test.dart`), or — if the fixture
+# feeds an age-independent bucket (Needs Review / Failed, which the
+# widget shows regardless of age) — append `// age-independent` to the
+# line. Then ratchet the count here down; the guard fails if a count is
+# stale in either direction.
+#
+# Adding a new entry, or raising a count, requires a code-review comment
+# on the PR that does it.
+
+test/core/services/rf2_response_parsing_test.dart:3:pre-existing date fuse (rsh101 baseline)
+test/features/activity/activity_screen_test.dart:6:pre-existing date fuse (rsh101 baseline)
+test/features/activity/full_history_pagination_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/activity/import_activity_detail_test.dart:6:pre-existing date fuse (rsh101 baseline)
+test/features/activity/import_history_reactivity_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/activity/import_history_screen_test.dart:3:pre-existing date fuse (rsh101 baseline)
+test/features/activity/imports_tab_expansion_flow_test.dart:2:pre-existing date fuse (rsh101 baseline)
+test/features/activity/notifications_tab_test.dart:10:pre-existing date fuse (rsh101 baseline)
+test/features/activity/widgets/notifications_see_all_footer_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/activity/widgets/see_all_footer_test.dart:2:pre-existing date fuse (rsh101 baseline)
+test/features/calendar/calendar_members_screen_test.dart:3:pre-existing date fuse (rsh101 baseline)
+test/features/calendar/share_calendar_sheet_test.dart:3:pre-existing date fuse (rsh101 baseline)
+test/features/home/home_bulk_actions_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/home/home_end_to_end_reactivity_test.dart:2:pre-existing date fuse (rsh101 baseline)
+test/features/home/home_filter_hide_components_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/home/home_filter_no_refetch_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/home/home_screen_reactivity_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/home/home_zero_meal_regression_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/home/recipe_list_table_view_regression_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/meals/meal_detail_component_reactivity_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/meals/meal_model_test.dart:4:pre-existing date fuse (rsh101 baseline)
+test/features/meals/meal_service_mutation_bus_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/meals/meal_service_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/meals/meals_by_book_reactivity_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/profile/export_collection_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/recipes/add_recipe/import_item_review_duplicate_banner_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/recipes/add_to_cart_test.dart:1:pre-existing date fuse (rsh101 baseline)
+test/features/recipes/used_in_meals_reactivity_test.dart:2:pre-existing date fuse (rsh101 baseline)
+test/features/shopping_cart/shopping_list_model_test.dart:4:pre-existing date fuse (rsh101 baseline)
