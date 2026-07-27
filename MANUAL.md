@@ -26,6 +26,10 @@
       --save-run /tmp/irrd3a-run.json
   ```
 
+  Step 1 refuses to write a baseline if the run measured nothing (bad key,
+  no network, every fixture errored) — `Baseline NOT written: ...` means
+  fix the run and repeat step 1, not proceed to step 2.
+
   Step 1's `EXTRACTOR_EMIT_CONFIDENCE=false` is not optional: it is what
   makes step 2 a before/after rather than a comparison of the confidence
   prompts against themselves. The baseline records which state it was

@@ -183,6 +183,13 @@ timestamp and commit, and mirroring the live heuristic weights), merging
 into the existing files so their explanatory comments survive. Review the
 diff and commit the baselines together with the change that produced them.
 
+A run that measured nothing — no key, no network, every fixture errored —
+is **refused**: the write would stamp a real timestamp, commit, and
+`_emit_confidence` onto all-null numbers, producing a file that reads as a
+captured baseline and only reveals itself as empty on the *next* run.
+Fix the run and re-capture; `--force-baseline` records it anyway if you
+really mean to.
+
 ### Is the title gate actually answering AC11?
 
 The title gate compares one number against another; it cannot tell on its

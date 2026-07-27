@@ -62,6 +62,12 @@ _AGGREGATE_KEYS: tuple[str, ...] = (
     "fixtures_with_errors",
 )
 
+# Counts, not means — see build_extraction_baseline.
+_AGGREGATE_COUNT_KEYS: frozenset[str] = frozenset({
+    "total_fixtures",
+    "fixtures_with_errors",
+})
+
 
 # ---------------------------------------------------------------------------
 # Baseline I/O
@@ -537,7 +543,12 @@ def build_extraction_baseline(
     scores = dict(payload.get("extraction_scores") or {})
     for key in _AGGREGATE_KEYS:
         if key in aggregate:
-            scores[key] = aggregate[key]
+            value = aggregate[key]
+            # The two count keys ride the same '_aggregate_scores' mean path
+            # as the ratios, so they arrive as floats (8.0). They are counts.
+            if key in _AGGREGATE_COUNT_KEYS and isinstance(value, (int, float)):
+                value = int(value)
+            scores[key] = value
     payload["extraction_scores"] = scores
 
     thresholds = dict(payload.get("thresholds") or {})
@@ -549,14 +560,68 @@ def build_extraction_baseline(
     return payload
 
 
+def _sample_count(section: Any) -> int:
+    """Samples the given gate section actually measured."""
+    result = (section or {}).get("result") or {}
+    count = result.get("sample_count", 0)
+    return count if isinstance(count, int) and not isinstance(count, bool) else 0
+
+
+def baseline_write_blockers(report: dict[str, Any]) -> list[str]:
+    """Reasons this run must not be recorded as a baseline (empty = writable).
+
+    A run where nothing was measured still carries provenance — strategy,
+    commit, timestamp, ``_emit_confidence`` — so writing it produces a file
+    indistinguishable on disk from a real capture while holding only nulls.
+    A keyless or network-broken step 1 therefore prints "Baseline written",
+    shows a plausible diff, and gets committed as done; the emptiness only
+    surfaces on the *next* run, as ``no_baseline``. Refusing at write time
+    is the only point where the two can still be told apart.
+    """
+    blockers: list[str] = []
+
+    fixture_count = report.get("fixture_count") or 0
+    errored = report.get("errored_fixtures") or []
+    calibration_samples = _sample_count(report.get("calibration"))
+    title_samples = _sample_count(report.get("title"))
+
+    if not fixture_count:
+        blockers.append("the run scored 0 fixtures")
+    elif len(errored) >= fixture_count:
+        blockers.append(
+            f"all {fixture_count} fixture(s) failed extraction "
+            f"({', '.join(str(e) for e in errored[:5])}"
+            f"{', ...' if len(errored) > 5 else ''})"
+        )
+    if not calibration_samples and not title_samples:
+        blockers.append(
+            "neither gate collected a sample, so both baselines would record "
+            "nulls under a real timestamp/commit"
+        )
+    return blockers
+
+
 def write_baselines(
     report: dict[str, Any],
     generated_at: str | None = None,
     generated_commit: str | None = None,
     calibration_path: str | Path = CALIBRATION_BASELINE_PATH,
     extraction_path: str | Path = EXTRACTION_BASELINE_PATH,
+    force: bool = False,
 ) -> list[Path]:
-    """Rewrite both baseline files from ``report``. Returns paths written."""
+    """Rewrite both baseline files from ``report``. Returns paths written.
+
+    Raises ``ValueError`` when the run measured nothing (see
+    :func:`baseline_write_blockers`) unless ``force`` is set.
+    """
+    if not force:
+        blockers = baseline_write_blockers(report)
+        if blockers:
+            raise ValueError(
+                "refusing to write a baseline from this run: "
+                + "; ".join(blockers)
+            )
+
     written: list[Path] = []
     for path, builder in (
         (Path(calibration_path), build_calibration_baseline),
@@ -569,7 +634,9 @@ def write_baselines(
             generated_commit=generated_commit,
         )
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2) + "\n")
+        # ensure_ascii=False: the hand-written _comment fields use em-dashes,
+        # and escaping them churns the diff on every write.
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
         written.append(path)
     return written
 

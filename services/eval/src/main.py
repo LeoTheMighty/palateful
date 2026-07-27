@@ -464,6 +464,11 @@ def run_fixtures(
     help="Rewrite baselines/*.json from this run instead of comparing against them",
 )
 @click.option(
+    "--force-baseline", is_flag=True,
+    help="With --write-baseline: record the baseline even from a run that "
+         "measured nothing (normally refused)",
+)
+@click.option(
     "--save-run", default=None,
     help="Save this run's raw payloads to JSON so --from-run can replay it offline",
 )
@@ -483,6 +488,7 @@ def confidence_gate(
     fixtures_dir: str | None,
     output: str | None,
     write_baseline: bool,
+    force_baseline: bool,
     save_run: str | None,
     from_run: str | None,
     as_recorded: bool,
@@ -529,6 +535,9 @@ def confidence_gate(
         sys.exit(1)
     if as_recorded and not from_run:
         console.print("[red]--as-recorded only applies with --from-run.[/red]")
+        sys.exit(1)
+    if force_baseline and not write_baseline:
+        console.print("[red]--force-baseline only applies with --write-baseline.[/red]")
         sys.exit(1)
 
     def _head_commit() -> str | None:
@@ -588,11 +597,22 @@ def confidence_gate(
         console.print(f"\n[green]Gate report saved to: {output_path}[/green]")
 
     if write_baseline:
-        written = write_baselines(
-            report,
-            generated_at=datetime.now().astimezone().isoformat(),
-            generated_commit=_head_commit(),
-        )
+        try:
+            written = write_baselines(
+                report,
+                generated_at=datetime.now().astimezone().isoformat(),
+                generated_commit=_head_commit(),
+                force=force_baseline,
+            )
+        except ValueError as exc:
+            # A nothing-measured run would stamp real provenance onto null
+            # numbers, which reads downstream as a captured baseline.
+            console.print(f"\n[red]Baseline NOT written: {exc}[/red]")
+            console.print(
+                "[red]Fix the run first (OPENAI_API_KEY, network, fixtures), "
+                "then re-run. Pass --force-baseline to record it anyway.[/red]"
+            )
+            sys.exit(1)
         for path in written:
             console.print(f"[green]Baseline written: {path}[/green]")
         if report.get("emit_confidence") is True:
