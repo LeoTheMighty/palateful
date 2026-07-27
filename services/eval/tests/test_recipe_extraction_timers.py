@@ -195,6 +195,25 @@ def test_calculate_metrics_includes_timer_f1_key():
     assert metrics["timer_extraction_f1"] == pytest.approx(1.0)
 
 
+def test_timer_annotation_is_excluded_from_field_accuracy():
+    """`expected_timers` feeds `compute_timer_f1` only — no extractor emits
+    it. Grading it as an expected field capped field_accuracy at (n-1)/n on
+    every timer-annotated fixture, which reads as a model miss."""
+    config = EvalConfig()
+    evaluator = RecipeExtractionEvaluator(config)
+    recipe = {"name": "X", "description": "d", "ingredients": []}
+    expected = {
+        **recipe,
+        "expected_timers": [{"duration_minutes": 10, "label": "bake"}],
+    }
+
+    metrics = evaluator._calculate_metrics(dict(recipe), expected)
+
+    assert metrics["field_accuracy"] == pytest.approx(1.0)
+    assert metrics["fields_total"] == len(recipe)
+    assert "expected_timers" not in metrics["missing_fields"]
+
+
 def test_fixture_extensions_are_well_formed():
     """Simple sanity: the three fixtures we extended expose
     `expected_timers` as a list of {duration_minutes, label} dicts."""

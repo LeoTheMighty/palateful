@@ -145,6 +145,31 @@ it refuses an all-skipped mock run — an empty baseline would read as
 "measured zero" to the future hardening pass that turns
 `thresholds.field_accuracy` from soft into a hard gate.
 
+Reading the baseline — the soft metrics have ceilings below 1.0:
+
+The image fixtures reuse the text suite's expected JSON verbatim (that
+shared ground truth is what lets an image and its text twin be compared).
+Two consequences cap what a *perfect, prompt-obeying* extraction can score.
+Neither is a model regression; both are pinned by
+`tests/test_vision_live_path_rehearsal.py` so the numbers here can't rot.
+
+| Skew | Effect | Why |
+|---|---|---|
+| Unit tokens | `field_accuracy` ceiling ≈ **0.75–0.88**, not 1.0 | Ground truth spells units `cups` / `tablespoons` / `teaspoon`; the extractor prompt (`unit_prompt.py`) asks for `cup` / `tbsp` / `tsp`. Ingredient dicts compare exactly, so an obedient model loses the whole `ingredients` field — one of the 4–8 graded keys per recipe. |
+| Missing instructions | `instruction_similarity` = **0.0** on the three `multi_recipe` cases | Those fixtures render Directions in the PNG but carry no `instructions` key, and the metric scores 0.0 when actual is non-empty and expected is empty. |
+
+Both are properties of the *fixtures*, not of this suite, and fixing them
+means editing shared text-suite ground truth — deliberately out of scope
+here (the story requires the text suite's fixtures and results to be
+unchanged). `recipe_count_accuracy`, the only hard-gated metric, is
+unaffected by either: it compares recipe counts, not fields.
+
+For the same reason `expected_timers` is excluded from the field-accuracy
+denominator (`_NON_FIELD_KEYS` in `recipe_extraction_evaluator.py`) — it is
+a grading annotation consumed by `compute_timer_f1`, not a field any
+extractor emits, and counting it capped `field_accuracy` at (n-1)/n on
+every timer-annotated fixture in both suites.
+
 Fixtures live in the shared tree (`fixtures/images/` + `fixtures/expected/`)
 and are registered in `datasets/vision_extraction/manifest.yaml`. Because an
 image fixture is a render of its text twin, both grade against one expected
@@ -155,13 +180,21 @@ JSON. To add one, follow the generator procedure in
 JSON, then register the case in the vision manifest with
 `single_recipe`/`multi_recipe` + `image` tags.
 
-Four offline test files cover the chain without spending a cent —
+Five offline test files cover the chain without spending a cent —
 `tests/test_vision_fixtures.py` (dataset consistency),
 `tests/test_vision_extraction_evaluator.py` (evaluator + gate units),
 `tests/test_vision_suite_end_to_end.py` (the real `EvalRunner` over the
-committed manifest, served from a seeded cache in a tmp dataset dir), and
+committed manifest, served from a seeded cache in a tmp dataset dir),
+`tests/test_vision_live_path_rehearsal.py` (the *live* path: real PNG ->
+real `extract_recipe_from_image` -> real `ExtractedRecipe` -> metrics, with
+only the OpenAI SDK client stubbed), and
 `tests/test_vision_baseline_capture.py` (baseline capture). Adding a case
 to the manifest is picked up automatically by the end-to-end tests.
+
+The rehearsal file is the one that de-risks the paid run: the other three
+grade payloads that are perfectly shaped by construction, so a mismatch
+between the production extractor's output and the fixtures' ground truth
+would only have surfaced *after* the money was spent.
 
 ### Ingredient Matching (`npx nx run eval:run-matching`)
 

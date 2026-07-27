@@ -26,6 +26,7 @@
     "multi_recipe_count_accuracy": 0.8,
     "_count_enforcement": "hard — gated in src/runner.py::_check_thresholds",
     "field_accuracy": null,
-    "_field_accuracy_enforcement": "soft — reported only. Once this file carries a real field_accuracy_avg, the follow-up hardening sets the bar at max(0.7, baseline - 0.05) and gates it alongside the count metrics."
+    "_field_accuracy_enforcement": "soft — reported only. Once this file carries a real field_accuracy_avg, the follow-up hardening sets the bar at max(0.7, baseline - 0.05) and gates it alongside the count metrics.",
+    "_field_accuracy_ceiling": "A perfect, prompt-obeying extraction scores ~0.75-0.88, NOT 1.0: the shared ground truth spells units `cups`/`tablespoons`/`teaspoon` while the extractor prompt asks for `cup`/`tbsp`/`tsp`, so the exactly-compared `ingredients` field mismatches. Likewise `instruction_similarity` is 0.0 on the three multi_recipe cases, whose expected JSON has no `instructions` key even though the PNG renders Directions. Both are fixture properties, not model misses — see the README's 'Reading the baseline' table and tests/test_vision_live_path_rehearsal.py, which pins them."
   }
 }

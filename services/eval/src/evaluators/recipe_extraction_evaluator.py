@@ -27,6 +27,15 @@ _TIMER_LABEL_SIM_MIN = 0.60
 # In `mock_ai` mode a cache miss on one of these is skipped, not scored.
 _AI_ONLY_EXTRACTORS = frozenset({"ai", "text"})
 
+# Keys that live in an expected fixture but are *grading annotations*, not
+# recipe fields an extractor is supposed to emit. Counting them as expected
+# fields caps field_accuracy at (n-1)/n for every fixture that carries one,
+# which reads as a model miss rather than what it is.
+#   * raw_data / _cost_cents — StructMetrics' own defaults, restated here
+#     because passing `ignore_fields` replaces the default set.
+#   * expected_timers — consumed by `compute_timer_f1`; no extractor emits it.
+_NON_FIELD_KEYS = frozenset({"raw_data", "_cost_cents", "expected_timers"})
+
 
 class RecipeExtractionEvaluator(BaseEvaluator):
     """Evaluates recipe extraction from HTML content."""
@@ -371,7 +380,9 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         """Compute per-recipe metrics for one paired (actual, expected)."""
         m: dict = {}
 
-        field_results = StructMetrics.compare_fields(actual, expected)
+        field_results = StructMetrics.compare_fields(
+            actual, expected, ignore_fields=set(_NON_FIELD_KEYS)
+        )
         m["field_accuracy"] = field_results["accuracy"]
         m["fields_correct"] = field_results["correct"]
         m["fields_total"] = field_results["total"]
