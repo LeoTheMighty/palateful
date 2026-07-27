@@ -30,6 +30,8 @@ from conftest import (
     MockRecipeBookUser,
 )
 
+from utils.classes.error_code import ErrorCode
+
 
 class _MockMealRecipe(MockModel):
     def __init__(self, **kwargs):
@@ -179,6 +181,26 @@ class TestCreateMeal:
             json={"name": "X", "component_recipe_ids": ["r1", "r2"]},
         )
         assert response.status_code == 404
+        # btri01: the Create Meal sheet flags the offending rows from
+        # `data.recipe_ids`. Before this, `failure(data={})` was
+        # hard-coded in `AsyncEndpoint.run`, the ids never left the
+        # server, and the only recovery the user got was a "try again"
+        # banner on a payload that could never succeed.
+        body = response.json()
+        assert body["error_code"] == ErrorCode.MEAL_COMPONENT_UNREADABLE.value
+        assert sorted(body["data"]["recipe_ids"]) == ["r1", "r2"]
+
+    def test_readable_component_error_omits_data_for_other_failures(
+        self, client, mock_async_db, mock_user
+    ):
+        """Non-component APIExceptions keep the historical empty `data`."""
+        mock_async_db.db.execute.return_value = MockExecuteResult(items=[])
+        response = client.post(
+            "/v1/recipe-books/book-1/meals",
+            json={"name": "X", "component_recipe_ids": ["r1", "r2"]},
+        )
+        assert response.status_code == 403
+        assert response.json()["data"] == {}
 
 
 class TestGetMeal:

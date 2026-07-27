@@ -11,6 +11,41 @@ Bugs/Improvements:
 ===================
 
 * Creating a Meal breaks
+    * **btri01 2026-07-27 — CLOSED, fixed by `6d888c6`; one residual dead-end
+      fixed here.** Primary cause: `MealService.create_with_components` bulk-added
+      the `MealRecipe` join rows through the ORM. Every row in the batch shares
+      one `meal_id`, which collides SQLAlchemy 2.0's `insertmanyvalues` sentinel
+      matcher — so *every* `POST /v1/recipe-books/{id}/meals` raised "Can't match
+      sentinel values in result set to parameter sets" and 500'd. Not
+      conditional, not data-dependent: meal creation was 100% broken from mcv-2
+      (`c41620f`, 2026-04-18) until `6d888c6` (2026-04-21 21:59) swapped the join
+      inserts to Core executemany. This report came off the same dogfood list
+      that seeded `epic-bugs-auth-and-shopping` (drafted 2026-04-21 15:16), i.e.
+      hours *before* the fix landed — which is also why the bas epic picked up
+      the other four items and left this one alone. The Core-executemany shape is
+      pinned by `test_meal_service.py::TestCreateWithComponents` and survived the
+      aam-10 async rewrite.
+    * **Residual, fixed here:** creating a Meal that includes a recipe the user
+      can no longer read still dead-ended. mcv-5 built a per-row "Unavailable" +
+      Remove affordance on `CreateMealSheet` for exactly this case, but it was
+      unreachable end-to-end: (a) the client mapped only `422` +
+      `MEAL_COMPONENT_UNAVAILABLE` (306) — a code **nothing on the server has
+      ever raised** — while `CreateMeal`/`AddRecipeToMeal` emit `404` +
+      `MEAL_COMPONENT_UNREADABLE` (302); and (b) `Endpoint.run` /
+      `AsyncEndpoint.run` hard-coded `failure(data={})`, so the `recipe_ids` the
+      sheet reads could never leave the server even with the codes aligned. Net
+      effect: a generic "Could not create meal. Please try again." on a payload
+      that can never succeed, with no way to tell which recipe to drop. Fixed by
+      giving `APIException` an optional `data` dict (threaded through both
+      `run()` paths; unset still serialises as `{}`), having both meal handlers
+      ship `{"recipe_ids": [...]}`, and teaching `MealService._rethrowTyped` the
+      404/302 shape. Pinned by `test_meal_router.py`,
+      `test_meal_components.py`, and 3 new cases in `meal_service_test.dart`
+      (all verified failing against the unfixed code).
+    * Test-gap note: this survived because both sides were tested against the
+      *assumed* contract and never against each other — `create_meal_sheet_test`
+      throws `MealComponentUnavailableException` from a fake service, and
+      `meal_service_test` fed itself a 422/306 body no endpoint produces.
 * PUSH NOTIFICATIONS
 * Logging out shows a weird auth0 page
     * **btri01 2026-07-27 — STILL BROKEN, refiled.** bas-1 (`f839f67`) is not a

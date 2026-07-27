@@ -336,8 +336,17 @@ class MealService {
     final errorCode = (body is Map<String, dynamic>)
         ? body['error_code']
         : null;
-    if (status == 422 && errorCode == 306) {
-      // MEAL_COMPONENT_UNAVAILABLE (306) — carries recipe_ids in data
+    // Component-unavailable comes over the wire in two shapes:
+    //   • 404 + MEAL_COMPONENT_UNREADABLE (302) — what CreateMeal and
+    //     AddRecipeToMeal actually emit today.
+    //   • 422 + MEAL_COMPONENT_UNAVAILABLE (306) — the shape mcv-5 was
+    //     written against. Nothing on the server has ever raised it;
+    //     kept so a future backend move to 422 is a no-op here.
+    // btri01: only the 306 branch existed, so every real unreadable
+    // component fell through to a bare DioException and the sheet's
+    // per-row Remove affordance was unreachable.
+    if ((status == 422 && errorCode == 306) ||
+        (status == 404 && errorCode == 302)) {
       final data = (body as Map<String, dynamic>)['data'];
       final rawIds = (data is Map<String, dynamic>)
           ? data['recipe_ids']
