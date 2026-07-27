@@ -1,0 +1,32 @@
+{
+  "_comment": "irrd-3a AC11 baseline for the title-extraction soft regression gate (and the surrounding src/scoring.py aggregates, for context). NULL placeholders until the first real eval run — that run needs OPENAI_API_KEY and ~10 min, so it is opt-in and never part of the fast CI path. While `title_extraction.title_extraction_f1` is null the gate in src/metrics/title_extraction.py passes with `baseline_missing: true` (nothing to regress against). Capture the PRE-confidence baseline with EXTRACTOR_EMIT_CONFIDENCE=false, then re-run with it on and compare: the run must stay within 5% relative of the value recorded here. Baseline is refreshed post-merge, not mid-story.",
+  "_generated_at": null,
+  "_generated_commit": null,
+  "_extractor_flag": "EXTRACTOR_EMIT_CONFIDENCE=false",
+  "_fixture_set": "services/eval/fixtures/expected/*.json",
+  "_strategy": "text_extractor",
+  "title_extraction": {
+    "_comment": "Token-level F1 between extracted and ground-truth recipe titles, averaged over fixtures. Distinct from scoring.metadata_accuracy, which blends title with prep/cook time and servings and therefore hides a title-only regression.",
+    "title_extraction_f1": null,
+    "precision": null,
+    "recall": null,
+    "exact_match_rate": null,
+    "sample_count": 0
+  },
+  "extraction_scores": {
+    "_comment": "Aggregate means from src/fixture_runner._aggregate_scores ('<metric>_avg' keys). Context for interpreting a title movement — a title drop alongside an across-the-board drop is a different diagnosis than a title-only drop.",
+    "ingredients_precision_avg": null,
+    "ingredients_recall_avg": null,
+    "amounts_accuracy_avg": null,
+    "steps_completeness_avg": null,
+    "metadata_accuracy_avg": null,
+    "overall_f1_avg": null,
+    "total_fixtures": 0,
+    "fixtures_with_errors": 0
+  },
+  "thresholds": {
+    "title_extraction_f1_max_relative_drop": 0.05,
+    "_enforcement": "soft",
+    "_note": "Soft: not wired into the fast CI path. Blocking for this story — a >5% relative drop means the confidence-emitting prompts get retuned before irrd-3a completes."
+  }
+}
