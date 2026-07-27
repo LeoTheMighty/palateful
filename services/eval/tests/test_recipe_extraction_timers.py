@@ -10,7 +10,6 @@ from src.evaluators.recipe_extraction_evaluator import (
     compute_timer_f1,
 )
 
-
 # ---------------------------------------------------------------------
 # _gather_predicted_timers
 # ---------------------------------------------------------------------
