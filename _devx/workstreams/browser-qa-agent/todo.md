@@ -36,8 +36,21 @@
   - [x] Gate 3 run (`devx gate coverage 41ee13 --table …`) → CONCERNS (E-5 substitution caveat recorded; P0 floor passed) → plan_verified, stage: red
   - [x] Commit + status log
 - [x] Gate: coverage(plan)
-- [ ] Stage: RED
-- [ ] Gate: evals
+- [x] Stage: RED
+  - [x] RED prerequisites: `projects:` runner table in devx.config.yaml + `_devx/workstreams/run-eval.sh` dispatcher
+  - [x] 4 runnable evals authored at Verified-by paths (e1/e2/e3/e5) + E-4/E-6 human stubs
+  - [x] `devx gate evals 41ee13 --dry-run` sanity: 4 planned (all with commands) + 2 deferred
+  - [x] `devx gate evals 41ee13` PASS; RED-report quotes are right-reason, zero `INFRA:` (report: `evals/RED-report.md`)
+  - [x] Emit 7 phase dev specs + retro story; DEV.md rows in dependency order; validate-emit clean
+- [x] Gate: evals
 - [ ] Stage: Execute
+  - [ ] Phase 1: Config truth — qa flip to installed tools, runner resolution green → bqa101
+  - [ ] Phase 2: E2E revival — one-command green with lifecycle wrapper → bqa102
+  - [ ] Phase 3: Upstream story-derived QA — template, emission wiring, schema enum → bqa103
+  - [ ] Phase 4: Upstream attended layer — /devx-test skill, routing, QA.md carve-out → bqa104
+  - [ ] Phase 5: Palateful adoption — install, qa flip, browser-flow eval convention → bqa105
+  - [ ] Phase 6: First attended pass — walkthrough emission + recipe-import journey → bqa106
+  - [ ] Phase 7: Persona-seeded passes → bqa107
+  - [ ] Retro story → bqaret
 - [ ] Stage: Retro
 - [ ] Stage: Outcome

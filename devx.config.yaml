@@ -98,6 +98,23 @@ ci:
   max_retries: 2
   poll_interval_s: 30
   poll_timeout_min: 45
+projects:
+  # Runner table locked at browser-qa-agent RED (plan.md §RED-stage
+  # prerequisites). `devx gate evals` resolves artifacts by longest path
+  # prefix; command = `<test> <artifact-relative-to-path>` with cwd = path.
+  # Mutually exclusive with a `stack:` block per cfg203 (none present).
+  - name: api
+    path: services/api
+    test: poetry run pytest
+  - name: app
+    path: app
+    test: flutter test
+  - name: e2e
+    path: services/e2e
+    test: bash scripts/e2e_lifecycle.sh # lifecycle wrapper (Phase 2), not bare run_all.sh
+  - name: workstream-evals
+    path: _devx/workstreams
+    test: bash run-eval.sh # dispatcher: no args → skip 0; one arg → exec bash "$1"
 qa:
   browser_harness: playwright
   layer_2_cadence: on-demand

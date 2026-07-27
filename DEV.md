@@ -35,3 +35,16 @@ Critical path: aam7 / aam8 / aam22 / aam23 in parallel → aam24 cutover → aam
 - [ ] `dev/dev-aam25-2026-07-27T17:17-sync-in-async-startup-guard.md` — Sync-in-async startup guard — fail fast if API handler code imports the sync Database. Status: ready. Blocked-by: aam24.
 - [ ] `dev/dev-aam27-2026-07-27T17:19-concurrent-load-integration-test.md` — Concurrent-load integration test — CI-enforced proof the event loop is never held. Status: ready. Blocked-by: aam24.
 - [ ] `dev/dev-aam26-2026-07-27T17:18-latency-baseline-snapshot.md` — Latency baseline snapshot — tabulate pre-vs-post-migration p95 deltas and gate the epic's win. Status: ready. Blocked-by: aam24 (+ 7-day soak).
+
+### Epic — browser-qa-agent (workstream 41ee13; RED gate passed 2026-07-27)
+
+Dependency shape: bqa101 ∥ bqa102 ∥ bqa103 (disjoint files/repos) → bqa104 after bqa103 (same devx repo; single version bump) → bqa105 after all four → bqa106 (attended, needs Leo) → bqa107 (attended, needs Leo). bqa103/bqa104/bqa107 land work in `~/personal/devx` (direct to its main — user-locked FR-5). Eval artifacts were authored at RED — stories re-run them, never re-author.
+
+- [ ] `dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md` — Config truth — qa flip to installed tools, runner resolution green (E-1). Status: ready. Blocked-by: —. Parallel-safe with bqa102/bqa103.
+- [ ] `dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md` — E2E revival — one-command green with lifecycle wrapper + 3 latent-defect fixes (E-2). Status: ready. Blocked-by: —. Parallel-safe with bqa101/bqa103.
+- [ ] `dev/dev-bqa103-2026-07-27T11:41-upstream-walkthrough-template.md` — Upstream story-derived QA — template, emission wiring, schema enum. Status: ready. Blocked-by: —. Cross-repo (devx main). Parallel-safe with bqa101/bqa102.
+- [ ] `dev/dev-bqa104-2026-07-27T11:42-upstream-devx-test-skill.md` — Upstream attended layer — /devx-test skill, routing, QA.md carve-out, version bump. Status: ready. Blocked-by: bqa103. Cross-repo (devx main).
+- [ ] `dev/dev-bqa105-2026-07-27T11:43-palateful-adoption-eval-convention.md` — Palateful adoption — install, qa flip to claude-in-chrome, browser-flow eval convention (E-5). Status: ready. Blocked-by: bqa101, bqa102, bqa103, bqa104.
+- [ ] `dev/dev-bqa106-2026-07-27T11:44-first-attended-pass.md` — First attended pass — walkthrough emission + recipe-import journey (E-3, E-4). Status: ready. Blocked-by: bqa105. Needs Leo attended.
+- [ ] `dev/dev-bqa107-2026-07-27T11:45-persona-seeded-passes.md` — Persona-seeded passes — --persona flag + one seeded pass (E-6). Status: ready. Blocked-by: bqa106. Needs Leo attended; cross-repo skill change.
+- [ ] `dev/dev-bqaret-2026-07-27T11:41-retro-browser-qa-agent.md` — Retro + LEARN.md updates (interim retro discipline). Status: ready. Blocked-by: bqa101, bqa102, bqa103, bqa104, bqa105, bqa106, bqa107.
