@@ -1,4 +1,14 @@
+> **⚠️ Imported into devx 2026-07-27.** Live items now tracked in
+> `DEBUG.md` (rbv101 card sizing, btri01 legacy triage) and
+> `INTERVIEW.md` (RDS Performance Insights decision). New bug reports go
+> to `DEBUG.md` via `/devx`; this file is a historical inbox. See
+> `_devx/import-2026-07-27.md`.
+
 Bugs/Improvements:
+
+* Everything in the recipe book view should be the same size, meals and recipes.
+
+===================
 
 * Creating a Meal breaks
 * PUSH NOTIFICATIONS
