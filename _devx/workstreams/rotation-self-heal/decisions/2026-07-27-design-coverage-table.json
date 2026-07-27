@@ -1,0 +1,156 @@
+{
+  "rows": [
+    {
+      "id": "G-1",
+      "status": "partial",
+      "where": "Design § Architecture 1 (FR-1 → CAP-1); Migration plan step 1; Assumptions (\"The 2026-05-03 deploy-images (parser) and deploy-web failures no longer reproduce\")",
+      "note": "Concrete mechanism for the flutter-test half only. The design itself concedes the other half is unproven — 'Nothing in the repo proves either way... If they do reproduce, FR-1 grows to include them and G-1's 2026-07-29 date is at risk.' A two-day deadline resting on an admitted unknown is not covered."
+    },
+    {
+      "id": "G-2",
+      "status": "partial",
+      "where": "Design § Overview layers (a)+(b); Risks (\"Detection latency may exceed G-2's 5-minute budget\"); Unresolved question 2",
+      "note": "Design's own arithmetic: TTL 60s + 3x30s container retries + 60s startPeriod ~= 4 min against a 5-min budget — 'fits, but with little margin', and the TTL trades directly against E-4. Unresolved question 2 defers this to 'measurement at the first real rotation', which (see G-3) is ~2026-10 under the 90-day cadence. Margin is asserted, not established."
+    },
+    {
+      "id": "G-3",
+      "status": "partial",
+      "where": "Design § Architecture 3 (FR-4 EventBridge→Lambda→update_service); Architecture 4 (FR-5); Migration plan steps 3-4",
+      "note": "Mechanism is concrete, but zero-intervention cannot be demonstrated by the 2026-08-01 measurement date: migration step 4 is 'Verify at the next real rotation', and Assumptions moves that rotation to ~2026-10. Design also concedes the EventBridge pattern is unverified and 'a wrong pattern means the rule silently never fires', with no monitoring proposed that the rule ever fired."
+    },
+    {
+      "id": "G-4",
+      "status": "partial",
+      "where": "Design § Architecture 5 (deploy-freshness.yml, daily cron); Trade-offs (scheduled GH Action over CloudWatch alarm)",
+      "note": "FR-6's mechanism is now sound (see FR-6), but G-4 asks that the image STAY under 7 days behind, not merely that the gap be visible. Staying under 7 days depends on CI remaining green, which Out of scope explicitly excludes ('General CI health'). Migration plan also puts FR-6 last ('FR-3 and FR-6 last — neither is on the outage path'), which is tight against the 2026-08-01 weekly-sampling start."
+    },
+    {
+      "id": "UC-1",
+      "status": "covered",
+      "where": "Design § Architecture 1 — flutter-test is a root job (ci.yml:304) inside the needs: of deploy-web (:462) and detect-changes (:521); fix the date-fused fixtures. Plus Architecture 5 for the 'silent freeze' half.",
+      "note": "Citations verified: ci.yml:304 is `flutter-test:` with no needs:, :462 and :521 are both the needs: list. Root cause (imports_tab.dart:168 DateTime.now() 30-day cutoff, comment at :165-167) verified exactly."
+    },
+    {
+      "id": "UC-2",
+      "status": "covered",
+      "where": "Design § Overview layers (a)/(b)/(c); Architecture 3 and 4",
+      "note": "Three independent unattended paths, each of which alone restores service. Layer (b) preempts, (a) backstops, (c) eliminates."
+    },
+    {
+      "id": "UC-3",
+      "status": "covered",
+      "where": "Design § Architecture 2 — db_probe.py NullPool fresh connection + is_auth_error → 503 → existing container health check (ecs/main.tf:318-324) replaces the task",
+      "note": "ecs/main.tf:318-324 verified exactly (CMD-SHELL urlopen /v1/health, interval 30 / timeout 5 / retries 3 / startPeriod 60). Resolved question 4 correctly identifies why a pooled probe cannot observe the failure."
+    },
+    {
+      "id": "UC-4",
+      "status": "covered",
+      "where": "Design § Risks (\"A misclassified transient failure replaces every task at once\") and § Trade-offs (\"Fail-open over fail-closed\"); Architecture 2 three-state verdict",
+      "note": "503 only on positively-identified 28P01/28000; every other exception including unhandled returns 200. Directly answers UC-4's 'must ride it out'."
+    },
+    {
+      "id": "UC-5",
+      "status": "covered",
+      "where": "Design § Architecture 5 — bin/prod-status extended with a deployed-image-age line, explicitly 'for UC-5'; running-revision lookup shared with deploy-freshness.yml",
+      "note": "The fidelity caveat raised in the previous pass is resolved — Architecture §5 now mandates describe-services → services[0].taskDefinition → describe-task-definition on the revision ARN, so 'what is deployed' means what is actually running. Post-judgment reconciliation by the skill: the on-demand surface moved from a net-new bin/prod-image-age to extending bin/prod-status:15-18, which already runs describe-services against both prod services. Status unchanged (covered); location string updated."
+    },
+    {
+      "id": "CAP-1",
+      "status": "partial",
+      "where": "Design § Architecture 1; Migration plan step 1; Unresolved question 3 (unpinned flutter-version / wrangler@latest)",
+      "note": "FR-1's design is adequate (see FR-1), but CAP-1 asserts CI actually completes green. Only one of the two known blockers has a worked-out fix; the deploy-web/deploy-images(parser) half is an empirical check with a conditional contingency, so green-on-main remains unproven at design time."
+    },
+    {
+      "id": "CAP-2",
+      "status": "covered",
+      "where": "Design § Architecture 2 — db_credentials.is_auth_error unwraps OperationalError.orig, matches sqlstate/pgcode against {28P01, 28000}, covering asyncpg and psycopg2 shapes; three-state ProbeVerdict",
+      "note": "Named classifier plus explicit driver-shape coverage. Interfaces table gives the signature."
+    },
+    {
+      "id": "CAP-3",
+      "status": "covered",
+      "where": "Design § Architecture 2 — 503 → existing api container health check; worker gets `python -m utils.services.db_probe` as CMD-SHELL on ecs/main.tf:396-444",
+      "note": "Verified the worker container definition at ecs/main.tf:396-444 indeed has no healthCheck block today, and Assumptions correctly notes ECS resolves valueFrom at task start (ecs/main.tf:306, :426 both verified) so the replacement gets the current password. Scope caveat recorded under FR-3."
+    },
+    {
+      "id": "CAP-4",
+      "status": "covered",
+      "where": "Design § Architecture 3 — terraform/modules/rotation-redeploy/, aws_cloudwatch_event_rule scoped to the secret ARN + AWSCURRENT label move, archive_file-packaged Lambda calling update_service(forceNewDeployment=True) once per service",
+      "note": "Mechanism fully specified including the Constraints justification (EventBridge's native ECS target is RunTask and cannot force a service deployment) and a named fallback trigger (CloudTrail RotationSucceeded). Residual: no alarm proposed on rule invocations, so a never-firing rule stays silent."
+    },
+    {
+      "id": "CAP-5",
+      "status": "covered",
+      "where": "Design § Architecture 4 — SecretPasswordProvider + do_connect listener pseudocode with exactly one invalidate and one retry; registration at all 5 engine sites (table)",
+      "note": "All five cited engine sites verified: database.py:42-57/:60-105/:120-132, agent/tasks.py:28-37, agent/runner.py:25-35. The libraries/agent risk callout is real — both files call create_engine(settings.database_url, pool_pre_ping=True) independently of utils."
+    },
+    {
+      "id": "CAP-6",
+      "status": "covered",
+      "where": "Design § Architecture 4 — resolve_password_provider() returns None when DB_PASSWORD_SECRET_ARN is unset; registration helper is a no-op constructing no boto3 client and registering no listener; Configuration table 'Absent behavior'",
+      "note": "Also explicitly does not touch constants.py:19-42 (verified: _build_database_url spans 19-42), so the plain DATABASE_URL path is untouched."
+    },
+    {
+      "id": "FR-1",
+      "status": "covered",
+      "where": "Design § Architecture 1 — every fixture hardcodes a 2026-04-18T10:* timestamp; fix is to make fixture timestamps relative to DateTime.now(); latent 4th assertion at imports_tab_test.dart:544 flagged",
+      "note": "Upgraded from partial: the corrected citation now verifies. All 22 'created_at' fixtures in imports_tab_test.dart carry a 2026-04-18T10:* literal (design says 21 — off by one; a 23rd 2026-04-18 at :108 is an archived_at, correctly excluded). :277, :445 and the :510-525 block are real completed/skipped fixtures inside the three failing tests (testWidgets at :211, :425, :462), and :542/:544 sit in the :462 test as described. PRD FR-1 permits the parser/deploy-web half to be 'confirmed no longer reproducing', which migration step 1 supplies, with pinning named as the contingency."
+    },
+    {
+      "id": "FR-2",
+      "status": "covered",
+      "where": "Design § Architecture 2 + Interfaces (db_probe.py) — NullPool fresh connection, TTL-cached verdict (DB_PROBE_TTL_S default 60), 503 only on AUTH_FAILED, 200 on OK and OTHER_ERROR, handler no longer depends on get_async_database",
+      "note": "All four FR-2 clauses (fresh connection, 28P01/28000-only 503, fail-open, rate limit) have named mechanisms. The Risks citation for the live hazard is now correct at health_router.py:25-27, and Resolved question 4's separate reference to :24 (the pooled execute) is correctly left as-is."
+    },
+    {
+      "id": "FR-3",
+      "status": "covered",
+      "where": "Design § Architecture 2 — CMD-SHELL `python -m utils.services.db_probe` healthCheck on the worker container (ecs/main.tf:396-444), startPeriod covering Celery boot; explicit scoping paragraph; § Out of scope (\"General Celery liveness for the worker\")",
+      "note": "Upgraded from partial. FR-3's normative ask is 'The worker task definition gains a health check' — fully satisfied by a concrete mechanism on a task def that has none today, and E-8's threshold (0 tasks UNKNOWN, HEALTHY within 120s) is met. The 'under any failure mode' clause is the PRD's description of today's deficiency, not a target, so the narrowing is not a PRD contradiction and needs no revise. The design now states the residual plainly (a wedged consumer with valid credentials still reports HEALTHY) and files the heartbeat/broker probe in Out of scope rather than leaving it implied."
+    },
+    {
+      "id": "FR-4",
+      "status": "covered",
+      "where": "Design § Architecture 3; Constraints (EventBridge cannot call ecs:UpdateService directly); Trade-offs (~20-line Lambda over Step Functions/SSM); Interfaces (rotation_redeploy.handler)",
+      "note": "Terraform-defined as PRD requires. Novelty claim verified: zero aws_lambda_function / aws_cloudwatch_event_rule / archive_file across terraform/. Unresolved detail-type string is an implementation constant with a proven fallback, not a design gap."
+    },
+    {
+      "id": "FR-5",
+      "status": "covered",
+      "where": "Design § Architecture 4; Interfaces (db_credentials.py table); Wrap-don't-duplicate (iam/main.tf:362-378 policy shape copied onto task roles :416, :519)",
+      "note": "All three FR-5 clauses covered: TTL cache + invalidate-and-retry-once, unset-ARN = today's behavior, and task-role IAM. Verified iam/main.tf:362-378 is exactly the execution-role secretsmanager:GetSecretValue policy, :416 is the api task role, :519 the worker task role. libraries/utils/pyproject.toml:35 boto3 verified."
+    },
+    {
+      "id": "FR-6",
+      "status": "covered",
+      "where": "Design § Architecture 5 — deploy-freshness.yml on cron '0 15 * * *', fetch-depth: 0, describe-services → services[0].taskDefinition → describe-task-definition on that revision ARN → tag → git log -1 --format=%ct, fail when the gap exceeds 7 days; § Resolved question 1",
+      "note": "Upgraded from partial: the fidelity gap is resolved and the reasoning checks out. services[0].taskDefinition is the revision ARN the service is actually on, and the design's justification for why deploy-services' family-name lookup is right there but wrong here is correct — deploy-services declares `needs: [run-migrator, terraform-prod, deploy-images, detect-changes]` gated on `needs.terraform-prod.result == 'success'`, so it genuinely runs after terraform-prod wrote the revision. Residual shared-fate with GitHub Actions is an argued, accepted trade-off, and the design correctly rejects the in-ci.yml option for the exact reason it would have failed in this incident."
+    }
+  ],
+  "extras": [
+    {
+      "item": "Rotation cadence moves from 7 days to 90 days — the design lets the pending aws_secretsmanager_secret_rotation.db_master from e74303f apply. The design flags this itself as contradicting the PRD's explicit non-goal 'Changing the rotation cadence' and requiring `devx revise` before the Plan gate. Verified: rds/main.tf:105-118 default 90, :201-208 the resource.",
+      "where": "§ Assumptions (\"Rotation cadence moves to 90 days\"); § Resolved design questions (\"What happens to the pending 90-day rotation cadence?\"); Migration plan step 3"
+    },
+    {
+      "item": "RESOLVED after judgment — the net-new bin/prod-image-age CLI this row originally flagged was replaced by extending the existing bin/prod-status (which already calls describe-services on both prod services at :15-18). No second on-demand surface is added; retained here as a record that the extra was raised and closed.",
+      "where": "§ Architecture 5; § Wrap, don't duplicate → Reuses"
+    },
+    {
+      "item": "Pinning deploy-web's flutter-version and wrangler@latest — conditionally pulled into FR-1 scope if they turn out to be the 2026-05-03 cause. Verified: deploy-web uses only `channel: stable` (ci.yml:467-469) while flutter-test pins 3.41.7 at :315, so the unpinned-drift observation is real; the wrangler@latest citation is now correct at :493.",
+      "where": "§ Unresolved design questions, item 3"
+    },
+    {
+      "item": "First Lambda + first EventBridge rule + first Terraform module of their kind in the repo, with a new Lambda execution role (ecs:UpdateService, ecs:DescribeServices, CloudWatch Logs). PRD FR-4 says only 'an EventBridge rule ... triggers a forced new deployment'; the compute tier and its IAM are net-new surface the PRD did not name.",
+      "where": "§ Constraints (\"No Lambda, EventBridge, or scheduled-job pattern exists in this repo\"); § Architecture 3; § Wrap, don't duplicate → Adds"
+    },
+    {
+      "item": "GET /v1/health's 200 response gains a new `db` field carrying the verdict name — an API contract change. FR-2 specifies only status-code behavior.",
+      "where": "§ Interfaces (\"GET /v1/health — unchanged path and 200 shape; adds a `db` field\")"
+    },
+    {
+      "item": "Deliberate exemption of deploy-freshness.yml from the repo-wide `environment: production` convention documented at ci.yml:8-10. Justified as read-only, but it is a governance-convention exception the PRD never authorized.",
+      "where": "§ Constraints (\"Every deploy-touching job sets environment: production\"); § Architecture 5"
+    }
+  ]
+}

@@ -16,6 +16,20 @@
 - [x] Stage: PRD
 - [x] Gate: prd
 - [ ] Stage: Design
+  - [x] Research: API db/health surfaces, terraform ECS/secrets, CI + failing tests
+  - [x] User decision: FR-6 → scheduled GitHub Action (not CloudWatch alarm)
+  - [x] User decision: pre-07-29 scope → FR-1 + FR-2 + FR-4; FR-3/5/6 after
+  - [x] User decision: accept pending 90d rotation cadence from e74303f
+  - [x] Write design.md (all template sections)
+  - [x] Coverage judge pass 1 → fixed 6 citation errors + FR-6 lookup bug
+  - [x] Coverage judge pass 2 → FR-1/FR-3/FR-6 upgraded to covered
+  - [x] UC-5 folded into existing `bin/prod-status` (dropped net-new script)
+  - [x] `devx gate coverage 462355` → **CONCERNS** (16 covered / 5 partial / 0 missing)
+  - [ ] **Follow-up owed:** `devx revise` the PRD non-goal on rotation cadence
+        (90d decision contradicts it) — before the Plan gate
+  - [ ] **Carry into Plan:** the 5 partials (G-1..G-4, CAP-1) are all
+        "unproven until CI actually runs / until a real rotation" — they
+        need phases that produce evidence, not more design
 - [ ] Gate: coverage(design)
 - [ ] Stage: Plan
 - [ ] Gate: coverage(plan)

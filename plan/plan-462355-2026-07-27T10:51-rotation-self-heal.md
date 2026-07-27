@@ -4,11 +4,11 @@ type: plan
 created: 2026-07-27T10:51:32-06:00
 title: Rotation Self Heal
 status: in-progress
-stage: design
+stage: plan
 entered_at: prd
 gate_status:
   prd_validated: true
-  design_verified: false
+  design_verified: true
   plan_verified: false
   evals_red: false
 outcome:
@@ -17,6 +17,7 @@ outcome:
 workstream: _devx/workstreams/rotation-self-heal
 gate_verdicts:
   prd: PASS
+  design: CONCERNS
 ---
 
 ## Goal
@@ -37,3 +38,33 @@ Workstream 'Rotation Self Heal' — PRD stage next. Artifacts live in `_devx/wor
   E-blocks, 5 × P0). User decisions this stage: CI unblock is in scope as
   Phase 1; connect-time credential resolution (FR-5) is **in** scope
   (overrides the skill-author's recommendation to defer it).
+- 2026-07-27T11:31 — stage DESIGN. Grounded in 3 parallel Explore passes
+  (API db/health surfaces, terraform ECS/Secrets Manager, CI + failing
+  tests). Ran `devx gate coverage 462355 --table <judged>` → **CONCERNS**
+  (exit 0; 21 rows: 16 covered / 5 partial / 0 missing), flipped
+  `design_verified: true`, `stage: plan`. Artifacts:
+  `_devx/workstreams/rotation-self-heal/design.md`,
+  `decisions/2026-07-27-design-verify.md`.
+  User decisions this stage: (1) FR-6 → scheduled GitHub Action, not a
+  CloudWatch alarm or an in-`ci.yml` job; (2) pre-2026-07-29 scope =
+  FR-1 + FR-2 + FR-4, with FR-3/FR-5/FR-6 after; (3) the pending 90-day
+  rotation cadence from `e74303f` is allowed to apply.
+  **Owed before the Plan gate:** `devx revise` on the PRD — decision (3)
+  contradicts the PRD non-goal "Changing the rotation cadence".
+  Two design findings that changed the problem as the PRD framed it: the
+  undeployed `e74303f` health probe would NOT have caught this incident
+  (it probes a pooled connection, which stays authenticated across a
+  rotation) and its bare `except` → 503 is a mass-task-replacement hazard
+  (`health_router.py:25-27`); and the 3 Flutter failures are a date
+  time-bomb (fixtures frozen at 2026-04-18 vs a 30-day `DateTime.now()`
+  cutoff), not a regression — 39 test files share the fuse.
+  Adversarial coverage pass caught 6 wrong file:line citations and one
+  real design bug (FR-6 was reusing `deploy-services`'s family-name
+  task-def lookup, which reports the newest revision rather than the
+  running one — it would have masked the very freeze it exists to catch);
+  all fixed before the gate. Post-judgment reconciliation, disclosed: UC-5
+  moved from a net-new `bin/prod-image-age` to extending the existing
+  `bin/prod-status` — table location strings updated, no status changed.
+  The 5 partials (G-1..G-4, CAP-1) are all of one kind — unproven until CI
+  actually runs green and until a real rotation is observed — so they are
+  Plan-stage evidence work, not design gaps.
