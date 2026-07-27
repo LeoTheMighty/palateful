@@ -88,6 +88,13 @@
         "cwd": "{projectRoot}"
       }
     },
+    "confidence-gate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run python -m src.main --env-file .env.eval confidence-gate",
+        "cwd": "{projectRoot}"
+      }
+    },
     "eval-gate": {
       "executor": "nx:run-commands",
       "options": {

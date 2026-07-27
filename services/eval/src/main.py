@@ -452,5 +452,95 @@ def run_fixtures(
         console.print(f"\n[green]Results saved to: {output_path}[/green]")
 
 
+@cli.command("confidence-gate")
+@click.option("--strategy", "-s", default="text_extractor", help="Extraction strategy to use")
+@click.option(
+    "--fixtures-dir", "-d", default=None,
+    help="Path to fixtures directory (defaults to ./fixtures)",
+)
+@click.option("--output", "-o", default=None, help="Output JSON file for the gate report")
+@click.option(
+    "--write-baseline", is_flag=True,
+    help="Rewrite baselines/*.json from this run instead of comparing against them",
+)
+@click.pass_context
+def confidence_gate(
+    ctx: click.Context,
+    strategy: str,
+    fixtures_dir: str | None,
+    output: str | None,
+    write_baseline: bool,
+) -> None:
+    """Run the irrd-3a confidence-calibration + title-regression gates.
+
+    OPT-IN: this calls the real extractors, so it needs OPENAI_API_KEY and
+    takes ~10 minutes over the checked-in fixtures. It is deliberately not
+    part of the fast CI path — the deterministic gate logic is covered by
+    services/eval/tests/ instead.
+
+    Exits 1 when either gate fails (calibration MAE > 0.3, or
+    title_extraction_f1 more than 5% below the recorded baseline).
+
+    Examples:
+
+        npx nx run eval:confidence-gate
+
+        EXTRACTOR_EMIT_CONFIDENCE=false npx nx run eval:confidence-gate -- --write-baseline
+
+        npx nx run eval:confidence-gate -- --strategy text_extractor -o /tmp/gates.json
+    """
+    import json as json_mod
+    import subprocess
+
+    from src.confidence_gates import (
+        format_gate_report,
+        run_confidence_gates,
+        write_baselines,
+    )
+    from src.strategies import STRATEGIES
+
+    if strategy not in STRATEGIES:
+        console.print(f"[red]Unknown strategy: {strategy}[/red]")
+        console.print(f"Available: {list(STRATEGIES.keys())}")
+        sys.exit(1)
+
+    fdir = Path(fixtures_dir) if fixtures_dir else Path("./fixtures")
+    if not fdir.is_dir():
+        console.print(f"[red]Error: Fixtures directory not found: {fdir}[/red]")
+        sys.exit(1)
+
+    report = run_confidence_gates(str(fdir), strategy=strategy)
+    console.print(format_gate_report(report))
+
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w") as f:
+            json_mod.dump(report, f, indent=2, default=str)
+        console.print(f"\n[green]Gate report saved to: {output_path}[/green]")
+
+    if write_baseline:
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, check=True,
+            ).stdout.strip()
+        except (subprocess.SubprocessError, OSError):
+            commit = None
+        written = write_baselines(
+            report,
+            generated_at=datetime.now().astimezone().isoformat(),
+            generated_commit=commit,
+        )
+        for path in written:
+            console.print(f"[green]Baseline written: {path}[/green]")
+        console.print(
+            "[yellow]Review the diff and commit the baselines with the run "
+            "that produced them.[/yellow]"
+        )
+
+    sys.exit(0 if report.get("passed") else 1)
+
+
 if __name__ == "__main__":
     cli()

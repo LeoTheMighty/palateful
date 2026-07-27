@@ -100,18 +100,60 @@ def _discover_fixtures(
 
 
 # ---------------------------------------------------------------------------
+# Expected-payload shapes
+# ---------------------------------------------------------------------------
+
+def unwrap_expected_recipe(payload: Any) -> dict[str, Any]:
+    """Return the recipe dict to score against, from either fixture shape.
+
+    Multi-recipe fixtures (``fixtures/expected/multi_recipe_*.json``) use
+    the ``{"recipes": [...]}`` envelope; single-recipe fixtures are a bare
+    recipe dict. ``score_extraction`` reads recipe keys directly, so the
+    envelope has to be unwrapped or every field lookup misses and the
+    fixture scores near zero for a reason that has nothing to do with
+    extraction quality.
+
+    The extractors' ``ExtractionResult.recipe`` alias is ``recipes[0]``,
+    so first-vs-first is the apples-to-apples comparison available here.
+    """
+    if isinstance(payload, dict):
+        recipes = payload.get("recipes")
+        if isinstance(recipes, list) and recipes:
+            first = recipes[0]
+            return first if isinstance(first, dict) else {}
+        return payload
+    return {}
+
+
+def expected_recipe_count(payload: Any) -> int:
+    """How many recipes the ground truth carries (1 for the bare shape)."""
+    if isinstance(payload, dict):
+        recipes = payload.get("recipes")
+        if isinstance(recipes, list):
+            return len(recipes)
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Single-fixture evaluation
 # ---------------------------------------------------------------------------
 
 def _evaluate_fixture(
     fixture: dict[str, Any],
     strategy: str,
+    include_payloads: bool = False,
 ) -> dict[str, Any]:
     """Run extraction + scoring for a single fixture.
 
     Returns a result dict with:
         id, strategy, input_type, scores (from scoring.py),
         error (if any), duration_ms.
+
+    With ``include_payloads`` the raw ``extracted`` and ``expected``
+    recipe dicts are attached too. Off by default — the payloads make the
+    saved JSON several times larger, and only the irrd-3a confidence /
+    title gates need them.
     """
     fixture_id = fixture["id"]
     input_path: Path = fixture["input_path"]
@@ -130,10 +172,13 @@ def _evaluate_fixture(
     # Load expected
     try:
         with open(expected_path) as f:
-            expected = json.load(f)
+            expected_payload = json.load(f)
     except Exception as e:
         result["error"] = f"Failed to load expected JSON: {e}"
         return result
+
+    expected = unwrap_expected_recipe(expected_payload)
+    result["expected_recipe_count"] = expected_recipe_count(expected_payload)
 
     # Load input and run strategy
     try:
@@ -162,6 +207,10 @@ def _evaluate_fixture(
         result["error"] = f"Extraction failed: {e}"
         return result
 
+    if include_payloads:
+        result["extracted"] = extracted
+        result["expected"] = expected
+
     # Score
     try:
         scores = score_extraction(extracted, expected)
@@ -179,6 +228,7 @@ def _evaluate_fixture(
 def run_eval(
     fixtures_dir: str | Path,
     strategy: str = "text_extractor",
+    include_payloads: bool = False,
 ) -> dict[str, Any]:
     """Run eval across all fixtures for a given strategy.
 
@@ -192,6 +242,9 @@ def run_eval(
     Args:
         fixtures_dir: Path to the fixtures root directory.
         strategy: Strategy key from STRATEGIES registry.
+        include_payloads: Attach the raw ``extracted`` / ``expected``
+            recipe dicts to each per-fixture result (needed by the
+            irrd-3a confidence-calibration and title-regression gates).
 
     Returns:
         Summary dict with per-fixture and aggregate scores.
@@ -217,7 +270,7 @@ def run_eval(
     results: list[dict[str, Any]] = []
     for fixture in fixtures:
         console.print(f"  Evaluating: {fixture['id']}...", end=" ")
-        result = _evaluate_fixture(fixture, strategy)
+        result = _evaluate_fixture(fixture, strategy, include_payloads=include_payloads)
         results.append(result)
 
         if result["error"]:

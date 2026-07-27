@@ -122,6 +122,48 @@ Gate tightening is a follow-up story once real traffic accumulates in
 `error_logs(service="audit", error_type="InferredFieldCorrected")` and
 we can tune from correction data.
 
+### Confidence gates (irrd-3a, opt-in)
+
+Two gates over the fixture set in `fixtures/`, wired together in
+`src/confidence_gates.py`:
+
+| Gate | Metric | Rule | Enforcement |
+|---|---|---|---|
+| Confidence calibration | `mean(abs(confidence_score - overall_f1))` | MAE ≤ 0.30 | hard |
+| Title regression | `title_extraction_f1` (token-level F1 vs the ground-truth title) | no more than a 5% relative drop vs `baselines/extraction_baseline.json` | soft (blocking for irrd-3a) |
+
+Both run the **real** extractors, so the command needs `OPENAI_API_KEY`
+and takes roughly ten minutes over the checked-in fixtures. It is
+deliberately **opt-in** — invoked explicitly, never part of the fast CI
+path. The deterministic half (metric math, threshold comparison,
+baseline load/compare, report rendering) is unit-tested without network
+in `tests/test_confidence_calibration.py`,
+`tests/test_title_extraction.py`, and `tests/test_confidence_gates.py`.
+
+```bash
+# Run both gates against the current baselines. Exit 1 if either fails.
+npx nx run eval:confidence-gate
+
+# Save the full report (per-fixture errors, correlations, worst offenders).
+npx nx run eval:confidence-gate -- --output results/confidence_gates.json
+
+# Capture the PRE-confidence title baseline, then compare with the flag on.
+EXTRACTOR_EMIT_CONFIDENCE=false npx nx run eval:confidence-gate -- --write-baseline
+EXTRACTOR_EMIT_CONFIDENCE=true  npx nx run eval:confidence-gate
+```
+
+`--write-baseline` rewrites both `baselines/confidence_calibration_baseline.json`
+and `baselines/extraction_baseline.json` from the run (stamping the
+timestamp and commit, and mirroring the live heuristic weights), merging
+into the existing files so their explanatory comments survive. Review the
+diff and commit the baselines together with the change that produced them.
+
+On failure the report names the next step: a calibration failure reports
+the per-signal correlation against ground-truth F1 and points at the
+signal to shift weight toward in
+`libraries/utils/utils/services/recipe_extractors/confidence_heuristic.py`;
+a title failure points at the confidence-emitting prompts.
+
 ## Adding Test Cases
 
 ### Manual Method

@@ -70,6 +70,21 @@ def _extract_step_signal(recipe: Any) -> float:
     return 0.0
 
 
+def structural_signals(recipe: Any) -> dict[str, float]:
+    """The three raw signals the heuristic weighs, before weighting.
+
+    Exposed for the irrd-3a calibration gate: correlating each signal
+    against ground-truth F1 is what tells a retune which factor to shift
+    weight toward. Keys match the weight constants (and
+    ``SIGNAL_NAMES`` in ``services/eval/src/metrics/confidence_calibration.py``).
+    """
+    return {
+        "ingredients": _extract_ingredient_signal(recipe),
+        "title": _extract_title_signal(recipe),
+        "steps": _extract_step_signal(recipe),
+    }
+
+
 def compute_heuristic_confidence(recipe: Any) -> float:
     """Compute the fallback confidence score for one recipe.
 
@@ -77,14 +92,12 @@ def compute_heuristic_confidence(recipe: Any) -> float:
     (``parsed_recipe`` JSON) so callers can run the heuristic before OR
     after serialization. Clamped to [0.0, 1.0].
     """
-    ing_signal = _extract_ingredient_signal(recipe)
-    title_signal = _extract_title_signal(recipe)
-    step_signal = _extract_step_signal(recipe)
+    signals = structural_signals(recipe)
 
     score = (
-        _W_INGREDIENTS * ing_signal
-        + _W_TITLE * title_signal
-        + _W_STEPS * step_signal
+        _W_INGREDIENTS * signals["ingredients"]
+        + _W_TITLE * signals["title"]
+        + _W_STEPS * signals["steps"]
     )
     # Clamp. The weights-sum constraint keeps this in [0, 1] already,
     # but clamp defensively against future weight edits.

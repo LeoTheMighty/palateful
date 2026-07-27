@@ -1,5 +1,5 @@
 {
-  "_comment": "irrd-3a baseline for confidence_calibration (MAE of |confidence_score - overall_f1| across services/eval/fixtures/expected/*.json). NULL placeholders until the first real eval run — that run needs OPENAI_API_KEY and ~10 min, so it is opt-in and never part of the fast CI path. The MAE <= 0.3 gate in src/metrics/confidence_calibration.py reads `threshold`, not this baseline: `mae` here is trend context only (delta_vs_baseline in the run summary). Re-generate with the documented opt-in command and copy the reported values here along with the commit SHA.",
+  "_comment": "irrd-3a baseline for confidence_calibration (MAE of |confidence_score - overall_f1| across services/eval/fixtures/expected/*.json). NULL placeholders until the first real eval run — that run needs OPENAI_API_KEY and ~10 min, so it is opt-in and never part of the fast CI path. The MAE <= 0.3 gate in src/metrics/confidence_calibration.py reads `threshold`, not this baseline: `mae` here is trend context only (delta_vs_baseline in the run summary). Re-generate with `npx nx run eval:confidence-gate -- --write-baseline`, which stamps _generated_at/_generated_commit and mirrors the live heuristic weights.",
   "_generated_at": null,
   "_generated_commit": null,
   "_extractor_flag": "EXTRACTOR_EMIT_CONFIDENCE=true",
