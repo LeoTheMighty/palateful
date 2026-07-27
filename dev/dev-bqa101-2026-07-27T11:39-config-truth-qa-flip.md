@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T11:39:00-06:00
 title: Config truth — qa flip to installed tools, runner resolution green
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: in-progress
+status: done
 owner: /devx-2026-07-27T1221-13346
 branch: feat/dev-bqa101
 ---
@@ -42,3 +42,12 @@ Make the `qa:` block in `devx.config.yaml` stop lying and turn E-1 green. The `p
 - phase 7: remote CI came back **failure** on run 30293935751 (`devx-ci` / `test`). Investigated before assuming ownership: the failure is **pre-existing and unrelated to bqa101** — `gh run list --workflow=devx-ci.yml` shows `failure` for every retained run including `push` to `main`, predating this branch. Root cause: `.github/workflows/devx-ci.yml:43` ran `npm test --silent` with no `--if-present` guard while its sibling `lint` (:31) and `coverage` (:55) jobs both have one, and `package.json` declares no `test` script. Filed `debug/debug-dvxci1-*.md` + DEBUG.md row, and applied the one-line root-cause fix on this branch per the skill's fix-the-root-cause-on-the-branch rule (`6ea893d`). **Scope note**: this reaches outside the spec's declared `devx.config.yaml only` surface into shared CI infra — deliberate and flagged, because the alternative was that no devx PR in this repo can ever merge (PRs #1, #2, #3 were all stuck on the same red). The fix makes the job a no-op here, so the debug spec leaves open for the user whether a TS/JS `devx-ci` should exist at all in a Python/Flutter repo where `ci.yml` already runs pytest + flutter test.
 - phase 7: post-fix, `devx-ci` is **green** (run 30294452547 — `test` job passes in 18s, confirming the dvxci1 root cause). `ci.yml` however came back **failure** on `flutter-test`: 3 tests in `app/test/features/activity/imports_tab_test.dart`. Again checked ownership before acting — `main`'s own run 30293754580 fails with the *identical* three tests and identical counts (`1521 tests passed, 3 failed`), and bqa101 touches no Dart. Filed `debug/debug-imptab1-*.md` + DEBUG.md row with the evidence (assertions find **zero** widgets, not wrong ones → points at the bucketing path, not a copy change) and did **not** expand scope a second time to fix it — that is unrelated feature work, not a drive-by.
 - phase 8: `devx merge-gate bqa101` → `{"merge":false,"reason":"CI not green (conclusion=failure)","advice":["wait for CI"]}`; `check-hold 3` → `{"hold":false}` (no hold). Not merged. The gate's "wait for CI" advice cannot resolve here — CI is terminally failed on a pre-existing red, so re-polling would loop forever — and merging would require an `--admin` override that is not authorized. **PR #3 is left open pending the user's call on imptab1** (fix it, or override). All bqa101 ACs are met and E-1 is green regardless.
+- 2026-07-27T19:55 — merged via PR #3 (squash → 46336bd). Unblocking took
+  two out-of-scope reds filed at Phase 7, neither caused by this story:
+  dvxci1 (`devx-ci` `test`) and imptab1 (`flutter-test`). They were a mutual
+  block — PR #3 needed imptab1 fixed, and imptab1's PR #6 needed dvxci1's
+  workflow line. Resolved by landing imptab1 off `main` as PR #6 with the
+  dvxci1 line ported byte-identically, then merging `origin/main` back here;
+  the workflow file resolved with no conflict. No merge-gate override was
+  used — `devx merge-gate bqa101` returned `{"merge":true}` on a fully green
+  PR. bqa102 ∥ bqa103 are now unblocked.
