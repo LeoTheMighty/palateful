@@ -106,14 +106,19 @@ class VisionExtractionEvaluator(RecipeExtractionEvaluator):
             return result
         else:
             try:
-                extracted, duration_ms, cost_cents = self._extract_from_image(
+                extracted, duration_ms, cost_cents, succeeded = self._extract_from_image(
                     case.input_path
                 )
                 result.actual_output = extracted
                 result.duration_ms = duration_ms
                 result.cost_cents = cost_cents
 
-                if extracted:
+                # Only a *successful* extraction is worth remembering. A
+                # failure still grades 0.0 for this run, but caching it
+                # would make every later mock re-grade replay a zero that
+                # was really a missing key or a transient API error —
+                # indistinguishable from a genuine model miss.
+                if extracted and succeeded:
                     extracted["_cost_cents"] = cost_cents
                     self.save_cached_response(cache_key, extracted)
             except Exception as e:
@@ -160,14 +165,15 @@ class VisionExtractionEvaluator(RecipeExtractionEvaluator):
 
         return result
 
-    def _extract_from_image(self, image_path) -> tuple[dict | None, float, int]:
+    def _extract_from_image(self, image_path) -> tuple[dict | None, float, int, bool]:
         """Run the production vision extractor against one image file.
 
         Returns:
-            Tuple of (extracted_dict_or_None, duration_ms, cost_cents).
-            The dict is always the multi-recipe shape
+            Tuple of (extracted_dict_or_None, duration_ms, cost_cents,
+            succeeded). The dict is always the multi-recipe shape
             (`{"recipes": [...]}`) so it feeds `_calculate_metrics`
-            unchanged.
+            unchanged. `succeeded` mirrors `ExtractionResult.success` and
+            gates caching — see `evaluate`.
         """
         from utils.services.recipe_extractors.vision_extractor import (
             extract_recipe_from_image,
@@ -190,9 +196,10 @@ class VisionExtractionEvaluator(RecipeExtractionEvaluator):
             # A failed extraction is a real miss, not an infra error: fall
             # through with an empty recipe list so recipe_count_accuracy
             # scores 0 instead of the case erroring out of the average.
-            return {"recipes": []}, duration_ms, cost_cents
+            # It is *not* cached — the caller drops it.
+            return {"recipes": []}, duration_ms, cost_cents, False
 
         # Post pho-1 the extractor returns `recipes`; `recipe` is a
         # deprecated alias and is intentionally not read here.
         recipes = [self._recipe_to_dict(r) for r in (extraction.recipes or [])]
-        return {"recipes": recipes}, duration_ms, cost_cents
+        return {"recipes": recipes}, duration_ms, cost_cents, True

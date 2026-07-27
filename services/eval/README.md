@@ -103,7 +103,10 @@ Cost and safety:
   rather than billed, and an all-skipped run passes the gate (a no-op is
   not a regression).
 - A failed extraction ("no recipe found") is graded `0.0`, not dropped as
-  an error — a miss must stay in the average.
+  an error — a miss must stay in the average. It is **not** cached: a run
+  made without a valid `OPENAI_API_KEY` fails every case, and caching those
+  zeros would make each later `EVAL_MOCK_AI=true` re-grade replay a
+  fabricated 0.0 that looks exactly like a genuine model miss.
 
 Baseline capture:
 
@@ -307,10 +310,13 @@ Exit codes:
 ## Development
 
 ```bash
+# Install deps into the service venv (first run, or after a lock change)
+npx nx run eval:install
+
 # Lint
 npx nx run eval:lint
 
-# Run tests
+# Run tests (no API calls; writes coverage/ and reports/ like every other service)
 npx nx run eval:test
 
 # Generate lock file

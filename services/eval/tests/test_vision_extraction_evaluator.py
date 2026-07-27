@@ -296,6 +296,60 @@ def test_extractor_exception_becomes_a_case_error(monkeypatch):
     assert result.passed is False
 
 
+def _cached_evaluator(cache_root, **overrides) -> VisionExtractionEvaluator:
+    """An evaluator whose cache lives in a tmp dir, so a write is visible
+    without touching the real (gitignored but shared) datasets tree."""
+    config = EvalConfig(dataset_dir=cache_root, cache_responses=True, **overrides)
+    return VisionExtractionEvaluator(config)
+
+
+def _real_case(case_id: str) -> EvalCase:
+    return [c for c in _make_evaluator().load_cases() if c.id == case_id][0]
+
+
+def test_failed_extraction_is_not_written_to_the_cache(tmp_path, monkeypatch):
+    """Regression: `{"recipes": []}` is a truthy dict, so a failed
+    extraction used to be cached like a real answer. One run without an
+    API key then poisoned the cache, and every later mock re-grade
+    replayed a fabricated 0.0 that was indistinguishable from a genuine
+    model miss."""
+    _patch_extractor(monkeypatch, _FakeExtraction([], success=False))
+
+    evaluator = _cached_evaluator(tmp_path)
+    result = evaluator.evaluate(_real_case("multi_recipe_facing_pages"))
+
+    assert result.metrics["recipe_count_accuracy"] == 0.0  # still graded as a miss
+    assert list(evaluator.cache_dir.glob("*.json")) == []
+
+
+def test_successful_extraction_is_written_to_the_cache(tmp_path, monkeypatch):
+    """Guard the inverse: the fix must not disable caching outright, or
+    the post-live-run re-grade path loses its only input."""
+    _patch_extractor(monkeypatch, _FakeExtraction([_FakeRecipe("A"), _FakeRecipe("B")]))
+
+    evaluator = _cached_evaluator(tmp_path)
+    evaluator.evaluate(_real_case("multi_recipe_facing_pages"))
+
+    cached = list(evaluator.cache_dir.glob("*.json"))
+    assert len(cached) == 1
+    assert len(json.loads(cached[0].read_text())["recipes"]) == 2
+
+
+def test_mock_rerun_after_a_failed_run_skips_instead_of_replaying_zero(
+    tmp_path, monkeypatch
+):
+    """End of the same regression: with nothing cached, the next mock run
+    must fall into the skip guard rather than grading a phantom zero."""
+    _patch_extractor(monkeypatch, _FakeExtraction([], success=False))
+    case = _real_case("multi_recipe_facing_pages")
+
+    _cached_evaluator(tmp_path).evaluate(case)  # failed live-ish run
+    replay = _cached_evaluator(tmp_path, mock_ai=True).evaluate(case)
+
+    assert replay.skipped is True
+    assert "recipe_count_accuracy" not in replay.metrics
+
+
 def test_extractor_receives_image_bytes(monkeypatch):
     calls: list = []
     _patch_extractor(monkeypatch, _FakeExtraction([_FakeRecipe("A")]), calls)
