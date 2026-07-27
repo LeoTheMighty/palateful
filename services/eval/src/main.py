@@ -13,7 +13,13 @@ from src.runner import EvalRunner
 
 console = Console()
 
-ALL_SUITES = ["ocr", "recipe_extraction", "recipe_parse", "chat_agent"]
+ALL_SUITES = ["ocr", "recipe_extraction", "vision_extraction", "recipe_parse", "chat_agent"]
+
+# bugs-imp-pho-7: `vision_extraction` is opt-in. Every non-cached case is a
+# live gpt-4o-mini vision call, so it is excluded from the bare `run`
+# default and must be requested with `--suite vision_extraction`.
+OPT_IN_SUITES = ["vision_extraction"]
+DEFAULT_SUITES = [s for s in ALL_SUITES if s not in OPT_IN_SUITES]
 
 
 @click.group()
@@ -36,7 +42,16 @@ def cli(ctx: click.Context, env_file: str | None, config: str | None, verbose: b
 
 
 @cli.command()
-@click.option("--suite", "-s", multiple=True, help=f"Evaluation suites to run ({', '.join(ALL_SUITES)})")
+@click.option(
+    "--suite",
+    "-s",
+    multiple=True,
+    help=(
+        f"Evaluation suites to run ({', '.join(ALL_SUITES)}). "
+        f"Default runs {', '.join(DEFAULT_SUITES)}; "
+        f"{', '.join(OPT_IN_SUITES)} is opt-in (live vision calls cost money)."
+    ),
+)
 @click.option("--tags", "-t", multiple=True, help="Only run cases with these tags")
 @click.option("--skip-tags", multiple=True, help="Skip cases with these tags")
 @click.option("--compare", help="Compare results with a previous run (JSON file path)")
@@ -60,7 +75,7 @@ def run(
         config.skip_tags = list(skip_tags)
 
     # Determine which suites to run
-    suites_to_run = list(suite) if suite else ALL_SUITES
+    suites_to_run = list(suite) if suite else DEFAULT_SUITES
 
     invalid_suites = set(suites_to_run) - set(ALL_SUITES)
     if invalid_suites:

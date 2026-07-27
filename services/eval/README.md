@@ -60,6 +60,56 @@ Tests HTML-to-recipe conversion using JSON-LD and AI extractors.
 
 Multi-recipe expected files use `{"recipes": [recipe_a, recipe_b, ...]}`. Single-recipe expected files keep the legacy bare-recipe shape; the evaluator wraps both transparently, pair-wise aligns expected-vs-actual in source order, and grades accordingly.
 
+### Vision Extraction (`--suite vision_extraction`)
+
+Tests **image**-to-recipe conversion — `extract_recipe_from_image`
+(gpt-4o-mini vision), the path behind photo import. It is the vision twin
+of the recipe-extraction suite: `VisionExtractionEvaluator` subclasses
+`RecipeExtractionEvaluator`, so it computes the *same* metrics through the
+*same* order-based alignment. Only the input (a PNG instead of HTML) and
+the extractor call differ.
+
+```bash
+# Opt-in: not part of the default `run` (every case is a live vision call).
+poetry run python -m src.main run --suite vision_extraction
+
+# Just the fan-out cases.
+poetry run python -m src.main run --suite vision_extraction --tags multi_recipe
+```
+
+| Metric | Description |
+|--------|-------------|
+| `recipe_count_accuracy` | **Hard gate, 0.80.** Fraction of cases where the vision extractor returned the right *number* of recipes. 1.0 per exact match / 0.0 otherwise. |
+| `multi_recipe_count_accuracy` | Same number, emitted **only** on `multi_recipe`-tagged cases, and gated separately at 0.80. Single-recipe photos score ~1.0 for free, so grading them together would let a fan-out regression hide behind the average. |
+| `field_accuracy` | Per-recipe field match rate. **Reported, not gated** — a first baseline is being collected before a regression bar is set. Also drives per-case pass/fail. |
+| `ingredient_count_accuracy`, `instruction_similarity`, `timer_extraction_f1`, `unit_enum_compliance` | Identical to the text suite. |
+
+What it measures, in one line: *given a photo of one or more recipes, does
+the extractor emit the right number of recipes, with the right fields on
+each?*
+
+Cost and safety:
+
+- `vision_extraction` is excluded from the default suite list (`run` with
+  no `--suite`). Ask for it explicitly.
+- Under `EVAL_MOCK_AI=true`, a case with no cached response is **skipped**
+  rather than billed, and an all-skipped run passes the gate (a no-op is
+  not a regression).
+- A failed extraction ("no recipe found") is graded `0.0`, not dropped as
+  an error — a miss must stay in the average.
+
+Fixtures live in the shared tree (`fixtures/images/` + `fixtures/expected/`)
+and are registered in `datasets/vision_extraction/manifest.yaml`. Because an
+image fixture is a render of its text twin, both grade against one expected
+JSON. To add one, follow the generator procedure in
+[`fixtures/README.md`](fixtures/README.md): write the recipe text under
+`fixtures/text/`, add a `LAYOUTS` entry, run
+`poetry run python scripts/generate_image_fixtures.py`, add the expected
+JSON, then register the case in the vision manifest with
+`single_recipe`/`multi_recipe` + `image` tags. `tests/test_vision_fixtures.py`
+and `tests/test_vision_extraction_evaluator.py` check the whole chain lines
+up without spending a cent.
+
 ### Ingredient Matching (`npx nx run eval:run-matching`)
 
 Tests ingredient text matching to database ingredients.
@@ -154,6 +204,9 @@ datasets/
 │   ├── html/                # Input HTML files
 │   ├── expected/            # Expected JSON outputs
 │   └── cache/               # Cached extraction responses
+├── vision_extraction/
+│   ├── manifest.yaml        # Points at ../../fixtures/{images,expected}
+│   └── cache/               # Cached vision responses
 └── ingredient_matching/
     └── cases.yaml           # Input → expected match pairs
 ```

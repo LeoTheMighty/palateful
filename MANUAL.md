@@ -6,6 +6,25 @@
 - [ ] **iOS share-extension ship steps** — execute `SHARE.md` (App ID + App Group + provisioning profile, Xcode signing for `PalatefulShare`, on-device happy-path validation, device matrix before next TestFlight). Code for sie-1..5 is on main. Source: legacy DEV.md "MANUAL DOCS" + epic-share-ios-extension.
 
 
+## Spec-blocking runs
+
+- [ ] **bugsimppho7: capture the vision-eval baseline run** — AC4 of
+  `dev/dev-bugsimppho7-*-vision-extraction-eval-suite.md` wants a first
+  `vision_extraction` run pasted into the PR description as the
+  `field_accuracy` regression baseline. It needs a real `OPENAI_API_KEY`
+  and bills 5 live gpt-4o-mini vision calls, so no unattended agent can
+  do it. Run from `services/eval/`:
+
+  ```bash
+  OPENAI_API_KEY=<key> poetry run python -m src.main run \
+      --suite vision_extraction --output results/vision-baseline.json
+  ```
+
+  Paste the per-metric summary (especially `recipe_count_accuracy_avg`,
+  `multi_recipe_count_accuracy_avg`, `field_accuracy_avg`) into the PR.
+  Everything else in the suite — evaluator, 0.80 gate, fixtures, docs,
+  and 48 offline tests — is already green without spending anything.
+
 ## /devx-init deferred work
 
 - [ ] **devx-init: supervisor-install-deferred** — OS-supervisor install deferred by non-interactive `devx init`

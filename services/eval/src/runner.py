@@ -102,6 +102,9 @@ class EvalRunner:
             elif suite == "recipe_extraction":
                 from src.evaluators.recipe_extraction_evaluator import RecipeExtractionEvaluator
                 self._evaluators[suite] = RecipeExtractionEvaluator(self.config)
+            elif suite == "vision_extraction":
+                from src.evaluators.vision_extraction_evaluator import VisionExtractionEvaluator
+                self._evaluators[suite] = VisionExtractionEvaluator(self.config)
             elif suite == "recipe_parse":
                 from src.evaluators.recipe_parse_evaluator import RecipeParseEvaluator
                 self._evaluators[suite] = RecipeParseEvaluator(self.config)
@@ -275,6 +278,21 @@ class EvalRunner:
             return (
                 field_acc >= thresholds.recipe_field_accuracy
                 and count_acc >= thresholds.recipe_count_accuracy
+            )
+        elif suite == "vision_extraction":
+            # bugs-imp-pho-7: the vision path is graded at the same
+            # recipe_count_accuracy bar as text. Both the suite-wide
+            # average and the multi_recipe-tagged subset must clear it —
+            # the tag-scoped key exists so single-recipe photos (which
+            # score 1.0 nearly for free) can't pad the fan-out grade.
+            #
+            # field_accuracy is reported but NOT gated yet: a first
+            # baseline is being collected before a regression bar is set.
+            count_acc = metrics.get("recipe_count_accuracy_avg", 1.0)
+            multi_count_acc = metrics.get("multi_recipe_count_accuracy_avg", 1.0)
+            return (
+                count_acc >= thresholds.recipe_count_accuracy
+                and multi_count_acc >= thresholds.recipe_count_accuracy
             )
         elif suite == "recipe_parse":
             field_acc = metrics.get("field_accuracy_avg", 0)

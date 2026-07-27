@@ -66,6 +66,12 @@ To add an image fixture: write the recipe text under `text/`, add a
 the case in the vision manifest. `tests/test_vision_fixtures.py` checks
 the whole chain lines up.
 
+These fixtures are consumed by the **Vision Extraction** suite
+(`VisionExtractionEvaluator`), which grades `extract_recipe_from_image` at
+a hard `recipe_count_accuracy >= 0.80` bar on `multi_recipe`-tagged cases.
+See [the suite section in the eval README](../README.md#vision-extraction---suite-vision_extraction)
+for the metric table, the gate, and how to run it.
+
 ## Adding a New Fixture
 
 1. Place the input file in the appropriate subdirectory (`text/`, `images/`, or `urls/`).
