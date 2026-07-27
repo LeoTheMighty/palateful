@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T11:39:00-06:00
 title: Config truth — qa flip to installed tools, runner resolution green
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-27T1221-13346
 branch: feat/dev-bqa101
 ---
 
@@ -25,3 +26,4 @@ Make the `qa:` block in `devx.config.yaml` stop lying and turn E-1 green. The `p
 
 ## Status log
 - 2026-07-27T11:39 — emitted from plan 41ee13 at RED-gate PASS (tests-first phase; RED artifact `evals/e1_runner_resolution.sh` observed failing right-reason, see `evals/RED-report.md`).
+- 2026-07-27T12:21:55-06:00 — claimed by /devx in session /devx-2026-07-27T1221-13346

@@ -40,7 +40,7 @@ Critical path: aam7 / aam8 / aam22 / aam23 in parallel → aam24 cutover → aam
 
 Dependency shape: bqa101 ∥ bqa102 ∥ bqa103 (disjoint files/repos) → bqa104 after bqa103 (same devx repo; single version bump) → bqa105 after all four → bqa106 (attended, needs Leo) → bqa107 (attended, needs Leo). bqa103/bqa104/bqa107 land work in `~/personal/devx` (direct to its main — user-locked FR-5). Eval artifacts were authored at RED — stories re-run them, never re-author.
 
-- [ ] `dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md` — Config truth — qa flip to installed tools, runner resolution green (E-1). Status: ready. Blocked-by: —. Parallel-safe with bqa102/bqa103.
+- [/] `dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md` — Config truth — qa flip to installed tools, runner resolution green (E-1). Status: in-progress. Blocked-by: —. Parallel-safe with bqa102/bqa103.
 - [ ] `dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md` — E2E revival — one-command green with lifecycle wrapper + 3 latent-defect fixes (E-2). Status: ready. Blocked-by: —. Parallel-safe with bqa101/bqa103.
 - [ ] `dev/dev-bqa103-2026-07-27T11:41-upstream-walkthrough-template.md` — Upstream story-derived QA — template, emission wiring, schema enum. Status: ready. Blocked-by: —. Cross-repo (devx main). Parallel-safe with bqa101/bqa102.
 - [ ] `dev/dev-bqa104-2026-07-27T11:42-upstream-devx-test-skill.md` — Upstream attended layer — /devx-test skill, routing, QA.md carve-out, version bump. Status: ready. Blocked-by: bqa103. Cross-repo (devx main).
