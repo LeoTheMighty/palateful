@@ -184,7 +184,17 @@ class EvalRunner:
         suite_result.metrics_summary = self._calculate_metrics_summary(suite_result.results)
 
         # Check thresholds
-        suite_result.passed_threshold = self._check_thresholds(suite, suite_result.metrics_summary)
+        if suite_result.skipped_cases == suite_result.total_cases:
+            # Nothing was measured (e.g. `mock_ai` with a cold cache), so
+            # there is no regression to report. Without this, a zero-spend
+            # no-op run reads as a hard failure because every gate defaults
+            # its missing accuracy metric to 0. Errored cases are *not*
+            # skipped, so a genuinely broken suite still goes red.
+            suite_result.passed_threshold = True
+        else:
+            suite_result.passed_threshold = self._check_thresholds(
+                suite, suite_result.metrics_summary
+            )
 
         return suite_result
 

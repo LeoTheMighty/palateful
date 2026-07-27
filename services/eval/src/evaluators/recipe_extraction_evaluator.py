@@ -23,6 +23,10 @@ from src.metrics.unit_enum_compliance import compute_unit_enum_compliance
 _TIMER_DURATION_SLACK = 0.20
 _TIMER_LABEL_SIM_MIN = 0.60
 
+# Extractor types with no offline path — every case is a live model call.
+# In `mock_ai` mode a cache miss on one of these is skipped, not scored.
+_AI_ONLY_EXTRACTORS = frozenset({"ai", "text"})
+
 
 class RecipeExtractionEvaluator(BaseEvaluator):
     """Evaluates recipe extraction from HTML content."""
@@ -33,14 +37,28 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         super().__init__(config)
 
     def load_cases(self) -> list[EvalCase]:
-        """Load recipe extraction test cases from manifest."""
+        """Load recipe extraction test cases from manifest.
+
+        A case names its input with either `html:` (a scraped page) or
+        `text:` (plain OCR-style text, graded through
+        `extract_recipe_from_text`). Paths may contain `../` so a case can
+        point at the shared fixture tree and share one expected JSON with
+        its image twin in the `vision_extraction` suite.
+        """
         manifest = self.load_manifest()
         cases = []
 
         for case_data in manifest.get("cases") or []:
             case_id = case_data["id"]
-            html_path = self.suite_dir / case_data.get("html", f"html/{case_id}.html")
-            expected_path = self.suite_dir / case_data.get("expected", f"expected/{case_id}.json")
+            input_rel = (
+                case_data.get("html")
+                or case_data.get("text")
+                or f"html/{case_id}.html"
+            )
+            html_path = (self.suite_dir / input_rel).resolve()
+            expected_path = (
+                self.suite_dir / case_data.get("expected", f"expected/{case_id}.json")
+            ).resolve()
 
             # Load expected JSON if available
             expected_data = None
@@ -75,21 +93,30 @@ class RecipeExtractionEvaluator(BaseEvaluator):
 
         # Check if input exists
         if not case.input_data:
-            result.error = f"HTML content not found for case: {case.id}"
+            result.error = f"Input content not found for case: {case.id} ({case.input_path})"
             return result
 
         # Check cache first
         cache_key = case.get_cache_key()
         cached = self.get_cached_response(cache_key)
 
+        extractor_type = case.metadata.get("extractor", "auto")
+
         if cached is not None:
             result.actual_output = cached
             result.cache_hit = True
             result.cost_cents = cached.get("_cost_cents", 0)
+        elif self.config.mock_ai and extractor_type in _AI_ONLY_EXTRACTORS:
+            # Nothing to grade offline: these extractors have no
+            # non-AI path, so scoring 0.0 here would report a no-op run
+            # as a fan-out regression. Same semantics as the vision
+            # suite. (`auto` is excluded — its JSON-LD leg runs offline.)
+            result.skipped = True
+            result.metrics["note"] = "mock_ai enabled and no cached response"
+            return result
         else:
             # Run extraction
             try:
-                extractor_type = case.metadata.get("extractor", "auto")
                 extracted, duration_ms, cost_cents = self._extract_recipe(
                     html=case.input_data,
                     url=case.metadata.get("url"),
@@ -140,35 +167,52 @@ class RecipeExtractionEvaluator(BaseEvaluator):
         url: str | None,
         extractor_type: str,
     ) -> tuple[dict | None, float, int]:
-        """Extract recipe from HTML content.
+        """Extract recipe(s) from the case input.
 
         Args:
-            html: HTML content to extract from.
+            html: Page HTML, or — for `extractor_type == "text"` — plain
+                OCR-style recipe text.
             url: Source URL (optional).
-            extractor_type: Type of extractor to use (json_ld, ai, auto).
+            extractor_type: Type of extractor to use (json_ld, ai, auto,
+                text).
 
         Returns:
-            Tuple of (extracted_recipe_dict, duration_ms, cost_cents)
+            Tuple of (extracted_dict, duration_ms, cost_cents). The dict is
+            always the multi-recipe shape (`{"recipes": [...]}`) so
+            `recipe_count_accuracy` can grade fan-out; `_calculate_metrics`
+            accepts it unchanged.
         """
-        if self.config.mock_ai and extractor_type == "ai":
+        if self.config.mock_ai and extractor_type in ("ai", "text"):
             # Return None in mock mode for AI extraction if no cache
             return None, 0.0, 0
 
         # Import production extractors
         from utils.services.recipe_extractors.ai_extractor import AIExtractor
         from utils.services.recipe_extractors.json_ld import JsonLdExtractor
+        from utils.services.recipe_extractors.text_extractor import (
+            extract_recipe_from_text,
+        )
 
         cost_cents = 0
         extracted = None
         duration_ms = 0.0
+
+        if extractor_type == "text":
+            # OCR-style plain text (the fan-out fixtures) — same model
+            # family as the vision path, different input modality.
+            result, duration_ms = self.timed_execution(extract_recipe_from_text, html)
+            if result.success:
+                extracted = self._to_multi_recipe_dict(result)
+                cost_cents = result.ai_cost_cents
+            return extracted, duration_ms, cost_cents
 
         if extractor_type == "json_ld" or extractor_type == "auto":
             # Try JSON-LD first
             json_ld = JsonLdExtractor()
             result, duration_ms = self.timed_execution(json_ld.extract, html, url)
 
-            if result.success and result.recipe:
-                extracted = self._recipe_to_dict(result.recipe)
+            if result.success and result.recipes:
+                extracted = self._to_multi_recipe_dict(result)
                 cost_cents = result.ai_cost_cents
 
         if extracted is None and (extractor_type == "ai" or extractor_type == "auto"):
@@ -177,11 +221,21 @@ class RecipeExtractionEvaluator(BaseEvaluator):
                 ai_extractor = AIExtractor()
                 result, duration_ms = self.timed_execution(ai_extractor.extract, html, url)
 
-                if result.success and result.recipe:
-                    extracted = self._recipe_to_dict(result.recipe)
+                if result.success and result.recipes:
+                    extracted = self._to_multi_recipe_dict(result)
                     cost_cents = result.ai_cost_cents
 
         return extracted, duration_ms, cost_cents
+
+    def _to_multi_recipe_dict(self, result) -> dict:
+        """Wrap an `ExtractionResult` as `{"recipes": [...]}`.
+
+        Reads the canonical `recipes` list, never the deprecated singular
+        `recipe` alias: collapsing a fan-out to its first recipe would make
+        every multi-recipe case score `recipe_count_accuracy` 0.0 while
+        looking like a model miss.
+        """
+        return {"recipes": [self._recipe_to_dict(r) for r in (result.recipes or [])]}
 
     def _recipe_to_dict(self, recipe) -> dict:
         """Convert ExtractedRecipe to a plain dict."""

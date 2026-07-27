@@ -201,5 +201,4 @@ class VisionExtractionEvaluator(RecipeExtractionEvaluator):
 
         # Post pho-1 the extractor returns `recipes`; `recipe` is a
         # deprecated alias and is intentionally not read here.
-        recipes = [self._recipe_to_dict(r) for r in (extraction.recipes or [])]
-        return {"recipes": recipes}, duration_ms, cost_cents, True
+        return self._to_multi_recipe_dict(extraction), duration_ms, cost_cents, True

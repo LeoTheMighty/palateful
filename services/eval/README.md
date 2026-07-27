@@ -63,6 +63,21 @@ Tests HTML-to-recipe conversion using JSON-LD and AI extractors.
 
 Multi-recipe expected files use `{"recipes": [recipe_a, recipe_b, ...]}`. Single-recipe expected files keep the legacy bare-recipe shape; the evaluator wraps both transparently, pair-wise aligns expected-vs-actual in source order, and grades accordingly.
 
+**Manifest input keys.** A case names its input with either:
+
+| Key | Extractor (`extractor:`) | Runs offline? |
+|---|---|---|
+| `html:` | `json_ld`, `ai`, `auto` | `json_ld`/`auto` yes, `ai` no |
+| `text:` | `text` (`extract_recipe_from_text`) | no — live gpt-4o-mini |
+
+Paths may contain `../`, which is how the committed fan-out cases point at
+`fixtures/text/*.txt` and share one expected JSON with their image twin in
+the vision suite. Extractors with no offline path (`ai`, `text`) are
+**skipped** under `EVAL_MOCK_AI` when the cache is cold rather than scored
+0.0 — a suite where every case was skipped is reported as passing, because
+nothing was measured. Errored cases are not skipped, so a genuinely broken
+suite still goes red.
+
 ### Vision Extraction (`npx nx run eval:run-vision`)
 
 Tests **image**-to-recipe conversion — `extract_recipe_from_image`
@@ -291,6 +306,16 @@ EVAL_MOCK_AI=true npx nx run eval:run
 ```
 
 Cache files are stored in `datasets/*/cache/` and keyed by input content hash.
+
+Two things to know before trusting a mock run:
+
+- **Cache state is an invisible input.** `EVAL_MOCK_AI=true` only skips
+  AI-only cases when the cache is *cold*; with entries present the same
+  command grades them instead. Check `datasets/<suite>/cache/` before
+  reading a result as "the suite passed without spending".
+- **Only successful extractions are cached** (see the vision suite's
+  cost-and-safety notes above for why) — so a keyless run leaves the cache
+  as it found it.
 
 ## CI Integration
 
