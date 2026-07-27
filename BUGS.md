@@ -13,11 +13,27 @@ Bugs/Improvements:
 * Creating a Meal breaks
 * PUSH NOTIFICATIONS
 * Logging out shows a weird auth0 page
+    * **btri01 2026-07-27 — STILL BROKEN, refiled.** bas-1 (`f839f67`) is not a
+      fix: it hand-builds a `returnTo` with `Environment.auth0Scheme`
+      (`com.palateful.app`) in the path segment that `auth0_flutter` fills with
+      the bundle id / package name (`com.palateful.palateful`), and the SDK
+      already defaults `returnTo` to the correct URL when the argument is
+      omitted. Now tracked in
+      `debug/debug-lgort1-2026-07-27T17:41-auth0-logout-returnto-malformed.md`
+      (+ a MANUAL.md item to read back the tenant's Allowed Logout URLs).
 * Change language to be "dismiss" in imports/notifs instead of archive (for successful ones it's weird language)
 * Shopping cart still broken
     * Can't open at all because of "Import all from calendar" bug
     * Also still seeing the Websocket errors in crashlytics
 * When token needs a refresh sometimes get very strange errors in the app, should detect "need to refresh auth" errors everywhere
+    * **btri01 2026-07-27 — CLOSED, fixed by bas-4 (`db1a8e4`).** The Dio
+      interceptor now logs out (→ app-level redirect to `/login`) whenever the
+      401 refresh path returns false or throws, instead of surfacing a raw
+      `DioException` on whatever screen the user was on. bas-4 shipped without
+      the unit tests its own ACs called for; btri01 added them in
+      `app/test/core/services/api_client_401_refresh_test.dart` — 5 tests,
+      passing, covering refresh-succeeds / returns-false / throws /
+      retry-also-401 (loop guard) / no-auth-service.
 
 
 

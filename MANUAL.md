@@ -5,6 +5,20 @@
 - [ ] **Play Console launch runbook** — execute `ANDROID.md` (single operator, Day 1 signup → Day 3 first tag). Code + store assets landed under `epic-android-play-console-launch` (apl-1..4); the Play Console account, listing paste-ins, Data Safety form, and tester recruitment are human-only steps. Source: legacy DEV.md "MANUAL DOCS" + epic-android-play-console-launch.
 - [ ] **iOS share-extension ship steps** — execute `SHARE.md` (App ID + App Group + provisioning profile, Xcode signing for `PalatefulShare`, on-device happy-path validation, device matrix before next TestFlight). Code for sie-1..5 is on main. Source: legacy DEV.md "MANUAL DOCS" + epic-share-ios-extension.
 
+## Filed from btri01 legacy triage (2026-07-27)
+
+- [ ] **Read back the Auth0 app's Allowed Logout URLs** — needed to finish
+  `debug/debug-lgort1-2026-07-27T17:41-auth0-logout-returnto-malformed.md`.
+  In the Auth0 dashboard → Applications → "Palateful Mobile" → Settings →
+  Application URIs, copy out both **Allowed Callback URLs** and **Allowed
+  Logout URLs** verbatim. The code currently sends
+  `com.palateful.app://auth.palateful.app/ios/com.palateful.app/callback`
+  as the logout `returnTo`, while `auth0_flutter` registers
+  `com.palateful.app://auth.palateful.app/ios/com.palateful.palateful/callback`
+  (bundle id, not scheme, in the path). `docs/SETUP.md:97` claims the logout
+  list is `com.palateful.app://logout-callback`, which matches neither — the
+  doc is stale and the real list is the only way to know which URL the fix
+  should send. No agent can read the dashboard.
 
 ## /devx-init deferred work
 
