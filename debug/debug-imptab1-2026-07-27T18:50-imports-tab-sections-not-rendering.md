@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T18:50:00-06:00
 title: Imports tab — 3 widget tests red on main; sections render 0 widgets
 from: dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md
-status: ready
+status: done
+branch: feat/debug-imptab1
 ---
 
 ## Goal
@@ -59,13 +60,13 @@ Candidate commits touching this surface (unverified — none bisected yet):
 `f5f714c` (ffm-2 batch import-items endpoint + Flutter caller).
 
 ## Acceptance criteria
-- [ ] Repro confirmed locally and the failing bucketing path identified
+- [x] Repro confirmed locally and the failing bucketing path identified
       (hypothesis → check → result in the status log).
-- [ ] Root cause documented with file:line evidence — in particular whether
+- [x] Root cause documented with file:line evidence — in particular whether
       the fixture stopped reaching `visibleAutoImported`/`visibleReview` or
       the section suppresses itself when empty.
-- [ ] Fix + the 3 tests green, with `flutter test` clean overall.
-- [ ] Decide whether the tests or the widget hold the correct contract —
+- [x] Fix + the 3 tests green, with `flutter test` clean overall.
+- [x] Decide whether the tests or the widget hold the correct contract —
       do not simply relax the assertions to match current behavior without
       confirming the current behavior is what users should see.
 
@@ -83,3 +84,24 @@ Candidate commits touching this surface (unverified — none bisected yet):
   pre-existing via identical failures on `main` (run 30293754580) and on the
   PR branch (run 30294451318). Not root-caused; evidence and the
   zero-widgets-not-wrong-widgets distinction recorded above.
+- 2026-07-27T19:05 — root-caused. NOT a code regression: the tests were
+  time-bombs. Every fixture hardcoded `2026-04-18`, while
+  `app/lib/features/activity/imports_tab.dart:168` applies a 30-day recency
+  cutoff to the `completed` (Auto-Imported) + `skipped` buckets only —
+  `awaiting_review`/`failed` are exempt as actionable (lines 165-167).
+  Around 2026-05-18 the fixtures aged past the cutoff and those two sections
+  stopped rendering. Hypothesis (zero widgets ⇒ section absent, not renamed)
+  → check (which assertions fail) → result: all three failures are
+  `completed`-bucket only (`:294` Auto-Imported, `:456` "Ship it", `:542`
+  "Done"); same-dated review/failed assertions pass. None of the candidate
+  commits `0c6bf52`/`0e643f3`/`f5f714c` were implicated.
+- 2026-07-27T19:05 — contract call (AC #4): the WIDGET is correct. The
+  cutoff is deliberate product behaviour with See-all as the documented
+  escape hatch, so fixtures were anchored to `now` via `_fixtureBase`/`_at()`
+  rather than relaxing any assertion. Offsets preserve the originals'
+  relative ordering that the created-at-desc sort assertions rely on.
+  NOT a user-visible regression — the DEBUG.md row's caveat is retired.
+- 2026-07-27T19:20 — flutter test: 1524 passed, 0 failed (was 1521/3).
+  CI flutter-test green (7m53s). Landed off `main` as PR #6, not on
+  bqa101's branch, so the green reached all six blocked worktrees at once.
+  merged via PR #6 (squash → 640987e).

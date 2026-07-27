@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-27T18:35:00-06:00
 title: devx-ci `test` job red on every run — `npm test` with no `test` script
 from: dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md
-status: in-progress
+status: done
 branch: feat/dev-bqa101
 ---
 
@@ -84,3 +84,12 @@ Python/Flutter repo at all, or be removed in favour of `ci.yml`.
   `--if-present` guard; one-line fix applied on bqa101's branch per the
   skill's "fix the root cause in a new commit on the branch" rule. The
   should-devx-ci-exist-here question is left open above for the user.
+- 2026-07-27T19:15 — the one-line fix was ported byte-identically onto
+  `feat/debug-imptab1` and merged first via PR #6 (squash → 640987e),
+  because imptab1 and dvxci1 were a mutual block: PR #6 needed this fix to
+  go green, PR #3 needed PR #6's imports-tab fix to go green. Porting the
+  identical content avoided a merge-gate override; when `origin/main` was
+  merged back into `feat/dev-bqa101` the file resolved with no conflict and
+  now matches main exactly. This spec + the DEBUG.md row still ship with
+  PR #3. The open question (should devx-ci exist at all in a Python/Flutter
+  repo) is unresolved and deliberately left for a separate decision.
