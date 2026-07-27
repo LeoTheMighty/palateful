@@ -1,0 +1,33 @@
+{
+  "_comment": "irrd-3a baseline for confidence_calibration (MAE of |confidence_score - overall_f1| across services/eval/fixtures/expected/*.json). NULL placeholders until the first real eval run — that run needs OPENAI_API_KEY and ~10 min, so it is opt-in and never part of the fast CI path. The MAE <= 0.3 gate in src/metrics/confidence_calibration.py reads `threshold`, not this baseline: `mae` here is trend context only (delta_vs_baseline in the run summary). Re-generate with the documented opt-in command and copy the reported values here along with the commit SHA.",
+  "_generated_at": null,
+  "_generated_commit": null,
+  "_extractor_flag": "EXTRACTOR_EMIT_CONFIDENCE=true",
+  "_fixture_set": "services/eval/fixtures/expected/*.json",
+  "confidence_calibration": {
+    "mae": null,
+    "sample_count": 0,
+    "bias": null,
+    "mean_confidence": null,
+    "mean_ground_truth_f1": null,
+    "by_source": {
+      "model": {"mae": null, "sample_count": 0},
+      "heuristic": {"mae": null, "sample_count": 0}
+    },
+    "signal_correlations": {
+      "ingredients": null,
+      "title": null,
+      "steps": null
+    }
+  },
+  "heuristic_weights": {
+    "_comment": "Mirrors _W_INGREDIENTS / _W_TITLE / _W_STEPS in libraries/utils/utils/services/recipe_extractors/confidence_heuristic.py. Must sum to 1.0. Update here in the same commit as any AC9 retune.",
+    "ingredients": 0.4,
+    "title": 0.3,
+    "steps": 0.3
+  },
+  "thresholds": {
+    "confidence_calibration_mae_max": 0.3,
+    "_enforcement": "hard"
+  }
+}
