@@ -4,12 +4,12 @@ type: plan
 created: 2026-07-27T10:51:32-06:00
 title: Rotation Self Heal
 status: in-progress
-stage: plan
+stage: red
 entered_at: prd
 gate_status:
   prd_validated: true
   design_verified: true
-  plan_verified: false
+  plan_verified: true
   evals_red: false
 outcome:
   status: null
@@ -18,7 +18,7 @@ workstream: _devx/workstreams/rotation-self-heal
 gate_verdicts:
   prd: PASS
   design: CONCERNS
-  plan: null
+  plan: PASS
   evals: null
 ---
 
@@ -83,3 +83,41 @@ Workstream 'Rotation Self Heal' — PRD stage next. Artifacts live in `_devx/wor
   cascade resets `design_verified` whenever it runs — so the cost is
   identical at Plan, but the contradiction would have been baked into
   plan.md first.
+- 2026-07-27T12:0x — stage PLAN. Ran `devx gate coverage 462355 --table
+  decisions/2026-07-27-plan-coverage-table.json` (plan mode) → **PASS**
+  (8/8 covered, P0 floor met), flipped `plan_verified: true`, `stage: red`.
+  Artifacts: `_devx/workstreams/rotation-self-heal/plan.md`,
+  `decisions/2026-07-27-plan-critique.md`,
+  `decisions/2026-07-27-plan-verify.md`.
+  User decisions this stage: (1) 8 phases — FR-4 splits into a unit-testable
+  Lambda handler and its Terraform/EventBridge infra, FR-5 into the utils
+  provider module and the 5-engine-site + IAM wiring; (2) a 9th **rotation
+  drill** phase producing measured G-2/G-3 actuals, rather than deferring
+  them to a natural rotation ~2026-10 (the 90-day cadence means a regression
+  would otherwise surface late and unattended).
+  Critique ran (4 lenses: pm/architect/dev/qa) despite `thoroughness:
+  send-it`, because the plan touches 5 surfaces ≥ `engine.critique.min_surfaces`.
+  It caught two structural errors with three-lens concordance, both of which
+  would have wasted a full phase each: **(a)** Phase 1's exit criterion
+  ("`deploy-services` reaches success") was unreachable — an `app/`-only
+  commit leaves `services_to_build` empty so every deploy job skips
+  (`ci.yml:641-643`, `:703-705`, `:845-851`); E-1 now spans phases 1–2.
+  **(b)** The "first `terraform apply` since 2026-04-26" — and with it the
+  90-day rotation cadence — lands on **Phase 2's** push, not Phase 4's,
+  because `terraform-prod` runs `-auto-approve` (`ci.yml:748`) with nothing
+  consuming the plan output; the line-by-line review gate moved to Phase 2
+  (T2.1). Also accepted: terraform-only phases never apply via CI and need
+  `force-deploy.yml` (unmentioned before); the `archive` provider is
+  declared and locked nowhere; Phase 9 had no positive control against
+  `pool_recycle=3600` masking a broken FR-5; the `DB_PASSWORD` fallback
+  silently re-presented a known-bad credential on the retry path; and the
+  worker `CMD-SHELL` probe could crash-loop the worker because
+  `libraries/utils` declares neither psycopg2 nor asyncpg.
+  Coverage judge returned E-4 and E-6 **partial** on the first pass; both
+  were fixed rather than argued — E-4's two unbounded connection paths
+  closed by construction (single-flight cache; worker `interval = 60`), and
+  E-6's second clause moved out of Phase 6's tests-after proxies into its
+  named P0 artifact via T6.3b. Second pass: 8/8 covered.
+  Carried into RED: the `Secret Label Updated` event shape is still
+  unconfirmed (blocks E-5, P0) — Phase 4's T4.1 owns it, with the CloudTrail
+  `RotationSucceeded` signal as the proven fallback.
