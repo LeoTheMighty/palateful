@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:14:00-06:00
 title: Error-tracking middleware — bridge the sync error-log write off the event loop via threadpool and the dedicated error-log sub-pool
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 blocked-by: []
 branch: feat/dev-aam22
 ---
@@ -28,3 +29,4 @@ branch: feat/dev-aam22
 
 ## Status log
 - 2026-07-27T17:14 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; scope re-verified against main (see Technical notes)
+- 2026-07-28T10:11:42-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147

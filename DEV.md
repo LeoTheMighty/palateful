@@ -29,7 +29,7 @@ Critical path: aam7 / aam8 / aam22 / aam23 in parallel → aam24 cutover → aam
 
 - [/] `dev/dev-aam7-2026-07-27T17:12-openai-async.md` — Swap sync OpenAI client to AsyncOpenAI at all API callsites and drop the threadpool bridge. Status: in-progress. Blocked-by: —.
 - [/] `dev/dev-aam8-2026-07-27T17:13-firebase-threadpool-wrap.md` — Firebase messaging.send threadpool wrap — async-safe push send variant plus sync-on-loop audit. Status: in-progress. Blocked-by: —. Mostly done via notify_via_threadpool; remaining scope in spec.
-- [ ] `dev/dev-aam22-2026-07-27T17:14-error-tracking-middleware-async.md` — Error-tracking middleware — bridge the sync error-log write off the event loop via threadpool and the dedicated error-log sub-pool. Status: ready. Blocked-by: —.
+- [/] `dev/dev-aam22-2026-07-27T17:14-error-tracking-middleware-async.md` — Error-tracking middleware — bridge the sync error-log write off the event loop via threadpool and the dedicated error-log sub-pool. Status: in-progress. Blocked-by: —.
 - [ ] `dev/dev-aam23-2026-07-27T17:15-lifespan-and-pre-warm.md` — Lifespan pre-warm — warm every async pool connection before healthcheck flips green. Status: ready. Blocked-by: —.
 - [ ] `dev/dev-aam24-2026-07-27T17:16-cutover-and-shim-removal.md` — Cutover — flip last sync holdouts (WS auth, chat SSE), remove sync shims, shrink sync pool. Status: ready. Blocked-by: aam7, aam8, aam22, aam23.
 - [ ] `dev/dev-aam25-2026-07-27T17:17-sync-in-async-startup-guard.md` — Sync-in-async startup guard — fail fast if API handler code imports the sync Database. Status: ready. Blocked-by: aam24.
