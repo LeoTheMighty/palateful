@@ -4,8 +4,7 @@ type: debug
 created: 2026-07-27T19:00:00-06:00
 title: flutter drive -d chrome cannot attach dwds debug service against Chrome 150
 from: dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md
-status: in-progress
-owner: /devx-loop-2026-07-27T21-15-34-312-36147
+status: ready
 ---
 
 ## Goal
@@ -88,3 +87,7 @@ DevTools Protocol usage is the suspect surface.
 ## Status log
 
 - 2026-07-27T19:17:36-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
+- 2026-07-28T15:24:17.407Z — [FAIL] loop abandoned e2edwds: 3 consecutive failures on this item; no real work was preserved — bookkeeping-only worktree discarded, item left ready
+  - Learning: iteration 1 [FAIL]: No-op iteration: the previous run stalled mid-stream before making any file changes or recording findings on the dwds/Chrome-150 attach failure.
+  - Learning: iteration 2 [ERROR]: worker session exceeded the 60min awake-time iteration ceiling and was killed
+  - Learning: iteration 3 [FAIL]: No meaningful progress: the iteration ended still waiting on the app build/attach run to produce an outcome (pass, AppConnectionException, or exit), with no file changes and no verified result.
