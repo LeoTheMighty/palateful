@@ -3,11 +3,12 @@
 aam-17: UnifiedSearch is now `AsyncEndpoint`; HTTP tests pre-configure
 `mock_async_db.db.execute` instead of the legacy `mock_db.db.query`.
 Direct endpoint tests are `async def` and `await endpoint.execute(...)`.
-The standalone helpers (`generate_recipe_embedding`, `assign_vibes_for_recipe`)
-remain sync and their tests are unchanged.
+aam-7: the standalone helpers (`generate_recipe_embedding`,
+`assign_vibes_for_recipe`) are async on `AsyncOpenAI`; their tests patch
+`openai.AsyncOpenAI` and await the helpers.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from conftest import (
     MockExecuteResult,
@@ -700,8 +701,8 @@ class TestUnifiedSearchDirect:
 class TestGenerateRecipeEmbedding:
     """Tests for generate_recipe_embedding helper."""
 
-    @patch("openai.OpenAI")
-    def test_success(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_success(self, mock_openai_cls):
         """Test successful embedding generation."""
         from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
 
@@ -709,9 +710,9 @@ class TestGenerateRecipeEmbedding:
         mock_openai_cls.return_value = mock_client
         mock_resp = MagicMock()
         mock_resp.data = [MagicMock(embedding=[0.1] * 384)]
-        mock_client.embeddings.create.return_value = mock_resp
+        mock_client.embeddings.create = AsyncMock(return_value=mock_resp)
 
-        result = generate_recipe_embedding("Pasta", "Delicious pasta", ["italian"])
+        result = await generate_recipe_embedding("Pasta", "Delicious pasta", ["italian"])
 
         assert result == [0.1] * 384
         mock_client.embeddings.create.assert_called_once_with(
@@ -720,8 +721,8 @@ class TestGenerateRecipeEmbedding:
             dimensions=384,
         )
 
-    @patch("openai.OpenAI")
-    def test_with_none_description_and_tags(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_with_none_description_and_tags(self, mock_openai_cls):
         """Test embedding generation with None description and tags."""
         from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
 
@@ -729,9 +730,9 @@ class TestGenerateRecipeEmbedding:
         mock_openai_cls.return_value = mock_client
         mock_resp = MagicMock()
         mock_resp.data = [MagicMock(embedding=[0.2] * 384)]
-        mock_client.embeddings.create.return_value = mock_resp
+        mock_client.embeddings.create = AsyncMock(return_value=mock_resp)
 
-        result = generate_recipe_embedding("Pasta", None, None)
+        result = await generate_recipe_embedding("Pasta", None, None)
 
         assert result == [0.2] * 384
         mock_client.embeddings.create.assert_called_once_with(
@@ -740,34 +741,34 @@ class TestGenerateRecipeEmbedding:
             dimensions=384,
         )
 
-    @patch("openai.OpenAI")
-    def test_exception_returns_none(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_exception_returns_none(self, mock_openai_cls):
         """Test that exception from OpenAI returns None."""
         from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
 
         mock_openai_cls.side_effect = Exception("API key not set")
 
-        result = generate_recipe_embedding("Pasta", "Desc", ["tag"])
+        result = await generate_recipe_embedding("Pasta", "Desc", ["tag"])
         assert result is None
 
-    @patch("openai.OpenAI")
-    def test_api_error_returns_none(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_api_error_returns_none(self, mock_openai_cls):
         """Test that API call error returns None."""
         from api.v1.search.generate_recipe_embedding import generate_recipe_embedding
 
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
-        mock_client.embeddings.create.side_effect = Exception("Rate limited")
+        mock_client.embeddings.create = AsyncMock(side_effect=Exception("Rate limited"))
 
-        result = generate_recipe_embedding("Pasta", "Desc", [])
+        result = await generate_recipe_embedding("Pasta", "Desc", [])
         assert result is None
 
 
 class TestAssignVibesForRecipe:
     """Tests for assign_vibes_for_recipe helper."""
 
-    @patch("openai.OpenAI")
-    def test_returns_valid_vibes_with_ingredients(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_returns_valid_vibes_with_ingredients(self, mock_openai_cls):
         """Successful LLM response with ingredients_text — covers lines 54, 78-80."""
         from api.v1.search.generate_recipe_embedding import assign_vibes_for_recipe
         from utils.constants import VALID_VIBES
@@ -784,9 +785,9 @@ class TestAssignVibesForRecipe:
         )
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock(message=mock_message)]
-        mock_client.chat.completions.create.return_value = mock_resp
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        result = assign_vibes_for_recipe(
+        result = await assign_vibes_for_recipe(
             "Pasta", "Cozy dinner", ingredients_text="tomato, basil"
         )
         assert result == (primary, secondary)
@@ -795,8 +796,8 @@ class TestAssignVibesForRecipe:
         user_msg = call_kwargs["messages"][1]["content"]
         assert "Ingredients: tomato, basil" in user_msg
 
-    @patch("openai.OpenAI")
-    def test_invalid_vibes_filtered_out(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_invalid_vibes_filtered_out(self, mock_openai_cls):
         """LLM returns vibes not in VALID_VIBES — both filtered to None."""
         from api.v1.search.generate_recipe_embedding import assign_vibes_for_recipe
 
@@ -808,24 +809,24 @@ class TestAssignVibesForRecipe:
         )
         mock_resp = MagicMock()
         mock_resp.choices = [MagicMock(message=mock_message)]
-        mock_client.chat.completions.create.return_value = mock_resp
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
-        result = assign_vibes_for_recipe("Pasta", None, None)
+        result = await assign_vibes_for_recipe("Pasta", None, None)
         assert result == (None, None)
 
-    @patch("openai.OpenAI")
-    def test_exception_returns_none_pair(self, mock_openai_cls):
+    @patch("openai.AsyncOpenAI")
+    async def test_exception_returns_none_pair(self, mock_openai_cls):
         from api.v1.search.generate_recipe_embedding import assign_vibes_for_recipe
 
         mock_openai_cls.side_effect = Exception("boom")
-        result = assign_vibes_for_recipe("Pasta", "Desc", None)
+        result = await assign_vibes_for_recipe("Pasta", "Desc", None)
         assert result == (None, None)
 
 
 class TestUnifiedSearchQueryEmbedding:
     """Tests for the _generate_query_embedding method on the endpoint."""
 
-    @patch("openai.OpenAI")
+    @patch("openai.AsyncOpenAI")
     async def test_generate_query_embedding_success(self, mock_openai_cls, mock_async_db, mock_user):
         """Test successful query embedding generation."""
         from api.v1.search.unified_search import UnifiedSearch
@@ -834,14 +835,14 @@ class TestUnifiedSearchQueryEmbedding:
         mock_openai_cls.return_value = mock_client
         mock_resp = MagicMock()
         mock_resp.data = [MagicMock(embedding=[0.5] * 384)]
-        mock_client.embeddings.create.return_value = mock_resp
+        mock_client.embeddings.create = AsyncMock(return_value=mock_resp)
 
         endpoint = UnifiedSearch(user=mock_user, database=mock_async_db)
         result = await endpoint._generate_query_embedding("pasta recipe")
 
         assert result == [0.5] * 384
 
-    @patch("openai.OpenAI")
+    @patch("openai.AsyncOpenAI")
     async def test_generate_query_embedding_failure(self, mock_openai_cls, mock_async_db, mock_user):
         """Test query embedding generation failure returns None."""
         from api.v1.search.unified_search import UnifiedSearch
@@ -853,20 +854,18 @@ class TestUnifiedSearchQueryEmbedding:
 
         assert result is None
 
-    async def test_generate_query_embedding_threadpool_failure_returns_none(
-        self, mock_async_db, mock_user
+    @patch("openai.AsyncOpenAI")
+    async def test_generate_query_embedding_api_error_returns_none(
+        self, mock_openai_cls, mock_async_db, mock_user
     ):
-        """Threadpool dispatch itself raising (e.g. cancelled task) degrades
-        the semantic tier to None rather than propagating."""
+        """The awaited embeddings call raising degrades the semantic tier to
+        None rather than propagating."""
         from api.v1.search.unified_search import UnifiedSearch
 
-        async def _boom(*_a, **_k):
-            raise RuntimeError("threadpool cancelled")
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_client.embeddings.create = AsyncMock(side_effect=RuntimeError("rate limited"))
 
         endpoint = UnifiedSearch(user=mock_user, database=mock_async_db)
-        with patch(
-            "api.v1.search.unified_search.run_in_threadpool",
-            side_effect=_boom,
-        ):
-            result = await endpoint._generate_query_embedding("pasta recipe")
+        result = await endpoint._generate_query_embedding("pasta recipe")
         assert result is None

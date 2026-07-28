@@ -30,3 +30,12 @@ Replace every synchronous `OpenAI(...)` client in `services/api/src/` with `Asyn
 ## Status log
 - 2026-07-27T17:12 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; scope re-verified against main (see Technical notes)
 - 2026-07-28T09:24:19-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
+- 2026-07-28T15:41:01.544Z — loop iteration 1: Completed the full aam7 SDK swap: all OpenAI callsites in services/api/src now use AsyncOpenAI with awaited calls, the unified_search run_in_threadpool bridge is removed, and tests/lint/coverage verify green except pre-existing rshred1 health-test breakage on main.
+  - Change: Converted generate_recipe_embedding and assign_vibes_for_recipe to async AsyncOpenAI calls and awaited them at their create_recipe.py and update_recipe.py callsites
+  - Change: Replaced unified_search.py's _sync_generate_query_embedding + run_in_threadpool bridge with a native async AsyncOpenAI call and removed the unused import and deferral comment
+  - Change: Updated test_search.py helper/endpoint tests to async with openai.AsyncOpenAI + AsyncMock patches; replaced the obsolete threadpool-failure test with an async API-error degradation test
+  - Change: Refreshed chat_router.py docstrings to record that aam-7 landed and the remaining sync SSE path is blocked only on the agent-tool async rewrite (sync client lives in libraries/agent, out of scope)
+  - Learning: npx nx run api:test in a fresh worktree needs npx nx run api:install first AND a copy of the gitignored repo-root .env (Settings validation fails en masse without it); running pytest directly via .venv/bin/python is NOT equivalent to poetry run pytest and produces thousands of spurious errors
+  - Learning: api:test currently cannot pass on any branch: tests/test_health.py (1 failed + 17 errors) imports utils.services.db_probe which exists nowhere in the repo — the rshred1 RED-stage breakage from commit 5a6174d — and its erroring tests leave health_router.py:25-27 uncovered, capping total coverage at 99 vs the fail-under=100 gate; every file touched by aam7 is individually at 100%
+  - Learning: Patches of the helpers in test_recipe.py/test_coverage_gaps.py needed no changes because unittest.mock.patch auto-detects async targets and substitutes AsyncMock
+  - Learning: Residual for aam-24: the chat provider's sync OpenAI client is in libraries/agent/agent/llm/openai.py (outside services/api/src), so the chat SSE path is untouched by design
