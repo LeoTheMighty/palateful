@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:10:00-06:00
 title: Presigned upload path for PDF / audio / video in the receiving screen
 from: _bmad-output/planning-artifacts/epic-share-receiving-ux.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-sru4
 ---
 
@@ -28,3 +29,4 @@ Wire the pure-upload branches (PDF, audio, video) of the universal receiving scr
 
 ## Status log
 - 2026-07-27T17:10 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration
+- 2026-07-27T18:10:00-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
