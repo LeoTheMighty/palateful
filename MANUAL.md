@@ -29,13 +29,33 @@
     `test/await-remote-ci.test.ts`,
     `test/devx-await-remote-ci-cli.test.ts`, `.claude/commands/devx.md`,
     `skills/devx.md` (the latter is generated — `npm run sync:skills`).
-  - `npm test` was run there and is green.
+  - `npm test` was run there and is green — re-run 2026-07-27 after the
+    change was complete: **120 files / 2350 tests passed**, exit 0 (that
+    script also runs `npm run build` and `tsc --noEmit`).
   - Live check against the commit from the spec (`408aeaf` on
     `feat/dev-rsh101`): the probe now returns
     `{"conclusion":"failure","workflowName":"devx-ci"}` where it used to
     return `{"conclusion":"success","runId":30296754787}`. The all-green
     sibling commit `f7a8ab4` still returns `success`, so this is not a
     blanket red.
+  - **Re-running that live check:** `feat/dev-rsh101` was deleted locally
+    after the rsh101 merge, so the CLI form
+    (`devx devx-helper await-remote-ci feat/dev-rsh101 --once`) now exits 2
+    at stage `git-rev-parse` — the branch ref no longer resolves. The runs
+    still exist on the remote, so pin the sha through the library instead
+    (read-only; no branch or worktree changes):
+    ```
+    node --input-type=module -e '
+    import { probeRemoteCi } from "/Users/leonidbelyi/personal/devx/dist/lib/devx/await-remote-ci.js";
+    const r = await probeRemoteCi("feat/dev-rsh101", {
+      repoRoot: "/Users/leonidbelyi/personal/palateful",
+      headSha: "408aeafb53de10e3bebcf018ca42f36868b1e620",
+    });
+    console.log(JSON.stringify(r));'
+    ```
+    Verified again this way on 2026-07-27 against the rebuilt `dist/`:
+    `408aeaf` → `failure` / `devx-ci` with `runs` naming both workflows;
+    `f7a8ab4` → `success`.
   - Note `npm test` runs `npm run build`, so `~/personal/devx/dist/` — which
     the globally-linked `devx` binary executes — **already has the new
     behaviour** even though the source is uncommitted. Reverting the source
