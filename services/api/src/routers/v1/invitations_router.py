@@ -2,8 +2,9 @@
 
 aam-21: flipped to `get_async_database` + `get_current_user_async`.
 Push-notification fan-out (Firebase Admin) runs through
-`run_in_threadpool` inside the handlers — aam-8 will remove the wrap
-once `push_notification.py` is async itself.
+`run_in_threadpool` inside the handlers — the same threadpool hop the
+aam-8 `send_to_user_async` variant performs internally, so the explicit
+wrap stays.
 """
 
 from api.v1.invitations import (
