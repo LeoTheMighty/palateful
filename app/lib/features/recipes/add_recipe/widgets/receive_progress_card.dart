@@ -69,6 +69,16 @@ class ReceiveProgressCard extends StatelessWidget {
   }
 
   String _headline(ReceiveImportState s, {String? hostname}) {
+    // sru-4: the upload branches stage their copy so the card never sits
+    // on a stale "Reading your PDF" while 80 MB crawls up to S3. Percent
+    // is only shown once we know the total — a 0-byte total would render
+    // a permanent "Uploading… 0%".
+    if (s.phase == ReceivePhase.uploading && s.totalBytes > 0) {
+      final pct = ((s.uploadedBytes / s.totalBytes) * 100).clamp(0, 100).round();
+      return 'Uploading… $pct%';
+    }
+    if (s.phase == ReceivePhase.sending) return 'Sending to Palateful…';
+
     switch (s.branch) {
       case ReceiveBranch.url:
         final host = hostname ?? 'the web';

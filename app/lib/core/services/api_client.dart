@@ -693,6 +693,24 @@ class ApiClient {
     return _dio.get('/v1/import-jobs/$jobId');
   }
 
+  /// sru-4 / sbf-3: mint a presigned S3 PUT URL for a file-based import.
+  ///
+  /// Returns `{upload_url, s3_key, required_headers, expires_at}`.
+  /// [mimeType] must be one the backend can map to an extension —
+  /// unknown mimes are a 400 `UNSUPPORTED_MIME`, so resolve it through
+  /// `resolveUploadMimeType` before calling.
+  Future<Response> getImportUploadUrl({
+    required String filename,
+    required String mimeType,
+    required int sizeBytes,
+  }) {
+    return _dio.post('/v1/imports/upload-url', data: {
+      'filename': filename,
+      'mime_type': mimeType,
+      'size_bytes': sizeBytes,
+    });
+  }
+
   /// Low-level import POST used by PendingImportsReconciler — the Share
   /// Extension builds the exact payload (including `idempotency_key`,
   /// `s3_key`, `etag`) and the reconciler forwards it verbatim.
