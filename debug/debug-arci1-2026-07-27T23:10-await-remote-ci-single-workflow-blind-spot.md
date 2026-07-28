@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-27T23:10:00-06:00
 title: await-remote-ci reports success while a sibling workflow is red
 from: dev/dev-rsh101-2026-07-27T12:30-unblock-deploy-path.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: null
 ---
@@ -90,3 +90,5 @@ they disagree hits this.
   - Learning: That deleted-branch failure is itself a small confirmation of the design: a vanished local ref degrades to an operator-actionable exit 2, not to a silent green — the same failure-safe direction the sha-mismatch state takes.
   - Learning: The tail.ts dedup that iteration 1 flagged as a 'live candidate' is not worth taking under this spec: tail.ts's inlined fold already has precedence identical to foldRunsAtSha, so the two cannot disagree today, and collapsing them would touch the 15s loop-integration test that dominates the suite's ~8.5min runtime for no behavioural gain.
   - Learning: `npm test` in devx is a single command covering build, typecheck, and vitest — there is no separate lint script, so one green `npm test` is the complete verification gate for that repo.
+- 2026-07-28T00:09:56.338Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-28T00:09:56.339Z — merged via devx loop — PR https://github.com/LeoTheMighty/palateful/pull/10
