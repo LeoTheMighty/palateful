@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:10:00-06:00
 title: Presigned upload path for PDF / audio / video in the receiving screen
 from: _bmad-output/planning-artifacts/epic-share-receiving-ux.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-sru4
 ---
@@ -45,3 +45,5 @@ Wire the pure-upload branches (PDF, audio, video) of the universal receiving scr
   - Learning: sru-1's test file documents that File.stat in initState stalls flutter_tester's fake-async zone — so the upload sequence can't be driven end-to-end through the widget. Extracting the sequence into a coordinator is what makes AC4 testable at all; future iterations shouldn't retry the widget-level route.
   - Learning: POST /imports/upload-url 400s on any mime outside its _MIME_EXT table, and Android share intents commonly send application/octet-stream — resolving mime from the extension before the call is required, not defensive.
   - Learning: The Dart PendingImportsReconciler sends a `filename` key while StartImport.Params expects `file_name` — that field is silently dropped on the iOS reconcile path. Pre-existing and out of scope here (the new code sends file_name), but worth a follow-up.
+- 2026-07-28T00:33:14.688Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-28T00:33:14.688Z — merged via devx loop — PR https://github.com/LeoTheMighty/palateful/pull/11
