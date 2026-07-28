@@ -1,0 +1,189 @@
+{
+  "id": "meal_add_and_remove_component",
+  "epic_fixture": 5,
+  "story": "msa-4",
+  "title": "Add then remove a component — both silent above the 2-component floor",
+  "description": "Main track: a 3-component Meal grows to 4, then drops back to 3. The removal stays above the floor, so the MCP confirmation gate does not fire and both writes commit silently (Design Principle 7). The variation drives the degenerate case: a 2-component Meal returns CONFIRMATION_REQUIRED on remove, and the user redirects to archive.",
+  "tags": [
+    "meals",
+    "mcp",
+    "add",
+    "remove",
+    "confirmation-policy"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "name": "Lemon Dressing"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000004",
+        "name": "Pita Chips"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000007",
+        "name": "Grilled Chicken"
+      }
+    ],
+    "meals": [
+      {
+        "id": "ea000000-0000-4000-8000-000000000001",
+        "name": "Summer Lunch Meal",
+        "component_recipe_ids": [
+          "13000000-0000-4000-8000-000000000001",
+          "13000000-0000-4000-8000-000000000002",
+          "13000000-0000-4000-8000-000000000007"
+        ],
+        "in_conversation_context": true
+      }
+    ]
+  },
+  "turns": [
+    {
+      "user": "Add my pita chips to that meal.",
+      "expected_tool_calls": [
+        {
+          "name": "add_recipe_to_meal",
+          "arguments": {
+            "meal_id": "ea000000-0000-4000-8000-000000000001",
+            "recipe_id": "13000000-0000-4000-8000-000000000004"
+          },
+          "tool_result": {
+            "id": "ea000000-0000-4000-8000-000000000001",
+            "name": "Summer Lunch Meal",
+            "component_count": 4
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "Pita Chips"
+      ]
+    },
+    {
+      "user": "Now drop the lemon dressing.",
+      "expected_tool_calls": [
+        {
+          "name": "remove_recipe_from_meal",
+          "arguments": {
+            "meal_id": "ea000000-0000-4000-8000-000000000001",
+            "recipe_id": "13000000-0000-4000-8000-000000000002"
+          },
+          "tool_result": {
+            "id": "ea000000-0000-4000-8000-000000000001",
+            "name": "Summer Lunch Meal",
+            "component_count": 3
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "Lemon Dressing"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 2,
+    "blocked_write_calls": 0,
+    "required_tools": [
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal"
+    ],
+    "forbidden_tools": [
+      "create_meal",
+      "archive_meal"
+    ]
+  },
+  "variations": [
+    {
+      "id": "degenerate_remove_then_archive",
+      "title": "2-component Meal: remove is gated, user redirects to archive",
+      "description": "remove_recipe_from_meal pre-checks the component count and returns CONFIRMATION_REQUIRED without mutating. The AI surfaces the reason instead of retrying, and the user's redirect turns into a single archive_meal call.",
+      "context": {
+        "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+        "recipes": [
+          {
+            "id": "13000000-0000-4000-8000-000000000002",
+            "name": "Lemon Dressing"
+          },
+          {
+            "id": "13000000-0000-4000-8000-000000000004",
+            "name": "Pita Chips"
+          }
+        ],
+        "meals": [
+          {
+            "id": "ea000000-0000-4000-8000-000000000003",
+            "name": "Weeknight Duo",
+            "component_recipe_ids": [
+              "13000000-0000-4000-8000-000000000002",
+              "13000000-0000-4000-8000-000000000004"
+            ],
+            "in_conversation_context": true
+          }
+        ]
+      },
+      "turns": [
+        {
+          "user": "Remove the dressing from Weeknight Duo.",
+          "expected_tool_calls": [
+            {
+              "name": "remove_recipe_from_meal",
+              "arguments": {
+                "meal_id": "ea000000-0000-4000-8000-000000000003",
+                "recipe_id": "13000000-0000-4000-8000-000000000002"
+              },
+              "tool_result": {
+                "success": false,
+                "error": "CONFIRMATION_REQUIRED",
+                "reason": "Removing this recipe would leave the Meal with only 1 component. Confirm, add a replacement first, or archive the Meal instead."
+              }
+            }
+          ],
+          "expect_clarifying_question": true,
+          "expect_response_contains": [
+            "1 component",
+            "archive"
+          ]
+        },
+        {
+          "user": "No, archive it instead.",
+          "expected_tool_calls": [
+            {
+              "name": "archive_meal",
+              "arguments": {
+                "meal_id": "ea000000-0000-4000-8000-000000000003"
+              },
+              "tool_result": {
+                "id": "ea000000-0000-4000-8000-000000000003",
+                "archived_at": "2026-08-03T12:00:00Z"
+              }
+            }
+          ],
+          "expect_clarifying_question": false,
+          "expect_response_contains": [
+            "Weeknight Duo"
+          ]
+        }
+      ],
+      "assertions": {
+        "committed_write_calls": 1,
+        "blocked_write_calls": 1,
+        "required_tools": [
+          "remove_recipe_from_meal",
+          "archive_meal"
+        ],
+        "forbidden_tools": [
+          "create_meal",
+          "add_recipe_to_meal"
+        ]
+      }
+    }
+  ]
+}

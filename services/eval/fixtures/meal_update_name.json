@@ -1,0 +1,78 @@
+{
+  "id": "meal_update_name",
+  "epic_fixture": 4,
+  "story": "msa-4",
+  "title": "Rename an in-context Meal with a single update_meal call",
+  "description": "The Meal is already in conversational context, so no lookup is required. Exactly one update_meal call carrying only the new name — no create_meal leakage, no component churn.",
+  "tags": [
+    "meals",
+    "mcp",
+    "update",
+    "happy-path"
+  ],
+  "context": {
+    "recipe_book_id": "b0000000-0000-4000-8000-000000000001",
+    "recipes": [
+      {
+        "id": "13000000-0000-4000-8000-000000000001",
+        "name": "Kale Salad"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000002",
+        "name": "Lemon Dressing"
+      },
+      {
+        "id": "13000000-0000-4000-8000-000000000007",
+        "name": "Grilled Chicken"
+      }
+    ],
+    "meals": [
+      {
+        "id": "ea000000-0000-4000-8000-000000000001",
+        "name": "Summer Lunch Meal",
+        "component_recipe_ids": [
+          "13000000-0000-4000-8000-000000000001",
+          "13000000-0000-4000-8000-000000000002",
+          "13000000-0000-4000-8000-000000000007"
+        ],
+        "in_conversation_context": true
+      }
+    ]
+  },
+  "turns": [
+    {
+      "user": "Rename it to Picnic Box.",
+      "expected_tool_calls": [
+        {
+          "name": "update_meal",
+          "arguments": {
+            "meal_id": "ea000000-0000-4000-8000-000000000001",
+            "name": "Picnic Box"
+          },
+          "tool_result": {
+            "id": "ea000000-0000-4000-8000-000000000001",
+            "name": "Picnic Box",
+            "component_count": 3
+          }
+        }
+      ],
+      "expect_clarifying_question": false,
+      "expect_response_contains": [
+        "Picnic Box"
+      ]
+    }
+  ],
+  "assertions": {
+    "committed_write_calls": 1,
+    "blocked_write_calls": 0,
+    "required_tools": [
+      "update_meal"
+    ],
+    "forbidden_tools": [
+      "create_meal",
+      "add_recipe_to_meal",
+      "remove_recipe_from_meal",
+      "archive_meal"
+    ]
+  }
+}
