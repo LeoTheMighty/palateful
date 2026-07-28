@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:12:00-06:00
 title: Swap sync OpenAI client to AsyncOpenAI at all API callsites and drop the threadpool bridge
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 blocked-by: []
 branch: feat/dev-aam7
 ---
@@ -28,3 +29,4 @@ Replace every synchronous `OpenAI(...)` client in `services/api/src/` with `Asyn
 
 ## Status log
 - 2026-07-27T17:12 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; scope re-verified against main (see Technical notes)
+- 2026-07-28T09:24:19-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147

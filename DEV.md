@@ -27,7 +27,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 
 Critical path: aam7 / aam8 / aam22 / aam23 in parallel → aam24 cutover → aam25 + aam27 in parallel → aam26 last (needs 7-day post-cutover soak). Scope re-verified against main 2026-07-27; each spec's Technical notes record what already landed.
 
-- [ ] `dev/dev-aam7-2026-07-27T17:12-openai-async.md` — Swap sync OpenAI client to AsyncOpenAI at all API callsites and drop the threadpool bridge. Status: ready. Blocked-by: —.
+- [/] `dev/dev-aam7-2026-07-27T17:12-openai-async.md` — Swap sync OpenAI client to AsyncOpenAI at all API callsites and drop the threadpool bridge. Status: in-progress. Blocked-by: —.
 - [ ] `dev/dev-aam8-2026-07-27T17:13-firebase-threadpool-wrap.md` — Firebase messaging.send threadpool wrap — async-safe push send variant plus sync-on-loop audit. Status: ready. Blocked-by: —. Mostly done via notify_via_threadpool; remaining scope in spec.
 - [ ] `dev/dev-aam22-2026-07-27T17:14-error-tracking-middleware-async.md` — Error-tracking middleware — bridge the sync error-log write off the event loop via threadpool and the dedicated error-log sub-pool. Status: ready. Blocked-by: —.
 - [ ] `dev/dev-aam23-2026-07-27T17:15-lifespan-and-pre-warm.md` — Lifespan pre-warm — warm every async pool connection before healthcheck flips green. Status: ready. Blocked-by: —.
