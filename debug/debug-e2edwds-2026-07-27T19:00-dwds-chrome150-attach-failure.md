@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T19:00:00-06:00
 title: flutter drive -d chrome cannot attach dwds debug service against Chrome 150
 from: dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 ---
 
 ## Goal
@@ -83,3 +84,7 @@ DevTools Protocol usage is the suspect surface.
   the targeted retry are all verified working in bqa102.
 - `E2E_FLOW_TIMEOUT` (default 900s) bounds a wedge — set it lower while
   bisecting to keep iterations cheap.
+
+## Status log
+
+- 2026-07-27T19:17:36-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
