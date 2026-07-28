@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:11:00-06:00
 title: create_meal_event MCP tool accepts meal_id plus 7 CI-gated eval fixtures
 from: _bmad-output/planning-artifacts/epic-meals-sharing-and-ai.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-msa4
 ---
 
@@ -37,3 +38,4 @@ Extend the existing `create_meal_event` MCP tool with an optional `meal_id` para
 
 ## Status log
 - 2026-07-27T17:10 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration
+- 2026-07-27T18:33:17-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147

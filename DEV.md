@@ -21,7 +21,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 - [x] `dev/dev-bugsact2a-2026-07-27T17:08-backend-fields-addendum.md` — Backend fields addendum for import-item detail (last_successful_stage, last_retry_at, confidence_score). Status: done (2026-07-27 verification: all three fields already landed via irrd-1/irrd-3 incl. tests — see spec status log).
 - [-] `dev/dev-irrd3a-2026-07-27T17:09-confidence-eval-calibration-gate.md` — Confidence eval metric module plus heuristic calibration and soft eval regression gates. Status: blocked. Blocked-by: —. Needs real LLM API calls (~10 min runtime).
 - [x] `dev/dev-sru4-2026-07-27T17:10-presigned-upload-in-receive-screen.md` — Presigned upload path for PDF / audio / video in the receiving screen. Status: done. Blocked-by: —. From: epic-share-receiving-ux (sru-1/2/3/5 done). PR: https://github.com/LeoTheMighty/palateful/pull/11
-- [ ] `dev/dev-msa4-2026-07-27T17:11-create-meal-event-mcp-meal-id-and-evals.md` — create_meal_event MCP tool accepts meal_id plus 7 CI-gated eval fixtures. Status: ready. Blocked-by: —. From: epic-meals-sharing-and-ai (msa-1..3 done).
+- [/] `dev/dev-msa4-2026-07-27T17:11-create-meal-event-mcp-meal-id-and-evals.md` — create_meal_event MCP tool accepts meal_id plus 7 CI-gated eval fixtures. Status: in-progress. Blocked-by: —. From: epic-meals-sharing-and-ai (msa-1..3 done).
 
 ## Epic — api-async-migration (Phases 4–6 close-out; 20+ stories already on main)
 
