@@ -10,7 +10,9 @@ import '../../../core/router/activity_routes.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/error_reporter.dart';
+import '../../../core/services/presigned_uploader.dart';
 import 'state/receive_import_notifier.dart';
+import 'state/receive_upload_coordinator.dart';
 import 'widgets/receive_progress_card.dart';
 
 /// Hard cap on pre-upload file size. Matches backend `/imports/upload-url`
@@ -41,6 +43,7 @@ class ReceiveImportScreen extends StatefulWidget {
     this.unsupported = false,
     this.filename,
     this.bookId,
+    this.uploader,
   });
 
   final String? url;
@@ -50,6 +53,12 @@ class ReceiveImportScreen extends StatefulWidget {
   final String? filename;
   final String? bookId;
 
+  /// Injection seam for the presigned PUT. Production leaves this null
+  /// and the screen builds a [DioPresignedUploader] it owns (and aborts
+  /// on dispose).
+  @visibleForTesting
+  final PresignedUploader? uploader;
+
   @override
   State<ReceiveImportScreen> createState() => _ReceiveImportScreenState();
 }
@@ -58,6 +67,13 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
   final ReceiveImportNotifier _notifier = ReceiveImportNotifier();
   final _apiClient = getIt<ApiClient>();
   final _authService = getIt<AuthService>();
+
+  /// Owned by the screen so `dispose()` can `abort()` an in-flight PUT.
+  /// Without this, tapping Close (or Android back) mid-upload leaves a
+  /// partial S3 object nothing will ever claim — the Epic 1 24 h
+  /// lifecycle rule sweeps those, but that's a backstop, not the design.
+  late final PresignedUploader _uploader =
+      widget.uploader ?? DioPresignedUploader();
 
   /// Timestamp the screen first rendered a progress card. Used to
   /// enforce the 600 ms minimum dwell before any navigation — guards
@@ -98,6 +114,7 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
 
   @override
   void dispose() {
+    _uploader.abort();
     _notifier.dispose();
     super.dispose();
   }
@@ -115,7 +132,12 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
     }
   }
 
-  Future<void> _dispatch() async {
+  /// [isRetry] bypasses the sru-1 double-fire dedup guard. That guard
+  /// exists to swallow a second *OS* share intent within 2 s; an
+  /// explicit Retry tap after a failed upload is a different intent, and
+  /// without this an impatient tap would silently no-op and leave the
+  /// user staring at the same error card.
+  Future<void> _dispatch({bool isRetry = false}) async {
     try {
       // URL branch — no file bytes, no dedup guard needed.
       final url = widget.url;
@@ -161,7 +183,7 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
         mime: widget.mime,
         filename: widget.filename ?? _basename(path),
         path: path,
-        dedupKey: dedupKey,
+        dedupKey: isRetry ? null : dedupKey,
       );
       if (branch == null) {
         // sru-1 first-frame dedup — the second fire within 2 s is a no-op.
@@ -177,11 +199,9 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
         case ReceiveBranch.pdf:
         case ReceiveBranch.audio:
         case ReceiveBranch.video:
-          // sru-4 owns the presigned-upload sequence. Until it lands,
-          // the progress card shows "Reading your <file>…" then lands
-          // on the Activity Hub via a no-op navigation so the user
-          // isn't left stranded. When sru-4 lands, swap the body here
-          // for the upload → /import call.
+          // Pure-upload branches: presigned PUT then /import. No typed
+          // screen in between — the user lands on the Activity Hub and
+          // watches the job parse there.
           await _uploadAndImport(
             path: path,
             sizeBytes: sizeBytes,
@@ -266,23 +286,71 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
     );
   }
 
+  /// sru-4 — the epic's locked upload contract: `upload-url` → PUT →
+  /// `/import {s3_key, etag}`, with the 409 `object_not_ready` retry
+  /// handshake living in [ReceiveUploadCoordinator]. The card shows
+  /// byte-level progress throughout and never black-screens: `detecting`
+  /// covers the copy-to-sandbox, `uploading` the PUT, `sending` the
+  /// claim (including retries).
   Future<void> _uploadAndImport({
     required String path,
     required int sizeBytes,
     required ReceiveBranch branch,
   }) async {
-    // sru-4: full presigned-upload sequence lands here. sru-1 ships the
-    // detection + UX shell; the upload call is deferred to the next
-    // story to keep both stories reviewable in isolation. For now the
-    // screen dwells and lands the user on the Activity Hub — backend
-    // `start_import` isn't wired to bytes yet from this path, so the
-    // user sees the receive card + an empty-handed Activity nav. This
-    // is intentional and documented; sru-4 replaces the body.
+    final bookId = widget.bookId ?? _authService.defaultRecipeBookId;
+    if (bookId == null || bookId.isEmpty) {
+      // Nothing to import into. Unlike the URL branch there's no
+      // share-import fallback that can hold the bytes, so surface it.
+      _notifier.enterError(
+        ReceiveErrorCode.unknown,
+        'no-default-recipe-book',
+      );
+      if (mounted) setState(() {});
+      return;
+    }
+
     _notifier.enterUploading(total: sizeBytes);
-    await _dwell();
-    if (!mounted) return;
-    _notifier.enterNavigating(ActivityRoutes.hubPath);
-    context.go(ActivityRoutes.hubPath);
+
+    final coordinator = ReceiveUploadCoordinator(
+      api: _apiClient,
+      uploader: _uploader,
+    );
+
+    try {
+      await coordinator.run(
+        bookId: bookId,
+        branch: branch,
+        filePath: path,
+        filename: widget.filename ?? _basename(path),
+        sizeBytes: sizeBytes,
+        mimeHint: widget.mime,
+        // Same sha256(path+mtime+size) the dedup guard uses, so a
+        // double-fired share resolves to the existing job server-side
+        // instead of creating a second one.
+        idempotencyKey: _notifier.value.dedupKey,
+        onProgress: (sent, total) {
+          if (!mounted) return;
+          _notifier.updateUploadProgress(uploaded: sent, total: total);
+        },
+        onUploaded: () {
+          if (!mounted) return;
+          _notifier.enterSending();
+        },
+      );
+      if (!mounted) return;
+      await _dwell();
+      if (!mounted) return;
+      _notifier.enterNavigating(ActivityRoutes.hubPath);
+      context.go(ActivityRoutes.hubPath);
+    } on UploadAbortedException {
+      // User closed the screen mid-PUT. The screen is gone; there's
+      // nothing to render and nothing to report.
+      return;
+    } on ReceiveUploadFailure catch (e) {
+      if (!mounted) return;
+      _notifier.enterError(e.code, e.message);
+      setState(() {});
+    }
   }
 
   void _enterUnsupportedState() {
@@ -344,7 +412,7 @@ class _ReceiveImportScreenState extends State<ReceiveImportScreen> {
             code: state.errorCode ?? ReceiveErrorCode.unknown,
             onRetry: () {
               _cardShownAt = DateTime.now();
-              _dispatch();
+              _dispatch(isRetry: true);
             },
             onClose: () => context.go('/'),
           );
