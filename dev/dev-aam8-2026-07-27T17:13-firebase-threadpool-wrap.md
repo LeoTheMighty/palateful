@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:13:00-06:00
 title: Firebase messaging.send threadpool wrap — async-safe push send variant plus sync-on-loop audit
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-27T21-15-34-312-36147
 blocked-by: []
 branch: feat/dev-aam8
 ---
@@ -27,3 +28,4 @@ Guarantee no Firebase Admin `messaging.send*` call ever runs on the event loop. 
 
 ## Status log
 - 2026-07-27T17:13 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; scope re-verified against main (see Technical notes)
+- 2026-07-28T09:51:06-06:00 — claimed by /devx in session /devx-loop-2026-07-27T21-15-34-312-36147
