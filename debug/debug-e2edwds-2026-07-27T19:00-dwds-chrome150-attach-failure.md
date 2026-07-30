@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-27T19:00:00-06:00
 title: flutter drive -d chrome cannot attach dwds debug service against Chrome 150
 from: dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md
-status: ready
+status: done
 ---
 
 ## Goal
@@ -17,9 +17,13 @@ leaves bqa102's headline AC unmet.
 
 ## Acceptance criteria
 
-- [ ] Repro exists (below — already reproducible on demand).
-- [ ] Root cause documented with evidence.
-- [ ] Fix + the E-2 eval green: `bash run-eval.sh browser-qa-agent/evals/e2_e2e_one_command.sh` exits 0 from `_devx/workstreams`.
+- [x] Repro exists (below — already reproducible on demand).
+- [x] Root cause documented with evidence — Flutter-toolchain ↔ Chrome-150
+      version skew; see the 2026-07-30 status-log entry.
+- [-] Fix + the E-2 eval green: `bash run-eval.sh browser-qa-agent/evals/e2_e2e_one_command.sh` exits 0 from `_devx/workstreams`.
+      **Fix landed (Flutter 3.41.7 — the attach works). Eval still not
+      green**, now blocked by `debug/debug-e2egetit`, a distinct DI defect
+      this one was masking. Tracked there, not re-scoped here.
 
 ## Repro
 
@@ -98,3 +102,36 @@ DevTools Protocol usage is the suspect surface.
   - Learning: iteration 1 [FAIL]: No-op iteration: the previous run stalled mid-stream before making any file changes or recording findings on the dwds/Chrome-150 attach failure.
   - Learning: iteration 2 [ERROR]: worker session exceeded the 60min awake-time iteration ceiling and was killed
   - Learning: iteration 3 [FAIL]: No meaningful progress: the iteration ended still waiting on the app build/attach run to produce an outcome (pass, AppConnectionException, or exit), with no file changes and no verified result.
+- 2026-07-30T13:10 — **RESOLVED by `dev/dev-fltup1`. Root cause confirmed:
+  Flutter-toolchain ↔ Chrome-150 version skew.** The leading hypothesis in
+  this spec was right. Upgrading local Flutter 3.38.9 → **3.41.7** (the pin
+  CI has used since `ach-1`) makes the debug service attach:
+
+  ```
+  Waiting for connection from debug service on Chrome...             25.5s
+  Debug service listening on ws://127.0.0.1:50013/fKozVNQEnc0=/ws
+  ```
+
+  `grep -c AppConnectionException` over the full run → **0**, where 3.38.9
+  failed at ~19–21s inside `DevHandler._startLocalDebugService` on every
+  attempt. Same flow (01), same Chrome **150.0.7871.187**, same exact-match
+  chromedriver **150.0.7871.182**, same stack — only the toolchain moved.
+
+  Per fltup1 AC #5 this takes the **"attaches"** arm: the Chrome-side arm of
+  the bisect is **not** needed, no Chrome for Testing downgrade, and the CI
+  pins stay where they are.
+
+  **AC #3 (E-2 eval green) is NOT met, and this ticket is closed anyway** —
+  deliberately, because the eval is now blocked by a different defect that
+  this one was masking. Once the app actually launched, flow 01 failed on
+  `Bad state: GetIt: Object/factory with type ClientLatencyIngest is not
+  registered inside GetIt` (`app_router.dart:98` via
+  `perf_navigator_observer.dart:87`), which crashes the router on the first
+  frame; the follow-on "Found 0 widgets with text 'Home'" is its
+  consequence, not a second bug.
+
+  Successor filed as
+  **`debug/debug-e2egetit-2026-07-30T13:00-clientlatencyingest-not-registered-in-e2e-mode.md`**
+  — that is what bqa102 / the E-2 eval now waits on. Closing this rather
+  than re-scoping it keeps the dwds finding (a real, evidence-backed
+  toolchain result) from being buried under an unrelated DI bug.
