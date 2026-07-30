@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-30T09:00:00-06:00
 title: Upgrade local Flutter toolchain to the repo's pinned stable (3.41.7)
 from: debug/debug-e2edwds-2026-07-27T19:00-dwds-chrome150-attach-failure.md
-status: ready
+status: in-progress
+owner: /devx-2026-07-30T1034-61063
 ---
 
 ## Goal
@@ -95,3 +96,4 @@ one that gates merges and builds the store artifacts.
   Phase 5. Local 3.38.9 vs CI 3.41.7 drift discovered while ruling out causes
   for the dwds attach failure (chromedriver version and Chrome first-run
   interstitials already eliminated by experiment; see the debug spec).
+- 2026-07-30T10:34:46-06:00 — claimed by /devx in session /devx-2026-07-30T1034-61063
