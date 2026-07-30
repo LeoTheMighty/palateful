@@ -31,3 +31,10 @@ First devx-repo phase (direct commits to devx main — user-locked decision, FR-
 - 2026-07-30T13:12:18-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
 - 2026-07-30T19:28:47.666Z — [FAIL] loop iteration 1: The iteration ended with the devx test suite (`npm test`) still running and never completing, so no verified progress on the spec was established and no report of substantive changes can be made.
   - Learning: The devx `npm test` suite runs long enough (documented 15–50 min, 15 vitest workers) to exhaust an iteration's budget on its own; it should be launched as a background task early in the iteration rather than blocked on synchronously at the end, or scoped to only the affected test files.
+- 2026-07-30T19:34:34.263Z — loop iteration 2: Landed the report template/schema work and the matching /devx Phase 5 emission step for bqa103, with 137 targeted tests green and the E-3 eval passing end-to-end on a template filled in per the new instructions.
+  - Change: Completed and verified the iteration-1 report template and its schema, so a filled-in template parses under the required contract (AC1).
+  - Change: Added the Phase 5 structured-report emission step to the /devx command, including the prose instructions that tell an iteration exactly how to fill the template (AC2).
+  - Change: Confirmed the parse contract end-to-end by filling the template exactly as the new Phase 5 step instructs and driving the E-3 eval green.
+  - Learning: The consumer eval still fails, but for a reason owned by bqa106 — its red state is expected here and is not a signal that this spec's template/schema work is broken.
+  - Learning: The full devx suite is ~138 test files and takes long enough that an iteration can end before it completes; targeted discipline tests (137 of them) cover the changed surface and are the practical gate within one iteration.
+  - Learning: Filling the template literally per the Phase 5 prose is itself the cheapest verification of AC1 — the eval doubles as a contract test for the instructions, not just the schema.
