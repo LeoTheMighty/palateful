@@ -1,0 +1,30 @@
+{
+  "name": "app",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "app/lib",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["flutter test"],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "analyze": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["flutter analyze --no-fatal-warnings --no-fatal-infos"],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build-web": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": ["flutter build web --release"],
+        "cwd": "{projectRoot}"
+      }
+    }
+  },
+  "tags": ["app", "flutter"]
+}

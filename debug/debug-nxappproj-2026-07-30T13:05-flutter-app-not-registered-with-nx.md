@@ -80,3 +80,11 @@ unnoticed.
   command that does not exist in this repo. Recorded rather than silently
   substituting the working command.
 - 2026-07-30T12:16:23-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
+- 2026-07-30T18:25:17.265Z — loop iteration 1: Registered the Flutter app as an nx project with test/analyze/build-web targets matching devx.config.yaml and ci.yml, verified end-to-end including exit-code propagation.
+  - Change: Added app/project.json (projectType: application, cwd {projectRoot}) with test, analyze, and build-web targets whose commands are byte-identical to devx.config.yaml projects[app] and the ci.yml flutter-test/deploy-web steps
+  - Change: Documented the root cause and the nx target list in app/README.md, including why an `install` target was deliberately omitted (it would silently join `nx run-many -t install`)
+  - Change: Recorded in ci.yml the decision to keep CI on bare flutter commands rather than routing through nx, with cross-references so the three callers can't drift
+  - Learning: nx.json in this repo registers no `plugins` at all, so nx does zero project inference — every project is discovered solely by a hand-written project.json. Any new non-Python surface will be invisible to nx by default, same as app/ was.
+  - Learning: The ci.yml flutter-test job installs only Flutter (no setup-node, no yarn install), so routing it through `npx nx` is not a free swap — it would add Node setup to every run for no dedup benefit.
+  - Learning: The suite is at 1567 passing tests, not the 1564 the spec's repro block recorded.
+  - Learning: tools/image-network-check.sh takes >2 min to run locally (timed out in a guard sweep); budget for it separately rather than batching it with the fast grep guards.
