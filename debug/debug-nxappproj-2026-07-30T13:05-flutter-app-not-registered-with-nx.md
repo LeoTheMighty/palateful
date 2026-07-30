@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-30T13:05:00-06:00
 title: Flutter app is not an nx project — `npx nx run app:test` does not exist
 from: dev/dev-fltup1-2026-07-30T09:00-align-local-flutter-to-ci-pin.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T17-52-24-754-38586
 ---
 
 ## Goal
@@ -78,3 +79,4 @@ unnoticed.
 - 2026-07-30T13:05 — filed from `dev/dev-fltup1` AC #2, which named an nx
   command that does not exist in this repo. Recorded rather than silently
   substituting the working command.
+- 2026-07-30T12:16:23-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
