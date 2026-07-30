@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T11:41:00-06:00
 title: Upstream story-derived QA — template, emission wiring, schema enum
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T17-52-24-754-38586
 branch: feat/dev-bqa103
 ---
 
@@ -27,3 +28,4 @@ First devx-repo phase (direct commits to devx main — user-locked decision, FR-
 
 ## Status log
 - 2026-07-27T11:41 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase; E-3's RED artifact `evals/e3_walkthrough_emission.sh` goes green in bqa106 once a walkthrough is emitted; template lands here).
+- 2026-07-30T13:12:18-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
