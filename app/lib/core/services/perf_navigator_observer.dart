@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../router/route_redaction.dart';
@@ -31,20 +32,53 @@ import 'client_latency_ingest.dart';
 /// go_router's `state.fullPath` is already `/recipes/:id`). If the
 /// caller passes a concrete URL (tab-swap reporter, or a Navigator with
 /// raw `settings.name`), [redactRoute] scrubs UUIDs / long numeric ids.
+///
+/// **Absent ingest (e2egetit):** [ingestResolver] is nullable on purpose
+/// and mirrors the `isRegistered<ClientLatencyIngest>()` guard every
+/// other consumer already uses (`api_client`, `jankstats_bridge`,
+/// `metrickit_bridge`). Two boot paths legitimately have no ingest
+/// singleton: `E2E_MODE=true`, where `main()` skips
+/// `_bootstrapClientLatencyIngest()` outright, and the first few frames
+/// of a normal boot, where that bootstrap is `unawaited` behind a
+/// `PackageInfo.fromPlatform()` probe. Resolving unconditionally threw
+/// `Bad state: … ClientLatencyIngest is not registered inside GetIt`
+/// out of a scheduler callback and took the whole router down with it.
+/// A null resolve drops the event and logs once in debug — it is never
+/// silent.
 class PerfNavigatorObserver extends NavigatorObserver {
   PerfNavigatorObserver({
-    required ClientLatencyIngest Function() ingestResolver,
+    required ClientLatencyIngest? Function() ingestResolver,
     required String? Function() routePathResolver,
     WidgetsBinding? binding,
   })  : _ingestResolver = ingestResolver,
         _routePathResolver = routePathResolver,
         _binding = binding;
 
-  final ClientLatencyIngest Function() _ingestResolver;
+  final ClientLatencyIngest? Function() _ingestResolver;
   final String? Function() _routePathResolver;
   final WidgetsBinding? _binding;
 
+  /// Debug-only latch so an unregistered ingest is reported once rather
+  /// than on every route push.
+  bool _warnedMissingIngest = false;
+
   WidgetsBinding get _widgetsBinding => _binding ?? WidgetsBinding.instance;
+
+  /// Resolves the ingest singleton, or null when it isn't wired yet.
+  ClientLatencyIngest? _ingestOrNull() {
+    final ingest = _ingestResolver();
+    if (ingest == null && !_warnedMissingIngest) {
+      _warnedMissingIngest = true;
+      if (kDebugMode) {
+        debugPrint(
+          'PerfNavigatorObserver: ClientLatencyIngest not registered — '
+          'dropping route_paint events (expected under E2E_MODE, and '
+          'during the boot window before the ingest bootstrap resolves).',
+        );
+      }
+    }
+    return ingest;
+  }
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
@@ -70,7 +104,7 @@ class PerfNavigatorObserver extends NavigatorObserver {
     final raw = routePath ?? _routePathResolver();
     final redacted = redactRoute(raw);
     if (redacted == null || redacted.isEmpty) return;
-    _ingestResolver().enqueue(
+    _ingestOrNull()?.enqueue(
       type: ClientLatencyType.routePaint,
       durationMs: 0,
       route: redacted,
@@ -84,7 +118,7 @@ class PerfNavigatorObserver extends NavigatorObserver {
       final raw = overridePath ?? _routePathResolver();
       final redacted = redactRoute(raw);
       if (redacted == null || redacted.isEmpty) return;
-      _ingestResolver().enqueue(
+      _ingestOrNull()?.enqueue(
         type: ClientLatencyType.routePaint,
         durationMs: stopwatch.elapsedMilliseconds,
         route: redacted,

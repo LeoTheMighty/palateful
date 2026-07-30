@@ -93,9 +93,23 @@ void resetRouter() {
 /// don't pin a stale GoRouter reference.
 PerfNavigatorObserver? _perfObserver;
 
+/// Drop the cached observer. Companion to [resetRouter] for hot-restart
+/// and for tests that re-register the GetIt graph between cases.
+void resetPerfNavigatorObserver() {
+  _perfObserver = null;
+}
+
 PerfNavigatorObserver _resolvePerfObserver() {
   return _perfObserver ??= PerfNavigatorObserver(
-    ingestResolver: () => getIt<ClientLatencyIngest>(),
+    // e2egetit: resolve through the registration guard, not straight out
+    // of GetIt. `main()` skips `_bootstrapClientLatencyIngest()` under
+    // `E2E_MODE=true` and runs it `unawaited` otherwise, so the observer
+    // outlives at least one window where the singleton doesn't exist.
+    // Observers are installed on every Navigator here and fire from a
+    // scheduler callback, so a throw takes down the whole first frame.
+    ingestResolver: () => GetIt.I.isRegistered<ClientLatencyIngest>()
+        ? getIt<ClientLatencyIngest>()
+        : null,
     routePathResolver: () => _router?.state.fullPath,
   );
 }
@@ -103,8 +117,12 @@ PerfNavigatorObserver _resolvePerfObserver() {
 /// Exposed for `ScaffoldWithBottomNav` (cla-4): bottom-tab swaps don't
 /// fire `didPush` on any Navigator, so the shell calls this when the
 /// branch index changes.
-PerfNavigatorObserver? get perfNavigatorObserver =>
-    GetIt.I.isRegistered<ClientLatencyIngest>() ? _resolvePerfObserver() : null;
+///
+/// Always non-null: the observer itself is tolerant of a missing ingest
+/// (see [_resolvePerfObserver]). Gating this getter on `isRegistered`
+/// used to lose every tab swap that happened before the ingest bootstrap
+/// resolved, because the shell caches nothing and simply saw null.
+PerfNavigatorObserver? get perfNavigatorObserver => _resolvePerfObserver();
 
 GoRouter get appRouter {
   final perfObserver = _resolvePerfObserver();
