@@ -343,3 +343,11 @@ compose projects.
   baseline. `flutter build web` → exit 0. No Python/Node project was touched,
   so no other project's gates apply. Coverage is informational under YOLO and
   is not a merge blocker.
+- phase 7: CI success — devx-ci (run 30564663961) and CI & Deploy (run
+  30564663979), both terminal at the branch tip. Tour built + published:
+  https://htmlpreview.github.io/?https://raw.githubusercontent.com/LeoTheMighty/palateful/devx-tours/tours/fltup1/tour.html
+- phase 8: check-hold `{"hold":false}`; `devx merge-gate fltup1` →
+  `{"merge":true}` (exit 0). merged via PR #17 (squash → ff3eddcb).
+  `gh pr merge` printed `fatal: 'main' is already used by worktree` and the
+  merge still landed — the known in-worktree artifact; `gh pr view` reporting
+  `state: MERGED` with `mergeCommit ff3eddcb` is what was trusted.
