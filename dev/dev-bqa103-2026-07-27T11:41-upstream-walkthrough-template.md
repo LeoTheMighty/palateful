@@ -29,3 +29,5 @@ First devx-repo phase (direct commits to devx main — user-locked decision, FR-
 ## Status log
 - 2026-07-27T11:41 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase; E-3's RED artifact `evals/e3_walkthrough_emission.sh` goes green in bqa106 once a walkthrough is emitted; template lands here).
 - 2026-07-30T13:12:18-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
+- 2026-07-30T19:28:47.666Z — [FAIL] loop iteration 1: The iteration ended with the devx test suite (`npm test`) still running and never completing, so no verified progress on the spec was established and no report of substantive changes can be made.
+  - Learning: The devx `npm test` suite runs long enough (documented 15–50 min, 15 vitest workers) to exhaust an iteration's budget on its own; it should be launched as a background task early in the iteration rather than blocked on synchronously at the end, or scoped to only the affected test files.
