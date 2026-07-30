@@ -74,7 +74,14 @@ DevTools Protocol usage is the suspect surface.
 
 ## Technical notes
 
-- Next step is a bisect on the browser/toolchain axis, not on app code: try a
+- **First arm of the bisect is now filed as
+  `dev/dev-fltup1-2026-07-30T09:00-align-local-flutter-to-ci-pin.md`**: the
+  local toolchain is 3.38.9 while CI has been pinned to 3.41.7 since `ach-1`,
+  so "upgrade Flutter" is also a drift fix worth doing on its own merits.
+  fltup1 is required to answer the dwds question either way and to append its
+  result here. If 3.41.7 still cannot drive Chrome 150, this ticket pivots to
+  the Chrome-side arm below.
+- Remaining arm, if fltup1 comes back negative: try a
   Chrome for Testing 146-line binary via `npx @puppeteer/browsers install
   chrome@146...` with `CHROME_EXECUTABLE` pointed at it, and independently try
   a newer Flutter stable. Whichever moves the needle names the culprit.
