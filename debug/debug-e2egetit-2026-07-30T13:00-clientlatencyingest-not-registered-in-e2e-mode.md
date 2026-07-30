@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-30T13:00:00-06:00
 title: E2E_MODE app launch crashes — ClientLatencyIngest not registered in GetIt
 from: dev/dev-fltup1-2026-07-30T09:00-align-local-flutter-to-ci-pin.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T17-52-24-754-38586
 ---
 
@@ -112,3 +112,5 @@ and same toolchain, so the gap is specific to the `E2E_MODE=true` boot path
   - Learning: Flow 01 now fails on a genuinely different defect: the E2E token authenticates client-side (hasToken=true) but the API returns 401 on the user-data fetch, so the app redirects to /onboarding/welcome and waitFor("Home") times out. This is an E2E auth/onboarding-seed problem, not a router problem, and warrants its own spec.
   - Learning: Environment prerequisites the spec did not capture: (1) the worktree had no .env, so `npx nx run e2e:stack-up` failed outright — copied from the main checkout (gitignored); (2) Homebrew's chromedriver cask now ships 151 while local Chrome is 150, so `brew upgrade` does NOT produce a usable driver — a pinned build from the Chrome-for-Testing endpoint is installed at ~/.local/bin/chromedriver150.
   - Learning: `timeout`/`gtimeout` are unavailable on this machine; bounding `flutter drive` (which does hang after reporting its verdict, as the spec warned) needs a background-PID + poll-the-log loop instead.
+- 2026-07-30T18:16:21.996Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-30T18:16:21.996Z — merged via devx loop — PR https://github.com/LeoTheMighty/palateful/pull/18
