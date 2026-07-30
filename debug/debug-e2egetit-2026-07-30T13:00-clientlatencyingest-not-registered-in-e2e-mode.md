@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-30T13:00:00-06:00
 title: E2E_MODE app launch crashes — ClientLatencyIngest not registered in GetIt
 from: dev/dev-fltup1-2026-07-30T09:00-align-local-flutter-to-ci-pin.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T17-52-24-754-38586
 ---
 
 ## Goal
@@ -100,3 +101,4 @@ and same toolchain, so the gap is specific to the `E2E_MODE=true` boot path
 - 2026-07-30T13:00 — filed from `dev/dev-fltup1` AC #5. Surfaced only once
   the Flutter 3.41.7 upgrade let the debug service attach and the test body
   execute for the first time; it was previously masked by the dwds failure.
+- 2026-07-30T11:52:25-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
