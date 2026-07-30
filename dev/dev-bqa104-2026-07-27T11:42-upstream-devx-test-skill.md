@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T11:42:00-06:00
 title: Upstream attended layer — devx-test skill, routing, QA.md carve-out
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T17-52-24-754-38586
 blocked-by: [bqa103]
 branch: feat/dev-bqa104
 ---
@@ -27,3 +28,4 @@ Fill the devx O-4 slot: the attended exploratory `/devx-test` skill, its dispatc
 
 ## Status log
 - 2026-07-27T11:42 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase).
+- 2026-07-30T14:12:31-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
