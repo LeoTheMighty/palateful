@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T11:41:00-06:00
 title: Upstream story-derived QA — template, emission wiring, schema enum
 from: plan/plan-41ee13-2026-07-27T10:36-browser-qa-agent.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T17-52-24-754-38586
 branch: feat/dev-bqa103
 ---
@@ -47,3 +47,5 @@ First devx-repo phase (direct commits to devx main — user-locked decision, FR-
   - Learning: The full suite took 1700s (~28 min) wall-clock for 136 files. Launching it as the very first action of the iteration and doing all read-only verification while it ran was what made a same-iteration close possible; the iteration-1 failure mode was launching it last.
   - Learning: The Phase 5 prose that this spec added contains a warning that directly constrains how to run this gate: the skill-body discipline tests read their subject files from disk at test time, so editing any `.claude/commands/*.md` or `skills/*.md` while the suite runs produces a torn-read red. Sequencing all prose edits and the `sync:skills` run before starting the suite is mandatory, not stylistic.
   - Learning: `scripts/sync-skills.mjs` is idempotent and syncs all 4 skill files at once — running it is safe to do reflexively before a gate, and a clean `git diff` hash before/after is a cheap direct proof of the byte-match AC without needing to trust the skills-sync test alone.
+- 2026-07-30T20:12:29.508Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-30T20:12:29.508Z — merged via devx loop — PR https://github.com/LeoTheMighty/palateful/pull/21
