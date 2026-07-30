@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T17:15:00-06:00
 title: Lifespan pre-warm — warm every async pool connection before healthcheck flips green
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: ready
+status: in-progress
+owner: /devx-loop-2026-07-30T17-52-24-754-38586
 blocked-by: []
 branch: feat/dev-aam23
 ---
@@ -29,3 +30,4 @@ Expand the single-connection async-engine warm-up that aam-1 left in `main.py` i
 
 ## Status log
 - 2026-07-27T17:15 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; scope re-verified against main (see Technical notes)
+- 2026-07-30T12:34:23-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
