@@ -26,6 +26,7 @@ import Foundation
 final class UploadService: NSObject {
   private let sessionIdentifier: String
   private let context: SharedContext
+  private let notifier: FailureNotifying
   private lazy var backgroundSession: URLSession = {
     let config = URLSessionConfiguration.background(withIdentifier: sessionIdentifier)
     config.sessionSendsLaunchEvents = true
@@ -40,9 +41,17 @@ final class UploadService: NSObject {
   private var inflight: [Int: InflightUpload] = [:]
   private let inflightLock = NSLock()
 
-  init(sessionIdentifier: String, context: SharedContext) {
+  /// `notifier` is injectable so the failure path can be tested without a
+  /// bundle — `UNUserNotificationCenter.current()` traps in a bare test
+  /// binary. Production callers take the default.
+  init(
+    sessionIdentifier: String,
+    context: SharedContext,
+    notifier: FailureNotifying = SystemFailureNotifier()
+  ) {
     self.sessionIdentifier = sessionIdentifier
     self.context = context
+    self.notifier = notifier
     super.init()
   }
 
@@ -76,20 +85,33 @@ final class UploadService: NSObject {
     let task = ephemeralSession.dataTask(with: request) { [weak self] data, response, error in
       guard let self else { return }
       if let error = error {
-        self.markFailed(record: record, errorCode: mapNetworkError(error), errorId: nil)
+        // No response at all — the reconciler can re-POST once the
+        // network comes back, so this stays retryable.
+        self.markFailed(
+          record: record,
+          errorCode: mapNetworkError(error),
+          errorId: nil,
+          retryable: true
+        )
         return
       }
       let status = (response as? HTTPURLResponse)?.statusCode ?? 0
       guard (200...299).contains(status), let data = data else {
-        let (code, id) = parseErrorPayload(data: data, fallbackStatus: status)
-        self.markFailed(record: record, errorCode: code, errorId: id)
+        let parsed = parseErrorPayload(data: data, fallbackStatus: status)
+        self.markFailed(
+          record: record,
+          errorCode: parsed.code,
+          errorId: parsed.id,
+          retryable: parsed.retryable
+        )
         return
       }
       guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
             let uploadUrlStr = obj["upload_url"] as? String,
             let uploadUrl = URL(string: uploadUrlStr),
             let s3Key = obj["s3_key"] as? String else {
-        self.markFailed(record: record, errorCode: "unknown", errorId: nil)
+        // 2xx with a body we can't read — a contract break, not a blip.
+        self.markFailed(record: record, errorCode: "unknown", errorId: nil, retryable: false)
         return
       }
       let headers = obj["required_headers"] as? [String: String] ?? [:]
@@ -158,7 +180,12 @@ final class UploadService: NSObject {
     let task = ephemeralSession.dataTask(with: request) { [weak self] data, response, error in
       guard let self else { return }
       if let error = error {
-        self.markFailed(record: record, errorCode: mapNetworkError(error), errorId: nil)
+        self.markFailed(
+          record: record,
+          errorCode: mapNetworkError(error),
+          errorId: nil,
+          retryable: true
+        )
         return
       }
       let status = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -168,8 +195,15 @@ final class UploadService: NSObject {
             let uploadUrl = URL(string: uploadUrlStr),
             let s3Key = obj["s3_key"] as? String
       else {
-        let (code, id) = parseErrorPayload(data: data, fallbackStatus: status)
-        self.markFailed(record: record, errorCode: code, errorId: id)
+        let parsed = parseErrorPayload(data: data, fallbackStatus: status)
+        self.markFailed(
+          record: record,
+          errorCode: parsed.code,
+          errorId: parsed.id,
+          // A 2xx that doesn't carry an upload URL is a contract break,
+          // not a blip — re-POSTing it would fail the same way.
+          retryable: (200...299).contains(status) ? false : parsed.retryable
+        )
         return
       }
       let headers = obj["required_headers"] as? [String: String] ?? [:]
@@ -254,28 +288,95 @@ final class UploadService: NSObject {
         }
         return
       }
-      let (code, id) = parseErrorPayload(data: data, fallbackStatus: status)
-      self.markFailed(record: record, errorCode: code, errorId: id)
+      let parsed = parseErrorPayload(data: data, fallbackStatus: status)
+      self.markFailed(
+        record: record,
+        errorCode: parsed.code,
+        errorId: parsed.id,
+        retryable: parsed.retryable
+      )
     }
     task.resume()
   }
 
   // MARK: - Helpers
 
-  private func markFailed(record: PendingImport, errorCode: String, errorId: String?) {
-    // We don't currently surface failure from a dead extension to the
-    // user (the share sheet has already dismissed). Telemetry captures
-    // the event. Persistent record stays in the App Group so the main
-    // app's reconciler can also log it.
+  /// Terminal failure for `record`. The share sheet has already dismissed,
+  /// so the only way the user ever learns about this is (a) the failure
+  /// block we write into the App Group record — which the main-app
+  /// reconciler and the failed-imports UI read on next foreground — and
+  /// (b) for permanent failures, a local notification.
+  ///
+  /// `retryable` follows the server's top-level `retryable` field when the
+  /// error body carried one, else the status-code heuristic.
+  ///
+  /// Internal rather than private so `PalatefulShareTests` can drive the
+  /// terminal-failure path directly instead of standing up a fake server.
+  func markFailed(
+    record: PendingImport,
+    errorCode: String,
+    errorId: String?,
+    retryable: Bool
+  ) {
+    PendingImports.upsert(
+      record.markingFailed(
+        errorCode: errorCode,
+        errorId: errorId,
+        retryable: retryable
+      )
+    )
+
     Telemetry.emit(
       "share_extension_failed",
       properties: [
         "error_code": errorCode,
         "error_id": errorId ?? "",
-        "source_type": record.sourceType
+        "source_type": record.sourceType,
+        "retryable": retryable
       ],
       context: context
     )
+
+    // Retryable failures stay silent: the main-app reconciler will re-POST
+    // on next foreground, so a notification would cry wolf about something
+    // that fixes itself.
+    guard !retryable else { return }
+    notifyPermanentFailure(record: record, errorCode: errorCode)
+  }
+
+  /// Local notification for a failure that will never resolve on its own.
+  /// Permission is *queried*, never requested — an extension cannot present
+  /// the system prompt, so anything short of already-granted degrades to the
+  /// telemetry + persisted-record surfaces above.
+  private func notifyPermanentFailure(record: PendingImport, errorCode: String) {
+    notifier.currentAuthorization { [weak self] authorization in
+      guard let self else { return }
+      guard authorization == .granted else {
+        Telemetry.emit(
+          "share_extension_failure_notification_skipped",
+          properties: [
+            "reason": authorization.rawValue,
+            "error_code": errorCode,
+            "source_type": record.sourceType
+          ],
+          context: self.context
+        )
+        return
+      }
+      self.notifier.post(
+        title: failureNotificationTitle,
+        body: errorCopy(for: errorCode),
+        // Keyed by record id so a re-failure of the same share replaces the
+        // earlier notification instead of stacking a duplicate.
+        identifier: "share_import_failed_\(record.id)",
+        userInfo: [
+          "import_id": record.id,
+          "book_id": record.bookId,
+          "error_code": errorCode,
+          "source": "share_extension"
+        ]
+      )
+    }
   }
 }
 
@@ -297,11 +398,18 @@ extension UploadService: URLSessionDataDelegate, URLSessionTaskDelegate {
     switch entry.phase {
     case .putting:
       guard error == nil, (200...299).contains(status) else {
-        // PUT failed — reconciler on foreground will NOT be able to
-        // retry because it doesn't have the file URL. For now the share
-        // is effectively lost. Telemetry below so we can measure how
-        // often this happens.
-        markFailed(record: entry.record, errorCode: "s3_put_failed", errorId: nil)
+        // PUT failed — the reconciler on foreground will NOT be able to
+        // retry because the file URL doesn't survive the App Group, so
+        // the bytes really are gone. That makes this permanent by
+        // construction regardless of what the status code says: mark it
+        // non-retryable so the user gets told rather than waiting on a
+        // retry that can never happen.
+        markFailed(
+          record: entry.record,
+          errorCode: "s3_put_failed",
+          errorId: nil,
+          retryable: false
+        )
         return
       }
       let etag = (task.response as? HTTPURLResponse)?
@@ -331,14 +439,29 @@ private struct InflightUpload {
   let phase: Phase
 }
 
-private func parseErrorPayload(data: Data?, fallbackStatus: Int) -> (String, String?) {
+/// Parsed failure envelope. `retryable` is the server's top-level field
+/// (shipped in ifh-1); it falls back to the status-code heuristic when the
+/// body is absent, unparseable, or comes from a server that predates it.
+struct ParsedError {
+  let code: String
+  let id: String?
+  let retryable: Bool
+}
+
+private func parseErrorPayload(data: Data?, fallbackStatus: Int) -> ParsedError {
   guard let data = data,
         let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-    return (errorCodeForStatus(fallbackStatus), nil)
+    return ParsedError(
+      code: errorCodeForStatus(fallbackStatus),
+      id: nil,
+      retryable: retryableForStatus(fallbackStatus)
+    )
   }
-  let code = (obj["error_code"] as? String) ?? errorCodeForStatus(fallbackStatus)
-  let id = obj["error_id"] as? String
-  return (code, id)
+  return ParsedError(
+    code: (obj["error_code"] as? String) ?? errorCodeForStatus(fallbackStatus),
+    id: obj["error_id"] as? String,
+    retryable: (obj["retryable"] as? Bool) ?? retryableForStatus(fallbackStatus)
+  )
 }
 
 private func errorCodeForStatus(_ status: Int) -> String {
@@ -348,6 +471,19 @@ private func errorCodeForStatus(_ status: Int) -> String {
   case 415: return "unsupported_mime"
   case 429: return "rate_limited"
   default: return "unknown"
+  }
+}
+
+/// Fallback classification when the response body has no `retryable`.
+/// 5xx and the two "come back later" 4xx codes are transient; every other
+/// 4xx is the client's fault and will fail identically on re-POST. Status
+/// 0 means we never got a response (network error) — transient.
+private func retryableForStatus(_ status: Int) -> Bool {
+  switch status {
+  case 408, 429: return true
+  case 500...599: return true
+  case 400...499: return false
+  default: return true
   }
 }
 
