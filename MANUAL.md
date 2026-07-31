@@ -186,23 +186,39 @@
     off-by-one across a UTC midnight — the gap is a floor-divided age, so
     95d and 96d are the same observation, not a disagreement.
 - [ ] **E-7 step 6 — the morning after the merge, confirm the 09:00 MDT run
-  fired unattended.** Calendar-time only; nothing to set up.
+  *fired*.** Calendar-time only; nothing to set up.
   ```
   gh run list --workflow=deploy-freshness.yml --event=schedule --limit 3
   ```
-  Expect a run started ~15:0x UTC and — this is the whole point of the step —
-  **no** `waiting`/`action_required` status. Its conclusion depends on prod's
-  actual freshness, not on a fixed expectation: `success` while prod is
-  current (it has been since 2026-07-31 11:06 MDT), `failure` once a real gap
-  opens past 7 days. Do not read `success` as "the check is broken" — that
-  inversion was only valid during the freeze. A
-  `waiting` status means someone added a protection rule to the
-  `production` environment since 2026-07-31, when it was verified to have
-  `protection_rules: []`; the check is then blind to unattended freezes,
-  and the fix is to exempt this job or move the AWS secrets to repo scope.
-  `tools/deploy-freshness-self-test.sh` pins the cron and the
-  `environment:` declaration on every PR, but it cannot observe a rule
-  added on the GitHub side — only this run can.
+  **Scope — only "did it fire" is still owed.** The other half of step 6
+  ("no approval prompt") was discharged 2026-07-31 by
+  `bash tools/deploy-freshness-live-check.sh --verify-environment-gate`:
+  `production` has `protection_rules: []` *and* the 10 most recent real
+  deployments into it — 8 from that day's deploy run 30646967338 — went
+  `queued` → `in_progress` in 1–8 s with zero `waiting` states. Re-run that
+  command any time; it takes seconds and needs no AWS.
+
+  Expect a run started ~15:0x UTC. Its conclusion depends on prod's actual
+  freshness, not on a fixed expectation: `success` while prod is current (it
+  has been since 2026-07-31 11:06 MDT), `failure` once a real gap opens past
+  7 days. Do not read `success` as "the check is broken" — that inversion was
+  only valid during the freeze.
+
+  **If you look before this branch merges:** the copy of the workflow on
+  `main` still predates the `environment: production` fix, so the first
+  scheduled run (earliest 2026-08-01, since the workflow landed at 16:24 UTC
+  on 2026-07-31 — after that day's 15:00 UTC slot) will die in
+  `configure-aws-credentials`. That failure is still a useful half-witness:
+  a run that fires and then fails proves the cron fired unattended. What it
+  cannot show is the fixed job succeeding.
+
+  A `waiting` status means someone added a protection rule to the
+  `production` environment since 2026-07-31; the check is then blind to
+  unattended freezes, and the fix is to exempt this job or move the AWS
+  secrets to repo scope. `tools/deploy-freshness-self-test.sh` pins the cron
+  and the `environment:` declaration on every PR, but it cannot observe a rule
+  added on the GitHub side — `--verify-environment-gate` can, and this run
+  is the backstop.
 
 ## /devx-init deferred work
 

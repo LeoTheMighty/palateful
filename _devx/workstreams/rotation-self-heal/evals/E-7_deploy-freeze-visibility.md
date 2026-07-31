@@ -6,10 +6,11 @@
   by running the workflow's own extracted bash via
   `tools/deploy-freshness-live-check.sh`), and the logic plus the
   dispatch/schedule/credentials wiring is pinned on every PR by
-  `tools/deploy-freshness-self-test.sh` (9 cases, mutation-verified). What is
-  still owed is the **mechanism**: the Actions dispatch and unattended 09:00
-  run after merge (steps 1/3/4/6). Every owed run has a filed command in
-  `MANUAL.md`.
+  `tools/deploy-freshness-self-test.sh` (9 cases, mutation-verified). Step 6's
+  approval-gate half is observed too — `--verify-environment-gate`, G0–G3
+  below. What is still owed is the **trigger**: the Actions dispatch and the
+  first unattended 09:00 run after merge (steps 1/3/4, and step 6's "the cron
+  fires at all"). Every owed run has a filed command in `MANUAL.md`.
 - **⚠ The 96-day freeze ended at 2026-07-31 11:06 MDT, mid-observation.** Prod
   now runs a same-day image and the check correctly reports `Gap: 0 day(s)` /
   exit 0. Earlier guidance in this file and in `MANUAL.md` said a **green** run
@@ -43,7 +44,7 @@ Run in order. Record the actual, not "as expected".
 | 3 | Synthetic gap > 7 days | run **fails** | **Logic PASS on live prod, dispatch pending** (2026-07-31). Against real ECS/ECR/git via the live check: `SYNTHETIC_GAP_DAYS=8` → `::warning::SYNTHETIC gap of 8d`, `Gap: 8 day(s)`, exit **1** — and it never reports 96, so the substitution really displaced the real measurement. Also pinned offline on every PR by `tools/deploy-freshness-self-test.sh` over a 96d fixture. The Actions dispatch is still owed, because only it exercises `inputs.synthetic-gap-days` → `$SYNTHETIC_GAP_DAYS` through GitHub's expression layer (the wire itself is statically asserted — see below). |
 | 4 | Synthetic gap < 7 days | run passes | **Logic PASS on live prod, dispatch pending** (2026-07-31). `SYNTHETIC_GAP_DAYS=1` against the same frozen-96d live prod → `Prod image is fresh (1d <= 7d)`, exit **0** — a pass that can only come from the substitution taking effect. Boundary also exercised live: `=7` (== threshold) → exit 0, since the gate is `-gt`. Same offline pin as step 3. |
 | 5 | Register a newer ACTIVE task-definition revision without deploying it | reported gap is **unchanged** | **Measurement PASS against live prod, registration still owed** (2026-07-31). `tools/deploy-freshness-live-check.sh --simulate-newer-revision` shims the one `describe-task-definition` call that a registration would change — every other call goes to real ECS — and the shipped bash produced a **byte-identical** report before and after (`:62`, `c85e350d…`, `Gap: 96 day(s)`, exit 1). The control in the same run proves the divergence was real and reachable: with the family shortcut reintroduced, that same bash reported the undeployed image at `Gap: 0 day(s)` / "Prod image is fresh" on 96d-frozen prod — green and blind. Precondition at that time: the family had exactly **one** ACTIVE revision, `:62`, which *was* the running one, so the trap was latent and only a divergence could expose it. The assumptions that simulation encodes about ECS were then **verified read-only against live AWS** (`--verify-shim-assumptions`, A0–A3 below), so the step no longer rests on documented-behaviour recall. **The discriminating form of this observation is no longer reproducible** — see "the freeze ended" below. |
-| 6 | Wait for the next scheduled 09:00 MDT trigger | fires with **no approval prompt** | _pending_ (calendar time; command filed in `MANUAL.md`) — but verified 2026-07-31 via `gh api repos/…/environments/production` that the environment has `protection_rules: []` and no branch policy, so declaring it (step 1 fix) introduces no approval gate. The `0 15 * * *` cron and the `environment:` declaration are now pinned on every PR by the self-test; what only this run can show is a protection rule added on the GitHub side after the fact. |
+| 6 | Wait for the next scheduled 09:00 MDT trigger | fires with **no approval prompt** | **"No approval prompt" PASS (observed), "fires" pending** (2026-07-31). The step is two claims and only one needs a morning. The gate half is discharged by `tools/deploy-freshness-live-check.sh --verify-environment-gate`: `production` has `protection_rules: []` and no branch policy, **and** the 10 most recent real deployments into that environment — 8 of them from today's `deploy-services`/`terraform-prod`/`deploy-web` run 30646967338 — went `queued` → `in_progress` in 1–8 s with **zero** `waiting` states, evidence that postdates the environment's last config change (2026-03-20). Config *and* behaviour, not config alone. What is still owed is only that the `0 15 * * *` cron fires at all — the workflow landed on `main` at 16:24 UTC today, after that day's 15:00 UTC slot, so the first scheduled run is 2026-08-01. The cron and the `environment:` declaration are pinned on every PR by the self-test; a protection rule added later is caught by re-running `--verify-environment-gate` (and, at 09:00, by the run stalling). |
 | 7 | `bin/prod-status` | prints the deployed tag and its age | **PASS** (2026-07-31): prints `palateful-api-prod: c85e350dd48b… — 95d old (3 months ago, chore(sprint-status): …)` for both api and worker services. Re-run at 11:08 after the freeze ended: `848311af… — 0d old (45 minutes ago, chore: claim 7c5cf2 for /devx)`, again for both. (It also showed `palateful-api-prod: 0/1 running` and an unhealthy API — the rollout was still `IN_PROGRESS` at that moment, not a defect.) |
 
 ### The freeze ended mid-observation (2026-07-31 11:06 MDT)
@@ -271,6 +272,63 @@ So the dispatch and the next-morning schedule check stay owed (steps 1/3/4/6 in
 `MANUAL.md`). What changed is that a *measurement* regression can now be caught
 before merge instead of at 09:00 the next day.
 
+### Splitting step 6 into the gate and the calendar (added 2026-07-31)
+
+Step 6 reads as one observation — "the scheduled trigger fires unattended with
+no approval prompt" — but it is two independent claims, and only one of them
+needs to wait for a morning:
+
+| Half | Needs |
+|---|---|
+| **(a) the cron fires at all** | calendar time — genuinely owed |
+| **(b) nothing holds the job for a human** | nothing; observable right now |
+
+(b) is the half the step-1 credentials fix put at risk, and it is the one that
+matters more. Declaring `environment: production` is what gave the job its AWS
+secrets, and an environment is exactly where GitHub hangs a required-reviewer
+gate. A gated freshness check is worse than no check: it goes quiet at 09:00
+waiting for a human who, by the premise of this entire workstream, is not
+looking. Earlier this file discharged (b) by reading `protection_rules: []`
+off the API — a config read, which says what *should* happen.
+
+`tools/deploy-freshness-live-check.sh --verify-environment-gate` asks what
+*did* happen as well. `ci.yml`'s deploy jobs declare the same environment, so
+the account carries its own witnesses: a job whose environment requires
+approval creates a deployment that sits in the `waiting` state until someone
+clicks, so a completed deployment whose states never included `waiting` is a
+run that was never gated. Measured 2026-07-31 (GitHub reads only, exit 0):
+
+| # | Claim | Observed in `LeoTheMighty/palateful` |
+|---|---|---|
+| G0 | the check job declares an environment, and this is the name the rest is about | `environment: production`, read out of the workflow rather than hardcoded |
+| G1 | that environment carries no approval gate and no branch policy | `protection_rules: []`, `deployment_branch_policy: null`, last changed 2026-03-20T20:41:42Z |
+| G2 | real jobs used it and none ever waited for a human | 10 deployments, **0** in `waiting`; `queued` → `in_progress` in 1–8 s each. Eight are from run 30646967338 — today's real deploy — including `deploy-services`, which started 8 s after `run-migrator` finished |
+| G3 | that evidence postdates the environment's last configuration change | newest witness 2026-07-31T17:07:45Z ≥ 2026-03-20T20:41:42Z |
+
+G3 is the one that is easy to skip and would rot silently: rules added *after*
+the newest witness would gate the next run while every past deployment still
+looks clean, so behavioural evidence older than the config it claims to
+describe proves nothing. The tool exits **2 — not observable** rather than
+passing when the environment is unreadable or has no deployments at all.
+
+Mutation-verified 2026-07-31; each of five deliberate regressions was caught by
+exactly one check, with the control green before and after:
+
+| Mutation | Caught by | Exit |
+|---|---|---|
+| `environment:` line deleted from the workflow | G0 — "that is the credentials fix regressing" | 1 |
+| environment renamed to one that does not exist | G1 — not observable (and G2 has no witnesses) | 2 |
+| `waiting`-state detection looks for the wrong state | G2 — reported 8 of 10 deployments as gated | 1 |
+| API forced to report a `required_reviewers` rule | G1 | 1 |
+| environment `updated_at` forced past every witness | G3 | 1 |
+
+What this does **not** discharge is (a). The workflow landed on `main` at
+16:24 UTC on 2026-07-31, *after* that day's 15:00 UTC slot, so the earliest
+scheduled run is 2026-08-01 — and note that the version now on `main` still
+predates the `environment:` fix, so that first run will die in
+`configure-aws-credentials` until this branch merges. The run that proves
+step 6 is the first scheduled one after the merge.
+
 **Step 6 is the other one.** The original design omitted
 `environment: production` to dodge a presumed required-reviewer gate. The
 first dispatch run proved the omission fatal instead: the AWS secrets exist
@@ -294,10 +352,13 @@ been skipped throughout this very incident.
 
 - **Verdict:** _pending_ — the measurement is proven for **every** step
   against live prod (1, 2, 3, 4, 5, 7), on **both sides of a real deploy**, and
-  CI-guarded offline against regression. What remains is the mechanism: the
-  Actions dispatch after merge (steps 1/3/4) and the unattended 09:00 MDT run
-  (step 6), both filed in `MANUAL.md`. The ECS semantics behind step 5's
-  simulation are no longer assumed — they are observed read-only (A0–A3).
+  CI-guarded offline against regression. Step 6's approval-gate half is
+  observed as well (G0–G3: no rule configured, and 10 real deployments into
+  the environment that never waited). What remains is a **trigger** in
+  GitHub's own scheduler: the Actions dispatch after merge (steps 1/3/4) and
+  the first unattended 09:00 MDT run (step 6a), both filed in `MANUAL.md`. The
+  ECS semantics behind step 5's simulation are no longer assumed — they are
+  observed read-only (A0–A3).
 - **Measured gap vs `git log`:** two readings, one hour apart, three agreeing
   legs each. **96 days** at 11:00 (`c85e350d`, 2026-04-26 10:27:45 -0600,
   exit 1) and **0 days** at 11:08 (`848311af`, 2026-07-31 10:24:08 -0600,
