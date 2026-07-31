@@ -155,6 +155,13 @@ jobs:
       - name: Run lint
         run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t lint --parallel=3
 
+      # Runs unconditionally (not `affected`): the thing it guards is a
+      # workflow file, which nx does not project-map. Extracts the measure
+      # step out of deploy-freshness.yml and runs it against a mocked ECS +
+      # a backdated sandbox repo — no AWS access, no prod mutation.
+      - name: Deploy-freshness self-test (E-7 step 5 guard)
+        run: bash tools/deploy-freshness-self-test.sh
+
   test:
     runs-on: ubuntu-latest
     needs: setup
