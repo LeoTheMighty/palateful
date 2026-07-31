@@ -138,53 +138,43 @@
     family shortcut is reintroduced. That guards the code between
     observations; it does not substitute for this one.
 
-- [ ] **E-7 steps 1/3/4 — re-dispatch `deploy-freshness` once this branch is
-  on `main`.** Blocked purely on the merge, not on a human judgement: the
-  first dispatch (run 30647079681) died in `configure-aws-credentials`
-  because the job omitted `environment: production`, and `gh workflow run`
-  always uses the definition at the *pushed* ref, so the fix cannot be
-  exercised before it lands. All three are one command each.
-  **Scope note (2026-07-31):** the *measurement* half of all three is already
-  discharged — `bash tools/deploy-freshness-live-check.sh [--synthetic-gap-days N]`
-  ran the same extracted bash against live prod and produced 96d/exit 1,
-  8d/exit 1, 1d/exit 0, 7d/exit 0. What these dispatches add is the
-  *mechanism*: environment-scoped credentials resolving inside Actions, and
-  `inputs.synthetic-gap-days` surviving GitHub's expression layer. If a run
-  below disagrees with those numbers, the difference is in the mechanism, not
-  in the check's logic — start at the `configure-aws-credentials` step and the
-  `SYNTHETIC gap of Nd` line, not at the bash.
-  **⚠ Expectations changed at 2026-07-31 11:06 MDT — the 96-day freeze ended
-  mid-observation** (real deploy of `848311af`; the check went from
-  `Gap: 96 day(s)` / exit 1 to `Gap: 0 day(s)` / exit 0 six minutes later).
-  Earlier drafts of this entry said step 1 MUST FAIL. That was true only while
-  the freeze was live. **Judge step 1 by agreement, not by exit code:** run
-  `bash bin/prod-status` first, and the dispatch must report the same tag and
-  the same age. A disagreement is the finding; a pass on freshly deployed prod
-  is correct. Step 3 is now the discriminating dispatch, because it forces a
-  failure on demand regardless of prod's state.
+- [x] **E-7 steps 1/2/3/4 — DONE 2026-07-31, no merge required.** This entry
+  said the dispatches were "blocked purely on the merge" because
+  `gh workflow run` resolves the definition from a *pushed* ref. True, but
+  `--ref` accepts **any** pushed ref — and the loop pushes the WIP branch every
+  iteration, so the fixed workflow was dispatchable all along. (Only
+  `schedule:` is default-branch-only.) All three ran on `feat/dev-7c5cf2`:
+
+  | Run | Input | Result |
+  |---|---|---|
+  | 30652052889 | none | success — `:63` / `848311af…` / `Gap: 0 day(s)`, matching `bin/prod-status` and `git log` (step 2) |
+  | 30652140468 | `synthetic-gap-days=8` | failure — `SYNTHETIC gap of 8d`, `::error::…8 days old` (the input crossed GitHub's expression layer) |
+  | 30652190943 | `synthetic-gap-days=1` | success — `SYNTHETIC gap of 1d`, `Prod image is fresh (1d <= 7d)` |
+
+  Environment-scoped credentials resolved on a non-default branch (run
+  30647079681's `configure-aws-credentials` failure is fixed), and the three
+  runs' `production` deployments never entered `waiting`. Full write-up in
+  `_devx/workstreams/rotation-self-heal/evals/E-7_deploy-freeze-visibility.md`
+  ("The dispatch did not need the merge"). **Nothing to do here.**
+
+  To re-run any of them later (e.g. after a workflow change), the recipe still
+  works from any pushed branch — judge step 1 by *agreement* with
+  `bash bin/prod-status`, not by exit code (a pass is correct now that prod is
+  fresh; "green means broken" expired when the 96-day freeze ended at
+  2026-07-31 11:06 MDT). Step 3 is the discriminating one — it must fail even
+  against fresh prod, and its log must say `SYNTHETIC gap of 8d` rather than
+  prod's real age, or the input never landed:
   ```
-  # Step 1 — real measurement. Must AGREE with bin/prod-status and
-  # `git log -1 --format=%ci <tag>`, whatever it reports. (Green is a valid
-  # result now that prod is fresh; it was the failure signal only during the
-  # freeze.)
   bash bin/prod-status            # get the truth first, then compare
-  gh workflow run deploy-freshness.yml --ref main
-  # Step 3 — synthetic gap over the threshold. MUST FAIL, and the log must
-  # say "SYNTHETIC gap of 8d" (not prod's real age) or the input never landed.
-  # This is the discriminating one: it must fail even though prod is fresh.
-  gh workflow run deploy-freshness.yml --ref main -f synthetic-gap-days=8
-  # Step 4 — synthetic gap under it. MUST PASS. Note this is now weaker than
-  # it was: with prod fresh, a run that ignored the input entirely would also
-  # pass, so step 3 carries the proof that the input lands.
-  gh workflow run deploy-freshness.yml --ref main -f synthetic-gap-days=1
+  gh workflow run deploy-freshness.yml --ref <your-pushed-branch>
+  gh workflow run deploy-freshness.yml --ref <your-pushed-branch> -f synthetic-gap-days=8
+  gh workflow run deploy-freshness.yml --ref <your-pushed-branch> -f synthetic-gap-days=1
 
   gh run list --workflow=deploy-freshness.yml --limit 5
-  gh run view <id> --log | grep -E 'Running task definition|Deployed|Gap:'
+  gh run view <id> --log | grep -E 'Running task definition|Deployed|Gap:|SYNTHETIC'
   ```
-  - Step 2 is then free: cross-check step 1's `Gap:` against
-    `bin/prod-status` and `git log -1 --format=%ci <tag>`. Expect an
-    off-by-one across a UTC midnight — the gap is a floor-divided age, so
-    95d and 96d are the same observation, not a disagreement.
+  Expect an off-by-one across a UTC midnight when cross-checking — the gap is a
+  floor-divided age, so 95d and 96d are the same observation.
 - [ ] **E-7 step 6 — the morning after the merge, confirm the 09:00 MDT run
   *fired*.** Calendar-time only; nothing to set up.
   ```
@@ -199,7 +189,12 @@
   The first (2026-07-31): `production` has `protection_rules: []` *and* the 10
   most recent real deployments into it — 8 from that day's deploy run
   30646967338 — went `queued` → `in_progress` in 1–8 s with zero `waiting`
-  states. The second (2026-07-31): the workflow is registered and `active`
+  states. Strengthened later that day by **this workflow's own** three dispatch
+  deployments (5695703361 / 5695719549 / 5695728778, from runs 30652052889 /
+  30652140468 / 30652190943): `in_progress` 3–8 s after creation, no `waiting`
+  — so the "no approval prompt" half of step 6 is observed for the freshness
+  job itself, not inferred from a sibling job that shares the environment.
+  The second (2026-07-31): the workflow is registered and `active`
   (not auto-disabled), its `0 15 * * *` cron is on `main` — the only branch
   GitHub schedules from — and this repo's scheduler produced **54 unattended
   `event: schedule` runs over 94h, none gated, longest silence 3.4h**, well
