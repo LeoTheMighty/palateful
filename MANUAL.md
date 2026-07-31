@@ -45,6 +45,16 @@
   Human-only because it mutates the production AWS account (the agent's
   `aws ecs register-task-definition` call was blocked by the permission
   classifier).
+  - **⚠ Not worth running right now (2026-07-31).** The trap is "the newest
+    *registered* revision masks an older *running* one", so it can only show a
+    gap difference while prod is **stale**. The 96-day freeze ended at 11:06
+    MDT today, so a registration now would show "gap unchanged" trivially —
+    the same answer a broken check gives. The discriminating observation was
+    taken at ~11:00, inside the last hour of the freeze (see the scope note).
+    Revive this entry the next time prod goes stale; until then the offline
+    self-test, which pins a 96d fixture permanently, is what carries the
+    property. Note also that the revision numbers below have moved on: prod
+    now runs `:63`, so a registration would create `:64`.
   - **Scope note (2026-07-31): most of this is already discharged.**
     `bash tools/deploy-freshness-live-check.sh --simulate-newer-revision`
     shims the single `describe-task-definition` answer a registration would
@@ -60,7 +70,16 @@
     behaviour and it is the assumption the simulation encodes. Run the
     sequence below if you want it observed rather than assumed; run
     `--simulate-newer-revision` first, since a failure there means the check
-    itself regressed and no registration is needed to know it.
+    itself regressed and no registration is needed to know it. **Update
+    2026-07-31:** the ECS behaviour that assumption rests on is no longer
+    assumed either — `bash tools/deploy-freshness-live-check.sh
+    --verify-shim-assumptions` observes it read-only in the live account
+    (family-name lookup returns the newest ACTIVE revision even when an older
+    one is still ACTIVE and the newest runs nowhere — witnessed on
+    `palateful-migrator-prod`, ACTIVE `:34` and `:54`; the service's ARN is
+    revision-pinned; revisions are contiguous and never reused). All four
+    checks passed. What is left for a real registration is the composition of
+    those, in one API call.
   - Precondition captured 2026-07-31: family `palateful-api-prod` has
     exactly **one** ACTIVE revision, `:62`, and it *is* the running one
     (`describe-services` → `:62`), on image tag `c85e350d…` (2026-04-26).
@@ -134,17 +153,29 @@
   below disagrees with those numbers, the difference is in the mechanism, not
   in the check's logic — start at the `configure-aws-credentials` step and the
   `SYNTHETIC gap of Nd` line, not at the bash.
+  **⚠ Expectations changed at 2026-07-31 11:06 MDT — the 96-day freeze ended
+  mid-observation** (real deploy of `848311af`; the check went from
+  `Gap: 96 day(s)` / exit 1 to `Gap: 0 day(s)` / exit 0 six minutes later).
+  Earlier drafts of this entry said step 1 MUST FAIL. That was true only while
+  the freeze was live. **Judge step 1 by agreement, not by exit code:** run
+  `bash bin/prod-status` first, and the dispatch must report the same tag and
+  the same age. A disagreement is the finding; a pass on freshly deployed prod
+  is correct. Step 3 is now the discriminating dispatch, because it forces a
+  failure on demand regardless of prod's state.
   ```
-  # Step 1 — real measurement. MUST FAIL. Prod is frozen at c85e350d
-  # (2026-04-26, ~96d). A green run here means the check is broken, not
-  # that prod is fine — that inversion is the whole point of E-7.
+  # Step 1 — real measurement. Must AGREE with bin/prod-status and
+  # `git log -1 --format=%ci <tag>`, whatever it reports. (Green is a valid
+  # result now that prod is fresh; it was the failure signal only during the
+  # freeze.)
+  bash bin/prod-status            # get the truth first, then compare
   gh workflow run deploy-freshness.yml --ref main
   # Step 3 — synthetic gap over the threshold. MUST FAIL, and the log must
-  # say "SYNTHETIC gap of 8d" (not the real ~96d) or the input never landed.
+  # say "SYNTHETIC gap of 8d" (not prod's real age) or the input never landed.
+  # This is the discriminating one: it must fail even though prod is fresh.
   gh workflow run deploy-freshness.yml --ref main -f synthetic-gap-days=8
-  # Step 4 — synthetic gap under it. MUST PASS, on the same frozen prod —
-  # which is what proves the substitution took effect rather than the
-  # fixture being fresh.
+  # Step 4 — synthetic gap under it. MUST PASS. Note this is now weaker than
+  # it was: with prod fresh, a run that ignored the input entirely would also
+  # pass, so step 3 carries the proof that the input lands.
   gh workflow run deploy-freshness.yml --ref main -f synthetic-gap-days=1
 
   gh run list --workflow=deploy-freshness.yml --limit 5
@@ -159,8 +190,12 @@
   ```
   gh run list --workflow=deploy-freshness.yml --event=schedule --limit 3
   ```
-  Expect a run started ~15:0x UTC with conclusion `failure` (prod is
-  frozen — see step 1) and **no** `waiting`/`action_required` status. A
+  Expect a run started ~15:0x UTC and — this is the whole point of the step —
+  **no** `waiting`/`action_required` status. Its conclusion depends on prod's
+  actual freshness, not on a fixed expectation: `success` while prod is
+  current (it has been since 2026-07-31 11:06 MDT), `failure` once a real gap
+  opens past 7 days. Do not read `success` as "the check is broken" — that
+  inversion was only valid during the freeze. A
   `waiting` status means someone added a protection rule to the
   `production` environment since 2026-07-31, when it was verified to have
   `protection_rules: []`; the check is then blind to unattended freezes,
