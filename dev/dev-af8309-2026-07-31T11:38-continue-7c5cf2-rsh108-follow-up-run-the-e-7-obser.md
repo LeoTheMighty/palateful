@@ -4,6 +4,7 @@ type: dev
 created: 2026-07-31T11:38:28-06:00
 title: "Continue 7c5cf2: rsh108 follow-up: run the E-7 observation protocol against live prod"
 from: dev/dev-7c5cf2-2026-07-31T10:24-rsh108-follow-up-run-the-e-7-observation-protocol.md
+spawned: [3a50ae]
 status: in-progress
 blocked_by: []
 branch: feat/dev-7c5cf2
@@ -61,3 +62,4 @@ Continue dev/dev-7c5cf2-2026-07-31T10:24-rsh108-follow-up-run-the-e-7-observatio
 
 - 2026-07-31T11:38:28-06:00 — created by devx split from `dev/dev-7c5cf2-2026-07-31T10:24-rsh108-follow-up-run-the-e-7-observation-protocol.md` (branch-handoff)
 - 2026-07-31T11:38:31-06:00 — claimed by /devx in session /devx-loop-2026-07-31T15-54-01-442-22311
+- 2026-07-31T12:33:25-06:00 — split (merge-first): emitted follow-up 3a50ae → `dev/dev-3a50ae-2026-07-31T12:33-e-7-follow-up-confirm-the-scheduled-deploy-freshne.md` via devx split
