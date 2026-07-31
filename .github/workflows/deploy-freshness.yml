@@ -1,0 +1,105 @@
+# Deploy-freshness check — fails when prod runs an image more than 7 days
+# behind main, so a silent deploy freeze (92 days, once) cannot recur.
+#
+# This lives in its OWN workflow file on purpose. The check shares its fate
+# with the CI system whose silent breakage it exists to catch; the only
+# mitigation is a separate file with its own schedule trigger, so a red
+# ci.yml cannot skip it. A push-triggered job inside ci.yml would have been
+# skipped throughout the very incident that motivated this check.
+name: deploy-freshness
+
+on:
+  schedule:
+    # 15:00 UTC == 09:00 MDT — one unattended check every morning.
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+    inputs:
+      synthetic-gap-days:
+        description: >-
+          TEST ONLY: substitute this gap (in days) for the real measurement.
+          Used by E-7 observation steps 3-4 to prove both the fail and pass
+          paths without touching prod.
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER: palateful-prod
+  SERVICE: palateful-api-prod
+  MAX_GAP_DAYS: 7
+
+jobs:
+  check-freshness:
+    # Deliberately NO `environment: production` here, unlike every
+    # deploy-touching job in ci.yml. That environment carries a
+    # required-reviewer gate, and a scheduled job that waits for manual
+    # approval can never detect an *unattended* freeze — the whole point is
+    # to fire when nobody is looking. Safe to omit: this job is strictly
+    # read-only (describe-services / describe-task-definition + local git).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the deployed SHA may be months old (92 days when
+          # this workstream opened) — a shallow clone cannot date it.
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Measure gap between running image and its commit date
+        env:
+          SYNTHETIC_GAP_DAYS: ${{ inputs.synthetic-gap-days }}
+        run: |
+          set -euo pipefail
+
+          # THE FAMILY-SHORTCUT TRAP — do not "simplify" this to
+          #   aws ecs describe-task-definition --task-definition palateful-api-prod
+          # The family-name shortcut resolves to the family's newest ACTIVE
+          # revision, i.e. what was most recently REGISTERED — not what ECS
+          # is RUNNING. deploy-services (ci.yml) uses the shortcut correctly
+          # because it runs immediately after terraform-prod writes that
+          # revision; this check asks the opposite question. With the
+          # shortcut, registering a new revision without deploying it would
+          # make a frozen prod look fresh — the check would be green and
+          # blind, masking exactly the failure it exists to catch. So:
+          # describe-services -> services[0].taskDefinition (the revision
+          # ARN actually in service) -> describe-task-definition on that ARN.
+          running_td=$(aws ecs describe-services \
+            --cluster "$CLUSTER" --services "$SERVICE" \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Running task definition: $running_td"
+
+          image=$(aws ecs describe-task-definition --task-definition "$running_td" \
+            --query 'taskDefinition.containerDefinitions[0].image' --output text)
+          tag="${image##*:}"
+          echo "Deployed image: $image"
+
+          if [ -n "${SYNTHETIC_GAP_DAYS:-}" ]; then
+            gap_days="$SYNTHETIC_GAP_DAYS"
+            echo "::warning::SYNTHETIC gap of ${gap_days}d substituted for the real measurement (test run)."
+          else
+            # Image tags are pinned to the git SHA by resolve-tags (ci.yml),
+            # so the tag dates the deployment directly. A tag that is not a
+            # commit here means unknown provenance — itself alarming, so fail.
+            if ! git cat-file -e "${tag}^{commit}" 2>/dev/null; then
+              echo "::error::Deployed tag '$tag' is not a commit in this repository — cannot date the deployment."
+              exit 1
+            fi
+            deployed_ct=$(git log -1 --format=%ct "$tag")
+            gap_days=$(( ($(date +%s) - deployed_ct) / 86400 ))
+            echo "Deployed commit: $(git log -1 --format='%h %ci %s' "$tag")"
+          fi
+
+          echo "Gap: ${gap_days} day(s); threshold: ${MAX_GAP_DAYS} day(s)."
+          if [ "$gap_days" -gt "$MAX_GAP_DAYS" ]; then
+            echo "::error::Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
+            exit 1
+          fi
+          echo "Prod image is fresh (${gap_days}d <= ${MAX_GAP_DAYS}d)."
