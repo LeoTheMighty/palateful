@@ -4,10 +4,12 @@ type: dev
 created: 2026-07-31T10:24:06-06:00
 title: "rsh108 follow-up: run the E-7 observation protocol against live prod"
 from: dev/dev-rsh108-2026-07-27T12:37-deploy-freeze-visibility.md
-status: in-progress
+spawned: [af8309]
+status: superseded
+superseded_by: af8309
 blocked_by: [rsh108]
 branch: feat/dev-7c5cf2
-owner: /devx-loop-2026-07-31T15-54-01-442-22311
+owner: null
 ---
 
 ## Goal
@@ -40,3 +42,4 @@ Continue rsh108: remaining acceptance criteria split out by devx split (merge-fi
 
 - 2026-07-31T10:24:06-06:00 — created by devx split from `dev/dev-rsh108-2026-07-27T12:37-deploy-freeze-visibility.md` (merge-first)
 - 2026-07-31T10:24:07-06:00 — claimed by /devx in session /devx-loop-2026-07-31T15-54-01-442-22311
+- 2026-07-31T11:38:28-06:00 — split (branch-handoff): emitted follow-up af8309 → `dev/dev-af8309-2026-07-31T11:38-continue-7c5cf2-rsh108-follow-up-run-the-e-7-obser.md` via devx split
