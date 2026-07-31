@@ -91,6 +91,47 @@
     family shortcut is reintroduced. That guards the code between
     observations; it does not substitute for this one.
 
+- [ ] **E-7 steps 1/3/4 — re-dispatch `deploy-freshness` once this branch is
+  on `main`.** Blocked purely on the merge, not on a human judgement: the
+  first dispatch (run 30647079681) died in `configure-aws-credentials`
+  because the job omitted `environment: production`, and `gh workflow run`
+  always uses the definition at the *pushed* ref, so the fix cannot be
+  exercised before it lands. All three are one command each.
+  ```
+  # Step 1 — real measurement. MUST FAIL. Prod is frozen at c85e350d
+  # (2026-04-26, ~96d). A green run here means the check is broken, not
+  # that prod is fine — that inversion is the whole point of E-7.
+  gh workflow run deploy-freshness.yml --ref main
+  # Step 3 — synthetic gap over the threshold. MUST FAIL, and the log must
+  # say "SYNTHETIC gap of 8d" (not the real ~96d) or the input never landed.
+  gh workflow run deploy-freshness.yml --ref main -f synthetic-gap-days=8
+  # Step 4 — synthetic gap under it. MUST PASS, on the same frozen prod —
+  # which is what proves the substitution took effect rather than the
+  # fixture being fresh.
+  gh workflow run deploy-freshness.yml --ref main -f synthetic-gap-days=1
+
+  gh run list --workflow=deploy-freshness.yml --limit 5
+  gh run view <id> --log | grep -E 'Running task definition|Deployed|Gap:'
+  ```
+  - Step 2 is then free: cross-check step 1's `Gap:` against
+    `bin/prod-status` and `git log -1 --format=%ci <tag>`. Expect an
+    off-by-one across a UTC midnight — the gap is a floor-divided age, so
+    95d and 96d are the same observation, not a disagreement.
+- [ ] **E-7 step 6 — the morning after the merge, confirm the 09:00 MDT run
+  fired unattended.** Calendar-time only; nothing to set up.
+  ```
+  gh run list --workflow=deploy-freshness.yml --event=schedule --limit 3
+  ```
+  Expect a run started ~15:0x UTC with conclusion `failure` (prod is
+  frozen — see step 1) and **no** `waiting`/`action_required` status. A
+  `waiting` status means someone added a protection rule to the
+  `production` environment since 2026-07-31, when it was verified to have
+  `protection_rules: []`; the check is then blind to unattended freezes,
+  and the fix is to exempt this job or move the AWS secrets to repo scope.
+  `tools/deploy-freshness-self-test.sh` pins the cron and the
+  `environment:` declaration on every PR, but it cannot observe a rule
+  added on the GitHub side — only this run can.
+
 ## /devx-init deferred work
 
 - [ ] **devx-init: supervisor-install-deferred** — OS-supervisor install deferred by non-interactive `devx init`

@@ -1,7 +1,7 @@
 # E-7 — Deploy freeze becomes visible
 
 - **Priority:** P2 · **Validation type:** human · **Phase:** 8 (FR-6)
-- **Status:** RED — observation in progress (steps 2 and 7 recorded 2026-07-31; step 1 caught a credentials bug, fixed, re-run pending merge; steps 3-5 logic pinned offline 2026-07-31 by `tools/deploy-freshness-self-test.sh`, live runs still owed).
+- **Status:** RED — observation in progress (steps 2 and 7 recorded 2026-07-31; step 1 caught a credentials bug, fixed, re-run pending merge; steps 3-5 logic **and the dispatch/schedule/credentials wiring** pinned offline 2026-07-31 by `tools/deploy-freshness-self-test.sh`, live runs still owed — every owed run now has a filed command in `MANUAL.md`).
 
 ## Expectation
 
@@ -29,7 +29,7 @@ Run in order. Record the actual, not "as expected".
 | 3 | Synthetic gap > 7 days | run **fails** | _dispatch pending_ (blocked on step 1 fix merging). Logic pinned offline 2026-07-31: `tools/deploy-freshness-self-test.sh` runs the workflow's own measure step with `SYNTHETIC_GAP_DAYS=8` over a 96d-old fixture → exits 1, reports `Gap: 8 day(s)`, and never reports 96 (so the substitution really took effect). |
 | 4 | Synthetic gap < 7 days | run passes | _dispatch pending_ (blocked on step 1 fix merging). Logic pinned offline 2026-07-31: `SYNTHETIC_GAP_DAYS=1` over the same 96d-old fixture → exits 0. Boundary also pinned: `=7` (== threshold) passes, since the gate is `-gt`. |
 | 5 | Register a newer ACTIVE task-definition revision without deploying it | reported gap is **unchanged** | _live observation still owed_ (see below). Precondition captured 2026-07-31: family `palateful-api-prod` has exactly **one** ACTIVE revision, `:62`, which *is* the running revision — so the shortcut and the correct path currently coincide and the trap is latent, not observable passively. Property proven offline the same day and now CI-guarded (`tools/deploy-freshness-self-test.sh`). |
-| 6 | Wait for the next scheduled 09:00 MDT trigger | fires with **no approval prompt** | _pending_ — but verified 2026-07-31 via `gh api repos/…/environments/production` that the environment has `protection_rules: []` and no branch policy, so declaring it (step 1 fix) introduces no approval gate. |
+| 6 | Wait for the next scheduled 09:00 MDT trigger | fires with **no approval prompt** | _pending_ (calendar time; command filed in `MANUAL.md`) — but verified 2026-07-31 via `gh api repos/…/environments/production` that the environment has `protection_rules: []` and no branch policy, so declaring it (step 1 fix) introduces no approval gate. The `0 15 * * *` cron and the `environment:` declaration are now pinned on every PR by the self-test; what only this run can show is a protection rule added on the GitHub side after the fact. |
 | 7 | `bin/prod-status` | prints the deployed tag and its age | **PASS** (2026-07-31): prints `palateful-api-prod: c85e350dd48b… — 95d old (3 months ago, chore(sprint-status): …)` for both api and worker services. |
 
 **Step 5 is the load-bearing one.** `deploy-services` resolves the task
@@ -72,6 +72,27 @@ intended case:
 This does **not** discharge step 5. It bounds the window in which a
 regression can hide to zero; the live observation still proves the mechanism
 against real ECS.
+
+### The wiring layer (added 2026-07-31)
+
+Running the extracted step directly proves the logic and is blind, by
+construction, to everything that has to hold for that logic to ever run:
+the harness supplies `SYNTHETIC_GAP_DAYS` itself and mocks AWS away. So the
+same file also asserts, statically, the three pieces of surrounding YAML —
+each of which fails *silently*, leaving a green self-test over a check that
+never runs or ignores its input:
+
+| Wiring assertion | Blind spot it closes | Mutation-verified by |
+|---|---|---|
+| exactly one `0 15 * * *` cron | no schedule ⇒ the check only runs when someone remembers — the exact failure of the original 92-day freeze | cron → `0 16 * * *`, and cron deleted |
+| job declares `environment: production` | the AWS secrets are environment-scoped; without it every run dies in `configure-aws-credentials` (run 30647079681), and only at 09:00 where nobody is watching | the `environment:` line deleted |
+| `inputs.<x>` → env var the run body actually reads | a dispatch run quietly measures **real** prod instead of the synthetic gap, so step 4 fails and reads as "the check is broken" | `env:` mapping deleted; input renamed; env var renamed |
+
+Each of the six mutations was caught by exactly one assertion (8 pass / 1
+fail), so attribution stays sharp. The env-var-rename mutation is the
+telling one: the six behavioural cases stayed **green** under it, because
+they inject the old name themselves — that hole was real until now.
+Self-test total: 9 cases.
 
 **Step 6 is the other one.** The original design omitted
 `environment: production` to dodge a presumed required-reviewer gate. The
