@@ -190,19 +190,34 @@
   ```
   gh run list --workflow=deploy-freshness.yml --event=schedule --limit 3
   ```
-  **Scope — only "did it fire" is still owed.** The other half of step 6
-  ("no approval prompt") was discharged 2026-07-31 by
-  `bash tools/deploy-freshness-live-check.sh --verify-environment-gate`:
-  `production` has `protection_rules: []` *and* the 10 most recent real
-  deployments into it — 8 from that day's deploy run 30646967338 — went
-  `queued` → `in_progress` in 1–8 s with zero `waiting` states. Re-run that
-  command any time; it takes seconds and needs no AWS.
+  **Scope — only the firing itself is still owed.** Everything around it is
+  observed, and both checks are re-runnable in seconds with no AWS:
+  ```
+  bash tools/deploy-freshness-live-check.sh --verify-environment-gate   # no approval gate
+  bash tools/deploy-freshness-live-check.sh --verify-schedule-fires     # nothing blocks the cron
+  ```
+  The first (2026-07-31): `production` has `protection_rules: []` *and* the 10
+  most recent real deployments into it — 8 from that day's deploy run
+  30646967338 — went `queued` → `in_progress` in 1–8 s with zero `waiting`
+  states. The second (2026-07-31): the workflow is registered and `active`
+  (not auto-disabled), its `0 15 * * *` cron is on `main` — the only branch
+  GitHub schedules from — and this repo's scheduler produced **54 unattended
+  `event: schedule` runs over 94h, none gated, longest silence 3.4h**, well
+  inside E-7's 24h threshold.
 
-  Expect a run started ~15:0x UTC. Its conclusion depends on prod's actual
-  freshness, not on a fixed expectation: `success` while prod is current (it
-  has been since 2026-07-31 11:06 MDT), `failure` once a real gap opens past
-  7 days. Do not read `success` as "the check is broken" — that inversion was
-  only valid during the freeze.
+  ⚠ **Record the actual UTC time the run lands — do not just confirm "it ran
+  at 09:00".** Those 54 witness runs all belong to `devx-promotion.yml`, whose
+  cron is `0 0 31 2 *` — an expression that matches no real date — yet it fires
+  every 1–3.4h. Whatever schedules workflows in this repo is not following the
+  cron as written, so the *time* of the freshness run is a genuine unknown that
+  only this observation can settle. Its *frequency* is what E-7's threshold
+  needs, and that is already measured.
+
+  Its conclusion depends on prod's actual freshness, not on a fixed
+  expectation: `success` while prod is current (it has been since 2026-07-31
+  11:06 MDT), `failure` once a real gap opens past 7 days. Do not read
+  `success` as "the check is broken" — that inversion was only valid during
+  the freeze.
 
   **If you look before this branch merges:** the copy of the workflow on
   `main` still predates the `environment: production` fix, so the first
@@ -219,6 +234,12 @@
   and the `environment:` declaration on every PR, but it cannot observe a rule
   added on the GitHub side — `--verify-environment-gate` can, and this run
   is the backstop.
+
+  **No run at all** (not even a failing one) means the workflow itself is not
+  being scheduled. Re-run `--verify-schedule-fires` first: it distinguishes the
+  three causes — GitHub auto-disabled the workflow for repo inactivity (S0,
+  fix: `gh workflow enable deploy-freshness.yml`), the cron is not on the
+  default branch (S1), or the repo's scheduler has gone quiet generally (S2/S3).
 
 ## /devx-init deferred work
 

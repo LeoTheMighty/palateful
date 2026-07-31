@@ -33,6 +33,14 @@
 # also the one change that could make the check stall waiting for a human — the
 # opposite of an unattended freeze detector. It reads GitHub, not AWS.
 #
+# `--verify-schedule-fires` takes step 6's *other* half — "the cron fires at
+# all" — as far as it can go without waiting for a morning: the workflow has to
+# be registered and schedulable, its cron has to be on the DEFAULT branch (the
+# only place GitHub honours `schedule:` from), and the repo's own scheduler
+# history has to show unattended firings frequent enough for E-7's 24h
+# threshold. It also reports whether observed firings track the cron that
+# declared them, which in this repo they do not.
+#
 # Usage:
 #   bash tools/deploy-freshness-live-check.sh                    # real measurement
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 8   # E-7 step 3
@@ -40,6 +48,7 @@
 #   bash tools/deploy-freshness-live-check.sh --simulate-newer-revision  # E-7 step 5
 #   bash tools/deploy-freshness-live-check.sh --verify-shim-assumptions  # E-7 step 5 fidelity
 #   bash tools/deploy-freshness-live-check.sh --verify-environment-gate  # E-7 step 6 (no wait)
+#   bash tools/deploy-freshness-live-check.sh --verify-schedule-fires    # E-7 step 6a (no wait)
 #
 # Read-only: describe-services + describe-task-definition only, no mutations
 # (--verify-shim-assumptions also lists families/revisions; still read-only.
@@ -53,6 +62,10 @@
 # right now (say so rather than pass — an unobservable assumption is not a
 # confirmed one). --verify-environment-gate uses the same three: 0 no gate,
 # 1 a gate exists (or one already stalled a real run), 2 not observable.
+# --verify-schedule-fires likewise: 0 the scheduler fires unattended and often
+# enough, 1 something would stop it (workflow disabled, cron absent from the
+# default branch, an approval-gated schedule run, firings further apart than
+# the 24h threshold), 2 no scheduler history to judge from.
 
 set -euo pipefail
 
@@ -64,14 +77,16 @@ SYNTHETIC=""
 SIMULATE_NEWER=0
 VERIFY_ASSUMPTIONS=0
 VERIFY_ENV_GATE=0
+VERIFY_SCHEDULE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --synthetic-gap-days) SYNTHETIC="${2:-}"; shift 2 ;;
     --simulate-newer-revision) SIMULATE_NEWER=1; shift ;;
     --verify-shim-assumptions) VERIFY_ASSUMPTIONS=1; shift ;;
     --verify-environment-gate) VERIFY_ENV_GATE=1; shift ;;
-    -h|--help) sed -n '2,55p' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision] [--verify-shim-assumptions] [--verify-environment-gate]" >&2; exit 2 ;;
+    --verify-schedule-fires) VERIFY_SCHEDULE=1; shift ;;
+    -h|--help) sed -n '2,68p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision] [--verify-shim-assumptions] [--verify-environment-gate] [--verify-schedule-fires]" >&2; exit 2 ;;
   esac
 done
 
@@ -220,6 +235,157 @@ print(int(datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ")
   echo "FAIL: $fails check(s) failed — a run of $(basename "$WORKFLOW") can stall waiting for" >&2
   echo "      approval, so it cannot detect an unattended freeze. Exempt the job from the" >&2
   echo "      environment or move the AWS secrets to repo scope." >&2
+  exit 1
+fi
+
+if [ "$VERIFY_SCHEDULE" -eq 1 ]; then
+  # ── E-7 step 6a, as far as it goes without waiting for a morning ────────
+  # The other half of step 6 is "the cron fires at all". Only the firing
+  # itself needs calendar time; everything that has to be true *for* it to
+  # fire is readable now, and each of those is a way the check goes silently
+  # dead — the exact failure mode of the 92-day freeze this workstream exists
+  # to end:
+  #
+  #   S0  GitHub can still schedule the workflow at all. A scheduled workflow
+  #       in a repo with no activity for 60 days is auto-disabled, and a
+  #       disabled workflow does not fire and does not complain.
+  #   S1  the cron is on the DEFAULT branch. `schedule:` is honoured only from
+  #       the default branch, so a cron that only exists on a feature branch
+  #       (and a self-test that happily pins it there) fires nowhere.
+  #   S2  this repo's scheduler actually fires, unattended. Config that says
+  #       "daily at 15:00" is not evidence that anything runs.
+  #   S3  it fires often enough for E-7's stated threshold — the gap surfaced
+  #       within 24h of crossing 7 days — measured from real firings.
+  #
+  # GitHub reads only; no AWS, no writes.
+  # Exit: 0 it will fire and nothing holds it, 1 something stops it or slows
+  # it past the threshold, 2 no scheduler history to judge from.
+  THRESHOLD_HOURS=24   # E-7's stated threshold: reported within 24h of crossing
+  command -v gh >/dev/null || { echo "FAIL: gh CLI not on PATH" >&2; exit 2; }
+  gh auth status >/dev/null 2>&1 \
+    || { echo "FAIL: gh is not authenticated — refusing to report 'it will fire'" >&2; exit 2; }
+
+  TMP_SCHED="$(mktemp -d)"
+  trap 'rm -rf "$TMP_SCHED"' EXIT
+
+  fails=0
+  note_fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }
+  # Cron expressions actually in force in a workflow file: strip comments first,
+  # so a commented-out `# - cron: ...` (devx-promotion ships one) is not read as
+  # a live schedule.
+  crons_of() {
+    sed -e 's/#.*//' "$1" \
+      | sed -n "s/^[[:space:]]*-[[:space:]]*cron:[[:space:]]*[\"']\{0,1\}\([^\"']*[^\"' ]\)[\"' ]*$/\1/p"
+  }
+
+  repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+  default_branch="$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name 2>/dev/null || true)"
+  [ -n "$repo" ] && [ -n "$default_branch" ] \
+    || { echo "FAIL: could not resolve the repo / default branch from gh" >&2; exit 2; }
+  WF_REL=".github/workflows/$(basename "$WORKFLOW")"
+  echo "repo: $repo  default branch: $default_branch  workflow: $WF_REL"
+  echo
+
+  echo "S0 — GitHub has the workflow registered and in a state it can schedule"
+  wf_state="$(gh api "repos/$repo/actions/workflows" --paginate \
+    --jq ".workflows[] | select(.path == \"$WF_REL\") | .state" 2>/dev/null | head -1)" || wf_state=""
+  if [ -z "$wf_state" ]; then
+    echo "  NOT OBSERVABLE: GitHub has no workflow registered at $WF_REL — it has never been" >&2
+    echo "      on the default branch, so there is nothing for the scheduler to run yet." >&2
+    exit 2
+  fi
+  if [ "$wf_state" = "active" ]; then
+    echo "  OK: state '$wf_state'"
+  else
+    note_fail "workflow state is '$wf_state', not 'active' — it will not fire, and it will not say so"
+    echo "        ('disabled_inactivity' is GitHub auto-disabling scheduled workflows in a quiet repo;" >&2
+    echo "         re-enable with: gh workflow enable $WF_REL)" >&2
+  fi
+  echo
+
+  echo "S1 — the cron is on the default branch, which is the only place it fires from"
+  # Fetch the default-branch copy over the API rather than from a local ref, so
+  # this is honest about what GitHub will run even from a stale clone.
+  head_copy="$TMP_SCHED/default-branch-copy.yml"
+  if ! gh api "repos/$repo/contents/$WF_REL?ref=$default_branch" \
+        -H "Accept: application/vnd.github.raw" > "$head_copy" 2>/dev/null; then
+    echo "  NOT OBSERVABLE: $WF_REL is not readable on '$default_branch'." >&2
+    exit 2
+  fi
+  branch_crons="$(crons_of "$head_copy" | sort)"
+  local_crons="$(crons_of "$WORKFLOW" | sort)"
+  if [ -z "$branch_crons" ]; then
+    note_fail "the copy on '$default_branch' declares no cron — nothing is scheduled, whatever this working tree says"
+  elif [ "$branch_crons" = "$local_crons" ]; then
+    echo "  OK: '$default_branch' schedules [$(printf '%s' "$branch_crons" | tr '\n' ';')] — same as this working tree"
+  else
+    note_fail "cron on '$default_branch' is [$(printf '%s' "$branch_crons" | tr '\n' ';')] but this working tree has [$(printf '%s' "$local_crons" | tr '\n' ';')] — the self-test pins a schedule that is not the one running"
+  fi
+  # Not an assertion — a standing reminder that the scheduled run uses the
+  # default-branch copy, not whatever is checked out here. This is how the
+  # credentials fix can look shipped while every 09:00 run still dies.
+  if ! diff -q "$head_copy" "$WORKFLOW" >/dev/null 2>&1; then
+    drift="$(diff "$head_copy" "$WORKFLOW" | grep -c '^[<>]' || true)"
+    echo "  NOTE: the default-branch copy differs from this working tree in $drift line(s)."
+    if ! grep -q '^    environment:' "$head_copy"; then
+      echo "        It does NOT declare 'environment:', so until this branch merges the scheduled"
+      echo "        run dies in configure-aws-credentials — a firing, but not yet a passing one."
+    fi
+  fi
+  echo
+
+  echo "S2 — this repo's scheduler demonstrably fires, unattended"
+  # Any workflow will do as a witness: the question is whether GitHub's
+  # scheduler runs things in THIS repo without a human, not whether it runs
+  # this particular file (which has never had a slot — see the eval).
+  runs="$TMP_SCHED/schedule-runs.tsv"
+  gh api "repos/$repo/actions/runs?event=schedule&per_page=100" \
+    --jq '.workflow_runs[] | [.created_at, .path, .status, (.conclusion // "")] | @tsv' \
+    > "$runs" 2>/dev/null || : > "$runs"
+  run_count="$(grep -c . "$runs" || true)"
+  if [ "$run_count" -eq 0 ]; then
+    echo "  NOT OBSERVABLE: no 'schedule' event runs in this repo's history, so there is no" >&2
+    echo "      evidence the scheduler fires here at all. Config alone does not discharge this." >&2
+    exit 2
+  fi
+  # A run held for approval reports status 'waiting' or conclusion
+  # 'action_required'; either means a human stood between the cron and the job.
+  gated="$(awk -F'\t' '$3 == "waiting" || $4 == "action_required" { n++ } END { print n + 0 }' "$runs")"
+  if [ "$gated" -eq 0 ]; then
+    echo "  OK: $run_count schedule-triggered run(s), zero waiting on a human"
+    awk -F'\t' '{ c[$2]++ } END { for (p in c) printf "      %-44s %d run(s)\n", p, c[p] }' "$runs"
+  else
+    note_fail "$gated of $run_count schedule-triggered run(s) waited for approval — the scheduler fires but a human gates it"
+  fi
+  echo
+
+  echo "S3 — it fires often enough for E-7's ${THRESHOLD_HOURS}h threshold"
+  # The threshold E-7 states is "gap reported within 24h of crossing 7 days",
+  # so what matters is the longest observed silence between firings, not
+  # whether any individual run landed at its nominal minute. Measured, not
+  # inferred from the cron — see the fidelity note this prints.
+  witness_path="$(awk -F'\t' '{ c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) { m = c[p]; w = p } print w }' "$runs")"
+  witness_cron=""
+  if gh api "repos/$repo/contents/$witness_path?ref=$default_branch" \
+       -H "Accept: application/vnd.github.raw" > "$TMP_SCHED/witness.yml" 2>/dev/null; then
+    witness_cron="$(crons_of "$TMP_SCHED/witness.yml" | head -1)"
+  fi
+  python3 "$REPO_ROOT/tools/deploy-freshness-cadence.py" \
+    "$runs" "$THRESHOLD_HOURS" "$witness_path" "$witness_cron" || fails=$((fails + 1))
+
+  echo
+  if [ "$fails" -eq 0 ]; then
+    echo "PASS: nothing observable stands between the cron and a run — the workflow is"
+    echo "      registered and active, its schedule is on '$default_branch', and this repo's"
+    echo "      scheduler has fired $run_count unattended run(s) with no approval and no"
+    echo "      silence longer than ${THRESHOLD_HOURS}h."
+    echo "STILL OWED (calendar time): that THIS workflow's own slot produces a run. Every"
+    echo "      precondition is observed; the firing itself is the one thing only a morning"
+    echo "      can show. Record the actual UTC time it lands — see the fidelity note above."
+    exit 0
+  fi
+  echo "FAIL: $fails check(s) failed — a scheduled run of $(basename "$WORKFLOW") cannot be" >&2
+  echo "      relied on to fire, so the freeze it exists to surface would stay silent." >&2
   exit 1
 fi
 
