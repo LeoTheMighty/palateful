@@ -23,18 +23,28 @@
 # call real. See the block guarding it below for what that does and does not
 # discharge.
 #
+# `--verify-shim-assumptions` closes the loop on that simulation: it checks,
+# read-only against live AWS, that ECS really behaves the way the shim pretends
+# it does. Without it the simulation is only as good as its author's memory of
+# the ECS API.
+#
 # Usage:
 #   bash tools/deploy-freshness-live-check.sh                    # real measurement
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 8   # E-7 step 3
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 1   # E-7 step 4
 #   bash tools/deploy-freshness-live-check.sh --simulate-newer-revision  # E-7 step 5
+#   bash tools/deploy-freshness-live-check.sh --verify-shim-assumptions  # E-7 step 5 fidelity
 #
-# Read-only: describe-services + describe-task-definition only, no mutations.
+# Read-only: describe-services + describe-task-definition only, no mutations
+# (--verify-shim-assumptions also lists families/revisions; still read-only).
 # Exit: mirrors the workflow step (0 fresh / 1 stale-or-unknown), 2 on usage
 # or credential errors — so a missing AWS session can't be misread as "fresh".
 # Under --simulate-newer-revision the codes report the OBSERVATION instead:
 # 0 gap unchanged (correct), 1 gap moved (the family-shortcut trap), 2 the
-# simulation itself could not be trusted.
+# simulation itself could not be trusted. Under --verify-shim-assumptions:
+# 0 every assumption observed, 1 live AWS contradicts one, 2 not observable
+# right now (say so rather than pass — an unobservable assumption is not a
+# confirmed one).
 
 set -euo pipefail
 
@@ -44,12 +54,14 @@ STEP_NAME="Measure gap between running image and its commit date"
 
 SYNTHETIC=""
 SIMULATE_NEWER=0
+VERIFY_ASSUMPTIONS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --synthetic-gap-days) SYNTHETIC="${2:-}"; shift 2 ;;
     --simulate-newer-revision) SIMULATE_NEWER=1; shift ;;
-    -h|--help) sed -n '2,37p' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision]" >&2; exit 2 ;;
+    --verify-shim-assumptions) VERIFY_ASSUMPTIONS=1; shift ;;
+    -h|--help) sed -n '2,45p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision] [--verify-shim-assumptions]" >&2; exit 2 ;;
   esac
 done
 
@@ -76,6 +88,120 @@ MAX_GAP_DAYS="$(read_env MAX_GAP_DAYS)"
   || { echo "FAIL: could not read AWS_REGION/CLUSTER/SERVICE/MAX_GAP_DAYS from the workflow env block" >&2; exit 2; }
 echo "workflow env: AWS_REGION=$AWS_REGION CLUSTER=$CLUSTER SERVICE=$SERVICE MAX_GAP_DAYS=$MAX_GAP_DAYS"
 echo
+
+if [ "$VERIFY_ASSUMPTIONS" -eq 1 ]; then
+  # ── Is the step-5 simulation actually faithful? ────────────────────────
+  # --simulate-newer-revision proves the check is insensitive to a newer
+  # ACTIVE revision *given* that ECS diverges the way the shim pretends. That
+  # "given" was the last thing E-7 step 5 took on documentation rather than
+  # observation. It decomposes into four claims, and every one of them can be
+  # read out of the live account without registering anything:
+  #
+  #   A0  the family name the shim intercepts is the running task def's family
+  #   A1  a family-name lookup returns the highest-numbered ACTIVE revision,
+  #       even when an older ACTIVE revision exists and the newest runs nowhere
+  #   A2  describe-services returns a revision-pinned ARN that resolves to that
+  #       exact revision — the pointer a registration cannot move
+  #   A3  revision numbers are never reused, so a registration yields max+1 —
+  #       the ARN the shim fabricates
+  #
+  # Exit: 0 all observed, 1 live AWS contradicts one, 2 not observable now.
+  fails=0
+  note_fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }
+
+  # Revision numbers of an EXACT family. --family-prefix is a prefix match, so
+  # a family named "<x>-extra" would otherwise leak in.
+  list_revs() {
+    aws ecs list-task-definitions --family-prefix "$1" --status "$2" \
+      --output text --query 'taskDefinitionArns[]' \
+      | tr '\t' '\n' | sed 's|.*/||' | awk -F: -v f="$1" '$1 == f { print $2 }'
+  }
+
+  running_td="$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+    --query 'services[0].taskDefinition' --output text)"
+  case "$running_td" in
+    arn:*:task-definition/*:[0-9]*) ;;
+    *) echo "FAIL: describe-services returned '$running_td', not a revision-pinned task-definition ARN" >&2
+       echo "      — A2 is contradicted at the first hop; the shim's whole model is wrong." >&2
+       exit 1 ;;
+  esac
+  running_rev="${running_td##*:}"
+  running_family="${running_td%:*}"; running_family="${running_family##*/}"
+  echo "running task definition: $running_family:$running_rev"
+  echo
+
+  echo "A0 — the shim intercepts the family the running task definition belongs to"
+  if [ "$running_family" = "$SERVICE" ]; then
+    echo "  OK: family '$running_family' == the workflow's SERVICE '$SERVICE', which is what the shim keys on"
+  else
+    note_fail "family is '$running_family' but the shim keys on SERVICE '$SERVICE' — it would intercept nothing"
+  fi
+
+  echo "A1 — a family-name lookup returns the newest ACTIVE revision"
+  witness=""
+  for fam in $(aws ecs list-task-definition-families --status ACTIVE --output text \
+                 --query 'families[]' | tr '\t' '\n'); do
+    revs="$(list_revs "$fam" ACTIVE)"
+    [ "$(printf '%s\n' "$revs" | grep -c .)" -ge 2 ] || continue
+    witness="$fam"
+    newest="$(printf '%s\n' "$revs" | sort -n | tail -1)"
+    oldest="$(printf '%s\n' "$revs" | sort -n | head -1)"
+    resolved="$(aws ecs describe-task-definition --task-definition "$fam" \
+      --query 'taskDefinition.taskDefinitionArn' --output text)"
+    resolved="${resolved##*:}"
+    echo "  witness family '$fam': ACTIVE revisions $(printf '%s' "$revs" | tr '\n' ' ')"
+    if [ "$resolved" = "$newest" ] && [ "$newest" != "$oldest" ]; then
+      echo "  OK: '$fam' (no revision) resolved to :$resolved — the newest ACTIVE, while :$oldest stayed ACTIVE and ignored"
+      echo "      that is exactly how the family shortcut goes green-and-blind: newest wins, deployed-or-not"
+    else
+      note_fail "'$fam' resolved to :$resolved, expected the newest ACTIVE :$newest"
+    fi
+    break
+  done
+  if [ -z "$witness" ]; then
+    # Refuse to pass on an unobserved claim. This is the one assumption that
+    # needs a family carrying an ACTIVE revision nobody runs; if the account
+    # no longer has one, say "not observable", not "fine".
+    echo "  NOT OBSERVABLE: no family in this account currently has 2+ ACTIVE revisions," >&2
+    echo "      so the newest-ACTIVE-wins behaviour cannot be witnessed read-only right now." >&2
+    exit 2
+  fi
+
+  echo "A2 — the running pointer is a pinned revision, not a floating family reference"
+  pinned="$(aws ecs describe-task-definition --task-definition "$running_td" \
+    --query 'taskDefinition.revision' --output text)"
+  if [ "$pinned" = "$running_rev" ]; then
+    echo "  OK: describe-services stores '$running_td' and that ARN resolves to :$pinned"
+    echo "      a registration adds a revision; it cannot rewrite a stored ARN, so only update-service moves this"
+  else
+    note_fail "the running ARN resolved to :$pinned, not :$running_rev"
+  fi
+
+  echo "A3 — revision numbers are never reused, so a registration lands above the running one"
+  all_revs="$( { list_revs "$running_family" ACTIVE; list_revs "$running_family" INACTIVE; } | sort -n)"
+  total="$(printf '%s\n' "$all_revs" | grep -c .)"
+  uniq_total="$(printf '%s\n' "$all_revs" | sort -nu | grep -c .)"
+  max_rev="$(printf '%s\n' "$all_revs" | tail -1)"
+  echo "  family '$running_family': $total revisions, highest :$max_rev, running :$running_rev"
+  if [ "$total" -eq "$uniq_total" ] && [ "$max_rev" -eq "$total" ] && [ "$max_rev" -ge "$running_rev" ]; then
+    echo "  OK: revisions are 1..$max_rev with no gaps and no duplicates (deregistering leaves the number spent),"
+    echo "      so the next register-task-definition is :$((max_rev + 1)) — above the running :$running_rev, which by A1 wins the family lookup"
+  else
+    note_fail "revisions are not a contiguous 1..N (total=$total unique=$uniq_total max=$max_rev) — the next revision number is not predictable from here"
+  fi
+
+  echo
+  if [ "$fails" -eq 0 ]; then
+    echo "PASS: every assumption behind --simulate-newer-revision is observed in live AWS."
+    echo "      A0+A3 fix WHICH answer a registration would change; A1 makes the family"
+    echo "      shortcut see it; A2 keeps the correct path on :$running_rev. That is the"
+    echo "      divergence the shim injects — and now the shape of it is measured, not assumed."
+    exit 0
+  fi
+  echo "FAIL: $fails assumption(s) contradicted by live AWS — the step-5 simulation models" >&2
+  echo "      something this account does not do, so its PASS cannot be trusted." >&2
+  exit 1
+fi
 
 # The workflow checks out with fetch-depth: 0 because the deployed SHA may be
 # months old. A shallow or stale local clone would report "not a commit" and
