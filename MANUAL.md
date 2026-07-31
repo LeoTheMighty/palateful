@@ -45,6 +45,22 @@
   Human-only because it mutates the production AWS account (the agent's
   `aws ecs register-task-definition` call was blocked by the permission
   classifier).
+  - **Scope note (2026-07-31): most of this is already discharged.**
+    `bash tools/deploy-freshness-live-check.sh --simulate-newer-revision`
+    shims the single `describe-task-definition` answer a registration would
+    change, passes every other call through to real ECS, and showed the
+    shipped bash producing a **byte-identical** report before and after
+    (`:62`, `c85e350d…`, 96d, exit 1) — while its built-in control, the same
+    bash with the family shortcut reintroduced, reported the undeployed image
+    as `Gap: 0 day(s)` / "fresh". So the check's *insensitivity* to a newer
+    ACTIVE revision is proven against live prod. What this step still adds is
+    one thing: confirming that a **real** registration actually creates that
+    divergence — new revision becomes the family's newest ACTIVE while
+    `describe-services` keeps returning `:62`. That is documented AWS
+    behaviour and it is the assumption the simulation encodes. Run the
+    sequence below if you want it observed rather than assumed; run
+    `--simulate-newer-revision` first, since a failure there means the check
+    itself regressed and no registration is needed to know it.
   - Precondition captured 2026-07-31: family `palateful-api-prod` has
     exactly **one** ACTIVE revision, `:62`, and it *is* the running one
     (`describe-services` → `:62`), on image tag `c85e350d…` (2026-04-26).

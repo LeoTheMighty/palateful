@@ -1,7 +1,15 @@
 # E-7 — Deploy freeze becomes visible
 
 - **Priority:** P2 · **Validation type:** human · **Phase:** 8 (FR-6)
-- **Status:** RED — observation in progress (steps 2 and 7 recorded 2026-07-31; step 1 caught a credentials bug, fixed, GitHub-Actions re-run pending merge — but its **measurement half is now discharged against live prod**, see below; steps 3-5 logic **and the dispatch/schedule/credentials wiring** pinned offline 2026-07-31 by `tools/deploy-freshness-self-test.sh`, live runs still owed — every owed run now has a filed command in `MANUAL.md`).
+- **Status:** RED — observation in progress. All seven steps have now been
+  measured against **live prod** (steps 2 and 7 directly; steps 1, 3, 4 and 5
+  by running the workflow's own extracted bash via
+  `tools/deploy-freshness-live-check.sh`), and the logic plus the
+  dispatch/schedule/credentials wiring is pinned on every PR by
+  `tools/deploy-freshness-self-test.sh` (9 cases, mutation-verified). What is
+  still owed is the **mechanism**: the Actions dispatch and unattended 09:00
+  run after merge (steps 1/3/4/6) and one real task-definition registration
+  (step 5). Every owed run has a filed command in `MANUAL.md`.
 
 ## Expectation
 
@@ -28,7 +36,7 @@ Run in order. Record the actual, not "as expected".
 | 2 | Cross-check step 1 against `bin/prod-status` and `git log -1 --format=%ci <tag>` | all three agree | **PASS** (2026-07-31): all three legs measured within the same hour agree at **96d** on `c85e350d…` — the workflow's own step (`Gap: 96 day(s)`, live-check run), `bin/prod-status` (`96d old`, and the same for `palateful-worker-prod`), and `git log -1 --format=%ci c85e350d` → 2026-04-26 10:27:45 -0600. An earlier reading the same day said 95d: the gap is a live floor-divided age, so it ticks up by one each midnight UTC; 95 and 96 are the same observation on either side of a day boundary, not a disagreement. |
 | 3 | Synthetic gap > 7 days | run **fails** | **Logic PASS on live prod, dispatch pending** (2026-07-31). Against real ECS/ECR/git via the live check: `SYNTHETIC_GAP_DAYS=8` → `::warning::SYNTHETIC gap of 8d`, `Gap: 8 day(s)`, exit **1** — and it never reports 96, so the substitution really displaced the real measurement. Also pinned offline on every PR by `tools/deploy-freshness-self-test.sh` over a 96d fixture. The Actions dispatch is still owed, because only it exercises `inputs.synthetic-gap-days` → `$SYNTHETIC_GAP_DAYS` through GitHub's expression layer (the wire itself is statically asserted — see below). |
 | 4 | Synthetic gap < 7 days | run passes | **Logic PASS on live prod, dispatch pending** (2026-07-31). `SYNTHETIC_GAP_DAYS=1` against the same frozen-96d live prod → `Prod image is fresh (1d <= 7d)`, exit **0** — a pass that can only come from the substitution taking effect. Boundary also exercised live: `=7` (== threshold) → exit 0, since the gate is `-gt`. Same offline pin as step 3. |
-| 5 | Register a newer ACTIVE task-definition revision without deploying it | reported gap is **unchanged** | _live observation still owed_ (see below). Precondition captured 2026-07-31: family `palateful-api-prod` has exactly **one** ACTIVE revision, `:62`, which *is* the running revision — so the shortcut and the correct path currently coincide and the trap is latent, not observable passively. Property proven offline the same day and now CI-guarded (`tools/deploy-freshness-self-test.sh`). No longer blocked on the merge, only on the prod mutation: `tools/deploy-freshness-live-check.sh` reads the gap from live prod before/after registering, so the observation is a three-command before/after diff (see `MANUAL.md`). |
+| 5 | Register a newer ACTIVE task-definition revision without deploying it | reported gap is **unchanged** | **Measurement PASS against live prod, registration still owed** (2026-07-31). `tools/deploy-freshness-live-check.sh --simulate-newer-revision` shims the one `describe-task-definition` call that a registration would change — every other call goes to real ECS — and the shipped bash produced a **byte-identical** report before and after (`:62`, `c85e350d…`, `Gap: 96 day(s)`, exit 1). The control in the same run proves the divergence was real and reachable: with the family shortcut reintroduced, that same bash reported the undeployed image at `Gap: 0 day(s)` / "Prod image is fresh" on 96d-frozen prod — green and blind. Precondition (unchanged): the family has exactly **one** ACTIVE revision, `:62`, which *is* the running one, so the trap is latent and only a divergence can expose it. See below for what the simulation does and does not discharge. |
 | 6 | Wait for the next scheduled 09:00 MDT trigger | fires with **no approval prompt** | _pending_ (calendar time; command filed in `MANUAL.md`) — but verified 2026-07-31 via `gh api repos/…/environments/production` that the environment has `protection_rules: []` and no branch policy, so declaring it (step 1 fix) introduces no approval gate. The `0 15 * * *` cron and the `environment:` declaration are now pinned on every PR by the self-test; what only this run can show is a protection rule added on the GitHub side after the fact. |
 | 7 | `bin/prod-status` | prints the deployed tag and its age | **PASS** (2026-07-31): prints `palateful-api-prod: c85e350dd48b… — 95d old (3 months ago, chore(sprint-status): …)` for both api and worker services. |
 
@@ -72,6 +80,55 @@ intended case:
 This does **not** discharge step 5. It bounds the window in which a
 regression can hide to zero; the live observation still proves the mechanism
 against real ECS.
+
+### Observing step 5 without mutating prod (added 2026-07-31)
+
+Registering a revision in the production account is the one thing in this
+protocol an agent cannot do, so step 5 — the load-bearing one — was set to
+stay owed indefinitely. But the check does not *read the ECS registry as
+state*; it reads it through exactly two `aws` calls. A registration changes
+what **one** of them returns, for **one** argument: a
+`describe-task-definition` on the family name (or on the would-be-next
+revision ARN) starts answering with the new, undeployed image.
+
+`--simulate-newer-revision` shims exactly that one answer and passes every
+other call through to the real CLI against real prod. The running revision
+stays the genuine `:62` from a genuine `describe-services`; the gap is
+computed from the genuine deployed tag by the genuine `git log`. Nothing is
+written to AWS.
+
+Measured 2026-07-31 (simulating `:63` on tag `602b149f…`, 0 days old):
+
+| Run | Report | Exit |
+|---|---|---|
+| baseline (real prod) | `:62` → `c85e350d…` → `Gap: 96 day(s)` | 1 |
+| with the simulated newer ACTIVE revision | **byte-identical** to baseline | 1 |
+| control — same bash, family shortcut reintroduced | `palateful-api-prod` → `602b149f…` → `Gap: 0 day(s)`, "Prod image is fresh" | 0 |
+
+The control is the point. "The gap is unchanged" is worthless if the
+simulated revision was never actually visible — an inert shim would satisfy
+it trivially. So the tool builds the regression itself (rewrites the
+extracted `describe-services` resolution to the family shortcut), runs it
+against the same shim, and **refuses to report a pass (exit 2) unless that
+regression sees the injected revision**. It did: 96d → 0d, green on frozen
+prod, which is precisely the green-and-blind failure step 5 exists to catch.
+
+Verdict/exit codes are inverted from the plain live check and ordered
+deliberately: `0` = gap unchanged, `1` = gap moved (the trap), `2` = the
+simulation could not be trusted. Two mutations confirmed the attribution —
+the family shortcut in the shipped YAML gives exit **1** with the 96d→0d
+diff, and an inert shim gives exit **2** rather than a false pass. (The
+verdict has to be decided *before* the control is built: when the shipped
+bash is already the shortcut, the control cannot be constructed at all, and
+an earlier ordering reported that as "untrustworthy" instead of "the trap is
+present".)
+
+What remains owed for step 5 is narrow and specific: that a **real**
+`register-task-definition` produces the divergence the shim models — i.e.
+that ECS makes the new revision the family's newest ACTIVE while
+`describe-services` keeps returning `:62`. That is documented AWS behaviour
+and it is the assumption the shim encodes, but this run did not observe it.
+The `MANUAL.md` entry is now scoped to that assumption alone.
 
 ### The wiring layer (added 2026-07-31)
 
@@ -144,11 +201,12 @@ been skipped throughout this very incident.
 
 ## Result
 
-- **Verdict:** _pending_ — the measurement is proven (steps 1-measurement, 2,
-  3, 4, 7 recorded against live prod; 5's property CI-guarded offline). What
-  remains is the mechanism: the Actions dispatch after merge (steps 1/3/4),
-  the unattended 09:00 MDT run (step 6), and the prod task-definition
-  registration (step 5). All four are filed in `MANUAL.md`.
+- **Verdict:** _pending_ — the measurement is proven for **every** step
+  against live prod (1, 2, 3, 4, 5, 7), and CI-guarded offline against
+  regression. What remains is the mechanism: the Actions dispatch after merge
+  (steps 1/3/4), the unattended 09:00 MDT run (step 6), and one real
+  `register-task-definition` to confirm ECS diverges the way step 5's
+  simulation assumes. All four are filed in `MANUAL.md`.
 - **Measured gap vs `git log`:** **96 days** — workflow step, `bin/prod-status`
   and `git log -1 --format=%ci c85e350d` (2026-04-26 10:27:45 -0600) all agree.
   Prod is genuinely frozen, so a **green** run is the failure signal here.
