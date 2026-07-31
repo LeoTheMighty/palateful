@@ -34,8 +34,20 @@
 # registry exists to prevent.
 #
 # Wiring: each test root that can hold RED artifacts needs a conftest.py
-# that reads this file into `collect_ignore` — see
-# `libraries/utils/test/conftest.py` for the reference implementation.
+# that reads this file into `collect_ignore`. The loader lives in
+# `utils.testing.red_registry`; a test root opts in with two lines —
+#
+#     from utils.testing.red_registry import collect_ignore_for
+#
+#     collect_ignore = collect_ignore_for(__file__)
+#
+# See `libraries/utils/test/conftest.py` for the reference wiring.
+#
+# Authoring caveat: a RED artifact MUST be a *new file*. Rewriting an
+# existing test file in place makes it unregisterable — excluding it
+# would also drop the passing tests it replaced, and `services/api`
+# pins `fail_under = 100`. Add a sibling file instead.
 
 libraries/utils/test/test_db_credential_provider.py:rsh105:secrets-manager-password-provider — utils/services/db_credentials.py not implemented yet
 libraries/utils/test/test_rotation_redeploy_handler.py:rsh103:rotation-redeploy-lambda-handler — utils/services/rotation_redeploy.py not implemented yet
+services/api/tests/test_health_credential_probe.py:rsh102:credential-aware-health-probe — utils/services/db_probe.py not implemented yet; GREEN commit must also fold the baseline tests out of test_health.py

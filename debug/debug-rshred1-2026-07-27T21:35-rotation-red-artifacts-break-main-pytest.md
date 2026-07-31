@@ -93,3 +93,35 @@ workstream lands.
   - Learning: Blast radius is naturally contained: every other Python test target (api, worker, parser, agent, migrator) is scoped to its own testpaths or an explicit path, so none of them can ever collect libraries/utils. Only the utils target and a bare root-level pytest were ever affected.
   - Learning: This worktree has no libraries/agent venv, so `npx nx run agent:test` fails locally with 'unrecognized arguments: --cov'. Pre-existing environment gap, unrelated to this spec — future iterations should not chase it as a regression.
   - Learning: Local api tests are unrunnable in this worktree (Docker daemon down, so no Postgres); AC #2 can only be closed by CI on main.
+- 2026-07-31 — iteration 2 (manual, outside the loop): completed the fix. Iteration 1
+  registered only the two `libraries/utils` RED artifacts and left `main` red, because
+  the api suite was unrunnable in that worktree (its own last Learning) — so the third
+  RED artifact, `services/api/tests/test_health.py`, was never seen. Postgres was up
+  this time; the api suite runs.
+  - Change: Split `services/api/tests/test_health.py`. The RED stage (`5a6174d`) rewrote
+    that file *in place*, replacing three passing tests, so it could not simply be
+    registered: `services/api` pins `fail_under = 100` and excluding the file drops
+    `health_router.py` coverage, leaving the gate red either way. The pre-RED baseline is
+    restored at `test_health.py` (recovered from `5a6174d^`) and the RED content moved to
+    `services/api/tests/test_health_credential_probe.py`.
+  - Change: Registered `test_health_credential_probe.py` against rsh102 (Phase 2 / FR-2,
+    the story that implements `utils/services/db_probe.py`).
+  - Change: Extracted the iteration-1 conftest loader into `utils.testing.red_registry`
+    so each test root opts in with two lines rather than a copied 60-line loader; both
+    `libraries/utils/test/conftest.py` and `services/api/tests/conftest.py` now use it.
+  - Change: Added the authoring caveat to the registry header — a RED artifact MUST be a
+    new file, never an in-place rewrite of an existing one, or it cannot be registered.
+  - Verified: api suite 2570 passed, coverage 100.00%. utils suite 595 passed with both
+    registered artifacts excluded. `PYTEST_RUN_RED=1` collects 19 items from the api RED
+    file; default collection collects 0. `tests/conftest.py` ruff count unchanged at 8.
+  - Learning: 12 failures in `test_freeform_units_seed.py` / `test_freeform_unit_aliases_seed.py`
+    are pre-existing on `main` (confirmed by running them at `origin/main`) and are NOT
+    part of this spec. They are not RED artifacts — do not register them; they need their
+    own debug spec.
+  - Learning: In `services/api/tests/conftest.py` the `collect_ignore` assignment must sit
+    *below* the `sys.path`/`os.environ` preamble. Ruff tolerates that preamble before a
+    module-level import, but a plain assignment ahead of it tips
+    `from fastapi.testclient import TestClient` into a new E402.
+  - Note for rsh102: its GREEN commit must delete the registry entry AND fold the two
+    baseline tests out of `test_health.py` — they pin the old contract and both become
+    wrong when FR-2 ships. Called out in the header of both files.
