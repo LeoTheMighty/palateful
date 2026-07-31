@@ -49,5 +49,4 @@
 # pins `fail_under = 100`. Add a sibling file instead.
 
 libraries/utils/test/test_db_credential_provider.py:rsh105:secrets-manager-password-provider — utils/services/db_credentials.py not implemented yet
-libraries/utils/test/test_rotation_redeploy_handler.py:rsh103:rotation-redeploy-lambda-handler — utils/services/rotation_redeploy.py not implemented yet
 services/api/tests/test_health_credential_probe.py:rsh102:credential-aware-health-probe — utils/services/db_probe.py not implemented yet; GREEN commit must also fold the baseline tests out of test_health.py
