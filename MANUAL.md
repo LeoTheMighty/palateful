@@ -34,6 +34,63 @@
   NOT a valid check here: it passes `force=True` and bypasses the exact
   code path that was broken.
 
+## Filed from 7c5cf2 / E-7 observation (2026-07-31)
+
+- [ ] **E-7 step 5 — register a prod task-definition revision without
+  deploying it, and confirm the reported gap does not move.** This is the
+  load-bearing observation for `deploy-freshness.yml`: a check that resolves
+  the task definition by *family name* returns the newest **registered**
+  revision instead of the **running** one, so a frozen prod reads as fresh —
+  green and blind, masking the exact failure the check exists to catch.
+  Human-only because it mutates the production AWS account (the agent's
+  `aws ecs register-task-definition` call was blocked by the permission
+  classifier).
+  - Precondition captured 2026-07-31: family `palateful-api-prod` has
+    exactly **one** ACTIVE revision, `:62`, and it *is* the running one
+    (`describe-services` → `:62`), on image tag `c85e350d…` (2026-04-26).
+    So the two resolution paths currently agree and the trap is latent —
+    you have to create the divergence to see it.
+  - Registration alone does **not** deploy anything; ECS only changes
+    running tasks on `update-service`. Use tag
+    `c2f7982c506beefbb9f41d141c6595abe19da540` — it is a real image already
+    in ECR (pushed 2026-05-03, 89 days old) and a real commit on `main`, so
+    even an unlucky concurrent deploy would ship something legitimate rather
+    than an unpullable tag. It is *newer* than the deployed image, which is
+    what makes the case discriminating: the shortcut would report 89d, the
+    correct path 96d.
+    ```
+    export AWS_REGION=us-east-1
+    ECR=592349850338.dkr.ecr.us-east-1.amazonaws.com/palateful/api
+    aws ecs describe-task-definition \
+      --task-definition arn:aws:ecs:us-east-1:592349850338:task-definition/palateful-api-prod:62 \
+      --query taskDefinition --output json > /tmp/td62.json
+    jq '{family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions,
+         volumes, placementConstraints, requiresCompatibilities, cpu, memory,
+         runtimePlatform} | with_entries(select(.value != null))
+        | .containerDefinitions[0].image =
+          "'"$ECR"':c2f7982c506beefbb9f41d141c6595abe19da540"' \
+      /tmp/td62.json > /tmp/td63.json
+    NEW=$(aws ecs register-task-definition --cli-input-json file:///tmp/td63.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+    # ... now run the workflow (gh workflow run deploy-freshness.yml) and read
+    # its log: it must still say ":62", tag c85e350d…, and the ~96d gap.
+    aws ecs deregister-task-definition --task-definition "$NEW"   # ALWAYS clean up
+    ```
+  - **Deregister when done.** Leaving `:63` ACTIVE means the next
+    `deploy-services` run (which resolves by family, correctly, for its own
+    purpose) would ship that older image. Revision numbers are never reused,
+    so after cleanup the family is byte-identical to how you found it except
+    that the next terraform apply writes `:64`.
+  - Then record the actual in
+    `_devx/workstreams/rotation-self-heal/evals/E-7_deploy-freeze-visibility.md`
+    (step 5 row) and tick the AC in
+    `dev/dev-7c5cf2-2026-07-31T10:24-rsh108-follow-up-run-the-e-7-observation-protocol.md`.
+  - Regression coverage already exists offline:
+    `tools/deploy-freshness-self-test.sh` (CI `lint` job) models this exact
+    scenario against a mocked ECS and was mutation-verified to fail when the
+    family shortcut is reintroduced. That guards the code between
+    observations; it does not substitute for this one.
+
 ## /devx-init deferred work
 
 - [ ] **devx-init: supervisor-install-deferred** — OS-supervisor install deferred by non-interactive `devx init`
