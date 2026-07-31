@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T12:32:00-06:00
 title: Rotation-redeploy Lambda handler — pure, unit-testable Python
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-31T15-54-01-442-22311
 branch: feat/dev-rsh103
 ---
@@ -87,3 +87,5 @@ ECS services.
   - Learning: Pinned Lambda contract for rsh104: runtime `python3.13`, handler string `rotation_redeploy.handler` — recorded in the module docstring alongside the `archive_file`/`source_file` packaging constraint.
   - Learning: The worktree has no Poetry virtualenv and `poetry install` was not needed: running the suite as `PYTHONPATH=$PWD/libraries/utils /Users/leonidbelyi/personal/palateful/.venv/bin/python -m pytest libraries/utils/` works, because PYTHONPATH precedes the main-checkout develop-install .pth entry and resolves `utils` to the worktree source. Plain `poetry run pytest` inside `libraries/utils/` instead creates a fresh empty venv and dies on `ModuleNotFoundError: utils` at conftest import.
   - Learning: Secrets Manager ARNs arrive with and without the trailing 6-char uniqueness suffix depending on source (event vs Terraform attribute); the handler normalizes that suffix off both sides rather than doing a prefix match, so rsh104 can pass either form as `WATCHED_SECRET_ARN`.
+- 2026-07-31T16:11:05.381Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-31T16:11:05.382Z — merged via devx loop — PR https://github.com/LeoTheMighty/palateful/pull/22
