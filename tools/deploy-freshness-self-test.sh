@@ -42,47 +42,10 @@ SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
 # ── Extract the step body ────────────────────────────────────────────────
-# Deliberately dependency-free (no PyYAML): this runs in the `lint` job before
-# any poetry env is guaranteed. Indentation-based, and strict — a structural
-# change to the workflow must break this loudly rather than silently test a
-# stale script.
-python3 - "$WORKFLOW" "$STEP_NAME" "$SANDBOX/measure.sh" <<'PY'
-import sys
-
-path, step_name, out = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = open(path).read().splitlines()
-
-# Find "- name: <step_name>", then the "run: |" that follows it, then take the
-# block of lines indented deeper than the "run:" key.
-try:
-    i = next(n for n, l in enumerate(lines) if l.strip() == f"- name: {step_name}")
-except StopIteration:
-    sys.exit(f"EXTRACT FAIL: no step named {step_name!r} in {path}")
-
-try:
-    j = next(n for n in range(i + 1, len(lines)) if lines[n].strip() in ("run: |", "run: |-"))
-except StopIteration:
-    sys.exit(f"EXTRACT FAIL: step {step_name!r} has no literal-block `run:`")
-
-run_indent = len(lines[j]) - len(lines[j].lstrip())
-body, body_indent = [], None
-for line in lines[j + 1:]:
-    if not line.strip():
-        body.append("")
-        continue
-    indent = len(line) - len(line.lstrip())
-    if indent <= run_indent:
-        break
-    if body_indent is None:
-        body_indent = indent
-    body.append(line[body_indent:])
-
-if not [b for b in body if b.strip()]:
-    sys.exit(f"EXTRACT FAIL: empty run block for {step_name!r}")
-
-open(out, "w").write("\n".join(body).rstrip() + "\n")
-print(f"extracted {len([b for b in body if b.strip()])} lines from {path}")
-PY
+# Shared with tools/deploy-freshness-live-check.sh, so the offline guard and
+# the live check can never end up running different bash.
+python3 "$REPO_ROOT/tools/deploy-freshness-extract.py" \
+  "$WORKFLOW" "$STEP_NAME" "$SANDBOX/measure.sh"
 
 # Pull the thresholds from the workflow too, so the test can never assert
 # against a threshold the workflow no longer uses.

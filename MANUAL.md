@@ -70,12 +70,24 @@
         | .containerDefinitions[0].image =
           "'"$ECR"':c2f7982c506beefbb9f41d141c6595abe19da540"' \
       /tmp/td62.json > /tmp/td63.json
+    # Baseline BEFORE registering, so "unchanged" is a comparison, not a memory.
+    bash tools/deploy-freshness-live-check.sh    # expect :62, c85e350d…, ~96d, exit 1
+
     NEW=$(aws ecs register-task-definition --cli-input-json file:///tmp/td63.json \
             --query taskDefinition.taskDefinitionArn --output text)
-    # ... now run the workflow (gh workflow run deploy-freshness.yml) and read
-    # its log: it must still say ":62", tag c85e350d…, and the ~96d gap.
+
+    # THE OBSERVATION: identical output. Any mention of :63, of c2f7982c…, or a
+    # gap near 89d is the family-shortcut trap, i.e. the check is green-and-blind.
+    bash tools/deploy-freshness-live-check.sh
+
     aws ecs deregister-task-definition --task-definition "$NEW"   # ALWAYS clean up
+    bash tools/deploy-freshness-live-check.sh    # confirm you're back where you started
     ```
+  - The live check runs the workflow's own bash, extracted from the workflow
+    YAML, so this observes the shipped logic without needing the workflow
+    merged or dispatched — this step is **not** blocked on the merge, only on
+    the prod mutation. Repeat via `gh workflow run` afterwards if you want the
+    Actions-side confirmation too, but the discriminating evidence is above.
   - **Deregister when done.** Leaving `:63` ACTIVE means the next
     `deploy-services` run (which resolves by family, correctly, for its own
     purpose) would ship that older image. Revision numbers are never reused,
@@ -97,6 +109,15 @@
   because the job omitted `environment: production`, and `gh workflow run`
   always uses the definition at the *pushed* ref, so the fix cannot be
   exercised before it lands. All three are one command each.
+  **Scope note (2026-07-31):** the *measurement* half of all three is already
+  discharged — `bash tools/deploy-freshness-live-check.sh [--synthetic-gap-days N]`
+  ran the same extracted bash against live prod and produced 96d/exit 1,
+  8d/exit 1, 1d/exit 0, 7d/exit 0. What these dispatches add is the
+  *mechanism*: environment-scoped credentials resolving inside Actions, and
+  `inputs.synthetic-gap-days` surviving GitHub's expression layer. If a run
+  below disagrees with those numbers, the difference is in the mechanism, not
+  in the check's logic — start at the `configure-aws-credentials` step and the
+  `SYNTHETIC gap of Nd` line, not at the bash.
   ```
   # Step 1 — real measurement. MUST FAIL. Prod is frozen at c85e350d
   # (2026-04-26, ~96d). A green run here means the check is broken, not
