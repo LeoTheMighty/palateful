@@ -10,6 +10,7 @@ from typing import Any, Iterator
 from unittest.mock import MagicMock
 
 import pytest
+from utils.testing.red_registry import collect_ignore_for
 
 # Set test environment before any imports
 os.environ.setdefault("DATABASE_URL", "")
@@ -24,6 +25,13 @@ os.environ.setdefault("CELERY_BROKER_URL", "sqs://")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from fastapi.testclient import TestClient
+
+# rshred1 — registered RED artifacts (tests-first files whose
+# implementation has not landed) are dropped from default collection so
+# they don't hold the shared `test` gate red. Registry + policy:
+# `tools/red-artifacts.txt`. Opt back in with `PYTEST_RUN_RED=1`.
+# Assigned below the sys.path/env preamble so it stays E402-neutral.
+collect_ignore = collect_ignore_for(__file__)
 
 
 # Pre-warm the unit-alias cache so tests don't try to hit a real DB on

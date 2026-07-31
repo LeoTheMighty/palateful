@@ -1,0 +1,53 @@
+# rshred1 — RED-artifact registry.
+#
+# A "RED artifact" is a tests-first file authored *before* the code it
+# exercises exists. Running it is supposed to fail — that is the point.
+# But once such a file lands on `main`, the default pytest collection
+# picks it up and the shared `ci.yml / test` gate goes red for every
+# unrelated PR in the repo until the whole workstream lands. That cost is
+# recurring: two agents independently had to verify "is this red mine?"
+# against main before trusting CI.
+#
+# Policy: a RED artifact MAY merge to `main`, but it MUST be registered
+# here in the same commit. Registered files are excluded from default
+# pytest collection.
+#
+# Format: path:story-hash:rationale (colon-separated; trailing rationale
+# is free-form). Paths are repo-relative. Lines starting with `#` are
+# comments. A registered path that does not exist is a hard error — the
+# conftest raises rather than silently ignoring a typo.
+#
+# Running a RED artifact anyway (this is how the implementing story
+# drives itself from RED to GREEN). Naming the file explicitly is enough
+# — `collect_ignore` only applies to directory recursion:
+#
+#     poetry run pytest libraries/utils/test/test_foo.py
+#
+# For a whole-directory run, opt in with the env var, which un-ignores
+# *every* registered file:
+#
+#     PYTEST_RUN_RED=1 poetry run pytest libraries/utils/
+#
+# Removing an entry: the commit that makes the artifact pass MUST delete
+# its line here. An entry left behind means the story shipped with its
+# own acceptance test silently not running — worse than the red gate this
+# registry exists to prevent.
+#
+# Wiring: each test root that can hold RED artifacts needs a conftest.py
+# that reads this file into `collect_ignore`. The loader lives in
+# `utils.testing.red_registry`; a test root opts in with two lines —
+#
+#     from utils.testing.red_registry import collect_ignore_for
+#
+#     collect_ignore = collect_ignore_for(__file__)
+#
+# See `libraries/utils/test/conftest.py` for the reference wiring.
+#
+# Authoring caveat: a RED artifact MUST be a *new file*. Rewriting an
+# existing test file in place makes it unregisterable — excluding it
+# would also drop the passing tests it replaced, and `services/api`
+# pins `fail_under = 100`. Add a sibling file instead.
+
+libraries/utils/test/test_db_credential_provider.py:rsh105:secrets-manager-password-provider — utils/services/db_credentials.py not implemented yet
+libraries/utils/test/test_rotation_redeploy_handler.py:rsh103:rotation-redeploy-lambda-handler — utils/services/rotation_redeploy.py not implemented yet
+services/api/tests/test_health_credential_probe.py:rsh102:credential-aware-health-probe — utils/services/db_probe.py not implemented yet; GREEN commit must also fold the baseline tests out of test_health.py

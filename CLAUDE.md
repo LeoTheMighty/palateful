@@ -14,6 +14,7 @@ Palateful is an NX monorepo with Python microservices (FastAPI) and Flutter mobi
 - **`ANDROID.md`** - Play Store release runbook (single operator, Day 1 signup → Day 3 first tag). See `epic-android-play-console-launch` for epic-level context.
 - **`app/lib/core/state/README.md`** - MutationBus convention (emit/subscribe patterns, coalescer recipe, WS-lowering recipe). Ships the `mutationFailureCopy` map, the `showMutationFailureSnackbar` helper, and the `pumpWithMutation` test helper used by every reactivity regression test.
 - **`tools/no-silent-catch-check.sh`** - CI grep guard that blocks PRs where a feature-service catch block silently swallows an exception. Allowlist in `tools/silent-catch-allowlist.txt` (format: `file:lineno:rationale`, reviewer sign-off required).
+- **`tools/red-artifacts.txt`** - Registry of tests-first RED artifacts merged to `main` ahead of their implementation. A RED artifact **may** merge, but it **must** be registered here in the same commit, or it turns the shared `ci.yml / test` gate red for every unrelated PR until the workstream lands (format: `path:story-hash:rationale`). Registered files are dropped from default pytest collection by a `collect_ignore` conftest in their test root (reference: `libraries/utils/test/conftest.py`); run them with `PYTEST_RUN_RED=1`. **The commit that turns the artifact GREEN must delete its entry** — a stale entry means the story shipped with its own acceptance test not running.
 
 ## Project Structure
 
