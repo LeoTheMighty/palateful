@@ -4,7 +4,8 @@ type: dev
 created: 2026-07-27T12:37:00-06:00
 title: Deploy-freeze visibility — scheduled freshness check plus prod-status age
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: in-progress
+spawned: [7c5cf2]
+status: done
 owner: /devx-loop-2026-07-31T15-54-01-442-22311
 branch: feat/dev-rsh108
 ---
@@ -83,3 +84,6 @@ outage: prod ran a 92-day-old image and nothing said so.
   - Learning: Scheduled workflows only run from the default branch, so the scheduled-trigger AC and the whole E-7 observation protocol cannot begin until this branch merges — no local iteration can ever satisfy those ACs
   - Learning: Image tags are pinned to the full git SHA by ci.yml resolve-tags, so git log -1 --format=%ct <tag> dates deployments directly; a synthetic-gap-days workflow_dispatch input lets E-7 prove both fail and pass paths without registering fake revisions
   - Learning: jq is already a dependency of sibling bin scripts (prod-deploy, prod-logs), so using it in prod-status adds no new operator tooling requirement
+- 2026-07-31T10:24:06-06:00 — split (merge-first): emitted follow-up 7c5cf2 → `dev/dev-7c5cf2-2026-07-31T10:24-rsh108-follow-up-run-the-e-7-observation-protocol.md` via devx split
+- 2026-07-31T16:24:06.030Z — phase 4: loop-shipped — per-iteration verification (see iteration lines above) stood in for the interactive self-review pass; line appended by the loop merge tail per dvx103
+- 2026-07-31T16:24:06.030Z — merged via devx loop — PR https://github.com/LeoTheMighty/palateful/pull/23
