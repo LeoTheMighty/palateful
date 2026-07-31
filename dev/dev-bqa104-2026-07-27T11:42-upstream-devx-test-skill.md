@@ -29,3 +29,4 @@ Fill the devx O-4 slot: the attended exploratory `/devx-test` skill, its dispatc
 ## Status log
 - 2026-07-27T11:42 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase).
 - 2026-07-30T14:12:31-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
+- 2026-07-31T15:21:14.404Z — loop stopped mid-item (stopped by signal); worktree + claim preserved
