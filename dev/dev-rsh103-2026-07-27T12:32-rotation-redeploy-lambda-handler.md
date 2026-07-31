@@ -4,8 +4,8 @@ type: dev
 created: 2026-07-27T12:32:00-06:00
 title: Rotation-redeploy Lambda handler — pure, unit-testable Python
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-07-31T15-54-01-442-22311
 branch: feat/dev-rsh103
 ---
 
@@ -78,3 +78,4 @@ ECS services.
   RED right-reason (`ModuleNotFoundError: utils.services.rotation_redeploy`,
   plus explicit module-absent assertions in the AST guards); see
   `_devx/workstreams/rotation-self-heal/evals/RED-report.md`.
+- 2026-07-31T09:54:01-06:00 — claimed by /devx in session /devx-loop-2026-07-31T15-54-01-442-22311
