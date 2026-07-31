@@ -1,6 +1,5 @@
 """Unified search endpoint - recipes (my + public), meals, and users."""
 
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy import exists, func, or_, select, text
 from sqlalchemy.orm import selectinload
@@ -542,23 +541,14 @@ class UnifiedSearch(AsyncEndpoint):
     async def _generate_query_embedding(self, query: str) -> list[float] | None:
         """Generate a 384-dim embedding for the query via OpenAI.
 
-        The OpenAI client is still sync (aam-7 swaps to AsyncOpenAI in Phase 2),
-        so the network call is dispatched through `run_in_threadpool` to keep the
-        event loop free. Returns None if the OpenAI call fails or the key is not
-        set, so the semantic tier degrades gracefully.
+        Returns None if the OpenAI call fails or the key is not set, so the
+        semantic tier degrades gracefully.
         """
         try:
-            return await run_in_threadpool(self._sync_generate_query_embedding, query)
-        except Exception:
-            return None
+            from openai import AsyncOpenAI
 
-    @staticmethod
-    def _sync_generate_query_embedding(query: str) -> list[float] | None:
-        try:
-            from openai import OpenAI
-
-            client = OpenAI()  # reads OPENAI_API_KEY from env
-            resp = client.embeddings.create(
+            client = AsyncOpenAI()  # reads OPENAI_API_KEY from env
+            resp = await client.embeddings.create(
                 model="text-embedding-3-small",
                 input=query,
                 dimensions=384,

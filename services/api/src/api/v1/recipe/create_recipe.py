@@ -75,13 +75,13 @@ class CreateRecipe(AsyncEndpoint):
             assign_vibes_for_recipe,
             generate_recipe_embedding,
         )
-        primary_vibe, secondary_vibe = assign_vibes_for_recipe(
+        primary_vibe, secondary_vibe = await assign_vibes_for_recipe(
             recipe.name, recipe.description
         )
         recipe.primary_vibe = primary_vibe
         recipe.secondary_vibe = secondary_vibe
 
-        embedding = generate_recipe_embedding(
+        embedding = await generate_recipe_embedding(
             recipe.name, recipe.description, recipe.tags, primary_vibe
         )
         if embedding is not None:
