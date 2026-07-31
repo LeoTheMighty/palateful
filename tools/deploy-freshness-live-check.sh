@@ -17,14 +17,24 @@
 # with environment-scoped credentials, on a schedule, unattended — which is
 # exactly what E-7 steps 1/6 observe and what this script cannot substitute for.
 #
+# `--simulate-newer-revision` extends the same idea to E-7 step 5, whose live
+# form requires registering a task definition in the production account: it
+# shims the one `aws` answer a registration would change and leaves every other
+# call real. See the block guarding it below for what that does and does not
+# discharge.
+#
 # Usage:
 #   bash tools/deploy-freshness-live-check.sh                    # real measurement
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 8   # E-7 step 3
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 1   # E-7 step 4
+#   bash tools/deploy-freshness-live-check.sh --simulate-newer-revision  # E-7 step 5
 #
 # Read-only: describe-services + describe-task-definition only, no mutations.
 # Exit: mirrors the workflow step (0 fresh / 1 stale-or-unknown), 2 on usage
 # or credential errors — so a missing AWS session can't be misread as "fresh".
+# Under --simulate-newer-revision the codes report the OBSERVATION instead:
+# 0 gap unchanged (correct), 1 gap moved (the family-shortcut trap), 2 the
+# simulation itself could not be trusted.
 
 set -euo pipefail
 
@@ -33,11 +43,13 @@ WORKFLOW="$REPO_ROOT/.github/workflows/deploy-freshness.yml"
 STEP_NAME="Measure gap between running image and its commit date"
 
 SYNTHETIC=""
+SIMULATE_NEWER=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --synthetic-gap-days) SYNTHETIC="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) echo "usage: $0 [--synthetic-gap-days N]" >&2; exit 2 ;;
+    --simulate-newer-revision) SIMULATE_NEWER=1; shift ;;
+    -h|--help) sed -n '2,37p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision]" >&2; exit 2 ;;
   esac
 done
 
@@ -72,11 +84,139 @@ if [ -f "$REPO_ROOT/.git/shallow" ]; then
   echo "WARNING: shallow clone — the deployed SHA may be missing locally; run 'git fetch --unshallow'." >&2
 fi
 
+# Runs the extracted step once. $1 = output file, $2 = script, $3 = PATH to use.
+# Echoes the exit status.
+run_measure() {
+  local out="$1" script="$2" path="$3" status=0
+  # `|| status=$?` rather than toggling errexit: a function that flips `set -e`
+  # leaves it flipped for its caller.
+  ( cd "$REPO_ROOT" \
+    && env PATH="$path" AWS_REGION="$AWS_REGION" CLUSTER="$CLUSTER" SERVICE="$SERVICE" \
+           MAX_GAP_DAYS="$MAX_GAP_DAYS" SYNTHETIC_GAP_DAYS="$SYNTHETIC" \
+       bash "$script" ) > "$out" 2>&1 || status=$?
+  cat "$out"
+  return "$status"
+}
+
+if [ "$SIMULATE_NEWER" -eq 1 ]; then
+  # ── E-7 step 5, without mutating prod ──────────────────────────────────
+  # The observation is "register a newer ACTIVE revision that was never
+  # deployed -> the reported gap does not move". Registering one is a
+  # production mutation. But the check never *reads* the ECS registry as
+  # state: it reads it through exactly two `aws` calls. So shadow `aws` with
+  # a shim that passes every call through to the real CLI against real prod,
+  # EXCEPT a describe-task-definition on the family name or on the
+  # would-be-next revision ARN — which answers as if that revision had been
+  # registered, on a fresh image tag. That is the same divergence the
+  # registration would create, seen by the same shipped bash, with nothing
+  # written to the account.
+  #
+  # Exit codes here mean the OBSERVATION, not the freshness check:
+  #   0 = gap unchanged (correct), 1 = gap moved (the family-shortcut trap),
+  #   2 = the simulation itself could not be trusted.
+  REAL_AWS="$(command -v aws)"
+  NEWER_TAG="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+
+  real_td="$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+    --query 'services[0].taskDefinition' --output text)"
+  real_image="$(aws ecs describe-task-definition --task-definition "$real_td" \
+    --query 'taskDefinition.containerDefinitions[0].image' --output text)"
+  case "$real_td" in
+    *:[0-9]*) FAKE_ARN="${real_td%:*}:$(( ${real_td##*:} + 1 ))" ;;
+    *) echo "FAIL: running task definition '$real_td' has no revision suffix" >&2; exit 2 ;;
+  esac
+  # The fake image is never pulled — the check only splits the tag off and
+  # dates it with `git log` — so HEAD needs no built image to exist.
+  FAKE_IMAGE="${real_image%:*}:$NEWER_TAG"
+  echo "simulating a newer ACTIVE revision: $FAKE_ARN -> $FAKE_IMAGE"
+  echo "  (running revision stays the real $real_td; nothing is written to AWS)"
+  echo
+
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/aws" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "ecs" ] && [ "${2:-}" = "describe-task-definition" ]; then
+  argv=("$@"); key=""
+  for ((n = 0; n < ${#argv[@]} - 1; n++)); do
+    if [ "${argv[n]}" = "--task-definition" ]; then key="${argv[n + 1]}"; break; fi
+  done
+  if [ "$key" = "$SHIM_FAMILY" ] || [ "$key" = "$SHIM_FAKE_ARN" ]; then
+    printf '%s\n' "$SHIM_FAKE_IMAGE"
+    exit 0
+  fi
+fi
+exec "$SHIM_REAL_AWS" "$@"
+SHIM
+  chmod +x "$TMP/bin/aws"
+  export SHIM_REAL_AWS="$REAL_AWS" SHIM_FAMILY="$SERVICE" \
+         SHIM_FAKE_ARN="$FAKE_ARN" SHIM_FAKE_IMAGE="$FAKE_IMAGE"
+  SHIM_PATH="$TMP/bin:$PATH"
+
+  echo "── baseline (real prod, no simulated revision) ──"
+  set +e; run_measure "$TMP/base.txt" "$TMP/measure.sh" "$PATH"; BASE_STATUS=$?; set -e
+  echo
+  echo "── with the simulated newer ACTIVE revision ──"
+  set +e; run_measure "$TMP/sim.txt" "$TMP/measure.sh" "$SHIM_PATH"; SIM_STATUS=$?; set -e
+  echo
+
+  # The verdict comes first, so a real regression is attributed as one. A
+  # control that cannot even be built (below) must only ever downgrade a
+  # would-be PASS to "untrustworthy" — never mask a FAIL, which is what
+  # happens if the control runs first and the shipped bash is already the
+  # shortcut.
+  echo "baseline exit $BASE_STATUS / simulated exit $SIM_STATUS"
+  if [ "$BASE_STATUS" -ne "$SIM_STATUS" ] || ! diff -q "$TMP/base.txt" "$TMP/sim.txt" >/dev/null; then
+    echo "FAIL: a newer ACTIVE revision that was never deployed CHANGED the report" >&2
+    echo "      — the check resolves by family name, so a frozen prod reads as fresh." >&2
+    diff "$TMP/base.txt" "$TMP/sim.txt" | sed 's/^/    | /' >&2 || true
+    exit 1
+  fi
+
+  # The control. A shim that silently failed to inject anything would make
+  # "unchanged" trivially true, so prove the injected revision is reachable:
+  # the family-name shortcut — the exact regression this step guards against —
+  # must see it. Verifying the simulation is what makes the observation mean
+  # something.
+  python3 - "$TMP/measure.sh" "$TMP/shortcut.sh" <<'PY' || exit 2
+import re
+import sys
+
+src = open(sys.argv[1]).read()
+mutated, n = re.subn(
+    r"running_td=\$\(aws ecs describe-services.*?--output text\)\n",
+    'running_td="$SERVICE"\n',
+    src,
+    flags=re.S,
+)
+if n != 1:
+    sys.exit(
+        "SIMULATION FAIL: could not build the family-shortcut control "
+        "(matched the describe-services resolution %d times, want 1). The "
+        "report was unchanged, but with no working control that is vacuous."
+    )
+open(sys.argv[2], "w").write(mutated)
+PY
+  echo
+  echo "── control: the same bash with the family-name shortcut reintroduced ──"
+  set +e; run_measure "$TMP/ctl.txt" "$TMP/shortcut.sh" "$SHIM_PATH"; CTL_STATUS=$?; set -e
+  echo
+
+  if ! grep -qF "$NEWER_TAG" "$TMP/ctl.txt"; then
+    echo "FAIL: the control never saw the simulated revision — the shim did not" >&2
+    echo "      take effect, so 'gap unchanged' would be vacuous. Not reporting a pass." >&2
+    exit 2
+  fi
+
+  echo "observation:"
+  echo "  control (family shortcut) exit $CTL_STATUS — sees the undeployed image, so the divergence is real"
+  echo "  shipped bash: byte-identical report before and after"
+  echo "PASS: the reported gap is unchanged by a newer registered-but-undeployed revision."
+  exit 0
+fi
+
 set +e
-( cd "$REPO_ROOT" \
-  && env AWS_REGION="$AWS_REGION" CLUSTER="$CLUSTER" SERVICE="$SERVICE" \
-         MAX_GAP_DAYS="$MAX_GAP_DAYS" SYNTHETIC_GAP_DAYS="$SYNTHETIC" \
-     bash "$TMP/measure.sh" )
+run_measure "$TMP/run.txt" "$TMP/measure.sh" "$PATH"
 STATUS=$?
 set -e
 
