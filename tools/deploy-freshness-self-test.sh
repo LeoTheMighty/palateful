@@ -209,6 +209,132 @@ refute_out() {  # $1 = case name, $2 = substring that must NOT appear
 
 export MOCK_TD_MAP="$SANDBOX/td_map.tsv"
 
+# ── Wiring assertions (static, on the YAML *around* the extracted body) ──
+# The behavioural cases below run the measure step directly, with
+# SYNTHETIC_GAP_DAYS set by this harness and AWS mocked out. That proves the
+# LOGIC and is deliberately blind to everything that has to be true for the
+# logic to ever run: a schedule to fire on, credentials to reach ECS with,
+# and an actual wire from the dispatch input to the env var the body reads.
+# Each of those fails *silently* — the self-test stays green, the live check
+# does not run or ignores its input — which is the same green-and-blind
+# failure mode step 5 exists to catch. So assert them too.
+python3 - "$WORKFLOW" "$STEP_NAME" "$SANDBOX/measure.sh" > "$SANDBOX/wiring.txt" <<'PY'
+import re
+import sys
+
+wf, step_name, measured = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = open(wf).read().splitlines()
+body = open(measured).read()
+
+out = []
+ok = lambda name: out.append("OK " + name)
+bad = lambda name, why: out.append("FAIL " + name + ": " + why)
+ind = lambda l: len(l) - len(l.lstrip())
+
+
+def block(start):
+    """Lines strictly nested inside the mapping opened on line `start`."""
+    own, res = ind(lines[start]), []
+    for line in lines[start + 1:]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if ind(line) <= own:
+            break
+        res.append(line)
+    return res
+
+
+def find(pred):
+    return next((n for n, l in enumerate(lines) if pred(l)), -1)
+
+
+def keys_of(start):
+    """Top-level keys of the mapping opened on line `start`."""
+    b = block(start)
+    if not b:
+        return []
+    depth = ind(b[0])
+    return [l.strip().rstrip(":") for l in b
+            if ind(l) == depth and l.strip().endswith(":")]
+
+
+# 1. The unattended trigger (AC-4 / E-7 step 6). A check with no schedule is
+#    only ever as good as someone remembering to press the button — which is
+#    precisely what did not happen for 92 days.
+name = "schedule: exactly one 09:00 MDT (15:00 UTC) cron"
+crons = re.findall(r"^\s*-\s*cron:\s*['\"]?([^'\"#]*?)['\"]?\s*$", "\n".join(lines), re.M)
+ok(name) if crons == ["0 15 * * *"] else bad(name, "cron triggers are %r" % (crons,))
+
+# 2. The credentials fix (first dispatch run 30647079681 died without it —
+#    the AWS secrets exist ONLY at `production` environment scope). Dropping
+#    this line breaks nothing until the next scheduled run, at 09:00, silently.
+name = "job declares environment: production (AWS secrets are env-scoped)"
+j = find(lambda l: l.strip() == "check-freshness:")
+if j < 0:
+    bad(name, "no check-freshness job")
+elif any(l.strip() == "environment: production" for l in block(j)):
+    ok(name)
+else:
+    bad(name, "job has no `environment: production` — the AWS secrets are not "
+              "repo-scoped, so the run would fail in configure-aws-credentials")
+
+# 3. The dispatch input actually reaches the body (E-7 steps 3-4). If the
+#    env: mapping is dropped or the input renamed, a dispatch run quietly
+#    measures REAL prod instead of the synthetic gap: the >7d case still
+#    fails (for the wrong reason) and the <7d case fails too, which reads as
+#    "the check is broken" rather than "the wiring is broken".
+name = "workflow_dispatch input is wired to the env var the body reads"
+wd = find(lambda l: l.strip() == "workflow_dispatch:")
+declared = []
+if wd >= 0:
+    for n, l in enumerate(lines[wd + 1:], wd + 1):
+        if l.strip() and ind(l) <= ind(lines[wd]):
+            break
+        if l.strip() == "inputs:":
+            declared = keys_of(n)
+            break
+
+i = find(lambda l: l.strip() == "- name: " + step_name)
+step_env = {}
+if i >= 0:
+    for n, l in enumerate(lines[i + 1:], i + 1):
+        if l.strip() and ind(l) <= ind(lines[i]):
+            break
+        if l.strip() == "env:":
+            for e in block(n):
+                if ":" in e:
+                    k, v = e.strip().split(":", 1)
+                    step_env[k] = v.strip()
+            break
+
+wired = [(k, v) for k, v in step_env.items() if "inputs." in v]
+if i < 0:
+    bad(name, "step %r not found" % step_name)
+elif not wired:
+    bad(name, "the measure step's env: block maps no ${{ inputs.* }} value, so "
+              "a dispatch run would ignore the input and measure real prod")
+else:
+    key, val = wired[0]
+    inp = re.search(r"inputs\.([A-Za-z0-9_-]+)", val).group(1)
+    if inp not in declared:
+        bad(name, "env %s reads inputs.%s, not a declared workflow_dispatch "
+                  "input (declared: %r)" % (key, inp, declared))
+    elif not re.search(r"\b%s\b" % re.escape(key), body):
+        bad(name, "env %s is set from inputs.%s but the run body never reads it"
+                  % (key, inp))
+    else:
+        ok(name + " [%s -> $%s]" % (inp, key))
+
+print("\n".join(out))
+PY
+while IFS= read -r wire_line; do
+  case "$wire_line" in
+    "OK "*)   echo "pass [wiring: ${wire_line#OK }]"; PASS=$((PASS + 1)) ;;
+    "FAIL "*) echo "FAIL [wiring: ${wire_line#FAIL }]"; FAIL=$((FAIL + 1)) ;;
+    *)        echo "FAIL [wiring]: unparseable result: $wire_line"; FAIL=$((FAIL + 1)) ;;
+  esac
+done < "$SANDBOX/wiring.txt"
+
 # ── Case 1 (E-7 step 5, the load-bearing one) ────────────────────────────
 # Prod is frozen on revision :62. A NEWER revision :63 exists as the family's
 # newest ACTIVE but was never deployed. The family-name shortcut resolves to
