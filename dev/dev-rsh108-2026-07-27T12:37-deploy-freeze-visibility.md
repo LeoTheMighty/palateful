@@ -4,8 +4,8 @@ type: dev
 created: 2026-07-27T12:37:00-06:00
 title: Deploy-freeze visibility — scheduled freshness check plus prod-status age
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-loop-2026-07-31T15-54-01-442-22311
 branch: feat/dev-rsh108
 ---
 
@@ -75,3 +75,4 @@ outage: prod ran a 92-day-old image and nothing said so.
   deferred human stub (legal for P2); the eval file carries the 7-step
   observation protocol, with the running-vs-family revision check called out
   as the load-bearing step.
+- 2026-07-31T10:11:07-06:00 — claimed by /devx in session /devx-loop-2026-07-31T15-54-01-442-22311
