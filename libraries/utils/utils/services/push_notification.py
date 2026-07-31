@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import firebase_admin
 from fastapi.concurrency import run_in_threadpool
@@ -703,8 +704,38 @@ class PushNotificationService:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _resolve_timezone(self, prefs: dict) -> ZoneInfo:
+        """Resolve the user's IANA timezone from prefs, defaulting to UTC.
+
+        Mirrors `_owner_timezone` in `send_meal_reminders.py`: a missing
+        or malformed `timezone` pref falls back to UTC rather than
+        raising. UTC is also the container's local time, so the fallback
+        matches the pre-fix behaviour for users whose prefs somehow lack
+        the field (the column default always supplies it).
+        """
+        tz_name = prefs.get("timezone")
+        if isinstance(tz_name, str) and tz_name.strip():
+            try:
+                return ZoneInfo(tz_name.strip())
+            except Exception:  # noqa: BLE001 — unknown / malformed tz string
+                logger.warning(
+                    "push_notifications: unknown quiet-hours timezone %r; "
+                    "falling back to UTC",
+                    tz_name,
+                )
+        return ZoneInfo("UTC")
+
     def _is_quiet_hours(self, prefs: dict) -> bool:
-        """Check if current time is within user's quiet hours."""
+        """Check if current time is within user's quiet hours.
+
+        The window is evaluated in the user's own `notification_preferences.
+        timezone` (IANA), NOT in server-local time. Every user row carries
+        a `quiet_hours_start`/`quiet_hours_end` default of 22:00–08:00 plus
+        a `timezone` default of `America/Denver`; evaluating that window
+        against the container clock (UTC) silently suppressed every
+        non-forced push between 16:00 and 02:00 local. See the btri01
+        triage note in BUGS.md.
+        """
         quiet_start = prefs.get("quiet_hours_start")
         quiet_end = prefs.get("quiet_hours_end")
 
@@ -712,7 +743,7 @@ class PushNotificationService:
             return False
 
         try:
-            now = datetime.now()
+            now = datetime.now(self._resolve_timezone(prefs))
             start_hour, start_min = map(int, quiet_start.split(":"))
             end_hour, end_min = map(int, quiet_end.split(":"))
 

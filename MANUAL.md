@@ -5,6 +5,34 @@
 - [ ] **Play Console launch runbook** — execute `ANDROID.md` (single operator, Day 1 signup → Day 3 first tag). Code + store assets landed under `epic-android-play-console-launch` (apl-1..4); the Play Console account, listing paste-ins, Data Safety form, and tester recruitment are human-only steps. Source: legacy DEV.md "MANUAL DOCS" + epic-android-play-console-launch.
 - [ ] **iOS share-extension ship steps** — execute `SHARE.md` (App ID + App Group + provisioning profile, Xcode signing for `PalatefulShare`, on-device happy-path validation, device matrix before next TestFlight). Code for sie-1..5 is on main. Source: legacy DEV.md "MANUAL DOCS" + epic-share-ios-extension.
 
+## Filed from btri01 legacy triage (2026-07-27)
+
+- [ ] **Read back the Auth0 app's Allowed Logout URLs** — needed to finish
+  `debug/debug-lgort1-2026-07-27T17:41-auth0-logout-returnto-malformed.md`.
+  In the Auth0 dashboard → Applications → "Palateful Mobile" → Settings →
+  Application URIs, copy out both **Allowed Callback URLs** and **Allowed
+  Logout URLs** verbatim. The code currently sends
+  `com.palateful.app://auth.palateful.app/ios/com.palateful.app/callback`
+  as the logout `returnTo`, while `auth0_flutter` registers
+  `com.palateful.app://auth.palateful.app/ios/com.palateful.palateful/callback`
+  (bundle id, not scheme, in the path). `docs/SETUP.md:97` claims the logout
+  list is `com.palateful.app://logout-callback`, which matches neither — the
+  doc is stale and the real list is the only way to know which URL the fix
+  should send. No agent can read the dashboard.
+
+- [ ] **Confirm a real push lands after the quiet-hours fix deploys** — the
+  btri01 push-notification verdict rests on code + unit tests, not on a
+  device. Two steps, both human-only: (1) run
+  `DATABASE_URL=<prod-url> python services/api/scripts/inspect_user_push.py
+  --id-or-email leonid@ac93.org` to confirm your row actually has an FCM
+  token registered (the agent's prod-script runs are blocked by the
+  permission classifier whenever the script text touches `push_tokens`);
+  (2) after the next backend deploy, trigger a *non-forced* push in the
+  evening — e.g. start a recipe import and let it reach `awaiting_review`
+  around 5–8pm Denver. Before the fix that window was 100% suppressed, so
+  it is the sharpest possible check. The admin "Send test push" button is
+  NOT a valid check here: it passes `force=True` and bypasses the exact
+  code path that was broken.
 
 ## /devx-init deferred work
 

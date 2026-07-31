@@ -7,10 +7,10 @@ the force flag. These are unit tests — no real Firebase SDK or DB writes.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from utils.services.push_notification import (
     NotificationType,
     PushNotification,
@@ -506,3 +506,123 @@ def test_send_to_user_system_type_bypasses_category():
         result = service.send_to_user(user, notification)
 
     assert result["suppressed_by_category"] is False
+
+
+# ----------------------------------------------------------------------
+# btri01 — quiet hours are evaluated in the USER's timezone, not the
+# container's (UTC). The shipped column default is
+# quiet 22:00-08:00 + timezone America/Denver, so evaluating against
+# server-local time suppressed every non-forced push from 16:00 to 02:00
+# Denver — the entire evening. Regression tests below fail against the
+# pre-fix `datetime.now()` implementation.
+# ----------------------------------------------------------------------
+
+def _frozen_datetime(fixed_utc: datetime):
+    """Build a `datetime` stand-in whose `now(tz)` returns `fixed_utc`
+    converted into `tz` (and server-local-naive when tz is None, which is
+    what the pre-fix code called)."""
+
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:  # pragma: no cover — only reached if the fix regresses
+                # Container local time == UTC; mirror the naive shape the
+                # old `datetime.now()` implementation produced, so these
+                # tests fail (rather than error) against a regression.
+                return fixed_utc.replace(tzinfo=None)
+            return fixed_utc.astimezone(tz)
+
+    return _Frozen
+
+
+def _default_prefs_user(now_tokens: list[str] | None = None):
+    """User carrying the exact `notification_preferences` column default
+    from `libraries/utils/utils/models/user.py`."""
+    user = MagicMock()
+    user.id = "user-denver-1"
+    user.push_tokens = now_tokens if now_tokens is not None else ["token-dev-1"]
+    user.notification_preferences = {
+        "push_enabled": True,
+        "email_digest": "daily",
+        "quiet_hours_start": "22:00",
+        "quiet_hours_end": "08:00",
+        "timezone": "America/Denver",
+    }
+    return user
+
+
+@pytest.mark.parametrize(
+    "utc_moment,expected_quiet,why",
+    [
+        # 23:30 UTC == 17:30 MDT — prime dinner/meal-planning hour.
+        # Pre-fix this was INSIDE the naive 22:00-08:00 window → suppressed.
+        (datetime(2026, 7, 27, 23, 30, tzinfo=UTC), False, "17:30 MDT"),
+        # 07:00 UTC == 01:00 MDT — genuinely quiet, and also quiet naively.
+        (datetime(2026, 7, 28, 7, 0, tzinfo=UTC), True, "01:00 MDT"),
+        # 13:00 UTC == 07:00 MDT — inside the user's window but OUTSIDE the
+        # naive one, so pre-fix this leaked a push at 7am local.
+        (datetime(2026, 7, 28, 13, 0, tzinfo=UTC), True, "07:00 MDT"),
+        # 16:00 UTC == 10:00 MDT — awake, not quiet, either way.
+        (datetime(2026, 7, 28, 16, 0, tzinfo=UTC), False, "10:00 MDT"),
+    ],
+)
+def test_quiet_hours_uses_user_timezone(utc_moment, expected_quiet, why):
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.datetime", _frozen_datetime(utc_moment)):
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        prefs = _default_prefs_user().notification_preferences
+
+        assert service._is_quiet_hours(prefs) is expected_quiet, why
+
+
+def test_default_prefs_user_gets_evening_push_delivered(monkeypatch):
+    """End-to-end: the shipped default prefs must NOT suppress a 17:30
+    Denver push. This is the exact shape of every real user row."""
+    evening_utc = datetime(2026, 7, 27, 23, 30, tzinfo=UTC)  # 17:30 MDT
+    monkeypatch.setenv("FIREBASE_CREDENTIALS_JSON", '{"fake": "creds"}')
+
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.credentials") as mock_creds, \
+         patch("utils.services.push_notification.messaging") as mock_messaging, \
+         patch("utils.services.push_notification.datetime", _frozen_datetime(evening_utc)):
+        mock_fa._apps = {}
+        mock_fa.initialize_app.return_value = MagicMock()
+        mock_creds.Certificate.return_value = MagicMock()
+        multicast = MagicMock()
+        multicast.success_count = 1
+        multicast.failure_count = 0
+        multicast.responses = []
+        mock_messaging.send_each_for_multicast.return_value = multicast
+
+        service = PushNotificationService()
+        user = _default_prefs_user()
+
+        result = service.send_to_user(
+            user, _make_notification(NotificationType.IMPORT_NEEDS_REVIEW)
+        )
+
+    assert result["suppressed_by_quiet_hours"] is False
+    assert result["quiet_hours_active"] is False
+    assert result["success_count"] == 1
+    mock_messaging.send_each_for_multicast.assert_called_once()
+
+
+@pytest.mark.parametrize("tz_value", [None, "", "  ", "Not/AZone", 42])
+def test_quiet_hours_falls_back_to_utc_on_bad_timezone(tz_value):
+    """A missing or malformed tz must not raise — it falls back to UTC,
+    which is also the container clock (i.e. the pre-fix behaviour)."""
+    # 23:30 UTC is inside the naive 22:00-08:00 window.
+    utc_moment = datetime(2026, 7, 27, 23, 30, tzinfo=UTC)
+
+    with patch("utils.services.push_notification.firebase_admin") as mock_fa, \
+         patch("utils.services.push_notification.datetime", _frozen_datetime(utc_moment)):
+        mock_fa._apps = {}
+        service = PushNotificationService()
+        prefs = {
+            "quiet_hours_start": "22:00",
+            "quiet_hours_end": "08:00",
+            "timezone": tz_value,
+        }
+
+        assert service._is_quiet_hours(prefs) is True

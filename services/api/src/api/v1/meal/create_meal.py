@@ -28,10 +28,16 @@ class CreateMeal(AsyncEndpoint):
                 user_id=user.id,
             )
         except ComponentUnreadableError as exc:
+            # btri01: ship the offending ids so the Create Meal sheet can
+            # flag those rows with a Remove affordance. Without them the
+            # sheet only has a generic "try again" banner, and retrying a
+            # payload that still contains the unreadable recipe can never
+            # succeed — the create flow dead-ends.
             raise APIException(
                 status_code=404,
                 detail="One or more component recipes are not readable",
                 code=ErrorCode.MEAL_COMPONENT_UNREADABLE,
+                data={"recipe_ids": list(exc.recipe_ids)},
             ) from exc
 
         # Re-fetch with selectinload chain so the response hydrates cleanly.

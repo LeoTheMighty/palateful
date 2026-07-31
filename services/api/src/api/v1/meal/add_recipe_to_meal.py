@@ -37,10 +37,13 @@ class AddRecipeToMeal(AsyncEndpoint):
                 code=ErrorCode.MEAL_COMPONENT_DUPLICATE,
             ) from exc
         except ComponentUnreadableError as exc:
+            # btri01: same contract as CreateMeal — the edit-mode picker
+            # needs the id to mark the row, not just a banner.
             raise APIException(
                 status_code=404,
                 detail="Recipe not readable",
                 code=ErrorCode.MEAL_COMPONENT_UNREADABLE,
+                data={"recipe_ids": list(exc.recipe_ids)},
             ) from exc
 
         meal = await service.get_with_components(meal_id)
