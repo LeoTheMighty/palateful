@@ -108,6 +108,13 @@
         "command": "poetry run pytest",
         "cwd": "{projectRoot}"
       }
+    },
+    "meal-agent-gate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "poetry run pytest tests/test_meal_agent_fixtures.py",
+        "cwd": "{projectRoot}"
+      }
     }
   },
   "tags": ["service", "python", "eval"]

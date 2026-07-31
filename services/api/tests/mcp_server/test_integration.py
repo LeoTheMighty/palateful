@@ -168,10 +168,10 @@ class TestErrorHandling:
         adtok = current_database_async.set(async_database)
 
         class _NotFound:
-            def __init__(self, database=None, user=None):
+            def __init__(self, *args, database=None, user=None, **kwargs):
                 pass
 
-            async def run(self, **kwargs):
+            async def run(self):
                 return {
                     "success": False,
                     "error_message": "Recipe with ID 'nope' not found",
