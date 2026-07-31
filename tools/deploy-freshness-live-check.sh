@@ -28,15 +28,22 @@
 # it does. Without it the simulation is only as good as its author's memory of
 # the ECS API.
 #
+# `--verify-environment-gate` covers E-7 step 6's non-calendar half: declaring
+# `environment: production` (the fix that gave the job its AWS credentials) is
+# also the one change that could make the check stall waiting for a human — the
+# opposite of an unattended freeze detector. It reads GitHub, not AWS.
+#
 # Usage:
 #   bash tools/deploy-freshness-live-check.sh                    # real measurement
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 8   # E-7 step 3
 #   bash tools/deploy-freshness-live-check.sh --synthetic-gap-days 1   # E-7 step 4
 #   bash tools/deploy-freshness-live-check.sh --simulate-newer-revision  # E-7 step 5
 #   bash tools/deploy-freshness-live-check.sh --verify-shim-assumptions  # E-7 step 5 fidelity
+#   bash tools/deploy-freshness-live-check.sh --verify-environment-gate  # E-7 step 6 (no wait)
 #
 # Read-only: describe-services + describe-task-definition only, no mutations
-# (--verify-shim-assumptions also lists families/revisions; still read-only).
+# (--verify-shim-assumptions also lists families/revisions; still read-only.
+# --verify-environment-gate touches no AWS at all — GitHub reads only).
 # Exit: mirrors the workflow step (0 fresh / 1 stale-or-unknown), 2 on usage
 # or credential errors — so a missing AWS session can't be misread as "fresh".
 # Under --simulate-newer-revision the codes report the OBSERVATION instead:
@@ -44,7 +51,8 @@
 # simulation itself could not be trusted. Under --verify-shim-assumptions:
 # 0 every assumption observed, 1 live AWS contradicts one, 2 not observable
 # right now (say so rather than pass — an unobservable assumption is not a
-# confirmed one).
+# confirmed one). --verify-environment-gate uses the same three: 0 no gate,
+# 1 a gate exists (or one already stalled a real run), 2 not observable.
 
 set -euo pipefail
 
@@ -55,17 +63,166 @@ STEP_NAME="Measure gap between running image and its commit date"
 SYNTHETIC=""
 SIMULATE_NEWER=0
 VERIFY_ASSUMPTIONS=0
+VERIFY_ENV_GATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --synthetic-gap-days) SYNTHETIC="${2:-}"; shift 2 ;;
     --simulate-newer-revision) SIMULATE_NEWER=1; shift ;;
     --verify-shim-assumptions) VERIFY_ASSUMPTIONS=1; shift ;;
-    -h|--help) sed -n '2,45p' "${BASH_SOURCE[0]}"; exit 0 ;;
-    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision] [--verify-shim-assumptions]" >&2; exit 2 ;;
+    --verify-environment-gate) VERIFY_ENV_GATE=1; shift ;;
+    -h|--help) sed -n '2,55p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "usage: $0 [--synthetic-gap-days N] [--simulate-newer-revision] [--verify-shim-assumptions] [--verify-environment-gate]" >&2; exit 2 ;;
   esac
 done
 
 [ -f "$WORKFLOW" ] || { echo "FAIL: $WORKFLOW not found" >&2; exit 2; }
+
+if [ "$VERIFY_ENV_GATE" -eq 1 ]; then
+  # ── E-7 step 6, the half that is not calendar time ─────────────────────
+  # Step 6 is "the scheduled run fires unattended, with no approval prompt".
+  # Two independent things have to hold, and only one of them needs a morning:
+  #
+  #   (a) the cron fires at all               — calendar time, stays owed
+  #   (b) nothing stalls the job for a human  — observable right now
+  #
+  # (b) is the part the credentials fix put at risk. The job had to declare
+  # `environment: production` to see the AWS secrets at all, and an
+  # environment is exactly where GitHub hangs a required-reviewer gate. A
+  # gated freshness check is worse than none: it goes quiet at 09:00 waiting
+  # for a human who, by the premise of this whole workstream, is not looking.
+  #
+  # Reading `protection_rules: []` off the API says the gate is not configured.
+  # This also asks whether real jobs that used the environment ever waited —
+  # ci.yml's deploy jobs declare the same environment, so the account carries
+  # its own witnesses. Config says what should happen; deployments say what did.
+  #
+  # GitHub reads only; no AWS, no writes.
+  # Exit: 0 no gate, 1 a gate exists or one stalled a real run, 2 not observable.
+  command -v gh >/dev/null || { echo "FAIL: gh CLI not on PATH" >&2; exit 2; }
+  gh auth status >/dev/null 2>&1 \
+    || { echo "FAIL: gh is not authenticated — refusing to report 'no gate'" >&2; exit 2; }
+
+  fails=0
+  note_fail() { echo "  FAIL: $1" >&2; fails=$((fails + 1)); }
+  # ISO-8601 Z -> epoch. `date -d` is GNU-only and this runs on laptops.
+  iso_epoch() {
+    python3 -c 'import datetime,sys
+print(int(datetime.datetime.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%SZ")
+          .replace(tzinfo=datetime.timezone.utc).timestamp()))' "$1"
+  }
+
+  echo "G0 — the check job declares an environment, and this is the name the rest is about"
+  # Job-level keys sit at 4 spaces; deploy-freshness.yml has one job. Read the
+  # name rather than hardcoding it, so renaming the environment in the YAML
+  # moves this check with it instead of silently checking the wrong one.
+  env_name="$(sed -n 's/^    environment: *//p' "$WORKFLOW" | head -1)"
+  if [ -z "$env_name" ]; then
+    echo "  FAIL: no job-level 'environment:' in $(basename "$WORKFLOW") — that is the credentials" >&2
+    echo "        fix regressing (run 30647079681: 'Credentials could not be loaded'), not a pass." >&2
+    exit 1
+  fi
+  echo "  OK: environment '$env_name'"
+
+  repo="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)"
+  [ -n "$repo" ] || { echo "FAIL: could not resolve the repo from gh" >&2; exit 2; }
+  echo "  repo: $repo"
+  echo
+
+  echo "G1 — the environment carries no approval gate and no branch policy"
+  # A 404 leaves the error body on stdout, so blank it explicitly: an error
+  # payload parsed as a rule count would report nonsense instead of "unknown".
+  env_meta="$(gh api "repos/$repo/environments/$env_name" \
+    --jq '[(.protection_rules|length), (.protection_rules|map(.type)|join(",")), (.deployment_branch_policy|tostring), .updated_at] | join("|")' \
+    2>/dev/null)" || env_meta=""
+  IFS='|' read -r rule_count rule_types branch_policy env_updated <<< "$env_meta"
+  case "$rule_count" in ''|*[!0-9]*) env_meta="" ;; esac
+  if [ -z "$env_meta" ]; then
+    echo "  NOT OBSERVABLE: environment '$env_name' is not readable via the API (missing, or the" >&2
+    echo "      token lacks the scope). An unreadable gate is not an absent one." >&2
+    exit 2
+  fi
+  if [ "$rule_count" -eq 0 ] && [ "$branch_policy" = "null" ]; then
+    echo "  OK: protection_rules: [] and no deployment_branch_policy (last changed $env_updated)"
+  else
+    note_fail "environment '$env_name' has $rule_count protection rule(s) [${rule_types:-none}] and branch policy '$branch_policy'"
+    echo "        — a scheduled run can stall here, which is precisely the blindness this check exists to remove." >&2
+  fi
+  echo
+
+  echo "G2 — real jobs used this environment and none of them ever waited for a human"
+  # A job whose environment requires approval creates a deployment that sits in
+  # the `waiting` state until someone clicks. So a completed deployment whose
+  # states never included `waiting` is a run that was never gated — evidence
+  # from behaviour rather than from config.
+  dep_ids="$(gh api "repos/$repo/deployments?environment=$env_name&per_page=10" \
+    --jq '.[].id' 2>/dev/null)" || dep_ids=""
+  if [ -z "$dep_ids" ]; then
+    echo "  NOT OBSERVABLE: no deployments recorded for environment '$env_name', so there is no" >&2
+    echo "      run to witness. Config alone does not discharge this." >&2
+    exit 2
+  fi
+  witnesses=0
+  waited=0
+  newest_witness=""
+  for dep in $dep_ids; do
+    states="$(gh api "repos/$repo/deployments/$dep/statuses" \
+      --jq '.[] | [.state, .created_at] | join(" ")' 2>/dev/null || true)"
+    [ -n "$states" ] || continue
+    witnesses=$((witnesses + 1))
+    queued_at="$(printf '%s\n' "$states" | awk '$1 == "queued"    { t = $2 } END { print t }')"
+    started_at="$(printf '%s\n' "$states" | awk '$1 == "in_progress" { t = $2 } END { print t }')"
+    lat="?"
+    if [ -n "$queued_at" ] && [ -n "$started_at" ]; then
+      lat="$(( $(iso_epoch "$started_at") - $(iso_epoch "$queued_at") ))s"
+    fi
+    [ -n "$newest_witness" ] || newest_witness="${queued_at:-$started_at}"
+    if printf '%s\n' "$states" | grep -q '^waiting '; then
+      waited=$((waited + 1))
+      echo "  deployment $dep: WAITED for approval ($(printf '%s' "$states" | tr '\n' ',' ))" >&2
+    else
+      echo "  deployment $dep: queued->in_progress in $lat, states: $(printf '%s\n' "$states" | awk '{print $1}' | tr '\n' ' ')"
+    fi
+  done
+  if [ "$witnesses" -eq 0 ]; then
+    echo "  NOT OBSERVABLE: deployments exist but none has readable statuses." >&2
+    exit 2
+  fi
+  if [ "$waited" -eq 0 ]; then
+    echo "  OK: $witnesses deployment(s) into '$env_name', zero in the 'waiting' state —"
+    echo "      every one went queued -> in_progress in seconds, i.e. runner latency, not a human"
+  else
+    note_fail "$waited of $witnesses deployment(s) into '$env_name' sat in 'waiting' — the gate is real"
+  fi
+  echo
+
+  echo "G3 — that evidence postdates the environment's last configuration change"
+  # Otherwise G2 witnesses a policy that no longer applies: rules added after
+  # the newest witness would gate the next run while every past run looks clean.
+  if [ -z "$newest_witness" ]; then
+    echo "  NOT OBSERVABLE: no timestamp on the witness deployments." >&2
+    exit 2
+  fi
+  if [ "$(iso_epoch "$newest_witness")" -ge "$(iso_epoch "$env_updated")" ]; then
+    echo "  OK: newest witness $newest_witness is at or after the environment's last change $env_updated"
+  else
+    note_fail "the environment changed at $env_updated, after the newest witness $newest_witness — the behavioural evidence predates the current rules"
+  fi
+
+  echo
+  if [ "$fails" -eq 0 ]; then
+    echo "PASS: declaring '$env_name' introduces no approval gate — config says none is"
+    echo "      configured, $witnesses real deployment(s) confirm none was applied, and that"
+    echo "      evidence is newer than the last config change."
+    echo "STILL OWED (calendar time): that the 0 15 * * * cron fires at all. This says only"
+    echo "      that nothing will hold it for a human once it does."
+    exit 0
+  fi
+  echo "FAIL: $fails check(s) failed — a run of $(basename "$WORKFLOW") can stall waiting for" >&2
+  echo "      approval, so it cannot detect an unattended freeze. Exempt the job from the" >&2
+  echo "      environment or move the AWS secrets to repo scope." >&2
+  exit 1
+fi
+
 command -v aws >/dev/null || { echo "FAIL: aws CLI not on PATH" >&2; exit 2; }
 aws sts get-caller-identity >/dev/null 2>&1 \
   || { echo "FAIL: no usable AWS credentials — refusing to report a gap" >&2; exit 2; }
