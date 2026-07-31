@@ -29,6 +29,7 @@ from enum import Enum
 from typing import Any
 
 import firebase_admin
+from fastapi.concurrency import run_in_threadpool
 from firebase_admin import credentials, messaging
 
 logger = logging.getLogger(__name__)
@@ -559,6 +560,63 @@ class PushNotificationService:
             "users_notified": len(users),
             "log_only": self.log_only,
         }
+
+    # ------------------------------------------------------------------
+    # Async send APIs (aam-8-firebase-threadpool-wrap)
+    #
+    # The Firebase Admin SDK's `messaging.send*` calls are blocking HTTP,
+    # so async-path callers (AsyncEndpoint / async router handlers) must
+    # never invoke the sync methods above directly on the event loop.
+    # Each variant dispatches the ENTIRE sync body — FCM send, error_logs
+    # write, and invalid-token cleanup (which commits a sync DB session) —
+    # to the threadpool. The sync methods stay unchanged: the worker and
+    # other sync contexts keep calling them directly.
+    # ------------------------------------------------------------------
+
+    async def send_to_token_async(
+        self,
+        token: str,
+        notification: PushNotification,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_token` — sync body runs in the threadpool."""
+        return await run_in_threadpool(self.send_to_token, token, notification)
+
+    async def send_to_tokens_async(
+        self,
+        tokens: list[str],
+        notification: PushNotification,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_tokens` — sync body runs in the threadpool."""
+        return await run_in_threadpool(self.send_to_tokens, tokens, notification)
+
+    async def send_to_user_async(
+        self,
+        user: Any,  # User model
+        notification: PushNotification,
+        db_session: Any = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_user` — sync body runs in the threadpool.
+
+        `db_session`, when provided for invalid-token cleanup, must be a
+        sync session — it is committed on the threadpool thread, never on
+        the event loop.
+        """
+        return await run_in_threadpool(
+            self.send_to_user, user, notification, db_session, force=force
+        )
+
+    async def send_to_users_async(
+        self,
+        users: list[Any],  # List of User models
+        notification: PushNotification,
+        db_session: Any = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Async-safe `send_to_users` — sync body runs in the threadpool."""
+        return await run_in_threadpool(
+            self.send_to_users, users, notification, db_session, force=force
+        )
 
     # ------------------------------------------------------------------
     # Message builders (unchanged from prior impl)

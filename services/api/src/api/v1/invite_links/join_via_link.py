@@ -123,9 +123,10 @@ class JoinViaLink(AsyncEndpoint):
             f"@{user.username}" if user.username else user.name or "Someone"
         )
         creator = invite_link.created_by
-        # aam-8 hasn't landed — `push_service.send_to_user` still talks
-        # to sync Firebase Admin + sync Database. Wrap in threadpool so
-        # the async event loop isn't blocked on the FCM round-trip.
+        # `push_service.send_to_user` talks to sync Firebase Admin +
+        # sync Database. Wrap in threadpool so the async event loop
+        # isn't blocked on the FCM round-trip (equivalent to the aam-8
+        # `send_to_user_async` variant).
         push_service = get_push_service()
         await run_in_threadpool(
             push_service.send_to_user,
