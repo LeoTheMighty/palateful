@@ -88,3 +88,15 @@ unnoticed.
   - Learning: The ci.yml flutter-test job installs only Flutter (no setup-node, no yarn install), so routing it through `npx nx` is not a free swap — it would add Node setup to every run for no dedup benefit.
   - Learning: The suite is at 1567 passing tests, not the 1564 the spec's repro block recorded.
   - Learning: tools/image-network-check.sh takes >2 min to run locally (timed out in a guard sweep); budget for it separately rather than batching it with the fast grep guards.
+- 2026-07-31 — fix-forward during merge sweep. Registering `app` as an nx project made
+  `nx affected -t test` select it in the **Python** `test` job, which has no Flutter
+  toolchain (only `flutter-test` runs `subosito/flutter-action`). CI failed with
+  `/bin/sh: 1: flutter: not found` — a real defect introduced by this story, not
+  inherited red. Fixed by adding `app` to that job's `--exclude` list.
+  - Verified: `nx show projects --affected -t test --exclude=e2e` lists `app`;
+    `--exclude=e2e,app` lists nothing. The Dart suite still runs in `flutter-test`.
+  - Rejected: routing `flutter-test` through `npx nx run app:test` so the registration
+    is exercised in CI. That job does `actions/checkout` + `flutter-action` only — it
+    never installs `node_modules`, so `npx` would fetch an unpinned nx from the registry
+    without workspace plugins. The nx targets remain a local-developer affordance, which
+    is what the spec asked for.

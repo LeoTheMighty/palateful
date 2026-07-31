@@ -219,8 +219,15 @@ jobs:
       - name: Run migrations
         run: npx nx run migrator:migrate-test
 
+      # --exclude=app: this job is the Python suite and has no Flutter
+      # toolchain (only `flutter-test` runs subosito/flutter-action). Now
+      # that `app` is a registered nx project (nxappproj), `affected -t
+      # test` would otherwise select it here and fail on
+      # `/bin/sh: 1: flutter: not found`. The Dart suite runs in
+      # `flutter-test`; that job can't invoke `nx run app:test` because it
+      # never installs node_modules, so `npx` would fetch a stray nx.
       - name: Run tests
-        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e
+        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e,app
 
       - name: Upload test reports
         if: always()
