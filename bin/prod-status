@@ -10,12 +10,34 @@ CLUSTER="palateful-prod"
 echo "=== Palateful Production Status ==="
 echo ""
 
-# ECS Services
-echo "ECS Services:"
-aws ecs describe-services --cluster "$CLUSTER" \
+# ECS Services — one describe-services call feeds both the status table and
+# the deployed-tag age check below.
+SERVICES_JSON=$(aws ecs describe-services --cluster "$CLUSTER" \
   --services palateful-api-prod palateful-worker-prod \
-  --query 'services[].{Service:serviceName,Desired:desiredCount,Running:runningCount,Status:status}' \
-  --output table 2>/dev/null
+  --output json 2>/dev/null)
+
+echo "ECS Services:"
+echo "$SERVICES_JSON" | jq -r \
+  '.services[] | "  \(.serviceName): \(.runningCount)/\(.desiredCount) running (\(.status))"'
+
+# Deployed tag + age. services[].taskDefinition is the revision ARN actually
+# in service — NOT the family shortcut, which reports the newest REGISTERED
+# revision even if it was never deployed (see deploy-freshness.yml).
+echo ""
+echo "Deployed images:"
+for SVC in palateful-api-prod palateful-worker-prod; do
+  TD=$(echo "$SERVICES_JSON" | jq -r \
+    ".services[] | select(.serviceName==\"$SVC\") | .taskDefinition")
+  IMAGE=$(aws ecs describe-task-definition --task-definition "$TD" \
+    --query 'taskDefinition.containerDefinitions[0].image' --output text 2>/dev/null)
+  TAG="${IMAGE##*:}"
+  if git cat-file -e "${TAG}^{commit}" 2>/dev/null; then
+    AGE_DAYS=$(( ($(date +%s) - $(git log -1 --format=%ct "$TAG")) / 86400 ))
+    echo "  $SVC: $TAG — ${AGE_DAYS}d old ($(git log -1 --format='%cr, %s' "$TAG"))"
+  else
+    echo "  $SVC: $TAG — age unknown (tag is not a commit in this checkout; try 'git fetch')"
+  fi
+done
 
 # Health check
 echo ""

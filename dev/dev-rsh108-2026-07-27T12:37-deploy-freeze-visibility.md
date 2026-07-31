@@ -76,3 +76,10 @@ outage: prod ran a 92-day-old image and nothing said so.
   observation protocol, with the running-vs-family revision check called out
   as the load-bearing step.
 - 2026-07-31T10:11:07-06:00 — claimed by /devx in session /devx-loop-2026-07-31T15-54-01-442-22311
+- 2026-07-31T16:14:35.346Z — loop iteration 1: Implemented both rsh108 artifacts — deploy-freshness.yml (running-revision resolution, 7-day gap gate, no environment gate, synthetic-gap test input) and the bin/prod-status deployed-tag/age section — with actionlint/shellcheck green and the jq/git logic exercised against a mocked ECS payload and a real 95-day-old SHA.
+  - Change: Created .github/workflows/deploy-freshness.yml: daily cron 0 15 * * * plus workflow_dispatch, fetch-depth 0, static AWS creds, describe-services -> revision-ARN describe-task-definition (family-shortcut trap commented in place), git log %ct gap computation failing >7 days, deliberate environment:production omission with rationale comment, and a test-only synthetic-gap-days dispatch input for E-7 steps 3-4
+  - Change: Extended bin/prod-status to fetch describe-services JSON once and print a Deployed images section with each service's running tag and age in days, resolved from the revision ARN with a not-a-commit fallback
+  - Change: Verified: actionlint clean on the workflow, bash -n + shellcheck clean on prod-status, and the jq extraction/age math proven against a mock ECS payload plus a real 95d-old commit (correctly exceeds the 7d threshold)
+  - Learning: Scheduled workflows only run from the default branch, so the scheduled-trigger AC and the whole E-7 observation protocol cannot begin until this branch merges — no local iteration can ever satisfy those ACs
+  - Learning: Image tags are pinned to the full git SHA by ci.yml resolve-tags, so git log -1 --format=%ct <tag> dates deployments directly; a synthetic-gap-days workflow_dispatch input lets E-7 prove both fail and pass paths without registering fake revisions
+  - Learning: jq is already a dependency of sibling bin scripts (prod-deploy, prod-logs), so using it in prod-status adds no new operator tooling requirement
