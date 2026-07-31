@@ -219,8 +219,15 @@ jobs:
       - name: Run migrations
         run: npx nx run migrator:migrate-test
 
+      # --exclude=app: this job is the Python suite and has no Flutter
+      # toolchain (only `flutter-test` runs subosito/flutter-action). Now
+      # that `app` is a registered nx project (nxappproj), `affected -t
+      # test` would otherwise select it here and fail on
+      # `/bin/sh: 1: flutter: not found`. The Dart suite runs in
+      # `flutter-test`; that job can't invoke `nx run app:test` because it
+      # never installs node_modules, so `npx` would fetch a stray nx.
       - name: Run tests
-        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e
+        run: npx nx affected --base=${{ needs.setup.outputs.nx_base }} --head=${{ needs.setup.outputs.nx_head }} -t test --parallel=3 --exclude=e2e,app
 
       - name: Upload test reports
         if: always()
@@ -302,6 +309,13 @@ jobs:
         run: npx nx run migrator:check-models
 
   flutter-test:
+    # The Analyze and Test steps below are mirrored by `app/project.json`
+    # (`npx nx run app:analyze` / `npx nx run app:test`), which is what local
+    # devs and devx's gate runner call. Change a flag here → change it there.
+    #
+    # Deliberately NOT routed through nx (nxappproj): this job installs only
+    # Flutter, so `npx nx` would need setup-node + a yarn install on every
+    # run to save zero duplication. Revisit if the job ever needs Node anyway.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -483,6 +497,9 @@ jobs:
 
       - name: Build Flutter web (prod)
         working-directory: app
+        # Mirrored by `npx nx run app:build-web` (app/project.json). Keep the
+        # flags identical; see the flutter-test job for why CI stays on the
+        # bare command.
         run: flutter build web --release
 
       - name: Deploy to Cloudflare Pages
