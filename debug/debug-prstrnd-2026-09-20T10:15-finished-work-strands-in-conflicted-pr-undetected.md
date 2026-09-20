@@ -64,8 +64,23 @@ cron did not merely lack margin in theory — it breached the threshold more
 than half the time. So even a *living* detector on that schedule could not
 have honoured its own requirement, and the guard that was supposed to
 protect the schedule asserted a cron string that cannot see interval
-breaches at all. Three independent things had to be wrong at once for this
-to stay invisible for 51 days, and none of them was individually exotic.
+breaches at all.
+
+**Three independent failures had to coincide for this to stay invisible for
+51 days:**
+
+1. **The detector was dead for the whole window** — 50 scheduled runs,
+   50 failures, zero measurements of prod.
+2. **The schedule breached its own 24h requirement more than half the
+   time** (25 of 49 intervals, max 31.95h), so even a *living* detector
+   could not have complied.
+3. **The guard meant to catch that pinned a cron *string*** rather than the
+   firing interval, so it was structurally blind to the breach — green,
+   mutation-verified, and incapable of reporting the thing it existed for.
+
+None of the three is individually exotic. It is the *coincidence* that is
+the argument for a detector rather than three point fixes: fixing any one
+of them in isolation leaves the other two silently covering for it.
 
 Fifty consecutive identical failures is also, on its own, a signal nobody
 consumed. A check that fails every single time it runs is indistinguishable
