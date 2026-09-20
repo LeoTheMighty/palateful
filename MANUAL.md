@@ -191,11 +191,14 @@
   `main`'s copy has no `environment: production` — i.e. the freeze detector has
   never measured prod, not once, since the day it shipped. The next scheduled
   run after merge should reach the measure step and print a gap.
-  ⚠ **Do not wait for 09:00 MDT.** These 50 runs landed anywhere from
-  **00:19Z to 23:58Z** against a declared `0 15 * * *`. Check "a run landed in
-  the last 24h", never the hour.
+  ⚠ **Do not wait for 09:00 MDT.** These 50 runs normally landed
+  **15:27Z–20:44Z** (drift up to 5.7h past the declared `0 15 * * *`), with a
+  one-day excursion on 2026-08-28 to 00:19Z and 23:58Z. Check "a run landed in
+  the last 24h", never the hour. Note the new 03:00Z slot means the next
+  firing after merge may arrive sooner than 15:00Z.
   ✅ **The 24h-threshold breach is fixed in this same branch.** The measured
-  interval was **18.3h–31.9h**, i.e. 7.9h past E-7's stated 24h. Leo chose to
+  interval was **18.3h–31.9h**, and **25 of 49 intervals exceeded 24h** — the
+  breach was routine, not a single bad run. Leo chose to
   tighten the schedule rather than loosen the assertion, so the workflow now
   declares two slots 12h apart (`0 15 * * *` + `0 3 * * *`) and the self-test
   asserts the worst nominal gap is ≤12h instead of pinning a literal cron

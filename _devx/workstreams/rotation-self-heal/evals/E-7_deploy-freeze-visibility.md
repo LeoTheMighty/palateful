@@ -483,6 +483,9 @@ observable — no merge required.
 | Conclusions | **50 failure, 0 success** |
 | Runs held in the `waiting` (approval) state | **0** |
 | Mean interval | 24.0h |
+| Intervals exceeding E-7's 24h threshold | **25 of 49** |
+| Interval range | 18.3h – 31.9h |
+| Firing time (typical) | 15:27Z – 20:44Z (drift ≤5.7h past declared 15:00Z) |
 
 **Step 6a — "the cron actually fires, unattended" — is PASS.** Fifty
 consecutive unattended firings, none gated on a human. This is the observation
@@ -511,11 +514,20 @@ freeze detector and a daily red cron.
    cron leaves *zero* margin against a 24h threshold — turns out to understate
    it: GitHub's scheduler jitter puts the real worst case over the line.
 
-2. **The firing-time scatter is far wider than recorded.** Iteration 8 inferred
-   scatter from `devx-promotion.yml`. Measured on this workflow, the 50 firings
-   land anywhere from **00:19Z to 23:58Z** against a declared `0 15 * * *`.
-   "Confirm it ran at 09:00 MDT" is not a check anyone can perform; only
-   "a run landed in the last 24h" is.
+2. **The firing time is not the declared hour, and the breach is routine.**
+   Iteration 8 inferred scatter from `devx-promotion.yml`. Measured on this
+   workflow: firings normally land **15:27Z–20:44Z**, i.e. drift of up to
+   **5.7h** past the declared `0 15 * * *`, with one excursion on 2026-08-28
+   to 00:19Z and 23:58Z. So "confirm it ran at 09:00 MDT" is not a check
+   anyone can perform; only "a run landed in the last 24h" is.
+
+   The load-bearing number is not the extreme but the frequency:
+   **25 of 49 intervals exceeded 24h.** Over half of all firings arrived late
+   enough that a gap crossing the 7-day line would have been reported outside
+   the window E-7 promises. The 31.9h worst case (08-26 16:22Z → 08-28
+   00:19Z) is drift accumulating in one direction across a day boundary, not
+   one anomalous run. A single daily cron did not merely have zero margin in
+   theory — it missed the threshold half the time in practice.
 
 Neither correction is a defect in the shipped workflow — both are properties of
 GitHub's scheduler. They are defects in **how this eval reads the result**, and
@@ -523,12 +535,14 @@ they are what a reader would otherwise have concluded wrongly.
 
 ### The second cron slot (added 2026-09-20)
 
-The 31.9h worst-case silence above breached E-7's own 24h threshold, so the
-schedule was tightened rather than the assertion loosened (Leo's call).
+Half the intervals above (25 of 49) breached E-7's own 24h threshold — not
+just the 31.9h worst case — so the schedule was tightened rather than the
+assertion loosened (Leo's call).
 `deploy-freshness.yml` now declares two daily slots 12h apart —
-`0 15 * * *` (09:00 MDT, the original) and `0 3 * * *` (21:00 MDT). Even with
-the ~8h of scheduler drift measured over the first 50 firings, the worst-case
-wait stays well inside 24h.
+`0 15 * * *` (09:00 MDT, the original) and `0 3 * * *` (21:00 MDT). Halving
+the nominal wait to 12h keeps the worst case inside 24h under the ≤5.7h of
+routine drift measured over the first 50 firings, with room for the one-off
+excursion seen on 2026-08-28.
 
 The guard changed shape with it. It used to pin the literal string
 `'0 15 * * *'`; it now asserts the **property** E-7 actually needs — the
