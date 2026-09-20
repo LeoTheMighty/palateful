@@ -537,6 +537,37 @@ Xcode Cloud config lives in App Store Connect / Xcode, so this is his hands:
    read the log — do not trust it until a run is green and a build number
    above 88 appears in TestFlight.
 
+## G. The deliberate trigger — how to read the three outcomes
+
+Merging this branch touches `app/pubspec.yaml`, so it should satisfy any
+`app/`-scoped path filter. Leo's ASC reading — "it was all working at some
+point", nothing above 88, something "says it expired" — plus the fact that
+**two merges today already touched `app/` (#1 rbv101, #26) and neither fired**
+points at disabled/expired rather than filtered. Filtering was already ruled
+out by evidence before we spend a merge on it.
+
+Fixed first so the test measures what we want: **F1 (Flutter pinned to
+3.41.7)** and **F2 (Crashlytics downgraded to a warning)**. Without those the
+run fails on causes already diagnosed and teaches nothing.
+
+**`CI_BUILD_NUMBER` is deliberately NOT fixed.** Read the expected rejection
+as a success.
+
+| # | Outcome | What it means | Next |
+|---|---|---|---|
+| 1 | **No run at all.** Nothing appears in Xcode Cloud; no email, no log | The workflow is not connected to the trigger — disabled, deleted, or **compute hours/subscription genuinely expired**, which matches "says it expired". **Silence is a real answer, not an inconclusive test.** It rules out every code-side cause at once: the hooks never executed, so nothing in this repo is implicated | §F6 click-list. Check the billing/hours state first — a lapsed plan produces exactly this and no diagnostic anywhere |
+| 2 | **Runs, fails before upload** | The workflow IS live and the trigger works — that alone is worth the merge. Now it's a hook problem. Read the log for *which* phase | If post-clone: F1 should have covered Flutter; look at `pod install`. If post-xcodebuild: F2 should have covered symbols; the appex-embed assertion is the other `exit 1` there |
+| 3 | **Runs, builds, rejected at upload as a duplicate/too-low build number** | **The best realistic outcome.** It proves the whole chain — trigger fired, clone worked, pinned Flutter installed, pods resolved, archive built, extension embedded, upload reached App Store Connect. Only the build number is wrong, and we already know why | Fix Q3 (§F5): `CI_BUILD_NUMBER` starts at 1 against ASC's 88. Add `ci_pre_xcodebuild.sh` setting `CFBundleVersion` above the ASC max, or enable Xcode Cloud's own numbering and verify where it starts |
+
+**Do not read outcome 3 as a new failure.** It is the expected result of a
+known, deliberately-unfixed gap, and it carries more information than a green
+tick would — a green tick would only prove the workflow runs, whereas a
+duplicate-build rejection proves every stage up to and including ASC
+authentication.
+
+Outcome 1 is the one that needs no code from us and the only one whose fix is
+entirely in Leo's hands.
+
 ## Technical notes
 
 - The Android job's `google-github-actions/auth@v2` step is **not**
@@ -622,3 +653,18 @@ Xcode Cloud config lives in App Store Connect / Xcode, so this is his hands:
   asserting that it does; `mobile-builds.yml`'s iOS job deleted with its
   rationale in the header, Android job untouched, `actionlint` clean.
   `bin/prod-ios-deploy` retained as the documented manual fallback.
+- 2026-09-20T14:05 — prepared the branch for a deliberate Xcode Cloud trigger.
+  Pinned `ci_post_clone.sh` to Flutter **3.41.7** (was tip-of-stable, 3.47.5
+  today) — shallow-cloning the tag then naming the local branch `stable`,
+  because Flutter derives its channel from the branch name and a detached tag
+  checkout reports channel "unknown"; added a version assertion that fails
+  loudly rather than building against something untested, since a *silent*
+  mismatch is the exact failure mode the pin exists to prevent. Downgraded
+  `ci_post_xcodebuild.sh`'s missing-`upload-symbols` `exit 1` to a warning +
+  `exit 0`: symbolication is a convenience and should not cost a shippable
+  archive, and during this test it would mask what we are trying to see. Left
+  `CI_BUILD_NUMBER` unfixed on purpose — §G explains why the resulting
+  duplicate-build rejection is the *best realistic outcome* rather than a
+  failure. Added §G so all three outcomes, including **no run at all**
+  (expired compute/subscription — silence as a real answer), are interpretable
+  without another round trip.
