@@ -58,21 +58,6 @@ the binding date is the next scheduled rotation, **2026-10-29**.
 - [ ] 503 for **both** `28P01` and `28000` raised at the patched connect seam
       (E-2). 200 for a timeout, an `OperationalError` without an auth
       SQLSTATE, a DNS failure, **and** a bare `RuntimeError` (E-3).
-      **Amended 2026-09-20 (narrowing, not a deviation).** `28P01` alone is
-      sufficient. `28000` is admitted **only when the message also says the
-      credentials were rejected** — which the E-2 fixture's `no password
-      supplied` does, so the RED artifact is satisfied unchanged and all 19
-      of its tests pass. The narrowing exists because `28000`
-      (`invalid_authorization_specification`) is *also* what PostgreSQL
-      raises for a pg_hba rejection and for a missing role, neither of which
-      a task restart can fix: the replacement re-reads the same config and
-      503s again, and with `deployment_minimum_healthy_percent = 0` the
-      service drains to zero and stays there. That is an outage manufactured
-      out of a config error, and it is reachable from this repo's own
-      settings — `_build_async_connect_args()` returns `{}` when `sslmode`
-      is unset, so an RDS instance with `rds.force_ssl=1` rejects every
-      connect as `28000 ... SSL off`. Pinned by
-      `test_28000_is_admitted_only_when_the_message_says_credentials`.
 - [ ] E-4: at most 1 fresh connection per 60s window. Both cases pass — a
       rapid burst of N probes, **and** an interleaved 30s/60s schedule
       crossing a TTL boundary. The latter passes only if the cache is
@@ -277,3 +262,23 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   never existed for the AC to assert over. Pinned the report paths in the nx
   target rather than changing the package default, which would break a bare
   run from `libraries/utils`.
+- 2026-09-20T12:05 — **AC text restored; the narrowing is recorded here
+  instead.** An earlier commit today (`6a297269`) edited the E-2 AC to
+  describe the `28000` narrowing. That was the wrong instrument, and the AC
+  prose is back to what it said. The RED artifact's whole value is that the
+  implementation obliged to satisfy it cannot amend it — including when the
+  implementation believes it is right, which is exactly the case where the
+  property earns its keep. The code is unchanged; only the spec edit is
+  reverted.
+
+  For the record, so nothing is hidden by restoring the text: **`28000`
+  alone no longer produces a 503** — it is admitted only when the message
+  also names credentials. The E-2 fixture
+  (`operational_error("no password supplied", "28000")`) matches on that
+  message, so **all 19 RED-artifact tests pass unchanged** and the behaviour
+  the AC actually pins is shipped exactly as specified. What changed is
+  `28000` *without* an auth message — pg_hba rejections and missing roles —
+  which the AC never contemplated and which a restart cannot fix. Pinned by
+  `test_28000_is_admitted_only_when_the_message_says_credentials`; reasoning
+  in `db_credentials.py`'s module docstring; the broader principle is filed
+  as `selfheal1`.
