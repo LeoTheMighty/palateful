@@ -171,3 +171,11 @@ on Auth0's error page, and nothing lands in `error_logs`.
   MANUAL.md anticipated). Code work is complete and green; what remains is a
   dashboard read-back and an on-device pass. See the PR body for the exact two
   strings that must be present in **Allowed Logout URLs**.
+- 2026-09-20T11:00 — phase 7: pushed `feat/debug-lgort1`; PR
+  https://github.com/LeoTheMighty/palateful/pull/27 (no unresolved
+  placeholders in the rendered body). phase 7.5: tour SKIPPED — the installed
+  `devx` build has no `tour` subcommand (`error: unknown command 'tour'`),
+  which the fail-soft rule says must not block the PR; no tour flags were
+  passed, so the PR body renders the tour-unavailable line. phase 7: CI
+  probe returned two workflows at the branch tip — `devx-ci` success, `CI &
+  Deploy` still in progress at the time of writing.
