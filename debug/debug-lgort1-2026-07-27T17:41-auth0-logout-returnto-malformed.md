@@ -6,7 +6,7 @@ title: Native Auth0 logout returnTo uses the URL scheme where the bundle id belo
 from: btri01
 status: in-progress
 owner: /devx-2026-09-20T1001-3952
-branch: unassigned
+branch: feat/debug-lgort1
 ---
 
 ## Goal
@@ -184,3 +184,12 @@ on Auth0's error page, and nothing lands in `error_logs`.
   NOT run: merge is held at the coordinator session's explicit request ("no
   merges to main without checking with me"), and AC3 is still open pending the
   Auth0 dashboard read-back. Spec stays `in-progress`; PR #27 stays open.
+- 2026-09-20T11:30 — frontmatter: recorded `branch: feat/debug-lgort1`.
+  The field had carried the authoring sentinel `unassigned` since filing;
+  `devx devx-helper claim` writes `owner:` but not `branch:`, and
+  `merge-gate.ts:374-377` treats any non-empty string as the branch, so the
+  gate ran `gh pr list --head unassigned`, got `[]`, and reported "no PR
+  yet" (:420) with PR #27 open and mergeable. The gate resolves debug specs
+  fine — my earlier note blaming a missing `--type` on merge-gate was wrong
+  (that gap is real for `claim` only, filed as debug-7d96be). Credit:
+  devx-b6 traced it in source.
