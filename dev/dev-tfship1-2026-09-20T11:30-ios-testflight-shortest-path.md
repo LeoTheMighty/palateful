@@ -23,6 +23,32 @@ correctly reasoned, dead at step 3 on all 52 runs.
 Scope: **iOS only.** Android, `promote-android.yml` and `debug-andph1` are
 explicitly out (coordinator, 2026-09-20).
 
+## Operating principle — the console is authoritative, the repo is a stale cache
+
+Established twice in twenty minutes, both times against this spec's own
+drafted expectation:
+
+| Question | What the repo said | What the console said |
+|---|---|---|
+| What build are we on? | `pubspec.yaml` → **77** | ASC → **88** (11 ahead) |
+| Does the `.share` App ID exist? | `SHARE.md` §1 open → **no** | Identifiers → **yes**, for months |
+
+Both times the repo was not merely stale but *confidently wrong*, and both
+times acting on it would have cost real time — a duplicate-build upload
+failure with no obvious cause, and ~15 minutes recreating an identifier that
+already existed.
+
+The mechanism is the same in both: the work happens in Apple's systems, and
+**nothing writes back to the repo.** `pubspec.yaml` records what someone
+remembered to commit; `SHARE.md` records what was true when it was written.
+Neither is a source of truth for Apple's state, and neither announces that it
+has gone stale.
+
+**So: for anything that lives in Apple's systems, read the console first —
+especially when the repo looks unambiguous, because that is exactly when the
+instinct is to skip the check.** Every remaining Path 1 step that touches
+Apple state is written as a confirmation, not an assumption.
+
 ## Headline finding
 
 **The pipeline does not work as written, and two of its three blockers also
@@ -208,12 +234,15 @@ not need to go look it up.**
 
 1. ~~Read the highest build number in App Store Connect.~~ **DONE** — 88.
    `pubspec.yaml` is already bumped to `1.0.64+89` on this branch. (A1.)
-2. **Apple Developer → Identifiers.** Is `com.palateful.palateful.share`
-   there? **Expect yes** (see A2). Absent → do `SHARE.md` §1a–1c now
-   (~15 min) — and that would be a genuine surprise worth telling the
-   coordinator about, since eleven builds appear to have shipped with it.
-3. While there, confirm capabilities: `com.palateful.palateful` has **App
-   Groups** + **Push Notifications**; `.share` has **App Groups**. (A3.)
+2. ~~Apple Developer → Identifiers.~~ **DONE** — Leo confirmed
+   `com.palateful.palateful.share` is present, 2026-09-20. Prediction held.
+   `SHARE.md` §1 annotated and the MANUAL.md row refreshed per-part. (A2.)
+3. ~~Confirm capabilities.~~ **Skip — the same evidence covers it.** A
+   provisioning profile cannot be issued unless the App ID carries the
+   declared entitlements, so eleven signed uploads already prove **App
+   Groups** on both identifiers and **Push Notifications** on
+   `com.palateful.palateful` (`Runner.entitlements` declares
+   `aps-environment: production`). Xcode will say so in step 4 if not. (A3.)
 4. Xcode → open `app/ios/Runner.xcworkspace` → check signing on **both**
    `Runner` and `PalatefulShare` → Product ▸ Archive → Distribute ▸ App Store
    Connect.
@@ -287,3 +316,18 @@ Android secrets are out of scope.
   `latest_testflight_build_number` makes ASC authoritative and forecloses the
   whole A1 failure class, which is a stronger case for the pipeline than
   automation-for-its-own-sake.
+- 2026-09-20T12:35 — A2 confirmed positive: Leo read Apple Developer →
+  Identifiers and `com.palateful.palateful.share` is present. The prediction
+  held, and by the argued route (one of builds 78-88 shipped the extension).
+  Knock-on, stated before Leo opens Xcode: **step 3 collapses too.** A profile
+  cannot be issued unless the App ID carries the declared entitlements, so the
+  same eleven signed uploads that prove the App ID exists also prove App Groups
+  on both identifiers and Push Notifications on the main app. Steps 2 and 3
+  are now confirmations already made; Leo's real remaining path is **get the
+  bump → Xcode signing check → archive → distribute → assign to tester
+  group**. Annotated `SHARE.md` §1 with a skip-to-§2 notice and refreshed the
+  MANUAL.md row per-part rather than closing it — §2 Xcode signing, §3
+  on-device happy path and §4 device matrix genuinely remain, and closing the
+  whole row would have been the same stale-bookkeeping error in the opposite
+  direction. Added the operating principle above; it is the generalisation of
+  both surprises, not an anecdote about either.
