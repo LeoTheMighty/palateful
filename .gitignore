@@ -111,3 +111,9 @@ alembic/versions/__pycache__/
 .worktrees/
 .devx-cache/
 # <<< devx
+
+# Test / coverage artifacts (see LESSONS.md — untracked junk invites `git clean -fd`)
+coverage-reports/
+test-reports/
+*.db
+*.bak
