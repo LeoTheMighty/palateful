@@ -4,7 +4,8 @@ type: debug
 created: 2026-07-27T18:53:00-06:00
 title: imports_tab_test.dart — 3 widget tests red on main
 from: btri01
-status: ready
+status: in-progress
+owner: /devx-2026-09-20T0958-90325
 owner:
 branch:
 ---
@@ -57,3 +58,4 @@ test's fixtures no longer land where it looks for them.
 ## Status log
 - 2026-07-27T18:53 — filed by btri01 after a full-suite run during shopping-cart
   triage: 1530 passed, 3 failed, all three in this file, all pre-existing on main
+- 2026-09-20T09:58:48-06:00 — claimed by /devx in session /devx-2026-09-20T0958-90325
