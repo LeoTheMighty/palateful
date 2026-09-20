@@ -441,6 +441,102 @@ can install."** Whatever lands must either assign the build to a tester group
 remains — it should not be discovered later by testers who still can't
 install.
 
+## F. Xcode Cloud audit — what would break it now (measured 2026-09-20)
+
+Leo picked Xcode Cloud. Audited the hooks against seven weeks of repo drift.
+**One real break, one real hazard, and two suspicions cleared.**
+
+### F1. THE BREAK — `ci_post_clone.sh` installs the wrong Flutter, and the gap widens weekly
+
+```sh
+git clone https://github.com/flutter/flutter.git --depth 1 -b stable "$HOME/flutter"
+```
+
+That is the **tip of stable**, not the repo's pin. Measured today:
+
+| Surface | Flutter |
+|---|---|
+| Tip of `stable` (what the hook installs) | **3.47.5** |
+| `ci.yml:336`, `mobile-builds.yml:42` | **3.41.7** |
+
+**Six minor versions apart, and it widens with every Flutter release** —
+nothing in the repo constrains it. `fltup1` already paid for this lesson
+locally (3.38.9 → 3.41.7 produced 94 failures from one stale shader). Xcode
+Cloud has been silently doing the same drift, unbounded, since the hook was
+written on 2026-04-15 — when tip-of-stable *was* roughly the pin, which is
+why it worked then and rots now.
+
+Same shape as the fixture dates and the build number: **fine when written,
+wrong by the calendar, and nothing reports it.** Fix: `-b 3.41.7`, kept in
+step with `ci.yml`. (`--depth 1 -b <tag>` works for tags.)
+
+### F2. THE HAZARD — a symbol upload can fail the whole archive
+
+`ci_post_xcodebuild.sh` hard-`exit 1`s when
+`app/ios/Pods/FirebaseCrashlytics/upload-symbols` is missing. `Pods/` is not
+tracked, so that path exists only if `pod install` produced it — and a
+Crashlytics *niceness* failing a *release archive* is a bad trade. If Leo's
+workflow shows a late-stage failure after a clean build, look here first;
+it matches the shape of the reported artifact-save failure. Recommend
+downgrading to a warning + `exit 0`.
+
+### F3. CLEARED — `.env.prod` is a non-issue, and the doc was wrong twice
+
+`.env.prod` does not exist and `ci_post_clone.sh` does not reference `.env`
+at all (grep: 0 hits). Not a break: the staging step was **removed** in
+`5f13ad7f` (2026-04-23) when `flutter_dotenv` was dropped, and prod config is
+now compile-time constants in `environment.dart`. `docs/DEPLOYMENT.md`
+described the staging for *both* the Xcode Cloud hook **and**
+`bin/prod-ios-deploy`, and had been wrong about both for five months. Both
+corrected.
+
+### F4. CLEARED — the share-extension gates pass
+
+Ran them rather than reasoning about them:
+`tools/share-extension-tests.sh` → **7/7 passed**. Memory-footgun lint →
+clean. The `flutter test` rot that hit `imports_tab` does not reach these —
+they are `swiftc`-compiled pure-logic sources with no Flutter fixtures. No
+retired-command references in either hook.
+
+### F5. Q1 and Q3 are NOT moot — Q3 especially
+
+- **Q1 (gating): natively solved.** Xcode Cloud start conditions take
+  file/folder path filters, so scope the branch-change condition to `app/`.
+  No `detect-changes` output needed; the concern about a TestFlight build per
+  docs commit is handled in the workflow UI.
+- **Q3 (build number): the drift comes back in a new place, exactly as
+  suspected.** Xcode Cloud's `CI_BUILD_NUMBER` is per-workflow and **starts at
+  1** for a new workflow. App Store Connect is at **88**. A revived workflow
+  would therefore upload build 1, 2, 3… and be rejected until it climbed past
+  88. Either enable Xcode Cloud's own build-number management *and* verify it
+  starts above 88, or add a `ci_pre_xcodebuild.sh` that sets `CFBundleVersion`
+  monotonically above the ASC maximum. **Do not assume Xcode Cloud inherits
+  the repo's number — it does not read `pubspec.yaml` for it.**
+- **Q2 is genuinely moot.** Apple signs. Zero signing secrets, which is why
+  this path beats the GitHub Actions one.
+
+### F6. If it is disabled or was never configured — what Leo clicks
+
+Xcode Cloud config lives in App Store Connect / Xcode, so this is his hands:
+
+1. **Xcode → Product ▸ Xcode Cloud ▸ Manage Workflows** (or ASC → the app →
+   Xcode Cloud), targeting `app/ios/Runner.xcworkspace`, scheme **Runner**.
+2. **Start condition:** Branch Changes → `main`. Add a **Files and Folders**
+   filter scoped to `app/` (this is Q1).
+3. **Environment:** macOS/Xcode version matching the 3.41.7 toolchain, and
+   confirm `ci_scripts/` is detected (Apple requires it adjacent to the
+   `.xcworkspace` — it is, at `app/ios/ci_scripts/`).
+4. **Action: Archive**, configuration **Release**, deployment prep
+   **TestFlight (Internal Testing)** — this is what makes `CI_ARCHIVE_PATH`
+   exist, which `ci_post_xcodebuild.sh` keys off.
+5. **Post-action: TestFlight Internal Testing → select the tester group.**
+   **Do not skip.** Every mechanism examined in this spec stops at "uploaded";
+   this is the step that makes testers able to install, and it is the entire
+   point of the exercise.
+6. Fix F1 (and ideally F2) **before** the first run, then trigger manually and
+   read the log — do not trust it until a run is green and a build number
+   above 88 appears in TestFlight.
+
 ## Technical notes
 
 - The Android job's `google-github-actions/auth@v2` step is **not**
@@ -508,3 +604,21 @@ install.
   certificate, so it is 5 secrets rather than the hoped-for 3, and the real
   prize is that the Match bootstrap (B2) disappears. If Xcode Cloud is
   revivable it is 0 signing secrets, which is why §D gates §E.
+- 2026-09-20T13:45 — Leo picked Xcode Cloud; audited both hooks against seven
+  weeks of drift (§F). One real break: `ci_post_clone.sh` clones tip-of-stable
+  Flutter (**3.47.5** today) against a repo pinned at **3.41.7** — six minors
+  and widening, the same fine-when-written/wrong-by-the-calendar shape as the
+  fixture dates and the build number. One hazard: `ci_post_xcodebuild.sh`
+  hard-fails the archive on a missing Crashlytics `upload-symbols`. Two
+  suspicions cleared by measurement rather than argument: `.env.prod` is a
+  non-issue (staging was removed in `5f13ad7f`; the doc was wrong about it for
+  both mechanisms) and `tools/share-extension-tests.sh` passes **7/7** with the
+  footgun lint clean. Q3 is **not** moot — Xcode Cloud's `CI_BUILD_NUMBER`
+  starts at 1 per workflow and does not read `pubspec.yaml`, so a revived
+  workflow would upload below ASC's 88 and be rejected; the drift returns in a
+  new place exactly as the coordinator suspected. Deliverables landed:
+  `docs/DEPLOYMENT.md` corrected in three places (all traceable to `5f13ad7f`)
+  and now documents *how to tell the workflow is running* rather than
+  asserting that it does; `mobile-builds.yml`'s iOS job deleted with its
+  rationale in the header, Android job untouched, `actionlint` clean.
+  `bin/prod-ios-deploy` retained as the documented manual fallback.
