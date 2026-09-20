@@ -18,20 +18,27 @@ connection via `Depends(get_async_database)` — pooled connections stay
 authenticated across a rotation, so it structurally cannot see one — and
 catches bare `Exception` → 503, which is a mass-task-replacement hazard.
 
-This phase also carries the **first `terraform apply` since 2026-04-26** and
+~~This phase also carries the first `terraform apply` since 2026-04-26 and
 the first real exercise of the deploy lane. It is doing three risky things at
-once; the ACs reflect that.
+once; the ACs reflect that.~~ **Retired 2026-09-20** — both of those landed on
+2026-07-31 while this story sat blocked on stale bookkeeping. The terraform
+apply and the full deploy lane are proven (run 30646967338); what remains is
+ordinary code. Evidence in the status log.
 
-**Deadline: 2026-07-29.**
+~~**Deadline: 2026-07-29.**~~ Superseded: the 90-day cadence **is** applied, so
+the binding date is the next scheduled rotation, **2026-10-29**.
 
 ## Acceptance criteria
 
-- [ ] **Before merging**: `terraform plan` run locally against
+- [x] **Before merging**: `terraform plan` run locally against
       `terraform/environments/prod`, full pending diff reviewed line by line
       and pasted into this status log, with
       `aws_secretsmanager_secret_rotation.db_master` explicitly called out.
-      This is the only review gate before an unattended `-auto-approve`
-      (`ci.yml:748`) applies everything pending since 2026-04-26.
+      **Satisfied 2026-09-20** — `0 to add, 6 to change, 0 to destroy`, all
+      tag/metadata in-place updates, and `db_master` is *absent* from the diff
+      because it already converged. Full plan in the status log. The
+      "everything pending since 2026-04-26" premise no longer holds: that
+      backlog drained in the 2026-07-31 apply.
 - [ ] `libraries/utils/utils/services/db_credentials.py` exists with
       `is_auth_error(exc) -> bool` matching `exc` → `.orig` → `__cause__`,
       on SQLSTATE/`pgcode` **or** message pattern (`password authentication
@@ -65,15 +72,21 @@ once; the ACs reflect that.
       `fail_under`, so the highest-risk new code otherwise lands where nothing
       enforces coverage.
 - [ ] `npx nx run api:test` passes with coverage still at 100%.
-- [ ] **On the `main` push**: `deploy-images` runs all four legs,
+- [x] ~~**On the `main` push**: `deploy-images` runs all four legs,
       `run-migrator` succeeds, `terraform-prod` succeeds, and
-      `deploy-services` reaches conclusion `success` — closing E-1's second
-      half.
-- [ ] `deploy-images (parser)` outcome recorded. If the 2026-05-03 failure
+      `deploy-services` reaches conclusion `success`~~ — **closed 2026-09-20 on
+      prior evidence, not deferred.** Run 30646967338 (2026-07-31, `main`) ran
+      all of it green. E-1's second half is closed. This story's own push
+      re-exercises the lane incidentally; it is no longer a gate.
+- [x] ~~`deploy-images (parser)` outcome recorded. If the 2026-05-03 failure
       reproduces, pin the unpinned fetches in `services/parser/Dockerfile.batch`
-      **inside this story** — it blocks every remaining phase.
-- [ ] The rotation-cadence resource is confirmed applied and the new
-      next-rotation date recorded in the status log.
+      **inside this story**~~ — **the parser leg succeeded** in run 30646967338.
+      The failure did not reproduce; no `Dockerfile.batch` pin is needed and
+      nothing here blocks the remaining phases.
+- [x] The rotation-cadence resource is confirmed applied and the new
+      next-rotation date recorded in the status log. **Applied** —
+      `AutomaticallyAfterDays: 90`, last rotated 2026-07-28, **next rotation
+      2026-10-29**.
 
 ## Technical notes
 
@@ -115,14 +128,29 @@ once; the ACs reflect that.
   keeps it from firing on a transient blip. The API-unavailable window during
   a genuine rotation is bounded only by task replacement time and is not
   measured until rsh109.
-- **`run-migrator` is the next unproven link** — it gates `deploy-services`
-  (`ci.yml:850`) and `services/migrator` implicitly depends on `utils`, so
-  touching `libraries/utils` runs it for the first time since 2026-04-26.
+- ~~**`run-migrator` is the next unproven link**~~ — **no longer true as of
+  2026-09-20.** It ran green in run 30646967338 (2026-07-31), as did
+  `terraform-prod` and `deploy-services`. Touching `libraries/utils` still
+  exercises it, but it is a proven link now, not a gate.
 - No Terraform change is needed for detection: the container health check
   (`ecs/main.tf:318-324`) and the ALB target group already turn a 503 into a
   task replacement.
 - RED artifacts (do **not** re-author, only make green):
-  `services/api/tests/test_health.py` (E-2, E-3, E-4).
+  **`services/api/tests/test_health_credential_probe.py`** (E-2, E-3, E-4),
+  registered in `tools/red-artifacts.txt` against this hash. Run it with
+  `PYTEST_RUN_RED=1` or by naming the file explicitly; it is dropped from
+  default collection until this story lands.
+  *(Corrected 2026-09-20 — this line previously named `test_health.py`, which
+  is where the artifact was originally authored in place. rshred1 split the two
+  apart because rewriting `test_health.py` wholesale took the shared `test`
+  gate red on `main`.)*
+- **The registry contract binds this story's GREEN commit** (`tools/red-artifacts.txt`
+  header): it must (a) delete the `test_health_credential_probe.py` registry
+  line and (b) fold the two baseline tests out of `test_health.py` —
+  `test_health_check` pins the old `{"status": "ok"}` body and
+  `test_health_check_db_failure` pins the old blanket 503. Both become wrong
+  the moment FR-2 ships. A registry entry left behind means this story shipped
+  with its own acceptance test silently not running.
 - Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 2.
 
 ## Status log
@@ -132,3 +160,67 @@ once; the ACs reflect that.
   plus `test_health_check` failing on the new `db` body field); see
   `_devx/workstreams/rotation-self-heal/evals/RED-report.md`.
 - 2026-09-20T09:54:04-06:00 — claimed by /devx in session /devx-2026-09-20T0954-67490
+- 2026-09-20T09:54 — phase 1: claimed. **Claim was blocked on backlog drift, not
+  on a live dependency.** `devx devx-helper claim` failed at stage `compose`
+  (`flipDevMdRow: row for hash 'rsh102' exists but is not in [ ] (ready) state`)
+  because `DEV.md:58` still carried this story as `[-]`/blocked on
+  `debug-rshred1`, which merged as PR #9 (`bac7d6b9`) on 2026-07-31.
+  `DEBUG.md:14` likewise still read `in-progress`. Reconciled in a separate
+  bookkeeping commit (`42493771`) after authorization from Leo relayed via the
+  coordinator session. Three files (DEV.md, DEBUG.md, and this spec's
+  Technical notes) all pointed at work that merged ~7 weeks earlier and nothing
+  detected it; the detection gap is filed as its own story.
+- 2026-09-20T10:05 — phase 1 verification: **two of this story's stated premises
+  were false.** Recorded here because the ACs were rewritten on this evidence.
+
+  **(a) The 90-day rotation cadence from `e74303f` IS applied.** It was an open
+  question whether it had ever reached prod. `aws secretsmanager describe-secret`
+  on the RDS-managed master secret
+  (`arn:aws:secretsmanager:us-east-1:592349850338:secret:rds!db-fa766898-a43c-4252-b242-fa93629d216b-xVJ6GM`):
+
+      RotationEnabled:        true
+      AutomaticallyAfterDays: 90
+      LastRotated:            2026-07-28T18:31:35-06:00
+      NextRotation:           2026-10-29T17:59:59-06:00
+      LastChanged:            2026-07-31T11:06:06-06:00
+
+  Exposure is quarterly, not the weekly AWS 7-day default. Note `LastRotated`
+  2026-07-28 — a real rotation already fired post-freeze. The binding deadline
+  is now **2026-10-29**, not the story's original 2026-07-29.
+
+  **(b) The first `terraform apply` since 2026-04-26 already happened, and the
+  whole deploy lane is proven.** `main` CI run **30646967338** (2026-07-31):
+
+      deploy-images (api)       success
+      deploy-images (worker)    success
+      deploy-images (migrator)  success
+      deploy-images (parser)    success   <- 2026-05-03 failure did NOT reproduce
+      terraform-prod            success
+      run-migrator              success
+      deploy-services           success
+
+  Prod ECS is serving image tag `848311af83a2025b69bc6b8813d8af591ea1930c` on
+  both `palateful-api-prod` and `palateful-worker-prod` — **not** the frozen
+  `c85e350` from 2026-04-26. The deploy freeze is over. E-1's second half is
+  closed on this evidence rather than deferred to this story's push.
+- 2026-09-20T10:20 — phase 1 / **AC-1 satisfied**: `terraform plan` against
+  `terraform/environments/prod`, reviewed line by line. `terraform init
+  -backend-config=../../backend-prod.hcl`, then plan with all four image tags
+  pinned to the currently-deployed `848311af...` so the diff shows non-image
+  drift only:
+
+      ~ module.alb.aws_acm_certificate.main[0]                    (tags only)
+      ~ module.elasticache.aws_elasticache_replication_group.main (tags only)
+      ~ module.elasticache.aws_ssm_parameter.redis_url            (tags only)
+      ~ module.rds.aws_db_instance.main                           (tags only)
+      ~ module.secrets.aws_secretsmanager_secret_version.auth0
+      ~ module.secrets.aws_secretsmanager_secret_version.openai
+
+      Plan: 0 to add, 6 to change, 0 to destroy.
+
+  **`aws_secretsmanager_secret_rotation.db_master` is absent from the plan** —
+  the explicit call-out AC-1 asks for. Absent means converged: the resource is
+  applied and in sync with state, which independently corroborates the
+  `describe-secret` reading above. No destroys, no RDS replacement, no
+  task-definition churn, no ECS service changes. Safe under the unattended
+  `-auto-approve` at `ci.yml:748`.
