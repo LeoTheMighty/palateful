@@ -194,12 +194,14 @@
   ⚠ **Do not wait for 09:00 MDT.** These 50 runs landed anywhere from
   **00:19Z to 23:58Z** against a declared `0 15 * * *`. Check "a run landed in
   the last 24h", never the hour.
-  ⚠ **This workflow breaches E-7's own threshold.** Its inter-firing interval
-  measured **18.3h–31.9h**; a 31.9h silence is 7.9h past the stated 24h. The
-  `--verify-schedule-fires` OK below is measured over the *repo-wide*
-  scheduler (~88% `devx-promotion.yml` at 1–3h), so it does not bind to this
-  workflow. If the 24h threshold is meant literally, the cron needs a second
-  daily slot — worth a decision, separate from this branch.
+  ✅ **The 24h-threshold breach is fixed in this same branch.** The measured
+  interval was **18.3h–31.9h**, i.e. 7.9h past E-7's stated 24h. Leo chose to
+  tighten the schedule rather than loosen the assertion, so the workflow now
+  declares two slots 12h apart (`0 15 * * *` + `0 3 * * *`) and the self-test
+  asserts the worst nominal gap is ≤12h instead of pinning a literal cron
+  string. Note the `--verify-schedule-fires` OK below is still measured over
+  the *repo-wide* scheduler (~88% `devx-promotion.yml` at 1–3h), so it does
+  not bind to this workflow — read the per-workflow numbers, not that line.
   **Scope — the surrounding checks stay re-runnable in seconds with no AWS:**
   ```
   bash tools/deploy-freshness-live-check.sh --verify-environment-gate   # no approval gate

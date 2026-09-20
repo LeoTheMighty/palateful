@@ -10,8 +10,23 @@ name: deploy-freshness
 
 on:
   schedule:
-    # 15:00 UTC == 09:00 MDT — one unattended check every morning.
+    # Two slots, 12h apart, deliberately NOT one daily check.
+    #
+    # E-7's threshold is "gap reported within 24h of crossing 7 days". A
+    # single daily cron has *zero* margin against that even in theory, and
+    # in practice GitHub's scheduler does not fire when asked: measured over
+    # this workflow's own first 50 firings (2026-08-01..2026-09-19), the
+    # interval between runs ranged 18.3h to 31.9h and the firing time
+    # scattered across 00:19Z-23:58Z against a declared `0 15 * * *`. A
+    # 31.9h silence breaches the 24h threshold the check asserts.
+    #
+    # Two slots 12h apart absorb that drift: even with the observed ~8h of
+    # jitter the worst-case silence stays well inside 24h. Leo's call was to
+    # tighten the schedule rather than loosen E-7's assertion.
+    # 15:00 UTC == 09:00 MDT (the original morning slot).
     - cron: '0 15 * * *'
+    # 03:00 UTC == 21:00 MDT.
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       synthetic-gap-days:

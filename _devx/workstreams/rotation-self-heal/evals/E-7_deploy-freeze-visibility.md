@@ -521,6 +521,35 @@ Neither correction is a defect in the shipped workflow — both are properties o
 GitHub's scheduler. They are defects in **how this eval reads the result**, and
 they are what a reader would otherwise have concluded wrongly.
 
+### The second cron slot (added 2026-09-20)
+
+The 31.9h worst-case silence above breached E-7's own 24h threshold, so the
+schedule was tightened rather than the assertion loosened (Leo's call).
+`deploy-freshness.yml` now declares two daily slots 12h apart —
+`0 15 * * *` (09:00 MDT, the original) and `0 3 * * *` (21:00 MDT). Even with
+the ~8h of scheduler drift measured over the first 50 firings, the worst-case
+wait stays well inside 24h.
+
+The guard changed shape with it. It used to pin the literal string
+`'0 15 * * *'`; it now asserts the **property** E-7 actually needs — the
+largest nominal wait between consecutive firings, wrapping past midnight,
+must be ≤ 12h, leaving ≥12h of headroom under the 24h threshold. Pinning the
+literal is what allowed a zero-margin daily schedule to sit beneath a 24h
+threshold unnoticed for 50 firings: the assertion was true and irrelevant.
+
+| Mutation | Expected to fail | Cases failed | Message |
+|---|---|---|---|
+| back to a single daily cron | the schedule case | 1 | `worst nominal gap is 24.0h across ['0 15 * * *']` |
+| two slots only 2h apart (`0 15` + `0 17`) | the schedule case | 1 | `worst nominal gap is 22.0h` — under 24h, still rejected for zero drift margin |
+| `schedule:` block deleted | the schedule case | 1 | `no cron trigger at all — the check would only ever run by hand` |
+| weekday-only cron (`0 3 * * 1-5`) | the schedule case | 1 | `not a plain daily slot — cannot bound the gap` |
+
+The second and fourth are the ones worth noting. A 22h gap *passes* E-7's
+literal 24h threshold and is still rejected, because the threshold has to
+survive drift that has already been measured at ~8h. And a narrowing that
+reduces real coverage (weekday-only) is refused rather than parsed
+optimistically — an unparseable cron must never be read as "daily".
+
 ## Accepted cost
 
 The check shares its fate with the CI system whose silent breakage it exists
