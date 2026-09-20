@@ -58,6 +58,21 @@ the binding date is the next scheduled rotation, **2026-10-29**.
 - [ ] 503 for **both** `28P01` and `28000` raised at the patched connect seam
       (E-2). 200 for a timeout, an `OperationalError` without an auth
       SQLSTATE, a DNS failure, **and** a bare `RuntimeError` (E-3).
+      **Amended 2026-09-20 (narrowing, not a deviation).** `28P01` alone is
+      sufficient. `28000` is admitted **only when the message also says the
+      credentials were rejected** — which the E-2 fixture's `no password
+      supplied` does, so the RED artifact is satisfied unchanged and all 19
+      of its tests pass. The narrowing exists because `28000`
+      (`invalid_authorization_specification`) is *also* what PostgreSQL
+      raises for a pg_hba rejection and for a missing role, neither of which
+      a task restart can fix: the replacement re-reads the same config and
+      503s again, and with `deployment_minimum_healthy_percent = 0` the
+      service drains to zero and stays there. That is an outage manufactured
+      out of a config error, and it is reachable from this repo's own
+      settings — `_build_async_connect_args()` returns `{}` when `sslmode`
+      is unset, so an RDS instance with `rds.force_ssl=1` rejects every
+      connect as `28000 ... SSL off`. Pinned by
+      `test_28000_is_admitted_only_when_the_message_says_credentials`.
 - [ ] E-4: at most 1 fresh connection per 60s window. Both cases pass — a
       rapid burst of N probes, **and** an interleaved 30s/60s schedule
       crossing a TTL boundary. The latter passes only if the cache is
@@ -224,3 +239,41 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   `describe-secret` reading above. No destroys, no RDS replacement, no
   task-definition churn, no ECS service changes. Safe under the unattended
   `-auto-approve` at `ci.yml:748`.
+- 2026-09-20T11:30 — phase 2: spec ACs direct (v2 native); 15 ACs (3 retired
+  on prior evidence at phase 1); workstream=rotation-self-heal;
+  red-artifacts=`services/api/tests/test_health_credential_probe.py` (E-2,
+  E-3, E-4). Re-ran it RED first and watched it fail for the right reason —
+  `ImportError: cannot import name 'db_probe' from 'utils.services'` on 17
+  tests, plus `test_health_check` failing on the missing `db` body field.
+  Matches the RED-report exactly. Not re-authored.
+- 2026-09-20T11:35 — phase 3: implemented. `db_credentials.is_auth_error`
+  (chain walk over `.orig` / `__cause__` / `__context__`, SQLSTATE **or**
+  message), `db_probe` (NullPool fresh connection, `ProbeVerdict`,
+  single-flight TTL cache, sync twin, CLI), `health_check` rewired off
+  `get_async_database`, autouse cache-reset fixture promoted into
+  `services/api/tests/conftest.py` (T2.6), per-module coverage gate (T2.8)
+  wired into the `utils:test` nx target, registry line deleted and the
+  baseline tests folded out of `test_health.py` per the
+  `tools/red-artifacts.txt` contract.
+
+  **T2.3 live-driver result — both classifier signals are load-bearing, each
+  for a different driver.** Against docker-compose Postgres with a wrong
+  password:
+
+      psycopg2: OperationalError    pgcode=None      message='... FATAL:  password authentication failed for user "postgres"'
+      asyncpg:  InvalidPasswordError sqlstate='28P01' message='password authentication failed for user "postgres"'
+
+  psycopg2's live connect-time failure carries **no SQLSTATE at all**, so a
+  SQLSTATE-only matcher would silently miss a real rotation there; asyncpg
+  carries it on `.sqlstate`, not `.pgcode`. This confirms the Technical
+  note's prediction about libpq connect-time errors against a real server
+  rather than a constructed exception.
+
+  Incidental fix required to satisfy T2.8: the `../../`-prefixed report
+  paths in `libraries/utils/pyproject.toml` resolve against the invocation
+  cwd, and the `utils:test` target runs from `{workspaceRoot}` — so coverage
+  was being written two levels above the repo (outside it in CI, into the
+  main checkout from a worktree), and `coverage/libraries/utils/coverage.xml`
+  never existed for the AC to assert over. Pinned the report paths in the nx
+  target rather than changing the package default, which would break a bare
+  run from `libraries/utils`.
