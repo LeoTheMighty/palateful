@@ -2,6 +2,8 @@ import 'dart:io' show Platform;
 
 import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../config/auth0_urls.dart';
 import '../config/environment.dart';
 import 'error_reporter.dart';
 
@@ -214,23 +216,56 @@ class AuthService extends ChangeNotifier {
         await _auth0!.credentialsManager.clearCredentials();
         debugPrint('AuthService: Cleared credentials from secure storage');
 
-        // Pass returnTo so Auth0 closes the in-browser page and deep-links
-        // back to the app instead of leaving a "You are logged out" page
-        // stuck on screen. Mirror the format auth0_flutter builds for the
-        // login callback (iOS bundle-id path vs. Android package path) so
-        // the same URL that's already in Auth0's Allowed Callback URLs
-        // works as an Allowed Logout URL.
-        final platformSegment = Platform.isIOS ? 'ios' : 'android';
-        await _auth0!.webAuthentication(scheme: Environment.auth0Scheme).logout(
-              returnTo:
-                  '${Environment.auth0Scheme}://${Environment.auth0Domain}/$platformSegment/${Environment.auth0Scheme}/callback',
-            );
+        // Breadcrumb the URL the SDK is about to use, so the on-device
+        // check in lgort1's ACs (and any later Allowed Logout URLs audit)
+        // can read it off the device log instead of re-deriving it from
+        // the vendored SDK sources. Logging only — never passed in.
+        final expectedReturnTo = await _expectedNativeRedirectUrl();
+        if (expectedReturnTo != null) {
+          debugPrint('AuthService: logout returnTo (SDK default) = '
+              '$expectedReturnTo');
+          ErrorReporter.log('auth.logout returnTo=$expectedReturnTo');
+        }
+
+        // Deliberately NO returnTo. auth0_flutter's native SDKs already
+        // default it to exactly the redirect URL they use for the login
+        // callback — on iOS it is literally the same
+        // `Auth0WebAuth.redirectURL` property shared by `start()` and
+        // `clearSession()`, and on Android it is the same CallbackHelper
+        // URL that `RedirectActivity` is registered for. bas-1 (f839f67)
+        // hand-built the string instead and put Environment.auth0Scheme
+        // ('com.palateful.app') where the SDK puts the bundle id /
+        // application id ('com.palateful.palateful'). Auth0 rejects a
+        // returnTo that is absent from Allowed Logout URLs and parks the
+        // browser on its own hosted error page — the original "logging
+        // out shows a weird auth0 page" report. See
+        // debug/debug-lgort1-2026-07-27T17:41-auth0-logout-returnto-malformed.md
+        // and app/lib/core/config/auth0_urls.dart.
+        await _auth0!
+            .webAuthentication(scheme: Environment.auth0Scheme)
+            .logout();
       }
 
       _clearSessionState();
       notifyListeners();
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('Logout error: $e');
+      // lgort1: this catch used to swallow silently, which is why a logout
+      // that ended on Auth0's hosted error page left no trace anywhere —
+      // local state was cleared and the app looked logged out. Report
+      // before _clearSessionState(), which resets the Crashlytics user id.
+      //
+      // A user dismissing the browser sheet surfaces here as a
+      // user-cancelled WebAuthenticationException. That is a normal
+      // interaction, not a defect, and reporting it would bury the signal
+      // we actually want under one row per dismissed sheet.
+      final isUserCancelled =
+          e is WebAuthenticationException && e.isUserCancelledException;
+      if (isUserCancelled) {
+        debugPrint('AuthService: logout dismissed by user');
+      } else {
+        ErrorReporter.report(e, st, area: 'auth', operation: 'logout');
+      }
       // Still clear persisted credentials on error
       if (!kIsWeb && _auth0 != null) {
         try {
@@ -239,6 +274,24 @@ class AuthService extends ChangeNotifier {
       }
       _clearSessionState();
       notifyListeners();
+    }
+  }
+
+  /// Best-effort reconstruction of the redirect URL the native Auth0 SDK
+  /// will build for itself. Logging / diagnostics only — the value is
+  /// never handed back to the SDK (see the comment in [logout]).
+  Future<String?> _expectedNativeRedirectUrl() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return auth0DefaultRedirectUrl(
+        isIOS: Platform.isIOS,
+        domain: Environment.auth0Domain,
+        packageName: info.packageName,
+        scheme: Environment.auth0Scheme,
+      );
+    } catch (e) {
+      debugPrint('AuthService: could not derive expected returnTo: $e');
+      return null;
     }
   }
 

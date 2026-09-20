@@ -99,3 +99,75 @@ on Auth0's error page, and nothing lands in `error_logs`.
 - 2026-07-27T11:41 — filed from btri01 legacy-BUGS triage; bas-1 verified as
   not-a-fix by code + SDK-doc inspection
 - 2026-09-20T10:01:24-06:00 — claimed by /devx in session /devx-2026-09-20T1001-3952
+- 2026-09-20T10:15 — phase 2: spec ACs direct (v2 native); 5 ACs; workstream=none;
+  red-artifacts=none. Root cause re-derived from the **vendored SDK sources**
+  rather than the README, which sharpened the diagnosis: the defect is worse on
+  iOS than the spec's Evidence section states. `app/ios/Pods/Auth0/Auth0/
+  Auth0WebAuth.swift:41-62` builds `redirectURL` with `Bundle.main.
+  bundleIdentifier` as **both the URL scheme and the path segment** (the
+  `https` branch only fires under `useHTTPS`, which auth0_flutter leaves
+  false). So the iOS default is
+  `com.palateful.palateful://auth.palateful.app/ios/com.palateful.palateful/callback`
+  — the spec predicted `com.palateful.app://…/ios/com.palateful.palateful/callback`,
+  which is also wrong in the scheme. Corollary found the same way: the
+  `scheme:` argument to `Auth0.webAuthentication(scheme:)` is **ignored
+  entirely on iOS** — nothing under `auth0_flutter-1.14.0/darwin/Classes/`
+  reads a `scheme` key; it is an Android-only knob.
+  Decisive argument for dropping the argument: `Auth0WebAuth.redirectURL` is a
+  single lazy property consumed by **both** `start()` (login) and
+  `clearSession()` (logout, line 231), so on iOS the logout `returnTo` and the
+  login callback URL are byte-identical. Login works in prod, therefore the
+  tenant already carries the exact string logout needs — it just has to be in
+  the (separate) Allowed Logout URLs list. Android is the analogous story via
+  `LogoutWebAuthRequestHandler` → `withScheme` → CallbackHelper, matching the
+  `android:pathPrefix="/android/${applicationId}/callback"` that auth0_flutter's
+  own library manifest registers.
+- 2026-09-20T10:40 — phase 3: AC2 + AC4 + AC5 done; AC1 + AC3 are human-only.
+  Dropped the hand-built `returnTo` (AC2, preferred branch). Added
+  `app/lib/core/config/auth0_urls.dart` — a pure `auth0DefaultRedirectUrl()`
+  that reconstructs what the SDK builds, per the Technical-notes suggestion, so
+  the strings are pinned somewhere executable; it is diagnostics-only and is
+  never handed back to the SDK. `logout()` now breadcrumbs that URL via
+  `ErrorReporter.log` before opening the sheet, which is what makes AC1's
+  on-device check a log read rather than an SDK-source re-derivation, and makes
+  the URL queryable from `audit_errors.py` as a `ClientLog` row. The catch block
+  no longer swallows silently (the Evidence section's "invisible in telemetry"
+  point) — it reports to `ErrorReporter` before `_clearSessionState()` resets
+  the Crashlytics user id. `docs/SETUP.md` §"Create Auth0 Native App" rewritten
+  with both per-platform URLs and the two traps (AC4). `auth_service_web.dart`
+  untouched (AC5).
+- 2026-09-20T10:45 — phase 4: single-pass adversarial review (diff is ~160 lines,
+  one semantic surface — below the 3-agent threshold); 1 finding (1 MED, 0 HIGH,
+  0 LOW); fixed in place — the new `ErrorReporter.report` in the logout catch
+  would have fired on every user-dismissed browser sheet, since Auth0.swift
+  surfaces a sheet dismissal as a user-cancelled `WebAuthenticationException`
+  through the same throw path as a real failure; that is one Crashlytics
+  non-fatal + one `error_logs` row per normal cancel, which would bury the
+  signal the report exists to surface. Now gated on
+  `e is WebAuthenticationException && e.isUserCancelledException`, which
+  debugPrints instead. Also checked and cleared: `ErrorReporter.log`'s backend
+  mirror is `unawaited` so the breadcrumb does not block the logout sheet;
+  `PackageInfo.fromPlatform()` memoizes so the added `await` is not a real
+  round-trip; the breadcrumb does not start with `nav.` so it is not dropped by
+  the mirror's prefix filter; the report runs before `_clearSessionState()` so
+  the row still carries the user id; `dart:io`'s `Platform` use stays behind the
+  existing non-web branch. Re-review of the changed hunks clean.
+- 2026-09-20T10:50 — phase 5: local CI green. `flutter analyze` on the three
+  touched Dart files — no issues. `flutter test` (app project's only configured
+  gate) — **1611 passed, 0 failed**, including the 4 new
+  `test/core/config/auth0_urls_test.dart` cases. Note for future runs: the
+  stale-`build/unit_test_assets` trap recorded in project memory is real; the
+  suite was run after `rm -rf app/build/unit_test_assets`.
+- 2026-09-20T10:52 — phase 8 gap-filing: filed
+  `debug/debug-andph1-2026-09-20T1030-auth0-android-manifest-placeholders.md`
+  (+ DEBUG.md row). Orthogonal defect found while reading the Android side:
+  auth0_flutter's library manifest declares `RedirectActivity` with
+  `${auth0Domain}` / `${auth0Scheme}` placeholders that this repo never defines
+  in `manifestPlaceholders`, and no CI job builds Android, so nothing proves the
+  manifest merge succeeds. Filed rather than fixed — confirming it needs a real
+  Gradle run, and it is about whether Android can *receive* the redirect, not
+  about the string lgort1 sends.
+- 2026-09-20T10:55 — **BLOCKED on AC1 + AC3** (human-only, as the spec and
+  MANUAL.md anticipated). Code work is complete and green; what remains is a
+  dashboard read-back and an on-device pass. See the PR body for the exact two
+  strings that must be present in **Allowed Logout URLs**.
