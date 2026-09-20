@@ -10,10 +10,14 @@
   mutation itself stays owed, and it is no longer discriminating while prod is
   fresh. The logic plus the dispatch/schedule/credentials wiring is pinned on
   every PR by `tools/deploy-freshness-self-test.sh` (9 cases,
-  mutation-verified). **Step 6a — the cron actually firing — is the only thing
-  left**, and it is the one thing that genuinely needs a morning; its approval
-  gate (G0–G3) and every precondition for the firing (S0–S3) are already
-  observed. The owed run has a filed command in `MANUAL.md`.
+  mutation-verified). **Step 6a is now also observed** (2026-09-20): `main`'s
+  pre-fix copy fired **50 unattended scheduled runs** between 2026-08-01 and
+  2026-09-19 with zero approval gates — so every step of the protocol has been
+  measured. All 50 failed in `configure-aws-credentials`, exactly as predicted
+  for a copy lacking `environment: production`: **the freeze detector has never
+  once measured prod.** What stays owed is only the post-merge confirmation
+  that a scheduled run goes *green*. See "Step 6a discharged by 50 days of real
+  firings" below, including two corrections to how the cadence must be read.
 - **⚠ The 96-day freeze ended at 2026-07-31 11:06 MDT, mid-observation.** Prod
   now runs a same-day image and the check correctly reports `Gap: 0 day(s)` /
   exit 0. Earlier guidance in this file and in `MANUAL.md` said a **green** run
@@ -465,6 +469,58 @@ be worse than none: runs at 15:00 daily against `0 15 * * *` report
 (7 predicted, 4 observed) and still exit 0; the same runs against a 12h
 threshold exit 1; a single run exits 2.
 
+### Step 6a discharged by 50 days of real firings (added 2026-09-20)
+
+The morning this eval was waiting for arrived 50 times while the branch sat
+unmerged. `main`'s pre-fix copy of `deploy-freshness.yml` has been scheduled
+continuously since the workflow landed, so its firing record is now directly
+observable — no merge required.
+
+| Observation | Value |
+|---|---|
+| `schedule`-triggered runs of `deploy-freshness.yml` | **50** |
+| Window | 2026-08-01T16:05:30Z (run 30707364462) → 2026-09-19T17:53:49Z (run 35459485945) |
+| Conclusions | **50 failure, 0 success** |
+| Runs held in the `waiting` (approval) state | **0** |
+| Mean interval | 24.0h |
+
+**Step 6a — "the cron actually fires, unattended" — is PASS.** Fifty
+consecutive unattended firings, none gated on a human. This is the observation
+iterations 7 and 8 could only establish preconditions for (S0–S3); it is now a
+direct measurement of this workflow's own slot rather than the repo scheduler's.
+
+**All 50 runs failed, and they failed for the predicted reason.** Run
+35459485945's log ends at `configure-aws-credentials` with
+`Credentials could not be loaded, please check your action inputs` — exactly
+iteration 7's prediction for `main`'s copy, which does not declare
+`environment: production`. **The freeze detector has been dead every single day
+since it shipped.** It has never once measured prod. The one-line
+`environment: production` fix on this branch is the whole difference between a
+freeze detector and a daily red cron.
+
+#### Two corrections to the step-6a findings above
+
+1. **This workflow breaches E-7's 24h threshold; the repo scheduler does not.**
+   S3 measured the *repo-wide* scheduler cadence (100 runs, longest silence
+   5.9h) — but that population is ~88% `devx-promotion.yml`, which fires every
+   1–3h. Measured on `deploy-freshness.yml` alone, the interval between
+   firings ranges **18.3h to 31.9h**. A 31.9h silence is **7.9h past E-7's
+   stated "within 24h" threshold**. S3's `OK: no silence longer than 24h` is
+   true of the repo and false of this workflow; the check it performs does not
+   bind to the workflow under test. Iteration 8's own note — that a plain daily
+   cron leaves *zero* margin against a 24h threshold — turns out to understate
+   it: GitHub's scheduler jitter puts the real worst case over the line.
+
+2. **The firing-time scatter is far wider than recorded.** Iteration 8 inferred
+   scatter from `devx-promotion.yml`. Measured on this workflow, the 50 firings
+   land anywhere from **00:19Z to 23:58Z** against a declared `0 15 * * *`.
+   "Confirm it ran at 09:00 MDT" is not a check anyone can perform; only
+   "a run landed in the last 24h" is.
+
+Neither correction is a defect in the shipped workflow — both are properties of
+GitHub's scheduler. They are defects in **how this eval reads the result**, and
+they are what a reader would otherwise have concluded wrongly.
+
 ## Accepted cost
 
 The check shares its fate with the CI system whose silent breakage it exists
@@ -474,7 +530,16 @@ been skipped throughout this very incident.
 
 ## Result
 
-- **Verdict:** _pending on one observation_ — steps **1, 2, 3, 4 and 7 are
+- **Verdict:** _all seven steps measured; pending one post-merge confirmation._
+  Step 6a closed on 2026-09-20 with 50 real unattended firings of `main`'s copy
+  (0 approval-gated), which also proved the detector has failed on **every one
+  of them** for want of `environment: production`. What remains is not an
+  observation of the mechanism but a confirmation of the fix: that the first
+  scheduled run after this branch merges reports a gap instead of dying in
+  `configure-aws-credentials`. Two cadence corrections are recorded above —
+  this workflow's worst inter-firing silence is **31.9h against E-7's 24h
+  threshold**, and its firing times scatter across the whole day. Previously:
+  steps **1, 2, 3, 4 and 7 are
   fully observed**, mechanism included: three real `workflow_dispatch` runs of
   the fixed workflow in GitHub Actions (30652052889 success / 30652140468
   failure-on-demand / 30652190943 success), with environment-scoped credentials

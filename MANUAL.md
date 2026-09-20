@@ -175,13 +175,32 @@
   ```
   Expect an off-by-one across a UTC midnight when cross-checking — the gap is a
   floor-divided age, so 95d and 96d are the same observation.
-- [ ] **E-7 step 6 — the morning after the merge, confirm the 09:00 MDT run
-  *fired*.** Calendar-time only; nothing to set up.
+- [x] **E-7 step 6a — the cron fires unattended. OBSERVED 2026-09-20, no
+  merge required.** `main`'s pre-fix copy fired **50 scheduled runs** between
+  2026-08-01T16:05:30Z and 2026-09-19T17:53:49Z, **zero** held for approval.
+  The morning this entry was waiting for arrived 50 times while the branch sat
+  unmerged. Re-check with:
   ```
-  gh run list --workflow=deploy-freshness.yml --event=schedule --limit 3
+  gh run list --workflow=deploy-freshness.yml --event=schedule --limit 60 \
+    --json createdAt,conclusion
   ```
-  **Scope — only the firing itself is still owed.** Everything around it is
-  observed, and both checks are re-runnable in seconds with no AWS:
+- [ ] **E-7 step 6b — after this branch merges, confirm a scheduled run goes
+  GREEN.** This is what actually remains, and it is a confirmation of the fix,
+  not of the mechanism. **All 50 firings above failed** in
+  `configure-aws-credentials` (`Credentials could not be loaded`) because
+  `main`'s copy has no `environment: production` — i.e. the freeze detector has
+  never measured prod, not once, since the day it shipped. The next scheduled
+  run after merge should reach the measure step and print a gap.
+  ⚠ **Do not wait for 09:00 MDT.** These 50 runs landed anywhere from
+  **00:19Z to 23:58Z** against a declared `0 15 * * *`. Check "a run landed in
+  the last 24h", never the hour.
+  ⚠ **This workflow breaches E-7's own threshold.** Its inter-firing interval
+  measured **18.3h–31.9h**; a 31.9h silence is 7.9h past the stated 24h. The
+  `--verify-schedule-fires` OK below is measured over the *repo-wide*
+  scheduler (~88% `devx-promotion.yml` at 1–3h), so it does not bind to this
+  workflow. If the 24h threshold is meant literally, the cron needs a second
+  daily slot — worth a decision, separate from this branch.
+  **Scope — the surrounding checks stay re-runnable in seconds with no AWS:**
   ```
   bash tools/deploy-freshness-live-check.sh --verify-environment-gate   # no approval gate
   bash tools/deploy-freshness-live-check.sh --verify-schedule-fires     # nothing blocks the cron
@@ -200,13 +219,12 @@
   `event: schedule` runs over 94h, none gated, longest silence 3.4h**, well
   inside E-7's 24h threshold.
 
-  ⚠ **Record the actual UTC time the run lands — do not just confirm "it ran
-  at 09:00".** Those 54 witness runs all belong to `devx-promotion.yml`, whose
-  cron is `0 0 31 2 *` — an expression that matches no real date — yet it fires
-  every 1–3.4h. Whatever schedules workflows in this repo is not following the
-  cron as written, so the *time* of the freshness run is a genuine unknown that
-  only this observation can settle. Its *frequency* is what E-7's threshold
-  needs, and that is already measured.
+  ⚠ **Superseded 2026-09-20 by this workflow's own record.** The 54 witness
+  runs above all belong to `devx-promotion.yml`, whose cron `0 0 31 2 *`
+  matches no real date yet fires every 1–3.4h. That inference is no longer
+  needed: `deploy-freshness.yml` now has 50 firings of its own, and they
+  confirm the scatter directly (00:19Z–23:58Z) while contradicting the
+  borrowed cadence figure (31.9h worst case, not 3.4h).
 
   Its conclusion depends on prod's actual freshness, not on a fixed
   expectation: `success` while prod is current (it has been since 2026-07-31
