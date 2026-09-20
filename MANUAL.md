@@ -318,3 +318,46 @@
     commands → skills, and a drift-guard test fails if you edit the mirror).
     This repo's `.claude/commands/devx.md` is a copy of that file with a
     `<!-- devx-skill ... -->` banner prepended.
+
+## Filed from bqa102 merge (2026-09-20)
+
+- [ ] **Re-run the E-2 eval — `bqa102` merged with its headline AC unverified.**
+  PR #12 landed the e2e harness (one-command lifecycle + three latent stack
+  fixes), but **AC #6 — two consecutive one-command runs, 8/8 flows each — has
+  never been observed green.** It is recorded unmet in
+  `dev/dev-bqa102-2026-07-27T11:40-e2e-revival-one-command.md`. Phase 2 of the
+  browser-qa-agent workstream is NOT complete, and `DEV.md` keeps its `[-]` row.
+
+  **`DEV.md:44` warned against exactly this merge.** Verbatim, the row read:
+  > `PR: https://github.com/LeoTheMighty/palateful/pull/12 (open — **do not merge as if E-2 is green**).`
+  The merge went ahead anyway, on Leo's explicit merge-and-record decision of
+  2026-09-20, as **harness-shipped and not as E-2 green**. AC #6 was merged
+  **knowingly, without a fresh two-consecutive-8/8 verification.** If you are
+  reading this looking for the real state: E-2 has never been observed green.
+
+  **The blocker the spec originally named is gone.** `debug/debug-e2edwds`
+  (dwds cannot attach against Chrome 150) was resolved 2026-07-30 by
+  `dev/dev-fltup1` — Flutter 3.38.9 → 3.41.7 fixed it. Its successor
+  `debug/debug-e2egetit` was resolved by PR #18. Both are `status: done`.
+  So E-2 is **unverified**, not blocked: nobody has re-run it since the path
+  cleared. It may now pass, or fail for a third reason — that is the open
+  question.
+
+  **What stops a re-run today is the local chromedriver, not the app.**
+  `/opt/homebrew/bin/chromedriver` is a broken symlink to a removed Caskroom
+  build (`151.0.7922.71`), and local Chrome is now **153.0.8010.48** (it was
+  150 when this story was written). Install a matched, signed driver — the
+  Homebrew cask is deprecated and is what rotted here:
+  ```
+  npx @puppeteer/browsers install chromedriver@153.0.8010.48
+  # put the printed directory first on PATH, then:
+  bash services/e2e/scripts/e2e_lifecycle.sh
+  ```
+  The preflight now fails fast and tells you this in <1s rather than after a
+  full app build (fixed in the bqa102 merge commit). Then run the eval itself:
+  ```
+  cd _devx/workstreams && bash run-eval.sh browser-qa-agent/evals/e2_e2e_one_command.sh
+  ```
+  Do not re-author the eval — it was authored at RED and must stay untouched.
+  Record the outcome in the spec's Status log either way; if it fails, file a
+  debug spec for the *new* reason rather than reopening `e2edwds`.

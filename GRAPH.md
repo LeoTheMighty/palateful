@@ -4,7 +4,7 @@
 
 # Story graph
 
-61 specs across 5 groups — 4 blocked · 14 done · 16 in-progress · 27 ready; 87 edges.
+61 specs across 5 groups — 4 blocked · 14 done · 18 in-progress · 25 ready; 87 edges.
 
 ## Legend
 
@@ -232,9 +232,9 @@ flowchart TD
   class e2egetit done
   class hmpseed ready
   class imptab1 done
-  class imptb1 ready
+  class imptb1 wip
   class irrd3a blocked
-  class lgort1 ready
+  class lgort1 wip
   class msa4 wip
   class mvp1 blocked
   class nac000 ready

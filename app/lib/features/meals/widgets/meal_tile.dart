@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme/theme.dart';
+import '../../../shared/widgets/mixed_card_body.dart';
+import '../../../shared/widgets/mixed_card_metrics.dart';
 import '../models/meal.dart';
 import 'component_collage_hero.dart';
 
@@ -22,6 +24,10 @@ String kMealComponentCountLabel(int n) => '$n recipes';
 /// pre-epic shape — when `componentNameResolver` is null the chip row
 /// falls back to the "(N recipes)" label so no caller loses count
 /// information.
+///
+/// rbv101: the tile delegates its geometry to [MixedCardBody], so it
+/// comes out the same size as the recipe cards it is interleaved with
+/// in the book-detail grid instead of sizing to its own text.
 class MealTile extends StatelessWidget {
   final MealSummary meal;
   final VoidCallback onTap;
@@ -65,7 +71,7 @@ class MealTile extends StatelessWidget {
     final chipLine = _buildChipLine();
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: kMixedCardBottomMargin),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -74,63 +80,46 @@ class MealTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 180,
-              width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ComponentCollageHero(
-                    components: _buildComponentsFromSummary(meal),
-                  ),
-                  const Positioned(
-                    top: 8,
-                    left: 8,
-                    child: _MealPill(),
-                  ),
-                  if (onFavoriteToggle != null)
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: _FavoriteOverlay(
-                        isFavorited: isFavorited,
-                        onToggle: onFavoriteToggle!,
-                      ),
-                    ),
-                  if (selected) const _SelectedOverlay(),
-                ],
+        child: MixedCardBody(
+          hero: Stack(
+            fit: StackFit.expand,
+            children: [
+              ComponentCollageHero(
+                components: _buildComponentsFromSummary(meal),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    meal.name,
-                    style: textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              const Positioned(
+                top: 8,
+                left: 8,
+                child: _MealPill(),
+              ),
+              if (onFavoriteToggle != null)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: _FavoriteOverlay(
+                    isFavorited: isFavorited,
+                    onToggle: onFavoriteToggle!,
                   ),
-                  if ((meal.description ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      meal.description!,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  const SizedBox(height: 6),
+                ),
+              if (selected) const _SelectedOverlay(),
+            ],
+          ),
+          info: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  meal.name,
+                  style: textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if ((meal.description ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 4),
                   Text(
-                    chipLine,
-                    key: const ValueKey('meal-tile-chips'),
+                    meal.description!,
                     style: textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -138,9 +127,19 @@ class MealTile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
-              ),
+                const SizedBox(height: 6),
+                Text(
+                  chipLine,
+                  key: const ValueKey('meal-tile-chips'),
+                  style: textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
