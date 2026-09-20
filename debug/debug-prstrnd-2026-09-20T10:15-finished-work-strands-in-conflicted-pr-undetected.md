@@ -47,6 +47,34 @@ the monitor was also invisible. The second is the more general bug — it
 will strand the next thing too, and that thing may not have a coordinator
 session stumbling across it.
 
+The scale of the first failure is worth stating precisely, because it is
+the argument for this story. Between 2026-08-01 and 2026-09-19 the
+pre-fix copy on `main` fired **50 scheduled runs and all 50 failed** in
+`configure-aws-credentials` (`gh run list --workflow=deploy-freshness.yml
+--event=schedule` over that window: `total=50 failure=50 success=0`). It
+never measured prod once. So the detector was not merely misconfigured —
+**it was dead for exactly the window it existed to cover**, while its
+own repair sat finished and unmergeable a few hundred metres away.
+
+There is a second layer to it. Re-measuring the firing times of those same
+50 runs (independently confirmed against palateful-cc's count) shows
+**25 of the 49 intervals exceeded 24h**, with a maximum of 31.95h, against
+an E-7 requirement of a firing interval no worse than 24h. The single daily
+cron did not merely lack margin in theory — it breached the threshold more
+than half the time. So even a *living* detector on that schedule could not
+have honoured its own requirement, and the guard that was supposed to
+protect the schedule asserted a cron string that cannot see interval
+breaches at all. Three independent things had to be wrong at once for this
+to stay invisible for 51 days, and none of them was individually exotic.
+
+Fifty consecutive identical failures is also, on its own, a signal nobody
+consumed. A check that fails every single time it runs is indistinguishable
+from a check that is working, if nothing reads the outcome — which
+generalises past PRs: the gap is that *nothing in this repo notices a
+persistent, unchanging red*. A detector for stranded PRs and a detector
+for permanently-red scheduled workflows are close cousins, and whoever
+takes this should look at whether one thing can answer both.
+
 ## Acceptance criteria
 
 - [ ] Something runs on a schedule and reports open PRs that are
@@ -87,6 +115,15 @@ session stumbling across it.
   file should be merge-strategy `union`; it is the proximate cause here but
   not the systemic one, and fixing it would not have made the strand
   visible — only less likely.
+- Corroborating precedent from the same repo and the same window, found
+  independently while fixing the check (see #24): `deploy-freshness`'s own
+  self-test asserted the literal cron string `'0 15 * * *'` rather than the
+  firing *interval* E-7 actually requires. That assertion was green and
+  mutation-verified and still worthless — it would have passed unchanged
+  through the entire 50-run window. Same family as the bug above: a signal
+  that is green because nothing meaningful is being read. Evidence that
+  "we have a check for that" is not evidence the check binds to the
+  property anyone cares about.
 - Scope guard: this is about *detection*. Do not turn it into an
   auto-rebase or auto-merge feature; a stranded PR often strands for a
   reason (#24 carries ~2000 unreviewed lines), and the correct output is a
@@ -94,6 +131,14 @@ session stumbling across it.
 
 ## Status log
 
+- 2026-09-20T16:30 — amended after #25 merged (`03133116`). Added the
+  50/50 run figure, the 25-of-49 interval breach, and the cron-string
+  assertion precedent. All three re-derived locally rather than carried
+  over from the reporting session. One correction to my own earlier
+  reporting: a firing band of 16:05Z-19:47Z I cited in discussion came
+  from a 12-run sample, not the full window — over all 50 runs the band is
+  00:19Z-23:58Z, with 48 of 50 inside 15:27Z-20:44Z and both extremes
+  falling on a single day (2026-08-28).
 - 2026-09-20T10:15 — filed while fixing `deploy-freshness` auth. The
   requested fix turned out to already exist and be proven; the real defect
   was that it had been stranded in PR #24 for 51 days with nothing
