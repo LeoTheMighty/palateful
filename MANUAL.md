@@ -34,6 +34,231 @@
   NOT a valid check here: it passes `force=True` and bypasses the exact
   code path that was broken.
 
+## Filed from 7c5cf2 / E-7 observation (2026-07-31)
+
+- [ ] **E-7 step 5 — register a prod task-definition revision without
+  deploying it, and confirm the reported gap does not move.** This is the
+  load-bearing observation for `deploy-freshness.yml`: a check that resolves
+  the task definition by *family name* returns the newest **registered**
+  revision instead of the **running** one, so a frozen prod reads as fresh —
+  green and blind, masking the exact failure the check exists to catch.
+  Human-only because it mutates the production AWS account (the agent's
+  `aws ecs register-task-definition` call was blocked by the permission
+  classifier).
+  - **⚠ Not worth running right now (2026-07-31).** The trap is "the newest
+    *registered* revision masks an older *running* one", so it can only show a
+    gap difference while prod is **stale**. The 96-day freeze ended at 11:06
+    MDT today, so a registration now would show "gap unchanged" trivially —
+    the same answer a broken check gives. The discriminating observation was
+    taken at ~11:00, inside the last hour of the freeze (see the scope note).
+    Revive this entry the next time prod goes stale; until then the offline
+    self-test, which pins a 96d fixture permanently, is what carries the
+    property. Note also that the revision numbers below have moved on: prod
+    now runs `:63`, so a registration would create `:64`.
+  - **Scope note (2026-07-31): most of this is already discharged.**
+    `bash tools/deploy-freshness-live-check.sh --simulate-newer-revision`
+    shims the single `describe-task-definition` answer a registration would
+    change, passes every other call through to real ECS, and showed the
+    shipped bash producing a **byte-identical** report before and after
+    (`:62`, `c85e350d…`, 96d, exit 1) — while its built-in control, the same
+    bash with the family shortcut reintroduced, reported the undeployed image
+    as `Gap: 0 day(s)` / "fresh". So the check's *insensitivity* to a newer
+    ACTIVE revision is proven against live prod. What this step still adds is
+    one thing: confirming that a **real** registration actually creates that
+    divergence — new revision becomes the family's newest ACTIVE while
+    `describe-services` keeps returning `:62`. That is documented AWS
+    behaviour and it is the assumption the simulation encodes. Run the
+    sequence below if you want it observed rather than assumed; run
+    `--simulate-newer-revision` first, since a failure there means the check
+    itself regressed and no registration is needed to know it. **Update
+    2026-07-31:** the ECS behaviour that assumption rests on is no longer
+    assumed either — `bash tools/deploy-freshness-live-check.sh
+    --verify-shim-assumptions` observes it read-only in the live account
+    (family-name lookup returns the newest ACTIVE revision even when an older
+    one is still ACTIVE and the newest runs nowhere — witnessed on
+    `palateful-migrator-prod`, ACTIVE `:34` and `:54`; the service's ARN is
+    revision-pinned; revisions are contiguous and never reused). All four
+    checks passed. What is left for a real registration is the composition of
+    those, in one API call.
+  - Precondition captured 2026-07-31: family `palateful-api-prod` has
+    exactly **one** ACTIVE revision, `:62`, and it *is* the running one
+    (`describe-services` → `:62`), on image tag `c85e350d…` (2026-04-26).
+    So the two resolution paths currently agree and the trap is latent —
+    you have to create the divergence to see it.
+  - Registration alone does **not** deploy anything; ECS only changes
+    running tasks on `update-service`. Use tag
+    `c2f7982c506beefbb9f41d141c6595abe19da540` — it is a real image already
+    in ECR (pushed 2026-05-03, 89 days old) and a real commit on `main`, so
+    even an unlucky concurrent deploy would ship something legitimate rather
+    than an unpullable tag. It is *newer* than the deployed image, which is
+    what makes the case discriminating: the shortcut would report 89d, the
+    correct path 96d.
+    ```
+    export AWS_REGION=us-east-1
+    ECR=592349850338.dkr.ecr.us-east-1.amazonaws.com/palateful/api
+    aws ecs describe-task-definition \
+      --task-definition arn:aws:ecs:us-east-1:592349850338:task-definition/palateful-api-prod:62 \
+      --query taskDefinition --output json > /tmp/td62.json
+    jq '{family, taskRoleArn, executionRoleArn, networkMode, containerDefinitions,
+         volumes, placementConstraints, requiresCompatibilities, cpu, memory,
+         runtimePlatform} | with_entries(select(.value != null))
+        | .containerDefinitions[0].image =
+          "'"$ECR"':c2f7982c506beefbb9f41d141c6595abe19da540"' \
+      /tmp/td62.json > /tmp/td63.json
+    # Baseline BEFORE registering, so "unchanged" is a comparison, not a memory.
+    bash tools/deploy-freshness-live-check.sh    # expect :62, c85e350d…, ~96d, exit 1
+
+    NEW=$(aws ecs register-task-definition --cli-input-json file:///tmp/td63.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+
+    # THE OBSERVATION: identical output. Any mention of :63, of c2f7982c…, or a
+    # gap near 89d is the family-shortcut trap, i.e. the check is green-and-blind.
+    bash tools/deploy-freshness-live-check.sh
+
+    aws ecs deregister-task-definition --task-definition "$NEW"   # ALWAYS clean up
+    bash tools/deploy-freshness-live-check.sh    # confirm you're back where you started
+    ```
+  - The live check runs the workflow's own bash, extracted from the workflow
+    YAML, so this observes the shipped logic without needing the workflow
+    merged or dispatched — this step is **not** blocked on the merge, only on
+    the prod mutation. Repeat via `gh workflow run` afterwards if you want the
+    Actions-side confirmation too, but the discriminating evidence is above.
+  - **Deregister when done.** Leaving `:63` ACTIVE means the next
+    `deploy-services` run (which resolves by family, correctly, for its own
+    purpose) would ship that older image. Revision numbers are never reused,
+    so after cleanup the family is byte-identical to how you found it except
+    that the next terraform apply writes `:64`.
+  - Then record the actual in
+    `_devx/workstreams/rotation-self-heal/evals/E-7_deploy-freeze-visibility.md`
+    (step 5 row) and tick the AC in
+    `dev/dev-7c5cf2-2026-07-31T10:24-rsh108-follow-up-run-the-e-7-observation-protocol.md`.
+  - Regression coverage already exists offline:
+    `tools/deploy-freshness-self-test.sh` (CI `lint` job) models this exact
+    scenario against a mocked ECS and was mutation-verified to fail when the
+    family shortcut is reintroduced. That guards the code between
+    observations; it does not substitute for this one.
+
+- [x] **E-7 steps 1/2/3/4 — DONE 2026-07-31, no merge required.** This entry
+  said the dispatches were "blocked purely on the merge" because
+  `gh workflow run` resolves the definition from a *pushed* ref. True, but
+  `--ref` accepts **any** pushed ref — and the loop pushes the WIP branch every
+  iteration, so the fixed workflow was dispatchable all along. (Only
+  `schedule:` is default-branch-only.) All three ran on `feat/dev-7c5cf2`:
+
+  | Run | Input | Result |
+  |---|---|---|
+  | 30652052889 | none | success — `:63` / `848311af…` / `Gap: 0 day(s)`, matching `bin/prod-status` and `git log` (step 2) |
+  | 30652140468 | `synthetic-gap-days=8` | failure — `SYNTHETIC gap of 8d`, `::error::…8 days old` (the input crossed GitHub's expression layer) |
+  | 30652190943 | `synthetic-gap-days=1` | success — `SYNTHETIC gap of 1d`, `Prod image is fresh (1d <= 7d)` |
+
+  Environment-scoped credentials resolved on a non-default branch (run
+  30647079681's `configure-aws-credentials` failure is fixed), and the three
+  runs' `production` deployments never entered `waiting`. Full write-up in
+  `_devx/workstreams/rotation-self-heal/evals/E-7_deploy-freeze-visibility.md`
+  ("The dispatch did not need the merge"). **Nothing to do here.**
+
+  To re-run any of them later (e.g. after a workflow change), the recipe still
+  works from any pushed branch — judge step 1 by *agreement* with
+  `bash bin/prod-status`, not by exit code (a pass is correct now that prod is
+  fresh; "green means broken" expired when the 96-day freeze ended at
+  2026-07-31 11:06 MDT). Step 3 is the discriminating one — it must fail even
+  against fresh prod, and its log must say `SYNTHETIC gap of 8d` rather than
+  prod's real age, or the input never landed:
+  ```
+  bash bin/prod-status            # get the truth first, then compare
+  gh workflow run deploy-freshness.yml --ref <your-pushed-branch>
+  gh workflow run deploy-freshness.yml --ref <your-pushed-branch> -f synthetic-gap-days=8
+  gh workflow run deploy-freshness.yml --ref <your-pushed-branch> -f synthetic-gap-days=1
+
+  gh run list --workflow=deploy-freshness.yml --limit 5
+  gh run view <id> --log | grep -E 'Running task definition|Deployed|Gap:|SYNTHETIC'
+  ```
+  Expect an off-by-one across a UTC midnight when cross-checking — the gap is a
+  floor-divided age, so 95d and 96d are the same observation.
+- [x] **E-7 step 6a — the cron fires unattended. OBSERVED 2026-09-20, no
+  merge required.** `main`'s pre-fix copy fired **50 scheduled runs** between
+  2026-08-01T16:05:30Z and 2026-09-19T17:53:49Z, **zero** held for approval.
+  The morning this entry was waiting for arrived 50 times while the branch sat
+  unmerged. Re-check with:
+  ```
+  gh run list --workflow=deploy-freshness.yml --event=schedule --limit 60 \
+    --json createdAt,conclusion
+  ```
+- [ ] **E-7 step 6b — after this branch merges, confirm a scheduled run goes
+  GREEN.** This is what actually remains, and it is a confirmation of the fix,
+  not of the mechanism. **All 50 firings above failed** in
+  `configure-aws-credentials` (`Credentials could not be loaded`) because
+  `main`'s copy has no `environment: production` — i.e. the freeze detector has
+  never measured prod, not once, since the day it shipped. The next scheduled
+  run after merge should reach the measure step and print a gap.
+  ⚠ **Do not wait for 09:00 MDT.** These 50 runs normally landed
+  **15:27Z–20:44Z** (drift up to 5.7h past the declared `0 15 * * *`), with a
+  one-day excursion on 2026-08-28 to 00:19Z and 23:58Z. Check "a run landed in
+  the last 24h", never the hour. Note the new 03:00Z slot means the next
+  firing after merge may arrive sooner than 15:00Z.
+  ✅ **The 24h-threshold breach is fixed in this same branch.** The measured
+  interval was **18.3h–31.9h**, and **25 of 49 intervals exceeded 24h** — the
+  breach was routine, not a single bad run. Leo chose to
+  tighten the schedule rather than loosen the assertion, so the workflow now
+  declares two slots 12h apart (`0 15 * * *` + `0 3 * * *`) and the self-test
+  asserts the worst nominal gap is ≤12h instead of pinning a literal cron
+  string. Note the `--verify-schedule-fires` OK below is still measured over
+  the *repo-wide* scheduler (~88% `devx-promotion.yml` at 1–3h), so it does
+  not bind to this workflow — read the per-workflow numbers, not that line.
+  **Scope — the surrounding checks stay re-runnable in seconds with no AWS:**
+  ```
+  bash tools/deploy-freshness-live-check.sh --verify-environment-gate   # no approval gate
+  bash tools/deploy-freshness-live-check.sh --verify-schedule-fires     # nothing blocks the cron
+  ```
+  The first (2026-07-31): `production` has `protection_rules: []` *and* the 10
+  most recent real deployments into it — 8 from that day's deploy run
+  30646967338 — went `queued` → `in_progress` in 1–8 s with zero `waiting`
+  states. Strengthened later that day by **this workflow's own** three dispatch
+  deployments (5695703361 / 5695719549 / 5695728778, from runs 30652052889 /
+  30652140468 / 30652190943): `in_progress` 3–8 s after creation, no `waiting`
+  — so the "no approval prompt" half of step 6 is observed for the freshness
+  job itself, not inferred from a sibling job that shares the environment.
+  The second (2026-07-31): the workflow is registered and `active`
+  (not auto-disabled), its `0 15 * * *` cron is on `main` — the only branch
+  GitHub schedules from — and this repo's scheduler produced **54 unattended
+  `event: schedule` runs over 94h, none gated, longest silence 3.4h**, well
+  inside E-7's 24h threshold.
+
+  ⚠ **Superseded 2026-09-20 by this workflow's own record.** The 54 witness
+  runs above all belong to `devx-promotion.yml`, whose cron `0 0 31 2 *`
+  matches no real date yet fires every 1–3.4h. That inference is no longer
+  needed: `deploy-freshness.yml` now has 50 firings of its own, and they
+  confirm the scatter directly (00:19Z–23:58Z) while contradicting the
+  borrowed cadence figure (31.9h worst case, not 3.4h).
+
+  Its conclusion depends on prod's actual freshness, not on a fixed
+  expectation: `success` while prod is current (it has been since 2026-07-31
+  11:06 MDT), `failure` once a real gap opens past 7 days. Do not read
+  `success` as "the check is broken" — that inversion was only valid during
+  the freeze.
+
+  **If you look before this branch merges:** the copy of the workflow on
+  `main` still predates the `environment: production` fix, so the first
+  scheduled run (earliest 2026-08-01, since the workflow landed at 16:24 UTC
+  on 2026-07-31 — after that day's 15:00 UTC slot) will die in
+  `configure-aws-credentials`. That failure is still a useful half-witness:
+  a run that fires and then fails proves the cron fired unattended. What it
+  cannot show is the fixed job succeeding.
+
+  A `waiting` status means someone added a protection rule to the
+  `production` environment since 2026-07-31; the check is then blind to
+  unattended freezes, and the fix is to exempt this job or move the AWS
+  secrets to repo scope. `tools/deploy-freshness-self-test.sh` pins the cron
+  and the `environment:` declaration on every PR, but it cannot observe a rule
+  added on the GitHub side — `--verify-environment-gate` can, and this run
+  is the backstop.
+
+  **No run at all** (not even a failing one) means the workflow itself is not
+  being scheduled. Re-run `--verify-schedule-fires` first: it distinguishes the
+  three causes — GitHub auto-disabled the workflow for repo inactivity (S0,
+  fix: `gh workflow enable deploy-freshness.yml`), the cron is not on the
+  default branch (S1), or the repo's scheduler has gone quiet generally (S2/S3).
+
 ## /devx-init deferred work
 
 - [ ] **devx-init: supervisor-install-deferred** — OS-supervisor install deferred by non-interactive `devx init`

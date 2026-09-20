@@ -224,9 +224,41 @@ def keys_of(start):
 # 1. The unattended trigger (AC-4 / E-7 step 6). A check with no schedule is
 #    only ever as good as someone remembering to press the button — which is
 #    precisely what did not happen for 92 days.
-name = "schedule: exactly one 09:00 MDT (15:00 UTC) cron"
+#
+#    Asserted as a PROPERTY, not a literal: what E-7 needs is "a gap is
+#    reported within 24h of crossing 7 days", so what must hold is the
+#    worst-case wait between firings, not any particular cron string.
+#    Pinning the literal '0 15 * * *' is what let a zero-margin daily
+#    schedule sit under a 24h threshold unnoticed — and this workflow's own
+#    first 50 firings then ranged 18.3h-31.9h, breaching it. The bound below
+#    leaves >=12h of headroom for GitHub's scheduler drift.
+MAX_NOMINAL_GAP_H = 12
+
+name = "schedule: daily slots leave <= %dh nominal gap (E-7 threshold 24h)" % MAX_NOMINAL_GAP_H
 crons = re.findall(r"^\s*-\s*cron:\s*['\"]?([^'\"#]*?)['\"]?\s*$", "\n".join(lines), re.M)
-ok(name) if crons == ["0 15 * * *"] else bad(name, "cron triggers are %r" % (crons,))
+if not crons:
+    bad(name, "no cron trigger at all — the check would only ever run by hand")
+else:
+    mins = []
+    for c in crons:
+        f = c.split()
+        # Only plain daily slots are understood here; anything fancier (step
+        # values, day-of-week narrowing) must not be silently read as daily.
+        if len(f) != 5 or f[2:] != ["*", "*", "*"] or not f[0].isdigit() or not f[1].isdigit():
+            mins = None
+            bad(name, "cron %r is not a plain daily slot — cannot bound the gap" % c)
+            break
+        mins.append(int(f[1]) * 60 + int(f[0]))
+    if mins:
+        mins = sorted(set(mins))
+        # Largest wait between consecutive firings, wrapping past midnight.
+        gaps = [b - a for a, b in zip(mins, mins[1:])] + [mins[0] + 1440 - mins[-1]]
+        worst = max(gaps) / 60.0
+        if worst <= MAX_NOMINAL_GAP_H:
+            ok("%s [%d slot(s), worst %.1fh]" % (name, len(mins), worst))
+        else:
+            bad(name, "worst nominal gap is %.1fh across %r — at or over E-7's "
+                      "24h threshold once scheduler drift is added" % (worst, crons))
 
 # 2. The credentials fix (first dispatch run 30647079681 died without it —
 #    the AWS secrets exist ONLY at `production` environment scope). Dropping
