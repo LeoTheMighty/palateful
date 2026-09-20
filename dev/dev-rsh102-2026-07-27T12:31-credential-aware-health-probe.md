@@ -4,8 +4,8 @@ type: dev
 created: 2026-07-27T12:31:00-06:00
 title: Credential-aware health probe — fresh connection, fail-open classifier
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-20T0954-67490
 branch: feat/dev-rsh102
 ---
 
@@ -131,3 +131,4 @@ once; the ACs reflect that.
   observed RED right-reason (`ModuleNotFoundError: utils.services.db_probe`,
   plus `test_health_check` failing on the new `db` body field); see
   `_devx/workstreams/rotation-self-heal/evals/RED-report.md`.
+- 2026-09-20T09:54:04-06:00 — claimed by /devx in session /devx-2026-09-20T0954-67490
