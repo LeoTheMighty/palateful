@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-27T21:35:00-06:00
 title: rotation-self-heal RED artifacts break the `test` job on main
 from: dev/dev-bqa101-2026-07-27T11:39-config-truth-qa-flip.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 ---
 
@@ -125,3 +125,12 @@ workstream lands.
   - Note for rsh102: its GREEN commit must delete the registry entry AND fold the two
     baseline tests out of `test_health.py` — they pin the old contract and both become
     wrong when FR-2 ships. Called out in the header of both files.
+
+- 2026-09-20T00:00 — closed out during rsh102 Phase 1. The fix merged as PR #9
+  (`bac7d6b9`) on 2026-07-31 but the backlog rows were never reconciled, so
+  `DEBUG.md:14` read `in-progress` and `DEV.md:58` kept rsh102 `blocked` for
+  ~7 weeks after the blocker cleared. Verified resolved: `tools/red-artifacts.txt`
+  and `libraries/utils/test/conftest.py` are on `main`; `ci.yml / test` is green at
+  `e212dd25` (run 30655623108); the deploy lane reopened and ran full-lane green in
+  run 30646967338. The detection gap itself is filed as its own story — see the
+  backlog-staleness item in DEV.md.
