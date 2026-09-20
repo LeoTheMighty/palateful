@@ -93,58 +93,96 @@ What `bin/prod-ios-deploy` does:
 TestFlight processing takes ~5–15 minutes after upload before the
 build becomes available to testers.
 
-### Xcode Cloud (alternate path) — ⚠️ NOT CURRENTLY RUNNING
+### Xcode Cloud — the CI path
 
-**This section previously claimed that pushes to `main` trigger an Xcode
-Cloud workflow that archives and uploads to TestFlight. That has been
-false for at least seven weeks and nothing caught it.** Corrected
-2026-09-20 (`tfship1`).
+**One rule governs everything here:**
 
-Repo-side scaffolding is real and maintained —
-`app/ios/ci_scripts/ci_post_clone.sh` (installs Flutter, `pub get`,
-`pod install`, lints the share extension, runs its unit tests) and
-`ci_post_xcodebuild.sh` (asserts `PalatefulShare.appex` embedded,
-uploads dSYMs to Crashlytics). But the **workflow definition lives in
-App Store Connect, not in this repo**, and builds stopped at 88 while
-`main` kept taking pushes. Scaffolding present ≠ pipeline running.
+> Branch: `main` · Files and Folders:
+> **"Start if 'pubspec.yaml' file from the 'app' folder changes"**
 
-**How to tell whether it is actually running** — the check this doc
-should have offered all along, rather than asserting a trigger:
+That is the start condition, verbatim, read from App Store Connect on
+2026-09-20. **It exists nowhere in this repository** — no workflow file,
+no config, no trace beyond `app/ios/ci_scripts/`. Nothing you can grep
+will tell you it is there, which is why it is written down here.
 
-> App Store Connect → Xcode Cloud → the workflow. Read **when it last
-> ran**, not whether it exists. Cross-check against App Store Connect →
-> TestFlight → Builds: if the highest build number predates recent
-> pushes to `main`, it is not running regardless of what any
-> configuration screen says.
+#### What it means in practice
 
-Two drift hazards were found and **both are now fixed** (`tfship1`,
-2026-09-20) — recorded because they explain why a revived workflow
-would have failed, and because the first one will recur if anyone
-bumps Flutter without looking here:
+**A TestFlight build ships when — and only when — a commit landing on
+`main` changes `app/pubspec.yaml`.** Not when `app/lib` changes. Not
+when the Xcode project changes. Only that one file.
 
-- **`ci_post_clone.sh` installed the tip of `stable`, not the repo's
-  pin.** Tip was **3.47.5**; `ci.yml` pins **3.41.7** — six minor
-  versions, widening with every Flutter release. Now pinned via
-  `FLUTTER_VERSION`, with a version assertion so a mismatch fails
-  loudly instead of silently building something untested.
-  **`ci_post_clone.sh` is the third place the Flutter version is
-  pinned**, alongside `ci.yml` and `mobile-builds.yml`; a Flutter bump
-  must change all three in one PR.
-- **`ci_post_xcodebuild.sh` hard-failed (`exit 1`) when Crashlytics'
-  `upload-symbols` was missing**, failing an otherwise clean archive
-  over symbolication. Now a warning; missing symbols degrade crash
-  reports rather than blocking a release.
+This is deliberate and it is a good rule: "bump the version, ship a
+build." Firing on every Dart merge would burn an App Store Connect
+build number and notify every tester each time.
 
-Still outstanding: **Xcode Cloud's `CI_BUILD_NUMBER` starts at 1 per
-workflow and does not read `pubspec.yaml`.** App Store Connect is at
-88, so a newly configured workflow will be rejected at upload until it
-climbs past that. Left deliberately unfixed for the first trigger,
-because a duplicate-build rejection proves the entire chain ran.
+But it has a sharp edge, and it cost a day to find:
 
-Until it is verified running, **`bin/prod-ios-deploy` is the real iOS
-deploy path** — it works and has shipped eleven builds. Keep it as the
-manual fallback even once CI is revived; a CI path with no escape hatch
-is worse than one with.
+> **If you bump the version locally and do not commit it, the build you
+> just uploaded is invisible to `main`, and Xcode Cloud never fires.**
+
+`bin/prod-ios-deploy` does not bump or commit anything. It reads the
+version, archives, uploads, and prints `Don't forget to commit the
+version bump!` — a reminder, not a guard. Run it a few times without
+committing and App Store Connect silently drifts ahead of the repo.
+
+**That is exactly what happened.** By 2026-09-20 ASC was at build 88
+while `app/pubspec.yaml` said 77 — eleven local uploads whose bumps
+never reached git. Then the repo froze on 2026-04-26, `app/pubspec.yaml`
+stopped changing entirely, and the trigger had nothing left to fire on.
+Three symptoms that looked unrelated — the eleven-build gap, no builds
+since 88, and "it was all working at some point" — were one cause. The
+pipeline was never broken. It was starved of its input.
+
+So: **committing the bump is not bookkeeping, it is the deploy
+trigger.**
+
+#### How to tell whether it actually ran
+
+The part every other artifact left out. Do not reason from
+configuration — a screen that looks right is what this document
+asserted, wrongly, for seven weeks.
+
+**Xcode Cloud reports through the GitHub commit-statuses API, not
+check-runs.** It therefore never appears in the PR checks list, in
+`gh pr checks`, or anywhere in the GitHub Actions UI. If you look for
+it there you will find nothing, whether or not it ran.
+
+```bash
+# Did Xcode Cloud fire for a given commit?
+gh api repos/LeoTheMighty/palateful/commits/<sha>/status \
+  --jq '.statuses[] | "\(.state)\t\(.context)\t\(.description)"'
+# -> pending|success|failure  "palateful | Prod Deploy"  ...
+# -> no rows at all = it never fired (check: did the commit touch app/pubspec.yaml?)
+```
+
+The `target_url` on that status links straight to the build log in App
+Store Connect, which is the only place the log lives.
+
+Cross-check the outcome in **App Store Connect → TestFlight → Builds**:
+if the highest build number predates recent pushes to `main`, it is not
+running, regardless of what any configuration screen says.
+
+#### Repo-side scaffolding
+
+- `app/ios/ci_scripts/ci_post_clone.sh` — installs the **pinned**
+  Flutter (`FLUTTER_VERSION`, kept in step with `ci.yml` and
+  `mobile-builds.yml`; this is the third pin site), then `pub get`,
+  `pod install`, share-extension lint and unit tests.
+- `app/ios/ci_scripts/ci_post_xcodebuild.sh` — asserts
+  `PalatefulShare.appex` is embedded (hard failure: a missing extension
+  ships a silently broken feature), then uploads dSYMs to Crashlytics
+  (soft failure: symbolication is not worth a release).
+
+Apple requires these to sit adjacent to the `.xcworkspace`, which is
+why they live under `app/ios/` rather than with the rest of CI.
+
+#### Manual fallback
+
+`bin/prod-ios-deploy` still works and is the documented escape hatch —
+it shipped builds 78–88. Use it when CI is unavailable, but **commit
+the version bump**, or you reopen the drift described above. A CI path
+with no manual fallback would be worse; a manual path that silently
+desynchronises the repo is the thing to watch for.
 
 ## Parser (AWS Batch, GPU)
 
