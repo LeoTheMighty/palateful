@@ -44,10 +44,19 @@ entries, not three:
 | `Runner.xcodeproj` — Runner (Debug/Release/Profile) | `13.0` ×3 | **15.0** |
 | `Runner.xcodeproj` — PalatefulShare (Debug/Release/Profile) | `14.0` ×3 | **15.0** |
 | Transitive pods | inherited **9.0–14.0** | **15.0** (forced) |
+| `app/ios/Flutter/AppFrameworkInfo.plist` | `MinimumOSVersion 13.0` | key removed by Flutter tooling |
+
+Plus a **seventh** declaration nobody was counting:
+`app/ios/Flutter/AppFrameworkInfo.plist` carried `MinimumOSVersion 13.0`.
+Flutter 3.41.7's own tooling **deleted** that key during `pub get` — newer
+Flutter derives it from the project instead of hard-coding it — so it shows up
+in this diff without having been hand-edited. Worth knowing it existed: a
+`grep` for `IPHONEOS_DEPLOYMENT_TARGET` would never have found it.
 
 The Podfile and the Xcode project had disagreed with each other for a long
-time, and the share extension disagreed with the main app. Nothing reconciled
-them because nothing read them together.
+time, the share extension disagreed with the main app, and a plist nobody
+looks at disagreed with both. Nothing reconciled them because nothing read
+them together.
 
 ## Does 15.0 cost devices? No — and the repo already answered this
 
