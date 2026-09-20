@@ -179,3 +179,8 @@ on Auth0's error page, and nothing lands in `error_logs`.
   passed, so the PR body renders the tour-unavailable line. phase 7: CI
   probe returned two workflows at the branch tip — `devx-ci` success, `CI &
   Deploy` still in progress at the time of writing.
+- 2026-09-20T11:12 — phase 7: CI success — both workflows at the branch tip
+  green (`devx-ci` run 35521842056, `CI & Deploy` run 35521842028). phase 8
+  NOT run: merge is held at the coordinator session's explicit request ("no
+  merges to main without checking with me"), and AC3 is still open pending the
+  Auth0 dashboard read-back. Spec stays `in-progress`; PR #27 stays open.
