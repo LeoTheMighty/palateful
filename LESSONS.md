@@ -87,3 +87,23 @@
   at the wrong failure mode. Ask what *else* the monitor depends on, and
   assert that it has actually produced a verdict recently — not merely that
   it ran.
+
+- **Re-read the current state before applying a draft you wrote earlier.**
+  Draft freshness is its own hazard, distinct from clobbering. The dangerous
+  case is not overwriting a stale row with a current one — it is overwriting
+  a **more current** row with a stale draft, where the resulting diff reads
+  as tidying up. On 2026-09-20 this session had a prepared edit for
+  `bqa102`: clear the dead blocker, move the row. Between drafting and
+  applying, another session had already cleared the blocker, recorded the
+  AC #6 debt, deliberately kept the row at `[-]` with the reason stated
+  inline ("Row stays `[-]`; Phase 2 is not complete"), and found something
+  the draft's author had not — the E-2 re-run is blocked on a local
+  chromedriver that is a broken symlink to a removed Caskroom 151 build
+  while Chrome is now 153. Applying the draft would have regressed a
+  deliberate decision into what looked like progress.
+  The defence is **not** the pre-commit assertion: that compares your tree
+  to `origin/main` and would have passed, because the change really was
+  yours and really was intentional. The only thing that catches this is
+  reading the row as it stands now and asking whether your draft still
+  describes an improvement. The longer a queue waits — and this one waited
+  through a five-PR merge wave — the more of it has been overtaken.
