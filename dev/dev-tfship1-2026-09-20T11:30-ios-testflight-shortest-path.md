@@ -49,12 +49,38 @@ especially when the repo looks unambiguous, because that is exactly when the
 instinct is to skip the check.** Every remaining Path 1 step that touches
 Apple state is written as a confirmation, not an assumption.
 
-## Headline finding
+## Headline finding — CORRECTED 2026-09-20T13:10
 
-**The pipeline does not work as written, and two of its three blockers also
-break the manual Xcode stopgap.** Fixing the pipeline first does not get a
-build to testers any sooner, and it is the slower path. Ship by hand, then
-wire.
+The original framing of this spec was **wrong**, and the correction matters
+more than anything it got right.
+
+> ~~"The pipeline is unwired scaffolding."~~
+
+That was true of `mobile-builds.yml` and false of the repo. **There is a
+working end-to-end iOS deploy: `bin/prod-ios-deploy`.** One command — `flutter
+build ios --release` → `xcodebuild archive` → generated ExportOptions
+(`method: app-store-connect`, `destination: upload`, `teamID: H66YP2QFW2`) →
+`xcodebuild -exportArchive -allowProvisioningUpdates`. No Fastlane, no Match,
+no Xcode UI. Last touched `c97d25a5` (2026-04-24), which brackets builds
+78–88 exactly. **That is how they were uploaded.**
+
+How the error was made, because it is the same one twice: we searched
+`.github/workflows/`, found a workflow with 0 runs, and concluded "mobile has
+never deployed". That is true of *CI* and false of *deploying* — the presence
+of an unused workflow read as the absence of a working path. Same proxy
+mistake as reading `pubspec.yaml` for what shipped.
+
+**Corrected premise: there is a working local deploy and no CI wrapper around
+it.** Everything below is re-reasoned from that.
+
+The script's two real gaps are precisely today's two symptoms:
+
+- **No build-number bump.** Its last line is `echo "Don't forget to commit the
+  version bump!"` — a comment standing in for automation. **That is the
+  eleven-build drift mechanism, found.** A1 is no longer a mystery.
+- **No tester-group assignment.** Upload only, so testers stay blocked until
+  someone clicks in App Store Connect. B4 is a property of every mechanism
+  here, not of Fastlane.
 
 ## Acceptance criteria
 
@@ -282,6 +308,139 @@ exists — `app/android/app/google-services.json` is tracked, project
 M4.2 APNs auth key (delivery, not signing — see A3), M4.4 GitHub webhook.
 Android secrets are out of scope.
 
+## D. There are FOUR mechanisms, not two — and one of them is already supposed to do this
+
+Before building anything, the landscape, because proposing a fourth without
+accounting for the third would repeat today's mistake:
+
+| # | Mechanism | State | Evidence |
+|---|---|---|---|
+| 1 | `bin/prod-ios-deploy` | **Works.** Produced builds 78–88 | `c97d25a5`, 2026-04-24 |
+| 2 | `mobile-builds.yml` (Fastlane + Match) | **0 runs, ever.** Defects B1–B5 | `gh run list` |
+| 3 | **Xcode Cloud** | Scaffolded, actively maintained, **status unknown** | `app/ios/ci_scripts/ci_post_clone.sh`, last touched 2026-07-31 |
+| 4 | A new GitHub Actions macOS job | What Leo just asked for | — |
+
+**`docs/DEPLOYMENT.md:91-97` already claims mechanism 3 does exactly what Leo
+is asking for:**
+
+> "Pushes to `main` **also trigger an Xcode Cloud workflow** that archives and
+> uploads to TestFlight without running `bin/prod-ios-deploy`."
+
+That is the requested feature, documented as already existing. And it is
+demonstrably **not happening** — if it were, builds would have continued past
+88 on their own. They stopped.
+
+**So the first question is not "how do we build this" but "why did the thing
+that already does this stop?"** Note where the answer lives: Xcode Cloud is
+configured in **App Store Connect**, not in the repo. `ci_scripts/` is its
+only repo-side trace. This is the operating principle a third time — the repo
+documents a working path, the console knows it isn't running, and nothing
+reconciles them.
+
+**Leo's check (2 min): App Store Connect → Xcode Cloud → the workflow.** Is it
+present, is it enabled, when did it last run, and what did it say? Three
+outcomes:
+
+- **Disabled or never finished being configured** → re-enable it. Probably the
+  shortest path to "runs on main" of anything in this document.
+- **Failing** → fix that. It may be the known artifact-save failure.
+- **Genuinely absent** → then build mechanism 4, per §E.
+
+## E. Design proposal — answers to the four questions
+
+Deliberately a proposal, not an implementation. Q2's answer changes Leo's
+secret list, so it should be agreed first.
+
+### Q2 first — signing in CI. **The ASC API key is necessary but NOT sufficient.**
+
+This is the highest-value question and the answer is a qualified no, so
+stating it plainly to head off a wrong expectation:
+
+`xcodebuild -exportArchive -allowProvisioningUpdates` does accept
+`-authenticationKeyPath` / `-authenticationKeyID` / `-authenticationKeyIssuerID`
+(Xcode 13+). Those cover **provisioning-profile creation and upload auth** —
+so the *profile* half of Fastlane Match genuinely disappears.
+
+They do **not** put an **Apple Distribution certificate and its private key**
+in the runner's keychain. A fresh macOS runner has neither. And the tempting
+shortcut is a trap: `-allowProvisioningUpdates` *can* mint a new distribution
+certificate, but the private key dies with the ephemeral runner, so every run
+creates another — until the account hits Apple's distribution-certificate cap
+and every subsequent run hard-fails. It would look like it worked for a few
+runs.
+
+So the cert must be supplied:
+
+| Secret | Where Leo gets it |
+|---|---|
+| `APP_STORE_CONNECT_API_KEY_ID` | ASC → Users and Access → Integrations |
+| `APP_STORE_CONNECT_ISSUER_ID` | same page |
+| `APP_STORE_CONNECT_API_KEY_P8` | downloaded `.p8`, once only |
+| `IOS_DIST_CERT_P12_BASE64` | Keychain Access → export Apple Distribution as `.p12` → `base64` |
+| `IOS_DIST_CERT_PASSWORD` | the passphrase he sets on that export |
+
+**Net: five secrets, same count as Fastlane — so this is not the "down to
+three" win it looked like.** The real win is different and still large:
+**the Match bootstrap disappears.** No private certificate repo, no local
+`fastlane match appstore` write run, no Ruby in the deploy path. B2 — the
+chicken-and-egg that made the Fastlane path unshippable — stops existing.
+Leo exports a `.p12` from Keychain Access in two minutes instead.
+
+**And if mechanism 3 is revivable, all five go away**: Xcode Cloud handles
+signing entirely on Apple's side. **Zero signing secrets.** That is the
+strongest argument for checking §D before building §E.
+
+### Q1 — gating. Path-filter on `app/`, and do **not** copy `deploy-web`'s trigger.
+
+`deploy-web` does **not** depend on `detect-changes` (`ci.yml` — its `needs:`
+is `[setup, lint, test, check-models, flutter-test, terraform]`). It
+redeploys on *every* main push. That is harmless for Cloudflare and actively
+bad for TestFlight: a build per docs commit means a burned build number and a
+**push notification to every tester** each time. Today proves the case — four
+PRs merged, none touched `app/`.
+
+So: gate on `app/`. `detect-changes` is the right lever and it just became
+usable — **`app/project.json` was created today** (11:28, the `nxappproj`
+fix), so `npx nx show projects` now lists `app`. It didn't when this
+investigation started. `detect-changes` needs one new output (`app`) alongside
+`api`/`worker`/`migrator`/`parser`; the job already does exactly this shape of
+filtering.
+
+Recommend `workflow_dispatch` as well, so Leo can ship without a code change.
+
+### Q3 — build number. Derive from App Store Connect, never from the repo.
+
+`github.run_number` is monotonic but unanchored — it is currently far below
+88, so it would need a hardcoded offset that silently rots the same way
+`pubspec.yaml` did. Rejected for being the same class of bug.
+
+Query ASC for the latest build number and add one. With the API key already
+present this is a short JWT-signed `GET /v1/builds` — no Fastlane needed,
+though `latest_testflight_build_number` is the same idea if Ruby is acceptable.
+
+**The property that matters: the repo stops being the source of truth.**
+`pubspec.yaml`'s build number becomes advisory, CI's computed value wins, and
+the A1 drift class cannot recur regardless of who archives from what. That is
+the fix, not the convenience.
+
+### Q4 — `mobile-builds.yml` should be deleted, plainly.
+
+It has never run, its iOS lane has three defects (B1/B3/B4), and it needs a
+Match bootstrap nobody has done. If mechanism 3 or 4 lands, the Fastlane path
+is superseded and keeping it means **two mechanisms where one has never
+worked** — a standing invitation for the next person to wire the wrong one, as
+this spec itself did for its first three hours. Delete the iOS job with the
+change that replaces it. (Its Android job is out of scope here and should be
+handled by whoever picks Android up; do not delete that half silently.)
+
+### Still in scope regardless of mechanism: tester-group assignment
+
+Every mechanism in the table uploads and stops. **"Uploaded" is not "testers
+can install."** Whatever lands must either assign the build to a tester group
+(ASC API, or Fastlane's `groups:`) or state explicitly that a human click
+remains — it should not be discovered later by testers who still can't
+install.
+
 ## Technical notes
 
 - The Android job's `google-github-actions/auth@v2` step is **not**
@@ -331,3 +490,21 @@ Android secrets are out of scope.
   whole row would have been the same stale-bookkeeping error in the opposite
   direction. Added the operating principle above; it is the generalisation of
   both surprises, not an anecdote about either.
+- 2026-09-20T13:10 — **premise corrected.** `bin/prod-ios-deploy` is a working
+  end-to-end iOS deploy and is how builds 78-88 reached TestFlight; this
+  spec's "the pipeline is unwired scaffolding" was true of `mobile-builds.yml`
+  and false of the repo. Root of the error: searched `.github/workflows/`,
+  found 0 runs, concluded "never deployed" — CI absence read as deploy
+  absence. Re-reasoned the whole document from the corrected premise rather
+  than patching the line. Found in the process that there are **four**
+  mechanisms, not two: `docs/DEPLOYMENT.md:91-97` claims an **Xcode Cloud**
+  workflow already archives and uploads on every push to `main` — which is
+  exactly the feature being requested — and `app/ios/ci_scripts/` was
+  maintained as recently as 2026-07-31. It is demonstrably not running (builds
+  stopped at 88), and its config lives in App Store Connect where the repo
+  cannot see it. So the first question is why the existing mechanism stopped,
+  not how to build another. Design answers in §E; the load-bearing one is Q2 —
+  an ASC API key covers profiles and upload auth but **not** the distribution
+  certificate, so it is 5 secrets rather than the hoped-for 3, and the real
+  prize is that the Match bootstrap (B2) disappears. If Xcode Cloud is
+  revivable it is 0 signing secrets, which is why §D gates §E.
