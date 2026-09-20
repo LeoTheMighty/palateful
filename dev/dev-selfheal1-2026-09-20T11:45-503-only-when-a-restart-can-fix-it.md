@@ -48,6 +48,39 @@ restart fixes neither. That narrowing was reviewed and landed inside rsh102
 (see its status log, 2026-09-20). The two cases below fail the identical
 test and were held only because the RED artifact pins them.
 
+## Measured evidence: the two drivers disagree about what they report
+
+Taken against a live Postgres with a deliberately wrong password
+(`libraries/utils/test/test_db_credentials_live_drivers.py`, rsh102 T2.3):
+
+    psycopg2: OperationalError     pgcode=None       message='... FATAL:  password authentication failed for user "postgres"'
+    asyncpg:  InvalidPasswordError sqlstate='28P01'  message='password authentication failed for user "postgres"'
+
+Three things follow, and they matter for both cases below.
+
+**The SQLSTATE is not reliably present.** psycopg2's real connect-time
+rejection carries **no SQLSTATE at all** — libpq raises it without a
+`PGresult`. A classifier keyed on SQLSTATE alone silently misses a genuine
+rotation on the sync path. That is a *missed* self-heal: the probe says
+`UNREACHABLE`, the task is never replaced, and the six-day-outage shape
+returns.
+
+**The attribute differs.** asyncpg exposes `.sqlstate`; psycopg2 exposes
+`.pgcode`. Reading one misses the other.
+
+**Therefore the message is the load-bearing signal**, and it is the only one
+available on the driver the sync probe (and rsh107's worker health check)
+uses. That cuts directly against admitting `no password supplied` as an auth
+message: the message channel is precisely the one carrying the most weight,
+so what is allowed into it deserves the most scrutiny — and
+`no password supplied` describes the *client* having nothing to send, not
+the server rejecting anything. It is the weakest possible reason to destroy
+a task, riding on the strongest available signal.
+
+This measurement is a better argument than the reasoning it replaces,
+because it is a fact about the drivers rather than an inference about
+PostgreSQL's error taxonomy.
+
 ## Case 1 — `"no password supplied"` → 503
 
 **Status today:** `db_credentials.AUTH_MESSAGE_PATTERNS` includes
