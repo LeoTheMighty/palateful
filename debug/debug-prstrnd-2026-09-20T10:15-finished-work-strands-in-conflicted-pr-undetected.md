@@ -112,6 +112,29 @@ None of the three is individually exotic. It is the *coincidence* that is
 the argument for a detector rather than three point fixes: fixing any one
 of them in isolation leaves the other two silently covering for it.
 
+The full run history is sharper still than the 50-run window. Across the
+workflow's entire life: **54 runs, 52 failures, 2 successes — and both
+successes are from 2026-07-31, the day it was built.** Both were
+`workflow_dispatch` runs on the unmerged fix branch, so **the copy on
+`main` has never succeeded once.** Every firing since the build day died at
+step 3, `configure-aws-credentials`, *before reaching the measure step*.
+
+That distinction is the point, and it is worth stating precisely because it
+is easy to under-read: a red `deploy-freshness` could plausibly have meant
+the check working correctly and shouting about a genuinely stale prod. It
+never meant that. **It never formed a verdict at all.** The failure was
+upstream of the judgement, every single time, which is why 52 identical
+reds carried no information and nobody was wrong to ignore them.
+
+The irony is written in the workflow's own header. It lives in a separate
+file on purpose, because "the check shares its fate with the CI system
+whose silent breakage it exists to catch" — and it then shared its fate
+with credential scoping instead. The mitigation was correctly reasoned,
+carefully argued, and aimed at the wrong failure mode. **A monitor isolated
+from one dependency it was designed to outlive is not isolated from the
+next one nobody thought of** — which is the most useful sentence in this
+story and belongs in whatever comes out of it.
+
 Fifty consecutive identical failures is also, on its own, a signal nobody
 consumed. A check that fails every single time it runs is indistinguishable
 from a check that is working, if nothing reads the outcome — which
@@ -169,6 +192,16 @@ takes this should look at whether one thing can answer both.
   that is green because nothing meaningful is being read. Evidence that
   "we have a check for that" is not evidence the check binds to the
   property anyone cares about.
+- **The fix itself rests on an unowned assumption, and this is live.**
+  `deploy-freshness.yml:63-68` records that the `production` environment
+  currently has no protection rules. If a required reviewer is ever added,
+  the job stalls awaiting approval and can no longer detect an *unattended*
+  freeze — the exact capability it exists for. Nothing watches that setting
+  and nobody owns it; it is a guarantee resting on an unverified assumption
+  about a system one hop away, which is the same shape as every other
+  failure in this story. 4f is recording it in MANUAL.md. A detector for
+  this family should probably assert the environment has no protection
+  rules, not just that the job declares the environment.
 - Scope guard: this is about *detection*. Do not turn it into an
   auto-rebase or auto-merge feature; a stranded PR often strands for a
   reason (#24 carries ~2000 unreviewed lines), and the correct output is a
@@ -176,6 +209,10 @@ takes this should look at whether one thing can answer both.
 
 ## Status log
 
+- 2026-09-20T17:25 — folded in 4f's full-history pull (re-derived locally:
+  54 runs, 52 failures, 2 successes, both build-day dispatches on the fix
+  branch, so main's copy has never succeeded). Added the workflow-header
+  irony and the unowned `production`-environment assumption.
 - 2026-09-20T17:05 — recorded that the first post-fix firing is expected to
   be red (~51d gap, verified live against `palateful-api-prod:63`), and
   retired the green-may-be-correct caveat: run 35522939142 skipped all four
