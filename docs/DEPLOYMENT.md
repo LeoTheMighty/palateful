@@ -117,16 +117,29 @@ should have offered all along, rather than asserting a trigger:
 > pushes to `main`, it is not running regardless of what any
 > configuration screen says.
 
-Two known drift hazards to clear before trusting a revived workflow:
+Two drift hazards were found and **both are now fixed** (`tfship1`,
+2026-09-20) — recorded because they explain why a revived workflow
+would have failed, and because the first one will recur if anyone
+bumps Flutter without looking here:
 
-- **`ci_post_clone.sh` installs the tip of `stable`, not the repo's
-  pin.** It does `git clone --depth 1 -b stable`. Tip of stable is
-  **3.47.5** today; `ci.yml` pins **3.41.7**. Six minor versions apart,
-  widening with every Flutter release. Pin it (`-b 3.41.7`) and keep it
-  in step with `ci.yml`.
-- **`ci_post_xcodebuild.sh` hard-fails (`exit 1`) when Crashlytics'
-  `upload-symbols` is missing**, so a symbol-upload problem fails the
-  whole archive after a successful build.
+- **`ci_post_clone.sh` installed the tip of `stable`, not the repo's
+  pin.** Tip was **3.47.5**; `ci.yml` pins **3.41.7** — six minor
+  versions, widening with every Flutter release. Now pinned via
+  `FLUTTER_VERSION`, with a version assertion so a mismatch fails
+  loudly instead of silently building something untested.
+  **`ci_post_clone.sh` is the third place the Flutter version is
+  pinned**, alongside `ci.yml` and `mobile-builds.yml`; a Flutter bump
+  must change all three in one PR.
+- **`ci_post_xcodebuild.sh` hard-failed (`exit 1`) when Crashlytics'
+  `upload-symbols` was missing**, failing an otherwise clean archive
+  over symbolication. Now a warning; missing symbols degrade crash
+  reports rather than blocking a release.
+
+Still outstanding: **Xcode Cloud's `CI_BUILD_NUMBER` starts at 1 per
+workflow and does not read `pubspec.yaml`.** App Store Connect is at
+88, so a newly configured workflow will be rejected at upload until it
+climbs past that. Left deliberately unfixed for the first trigger,
+because a duplicate-build rejection proves the entire chain ran.
 
 Until it is verified running, **`bin/prod-ios-deploy` is the real iOS
 deploy path** — it works and has shipped eleven builds. Keep it as the
