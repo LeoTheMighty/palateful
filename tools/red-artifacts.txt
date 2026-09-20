@@ -48,5 +48,4 @@
 # would also drop the passing tests it replaced, and `services/api`
 # pins `fail_under = 100`. Add a sibling file instead.
 
-libraries/utils/test/test_db_credential_provider.py:rsh105:secrets-manager-password-provider — utils/services/db_credentials.py not implemented yet
-services/api/tests/test_health_credential_probe.py:rsh102:credential-aware-health-probe — utils/services/db_probe.py not implemented yet; GREEN commit must also fold the baseline tests out of test_health.py
+libraries/utils/test/test_db_credential_provider.py:rsh105:secrets-manager-password-provider — SecretPasswordProvider / resolve_password_provider / register_rotating_credentials + the boto3 seam not implemented yet (rationale narrowed by rsh102, which created db_credentials.py itself for is_auth_error; the module now exists, the provider surface does not)

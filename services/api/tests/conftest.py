@@ -56,6 +56,24 @@ def _prewarm_unit_alias_cache_for_tests() -> None:
 _prewarm_unit_alias_cache_for_tests()
 
 
+# rsh102 (T2.6) — the health probe's verdict cache is process-global.
+# `/v1/health` is hit by the `client`/`async_client` examples below, by
+# `test_main.py` and by `test_async_client_fixture.py`, so a verdict that
+# leaks out of one test makes all of them order-dependent — and a leaked
+# `AUTH_FAILED` in particular turns an unrelated test's 200 into a 503.
+# Autouse and session-wide rather than opt-in: every test that reaches
+# the endpoint needs it, and the ones that do are exactly the ones least
+# likely to remember. Promoted here from the probe's own test module so
+# the protection covers the whole suite, not just that file.
+@pytest.fixture(autouse=True)
+def _reset_db_probe_verdict_cache():
+    from utils.services import db_probe
+
+    db_probe._reset_verdict_cache()
+    yield
+    db_probe._reset_verdict_cache()
+
+
 # ---------------------------------------------------------------------------
 # Model-like objects for mocking database results
 # ---------------------------------------------------------------------------
