@@ -62,6 +62,18 @@ test's fixtures no longer land where it looks for them.
 
 ### Root cause — AC #1. Two causes, neither a regression; this ticket is a duplicate.
 
+> **Read this even if you skim the rest.** The fixture rot diagnosed below is
+> not a CI-hygiene story. `flutter-test` is the root job `deploy-web` hangs
+> off (`ci.yml:462`, `:521` for `detect-changes`), so aged-out test fixtures
+> **froze production deploys** — prod sat on image `c85e350` from
+> **2026-04-26 to 2026-07-27**, three months, because a `'created_at'` literal
+> in a widget test drifted past a 30-day cutoff. Source is the header comment
+> of `app/test/fixture_date_guard_test.dart` (landed by `0a5c3d41`), which is
+> why that guard exists and why its baseline only shrinks. If you are
+> reconstructing the freeze as a credentials or merge-conflict problem, this
+> was the mechanism for most of its duration.
+
+
 The three failures this spec was filed against **no longer exist**, and the
 one failure observable today is a different thing wearing the same filename.
 Separating them is the whole answer.
@@ -189,7 +201,10 @@ changed, because nothing in the repo was wrong.
   belong in the record, for different reasons. Worth noting from that guard's
   own header comment: this fuse is why prod sat frozen on image `c85e350` from
   2026-04-26 to 2026-07-27 — `flutter-test` is the root job `deploy-web`
-  (`ci.yml:462`) hangs off, so aged-out fixtures froze deploys, not just CI.
+  (`ci.yml:462`) hangs off, so aged-out fixtures froze deploys, not just CI —
+  elevated to a callout at the top of the root-cause section, since three
+  sessions were reconstructing that freeze as a credentials-and-conflicts
+  problem while a date-fused fixture was the actual mechanism.
   The coordinator independently hit the stale-shader trap too (94 false
   failures, cleared by `rm -rf app/build/unit_test_assets`), which is the same
   root cause as (b) above reached from a second machine-state — `flutter clean`
