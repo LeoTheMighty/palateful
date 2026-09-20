@@ -39,39 +39,39 @@ the binding date is the next scheduled rotation, **2026-10-29**.
       because it already converged. Full plan in the status log. The
       "everything pending since 2026-04-26" premise no longer holds: that
       backlog drained in the 2026-07-31 apply.
-- [ ] `libraries/utils/utils/services/db_credentials.py` exists with
+- [x] `libraries/utils/utils/services/db_credentials.py` exists with
       `is_auth_error(exc) -> bool` matching `exc` → `.orig` → `__cause__`,
       on SQLSTATE/`pgcode` **or** message pattern (`password authentication
       failed`, `no password supplied`).
-- [ ] `is_auth_error` classifies a **live** psycopg2 *and* asyncpg
+- [x] `is_auth_error` classifies a **live** psycopg2 *and* asyncpg
       connect-time auth failure correctly (docker-compose Postgres, wrong
       password) — not only a constructed exception.
-- [ ] `libraries/utils/utils/services/db_probe.py` exists with `ProbeVerdict`,
+- [x] `libraries/utils/utils/services/db_probe.py` exists with `ProbeVerdict`,
       `probe_async`, `probe_sync`, single-flight `cached_verdict_async`,
       `_reset_verdict_cache()`, `_now()` clock seam, `_connect_once()` connect
       seam, `_probe_url()`, a `__main__` CLI, and `poolclass=NullPool`.
-- [ ] Unset probe URL classifies **OK** (nothing to authenticate against).
-- [ ] `health_check` reads the cached verdict and **no longer declares the
+- [x] Unset probe URL classifies **OK** (nothing to authenticate against).
+- [x] `health_check` reads the cached verdict and **no longer declares the
       `get_async_database` dependency**. 503 body is
       `{"detail": "db credentials invalid", "db": "AUTH_FAILED"}`; 200 body is
       `{"status": "ok", "db": "<verdict>"}`.
-- [ ] 503 for **both** `28P01` and `28000` raised at the patched connect seam
+- [x] 503 for **both** `28P01` and `28000` raised at the patched connect seam
       (E-2). 200 for a timeout, an `OperationalError` without an auth
       SQLSTATE, a DNS failure, **and** a bare `RuntimeError` (E-3).
-- [ ] E-4: at most 1 fresh connection per 60s window. Both cases pass — a
+- [x] E-4: at most 1 fresh connection per 60s window. Both cases pass — a
       rapid burst of N probes, **and** an interleaved 30s/60s schedule
       crossing a TTL boundary. The latter passes only if the cache is
       single-flight, so it is the case that actually tests the design.
-- [ ] Autouse cache-reset fixture promoted from `test_health.py` into
+- [x] Autouse cache-reset fixture promoted from `test_health.py` into
       `services/api/tests/conftest.py` (T2.6) so `test_main.py`,
       `test_async_client_fixture.py` and the `conftest.py` example stay
       order-independent.
-- [ ] `DB_PROBE_TTL_S` configurable, default 60.
-- [ ] Coverage assertion over `coverage/libraries/utils/coverage.xml` for
+- [x] `DB_PROBE_TTL_S` configurable, default 60.
+- [x] Coverage assertion over `coverage/libraries/utils/coverage.xml` for
       `db_credentials.py` and `db_probe.py` (T2.8) — `libraries/utils` sets no
       `fail_under`, so the highest-risk new code otherwise lands where nothing
       enforces coverage.
-- [ ] `npx nx run api:test` passes with coverage still at 100%.
+- [x] `npx nx run api:test` passes with coverage still at 100%.
 - [x] ~~**On the `main` push**: `deploy-images` runs all four legs,
       `run-migrator` succeeds, `terraform-prod` succeeds, and
       `deploy-services` reaches conclusion `success`~~ — **closed 2026-09-20 on
@@ -329,3 +329,34 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   the wrong RED-artifact pointer). Committed as one commit, pushed,
   PR #29 opened: https://github.com/LeoTheMighty/palateful/pull/29 — no
   unresolved placeholders.
+- 2026-09-20T12:45 — AC checkboxes ticked; all 15 now closed (11 satisfied by
+  this story, 3 retired on prior evidence at phase 1, AC-1 satisfied at
+  phase 1 and corroborated below).
+- 2026-09-20T12:45 — **AC-1 corroborated directly, replacing the argument
+  from absence.** The phase-1 entry inferred that
+  `aws_secretsmanager_secret_rotation.db_master` had converged *because it
+  was missing from the plan* — which is equally consistent with the resource
+  never having been in scope. An adversarial reviewer flagged that correctly.
+  Resolved against real state rather than by argument:
+
+      $ terraform state list | grep db_master
+      module.rds.aws_secretsmanager_secret_rotation.db_master
+
+      $ terraform state show 'module.rds.aws_secretsmanager_secret_rotation.db_master'
+      resource "aws_secretsmanager_secret_rotation" "db_master" {
+          id                 = "arn:...:secret:rds!db-fa766898-...-xVJ6GM"
+          rotate_immediately = false
+          rotation_enabled   = true
+          rotation_rules { automatically_after_days = 90 }
+      }
+
+  The resource **is** managed and in scope, and the value terraform holds
+  (`automatically_after_days = 90`) matches what `describe-secret` reports
+  live. So its absence from the plan means *no diff*, which is the reading
+  the AC wanted. Both halves now rest on direct evidence.
+- 2026-09-20T12:45 — phase 7.5: **review tour skipped (fail-soft).** The
+  installed `devx` CLI has no `tour` command (`error: unknown command
+  'tour'`; the CLI also warns it is behind devx HEAD). Per the fail-soft
+  rule no tour flags were passed to `devx pr-body`, the PR body renders the
+  tour-unavailable line, and the PR was not blocked. PR #29 therefore ships
+  without a guided walkthrough — a reviewer gets the raw diff.
