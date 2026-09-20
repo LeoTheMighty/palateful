@@ -4,6 +4,8 @@ type: debug
 created: 2026-07-27T18:53:00-06:00
 title: imports_tab_test.dart — 3 widget tests red on main
 from: btri01
+spawned:
+  - dev/dev-fxfuse-2026-09-20T10:35-drain-the-fixture-date-fuse-baseline.md
 status: done
 owner: /devx-2026-09-20T0958-90325
 branch: feat/debug-imptb1
@@ -212,3 +214,22 @@ changed, because nothing in the repo was wrong.
   `app/README.md` note is worth its 33 lines.
   Suite count differs harmlessly between sessions: 1607 here on `main`
   @ `dfbff598`, 1612 on the coordinator's rebased branch.
+- phase 8: DEBUG.md `[/]` → `[x]` flip deliberately NOT made here — handed to
+  palateful-4f, which is already writing DEV.md/DEBUG.md/MANUAL.md in one
+  commit. Two writers on that file was the avoidable half of today's conflicts,
+  so #26 touches no backlog file at all.
+- phase 8 (gap-filing): filed `dev/dev-fxfuse-2026-09-20T10:35-drain-the-fixture-date-fuse-baseline.md`.
+  `0a5c3d41`'s ratchet stops the fused-fixture population growing but nothing
+  drains it: **66 literals across 29 files** still grandfathered in
+  `app/test/fixture_date_guard_baseline.txt`, each a live fuse on the exact
+  mechanism that froze prod on `c85e350` for three months. Sharpened while
+  writing it — `grep -rn "DateTime.now().subtract" app/lib/` returns **three**
+  30-day boundaries, not one: `imports_tab.dart:168`,
+  `plan_meal_sheet.dart:179` (a date-picker `firstDate`, so calendar fixtures
+  rot by unselectability rather than by list filtering) and
+  `profile_screen.dart:417`. That reframes the work as triage against three
+  surfaces rather than a blanket rewrite, and most of the 29 likely want the
+  guard's `// age-independent` marker instead of a refactor. The story carries
+  a time-travel AC (run the suite with the clock advanced) because otherwise it
+  cannot distinguish success from "the bombs haven't gone off yet" — which is
+  how the baseline reached 29 files in the first place.
