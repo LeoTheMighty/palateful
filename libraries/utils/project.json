@@ -29,7 +29,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "poetry run pytest libraries/utils/ --cov-branch --cov-report xml:coverage/libraries/utils/coverage.xml --cov-report html:coverage/libraries/utils/html --junitxml=reports/libraries/utils/unittests/junit.xml --html=reports/libraries/utils/unittests/html/index.html",
+          "mkdir -p coverage/libraries/utils && COVERAGE_FILE=coverage/libraries/utils/.coverage poetry run pytest libraries/utils/ --cov-branch --cov-report xml:coverage/libraries/utils/coverage.xml --cov-report html:coverage/libraries/utils/html --junitxml=reports/libraries/utils/unittests/junit.xml --html=reports/libraries/utils/unittests/html/index.html",
           "poetry run python tools/assert_module_coverage.py --xml coverage/libraries/utils/coverage.xml --min 100 utils/services/db_probe.py utils/services/db_credentials.py"
         ],
         "cwd": "{workspaceRoot}",
