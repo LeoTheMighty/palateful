@@ -99,7 +99,15 @@ with it.
 - Generated `Pods.xcodeproj`: **243 `IPHONEOS_DEPLOYMENT_TARGET` entries, all
   `15.0`, zero below floor.** This is the direct test that the 81 errors are
   gone — the error was per-pod, so per-pod is where it has to be proven.
-- `flutter build ios --release --no-codesign` — see status log.
+- `flutter build ios --release --no-codesign` → **exit 0**,
+  `✓ Built build/ios/iphoneos/Runner.app (35.4MB)`, Xcode build 84.9s.
+  **Zero occurrences of "deployment target" in the entire build log** — the
+  81 errors are gone, and nothing was traded for a warning. Confirmed
+  afterwards that the Flutter tool's "Upgrading Podfile / AppFrameworkInfo.plist"
+  steps were no-ops against these edits (`git status` clean, `platform :ios,
+  '15.0'` and the floor block intact) — worth checking rather than assuming,
+  since that tool rewrites both files and could have reverted the change it
+  was being used to verify.
 
 ## ⚠️ Podfile.lock was ALSO five months stale — a separate finding
 
@@ -139,6 +147,8 @@ build-unblocking change. Filed as cleanup to pair with any future move to 16.
 - [x] Every generated pod target lands at ≥ 15.0 (243/243 verified)
 - [x] `Podfile.lock` regenerated; its extra churn explained rather than waved through
 - [x] 15.0 shown not to cost devices, from the repo rather than from recall
+- [x] Local `flutter build ios --release` succeeds at the new floor with no
+      deployment-target diagnostics
 - [ ] Xcode Cloud run reaches **past** `pod install` — the real proof, and it
       needs a merge. **Do not merge to trigger without coordinating**: every
       merge touching `app/ios/` now fires a real run.
@@ -148,3 +158,14 @@ build-unblocking change. Filed as cleanup to pair with any future move to 16.
   Root cause confirmed as the CocoaPods build-settings pass, which was on the
   suspect list; the Flutter pin from `tfship1` is cleared, as separately
   demonstrated by running its clone/assert sequence in isolation.
+- 2026-09-20T15:35 — verified. `pod install` clean; **243/243** generated pod
+  entries at `15.0`, none below floor; `flutter build ios --release
+  --no-codesign` exit 0 with **zero** deployment-target lines in the log.
+  Also found a seventh declaration in the process —
+  `app/ios/Flutter/AppFrameworkInfo.plist`'s `MinimumOSVersion 13.0`, removed
+  by Flutter's own tooling and invisible to a `IPHONEOS_DEPLOYMENT_TARGET`
+  grep. Podfile.lock regeneration additionally reconciled five months of
+  `pubspec.yaml` drift (`firebase_performance` in, `speech_to_text` out), which
+  is not this change's doing and is documented above so nobody reads it as
+  scope creep. **Not merged**: every merge touching `app/ios/` now fires a real
+  Xcode Cloud run, so triggering is a coordinated decision, not a side effect.
