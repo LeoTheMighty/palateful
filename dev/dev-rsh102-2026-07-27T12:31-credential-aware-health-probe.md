@@ -282,3 +282,50 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   `test_28000_is_admitted_only_when_the_message_says_credentials`; reasoning
   in `db_credentials.py`'s module docstring; the broader principle is filed
   as `selfheal1`.
+- 2026-09-20T12:20 — phase 4: 3-agent parallel adversarial review (blind
+  hunter / edge-case hunter / acceptance auditor) — the diff cleared the
+  substantial-surface threshold. **29 findings (8 HIGH/CRITICAL, 13 MEDIUM,
+  8 LOW); ALL fixed in-place.** Most load-bearing fix: `AUTH_SQLSTATES`
+  included `28000`, which PostgreSQL also raises for a pg_hba rejection and
+  for a missing role — a restart fixes neither, so with
+  `deployment_minimum_healthy_percent = 0` that is a permanent drain, not
+  churn. Narrowed to `28P01`, with `28000` admitted only on a corroborating
+  auth message.
+
+  Second outage-class fix: the probe budget was 5s against the ALB's
+  `timeout = 3`, so the fail-open 200 was physically undeliverable on the
+  exact scenario fail-open exists for — the checker gives up first and
+  scores it as a failure. Now a 2.5s **total** budget via `asyncio.wait_for`
+  around the whole attempt; `connect_args["timeout"]` bounds only the
+  connect, and a half-open TCP after an RDS failover hangs in `SELECT 1`
+  where nothing else would stop it.
+
+  Also: leader cancellation propagated to every coalesced waiter (the probe
+  is now an independent task — an ALB timeout cancelling the handler makes
+  that the common case); the endpoint and the classifier are guarded,
+  because a 500 fails the container health check exactly as hard as a 503;
+  a cross-event-loop task leak that goes live when rsh107 calls this;
+  `inf`/`nan` TTL validation; a `constants.py` parse that could crash every
+  service at import; a `finally`-block dispose that could mask a real auth
+  error; and six coverage-gate holes including a suffix match with no path
+  boundary. Re-review clean.
+
+  Three of my own tests were rewritten rather than kept: they encoded the
+  old leader-owns-the-future design and asserted behaviour the S4 fix
+  deliberately changes. One was deleted as redundant, and one was rewritten
+  to drive `_clear_inflight` directly after I found it was passing without
+  exercising the guard it named.
+- 2026-09-20T12:25 — phase 5: local CI green on a **clean** run (no edits to
+  the tree during it, on the rebased branch — three of the auditor's
+  measurements had been invalidated by mid-run edits, which is a real
+  hazard worth naming). `api:lint` clean, `utils:lint` clean,
+  `utils:test` 707 passed + `coverage gate OK — 2 module(s) at >= 100% line
+  and branch coverage`, `api:test` **2631 passed, coverage 100.00%**
+  (`fail_under = 100` satisfied). Live-driver leg 7/7 against
+  docker-compose Postgres.
+- 2026-09-20T12:30 — phase 6/7: rebased onto `origin/main` (four PRs had
+  landed underneath — the rebase also brings this spec's own corrections
+  into the worktree, which had been carrying the pre-correction copy with
+  the wrong RED-artifact pointer). Committed as one commit, pushed,
+  PR #29 opened: https://github.com/LeoTheMighty/palateful/pull/29 — no
+  unresolved placeholders.
