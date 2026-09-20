@@ -4,8 +4,8 @@ type: debug
 created: 2026-07-27T11:41:00-06:00
 title: Native Auth0 logout returnTo uses the URL scheme where the bundle id belongs
 from: btri01
-status: ready
-owner: unassigned
+status: in-progress
+owner: /devx-2026-09-20T1001-3952
 branch: unassigned
 ---
 
@@ -98,3 +98,4 @@ on Auth0's error page, and nothing lands in `error_logs`.
 ## Status log
 - 2026-07-27T11:41 — filed from btri01 legacy-BUGS triage; bas-1 verified as
   not-a-fix by code + SDK-doc inspection
+- 2026-09-20T10:01:24-06:00 — claimed by /devx in session /devx-2026-09-20T1001-3952
