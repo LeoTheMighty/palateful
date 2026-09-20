@@ -30,3 +30,4 @@ Fill the devx O-4 slot: the attended exploratory `/devx-test` skill, its dispatc
 - 2026-07-27T11:42 — emitted from plan 41ee13 at RED-gate PASS (tests-after phase).
 - 2026-07-30T14:12:31-06:00 — claimed by /devx in session /devx-loop-2026-07-30T17-52-24-754-38586
 - 2026-07-31T15:21:14.404Z — loop stopped mid-item (stopped by signal); worktree + claim preserved
+- 2026-09-20 — scope narrowed to AC4 + AC5 after an AC-by-AC read against `~/personal/devx`. AC1 (skill + mirror), AC2 ($1/day cap), AC3 (dispatcher + `decide.ts` routing) all verified shipped via devx PRs #113/#126/#146; provenance is the `Row 10.5 (bqa104)` comment at `src/lib/next/decide.ts:33`. AC4 not done — `docs/QA.md:55` still carries the blanket ❌ and `v2/07-decisions.md:141-144` still says "still open, nothing built". AC5 unverified, not failed. Claim released; row left `in-progress` rather than closed.

@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:12:00-06:00
 title: Swap sync OpenAI client to AsyncOpenAI at all API callsites and drop the threadpool bridge
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 blocked-by: []
 branch: feat/dev-aam7
@@ -39,3 +39,4 @@ Replace every synchronous `OpenAI(...)` client in `services/api/src/` with `Asyn
   - Learning: api:test currently cannot pass on any branch: tests/test_health.py (1 failed + 17 errors) imports utils.services.db_probe which exists nowhere in the repo — the rshred1 RED-stage breakage from commit 5a6174d — and its erroring tests leave health_router.py:25-27 uncovered, capping total coverage at 99 vs the fail-under=100 gate; every file touched by aam7 is individually at 100%
   - Learning: Patches of the helpers in test_recipe.py/test_coverage_gaps.py needed no changes because unittest.mock.patch auto-detects async targets and substitutes AsyncMock
   - Learning: Residual for aam-24: the chat provider's sync OpenAI client is in libraries/agent/agent/llm/openai.py (outside services/api/src), so the chat SSE path is untouched by design
+- 2026-09-20 — merged via PR #14 (squash `065dfc97`); row reconciled from `in-progress` to `done` 51 days after the merge.

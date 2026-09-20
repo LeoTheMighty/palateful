@@ -361,3 +361,39 @@
   Do not re-author the eval — it was authored at RED and must stay untouched.
   Record the outcome in the spec's Status log either way; if it fails, file a
   debug spec for the *new* reason rather than reopening `e2edwds`.
+
+---
+
+## Re-check the `production` environment before adding any reviewer to it
+
+`deploy-freshness.yml:69` declares `environment: production`, and that
+declaration is load-bearing for PR #25's fix: the AWS secrets exist **only**
+as environment-scoped secrets, so without it the job dies at
+`aws-actions/configure-aws-credentials@v4` before it can measure anything.
+
+**The guarantee rests on a setting nobody owns.** The comment at
+`deploy-freshness.yml:63-68` records that the `production` environment
+currently has no protection rules. If a reviewer is ever added,
+`check-freshness` stalls waiting for approval and can no longer detect an
+**unattended** freeze — which is the only kind it exists to catch.
+
+**The detector must assert the environment has no protection rules, not
+merely that the job declares the environment.** Declaring it is necessary
+and not sufficient, and only that weaker half is currently guarded (by the
+mocked self-test at `ci.yml:162`, which uses a fake ECS and a backdated
+sandbox repo — no AWS access, so it cannot exercise the credential path at
+all).
+
+Why this matters more than it looks: **the copy of this workflow on `main`
+has never succeeded once.** Across its whole history — 54 runs — there are
+51 runs on `main` and **0** successes; the only two successes were
+`workflow_dispatch` runs on the unmerged fix branch `feat/dev-7c5cf2`. Every
+scheduled firing since 2026-08-01 died at credential load, upstream of any
+verdict. So the 52 reds carried no information: a red never meant "prod is
+stale", it meant "the check died." The 51-day deploy freeze ran its entire
+course underneath a monitor that had never worked.
+
+PR #25 is merged but **unverified**. The workflow has `workflow_dispatch`
+(with a `synthetic-gap-days` input), so firing it manually verifies the fix
+in a minute rather than waiting on a cron whose measured drift exceeded 24h
+on 25 of 49 intervals. Leo's or cc's call.

@@ -5,7 +5,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. St
 ## Imported from BUGS.md (2026-07-27)
 
 - [/] `debug/debug-rbv101-2026-07-27T17:30-book-view-card-sizing.md` — Recipe-book view renders meal and recipe cards at different sizes. Status: in-progress. From: BUGS.md (newest report).
-- [/] `debug/debug-btri01-2026-07-27T17:31-legacy-bugs-triage.md` — Triage legacy BUGS.md reports against current main (meal creation, push notifs, auth0 logout, shopping cart, token refresh — all likely fixed by bas-1..4 + landed epics); close with evidence or file real debug specs. Status: in-progress.
+- [x] `debug/debug-btri01-2026-07-27T17:31-legacy-bugs-triage.md` — Triage legacy BUGS.md reports against current main (meal creation, push notifs, auth0 logout, shopping cart, token refresh — all likely fixed by bas-1..4 + landed epics); close with evidence or file real debug specs. Status: done. PR: https://github.com/LeoTheMighty/palateful/pull/2 (merged `0aff93a7`).
 
 ## Found during /devx runs (2026-07-27)
 
@@ -20,11 +20,11 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. St
 ## Found during /devx fltup1 (2026-07-30)
 
 - [x] `debug/debug-e2egetit-2026-07-30T13:00-clientlatencyingest-not-registered-in-e2e-mode.md` — Under `E2E_MODE=true` the app crashes on its first frame: `Bad state: GetIt: Object/factory with type ClientLatencyIngest is not registered inside GetIt`, thrown in a scheduler callback from `app_router.dart:98` via `perf_navigator_observer.dart:87`. The router never finishes building, so the follow-on `Found 0 widgets with text "Home"` is a consequence, not a second defect. The 1564-test widget suite is green on the same commit and toolchain, so the gap is specific to the E2E boot path. **Successor blocker to `debug-e2edwds` — this is what bqa102's E-2 eval now waits on.** Status: done. From: fltup1 AC #5. PR: https://github.com/LeoTheMighty/palateful/pull/18
-- [/] `debug/debug-nxappproj-2026-07-30T13:05-flutter-app-not-registered-with-nx.md` — The Flutter app is not an nx project: `npx nx show projects` lists 11 projects without `app`, there is no `app/project.json` anywhere, and `npx nx run app:test` exits 1 with `Cannot find project 'app'` from any directory. CLAUDE.md mandates nx-first, and specs keep being written against `app:*` targets that cannot run (fltup1 AC #2 was one). Low severity, but it makes a missing-project error look like a failing suite. Status: in-progress. From: fltup1 AC #2.
+- [x] `debug/debug-nxappproj-2026-07-30T13:05-flutter-app-not-registered-with-nx.md` — The Flutter app is not an nx project: `npx nx show projects` lists 11 projects without `app`, there is no `app/project.json` anywhere, and `npx nx run app:test` exits 1 with `Cannot find project 'app'` from any directory. CLAUDE.md mandates nx-first, and specs keep being written against `app:*` targets that cannot run (fltup1 AC #2 was one). Low severity, but it makes a missing-project error look like a failing suite. Status: done. PR: https://github.com/LeoTheMighty/palateful/pull/19 (merged `700a131d`). From: fltup1 AC #2.
 
 ## Found during import verification (2026-07-27)
 
-- [/] `debug/debug-rcres1-2026-07-27T18:21-deleted-occurrence-resurrection.md` — Deleted recurring-meal occurrence resurrects on next materialize pass (delete detaches the row from its rule → invisible to the materializer's dedup → slot re-inserts; also `is_recurring` never set on materialized rows). Status: in-progress. From: bugs-cal-3b verification.
+- [x] `debug/debug-rcres1-2026-07-27T18:21-deleted-occurrence-resurrection.md` — Deleted recurring-meal occurrence resurrects on next materialize pass (delete detaches the row from its rule → invisible to the materializer's dedup → slot re-inserts; also `is_recurring` never set on materialized rows). Status: done. PR: https://github.com/LeoTheMighty/palateful/pull/4 (merged `98d19f11`). From: bugs-cal-3b verification.
 
 ## Pre-existing red suite (2026-07-27)
 
@@ -34,7 +34,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done. St
 
 - [/] `debug/debug-lgort1-2026-07-27T17:41-auth0-logout-returnto-malformed.md` — Native Auth0 logout `returnTo` puts `Environment.auth0Scheme` (`com.palateful.app`) in the path segment where the bundle id / package name (`com.palateful.palateful`) belongs, so it can't be in Allowed Logout URLs → Auth0 error page. bas-1 did not fix the "weird auth0 page" report; the SDK's own default `returnTo` would have been correct. Status: in-progress. From: btri01 (BUGS.md "Logging out shows a weird auth0 page").
 - [ ] `debug/debug-cldb01-2026-07-27T17:41-client-latencies-db-auth-500.md` — Live prod 500 on `POST /v1/client-latencies`: `password authentication failed for user "palateful"` (2026-07-27 16:49 UTC, one occurrence). Corroborate against CloudWatch or close as transient. Status: ready. From: btri01 evidence gathering.
-- [/] `debug/debug-imptb1-2026-07-27T18:53-imports-tab-widget-tests-red-on-main.md` — `flutter test` is red on `main`: 3 widget tests in `app/test/features/activity/imports_tab_test.dart` fail (expected rows / section copy not rendering). 1530 pass, 3 fail. Pre-existing, unrelated to btri01. Status: in-progress. From: btri01 full-suite verification.
+- [x] `debug/debug-imptb1-2026-07-27T18:53-imports-tab-widget-tests-red-on-main.md` — `flutter test` is red on `main`: 3 widget tests in `app/test/features/activity/imports_tab_test.dart` fail (expected rows / section copy not rendering). 1530 pass, 3 fail. Pre-existing, unrelated to btri01. Status: done. PR: https://github.com/LeoTheMighty/palateful/pull/26 (merged `65d4d75a`). From: btri01 full-suite verification.
 
 
 ## Found during deploy-freshness auth fix (2026-09-20)

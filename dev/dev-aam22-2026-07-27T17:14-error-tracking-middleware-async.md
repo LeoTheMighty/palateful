@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:14:00-06:00
 title: Error-tracking middleware — bridge the sync error-log write off the event loop via threadpool and the dedicated error-log sub-pool
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 blocked-by: []
 branch: feat/dev-aam22
@@ -38,3 +38,4 @@ branch: feat/dev-aam22
   - Learning: Main CI is deliberately red: commit 5a6174de 'plan: rotation-self-heal — red stage' committed test_health.py tests importing a nonexistent utils.services.db_probe module (17 errors + 1 failure + 3 uncovered lines in health_router.py, overall coverage 99.98%). Every full-suite failure on this branch is that pre-existing red-stage, owned by another item — any Phase 4 merge will hit this in CI until rotation-self-heal lands.
   - Learning: endpoint.py's _log_error_to_db also uses traceback.format_exc() despite being run via run_in_threadpool — it likely records 'NoneType: None' stack traces in production; possible small follow-up fix in libraries/utils.
   - Learning: Fresh devx worktrees need `npx nx run api:install` and an explicit DATABASE_URL to run the api suite; the CI-matching URL postgresql://postgres:postgres@localhost:5432/test works against the leftover debug-e2edwds docker postgres, which already has a 'test' database.
+- 2026-09-20 — merged via PR #16 (squash `ad3696e2`); row reconciled from `in-progress` to `done` 51 days after the merge.

@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-27T18:21:00-06:00
 title: Deleted recurring-meal occurrence resurrects on next materialize pass
 from: dev/dev-bugscal3b-2026-07-27T17:07-backend-recurrence-expansion.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/debug-rcres1
 ---
@@ -40,3 +40,4 @@ Deleting a single occurrence of a recurring meal stays deleted. Today the delete
   - Learning: libraries/utils has zero DB-backed test infrastructure (no conftest.py, no sqlite/testcontainers). Testing materialize() end-to-end requires a fake Session; SQLAlchemy binary expressions are evaluable via `criterion.left.name` / `criterion.right.value` / `criterion.operator`, but `is_`/`is_not` carry SQLAlchemy's own operator callables that expect ClauseElements and must be special-cased. pg_insert values are reachable via `stmt._multi_values[0]`.
   - Learning: Running tests in a fresh worktree: `poetry install` is not needed — `PYTHONPATH=libraries/utils:services/api/src /Users/leonidbelyi/personal/palateful/.venv/bin/python -m pytest` reuses the main repo's venv while resolving utils/api source to the worktree. services/api tests additionally require DATABASE_URL to be set (any value; CI uses postgresql://postgres:postgres@localhost:5432/test) or every client-fixture test errors at import.
   - Learning: AC2 asks for the root cause in the spec's Status log, which this iteration cannot edit (loop-owned) — the evidence is captured here and in code comments for the loop to transcribe.
+- 2026-09-20 — merged via PR #4 (squash `98d19f11`); row reconciled from `in-progress` to `done` 51 days after the merge.

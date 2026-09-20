@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:13:00-06:00
 title: Firebase messaging.send threadpool wrap — async-safe push send variant plus sync-on-loop audit
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 blocked-by: []
 branch: feat/dev-aam8
@@ -42,3 +42,4 @@ Guarantee no Firebase Admin `messaging.send*` call ever runs on the event loop. 
   - Change: Verified the full gate set green against the combined diff: utils push/bridge suites (40 tests), npx nx run worker:test (worker contract frozen), npx nx run api:test at 100% coverage, and utils/api lint.
   - Learning: The invitations router docstring previously promised aam-8 would remove the handler-level run_in_threadpool wraps; the audit concluded the explicit wraps should stay (they are the same hop the async variants perform internally), so no callsite migration to the *_async variants is needed for this spec — it lands dark.
   - Learning: The epic's '28 callsites' figure is fully stale: the census found every async-reachable push path already hops through a threadpool, so aam-8 reduces to the in-library async variants (landed in iteration 1) plus this audit and comment cleanup.
+- 2026-09-20 — merged via PR #15 (squash `50730112`); row reconciled from `in-progress` to `done` 51 days after the merge.

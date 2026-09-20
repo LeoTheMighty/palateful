@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:01:00-06:00
 title: Dart Reconciler — exponential backoff + permanent-failure UX
 from: _bmad-output/planning-artifacts/epic-import-flow-hardening.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/dev-ifh4
 ---
@@ -44,3 +44,4 @@ Give `PendingImportsReconciler` a real retry policy instead of telemetry-and-dro
   - Learning: error_code on the wire is an INT (libraries/utils/utils/api/endpoint.py failure() defaults to ErrorCode.INTERNAL_ERROR.value), not the snake_case string ifh-5's importFailureCopy map is specced against (`file_too_large`, `unsupported_mime`, ...). ifh-5 will need to key on ints or map them.
   - Learning: app/ has no NX project.json — Flutter tests run via bare `flutter test`, not `npx nx`.
   - Learning: Pre-existing red on this branch: 3 failures in test/features/activity/imports_tab_test.dart (Auto-Imported section renders 0 widgets). Inherited from main, unrelated to the reconciler, but will keep CI red on the merge tail.
+- 2026-09-20 — merged via PR #8 (squash `c8f700ab`); row reconciled from `in-progress` to `done` 51 days after the merge.

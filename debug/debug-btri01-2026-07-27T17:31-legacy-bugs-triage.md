@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-27T17:31:00-06:00
 title: Triage legacy BUGS.md reports against current main — close fixed, file real
 from: BUGS.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/debug-btri01
 ---
@@ -68,3 +68,4 @@ The pre-devx BUGS.md holds five undated bug reports that likely predate epics wh
   - Learning: The codebase already had the correct timezone-resolution idiom in two places (`_owner_timezone` in send_meal_reminders.py, `_extract_user_timezone` in deadline_reminder_task.py, both ZoneInfo-based with safe fallbacks) while push_notification.py used a naive clock. Worth grepping for other bare `datetime.now()` calls that are compared against user-supplied wall-clock times.
   - Learning: Existing tests can actively hide a timezone bug rather than merely miss it: the quiet-hours tests used windows like 00:00-23:59, chosen so the assertion holds regardless of offset. A test whose window spans nearly the full day is a tell that the time axis was never really exercised.
   - Learning: users.notification_permission_status is written in exactly one place (complete_onboarding.py) and never updated when the user later grants or revokes permission in OS Settings — so the admin push-health panel and inspect_user_push.py can both report a months-stale status. Observability gap, not a delivery bug; left unfixed and noted.
+- 2026-09-20 — merged via PR #2 (squash `0aff93a7`); row reconciled from `in-progress` to `done` 51 days after the merge.

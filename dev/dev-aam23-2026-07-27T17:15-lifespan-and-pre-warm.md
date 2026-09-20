@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:15:00-06:00
 title: Lifespan pre-warm — warm every async pool connection before healthcheck flips green
 from: _bmad-output/planning-artifacts/epic-api-async-migration.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T17-52-24-754-38586
 blocked-by: []
 branch: feat/dev-aam23
@@ -40,3 +40,4 @@ Expand the single-connection async-engine warm-up that aam-1 left in `main.py` i
   - Learning: Entering the real MCP session-manager lifespan in an asyncio task and exiting it from the test's task raises 'Attempted to exit cancel scope in a different task' — any test that drives lifespan startup from a separate task must patch main.mcp_app with a no-op context.
   - Learning: logging.exception only records the static message, so the failed/total count lives in the traceback; caplog.records[].message won't contain it — assert against caplog.text.
   - Learning: Every TestClient(app) context entry in the suite now attempts pool_size real connections instead of one; measured suite time went 90s -> 84s locally (connections refused fast), so the concurrent gather adds no meaningful test-suite cost.
+- 2026-09-20 — merged via PR #20 (squash `50b98c42`); row reconciled from `in-progress` to `done` 51 days after the merge.

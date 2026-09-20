@@ -4,7 +4,7 @@ type: debug
 created: 2026-07-30T13:05:00-06:00
 title: Flutter app is not an nx project — `npx nx run app:test` does not exist
 from: dev/dev-fltup1-2026-07-30T09:00-align-local-flutter-to-ci-pin.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-30T17-52-24-754-38586
 ---
 
@@ -100,3 +100,4 @@ unnoticed.
     never installs `node_modules`, so `npx` would fetch an unpinned nx from the registry
     without workspace plugins. The nx targets remain a local-developer affordance, which
     is what the spec asked for.
+- 2026-09-20 — merged via PR #19 (squash `700a131d`); row reconciled from `in-progress` to `done` 51 days after the merge.

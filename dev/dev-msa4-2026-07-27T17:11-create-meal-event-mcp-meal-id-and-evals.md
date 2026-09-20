@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:11:00-06:00
 title: create_meal_event MCP tool accepts meal_id plus 7 CI-gated eval fixtures
 from: _bmad-output/planning-artifacts/epic-meals-sharing-and-ai.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T21-15-34-312-36147
 branch: feat/dev-msa4
 ---
@@ -61,3 +61,4 @@ Extend the existing `create_meal_event` MCP tool with an optional `meal_id` para
   - Learning: The existing fixture_runner only discovers fixtures under fixtures/{text,images,urls} paired with fixtures/expected/, so flat meal_*.json files in fixtures/ are invisible to the recipe-extraction runner — no interference, but also no automatic pickup; the gate had to be wired explicitly.
   - Learning: meal_planning.py already sits at 100% branch coverage from tests/mcp_server alone (39 stmts / 10 branches), so AC8 needed no additional dispatch tests beyond iteration 1's.
   - Learning: The tests/test_health.py baseline red (1 failed + 17 errors, deliberate red-stage commit on main) is still present and will make the merge-tail CI red independent of msa4 — full api suite is otherwise 2590 passed.
+- 2026-09-20 — merged via PR #13 (squash `75472edf`); row reconciled from `in-progress` to `done` 51 days after the merge.

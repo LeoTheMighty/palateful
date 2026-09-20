@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T17:00:00-06:00
 title: iOS Share Extension — persist failure state + system notification on permanent failures
 from: _bmad-output/planning-artifacts/epic-import-flow-hardening.md
-status: in-progress
+status: done
 owner: /devx-loop-2026-07-27T17-03-31-550-87857
 branch: feat/dev-ifh3
 ---
@@ -54,3 +54,4 @@ Stop the iOS share extension from silently dropping failed imports. `UploadServi
   - Learning: UserNotifications types (UNUserNotificationCenter, UNMutableNotificationContent, UNAuthorizationStatus.ephemeral) all compile for a plain macOS swiftc target, so the notifier file needs no #if os(iOS) guard; only `UNUserNotificationCenter.current()` would trap at runtime, which the injected fake avoids.
   - Learning: The Dart `importFailureCopy` map the AC says to mirror does not exist yet — it is ifh-5's deliverable. The Swift errorCopy(for:) helper was written against the 11 codes the epic enumerates for that map, so ifh-5 must copy from Swift rather than the reverse.
   - Learning: swiftc rejects top-level code outside main.swift when compiling multiple files, so the test runner uses `@main enum` — worth knowing for any future harness in this style.
+- 2026-09-20 — merged via PR #5 (squash `0c379514`); row reconciled from `in-progress` to `done` 51 days after the merge.

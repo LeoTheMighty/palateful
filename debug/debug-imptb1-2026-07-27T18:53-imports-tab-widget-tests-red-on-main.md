@@ -233,3 +233,4 @@ changed, because nothing in the repo was wrong.
   a time-travel AC (run the suite with the clock advanced) because otherwise it
   cannot distinguish success from "the bombs haven't gone off yet" — which is
   how the baseline reached 29 files in the first place.
+- 2026-09-20 — merged via PR #26 (squash `65d4d75a`); closed as duplicate, stale-shader trap documented.
