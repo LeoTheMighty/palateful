@@ -38,3 +38,37 @@ steps, so the three callers cannot drift. `install` (`flutter pub get`) is
 intentionally **not** a target: it would silently join
 `npx nx run-many -t install`, which today means "install the Python
 services".
+
+## Troubleshooting: widget tests fail on `ink_sparkle.frag`
+
+```
+Exception: Asset 'shaders/ink_sparkle.frag' manifest could not be decoded:
+INVALID_ARGUMENT: Unsupported runtime stages format version. Expected 1, got 0.
+  #0  new FragmentProgram._fromAsset (dart:ui/painting.dart:5337:7)
+```
+
+**Run `flutter clean && flutter pub get` and re-run.** Nothing is wrong with
+the code.
+
+This is the current engine reading an `ink_sparkle.frag` that a *previous*
+Flutter SDK compiled into `app/build/unit_test_assets/`. An in-place SDK bump
+(`git reset --hard <tag>` in the Flutter checkout, per
+`dev/dev-fltup1-2026-07-30T09:00-align-local-flutter-to-ci-pin.md`) replaces
+the toolchain but leaves every already-built tree untouched, so the stale
+shader survives until something clears it.
+
+Two properties make it expensive to diagnose, which is why it's written down
+here rather than left in a status log:
+
+- **It only hits tests that rasterize a Material ink ripple**, which is a
+  small and arbitrary-looking subset. fltup1 saw 94 failures out of 1564
+  tests; imptb1 saw exactly one out of eight in a single file. Everything else
+  passes, so the failure list reads as a scattering of unrelated widget tests
+  rather than as one environmental cause.
+- **It is per-tree, and CI never sees it.** CI builds from a clean checkout,
+  and a fresh `git worktree` has no `build/` either — so the same commit is
+  green in CI and in every new worktree while staying red in the one checkout
+  you actually work in. That asymmetry reads as "my branch broke it".
+
+If a test fails here and passes in a fresh worktree on the same SHA, this is
+almost certainly why.
