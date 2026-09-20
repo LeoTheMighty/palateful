@@ -73,12 +73,17 @@ bin/prod-ios-deploy
 
 What `bin/prod-ios-deploy` does:
 
-1. Stages `app/.env.prod` as `app/.env` for the duration of the build
-   (backed up and restored on exit) so the bundled dotenv asset points
-   at `https://api.palateful.app` instead of whatever dev URL your
-   working copy has. Also passes `--dart-define=ENV=prod` as a
-   belt-and-suspenders second channel.
-2. `flutter build ios --release --dart-define=ENV=prod`
+1. Reads the version from `app/pubspec.yaml` and prints it. **It does
+   not bump it** — the script's last line is a reminder to commit the
+   bump by hand, and that is how App Store Connect ended up eleven
+   builds ahead of the repo. Check App Store Connect's latest build
+   number and bump past it *before* running this.
+   (Prod config needs no staging: `API_BASE_URL` / `AUTH0_*` are
+   compile-time constants in `app/lib/core/config/environment.dart`
+   whose defaults are the prod values. The `.env.prod` staging step
+   described here previously was removed in `5f13ad7f`, 2026-04-23,
+   when `flutter_dotenv` was dropped.)
+2. `flutter build ios --release`
 3. `xcodebuild ... archive` — produces `build/ios/Runner.xcarchive`
 4. Writes an `ExportOptions.plist` pinned to
    `method=app-store-connect` and `destination=upload`
@@ -88,13 +93,58 @@ What `bin/prod-ios-deploy` does:
 TestFlight processing takes ~5–15 minutes after upload before the
 build becomes available to testers.
 
-### Xcode Cloud (alternate path)
+### Xcode Cloud (alternate path) — ⚠️ NOT CURRENTLY RUNNING
 
-Pushes to `main` also trigger an Xcode Cloud workflow that archives
-and uploads to TestFlight without running `bin/prod-ios-deploy`. The
-post-clone hook (`app/ios/ci_scripts/ci_post_clone.sh`) installs
-Flutter and stages `.env.prod` as `.env` before `xcodebuild` runs, so
-CI builds ship with prod config the same way the local script does.
+**This section previously claimed that pushes to `main` trigger an Xcode
+Cloud workflow that archives and uploads to TestFlight. That has been
+false for at least seven weeks and nothing caught it.** Corrected
+2026-09-20 (`tfship1`).
+
+Repo-side scaffolding is real and maintained —
+`app/ios/ci_scripts/ci_post_clone.sh` (installs Flutter, `pub get`,
+`pod install`, lints the share extension, runs its unit tests) and
+`ci_post_xcodebuild.sh` (asserts `PalatefulShare.appex` embedded,
+uploads dSYMs to Crashlytics). But the **workflow definition lives in
+App Store Connect, not in this repo**, and builds stopped at 88 while
+`main` kept taking pushes. Scaffolding present ≠ pipeline running.
+
+**How to tell whether it is actually running** — the check this doc
+should have offered all along, rather than asserting a trigger:
+
+> App Store Connect → Xcode Cloud → the workflow. Read **when it last
+> ran**, not whether it exists. Cross-check against App Store Connect →
+> TestFlight → Builds: if the highest build number predates recent
+> pushes to `main`, it is not running regardless of what any
+> configuration screen says.
+
+Two drift hazards were found and **both are now fixed** (`tfship1`,
+2026-09-20) — recorded because they explain why a revived workflow
+would have failed, and because the first one will recur if anyone
+bumps Flutter without looking here:
+
+- **`ci_post_clone.sh` installed the tip of `stable`, not the repo's
+  pin.** Tip was **3.47.5**; `ci.yml` pins **3.41.7** — six minor
+  versions, widening with every Flutter release. Now pinned via
+  `FLUTTER_VERSION`, with a version assertion so a mismatch fails
+  loudly instead of silently building something untested.
+  **`ci_post_clone.sh` is the third place the Flutter version is
+  pinned**, alongside `ci.yml` and `mobile-builds.yml`; a Flutter bump
+  must change all three in one PR.
+- **`ci_post_xcodebuild.sh` hard-failed (`exit 1`) when Crashlytics'
+  `upload-symbols` was missing**, failing an otherwise clean archive
+  over symbolication. Now a warning; missing symbols degrade crash
+  reports rather than blocking a release.
+
+Still outstanding: **Xcode Cloud's `CI_BUILD_NUMBER` starts at 1 per
+workflow and does not read `pubspec.yaml`.** App Store Connect is at
+88, so a newly configured workflow will be rejected at upload until it
+climbs past that. Left deliberately unfixed for the first trigger,
+because a duplicate-build rejection proves the entire chain ran.
+
+Until it is verified running, **`bin/prod-ios-deploy` is the real iOS
+deploy path** — it works and has shipped eleven builds. Keep it as the
+manual fallback even once CI is revived; a CI path with no escape hatch
+is worse than one with.
 
 ## Parser (AWS Batch, GPU)
 

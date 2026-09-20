@@ -6,12 +6,12 @@
 #
 # Required GitHub Secrets:
 #
-#   iOS:
-#     MATCH_PASSWORD                       — Fastlane Match encryption password
-#     MATCH_GIT_URL                        — Private git repo URL storing encrypted certs/profiles
-#     APP_STORE_CONNECT_API_KEY_KEY_ID     — App Store Connect API key ID
-#     APP_STORE_CONNECT_API_KEY_ISSUER_ID  — App Store Connect issuer ID
-#     APP_STORE_CONNECT_API_KEY_KEY        — App Store Connect private key (.p8 file content)
+# iOS is NOT built here. The iOS lane was removed 2026-09-20 (tfship1): it
+# had never run once, and it competed with two mechanisms that had. iOS
+# ships via `bin/prod-ios-deploy` (works; shipped builds 78-88) with Xcode
+# Cloud as the CI path — see docs/DEPLOYMENT.md. Leaving a third, untested
+# iOS mechanism here only invited someone to wire the wrong one, which is
+# exactly what tfship1 spent its first hours doing.
 #
 #   Android:
 #     ANDROID_KEYSTORE_BASE64          — Base64-encoded release keystore .jks
@@ -24,7 +24,7 @@
 #                                        upload + Firebase Test Lab). Also serves as the
 #                                        Play Store upload key if granted Play roles.
 
-name: Mobile App Store Builds
+name: Mobile App Store Builds (Android)
 
 on:
   workflow_dispatch:
@@ -42,59 +42,6 @@ env:
   FLUTTER_VERSION: '3.41.7'
 
 jobs:
-  ios-build:
-    name: iOS — Build & Upload to TestFlight
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
-
-      - name: Cache pub dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('app/pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
-
-      - name: Install Flutter dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Cache CocoaPods
-        uses: actions/cache@v4
-        with:
-          path: app/ios/Pods
-          key: pods-${{ runner.os }}-${{ hashFiles('app/ios/Podfile.lock') }}
-          restore-keys: |
-            pods-${{ runner.os }}-
-
-      - name: Install CocoaPods dependencies
-        working-directory: app/ios
-        run: pod install
-
-      - name: Set up Ruby and Bundler
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.3'
-          bundler-cache: true
-          working-directory: app
-
-      - name: Build and upload to TestFlight
-        working-directory: app
-        run: bundle exec fastlane ios beta
-        env:
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
-          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
-          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
-
   android-build:
     name: Android — Build & Upload to Play Store Internal
     runs-on: ubuntu-latest

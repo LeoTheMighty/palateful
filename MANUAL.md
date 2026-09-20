@@ -3,7 +3,14 @@
 ## Imported from BMAD backlog (2026-07-27)
 
 - [ ] **Play Console launch runbook** — execute `ANDROID.md` (single operator, Day 1 signup → Day 3 first tag). Code + store assets landed under `epic-android-play-console-launch` (apl-1..4); the Play Console account, listing paste-ins, Data Safety form, and tester recruitment are human-only steps. Source: legacy DEV.md "MANUAL DOCS" + epic-android-play-console-launch.
-- [ ] **iOS share-extension ship steps** — execute `SHARE.md` (App ID + App Group + provisioning profile, Xcode signing for `PalatefulShare`, on-device happy-path validation, device matrix before next TestFlight). Code for sie-1..5 is on main. Source: legacy DEV.md "MANUAL DOCS" + epic-share-ios-extension.
+- [ ] **iOS share-extension ship steps** — execute `SHARE.md`. **Partially done as of 2026-09-20 — do not re-do §1.** Per-part status, each with its evidence:
+  - [x] **App ID `com.palateful.palateful.share`** (`SHARE.md` §1a) — Leo read Apple Developer → Identifiers on 2026-09-20; present.
+  - [x] **App Group + distribution profile** (`SHARE.md` §1b–1c) — *inferred, not directly read*: App Store Connect is at build 88 and `PalatefulShare.appex` has been in Runner's Embed App Extensions phase since `0a93369e` (2026-04-18), so those archives signed the extension and could not have without both. Believe Xcode over this line if they disagree.
+  - [ ] **Xcode signing check on both targets** (`SHARE.md` §2) — still real, and cheap.
+  - [ ] **On-device happy-path validation from Safari** (`SHARE.md` §3) — still real; no build has been on a device since the beta expired.
+  - [ ] **Device matrix before the next TestFlight submission** (`SHARE.md` §4) — still real.
+
+  Code for sie-1..5 is on main. Row left open because three of five parts genuinely remain. Source: legacy DEV.md "MANUAL DOCS" + epic-share-ios-extension; status refreshed from `dev/dev-tfship1-2026-09-20T11:30-ios-testflight-shortest-path.md`.
 
 ## Filed from btri01 legacy triage (2026-07-27)
 
