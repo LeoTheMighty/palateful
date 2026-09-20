@@ -20,6 +20,36 @@ This is a **detector gap, not a merge-queue request**. The ask is not "auto
 merge things" — it is "make silence audible". A conflicted PR is currently
 indistinguishable from an open one that somebody is actively working.
 
+## If you are here because `deploy-freshness` is red
+
+**That red is expected, and it is the check working.** As of 2026-09-20 the
+alarm has been restored in a building that is still on fire: the credential
+fix landed (#25), so the check now authenticates and measures — and the
+first thing it correctly reports is that prod is ~51 days stale. Verified
+against the live account the same day:
+
+```
+Running task definition: palateful-api-prod:63
+Deployed commit:         848311af  2026-07-31 10:24:08 -0600
+Gap: 51 day(s); threshold: 7 day(s).   -> exit 1
+```
+
+Do not suppress it, raise `MAX_GAP_DAYS`, or treat it as a regression in
+the check. It goes green when **prod is deployed**, and not before. A green
+run before a real deploy would mean the measurement has degraded back into
+the blind-and-green mode the check exists to catch.
+
+One caveat that was raised on 2026-09-20 and has since **expired**, recorded
+so it is not re-derived: for a few hours it looked as though that day's
+merges might deploy prod, which would have made green the *correct* answer
+and left the run's exit status carrying no information either way. They did
+not — all four ECS legs (`deploy-images`, `terraform-prod`, `run-migrator`,
+`deploy-services`) skipped in run 35522939142 because `services_to_build`
+came up empty, so prod never changed. The ambiguity was conditional on
+something that did not happen. A caveat kept past its condition is just
+another stale note, which is precisely the family of defect this story is
+about.
+
 ## Why this is worth a story
 
 Observed 2026-09-20. PR #24 (branch `feat/dev-7c5cf2`, story af8309) was
@@ -146,6 +176,11 @@ takes this should look at whether one thing can answer both.
 
 ## Status log
 
+- 2026-09-20T17:05 — recorded that the first post-fix firing is expected to
+  be red (~51d gap, verified live against `palateful-api-prod:63`), and
+  retired the green-may-be-correct caveat: run 35522939142 skipped all four
+  ECS legs, so prod did not go fresh and the check can self-interpret after
+  all.
 - 2026-09-20T16:30 — amended after #25 merged (`03133116`). Added the
   50/50 run figure, the 25-of-49 interval breach, and the cron-string
   assertion precedent. All three re-derived locally rather than carried
