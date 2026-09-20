@@ -10,7 +10,12 @@
 # Defines: check_chromedriver — returns 0 ok, 2 missing/mismatched.
 
 check_chromedriver() {
-  if ! command -v chromedriver >/dev/null 2>&1; then
+  local driver_path
+  # Resolve once: the later diagnostics quote this path, and re-running
+  # `command -v` inside an error message is how you end up printing an
+  # empty path in the one output anyone actually reads.
+  driver_path="$(command -v chromedriver 2>/dev/null || true)"
+  if [[ -z "$driver_path" ]]; then
     echo "ERROR: chromedriver not found on PATH." >&2
     echo "       See services/e2e/README.md for how to install a version-matched one." >&2
     return 2
@@ -24,7 +29,28 @@ check_chromedriver() {
   local chrome_version driver_version
   chrome_version="$("$chrome_bin" --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
   driver_version="$(chromedriver --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
-  [[ -n "$chrome_version" && -n "$driver_version" ]] || return 0
+
+  # On PATH but won't report a version = it cannot run. The common cause on
+  # macOS is Gatekeeper SIGKILLing an unsigned/quarantined build from the
+  # deprecated Homebrew cask: `chromedriver --version` exits 137 and prints
+  # nothing. Treating that as "can't compare, carry on" is the exact
+  # expensive failure this preflight exists to prevent — the run would build
+  # and boot the whole app before dying in the driver.
+  if [[ -z "$driver_version" ]]; then
+    echo "ERROR: chromedriver is on PATH ($driver_path) but will not" >&2
+    echo "       report a version — it cannot execute." >&2
+    echo "       On macOS this is usually Gatekeeper killing an unsigned build" >&2
+    echo "       (\`chromedriver --version\` exits 137). Confirm with:" >&2
+    echo "         chromedriver --version; echo \$?" >&2
+    echo "       Replace it with a matched, signed build:" >&2
+    echo "         npx @puppeteer/browsers install chromedriver@${chrome_version:-<chrome-major>}" >&2
+    echo "       then put its directory first on PATH for the run." >&2
+    return 2
+  fi
+
+  # Chrome located but unparseable — nothing to compare against, so don't
+  # block on a check we cannot actually perform.
+  [[ -n "$chrome_version" ]] || return 0
 
   if [[ "${chrome_version%%.*}" != "${driver_version%%.*}" ]]; then
     echo "ERROR: chromedriver ${driver_version} cannot drive Chrome ${chrome_version}." >&2
