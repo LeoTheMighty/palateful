@@ -33,12 +33,16 @@ env:
 
 jobs:
   check-freshness:
-    # Deliberately NO `environment: production` here, unlike every
-    # deploy-touching job in ci.yml. That environment carries a
-    # required-reviewer gate, and a scheduled job that waits for manual
-    # approval can never detect an *unattended* freeze — the whole point is
-    # to fire when nobody is looking. Safe to omit: this job is strictly
-    # read-only (describe-services / describe-task-definition + local git).
+    # `environment: production` is required: the AWS secrets exist ONLY as
+    # environment-scoped secrets (first dispatch run 30647079681 failed with
+    # "Credentials could not be loaded" without it). Verified 2026-07-31 via
+    # the API that this environment has NO protection rules — no reviewer
+    # gate, no branch policy — so the scheduled run still fires unattended.
+    # E-7 step 6 re-verifies that every morning; if a required-reviewer rule
+    # is ever added to the environment, this check stalls waiting for
+    # approval and can no longer detect an *unattended* freeze — either
+    # exempt this job or move the AWS secrets to repo scope.
+    environment: production
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
