@@ -47,22 +47,27 @@ wire.
 
 ## A. Blockers that hit BOTH paths (manual and pipeline)
 
-### A1. The build number is already taken — `1.0.64+77`
+### A1. RESOLVED — and the repo lied by eleven
 
-`app/pubspec.yaml:19` reads `version: 1.0.64+77`, last bumped in `e9d5a05e`
-on **2026-04-26** — the same day prod froze on image `c85e350`. Shipping
-stopped repo-wide that day. A build uploaded around then expires ~2026-07-25,
-which matches "the beta has expired".
+**Measured, not inferred.** Leo read App Store Connect: **Version 1.0.64,
+Build (88)**. The repo said `1.0.64+77`. **ASC was eleven builds ahead.**
 
-So build **77 is almost certainly already on App Store Connect**, and App
-Store Connect rejects a duplicate `CFBundleVersion` for the same
-`CFBundleShortVersionString`. **Xcode will fail at upload too** — this is not
-a pipeline-only problem.
+`app/pubspec.yaml` is now bumped to **`1.0.64+89`** on this branch. Version
+stays `1.0.64`; only the build number has to clear 88 for TestFlight.
 
-**Verify before anything else** (30 seconds, and it decides the next step):
-App Store Connect → Apps → Palateful → TestFlight → iOS builds. Read the
-highest build number present. Then bump `app/pubspec.yaml` above it
-(`1.0.65+78` if 77 is the max). Cheap and safe to bump regardless.
+**The part worth keeping is not the number, it's why the repo was wrong.**
+Builds 78–88 were archived from a working copy whose version bump was never
+committed. So `pubspec.yaml` is **not the source of truth for what has
+shipped**, and anyone who reads the repo to answer "what build are we on"
+gets 77 and is wrong by eleven — in the direction that makes every upload
+fail with a duplicate-build error and no obvious cause.
+
+The original draft of this spec reasoned *from* `pubspec.yaml` and predicted
+"77 is probably the latest". That was wrong, and it was wrong in the way
+checklists usually go wrong: the repo is right there, the console needs a
+login, so the instinct is to trust the repo and skip the console read. **Path 1
+step 1 exists to stop exactly that, and it earned its place on its first run.**
+Keep it even when the repo looks unambiguous — especially then.
 
 ### A2. The share extension is in the archive and needs its own App ID
 
@@ -83,12 +88,25 @@ human-only steps to do "before submitting the next TestFlight build". An
 `com.palateful.palateful.share` has no distribution profile, the archive fails
 for the pipeline and for Xcode alike.
 
-**Unresolved and only Leo can settle it:** build 77 was bumped 2026-04-26,
-*after* the extension landed on 04-18. If 77 shipped with the extension, the
-App ID already exists and this is a no-op. If the extension went in after that
-upload, it is a hard blocker. Check Apple Developer → Identifiers for
-`com.palateful.palateful.share`. Present → skip to A3. Absent → `SHARE.md`
-§1a–1c first (~15 min).
+**Prediction: this is almost certainly already done.** The reasoning changed
+once ASC turned out to be at 88 rather than 77, and it got *stronger*:
+
+- `PalatefulShare.appex` sits in Runner's **Embed App Extensions** copy-files
+  phase (`project.pbxproj:61-71`), and `git log -S` puts that phase in the
+  original `0a93369e` commit of **2026-04-18**. So every Runner archive since
+  04-18 embeds the extension — there is no variant that quietly leaves it out.
+- Builds **78–88 were uploaded after 2026-04-26** and they succeeded.
+- An `app-store` archive signs every embedded target. Eleven successful
+  uploads carrying the extension are only possible if
+  `com.palateful.palateful.share` already has an App ID and a distribution
+  profile.
+
+So Leo should expect to **find it present**. He still has to look — a
+prediction is not a verification, and this one is built on the assumption that
+78–88 came from a checkout of `main` rather than some older branch. But if it
+is missing, that is the surprise worth stopping on, not the expected case.
+Apple Developer → Identifiers → `com.palateful.palateful.share`. Present →
+skip to A3. Absent → `SHARE.md` §1a–1c first (~15 min).
 
 ### A3. Entitlements the App IDs must carry
 
@@ -139,9 +157,25 @@ the single biggest reason the pipeline is not the fast path today.
 The Fastfile never calls `increment_build_number`, and the iOS lane never
 reads the git tag, so `bundle exec fastlane ios beta` uploads whatever is in
 `pubspec.yaml`. Tagging `v1.0.65` does **not** make the build `1.0.65`. First
-run may pass on a manual bump; the second fails. Needs either
-`increment_build_number(build_number: <ASC latest + 1>)` or deriving
-version/build from `GITHUB_REF_NAME`.
+run may pass on a manual bump; the second fails.
+
+**A1 is the real argument for fixing this, and it is better than
+"automation is nice".** The eleven-build divergence happened *because* a human
+bumped a local working copy and archived from it. The fix is not discipline —
+it is making ASC authoritative:
+
+```ruby
+increment_build_number(
+  build_number: latest_testflight_build_number(api_key: api_key) + 1
+)
+```
+
+That reads the number from App Store Connect at build time, so the repo can
+drift and it no longer matters: the pipeline cannot produce a duplicate, and
+nobody has to remember to commit a bump. Deriving from `GITHUB_REF_NAME`
+would fix the *version* string but not this — a tag can be re-cut, ASC cannot
+be un-uploaded. **Once CI owns the build number, the A1 class of failure stops
+being possible.**
 
 ### B4. Upload ≠ testers can install
 
@@ -172,17 +206,18 @@ not need to go look it up.**
 
 **Path 1 — ship today by hand (~45 min, unblocks testers).**
 
-1. **App Store Connect → TestFlight → iOS builds.** Read the highest build
-   number. (Settles A1.)
+1. ~~Read the highest build number in App Store Connect.~~ **DONE** — 88.
+   `pubspec.yaml` is already bumped to `1.0.64+89` on this branch. (A1.)
 2. **Apple Developer → Identifiers.** Is `com.palateful.palateful.share`
-   there? Absent → do `SHARE.md` §1a–1c now (~15 min). (Settles A2.)
+   there? **Expect yes** (see A2). Absent → do `SHARE.md` §1a–1c now
+   (~15 min) — and that would be a genuine surprise worth telling the
+   coordinator about, since eleven builds appear to have shipped with it.
 3. While there, confirm capabilities: `com.palateful.palateful` has **App
    Groups** + **Push Notifications**; `.share` has **App Groups**. (A3.)
-4. Bump `app/pubspec.yaml` above the number from step 1.
-5. Xcode → open `app/ios/Runner.xcworkspace` → check signing on **both**
+4. Xcode → open `app/ios/Runner.xcworkspace` → check signing on **both**
    `Runner` and `PalatefulShare` → Product ▸ Archive → Distribute ▸ App Store
    Connect.
-6. **App Store Connect → TestFlight → assign the build to your tester group.**
+5. **App Store Connect → TestFlight → assign the build to your tester group.**
    Do not skip — upload alone leaves testers blocked. (B4.)
 
 Register an iPhone UDID (M1.2) only if you want a development build on a
@@ -237,3 +272,18 @@ Android secrets are out of scope.
   verifiable from here: App Store Connect and Apple Developer portal state
   (A1, A2) — both flagged as Leo's first two checks precisely because they
   gate which path is shortest.
+- 2026-09-20T12:10 — A1 resolved by measurement, and the measurement
+  contradicted this spec's own prediction: ASC is at **build 88**, the repo at
+  77 — eleven ahead, because builds 78–88 were archived from a working copy
+  whose bump was never committed. Bumped `app/pubspec.yaml` to `1.0.64+89`.
+  Recorded the lesson rather than just the number: `pubspec.yaml` is not the
+  source of truth for what has shipped, and the draft's "77 is probably the
+  latest" was exactly the trust-the-repo instinct Path 1 step 1 exists to
+  block. Knock-on: A2's prediction flipped to **"expect the share App ID to
+  already exist"** — `PalatefulShare.appex` has been in Runner's Embed App
+  Extensions phase since `0a93369e` (2026-04-18, confirmed by `git log -S`),
+  so all eleven post-04-26 uploads carried the extension and could only have
+  signed with a real distribution profile. B3 rewritten to argue from this:
+  `latest_testflight_build_number` makes ASC authoritative and forecloses the
+  whole A1 failure class, which is a stronger case for the pipeline than
+  automation-for-its-own-sake.
