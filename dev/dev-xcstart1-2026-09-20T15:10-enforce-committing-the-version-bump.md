@@ -5,8 +5,8 @@ created: 2026-09-20T15:10:00-06:00
 title: Nothing enforces committing the version bump — the single cause behind three symptoms
 from: dev/dev-tfship1-2026-09-20T11:30-ios-testflight-shortest-path.md
 status: ready
-owner:
-branch:
+owner: null
+branch: null
 ---
 
 > **This spec was rewritten 2026-09-20T16:00. Its original premise — "the

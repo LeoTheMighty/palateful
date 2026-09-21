@@ -5,8 +5,8 @@ created: 2026-09-20T10:35:00-06:00
 title: Drain the 29-file hardcoded-fixture-date baseline before the next one freezes deploys
 from: debug/debug-imptb1-2026-07-27T18:53-imports-tab-widget-tests-red-on-main.md
 status: ready
-owner:
-branch:
+owner: null
+branch: null
 ---
 
 ## Goal

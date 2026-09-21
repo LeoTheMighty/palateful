@@ -5,7 +5,7 @@ created: 2026-09-20T11:30:00-06:00
 title: iOS TestFlight — get a live build to testers, then wire the pipeline
 from: coordinator dispatch (leonidbelyi-41), 2026-09-20
 status: ready
-owner:
+owner: null
 branch: feat/dev-tfship1
 ---
 

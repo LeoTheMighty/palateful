@@ -5,7 +5,7 @@ created: 2026-09-20T15:00:00-06:00
 title: Raise the iOS deployment target to 15.0 — Xcode Cloud's floor, and three sources that disagreed
 from: dev/dev-tfship1-2026-09-20T11:30-ios-testflight-shortest-path.md
 status: in-progress
-owner:
+owner: null
 branch: feat/dev-iosdt1
 ---
 

@@ -5,8 +5,8 @@ created: 2026-09-20T14:20:00-06:00
 title: Single-source the Flutter version pin — three copies, nothing keeps them in step
 from: dev/dev-tfship1-2026-09-20T11:30-ios-testflight-shortest-path.md
 status: ready
-owner:
-branch:
+owner: null
+branch: null
 ---
 
 ## Goal
