@@ -107,3 +107,26 @@
   reading the row as it stands now and asking whether your draft still
   describes an improvement. The longer a queue waits — and this one waited
   through a five-PR merge wave — the more of it has been overtaken.
+
+- **An exit status you didn't capture directly is not a reading, and in this
+  environment it lies in four separate ways.** Over 2026-09-20/21 four
+  sessions each got a false or empty "pass" from the same family:
+  1. **Piped `$?`.** `npm test | tail -20; echo "rc=$?"` reports `tail`'s
+     exit. One session printed `REAL_EXIT=0` over eleven typecheck failures.
+  2. **Unconditional echo.** `cmd | head; echo "typecheck ok"` prints "ok"
+     whatever happened; there is no status in it at all.
+  3. **Harness notifications report the last command.** A background task
+     whose chain ends in `echo` is reported as "completed (exit code 0)" over
+     a real failure.
+  4. **`${PIPESTATUS[0]}` is bash-only, and the shell here is zsh**, where it
+     expands to nothing and prints a blank `EXIT=`. This is the most dangerous
+     of the four, because it produces no error at all, and a blank status reads
+     as "fine" when skimming. (zsh's equivalent is lowercase `$pipestatus`.)
+
+  Fix: put nothing between the command and its status —
+  `cmd > log 2>&1; echo "X_EXIT=$?"`, or `cmd && echo ok || echo FAILED` —
+  then grep the log's own summary line (`Test Files … passed`) as a second,
+  independent signal. If the two disagree, trust neither until you know why.
+  Knowing about the trap was not enough: one session had saved it to memory an
+  hour before falling into it, and caught it only because reading the log had
+  become a habit. The habit is the control; the knowledge is not.
