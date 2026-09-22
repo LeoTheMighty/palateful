@@ -136,3 +136,15 @@ pool or an unreachable DB, so after it lands a total DB outage reads
   builds `{v for v in ProbeVerdict if v is AUTH_FAILED}` and asserts that
   equals `{AUTH_FAILED}`, true by construction for any enum. Reported to 3b;
   not fixed here (rsh102's file, and selfheal1 is mid-flight over it).
+- 2026-09-22T23:45 — 41 relayed a fact that breaks part of the G3 design: Leo has
+  GitHub Actions email notifications OFF, deliberately. So the Actions UI going
+  red is not a channel he reads, and the 52 consecutive silent failures were
+  visible the whole time to nobody. A red VERDICT already left GitHub via SNS,
+  but the check's own DEATH did not — it was visible only as a red square.
+  Added a second notify step on `failure() && verdict == ''`. Honest limit,
+  written into the workflow: it cannot fire when the AWS credentials themselves
+  failed, which is the largest historical bucket (49 of 52), because publishing
+  needs those credentials. It narrows the blind spot from "any failure" to
+  "credential failure"; only absal1, alerting on the absence of an expected
+  heartbeat from OUTSIDE GitHub, closes the rest. This step does not make
+  absal1 optional.
