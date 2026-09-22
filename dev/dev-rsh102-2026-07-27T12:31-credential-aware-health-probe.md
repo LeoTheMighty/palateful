@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T12:31:00-06:00
 title: Credential-aware health probe — fresh connection, fail-open classifier
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: in-progress
+status: done
 owner: /devx-2026-09-20T0954-67490
 branch: feat/dev-rsh102
 ---
@@ -454,3 +454,73 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   probe fix on 05-03, six weeks before the outage, and it sat undeployed
   behind the freeze — its rotation-cadence half took effect, its guard half
   did not.
+- 2026-09-22T17:40 — merged via PR #29 (squash → `8d6b1329`) on Leo's "merge
+  and deploy". Gated on *overlap with anything CI tests* rather than literal
+  0-behind: at merge the tip was 7 behind, all docs (DEV.md, MANUAL.md,
+  dev/*.md), overlap with libraries/services/tools/ci.yml/lockfiles = none.
+  Literal 0-behind does not converge on this main — a 24-minute CI run
+  against seven tabs pushing docs finishes behind every time. The backstop
+  that makes the looser rule safe was checked in `ci.yml`, not assumed:
+  `detect-changes` needs `test`, and every deploy leg chains from it, so
+  main's post-merge run re-tests the real merged tree and no deploy leg
+  fires if it fails.
+- 2026-09-22T17:55 — **deployed to prod and verified end to end.** Each item
+  marked [M] measured or [I] inferred. Baseline captured *before* the
+  deploy finished, so the comparisons are real before/after rather than
+  after-only.
+
+  1. [M] **`deploy-images` actually ran** — run 35753852172, all four legs
+     (`api`, `worker`, `migrator`, `parser`) success, not skipped; then
+     `terraform-prod`, `run-migrator`, `deploy-services` success. Four merges
+     the prior week went green and shipped nothing; this one shipped.
+  2. [M] **ECS rolled.** api `:63 → :64`, worker `:53 → :54`, both running
+     image `8d6b1329`. Exactly one `PRIMARY` deployment per service,
+     `rolloutState: COMPLETED`, 1/1 running — the `848311af` tasks are gone.
+  3. [M] **The new probe is serving and healthy.** `/v1/health` went from
+     `200 {"status":"ok"}` (before) to `200 {"status":"ok","db":"OK"}`
+     (after). The `db` field exists only in the new code, so it identifies
+     which probe a live task runs. api task `RUNNING/HEALTHY`, ALB target
+     `healthy`, responses 0.16–0.52s — inside the 2.5s probe budget and the
+     ALB's 3s. [I] The slower first response is *consistent with* a
+     cache-miss fresh connection, but client-side TLS warmup explains it
+     equally well; not claimed as evidence.
+  4. [M] **No fail-open storm, no replacement loop.** Since task start
+     (17:15:13 UTC) the api log group received 28 events — logs are flowing —
+     and all of `failing open`, `credential failure`,
+     `db credentials invalid`, `probe raised` count **0**. A healthy database
+     should produce exactly zero, and did.
+
+     Caught my own error getting there: the first pass also read 0 across the
+     board, but with **no log streams returned at all** — `date -j` had
+     parsed the start time as local MDT, pushing it six hours into the
+     future. Zeros from an empty query are not a reading. Recomputed in UTC,
+     confirmed 28 events flowing, then re-counted.
+  5. [M] worker `RUNNING/UNKNOWN` — **pre-existing, not a regression.** The
+     worker has no container health check; that is rsh107's scope.
+  6. [PENDING] **deploy-freshness.** Last ran 08:18 UTC, nine hours *before*
+     the deploy; it reported the 52-day gap, a correct positive. Its next
+     scheduled slot is the first that can observe the new deploy. Not
+     triggered by hand — the ask was "on its next run". And its verdicts
+     have almost no track record: it only began authenticating this week.
+  7. [I] **The deployed probe opens a fresh connection — inferred, NOT
+     measured.** This is the property the whole story exists for, so the
+     gap is stated plainly: RDS does not log successful connections.
+     `log_connections` is unset on `palateful-prod-pg16-perf` and the RDS log,
+     though otherwise flowing (checkpoints, connection resets), contains 0
+     `connection authorized` lines. So there is no read-only way to watch the
+     probe open connections in prod. The inference rests on two measured
+     facts that together are strong: (a) item 3 proves the new code is what
+     serves `/v1/health`; (b) on 2026-09-22 against a live Postgres that
+     exact code reported AUTH_FAILED through a password change while the old
+     pooled probe answered OK. Making it measurable means enabling
+     `log_connections` — a write to the prod parameter group, left for Leo.
+
+  **What this does and does not settle.** Prod can now detect a rotation, for
+  the first time since the 06-17 → 07-31 outage. It has not yet *been
+  exercised* by one: the first real test is the scheduled rotation on
+  **2026-10-29**, or rsh109's deliberate drill before then. Until one of
+  those happens, "self-heals on rotation" is a strong inference, not an
+  observation.
+- 2026-09-22T18:00 — cleanup: stopped and removed the docker-compose Postgres
+  and volume I started for the live-driver leg; removed the worktree and
+  local branch; released `.devx-cache/locks/spec-rsh102.lock`. Status: done.
