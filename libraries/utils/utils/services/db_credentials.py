@@ -444,6 +444,18 @@ def _make_do_connect(provider: SecretPasswordProvider):
                 "Manager and retrying once"
             )
 
+        # These two lines sit OUTSIDE the `except` deliberately, and the
+        # dedent is load-bearing. Pulling them into the handler reads as
+        # tidier — it is the error path, after all — but then the auth
+        # error is still the exception being handled, so Python links it
+        # as the `__context__` of whatever `current(strict=True)` raises.
+        # `is_auth_error` walks `__context__`, would reach the auth error
+        # through the chain, and a Secrets Manager outage would classify
+        # as AUTH_FAILED → 503 → every task drained during the outage.
+        # `raise ... from exc` does NOT protect against this: it sets
+        # `__suppress_context__`, which `_chain` does not consult.
+        # Pinned by `test_sm_outage_on_retry_is_not_classified_as_an_auth_failure`,
+        # which fails if these lines move back inside.
         provider.invalidate()
         cparams["password"] = provider.current(strict=True)
         try:
