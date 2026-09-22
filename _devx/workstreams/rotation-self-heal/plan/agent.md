@@ -338,12 +338,25 @@ reflects that.
   pattern (`password authentication failed`, `no password supplied`).
   Verify against a **live** psycopg2 auth failure (docker-compose Postgres,
   wrong password), not only a hand-built mock.
+  **Superseded by selfheal1 (2026-09-22):** `no password supplied` is no
+  longer an auth pattern — it says the *client* had nothing to send, which a
+  task replacement cannot fix. It is recognised separately
+  (`is_missing_password`) and fails open. Measured while making that change:
+  asyncpg never emits the phrase at all (it md5-hashes the empty string, so
+  the server answers `28P01`), so the async path decides the same condition
+  from the URL — `db_probe._url_password_is_blank`.
 - **Probe URL source and the unset case.** The probe reads
   `utils.constants.ASYNC_DATABASE_URL` / `DATABASE_URL`. `DATABASE_URL` is
   `""` in the API test env (`services/api/tests/conftest.py:15`) and
   `database.py:79-80` returns `(None, None)` on a falsy async URL.
   Contract: **unset URL → `OK`** (nothing to authenticate against). Getting
   this wrong breaks `test_main.py:46` and `test_async_client_fixture.py:15`.
+  **Amended by selfheal1 (2026-09-22):** still `OK` wherever no database is
+  expected — which is what keeps those two tests passing — but a *deployed*
+  environment (`ENVIRONMENT` in `DEPLOYED_ENVIRONMENTS`) with no URL now
+  yields `NOT_CONFIGURED` and a `degraded` body, still at HTTP 200. A task
+  that reports healthy while every request 5xx's is the failure this
+  workstream exists to eliminate.
 - **The verdict cache is process-global.** `conftest.py:1485`,
   `test_main.py:46` and `test_async_client_fixture.py:15` all hit
   `/v1/health`; a leaked `AUTH_FAILED` verdict makes them order-dependent.

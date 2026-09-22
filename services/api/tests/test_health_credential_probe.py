@@ -433,8 +433,9 @@ def test_a_task_with_no_password_is_not_replaced(client, failing_connect):
     """An empty `DB_PASSWORD` is a deployment config error.
 
     The replacement task reads the same task definition and fails the same
-    way, so a 503 would only drain the service. It fails open — the
-    `failing open` error log is what pages (dfrcp1).
+    way, so a 503 would only drain the service. It fails open, logging the
+    `failing open` phrase at `error` — which **nothing consumes yet**;
+    dfrcp1 is the spec that turns it into an alarm.
     """
     failing_connect(operational_error("fe_sendauth: no password supplied", "28000"))
 
@@ -491,3 +492,36 @@ def test_a_task_whose_url_has_no_password_is_not_replaced(
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "db": "UNREACHABLE"}
+
+
+def test_both_router_fail_open_branches_log_failing_open(
+    client, failing_connect, monkeypatch, db_probe, caplog
+):
+    """The router's own two emitters, which the probe-level phrase test
+    cannot reach. dfrcp1's metric filter covers all of them or it
+    under-covers silently."""
+    import logging
+
+    from routers.v1 import health_router as router_module
+
+    with caplog.at_level(logging.WARNING):
+        # Branch 1: the router's own guard — the probe itself misbehaved.
+        async def probe_raises():
+            raise RuntimeError("the probe itself blew up")
+
+        # The router imports the symbol by name, so patch it there.
+        monkeypatch.setattr(router_module, "cached_verdict_async", probe_raises)
+        first = client.get("/v1/health").json()
+
+        # Branch 2: a deployed task with no database configured.
+        async def not_configured():
+            return db_probe.ProbeVerdict.NOT_CONFIGURED
+
+        monkeypatch.setattr(router_module, "cached_verdict_async", not_configured)
+        second = client.get("/v1/health").json()
+
+    assert first == {"status": "ok", "db": "UNKNOWN"}
+    assert second == {"status": "degraded", "db": "NOT_CONFIGURED"}
+    assert (
+        sum("failing open" in record.getMessage() for record in caplog.records) >= 2
+    )

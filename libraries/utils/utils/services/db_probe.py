@@ -355,6 +355,18 @@ def _downgrade_passwordless_auth_failure(
     Only ever downgrades `AUTH_FAILED`, and only when the URL that failed
     carries no usable password. Everything else passes through untouched,
     so a genuine rotation still self-heals.
+
+    **Load-bearing precondition, for rsh105/rsh106.** This is safe because
+    `constants._build_database_url()` composes a URL only when `DB_PASSWORD`
+    is truthy, so in a deployed environment a passwordless URL means a
+    genuinely absent password rather than a password supplied by some other
+    route. FR-5 supplies the password at connect time through a
+    `do_connect` listener; if anyone then drops `DB_PASSWORD` from the task
+    definition — the natural end-state of "the secret is resolved at connect
+    time" — every URL becomes passwordless and **every real rotation
+    rejection would silently downgrade here, deleting the self-heal.** Tie
+    any such change to this function: it must then consult the listener's
+    resolved credential, not the URL.
     """
     if verdict is not ProbeVerdict.AUTH_FAILED or not _url_password_is_blank(url):
         return verdict
@@ -606,11 +618,18 @@ def probe_sync() -> ProbeVerdict:
 def main(argv: list[str] | None = None) -> int:
     """`python -m utils.services.db_probe` — probe once, print, exit.
 
-    Exit codes: `1` **only** for `AUTH_FAILED` (rotate-and-restart), `3` for
-    `NOT_CONFIGURED`, `0` for every other fail-open verdict. `1` keeps its
-    rsh102 meaning exactly; `3` exists because `NOT_CONFIGURED` means "this
-    task is broken and no alarm is going to page you about it", which a
-    success exit code would hide from an operator or a smoke check.
+    Exit `1` **only** for `AUTH_FAILED`; `0` for every fail-open verdict,
+    `NOT_CONFIGURED` included.
+
+    The exit code is not an operator-facing severity scale, because the
+    caller that matters is not a human. rsh107 wires this module as the
+    worker container's `CMD-SHELL` health check, and ECS treats **any**
+    non-zero exit as unhealthy — so a distinct code for `NOT_CONFIGURED`
+    would replace the worker task over precisely the condition this module
+    invented that verdict to stop replacing tasks over, on a service with
+    `deployment_minimum_healthy_percent = 0` and no ALB floor. The printed
+    verdict name is what serves the operator; the exit code answers one
+    question only, and it is "should this task be replaced?".
     """
     import argparse
 
@@ -629,9 +648,7 @@ def main(argv: list[str] | None = None) -> int:
     verdict = asyncio.run(probe_async()) if args.use_async else probe_sync()
 
     print(verdict.name)
-    if verdict is ProbeVerdict.AUTH_FAILED:
-        return 1
-    return 3 if verdict is ProbeVerdict.NOT_CONFIGURED else 0
+    return 1 if verdict is ProbeVerdict.AUTH_FAILED else 0
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint

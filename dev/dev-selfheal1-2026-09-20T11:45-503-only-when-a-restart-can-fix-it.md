@@ -248,3 +248,32 @@ verdict alone and alarm on it, which captures most of the value.
   timeout and no rate limit; rsh107 is about to consume it). Also amended
   E-2 in `_devx/workstreams/rotation-self-heal/expectations.md`, which still
   read "503 on both `28P01` and `28000`".
+- 2026-09-22T22:40 — phase 4 (cont.): Acceptance Auditor reported. 5/6 ACs
+  MET, AC #6 deferred to dfrcp1 as recorded above. Its findings, all fixed
+  here: **G1 (HIGH) — the CLI's exit 3 for `NOT_CONFIGURED` would have made
+  rsh107 drain the worker.** rsh107 wires `python -m utils.services.db_probe`
+  as the worker's ECS `CMD-SHELL` health check, ECS treats any non-zero exit
+  as unhealthy, and the worker service has
+  `deployment_minimum_healthy_percent = 0` and no ALB floor — so the verdict
+  this story invented *because a restart cannot fix it* would have become a
+  replacement instruction, this story's own failure mode, on the story it was
+  told to land before. Exit is back to `1` for `AUTH_FAILED` and `0` for
+  everything else, with `test_no_fail_open_verdict_ever_exits_non_zero`
+  pinning the contract against future enum members. G4 — the phrase test
+  covered 4 of 9 emitters while its name read as complete; renamed to its real
+  scope and the other five now have tests, including both router branches.
+  G5/G6/G7 — dfrcp1's stale line references, `plan/agent.md`'s two contracts
+  that this change contradicted, `design/agent.md`'s verdict table, and a test
+  comment claiming the log "pages" when nothing consumes it yet.
+- 2026-09-22T22:40 — two conscious trades, signed off rather than passed over.
+  (1) **The missing-password veto** (G3) fails open when one exception chain
+  carries both phrases, which costs a self-heal if that ever happens for a
+  reason other than rsh105's retry path. Kept, narrowed to `.orig`/`__cause__`
+  so an implicit `__context__` cannot trigger it, and pinned both ways.
+  (2) **The passwordless downgrade is a landmine for rsh105/rsh106** (G2): it
+  is safe only because `_build_database_url()` composes a URL only when
+  `DB_PASSWORD` is truthy. If FR-5's connect-time listener later lets anyone
+  drop `DB_PASSWORD` from the task definition, every URL becomes passwordless
+  and every real rotation would downgrade — the self-heal silently deleted.
+  A comment on `_downgrade_passwordless_auth_failure` says so at the place
+  someone would have to change.

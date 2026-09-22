@@ -917,13 +917,28 @@ def test_probe_sync_is_not_configured_in_a_deployed_environment(monkeypatch):
     assert db_probe.probe_sync() is ProbeVerdict.NOT_CONFIGURED
 
 
-def test_cli_exits_three_when_not_configured(monkeypatch, capsys):
-    """Distinct from both: exit 1 stays "rotated credential", exit 0 stays
-    "nothing to act on". A task with no database is neither — and nothing
-    else is going to page anyone about it."""
+def test_cli_exits_zero_when_not_configured(monkeypatch, capsys):
+    """rsh107 runs this as the worker's ECS `CMD-SHELL` health check, and ECS
+    replaces a task on ANY non-zero exit. A distinct code here would drain
+    the worker over the one condition this verdict exists to stop draining
+    over — with `deployment_minimum_healthy_percent = 0` and no ALB floor,
+    permanently. The printed name is what tells an operator."""
     monkeypatch.setattr(db_probe, "probe_sync", lambda: ProbeVerdict.NOT_CONFIGURED)
-    assert db_probe.main([]) == 3
+    assert db_probe.main([]) == 0
     assert capsys.readouterr().out.strip() == "NOT_CONFIGURED"
+
+
+@pytest.mark.parametrize(
+    "verdict", [v for v in ProbeVerdict if v is not ProbeVerdict.AUTH_FAILED]
+)
+def test_no_fail_open_verdict_ever_exits_non_zero(monkeypatch, verdict):
+    """The contract rsh107 depends on, pinned against future verdicts.
+
+    A new enum member that exits non-zero is a task-replacement instruction
+    for every `CMD-SHELL` consumer, however it was meant.
+    """
+    monkeypatch.setattr(db_probe, "probe_sync", lambda: verdict)
+    assert db_probe.main([]) == 0
 
 
 async def test_a_classifier_exception_in_the_missing_password_check_fails_open(
@@ -956,14 +971,23 @@ async def test_a_classifier_exception_in_the_missing_password_check_fails_open(
         pytest.param(RuntimeError("???"), "WARNING", id="unknown"),
     ],
 )
-async def test_every_fail_open_verdict_logs_failing_open(
+async def test_every_probe_async_fail_open_verdict_logs_failing_open(
     monkeypatch, caplog, exc, level
 ):
     """`failing open` is a contract, not prose.
 
-    The fail-open alarm's metric filter (dfrcp1) matches that phrase; fail-
-    open means nothing else pages. A rewording would silently drop a
+    The fail-open alarm's metric filter (dfrcp1) will match that phrase;
+    fail-open means nothing else pages. A rewording would silently drop a
     failure mode from alerting while every verdict test still passes.
+
+    **This covers the branches reachable through `probe_async` only.** The
+    other emitters have their own tests — the passwordless downgrade and the
+    classifier-raised branch below, `probe_sync`'s absent-URL classify in
+    `test_probe_sync_survives_a_classifier_failure_on_an_absent_url`, and
+    both router branches in
+    `services/api/tests/test_health_credential_probe.py`. Driving each path
+    cannot prove that a *tenth* emitter was not added without the phrase;
+    that is dfrcp1's source-level sweep, not this test.
     """
     import logging
 
@@ -1226,3 +1250,44 @@ def test_the_documented_production_spelling_is_a_deployed_environment(monkeypatc
 
     monkeypatch.setattr(constants, "ENVIRONMENT", "production")
     assert db_probe._database_expected() is True
+
+
+async def test_the_passwordless_downgrade_logs_failing_open(monkeypatch, caplog):
+    """The one branch that suppresses a 503 — it owes the loudest log."""
+    import logging
+
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app@db/x"
+    )
+
+    async def boom():
+        raise auth_error()
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    with caplog.at_level(logging.WARNING, logger=db_probe.logger.name):
+        verdict = await db_probe.probe_async()
+
+    assert verdict is ProbeVerdict.UNREACHABLE
+    matching = [r for r in caplog.records if "failing open" in r.getMessage()]
+    assert matching and matching[0].levelname == "ERROR"
+
+
+async def test_the_classifier_raised_branch_logs_failing_open(monkeypatch, caplog):
+    import logging
+
+    def exploding(_exc):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(db_probe, "is_auth_error", exploding)
+
+    async def boom():
+        raise OSError("ordinary")
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    with caplog.at_level(logging.WARNING, logger=db_probe.logger.name):
+        verdict = await db_probe.probe_async()
+
+    assert verdict is ProbeVerdict.UNKNOWN
+    assert any("failing open" in r.getMessage() for r in caplog.records)
