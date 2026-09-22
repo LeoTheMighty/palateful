@@ -416,3 +416,41 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   Re-review of the fixed hunks was clean. The CI-only `cant-combine` failure
   found on PR #29 is *not* a phase-4 finding — no reviewer caught it — and is
   recorded separately under phase 7 / `covcomb1`.
+- 2026-09-22T09:40 — **the story's central premise, measured for the first
+  time.** Until now "a pooled connection stays authenticated across a
+  rotation" was asserted — by this spec, by the rotation-self-heal design
+  stage, and by me — but never demonstrated. My T2.3 leg only proved that a
+  *fresh* connection with a wrong password fails, which is the easy half.
+  palateful-0e, citing this analysis in its outage reconstruction, explicitly
+  declined to confirm the pooled half because it had not reproduced it. That
+  was the right call and it exposed the gap.
+
+  Reproduced against a live Postgres (docker-compose, pg16), using the real
+  async pooled-engine shape the old `/v1/health` borrowed via
+  `Depends(get_async_database)`, and `ALTER ROLE ... PASSWORD` standing in for
+  the RDS rotation:
+
+      before rotation : pooled SELECT 1 -> OK (pool warmed)
+      ROTATED         : ALTER ROLE ... PASSWORD <new>
+      after rotation  : OLD pooled probe -> OK             <-- stale task reports HEALTHY
+      after rotation  : new conn w/ start-time password -> InvalidPasswordError sqlstate=28P01
+      after rotation  : NEW rsh102 probe -> AUTH_FAILED
+
+  Both halves, on the same server, seconds apart. The probe deployed today
+  (`848311af`) answers healthy after the rotation while any connection the
+  pool opens from then on is rejected. The new probe sees it. This is
+  PostgreSQL behaviour, not a quirk of the test: authentication happens once,
+  at session startup, and changing a role's password does not terminate
+  sessions already established.
+
+  It also matches 0e's reconstruction of the 06-17 → 07-31 outage from the
+  RDS log — 238,258 auth failures, resuming 17 and 19 minutes after the 07-22
+  and 07-29 rotations, which is roughly the interval for a pool to cycle
+  enough connections to hit a fresh one.
+
+  **Consequence, stated plainly:** until this image is deployed, nothing in
+  prod detects a rotation. The next scheduled one is 2026-10-29. A merged but
+  undeployed rsh102 repeats the exact pattern 0e found: `e74303f` wrote a
+  probe fix on 05-03, six weeks before the outage, and it sat undeployed
+  behind the freeze — its rotation-cadence half took effect, its guard half
+  did not.
