@@ -408,3 +408,37 @@ and forms a real verdict; run 35704107068 logged `Deployed image:
 …/api:848311af… Gap: 52 day(s); threshold: 7 day(s).` → exit 1. The
 monitor now works — and is correctly reporting a stale prod **to nobody**,
 because nothing in palateful pushes to a human (see `dev-obsgap1` G1/G3).
+
+## dfrcp1 — subscribe to `palateful-prod-alerts` (blocks two detectors)
+
+**Measured 2026-09-22:** the topic exists
+(`arn:aws:sns:us-east-1:<account>:palateful-prod-alerts`, created by alrt1 #41)
+and `aws sns list-subscriptions-by-topic` returns **empty**. Until someone
+subscribes, every alarm publishes into a void — including the two dfrcp1 ships:
+
+- deploy-freshness red verdicts (it has been correctly reporting a stale prod to
+  nobody since 2026-09-20)
+- the DB probe failing open (`/v1/health` returns 200 while it cannot confirm
+  the database is healthy, so `curl -sf` and the container health check both
+  pass — this alarm is the only thing that can ever report it)
+
+**Do this (Leo, by hand — deliberately not in Terraform):**
+
+```bash
+aws sns subscribe --topic-arn arn:aws:sns:us-east-1:<account>:palateful-prod-alerts \
+    --protocol email --notification-endpoint <your-address>
+```
+
+Then confirm the email. The address must not enter the repo, Terraform, plan
+output or CI logs — this repo and its Actions logs are public. That is why
+`modules/alerts` deliberately owns no subscription.
+
+**Then verify both detectors, which nobody has done yet:**
+
+1. `gh workflow run deploy-freshness.yml -f synthetic-gap-days=99` → expect an
+   email, and the run red.
+2. `aws cloudwatch set-alarm-state --alarm-name palateful-prod-api-fail-open
+   --state-value ALARM --state-reason "dfrcp1 verification"` → expect an email.
+
+A configured alarm that has never fired is not a verified one. If step 1 or 2
+produces no email, the detector is not working, whatever the AWS console says.

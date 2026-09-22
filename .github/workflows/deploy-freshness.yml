@@ -54,6 +54,10 @@ env:
   CLUSTER: palateful-prod
   SERVICE: palateful-api-prod
   MAX_GAP_DAYS: 7
+  # The alert topic from alrt1 (terraform/modules/alerts). Subscriptions are
+  # created by hand, outside Terraform, so no address appears in this repo,
+  # in plan output, or in state — CI logs here are public.
+  TOPIC_NAME: palateful-prod-alerts
 
 jobs:
   check-freshness:
@@ -82,10 +86,46 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Measure gap between running image and its commit date
+        id: measure
         env:
           SYNTHETIC_GAP_DAYS: ${{ inputs.synthetic-gap-days }}
         run: |
           set -euo pipefail
+
+          # A VERDICT IS NOT THE SAME AS A FAILURE (G3, dfrcp1).
+          #
+          # This step still exits non-zero on a red verdict — `tools/
+          # deploy-freshness-self-test.sh` extracts this body and asserts
+          # exactly that, and the exit code IS the check. What's new is
+          # that it RECORDS the verdict first, so the notify step below
+          # (which runs on `always()`, because this step has failed by
+          # then) can tell the two failure shapes apart:
+          #
+          #   verdict=stale   — measured prod, it is too old. Notify.
+          #   verdict=unknown — measured prod, the tag isn't a commit here.
+          #                     Notify; unknown provenance is alarming.
+          #   verdict=fresh   — measured prod, it is current. Silence.
+          #   (no verdict)    — this step never got to a measurement. The
+          #                     49 runs before 2026-09-20 all died in
+          #                     configure-aws-credentials and measured
+          #                     NOTHING, while looking exactly as red as a
+          #                     real freeze. See the header note.
+          #
+          # The no-verdict case cannot notify from here: it means AWS
+          # credentials failed, and publishing to SNS needs those same
+          # credentials. Nothing this workflow can do reaches a human in
+          # that state — that gap is absal1's job (alert on the ABSENCE of
+          # an expected heartbeat), and it is the reason absal1 must land.
+          # Do not "fix" this by making the notify step run without a
+          # verdict; it would publish nothing and hide the gap.
+
+          # `tools/deploy-freshness-self-test.sh` extracts this step's body
+          # and runs it OUTSIDE Actions, where $GITHUB_OUTPUT does not exist
+          # and `set -u` turns a bare reference into a fatal error. Writing
+          # through this helper keeps the step runnable in both places — and
+          # keeps the self-test able to check the logic, which is the whole
+          # reason that harness exists.
+          emit() { printf '%s\n' "$@" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
           # THE FAMILY-SHORTCUT TRAP — do not "simplify" this to
           #   aws ecs describe-task-definition --task-definition palateful-api-prod
@@ -118,6 +158,8 @@ jobs:
             # commit here means unknown provenance — itself alarming, so fail.
             if ! git cat-file -e "${tag}^{commit}" 2>/dev/null; then
               echo "::error::Deployed tag '$tag' is not a commit in this repository — cannot date the deployment."
+              emit "verdict=unknown" \
+                   "detail=Deployed tag '${tag}' is not a commit in this repository — cannot date the deployment. Image: ${image}"
               exit 1
             fi
             deployed_ct=$(git log -1 --format=%ct "$tag")
@@ -126,8 +168,102 @@ jobs:
           fi
 
           echo "Gap: ${gap_days} day(s); threshold: ${MAX_GAP_DAYS} day(s)."
+          emit "gap_days=${gap_days}"
           if [ "$gap_days" -gt "$MAX_GAP_DAYS" ]; then
             echo "::error::Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
+            emit "verdict=stale" \
+                 "detail=Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
             exit 1
           fi
           echo "Prod image is fresh (${gap_days}d <= ${MAX_GAP_DAYS}d)."
+          emit "verdict=fresh"
+
+      # Publish the verdict BEFORE failing the job, so a red verdict reaches
+      # a human instead of sitting in a run nobody opens. Guarded on a
+      # verdict actually existing: see the no-verdict note above.
+      - name: Notify on a red verdict
+        if: always() && (steps.measure.outputs.verdict == 'stale' || steps.measure.outputs.verdict == 'unknown')
+        env:
+          VERDICT: ${{ steps.measure.outputs.verdict }}
+          DETAIL: ${{ steps.measure.outputs.detail }}
+        run: |
+          set -euo pipefail
+
+          # Look the ARN up by name rather than hardcoding it: the account
+          # id is not secret, but it has no business being in a public repo
+          # when one API call derives it. Topic: modules/alerts (alrt1).
+          topic_arn=$(aws sns list-topics \
+            --query "Topics[?ends_with(TopicArn, ':${TOPIC_NAME}')].TopicArn | [0]" \
+            --output text)
+
+          if [ -z "$topic_arn" ] || [ "$topic_arn" = "None" ]; then
+            echo "::error::Alert topic '${TOPIC_NAME}' not found — the verdict below reached nobody."
+            echo "$DETAIL"
+            exit 1
+          fi
+
+          # Built with printf rather than a literal multi-line string: an
+          # unindented continuation line inside `run: |` silently ends the
+          # block and breaks the whole workflow file.
+          message=$(printf '%s\n\nWorkflow run: %s/%s/actions/runs/%s\n\n%s\n' \
+            "$DETAIL" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+            "This is a measured verdict about prod, not a CI failure: the check reached AWS, read the running task definition, and this is what it found.")
+
+          aws sns publish \
+            --topic-arn "$topic_arn" \
+            --subject "palateful prod: deploy-freshness ${VERDICT}" \
+            --message "$message" > /dev/null
+
+          echo "Published '${VERDICT}' verdict to ${TOPIC_NAME}."
+
+
+      # THE CHECK'S OWN DEATH HAS TO LEAVE GITHUB TOO.
+      #
+      # Leo has GitHub Actions email notifications switched OFF, deliberately
+      # — too noisy across personal and work repos. So a red run in the
+      # Actions UI is not a channel anyone reads, and this workflow's 52
+      # consecutive silent failures prove it: they were visible the whole
+      # time, to nobody.
+      #
+      # A red VERDICT is handled above. This handles the other shape: the
+      # check died before forming one (AWS API error, IAM change, the ECS
+      # service renamed, a bug in the step). Without this, that case is
+      # visible only as a red square in a UI Leo does not open, which is
+      # precisely how the original design failed.
+      #
+      # HONEST LIMIT: this cannot fire when the AWS CREDENTIALS themselves
+      # failed, because publishing needs them — the single largest historical
+      # bucket (49 of 52 runs died in configure-aws-credentials). Nothing
+      # inside this workflow can close that; only absal1, alerting on the
+      # ABSENCE of an expected heartbeat from outside, can. Do not read this
+      # step as making absal1 optional. It narrows the blind spot from "any
+      # failure" to "credential failure"; it does not remove it.
+      - name: Notify when the check itself failed to reach a verdict
+        if: failure() && steps.measure.outputs.verdict == ''
+        run: |
+          set -euo pipefail
+
+          topic_arn=$(aws sns list-topics \
+            --query "Topics[?ends_with(TopicArn, ':${TOPIC_NAME}')].TopicArn | [0]" \
+            --output text) || {
+              echo "::error::Could not even reach SNS — credentials are the likely cause. This failure reaches nobody; see absal1."
+              exit 1
+            }
+
+          if [ -z "$topic_arn" ] || [ "$topic_arn" = "None" ]; then
+            echo "::error::Alert topic '${TOPIC_NAME}' not found — this failure reached nobody."
+            exit 1
+          fi
+
+          message=$(printf '%s\n\nWorkflow run: %s/%s/actions/runs/%s\n\n%s\n' \
+            "deploy-freshness could not measure prod: the check failed before reaching a verdict. Prod's deploy freshness is UNKNOWN right now — this is not a report that prod is fine." \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+            "Until this is fixed, the deploy-freeze detector is not running. It failed silently for 52 consecutive runs once before.")
+
+          aws sns publish \
+            --topic-arn "$topic_arn" \
+            --subject "palateful prod: deploy-freshness CHECK FAILED (no verdict)" \
+            --message "$message" > /dev/null
+
+          echo "Published a no-verdict failure notice to ${TOPIC_NAME}."
