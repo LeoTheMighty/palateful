@@ -27,6 +27,20 @@ outage, because both services run
 positively-identified auth failure therefore classifies as a
 *non*-failing verdict. See `db_credentials.is_auth_error`.
 
+The test for "may this 503?" is always the same: **would a restart change
+the outcome?** A rotated password — yes, the new task resolves the new one.
+An empty password, a pg_hba rejection, a missing `DATABASE_URL` — no: the
+replacement reads the same task definition and fails identically, and with
+no healthy floor the service drains to zero and stays there (selfheal1).
+
+Every fail-open branch logs the phrase **`failing open`**. **No alarm
+consumes it yet** — dfrcp1 is the spec that will add the CloudWatch metric
+filter, and until it ships and is applied, every fail-open verdict here is
+silent. The phrase is pinned as a contract now
+(`test_every_fail_open_verdict_logs_failing_open`) precisely so that
+filter has something stable to match: a rewording would otherwise drop a
+whole failure mode from alerting while every verdict test still passed.
+
 Rate limiting
 -------------
 The container health check (30s) and the ALB target group (60s) both land
@@ -52,7 +66,11 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from utils.services.db_credentials import is_auth_error
+from utils.services.db_credentials import (
+    _chain,
+    is_auth_error,
+    is_missing_password,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +98,34 @@ DEFAULT_PROBE_TTL_S = 60.0
 PROBE_TOTAL_TIMEOUT_S = 2.5
 PROBE_CONNECT_TIMEOUT_S = 2.0
 
+#: The `ENVIRONMENT` values under which a database is *expected*: exactly
+#: the ones Terraform injects into the ECS task definitions
+#: (`terraform/environments/{prod,dev}/main.tf` → `modules/ecs`). An
+#: explicit allowlist, not a guess: anywhere else (tests, local runs with
+#: no DB) an absent URL is a legitimate state and still classifies `OK`.
+#: `"production"` is included because `SETUP.md`'s production `.env`
+#: template uses that spelling: a task deployed from the documented
+#: template must not silently lose this verdict. (The mismatch itself is a
+#: real bug — `utils.api.endpoint` keys its prod audit writer on the exact
+#: string `"prod"` — filed separately as `envspell1`.)
+#: Compared case-insensitively and whitespace-stripped, so `"PROD"` or a
+#: newline-padded value cannot silently disable `NOT_CONFIGURED`.
+#: `test_every_terraform_environment_is_covered` fails if a new Terraform
+#: environment is added without being listed here.
+DEPLOYED_ENVIRONMENTS: frozenset[str] = frozenset({"prod", "dev", "production"})
+
+
+class DatabaseNotConfigured(Exception):
+    """A database is expected here and no URL is configured.
+
+    Passed to `_classify` as an exception rather than returned as a verdict
+    so the seam's contract stays "return on success, raise on failure" and
+    classification stays in one place. `_connect_once` raises it; the sync
+    path constructs it and hands it straight to `_classify`, which matches
+    it anywhere in the chain so an intervening wrapper cannot degrade the
+    verdict to `UNKNOWN`.
+    """
+
 
 class ProbeVerdict(Enum):
     """Outcome of one fresh-connection attempt.
@@ -89,7 +135,8 @@ class ProbeVerdict(Enum):
     and all fail open.
     """
 
-    #: Connected and authenticated (or there is nothing to connect to).
+    #: Connected and authenticated — or no database is expected here, so
+    #: there is nothing to connect to.
     OK = "OK"
     #: Positively identified credential failure. Drives the 503.
     AUTH_FAILED = "AUTH_FAILED"
@@ -99,6 +146,12 @@ class ProbeVerdict(Enum):
     #: Something nobody anticipated. Fails open by construction: an
     #: unclassified error must never be reported as bad credentials.
     UNKNOWN = "UNKNOWN"
+    #: A database is expected (deployed environment) but no URL is
+    #: configured — e.g. an empty injected `DB_PASSWORD`, which makes
+    #: `constants._build_database_url()` fall through to an unset
+    #: `DATABASE_URL`. Not `OK`: the task is not healthy, every real request
+    #: will fail. Not a 503: a restart re-reads the same task definition.
+    NOT_CONFIGURED = "NOT_CONFIGURED"
 
 
 # --------------------------------------------------------------------------
@@ -127,6 +180,55 @@ def _probe_url() -> str | None:
     from utils import constants
 
     return constants.ASYNC_DATABASE_URL
+
+
+def _url_password_is_blank(url: str | None) -> bool:
+    """True iff `url` is a URL that carries no usable password.
+
+    The async driver cannot tell us this. Given `password=None`, asyncpg's
+    md5 path hashes the empty string and sends it, so the *server* answers
+    `28P01 password authentication failed` — indistinguishable at the
+    classifier from a rotated credential, and therefore a 503 that drains
+    the service over a task that never had a password (selfheal1 Case 1, on
+    the path `/v1/health` actually uses). libpq's `no password supplied`
+    wording exists only on the sync driver.
+
+    So the async path asks the configuration instead of the driver: if the
+    URL we just failed to authenticate with has no password in it, the
+    server had nothing real to reject and a replacement task will build the
+    same URL.
+
+    A whitespace-only password counts as blank — a trailing space or
+    newline is a routine secret-extraction artifact, and a password made of
+    whitespace is not one a rotation would produce.
+
+    Unparseable input — and an absent URL, which is a different condition
+    with its own verdict (`NOT_CONFIGURED`) — returns False: this function
+    only ever *downgrades* a 503, so uncertainty must leave the self-heal
+    alone. A rotation that goes unhealed is the six-day outage.
+    """
+    if not url:
+        return False
+    try:
+        from sqlalchemy.engine.url import make_url
+
+        password = make_url(url).password
+    except Exception:  # noqa: BLE001 - never let URL parsing decide a verdict
+        return False
+    return password is None or not str(password).strip()
+
+
+def _database_expected() -> bool:
+    """Whether this process is somewhere a database must exist.
+
+    Read at call time, like `_probe_url`, for the same reasons.
+    """
+    from utils import constants
+
+    environment = constants.ENVIRONMENT
+    if not isinstance(environment, str):
+        return False
+    return environment.strip().lower() in DEPLOYED_ENVIRONMENTS
 
 
 def _ttl_default() -> float:
@@ -185,11 +287,13 @@ async def _connect_once() -> None:
 
     Returns cleanly on success; raises whatever the driver raised on
     failure — classification is the caller's job. A `None` URL is a
-    no-op success: there is nothing to authenticate against, so there is
-    no credential to be wrong.
+    no-op success where no database is expected, and `DatabaseNotConfigured`
+    where one is.
     """
     url = _probe_url()
     if not url:
+        if _database_expected():
+            raise DatabaseNotConfigured("no async database URL is configured")
         return
 
     from utils import constants
@@ -230,8 +334,37 @@ async def probe_async() -> ProbeVerdict:
     try:
         await asyncio.wait_for(_connect_once(), timeout=PROBE_TOTAL_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - classification is the point
-        return _classify(exc)
+        return _downgrade_passwordless_auth_failure(_classify(exc), _safe_probe_url())
     return ProbeVerdict.OK
+
+
+def _safe_probe_url() -> str | None:
+    """`_probe_url()`, never raising. It is a seam; seams get patched."""
+    try:
+        return _probe_url()
+    except Exception:  # noqa: BLE001
+        logger.warning("db probe: probe URL lookup failed", exc_info=True)
+        return None
+
+
+def _downgrade_passwordless_auth_failure(
+    verdict: ProbeVerdict, url: str | None
+) -> ProbeVerdict:
+    """Turn a 503 into a fail-open when we never sent a password.
+
+    Only ever downgrades `AUTH_FAILED`, and only when the URL that failed
+    carries no usable password. Everything else passes through untouched,
+    so a genuine rotation still self-heals.
+    """
+    if verdict is not ProbeVerdict.AUTH_FAILED or not _url_password_is_blank(url):
+        return verdict
+
+    logger.error(
+        "db probe: authentication was rejected for a URL that carries no "
+        "password — a configuration error, not a rotation, and a restart "
+        "rebuilds the same URL; failing open",
+    )
+    return ProbeVerdict.UNREACHABLE
 
 
 def _classify(exc: BaseException) -> ProbeVerdict:
@@ -245,8 +378,26 @@ def _classify(exc: BaseException) -> ProbeVerdict:
     500 kills the task exactly as hard as a 503 would. Doubt fails open,
     including doubt about the classifier itself.
     """
+    if any(isinstance(node, DatabaseNotConfigured) for node in _chain(exc)):
+        from utils import constants
+
+        logger.error(
+            "db probe: no database configured in deployed environment %r — "
+            "every real request will fail, and a restart re-reads the same "
+            "task definition so it cannot fix this; failing open",
+            constants.ENVIRONMENT,
+        )
+        return ProbeVerdict.NOT_CONFIGURED
+
+    # Order matters: the missing-password signal VETOES the auth signal, it
+    # does not lose to it. Both predicates walk the whole exception chain,
+    # so a retry path can produce a chain carrying both phrases (rsh105's
+    # listener: reject cached password -> refresh -> empty secret -> retry).
+    # A task with no password to send is not fixed by replacing it, and
+    # doubt fails open.
     try:
-        auth = is_auth_error(exc)
+        missing_password = is_missing_password(exc)
+        auth = not missing_password and is_auth_error(exc)
     except Exception:  # noqa: BLE001 - the classifier itself misbehaved
         logger.exception(
             "db probe: classifier raised on %s — failing open",
@@ -262,6 +413,17 @@ def _classify(exc: BaseException) -> ProbeVerdict:
             exc,
         )
         return ProbeVerdict.AUTH_FAILED
+
+    # Error, not warning: this is a deployment configuration fault that will
+    # not clear on its own, unlike the transient cases below.
+    if missing_password:
+        logger.error(
+            "db probe: this task has no database password to send — a "
+            "configuration error a restart cannot fix; failing open (%s: %s)",
+            type(exc).__name__,
+            exc,
+        )
+        return ProbeVerdict.UNREACHABLE
 
     # `TimeoutError` (which `asyncio.TimeoutError` aliases on 3.11+) is
     # itself an `OSError` subclass, so the wait_for timeout lands here.
@@ -389,7 +551,21 @@ def probe_sync() -> ProbeVerdict:
 
     url = constants.DATABASE_URL
     if not url:
-        return ProbeVerdict.OK
+        if not _database_expected():
+            return ProbeVerdict.OK
+        # Inside a try for the same reason `create_engine` is below: an
+        # exception escaping here reaches the CLI as exit 1, which it
+        # documents as AUTH_FAILED — during an incident that reads as "the
+        # credentials rotated" when nothing of the sort happened.
+        try:
+            return _classify(
+                DatabaseNotConfigured("no sync database URL is configured")
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "db probe: classifying an absent URL failed; failing open"
+            )
+            return ProbeVerdict.UNKNOWN
 
     # libpq's `connect_timeout` is an integer number of seconds, and 0
     # means "wait indefinitely" — so a sub-second budget must round UP to
@@ -415,7 +591,7 @@ def probe_sync() -> ProbeVerdict:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except Exception as exc:  # noqa: BLE001 - classification is the point
-        return _classify(exc)
+        return _downgrade_passwordless_auth_failure(_classify(exc), url)
     finally:
         # Swallowed for the same reason as the async twin: an exception
         # from `finally` replaces the one propagating out of the body,
@@ -430,11 +606,11 @@ def probe_sync() -> ProbeVerdict:
 def main(argv: list[str] | None = None) -> int:
     """`python -m utils.services.db_probe` — probe once, print, exit.
 
-    Exit code 0 for any fail-open verdict and 1 only for `AUTH_FAILED`,
-    mirroring the endpoint: the caller should act on bad credentials and
-    ignore everything else. Useful for confirming from a shell whether a
-    given environment's credentials are live — which, during the
-    2026-07-21 incident, took far longer than it should have.
+    Exit codes: `1` **only** for `AUTH_FAILED` (rotate-and-restart), `3` for
+    `NOT_CONFIGURED`, `0` for every other fail-open verdict. `1` keeps its
+    rsh102 meaning exactly; `3` exists because `NOT_CONFIGURED` means "this
+    task is broken and no alarm is going to page you about it", which a
+    success exit code would hide from an operator or a smoke check.
     """
     import argparse
 
@@ -453,7 +629,9 @@ def main(argv: list[str] | None = None) -> int:
     verdict = asyncio.run(probe_async()) if args.use_async else probe_sync()
 
     print(verdict.name)
-    return 1 if verdict is ProbeVerdict.AUTH_FAILED else 0
+    if verdict is ProbeVerdict.AUTH_FAILED:
+        return 1
+    return 3 if verdict is ProbeVerdict.NOT_CONFIGURED else 0
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entrypoint

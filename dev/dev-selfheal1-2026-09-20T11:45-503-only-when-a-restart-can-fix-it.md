@@ -188,3 +188,63 @@ verdict alone and alarm on it, which captures most of the value.
   deserve the same treatment. Case 2's asymmetry is argued in its own section
   at Leo's request rather than bundled with Case 1.
 - 2026-09-22T11:24 — claimed by /devx (hand claim: devx-helper claim pushes to main, which the coordinator has frozen; claim commit held locally, unpushed). Worktree .worktrees/dev-selfheal1 on feat/dev-selfheal1 off origin/main faf35fa1.
+- 2026-09-22T20:10 — phase 2: spec ACs direct (v2 native); 6 ACs;
+  workstream=rotation-self-heal (this is a spec change against its E-2, not a
+  planned phase); red-artifacts=none (rsh102's artifact is GREEN and its
+  registry entry already deleted).
+- 2026-09-22T20:55 — phase 3: Case 1 + Case 2 implemented.
+  `AUTH_MESSAGE_PATTERNS` is now `password authentication failed` alone;
+  `is_missing_password` recognises the no-password case separately so it can
+  be reported loudly at `error` without driving a 503. New verdict
+  `NOT_CONFIGURED`, raised as `DatabaseNotConfigured` from the connect seam so
+  classification stays in `_classify`, keyed on `_database_expected()` —
+  an explicit `ENVIRONMENT` allowlist, not a guess. rsh102's E-2 fixture was
+  updated in place with the reasoning in the diff, not deleted.
+- 2026-09-22T21:50 — phase 4: 3-agent parallel adversarial review launched
+  (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Two reported: 13 + 10
+  findings; ALL in-scope findings fixed in-place. **The Acceptance Auditor had
+  not reported when this commit was written** — its findings are dispositioned
+  in a later status-log line, not silently folded into this one. Most load-bearing: **measured on live
+  drivers, asyncpg given no password md5-hashes the empty string, so the
+  server answers `28P01 password authentication failed` — byte-identical to a
+  rotation.** `/v1/health` runs asyncpg, so removing the message pattern alone
+  fixed Case 1 only on the sync path, and the spec's own named trigger ("a
+  `DATABASE_URL` with no password component") could still drain prod. Added
+  `_url_password_is_blank` + `_downgrade_passwordless_auth_failure`: an
+  `AUTH_FAILED` whose URL carries no usable password downgrades to
+  `UNREACHABLE`; absent or unparseable URLs leave the 503 alone, because a
+  suppressed rotation is the six-day outage. Other fixes: the missing-password
+  signal now VETOES the auth signal (rsh105's retry path builds a chain
+  carrying both phrases) but walks `.orig`/`__cause__` only, never the
+  implicitly-set `__context__`, so an ambient handler cannot suppress a real
+  rotation; `ENVIRONMENT` matching normalised and `production` admitted
+  (SETUP.md's template spelling); `DatabaseNotConfigured` matched anywhere in
+  the chain; `probe_sync`'s absent-URL classify wrapped so nothing escapes as
+  exit 1 ("credentials rotated") mid-incident; CLI exit 3 for
+  `NOT_CONFIGURED`; the new tests patch `ENVIRONMENT` explicitly rather than
+  leaning on conftest's `setdefault`. Re-review clean.
+- 2026-09-22T21:50 — AC #6 (fail-open verdicts alarm) is **not delivered
+  here and cannot be**: the alarm is dfrcp1, blocked on alrt1 + tfgate1 and on
+  rsh102 being deployed. Shipped the enabling half instead — every fail-open
+  branch logs the literal phrase `failing open`, pinned by
+  `test_every_fail_open_verdict_logs_failing_open`, which is what dfrcp1's
+  metric filter matches — and the module docstring now says plainly that no
+  alarm consumes it yet. Leo's call (relayed 2026-09-22): merge now rather
+  than hold, because a permanent drain is worse than a silent failure;
+  dfrcp1 assigned immediately.
+- 2026-09-22T21:50 — two notes for the next reader. (1) Prod blast radius is
+  the inverse of this spec's ranking: ECS never sets `DATABASE_URL`, so an
+  empty injected `DB_PASSWORD` yields Case 2 (`NOT_CONFIGURED`), while Case 1
+  is reachable only via an explicitly passwordless URL. Case 2 is the one
+  prod can actually hit. (2) `/v1/health` now answers `{"status":
+  "degraded"}` for `NOT_CONFIGURED` — a body change beyond the ACs' "still
+  200", made because `status: ok` is the exact claim this workstream exists
+  to stop making. The fail-open verdicts keep `ok`: they are doubt about a
+  possibly-transient condition, this one is a certainty. Nothing parses the
+  field today (`bin/prod-status`, `bin/prod-deploy` use `curl -sf`).
+- 2026-09-22T21:55 — filed from review, out of scope here: `envspell1`
+  (`ENVIRONMENT` has five spellings; `production` silently disables the
+  prod-only 4xx audit writer) and `syncprobe1` (`probe_sync` has no total
+  timeout and no rate limit; rsh107 is about to consume it). Also amended
+  E-2 in `_devx/workstreams/rotation-self-heal/expectations.md`, which still
+  read "503 on both `28P01` and `28000`".
