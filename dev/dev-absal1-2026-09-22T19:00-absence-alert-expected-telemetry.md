@@ -111,3 +111,52 @@ with nobody noticing. G2 catches one instance; this catches the class (4f).
   the independent path* — in both directions — not "the code has a second
   path". Every path above currently fails that test, because there is no
   second path yet.
+
+- 2026-09-22T21:40 — **Leo's answers to the two questions above, and a
+  correction to the entry I just wrote.**
+
+  **1. The channel is email via SNS.** That is what he will act on, so the
+  SNS email subscription is *the* gate. Consequences: the `palateful-prod-alerts`
+  0-subscriptions finding stops being context and becomes the blocking
+  prerequisite — nothing else in this story can be verified until a confirmed
+  subscription exists. And **SES is not needed**: an SNS email subscription is
+  the simpler route to the same inbox, so the "0 verified identities" finding
+  is now informational rather than a path to build.
+
+  **2. GitHub Actions email notifications are switched OFF**, deliberately —
+  too noisy across his personal and work repos.
+
+  **CORRECTION TO MY 21:10 ENTRY.** I wrote that `deploy-freshness` failed 52
+  times "with nobody noticing", which implies inattention. That is wrong, and
+  the truth is worse: **that path could not have reached him at all.** The
+  watcher was not being ignored; it was shouting into a channel that was
+  switched off. I inferred a human cause for a structural one — the same
+  mistake as reading a green health check as a healthy database.
+
+  **What this changes in the acceptance criteria.** A scheduled GitHub Action
+  is still structurally right as the *watcher* — outside AWS, outside the API,
+  outside the DB. But:
+  - **Its verdict must leave GitHub** to reach him. Publishing to SNS is that
+    exit. A red run in the Actions UI reaches nobody.
+  - **"Its own failure must be visible" cannot mean a red run.** That is
+    precisely the 52-failure shape. It needs an external heartbeat: something
+    that notices the watcher *stopped reporting*, through a channel that is
+    not the watcher and not GitHub.
+  - So the criterion moves from "the scheduled job goes red" to **"the absence
+    of a verdict reaches Leo"**.
+
+  **One concrete mechanism**, offered for whoever builds this rather than
+  prescribed: the watcher publishes a heartbeat to the SNS topic on every run,
+  pass or fail; a CloudWatch alarm on that topic's `NumberOfMessagesPublished`
+  (`< 1` over a window longer than the schedule interval) fires when the
+  heartbeat stops. That alarm lives in AWS and alerts by the same email, so it
+  is independent of GitHub entirely — it detects a watcher that died, was
+  disabled, or lost its credentials, which is exactly how `deploy-freshness`
+  failed. It does not require the watcher to be healthy enough to report its
+  own failure, which is the property that matters.
+
+  **And the subscription itself has to be watched.** The coordinator's
+  original constraint — a confirmed subscription someone later deletes returns
+  us to a silent void — means the gate is not "the topic exists" but "the
+  topic has a confirmed subscription", checked continuously. A deleted
+  subscription is indistinguishable from silence at every layer above it.
