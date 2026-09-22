@@ -97,6 +97,15 @@ nobody to have written anything.
 that is not handling anything else. **That is the whole reason — full
 stop.**
 
+**Creation does not isolate exception context — and it does not matter.**
+Stated that way round deliberately: the true half is non-obvious and
+worth keeping, and only the conclusion drawn from it was wrong. The
+verdict leaves the probe as a *return value*, and no caller frame ever
+re-raises it, so caller-side contamination cannot happen no matter what
+the caller is handling. A note that only said "this can't happen" would
+invite the next reader to re-derive the tempting wrong path; this shows
+the path and closes it.
+
 ⚠️ **Two plausible explanations of why are both FALSE**, and each was
 proposed, measured and refuted by the peer who proposed it:
 
@@ -128,6 +137,30 @@ task; both got `UNREACHABLE`.
 **The invariant is therefore violable only from `_connect_once` and
 below.** That is where the tests belong, and the fix does not need to
 defend against callers at all.
+
+[M, 0a, against the **real merged module** rather than a model] Both
+sides of that bound, confirmed:
+
+```
+caller A (inside an except handling an auth error):  UNREACHABLE
+caller B (clean frame, served from A's cache):       UNREACHABLE
+control  (no ambient handler):                       UNREACHABLE
+
+timeout while an auth error is handled below _connect_once -> AUTH_FAILED
+```
+
+**What the false verdict looks like in prod logs, verbatim:**
+
+```
+db probe: credential failure — this task cannot re-authenticate without a restart (TimeoutError: )
+```
+
+The probe announces a **credential failure** and offers a `TimeoutError`
+**with an empty message** as its evidence. An operator reading this
+during an incident sees a confident claim about credentials backed by
+nothing. The same exception with no auth error anywhere in scope gives
+`UNREACHABLE` — same type, opposite verdict, decided entirely by what an
+unrelated frame happened to be handling.
 
 **Two named conditions make it live — both are the next stories in this
 workstream:**
