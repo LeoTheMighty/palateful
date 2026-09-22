@@ -411,6 +411,25 @@ because nothing in palateful pushes to a human (see `dev-obsgap1` G1/G3).
 
 ## dfrcp1 — subscribe to `palateful-prod-alerts` (blocks two detectors)
 
+> **absal1 blocks on this too (palateful-30, 2026-09-24)** — three detectors, not
+> two. Two details that change what "subscribed" has to mean:
+>
+> - **Confirm the link.** `list-subscriptions-by-topic` also returns unconfirmed
+>   subscriptions, whose `SubscriptionArn` is the literal `PendingConfirmation`
+>   rather than an ARN. A created-but-unconfirmed subscription reads as coverage
+>   in the console and delivers nothing, and since nobody has subscribed yet it
+>   is the likely FIRST state. absal1 counts only real `arn:` entries.
+> - **absal1's check stays red until this is done**, on purpose. That is the
+>   check working, not a flake.
+>
+> **DONE — measured 2026-09-24 (palateful-30):** `palateful-prod-alerts` now has
+> **1 confirmed** email subscription (`SubscriptionsConfirmed=1`,
+> `SubscriptionsPending=0`, and one `arn:`-prefixed entry in
+> `list-subscriptions-by-topic`). It read **0 confirmed on 2026-09-22**, so the
+> gap was real and is now closed. Alarms publishing to this topic can reach a
+> human. The subscription still lives outside Terraform, so nothing recreates
+> it if it is deleted — which is why absal1 keeps checking it every run.
+
 **Measured 2026-09-22:** the topic exists
 (`arn:aws:sns:us-east-1:<account>:palateful-prod-alerts`, created by alrt1 #41)
 and `aws sns list-subscriptions-by-topic` returns **empty**. Until someone

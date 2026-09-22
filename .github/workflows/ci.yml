@@ -162,6 +162,13 @@ jobs:
       - name: Deploy-freshness self-test (E-7 step 5 guard)
         run: bash tools/deploy-freshness-self-test.sh
 
+      # Same reason as above: absence-alert.yml is a workflow file, which nx
+      # does not project-map. And an absence check is the one kind whose
+      # healthy and broken states both look like silence, so the only way to
+      # keep it honest is to drive it into every verdict on each PR.
+      - name: Absence-alert self-test (absal1 guard)
+        run: bash tools/absence-alert-self-test.sh
+
   test:
     runs-on: ubuntu-latest
     needs: setup
