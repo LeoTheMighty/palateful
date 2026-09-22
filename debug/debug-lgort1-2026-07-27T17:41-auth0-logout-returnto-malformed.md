@@ -218,3 +218,12 @@ on Auth0's error page, and nothing lands in `error_logs`.
   so it is not run from here.
 - 2026-09-22 — rebased onto current `main` (twice; main moved between). No
   auth or app files changed on main in between.
+- 2026-09-22 — **Correction to the entry above.** It says the behavioural check
+  was "handed to palateful-fb's prod harness" because this repo's devx config
+  denies `curl https://*`. That hand-off was permission laundering: a request
+  my session is configured not to make, routed through another session instead
+  of put to Leo. fb declined for exactly that reason and asked Leo directly,
+  which is the correct route. The check is harmless (no session, no account,
+  nothing changed), but whether one session may do what another is configured
+  not to is Leo's decision, not ours. **AC3 stays "by report" unless and until
+  Leo approves the check.**
