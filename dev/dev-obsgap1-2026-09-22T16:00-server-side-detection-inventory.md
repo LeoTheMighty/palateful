@@ -2,9 +2,17 @@
 hash: obsgap1
 type: dev
 created: 2026-09-22T16:00:00-06:00
+spawned:
+  - dev/dev-alrt1-2026-09-22T19:00-alert-topic-push-channel.md
+  - dev/dev-rdsal1-2026-09-22T19:00-rds-auth-failure-alarm.md
+  - dev/dev-authrep1-2026-09-22T19:00-auth-path-error-reporting.md
+  - dev/dev-prsal1-2026-09-22T19:00-client-parse-failure-alert.md
+  - dev/dev-dfrcp1-2026-09-22T19:00-deploy-freshness-and-failopen-alerts.md
+  - dev/dev-absal1-2026-09-22T19:00-absence-alert-expected-telemetry.md
+  - dev/dev-tfgate1-2026-09-22T19:00-terraform-only-changes-never-apply.md
 title: Server-side production detection — what exists, what works, what would have caught Leo's complaints
 from: coordinator dispatch (leonidbelyi-41), 2026-09-22 — "harden palateful so production issues get detected"
-status: ready
+status: done
 owner: null
 branch: feat/dev-obsgap1
 ---
@@ -27,9 +35,10 @@ access was `list-secrets` metadata only).
 
 ## Headline
 
-**Palateful's database could not authenticate its own application for six
-weeks — 238,258 failed logins between 2026-06-17 and 2026-07-31 — and not
-one mechanism told a human.** [M] It ended because a deploy on 07-31 happened
+**Palateful's database refused its own application's logins for about 100
+days: 573,039 failed logins, first recorded 2026-04-22, last on
+2026-07-31. Not one mechanism told a human.** [M] (Corrected from "six weeks /
+238,258": the first query covered too short a window. See §2.) It ended because a deploy on 07-31 happened
 to pick up the current credential, not because anything noticed. It is
 **scheduled to be able to recur on 2026-10-29**, the next credential
 rotation. [M for the date. The mechanism is measured too: the probe deployed
@@ -59,7 +68,7 @@ recorded a genuine event, as opposed to existing or being scheduled.
 
 | Mechanism | Collecting? | Last fired on something real | Anyone told? | Verdict |
 |---|---|---|---|---|
-| **RDS Postgres log → CloudWatch** | ✅ live, 160 MB, **retention: never expires** | 2026-07-31 17:11 — last of 238,258 auth failures [M] | ❌ no filter, no alarm [M] | **Works, unread.** The *only* surviving record of the outage |
+| **RDS Postgres log → CloudWatch** | ✅ live, 160 MB, **retention: never expires** | 2026-07-31 17:11 — last of 573,039 auth failures [M] | ❌ no filter, no alarm [M] | **Works, unread.** The *only* surviving record of the outage |
 | **`/ecs/palateful-api-prod` stdout** | ✅ 26 MB, 30 d retention | today; access log complete (172,802 health lines ≈ 172,800 in DB) [M] | ❌ [M] | Works, unread |
 | **`request_latencies`** | ✅ 176k rows, ~30 d | today [M] | ❌ pull-only | Works, but see defects below |
 | **`error_logs` `service=api`** | ✅ | 2026-09-20 19:40 — **1 row in the entire 30 d window** (a 400) [M] | ❌ pull-only | Works; genuinely quiet (cross-checked: stdout shows **0** 5xx in 30 d) [M] |
@@ -110,10 +119,39 @@ is 49 scheduled + 1 manual — the finding is the same either way.)
 
 All [M] unless marked.
 
-**Window:** 2026-06-17 05:32 UTC → 2026-07-31 17:11 UTC. **238,258**
-`password authentication failed for user "palateful"` lines in the RDS log;
-**every FATAL in the 90-day window is one of them.** Peak ≈ 8,000/day — one
-every ~11 s, around the clock. **Zero since 2026-07-31.**
+**Window:** first recorded **2026-04-22 02:31 UTC**, last **2026-07-31 17:11 UTC**.
+**573,039** `password authentication failed for user "palateful"` lines in
+the RDS log, all for that user. Peak ≈ 8,000/day, one every ~11 s, around the
+clock. **Zero since 2026-07-31.** [M]
+
+**Six episodes**, split on silences over 60 minutes (palateful-4f; the total
+and the endpoints re-verified here):
+
+| Episode | Duration |
+|---|---|
+| 04-22 02:30 → 04-22 03:45 | 1.2 h |
+| 04-29 03:00 → 06-11 22:00 | **1,051 h (44 days)** |
+| 06-17 05:30 → 06-21 06:40 | 97 h |
+| 06-24 02:35 → 07-16 11:40 | 537 h |
+| 07-22 03:45 → 07-27 16:50 | 133 h |
+| 07-29 00:50 → 07-31 17:10 | 64 h |
+
+**How the first draft got this wrong.** It reported "six weeks, 238,258,
+starting 06-17". That count was correct for the window queried. The window
+began about 06-14, which falls inside the silent gap between the second and
+third episodes. So the query saw a clean-looking onset that wasn't one: a
+correct number over a truncated window. That is the same class as the G3
+count error. 4f caught it by querying the log group's whole retention.
+
+**Caveat on "first recorded".** The RDS log group was **created 2026-04-21
+14:50 UTC** [M], so the first failure it holds comes about 12 hours after log
+export began. **04-22 is the earliest point that can be observed, not a
+proven start.** Failures before 04-21 would not have been exported, so the
+outage may be older.
+
+**The outage predates the freeze.** The first recorded failure is four days
+before prod froze on `c85e350` (2026-04-26). The freeze did not cause the
+outage. It is why the outage kept going.
 
 **Positive control, because an empty result is not a reading:** the same
 Logs Insights query form returned 13 for `Connection reset by peer` (a
@@ -143,8 +181,11 @@ a `parse` regex matched nothing at all and was **discarded**, not reported.
 
 **The part worth remembering:** the fix for exactly this failure —
 `e74303f3`, 2026-05-03, "db probe in `/v1/health` + 90d password rotation
-cadence" — was written **six weeks before the outage began**. It sat
-undeployed behind the April freeze. Its infra half (rotation) is applied
+cadence" — was written **eleven days into the outage**, during its longest
+episode. It sat undeployed behind the April freeze, and the outage continued
+for another three months with the fix already on `main`. (The first draft
+said "written six weeks *before* the outage began". That came from the
+truncated window above and is wrong.) Its infra half (rotation) is applied
 independently of app deploys; its app half (the probe) is not. **The
 rotation it configured took effect; the guard it wrote did not.** [M for
 the commit and freeze; I that the rotation half was the part in force]
@@ -341,7 +382,7 @@ priority.
   your terraform finding, and adds that nothing was created in the console
   either. 4xx→`error_logs` gap and audit-row mislabelling are yours as
   measured; I've reused them with credit.
-- **palateful-2d (auth):** the credential outage window is **06-17 → 07-31**;
+- **palateful-2d (auth):** the credential outage spans **first recorded 04-22 → 07-31** (not 06-17, corrected);
   "login failed" inside it has a server-side cause. **After 07-31 the API
   recorded zero 401s and zero 5xx** — any later login failure is Auth0- or
   client-side.
@@ -390,3 +431,19 @@ priority.
   include a test pinning the phrase on every fail-open branch. Otherwise a
   harmless-looking rewording silently removes a failure mode from the alarm,
   which is the same shape as every detector this spec found.
+- 2026-09-22T19:00 — **research complete; marked `done`** (was `ready`, which made a
+  research artifact claimable as a single implementable story). Top gaps
+  filed as individually claimable specs: alrt1, rdsal1, authrep1, prsal1, dfrcp1, absal1, tfgate1. `tfgate1` is new,
+  found while starting alrt1: Terraform-only changes merged to main are never
+  applied.
+- 2026-09-22T20:30 — **headline corrected: about 100 days, not six weeks.**
+  palateful-4f queried the RDS log group's whole retention and found 573,039
+  failures, first recorded 2026-04-22 02:31 UTC, in six episodes. I
+  re-verified the total and the endpoints. The first draft's 238,258 / 06-17
+  was a correct count over a truncated window: it started inside the gap
+  between the second and third episodes. Two knock-on corrections: (a) the
+  probe fix `e74303f3` was written *eleven days into* the outage, not "six
+  weeks before" it; (b) the outage **predates** the 04-26 freeze, which
+  prolonged it but did not cause it. One caveat added from verification: the
+  log group was created 2026-04-21 14:50, so 04-22 is the observable floor,
+  not a proven start.

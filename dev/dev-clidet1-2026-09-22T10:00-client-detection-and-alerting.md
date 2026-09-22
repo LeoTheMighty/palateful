@@ -176,7 +176,7 @@ One ordered list for Leo. The server half, with G-numbers, lives in
 | 8 | Contract test on real endpoint JSON | palateful-cc | In flight. |
 | 9 | Promote client `area`/`operation` out of `stack_trace` | this spec | Makes client rows queryable without JSON parsing. |
 | 10 | `request_latencies.user_id` population | 0e | |
-| 11 | G10/G11: rsh102 fails open with 200 on a broken pool or unreachable DB, so a total DB outage reads `{"status":"ok"}` | 0e, from 0a | Needs an alarm or it's silent. **No code needed:** every fail-open branch logs `failing open` (four sites, verified on the PR branch), so one log metric filter on that phrase covers them all once rsh102 deploys. |
+| 11 | G10/G11: rsh102 fails open with 200 on a broken pool or unreachable DB, so a total DB outage reads `{"status":"ok"}` | 0e, from 0a | Needs an alarm or it's silent. **No code needed:** every fail-open branch logs `failing open` (four sites, verified on the PR branch), so one log metric filter on that phrase covers them all once rsh102 deploys. **The filter must ship *with* a test asserting every fail-open branch emits `failing open`:** the filter makes the phrase a contract nothing else enforces, so a rewording would silently drop a mode from the alarm (0a; see `dev-dfrcp1`). |
 | 12 | G12 = **N5** here: the silent-catch guard can't see `app/lib/core/` | this spec (2d relayed it into obsgap1; one finding under two labels) | The file behind N1. |
 
 Tail, lower urgency (this spec): N2 decide where pre-auth failures go · N3
