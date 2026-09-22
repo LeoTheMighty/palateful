@@ -4,9 +4,9 @@ type: dev
 created: 2026-09-20T11:45:00-06:00
 title: 503 only when a restart can fix it — two health-probe cases that drain instead of heal
 from: dev/dev-rsh102-2026-07-27T12:31-credential-aware-health-probe.md
-status: ready
-owner: null
-branch: null
+status: in-progress
+owner: /devx-selfheal1-manual
+branch: feat/dev-selfheal1
 ---
 
 ## Goal
@@ -187,3 +187,4 @@ verdict alone and alarm on it, which captures most of the value.
   rsh102 under the same reasoning, which is the strongest argument these two
   deserve the same treatment. Case 2's asymmetry is argued in its own section
   at Leo's request rather than bundled with Case 1.
+- 2026-09-22T11:24 — claimed by /devx (hand claim: devx-helper claim pushes to main, which the coordinator has frozen; claim commit held locally, unpushed). Worktree .worktrees/dev-selfheal1 on feat/dev-selfheal1 off origin/main faf35fa1.
