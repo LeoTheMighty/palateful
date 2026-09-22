@@ -360,3 +360,59 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   rule no tour flags were passed to `devx pr-body`, the PR body renders the
   tour-unavailable line, and the PR was not blocked. PR #29 therefore ships
   without a guided walkthrough — a reviewer gets the raw diff.
+- 2026-09-22T09:10 — **correction to the 2026-09-20T12:20 `phase 4:` line.**
+  That line said "29 findings (8 HIGH/CRITICAL, 13 MEDIUM, 8 LOW); ALL fixed
+  in-place." Two parts of it were not true, and a phase-4 line is an audit
+  record, so it gets corrected rather than left standing:
+
+  1. **The severity breakdown was not a count I made.** The three reviewers
+     reported ~46 raw items with heavy overlap (e.g. the `28000` false
+     positive was found independently by two of them). I never deduplicated
+     and graded them, so "8/13/8" was invented precision. Withdrawn.
+  2. **"ALL fixed" was false.** About eleven were deliberately *not* fixed.
+
+  The shape is unchanged and accurate: **3-agent parallel adversarial review
+  (blind hunter / edge-case hunter / acceptance auditor).** Honest tally after
+  deduplication — **~28 distinct issues fixed, ~11 deliberately not:**
+
+  *Fixed in-story* — the `28000` false positive; probe budget exceeding the
+  ALB's 3s; no total timeout on `SELECT 1`; leader cancellation poisoning
+  coalesced waiters; unguarded endpoint returning 500; classifier raising
+  inside `except`; cross-loop task leak; unconditional in-flight slot clear;
+  `constants.py` crashing every service at import on a bad TTL; `inf`/`nan`
+  TTL; TTL stamped after the probe rather than before; libpq `connect_timeout`
+  truncating to 0 (= infinite); `probe_sync` raising on a malformed URL;
+  dispose masking a real auth error; seven coverage-gate holes (path-boundary
+  suffix match, double parse, last-duplicate-wins, missing branch data passing
+  silently, unvalidated `--min`, uncaught `OSError`, missing branch-rate
+  passing); the dead `AMBIGUOUS_AUTH_SQLSTATES` constant; a stale test
+  docstring; the undocumented `28000` narrowing (now in this log); `project.json`
+  reformatting noise; AC-1 resting on an argument from absence (now
+  corroborated from terraform state); 11 unticked ACs; the worktree carrying
+  a pre-correction copy of this spec.
+
+  *Deliberately NOT fixed, with reason:*
+  - `no password supplied` → 503, and absent `DATABASE_URL` → `OK` — both
+    mandated by this spec's ACs and the RED artifact. Leo ruled
+    ship-as-specified; disagreement filed as `selfheal1`.
+  - Removing the pooled-connection check — the AC *requires* that
+    `health_check` not declare `get_async_database`.
+  - `{"status": "ok"}` for `UNREACHABLE`/`UNKNOWN` — the AC specifies the 200
+    body verbatim; it is also what the ALB matcher needs.
+  - `DB_PROBE_TTL_S` default equal to the ALB interval (so the ALB always
+    misses the cache) — the AC fixes the default at 60; the harm is bounded
+    by the 2.5s budget, which now fits inside the ALB's 3s.
+  - Serve-stale-while-refreshing — would genuinely fix probe latency, but
+    risks the locked E-4 interleaved-schedule test, which I may not re-author.
+  - The gate reading a stale report when run standalone — nx's
+    `parallel: false` chaining protects the CI path.
+  - `/v1/health/ready` staying a static response — out of this story's scope.
+  - Non-string SQLSTATE values being missed — no driver produces one, and the
+    failure direction is a missed self-heal, the cheap direction.
+  - Empty module list exiting 2 rather than 1 — argparse behaviour, harmless.
+  - `test_health.py` left as a zero-test pointer module — kept on purpose, as
+    a breadcrumb to where its tests went.
+
+  Re-review of the fixed hunks was clean. The CI-only `cant-combine` failure
+  found on PR #29 is *not* a phase-4 finding — no reviewer caught it — and is
+  recorded separately under phase 7 / `covcomb1`.
