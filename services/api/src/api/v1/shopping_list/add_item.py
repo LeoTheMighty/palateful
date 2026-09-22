@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from api.v1.shopping_list.utils.notifications import notify_item_added
 from pydantic import BaseModel
+from schemas.json_types import JsonDecimal
 from sqlalchemy import select
 from utils.api.endpoint import APIException, AsyncEndpoint, success
 from utils.classes.error_code import ErrorCode
@@ -150,7 +151,7 @@ class AddShoppingListItem(AsyncEndpoint):
     class Response(BaseModel):
         id: str
         name: str
-        quantity: Decimal | None = None
+        quantity: JsonDecimal | None = None
         unit: str | None = None
         is_checked: bool
         category: str | None = None
