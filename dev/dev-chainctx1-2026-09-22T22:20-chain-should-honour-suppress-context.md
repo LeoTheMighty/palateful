@@ -443,6 +443,30 @@ the node itself, needing no link at all. Neither observation licenses
 dropping `__cause__` globally: that decision belongs with the scope
 change, not before it.
 
+## ⛔ The link set is deliberately UNRESOLVED — do not read silence as a decision
+
+Whoever implements this: **the current link set is not decided, and
+"`ALL_LINKS` minus `__context__`" is not this spec's answer.** Revisit it
+only *after* scope is explicit.
+
+The reason is not cost. The question changes shape once scope lands.
+Today "should `__cause__` be in the link set?" means *which links do we
+search history through* — and searching history is precisely what the
+scope change stops us doing. Afterwards, `_classify` starts from the
+exception `_connect_once` actually raised, and `.orig` / `__cause__` stop
+being search directions and become **unwrapping of a known error**. At
+that point `.orig` and `__cause__` may collapse into one question:
+[M] `__cause__` on a real SQLAlchemy wrapper *is* `.orig`, the same
+object, which is wrapping — while `__cause__` from an arbitrary
+`raise X from Y` is history. Scope makes that distinction decidable; it
+is not decidable now.
+
+Settling it now would mean answering a question whose terms are about to
+change, and the answer would be one more plausible-sounding thing in a
+spec — the category this document exists to document. But leaving it
+*unstated* would reproduce the original failure exactly: a traversal
+shipped with no named reason, which is how `__context__` got here.
+
 ## The one-sentence rule (3b): follow wrapping, not history
 
 `.orig` means *the same error, unwrapped* — structural, always safe to
