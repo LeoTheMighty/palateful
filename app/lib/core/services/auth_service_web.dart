@@ -9,7 +9,7 @@ Auth0Web createAuth0Web(String domain, String clientId) {
   return Auth0Web(domain, clientId);
 }
 
-Future<Credentials?> onLoad(dynamic auth0Web, String audience, String extraRequiredArg) async {
+Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
   final web = auth0Web as Auth0Web;
 
   // Check if this is a callback from Auth0 (has code in URL)
