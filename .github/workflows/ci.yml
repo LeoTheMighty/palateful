@@ -325,7 +325,11 @@ jobs:
     # run to save zero duplication. Revisit if the job ever needs Node anyway.
     runs-on: ubuntu-latest
     steps:
+      # webpr1: full history so the web-compile step below can diff
+      # against the PR's base sha, which a depth-1 checkout lacks.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Keep channel + version in sync with .github/workflows/mobile-builds.yml
       # so CI doesn't pass on a Flutter version different from the one that
@@ -420,6 +424,40 @@ jobs:
 
           exit "$rc"
 
+      # ─── webpr1 — compile web on PRs that touch app/ ─────────────────
+      #
+      # Until this step, `flutter build web --release` ran only in
+      # deploy-web, on main pushes: a web-only break passed every PR check
+      # and first appeared as a failed prod deploy. `flutter analyze`
+      # cannot cover it — `auth_service.dart` conditionally imports
+      # `auth_service_stub.dart`, or `auth_service_web.dart` under
+      # `dart.library.html`, and the analyzer resolves the stub. A
+      # signature that drifts between the two analyzes clean and fails
+      # only when the web compile substitutes the real file (measured; see
+      # dev/dev-webpr1-*.md).
+      #
+      # Same command as deploy-web, so PR-green means deploy-green. Skipped
+      # when the PR leaves app/ alone, and not run on main pushes, where
+      # deploy-web compiles anyway.
+      - name: Detect app/ changes (PR only)
+        id: app_changed
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --name-only \
+               "${{ github.event.pull_request.base.sha }}" HEAD -- app/ \
+               | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Flutter web (PR compile check)
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.app_changed.outputs.changed == 'true'
+        working-directory: app
+        run: flutter build web --release
+
   # ptd-5 — `perf-budget-change` label auto-applied when the budget
   # yaml or waiver file is in the diff. Gives PR reviewers a fourth
   # independent cue that a budget raise is in flight (yaml diff,
@@ -485,9 +523,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned to the same version flutter-test runs (webpr1): compiling
+      # the deploy with a different Flutter than CI tested with is the gap
+      # this story closes. Keep in sync with flutter-test and
+      # mobile-builds.yml.
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.41.7'
           cache: true
 
       - name: Cache pub dependencies
