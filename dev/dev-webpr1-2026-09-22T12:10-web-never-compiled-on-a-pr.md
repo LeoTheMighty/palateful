@@ -81,3 +81,18 @@ green. The break above is deliberate and was reverted.
 - 2026-09-22T12:10 — filed by palateful-30, assigned via leonidbelyi-41.
   Claim is carried in this PR rather than committed to `main` (serialized
   deploy lane).
+- 2026-09-22T12:55 — guard proven in CI, both directions, on throwaway PR #50
+  (draft, DO NOT MERGE, closed and deleted after this measurement).
+  - Deliberate stub/web signature drift (`64ca5abd`): step **ran and failed**
+    in 65s — `Too few positional arguments: 3 required, 2 given.` /
+    `Failed to compile application for the Web.`
+  - Benign `app/` edit (`b5ca7f1`-series): step **ran and passed** in 63s.
+  - PR #49 itself, which touches no `app/` file: step **skipped**, job green.
+  - **Added cost: ~65s of runner time, and only on PRs that touch `app/`.**
+    `flutter-test` job wall-clock: 7m54s with the step skipped, 9m54s with it
+    passing — the delta is larger than the step because the two runs queued
+    differently; the step's own duration is the honest number.
+  - Note on the detection logic: it diffs the PR's **net** change against
+    `base.sha`, so a break-and-revert pair nets to zero `app/` diff and
+    correctly skips. Observed when #50's revert commit skipped the step.
+
