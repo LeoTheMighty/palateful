@@ -524,3 +524,21 @@ the binding date is the next scheduled rotation, **2026-10-29**.
 - 2026-09-22T18:00 — cleanup: stopped and removed the docker-compose Postgres
   and volume I started for the live-driver leg; removed the worktree and
   local branch; released `.devx-cache/locks/spec-rsh102.lock`. Status: done.
+- 2026-09-22T19:35 — **correction to the 2026-09-20T10:20 AC-1 entry.** That
+  plan was run on a local **Terraform 1.4.2** against state written by
+  **1.16.3** (CI is unpinned → latest). Its six in-place changes — which I
+  described as "all tag/metadata in-place updates", and later, in logconn1,
+  as benign diffs that "never converge" — were almost certainly phantoms of
+  that version skew, not real pending drift. Re-planning a later change
+  under a checksum-verified 1.16.3 with a fresh data dir collapsed the same
+  six to **zero** (logconn1, 2026-09-22T19:30).
+
+  **What this does and does not change.** AC-1's conclusion stands, and is
+  if anything stronger: the pending set was smaller than reported (likely
+  empty), so the unattended `-auto-approve` was even safer than claimed. And
+  the half that mattered — `aws_secretsmanager_secret_rotation.db_master`
+  converged — never rested on that plan: it was corroborated directly from
+  `terraform state show` (2026-09-22T12:45). What was wrong is the
+  *description*: I presented six phantom diffs as real, benign drift. I had
+  also never checked which CLI version I was planning with. Found by
+  palateful-0e and palateful-4f; relayed by the coordinator.
