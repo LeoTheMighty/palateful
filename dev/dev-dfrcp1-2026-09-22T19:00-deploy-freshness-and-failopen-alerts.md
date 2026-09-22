@@ -4,8 +4,8 @@ type: dev
 created: 2026-09-22T19:00:00-06:00
 title: G3 + G11 — give deploy-freshness a recipient; alarm on rsh102 failing open
 from: dev/dev-obsgap1-2026-09-22T16:00-server-side-detection-inventory.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-22T1212-6355
 branch: null
 ---
 
@@ -53,3 +53,4 @@ pool or an unreachable DB, so after it lands a total DB outage reads
 ## Status log
 - 2026-09-22T19:00 — filed from obsgap1 (server-side detection inventory), merged ranking
   agreed with palateful-4f. Blocked-by: alrt1, tfgate1.
+- 2026-09-22T12:12:19-06:00 — claimed by /devx in session /devx-2026-09-22T1212-6355
