@@ -4,9 +4,9 @@ type: dev
 created: 2026-09-22T19:00:00-06:00
 title: N1 — the auth path reports its failures (both of Leo's auth complaints are uncollected)
 from: dev/dev-obsgap1-2026-09-22T16:00-server-side-detection-inventory.md
-status: ready
-owner: null
-branch: null
+status: in-progress
+owner: /devx-c2872fff
+branch: feat/dev-authrep1
 ---
 
 ## Goal
@@ -37,3 +37,4 @@ forward a signal that doesn't exist, so this ranks #3 overall.
 ## Status log
 - 2026-09-22T19:00 — filed from obsgap1 (server-side detection inventory), merged ranking
   agreed with palateful-4f. Blocked-by: —.
+- 2026-09-22T12:00 — claimed for /devx (hand-claim: main lane frozen for #41's Terraform apply, so the claim commit lands on feat/dev-authrep1, not main — coordinator leonidbelyi-41). Base: 64c8b7f5 (post-#35).
