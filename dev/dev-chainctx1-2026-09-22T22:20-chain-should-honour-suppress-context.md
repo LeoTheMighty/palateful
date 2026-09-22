@@ -91,12 +91,32 @@ honouring `__suppress_context__` cannot fix this on its own: the flag is
 only present where someone wrote `from`, and the dangerous shape needs
 nobody to have written anything.
 
-**Not reachable in prod today** [I, from measured evidence]: [M] outside
+**Not reachable in prod today, and the reason matters.** [M] Outside
 `db_probe.py` and its tests the only prod caller is
 `health_router.py:32`, which calls `cached_verdict_async()` in a `try`
-that is not handling anything else; the probe builds a fresh engine per
-call, and `_connect_once`'s `finally` swallows dispose failures rather
-than raising over a propagating auth error.
+that is not handling anything else. **That is the whole reason — full
+stop.**
+
+⚠️ **It is NOT because `create_task` isolates exception context.** That
+is the plausible-sounding protection someone will lean on later, and it
+is false. [M] Measured independently by 0a and by palateful-98:
+
+```
+async via create_task (the health_router path):  __context__=AuthErr  is_auth_error=True
+inline in the handler (the probe_sync path):     __context__=AuthErr  is_auth_error=True
+```
+
+A task created *from inside* a handler inherits that handler's context.
+What IS true is that **cross-request contamination is impossible** [M]:
+a concurrent request sitting mid-`except` cannot poison a different
+request's probe —
+
+```
+request X mid-except, Y's probe raises:          __context__=None     is_auth_error=False
+```
+
+So B needs the *same* call path to be nested inside an auth handler.
+Today's is not.
 
 **Two named conditions make it live — both are the next stories in this
 workstream:**
@@ -117,11 +137,15 @@ a severity rating.
 
 - [ ] `_chain` skips `__context__` on a node whose `__suppress_context__`
       is set, while continuing to walk `__cause__` and `.orig`.
-- [ ] `is_auth_error` walks `EXPLICIT_LINKS`, not `ALL_LINKS`. Check first
-      whether rsh102 had a reason for the wide walk — [I, 3b] its docstring
-      argues for `.orig` and `__cause__` specifically, and `__context__`
-      may have come along unexamined. If there was a reason, it belongs in
-      the spec before the change, not after.
+- [ ] `is_auth_error` walks `EXPLICIT_LINKS`, not `ALL_LINKS`. **The
+      author has answered: there was no case in mind, and nothing is lost
+      by narrowing.** See "The author's answer" below — do not preserve
+      `__context__` out of deference to an intent that never existed.
+- [ ] **A test asserting shape B directly**: a non-auth probe failure
+      raised inside an unrelated auth handler classifies as non-auth.
+      [0a] It passes today for a reason nobody wrote down, and would
+      start failing the moment someone nests a caller — which is exactly
+      the regression the narrowing exists to make impossible.
 - [ ] Every existing verdict is re-derived, not assumed: `is_auth_error`
       and `is_missing_password` keep their current answers for every case
       pinned in `test_db_credentials_classifier.py`,
@@ -151,6 +175,28 @@ a severity rating.
       `__context__` for its own reasons, and the two mechanisms must not
       double up into something neither owner intended.
 
+## The author's answer (0a, who wrote `_chain` and `is_auth_error`)
+
+[M] rsh102's AC required `exc` → `.orig` → `__cause__`. **Three links.
+`__context__` is not among them** — it was added beyond the AC. The
+acceptance auditor recorded it neutrally at the time as "a superset of
+the three the AC names", and nobody asked what a superset costs.
+
+[M] `db_credentials.py:21-22`, same author, same commit: *"a false
+negative costs a delayed self-heal; a false positive costs an outage.
+The matcher is deliberately narrow."*
+
+`__context__` can only ever **add** matches. It cannot recover a rotation
+that `.orig`/`__cause__` would miss; it can only turn non-auth failures
+into `AUTH_FAILED`. So the destructive predicate was widened in the one
+direction the file itself calls catastrophic, in the commit that says the
+matcher is deliberately narrow. The stated reasoning was false-negative
+coverage — "catch more wrapping shapes" — and the false-positive cost was
+never weighed.
+
+**Nothing is lost by narrowing the walk.** The fix is to bring
+`is_auth_error` down to `EXPLICIT_LINKS`, not to widen the veto.
+
 ## Technical notes
 
 - Owners to consult: 0a wrote `_chain` / `is_auth_error` / `_sqlstate_of`;
@@ -167,6 +213,12 @@ a severity rating.
 
 ## Status log
 
+- 2026-09-22T22:55 — 0a answered both open questions: no intent behind
+  the wide walk (it contradicts the same file's stated principle), and B
+  is not prod-reachable — but NOT via task isolation, which 0a
+  hypothesised, measured, and refuted before sending. palateful-98
+  independently reproduced all three measurements. Severity unchanged:
+  lands before rsh106.
 - 2026-09-22T22:40 — severity measured by palateful-98 (A/B/C table
   above) and ranked with 41: lands before rsh106; not escalated tonight,
   because "prod is drainable right now" is not supported by the evidence.
