@@ -9,6 +9,7 @@ import '../../core/services/api_client.dart';
 import '../../core/services/error_reporter.dart';
 import '../../core/state/mutation_bus.dart';
 import '../../core/theme/import_state_colors.dart';
+import '../recipes/add_recipe/models/import_batch.dart';
 import 'models/import_item_telemetry.dart';
 import 'providers/activity_archive_provider.dart';
 import 'providers/activity_read_provider.dart';
@@ -162,6 +163,21 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           .map<_JobView>(_JobView.fromJson)
           .toList();
 
+      // impvis1: a photo import exists as a ParserBatch BEFORE it fans out
+      // into ImportJobs, and the two queries above cannot see it. That is
+      // the gap Leo hit — the Add Recipe strip counted "1 import in
+      // progress" from this very endpoint while this tab rendered nothing.
+      // Only batches with no ImportJob of their own are synthesised here;
+      // once a batch has fanned out, its jobs are already above and a
+      // second row would double-count one import.
+      final renderedJobIds = rawJobs.map((j) => j['id'].toString()).toSet();
+      inProgress.addAll(
+        (await _loadPreFanOutBatches())
+            .where((b) => b.importJobs
+                .every((ij) => !renderedJobIds.contains(ij.id)))
+            .map(_JobView.fromBatch),
+      );
+
       // Auto-Imported + Skipped cut off at 30 days — older entries are
       // reachable via See-all. Needs Review + Failed are actionable, so
       // they show regardless of age.
@@ -193,6 +209,18 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
                 break;
               }
               skipped.add(view);
+            case 'pending':
+            case 'extracting':
+            case 'matching':
+              // These are normally covered by the parent job's Blue row.
+              // When the parent has already moved on — a `completed` job
+              // still holding a `pending` item — nothing rendered them at
+              // all, while `imports_actionable` counted every one. Add a
+              // row only in that case, so the common path keeps its
+              // job-granularity summary instead of one row per item.
+              if (!_inProgressJobStatuses.contains(j['status']?.toString())) {
+                inProgress.add(_JobView.fromOrphanedItem(i, j));
+              }
             default:
               break;
           }
@@ -236,6 +264,31 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
         });
       }
       ErrorReporter.report(e, st, area: 'activity', operation: 'imports_tab_load');
+    }
+  }
+
+  /// Active parser batches that have not yet produced an ImportJob.
+  ///
+  /// Failure here must not take the whole tab down with it: jobs and items
+  /// are the main surface, and a batches outage should cost the pre-fan-out
+  /// rows only. Reported rather than swallowed, so the degradation is
+  /// visible in Crashlytics instead of looking like "no imports".
+  Future<List<ImportBatch>> _loadPreFanOutBatches() async {
+    try {
+      final response = await _apiClient.listParserBatches(
+        activeOnly: true,
+        limit: 20,
+      );
+      final raw = (response.data['batches'] as List?) ?? const [];
+      return raw
+          .whereType<Map>()
+          .map((m) => ImportBatch.fromJson(m.cast<String, dynamic>()))
+          .where((b) => b.isInFlight)
+          .toList();
+    } catch (e, st) {
+      ErrorReporter.report(e, st,
+          area: 'activity', operation: 'imports_tab_batches');
+      return const [];
     }
   }
 
@@ -874,6 +927,30 @@ class _JobView {
     required this.processedItems,
     required this.createdAt,
   });
+
+  /// A parser batch that has not fanned out yet. `group_count` is the
+  /// photo count, which is what the user is waiting on, so it reads as
+  /// "Importing 0 of 3" rather than a bare spinner.
+  factory _JobView.fromBatch(ImportBatch b) => _JobView(
+        id: 'batch:${b.id}',
+        sourceType: 'photo',
+        sourceUrl: null,
+        totalItems: b.groupCount,
+        processedItems: 0,
+        createdAt: b.createdAt,
+      );
+
+  /// An item still in flight under a job that has already moved on.
+  factory _JobView.fromOrphanedItem(dynamic i, dynamic j) => _JobView(
+        id: 'item:${i['id']}',
+        sourceType: (i['source_type'] ?? j['source_type']) as String?,
+        sourceUrl: (i['source_url'] ?? j['source_url']) as String?,
+        totalItems: 1,
+        processedItems: 0,
+        createdAt: i['created_at'] != null
+            ? DateTime.tryParse(i['created_at'].toString())
+            : null,
+      );
 
   factory _JobView.fromJson(dynamic j) => _JobView(
         id: j['id'].toString(),

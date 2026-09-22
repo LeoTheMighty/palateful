@@ -46,6 +46,17 @@ class _StubApiClient extends ApiClient {
   Future<Response> getActivitiesSeeAllCount() async =>
       _fakeResponse({'archived': 0, 'read_and_older': 0, 'total': 0});
 
+  /// impvis1: the Imports tab now also asks for active parser batches (a
+  /// photo import is a ParserBatch before it fans out into ImportJobs).
+  /// Without this stub the real Dio call runs and leaves a pending timer
+  /// after the tree is disposed.
+  @override
+  Future<Response> listParserBatches({
+    bool activeOnly = false,
+    int limit = 20,
+  }) async =>
+      _fakeResponse({'batches': const []});
+
   @override
   Future<Response> getImportItemsSeeAllCount() async =>
       _fakeResponse(
