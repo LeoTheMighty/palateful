@@ -97,26 +97,37 @@ nobody to have written anything.
 that is not handling anything else. **That is the whole reason — full
 stop.**
 
-⚠️ **It is NOT because `create_task` isolates exception context.** That
-is the plausible-sounding protection someone will lean on later, and it
-is false. [M] Measured independently by 0a and by palateful-98:
+⚠️ **Two plausible explanations of why are both FALSE**, and each was
+proposed, measured and refuted by the peer who proposed it:
+
+- "asyncio isolates exception state per task" (3b) — no.
+- "a task inherits the context of the frame that created it" (98) — also
+  no.
+
+[M] The true rule, measured on 3.13.5 by 3b and reproduced by 98 —
+**the awaiting frame at the moment the exception propagates is what sets
+`__context__`**, because `await` re-raises the task's exception in that
+frame and the re-raise picks up whatever that frame is handling:
 
 ```
-async via create_task (the health_router path):  __context__=AuthErr  is_auth_error=True
-inline in the handler (the probe_sync path):     __context__=AuthErr  is_auth_error=True
+task created INSIDE except, awaited OUTSIDE  -> __context__ = None
+task created AND awaited inside the except   -> __context__ = AuthErr
+coroutine awaited directly inside the except -> __context__ = AuthErr
 ```
 
-A task created *from inside* a handler inherits that handler's context.
-What IS true is that **cross-request contamination is impossible** [M]:
-a concurrent request sitting mid-`except` cannot poison a different
-request's probe —
+Creation site is irrelevant: rows 1 and 2 create the task identically.
 
-```
-request X mid-except, Y's probe raises:          __context__=None     is_auth_error=False
-```
+**Consequence, and it bounds this spec's blast radius tightly** [M, 3b,
+end to end]: the exception `_classify` sees always propagates into
+`probe_async`'s own `try`, and that frame is never itself an `except`.
+So **no caller can contaminate the classification, whatever it is doing
+when it calls** — 3b measured a caller missing the cache from inside an
+unrelated auth handler and the clean caller served from that same shared
+task; both got `UNREACHABLE`.
 
-So B needs the *same* call path to be nested inside an auth handler.
-Today's is not.
+**The invariant is therefore violable only from `_connect_once` and
+below.** That is where the tests belong, and the fix does not need to
+defend against callers at all.
 
 **Two named conditions make it live — both are the next stories in this
 workstream:**
@@ -152,8 +163,25 @@ budget expires while an auth error is being handled
   -> is_auth_error=True -> AUTH_FAILED
 ```
 
-`wait_for` sets no `from`, so honouring `__suppress_context__` leaves
-this green. Reproduce it by shrinking `PROBE_TOTAL_TIMEOUT_S` in the test
+**And `wait_for` does NOT "set no `from`"** — that was 98's description
+and it is wrong in a way that would misdirect the fix. [M, 0a,
+reproduced by 98]:
+
+```
+TimeoutError:    __cause__=CancelledError  __context__=CancelledError  __suppress_context__=True
+  CancelledError: __cause__=None           __context__=AuthErr         __suppress_context__=False
+```
+
+`wait_for` sets an explicit cause **and** the suppress flag. The
+suppress-aware walk correctly skips `TimeoutError.__context__` — and
+still reaches the auth error, via
+`TimeoutError --__cause__--> CancelledError --__context__--> AuthErr`.
+
+**The general lesson, which is the real argument for the invariant:**
+any *unsuppressed* node reached through an explicit cause re-opens the
+entire context tail behind it. A per-node flag check can never close
+that, because the flag says "ignore **my** ambient context" and says
+nothing about a node three hops down. Reproduce it by shrinking `PROBE_TOTAL_TIMEOUT_S` in the test
 and having `_connect_once` await past it inside an `except` handling an
 auth error — no change to the real budget.
 
@@ -243,6 +271,15 @@ never weighed.
 **Nothing is lost by narrowing the walk.** The fix is to bring
 `is_auth_error` down to `EXPLICIT_LINKS`, not to widen the veto.
 
+## Implementation note (0a): graph shape is the wrong basis
+
+The invariant **cannot be enforced by traversal rules alone**, for the
+reason above. It likely needs `_classify` to be *given* the attempt's own
+exception explicitly — knowing which exception `_connect_once` raised and
+refusing to consider anything not reachable from it by `.orig`/
+`__cause__` — rather than inferring scope from graph shape. Graph shape
+is what defeats every traversal-only fix tried here.
+
 ## Technical notes
 
 - Owners to consult: 0a wrote `_chain` / `is_auth_error` / `_sqlstate_of`;
@@ -259,6 +296,14 @@ never weighed.
 
 ## Status log
 
+- 2026-09-22T23:30 — mechanism corrected twice more, each time by the
+  peer who proposed the wrong version: 3b established that the
+  **awaiting** frame sets `__context__` (refuting both "tasks isolate"
+  and 98's "task inherits its creator"), which bounds violations to
+  `_connect_once` and below; 0a established that `wait_for` sets an
+  explicit cause and the leak is a two-hop path through an unsuppressed
+  `CancelledError`, so no per-node flag check can close it. 98
+  reproduced both before recording them.
 - 2026-09-22T22:55 — 0a answered both open questions: no intent behind
   the wide walk (it contradicts the same file's stated principle), and B
   is not prod-reachable — but NOT via task isolation, which 0a
