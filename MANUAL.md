@@ -394,13 +394,17 @@ all).
 Why this matters more than it looks: **the copy of this workflow on `main`
 has never succeeded once.** Across its whole history — 54 runs — there are
 51 runs on `main` and **0** successes; the only two successes were
-`workflow_dispatch` runs on the unmerged fix branch `feat/dev-7c5cf2`. Every
-scheduled firing since 2026-08-01 died at credential load, upstream of any
-verdict. So the 52 reds carried no information: a red never meant "prod is
-stale", it meant "the check died." The 51-day deploy freeze ran its entire
+`workflow_dispatch` runs on the unmerged fix branch `feat/dev-7c5cf2`.
+Classified by failing step (palateful-0e, 2026-09-22): 49 scheduled runs
+(2026-08-01 → 09-19) and 1 manual run (07-31) died at
+`configure-aws-credentials`, upstream of any verdict; one scheduled run on
+08-06 recorded no failed step and is unclassified. So those reds carried no
+information: a red never meant "prod is stale", it meant "the check died." The 51-day deploy freeze ran its entire
 course underneath a monitor that had never worked.
 
-PR #25 is merged but **unverified**. The workflow has `workflow_dispatch`
-(with a `synthetic-gap-days` input), so firing it manually verifies the fix
-in a minute rather than waiting on a cron whose measured drift exceeded 24h
-on 25 of 49 intervals. Leo's or cc's call.
+PR #25 is **verified** (2026-09-22). Every scheduled run since it merged
+(09-20 18:09, 09-21 08:39, 09-21 19:55, 09-22 08:18) gets past credentials
+and forms a real verdict; run 35704107068 logged `Deployed image:
+…/api:848311af… Gap: 52 day(s); threshold: 7 day(s).` → exit 1. The
+monitor now works — and is correctly reporting a stale prod **to nobody**,
+because nothing in palateful pushes to a human (see `dev-obsgap1` G1/G3).
