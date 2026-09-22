@@ -41,6 +41,24 @@
 # excludes the line from the only check that would catch a real fuse
 # there.
 #
+# PROVING THE HARNESS STILL BITES
+# --------------------------------
+# A green run only means something if the same run would go red on a real
+# fuse. Negative control, re-runnable in two minutes:
+#
+#   1. In `test/features/activity/imports_tab_test.dart`, replace
+#      `_fixtureBase`'s `DateTime.now()…` with a literal
+#      `DateTime.parse('<today>T10:00:00Z')`.
+#   2. `flutter test test/features/activity/imports_tab_test.dart` → green
+#      (the fixture is zero days old).
+#   3. `tool/time_travel_check.sh --days 400 \
+#        test/features/activity/imports_tab_test.dart` → 3 failures, as the
+#      Auto-Imported and Skipped rows fall out of the 30-day window and the
+#      assertions find zero widgets. That is the imptab1 signature.
+#   4. Revert step 1.
+#
+# Run at fxfuse (2026-09-22): steps 2 and 3 behaved exactly as above.
+#
 # USAGE
 #   tool/time_travel_check.sh                 # default +400 days
 #   tool/time_travel_check.sh --days 120      # +120 days
@@ -84,7 +102,7 @@ import datetime, pathlib, re, sys
 root, days = pathlib.Path(sys.argv[1]), int(sys.argv[2])
 date_re = re.compile(r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)')
 # Lines whose assertion is about the absolute date, not its age.
-SKIP = '// no-time-travel'
+SKIP = 'no-time-travel'  # matched anywhere on the line, comment style aside
 shifted = files = skipped = 0
 
 def back(m):
