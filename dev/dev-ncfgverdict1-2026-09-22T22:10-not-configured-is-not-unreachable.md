@@ -42,13 +42,16 @@ rsh107:
 
 ## Acceptance criteria
 
-- [ ] **The spec decides the worker's answer, because rsh107 must consume
-      it and will otherwise pick one by accident.** Proposed: keep exit
-      `0` (a replacement cannot conjure a credential, and
-      `deployment_minimum_healthy_percent = 0` means a drain loop) **and**
-      make the condition alarm — the worker analogue of `degraded`. Not
-      a 503; not silence either. 0a raised this; it needs 41's ranking
-      against rsh107's own ACs before implementation.
+- [ ] **Exit `0` AND alarm.** Ranked by 41 on 2026-09-22; no longer open.
+      Exit `0` stays — a non-zero code replaces the task over the exact
+      condition this verdict exists to stop replacing tasks over, on a
+      service with `deployment_minimum_healthy_percent = 0`. The alarm is
+      the worker analogue of `/v1/health`'s `degraded`.
+- [ ] **The alarm ships in THIS story, not rsh107.** So detection exists
+      even if rsh107 slips — a different owner and a later date. rsh107
+      then carries an AC that its health check must not mask a
+      `NOT_CONFIGURED` worker, referencing this alarm. (Request to
+      rsh107's owner, not a fait accompli.)
 - [ ] The passwordless-URL case classifies `NOT_CONFIGURED` rather than
       `UNREACHABLE`.
 - [ ] ~~Never emitted for a connection that was attempted and failed.~~
@@ -62,8 +65,10 @@ rsh107:
       can carry no password while `DB_PASSWORD` is populated, and vice
       versa; a pre-connect check that asks the env var is a tidier-looking
       instance of the wrong-path mistake that produced this workstream.
-- [ ] `NOT_CONFIGURED` stays **distinguishable from `UNREACHABLE` AND
-      keeps the shared `failing open` phrase** [M, 0a]. It has it today
+- [ ] **HARD AC, not a note** [0a, ranked by 41]: `NOT_CONFIGURED` stays
+      **distinguishable from `UNREACHABLE` AND keeps emitting the literal
+      `failing open` string**, pinned by a test **in the same PR that
+      makes them distinguishable** — not a follow-up. It has it today
       (`db_probe.py:399`). 0e's G11 metric filter keys on that exact
       string across all four fail-open branches and nothing enforces it,
       so a future edit giving this verdict a more specific message —
