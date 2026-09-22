@@ -79,8 +79,11 @@ on Auth0's error page, and nothing lands in `error_logs`.
 - [ ] Either the explicit `returnTo` is dropped (preferred — let the SDK build
       its default) or it is built from the bundle id / package name rather than
       `Environment.auth0Scheme`
-- [ ] The URL actually used is confirmed present in the Auth0 app's **Allowed
+- [x] The URL actually used is confirmed present in the Auth0 app's **Allowed
       Logout URLs** (see the MANUAL.md entry filed alongside this spec)
+      — **by report, not by reading.** Leo added it himself on 2026-09-22.
+      No session can read the dashboard, so this rests on his word; a
+      behavioural check that would make it measured is in the status log.
 - [ ] `docs/SETUP.md` Auth0 section updated to the URL shape the app really uses
       (both callback and logout lists)
 - [ ] Web logout path (`auth_service_web.dart`) left unchanged — it already
@@ -193,3 +196,25 @@ on Auth0's error page, and nothing lands in `error_logs`.
   fine — my earlier note blaming a missing `--type` on merge-gate was wrong
   (that gap is real for `claim` only, filed as debug-7d96be). Credit:
   devx-b6 traced it in source.
+- 2026-09-22 — **AC3 satisfied by report, not verified by reading.** The
+  dashboard read-back (relayed by the coordinator, from Leo's screenshots)
+  showed the iOS logout URL was **missing**: Allowed Logout URLs held
+  `com.palateful.app://auth.palateful.app/ios/com.palateful.palateful/callback`
+  (custom scheme), but on iOS the SDK uses the bundle id as the scheme, so it
+  sends `com.palateful.palateful://auth.palateful.app/ios/com.palateful.palateful/callback`.
+  The callback and logout lists had one scheme per *list* instead of one per
+  *platform*. Before this fix prod sent
+  `com.palateful.app://…/ios/com.palateful.app/callback`, in neither list —
+  i.e. the bug was live in prod. Leo reports adding the correct iOS URL (and
+  the Android callback URL, which had the mirror-image problem). No session
+  can see the dashboard and there is no Auth0 MCP, so this is his word, not a
+  reading. **Behavioural check that would make it measured**, needing no
+  session and changing nothing: a cookie-less GET to
+  `https://auth.palateful.app/v2/logout?client_id=<public id>&returnTo=<url>`
+  redirects to `returnTo` when the URL is allowed and shows Auth0's error page
+  when it isn't — run it for the new URL (expect redirect) and for the old
+  broken URL (expect the error page, the negative control). Handed to
+  palateful-fb's prod harness; this repo's devx config denies `curl https://*`,
+  so it is not run from here.
+- 2026-09-22 — rebased onto current `main` (twice; main moved between). No
+  auth or app files changed on main in between.
