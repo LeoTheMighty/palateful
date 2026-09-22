@@ -14,10 +14,12 @@ import {
   enableSemantics,
   semanticsInventory,
 } from "../lib/flutter.js";
+import { captureApiAuth, tokenLifetime } from "../lib/api-auth.js";
 
 test("a saved session opens the signed-in app, and survives a reload", async ({ page }, info) => {
   const authLog = captureAuthLog(page);
   const authErrors = captureAuthErrors(page);
+  const apiAuth = captureApiAuth(page);
   await info.attach("auth-cookies-at-start.txt", { body: (await authCookieExpiries(page)).join("\n"), contentType: "text/plain" });
 
   await page.goto("/", { waitUntil: "load" });
@@ -30,6 +32,11 @@ test("a saved session opens the signed-in app, and survives a reload", async ({ 
   const inventory = await semanticsInventory(page);
   await info.attach("signed-in-inventory.txt", { body: inventory.join("\n"), contentType: "text/plain" });
   expect(inventory.length, "signed-in screen exposed almost no labelled nodes").toBeGreaterThan(5);
+
+  // Measurement, not an assertion: the web token's real lifetime (settles
+  // 86400 vs 7200 "browser flows"). Claim names and exp-iat only.
+  await expect.poll(() => apiAuth.header() !== undefined, { message: "app made no API call", timeout: 20_000 }).toBe(true).catch(() => {});
+  await info.attach("access-token-lifetime.txt", { body: tokenLifetime(apiAuth.header()), contentType: "text/plain" });
 
   // Reload: the web SDK keeps tokens in memory, so this exercises the
   // silent re-auth path a real user hits on every refresh.

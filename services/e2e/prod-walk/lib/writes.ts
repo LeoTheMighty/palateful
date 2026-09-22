@@ -1,10 +1,12 @@
 import { test, type APIResponse, type Page } from "@playwright/test";
+import { API_BASE } from "./api-auth.js";
+
+export { API_BASE, captureApiAuth } from "./api-auth.js";
 
 /** Everything a script creates carries this prefix, so it is recognisable
  *  on the account and deletable by name if an id was lost mid-run. */
 export const E2E_PREFIX = "[e2e-walk]";
 
-export const API_BASE = process.env.PALATEFUL_E2E_API_BASE ?? "https://api.palateful.app";
 
 /**
  * Scripts that create data run against a REAL account. They skip unless the
@@ -16,22 +18,6 @@ export function requireWriteOptIn(): void {
     process.env.PALATEFUL_E2E_ALLOW_WRITES !== "1",
     "creates data on the real account — set PALATEFUL_E2E_ALLOW_WRITES=1 only with the account owner's go-ahead",
   );
-}
-
-/**
- * The app holds its API token in memory (web Auth0, no cache). Cleanup must
- * not depend on the UI under test, so we reuse the Authorization header the
- * app itself sends. Kept in this closure only: never logged, attached or
- * written anywhere.
- */
-export function captureApiAuth(page: Page): { header: () => string | undefined } {
-  let header: string | undefined;
-  page.on("request", (req) => {
-    if (!req.url().startsWith(API_BASE)) return;
-    const h = req.headers()["authorization"];
-    if (h) header = h;
-  });
-  return { header: () => header };
 }
 
 export async function api(
