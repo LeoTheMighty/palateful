@@ -136,6 +136,20 @@ resource "aws_batch_compute_environment" "parser_spot_gpu" {
 
   lifecycle {
     create_before_destroy = true
+
+    # AWS Batch owns desired_vcpus at runtime: it scales the compute
+    # environment up to run queued jobs and back down to min_vcpus when idle.
+    # The value above is an INITIAL value only ("Start at zero"), so without
+    # this every plan proposes resetting whatever Batch has chosen back to 0.
+    #
+    # bvcpu1 (2026-09-23): measured on `main` while a job sat RUNNABLE —
+    # `~ desired_vcpus = 4 -> 0`, an unrelated 1-change plan riding along on
+    # any merge. Harmless-looking, and it had been invisible because the value
+    # is 0 whenever the queue is idle, which is whenever anyone happened to
+    # look. Since tfgate1 (#36) applies Terraform automatically on merge, this
+    # would be applied by whichever PR merged next — scaling capacity away
+    # from a queued job, or terminating the instance under a running one.
+    ignore_changes = [compute_resources[0].desired_vcpus]
   }
 }
 
