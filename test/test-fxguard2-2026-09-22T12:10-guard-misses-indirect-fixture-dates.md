@@ -52,11 +52,14 @@ any future literal on that line is a live fuse the guard will not catch.
       either widen beyond `created_at` (with the same two escapes) or
       record why `created_at` alone is the right blast radius.
 - [ ] Whatever the guard ends up covering, `app/tool/time_travel_check.sh`
-      still catches the rest — it shifts *every* `YYYY-MM-DD` under
-      `test/`, so it is key-agnostic and variable-agnostic by
-      construction. Consider wiring it into CI on a schedule (it is a full
-      extra suite run, so probably not per-PR) — a nightly +400d run turns
-      "the next fixture to age out" from a surprise into a ticket.
+      catches more of the rest: it shifts every ISO date AND every
+      `DateTime(y, m, d)` constructor under `test/`, so it is key-agnostic
+      and variable-agnostic — but **not form-agnostic**. Its header lists
+      what it still cannot see (epoch millis, dates assembled from
+      variables, dates arriving from outside `test/`); don't cite it as
+      complete coverage. Consider wiring it into CI on a schedule (it is a
+      full extra suite run, so probably not per-PR) — a nightly +400d run
+      turns "the next fixture to age out" from a surprise into a ticket.
 - [ ] No false positives on the drained tree: the guard must stay green
       on `main` after `fxfuse` lands.
 

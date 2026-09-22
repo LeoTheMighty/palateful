@@ -15,8 +15,15 @@ import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart'
 /// That formatter is `DateTime.now()`-relative, so the rendered label
 /// drifts as a frozen literal ages. The failed bucket itself has no
 /// age cutoff — the fuse here is the label, not the filter.
+/// The base sits 90 minutes back, not 2 hours: every `_formatTime` in
+/// play buckets by whole hours, and a base exactly on the 1h/2h boundary
+/// made `_at(0)` render '2h ago' while `_at(5)` rendered '1h ago'. At 90
+/// minutes every offset used here stays inside one bucket with ~20
+/// minutes of headroom, so two fixtures "five minutes apart" also read
+/// the same. Nothing asserts these labels today; this keeps the first
+/// test that does from being flaky by construction.
 final DateTime _fixtureBase =
-    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+    DateTime.now().toUtc().subtract(const Duration(minutes: 90));
 
 /// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. The
 /// three fixtures below all shared one literal, so they all share

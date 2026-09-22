@@ -9,8 +9,15 @@ import 'package:palateful/features/activity/widgets/import_activity_detail.dart'
 /// `DateTime.now()`-relative formatter whose output string changes as
 /// the fixture ages ('2h ago' → '3d ago' → '5mo ago' → '4/16/2026').
 /// Absolute dates would rot silently here, so anchor to `now`.
+/// The base sits 90 minutes back, not 2 hours: every `_formatTime` in
+/// play buckets by whole hours, and a base exactly on the 1h/2h boundary
+/// made `_at(0)` render '2h ago' while `_at(5)` rendered '1h ago'. At 90
+/// minutes every offset used here stays inside one bucket with ~20
+/// minutes of headroom, so two fixtures "five minutes apart" also read
+/// the same. Nothing asserts these labels today; this keeps the first
+/// test that does from being flaky by construction.
 final DateTime _fixtureBase =
-    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+    DateTime.now().toUtc().subtract(const Duration(minutes: 90));
 
 /// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
 /// preserve the original fixtures' relative ordering and — where the

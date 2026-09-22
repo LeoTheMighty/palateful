@@ -85,14 +85,29 @@ void main() {
 /// relative-date formatters (`import_row_expansion.dart:214`,
 /// `stage_timeline.dart:226`). Anchoring to `now` keeps the goldens
 /// replayable against those surfaces instead of rotting out of range.
+/// The base sits 90 minutes back, not 2 hours: every `_formatTime` in
+/// play buckets by whole hours, and a base exactly on the 1h/2h boundary
+/// made `_at(0)` render '2h ago' while `_at(5)` rendered '1h ago'. At 90
+/// minutes every offset used here stays inside one bucket with ~20
+/// minutes of headroom, so two fixtures "five minutes apart" also read
+/// the same. Nothing asserts these labels today; this keeps the first
+/// test that does from being flaky by construction.
 final DateTime _fixtureBase =
-    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+    DateTime.now().toUtc().subtract(const Duration(minutes: 90));
 
-/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase], spelled
+/// the way the server spells it: `+00:00` with no sub-second part, which
+/// is what `datetime.isoformat()` through `jsonable_encoder` emits.
+/// `toIso8601String()` alone would emit `…T10:35:12.345Z` — a different
+/// offset spelling AND a precision the API never sends, in the one file
+/// whose whole job is pinning the production wire format. Offsets
 /// preserve the original fixtures' relative ordering — the dismissed
 /// import item was created five minutes before it was dismissed.
-String _at(int minutesAfterBase) =>
-    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+String _at(int minutesAfterBase) => _fixtureBase
+    .add(Duration(minutes: minutesAfterBase))
+    .toIso8601String()
+    .replaceFirst(RegExp(r'\.\d+Z$'), '+00:00')
+    .replaceFirst(RegExp(r'Z$'), '+00:00');
 
 Map<String, dynamic> _dismissGoldenResponse() =>
     jsonDecode(_dismissGoldenJson) as Map<String, dynamic>;

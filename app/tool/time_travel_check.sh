@@ -41,6 +41,40 @@
 # excludes the line from the only check that would catch a real fuse
 # there.
 #
+# Second false-positive class, found the same way: a test that INJECTS
+# its own `now` (`fuzzyExpiry(expiry, now: now)`) can never rot, but
+# shifting both sides is still not a no-op — a shift that lands the
+# interval across a DST transition changes the delta by an hour and can
+# drop an `inDays` boundary by one. `fuzzy_expiry_text_test.dart` is the
+# worked example. A multiple-of-7 `--days` preserves weekdays but not DST
+# offsets, so this class needs the tag rather than a cleverer default.
+#
+# WHAT THIS STILL CANNOT SEE
+# --------------------------
+# Under-detection is the failure mode a check like this must not have, so
+# state the gaps rather than let a green run imply completeness. Shifted:
+# ISO dates (`'2026-04-18T10:00:00Z'`, which covers `DateTime.parse('…')`)
+# and constructor dates (`DateTime(2026, 4, 18)` / `DateTime.utc(…)`). NOT
+# shifted, and therefore invisible here:
+#
+#   * epoch forms — `DateTime.fromMillisecondsSinceEpoch(1776…)`.
+#   * a date assembled from parts — `DateTime(y, m, d)` where any of the
+#     three is a variable or an arithmetic expression.
+#   * a date that reaches the fixture from outside `test/` — a golden file,
+#     a seeded database, an asset JSON.
+#   * a date only written as a component — `..month = 4`.
+#
+# Measured at fxfuse (2026-09-22): the epoch form has 3 occurrences, all in
+# `test/core/services/shared_state_service_test.dart`, and all three only
+# round-trip the value back out through `share_auth_jwt_expires_at` — no
+# `now` comparison anywhere in `shared_state_service.dart` — so they are
+# invisible here but are not fuses. Re-check that claim rather than
+# inheriting it whenever a new fixture style shows up.
+# The repo's `fixture_date_guard_test.dart` is narrower still — it
+# matches only an inline `'created_at': '<literal>'` — so the two checks
+# fail differently on purpose, and `test/test-fxguard2-…md` tracks closing
+# the guard's half.
+#
 # PROVING THE HARNESS STILL BITES
 # --------------------------------
 # A green run only means something if the same run would go red on a real
@@ -67,24 +101,69 @@
 # Exit code is `flutter test`'s own: 0 green, non-zero red.
 set -euo pipefail
 
-DAYS=400
+# 406 = 58 whole weeks. A shift that is a multiple of 7 keeps every
+# fixture's weekday, which matters because weekday-consuming surfaces
+# exist (`recurrence_field.dart:141` seeds the repeat-days chip from
+# `anchorDate.weekday`). The old default of 400 rotated every fixture by
+# one day and turned that into a whole class of failures the operator
+# would have to triage as false positives. Stay above 365 so the
+# year-boundary in the relative-time formatters is still crossed.
+DAYS=406
 TEST_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --days) DAYS="$2"; shift 2 ;;
+    --days)
+      if [[ $# -lt 2 ]]; then
+        echo "error: --days needs a value (e.g. --days 406)" >&2
+        exit 2
+      fi
+      DAYS="$2"; shift 2 ;;
     --days=*) DAYS="${1#*=}"; shift ;;
-    -h|--help) sed -n '1,45p' "$0"; exit 0 ;;
+    -h|--help) sed -n '/^# USAGE/,/^set -euo/p' "$0"; exit 0 ;;
+    -*)
+      echo "error: unknown flag $1 (see --help)" >&2
+      exit 2 ;;
     *) TEST_ARGS+=("$1"); shift ;;
   esac
 done
+
+# A non-numeric value used to surface as a raw Python traceback, and a
+# NEGATIVE one was accepted silently — shifting fixtures into the future,
+# where every now-relative surface degenerates ('just now', '—', cutoffs
+# trivially satisfied) and the run comes back green having proved the
+# opposite of what was asked.
+if [[ ! "$DAYS" =~ ^[0-9]+$ ]]; then
+  echo "error: --days must be a non-negative whole number of days, got '$DAYS'" >&2
+  echo "       (to simulate the clock moving FORWARD, pass a positive value;" >&2
+  echo "        this script shifts fixtures backwards to achieve that)" >&2
+  exit 2
+fi
+if (( DAYS == 0 )); then
+  echo "error: --days 0 shifts nothing and would report a vacuous pass" >&2
+  exit 2
+fi
 
 if [[ ! -d test ]]; then
   echo "error: run from app/ (no ./test directory here)" >&2
   exit 2
 fi
 
+# A target path that escapes the staged copy runs the REAL, unshifted tree
+# and reports success having tested nothing. Absolute paths are what shell
+# completion and editor "copy path" produce, so this is the likely slip.
+for arg in ${TEST_ARGS[@]+"${TEST_ARGS[@]}"}; do
+  case "$arg" in
+    /*|../*|*/../*)
+      echo "error: target '$arg' points outside the staged copy, so it would" >&2
+      echo "       run the real unshifted tree and prove nothing." >&2
+      echo "       Pass a path relative to app/, e.g. test/features/activity" >&2
+      exit 2 ;;
+  esac
+done
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/fxfuse-timetravel.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+cleanup() { rm -rf "$WORK"; }
+trap cleanup EXIT INT TERM
 
 echo "==> staging a copy of app/ in $WORK"
 # Only what `flutter test` needs: Dart sources, assets, pubspec.
@@ -95,44 +174,134 @@ for entry in lib test ios android pubspec.yaml pubspec.lock analysis_options.yam
   if [[ -e "$entry" ]]; then cp -R "$entry" "$WORK/"; fi
 done
 
-echo "==> shifting every YYYY-MM-DD under test/ back by $DAYS days"
+echo "==> shifting fixture dates under test/ back by $DAYS days"
 python3 - "$WORK/test" "$DAYS" <<'PY'
 import datetime, pathlib, re, sys
 
 root, days = pathlib.Path(sys.argv[1]), int(sys.argv[2])
-date_re = re.compile(r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)')
-# Lines whose assertion is about the absolute date, not its age.
-SKIP = 'no-time-travel'  # matched anywhere on the line, comment style aside
-shifted = files = skipped = 0
+
+# Two fixture-date forms, both of which reach now-relative lib code:
+#   1. an ISO string   — 'created_at': '2026-04-18T10:00:00Z'
+#                        (also covers DateTime.parse('2026-04-18…'))
+#   2. a constructor   — DateTime(2026, 4, 18) / DateTime.utc(2026, 4)
+#                        / DateTime(2026), all with optional time args
+# Form 2 is invisible to the repo's grep guard, which scans only form 1,
+# so it is exactly the shape a fuse hides in. Both are shifted.
+iso_re = re.compile(r'(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)')
+# Whitespace-tolerant across newlines so a dartfmt-wrapped constructor is
+# not silently skipped.
+ctor_re = re.compile(
+    r'DateTime(\.utc)?\(\s*(\d{4})\s*(?:,\s*(\d{1,2})\s*(?:,\s*(\d{1,2})\s*)?)?'
+    r'(?=[,)])')
+
+# Lines whose assertion is about the absolute date, not its age. The
+# marker only counts inside a `//` comment: a bare substring test let
+# prose *about* the marker exempt a real fixture on the same line.
+skip_re = re.compile(r'//[^\n]*\bno-time-travel\b')
+
+shifted = ctor_shifted = files = held = 0
+
+
+def shift(y, m, d):
+    return datetime.date(y, m, d) - datetime.timedelta(days=days)
+
 
 def back(m):
     global shifted
     try:
-        d = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        d = shift(int(m.group(1)), int(m.group(2)), int(m.group(3)))
     except ValueError:
         return m.group(0)  # not a real date (e.g. a 0000-00-00 sentinel)
     shifted += 1
-    return (d - datetime.timedelta(days=days)).isoformat()
+    return d.isoformat()
+
+
+def back_ctor(m):
+    global ctor_shifted
+    utc, y, mo, day = m.group(1) or '', m.group(2), m.group(3), m.group(4)
+    try:
+        # `DateTime(2026)` is Jan 1st and `DateTime(2026, 4)` is April 1st;
+        # emit an explicit day so a shifted value cannot silently land on
+        # some other month's 1st.
+        d = shift(int(y), int(mo) if mo else 1, int(day) if day else 1)
+    except ValueError:
+        return m.group(0)
+    ctor_shifted += 1
+    # No trailing separator: whatever followed (`, 12, 30)` for a
+    # time-bearing constructor, or just `)`) is left untouched.
+    return f'DateTime{utc}({d.year}, {d.month}, {d.day}'
+
+
+def skipped_line_numbers(text):
+    """1-indexed lines carrying the marker, plus the line below a marker
+    that sits on a wrapped entry's key line — dartfmt splits long entries,
+    and the repo's guard folds them for exactly this reason."""
+    out = set()
+    for i, line in enumerate(text.splitlines(), start=1):
+        if skip_re.search(line):
+            out.add(i)
+            if line.rstrip().rstrip(',').rstrip().endswith(':'):
+                out.add(i + 1)
+            # `'created_at':  // no-time-travel` — value is on the next line
+            if re.search(r':\s*//[^\n]*\bno-time-travel\b', line):
+                out.add(i + 1)
+    return out
+
+
+def make_guard(src, skip_lines):
+    """Wrap a substitution so matches on a tagged line are left alone.
+    `held` then counts dates actually suppressed, not comment lines — the
+    only number an operator can audit exemptions with."""
+    starts = [0] + [i + 1 for i, ch in enumerate(src) if ch == '\n']
+
+    def line_of(pos):
+        lo, hi = 0, len(starts) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if starts[mid] <= pos:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo + 1
+
+    def guard(fn):
+        def wrapper(m):
+            global held
+            if line_of(m.start()) in skip_lines:
+                held += 1
+                return m.group(0)
+            return fn(m)
+        return wrapper
+
+    return guard
+
 
 for path in sorted(root.rglob('*.dart')):
     src = path.read_text()
-    lines = src.splitlines(keepends=True)
-    out_lines = []
-    for line in lines:
-        if SKIP in line:
-            skipped += 1
-            out_lines.append(line)
-        else:
-            out_lines.append(date_re.sub(back, line))
-    out = ''.join(out_lines)
+    # One guard per pass, each built from the exact string that pass
+    # scans: `re.sub` reports match offsets into its own input, and the
+    # constructor pass can collapse a wrapped `DateTime(\n …)` onto one
+    # line, so offsets from the original text would drift and start
+    # mapping matches to the wrong line.
+    after_iso = iso_re.sub(
+        make_guard(src, skipped_line_numbers(src))(back), src)
+    out = ctor_re.sub(
+        make_guard(after_iso, skipped_line_numbers(after_iso))(back_ctor),
+        after_iso)
     if out != src:
         path.write_text(out)
         files += 1
 
-print(f"    {shifted} date literals rewritten across {files} files "
-      f"({skipped} lines held back by {SKIP})")
-if shifted == 0:
-    print("    (nothing to shift — every fixture is already now-relative)")
+print(f"    {shifted} ISO literals + {ctor_shifted} DateTime(...) constructors "
+      f"rewritten across {files} files "
+      f"({held} dates held back by no-time-travel)")
+if shifted + ctor_shifted == 0:
+    # A no-op run that reports success is worse than a failure: it looks
+    # exactly like "the fixtures are drained".
+    print("    error: nothing was shifted — this run would prove nothing.")
+    print("    Either every fixture is already now-relative (check by hand),")
+    print("    or the tests moved out of test/ and this tool is now blind.")
+    sys.exit(3)
 PY
 
 cd "$WORK"

@@ -18,8 +18,15 @@ import 'package:palateful/features/activity/providers/activity_read_provider.dar
 /// `awaiting_review` bucket these fixtures land in IS exempt from the
 /// 30-day cutoff at imports_tab.dart:168, so the filter can never drop
 /// them — but the rendered label still ages, so anchor it anyway.
+/// The base sits 90 minutes back, not 2 hours: every `_formatTime` in
+/// play buckets by whole hours, and a base exactly on the 1h/2h boundary
+/// made `_at(0)` render '2h ago' while `_at(5)` rendered '1h ago'. At 90
+/// minutes every offset used here stays inside one bucket with ~20
+/// minutes of headroom, so two fixtures "five minutes apart" also read
+/// the same. Nothing asserts these labels today; this keeps the first
+/// test that does from being flaky by construction.
 final DateTime _fixtureBase =
-    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+    DateTime.now().toUtc().subtract(const Duration(minutes: 90));
 
 /// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
 /// keep the item (originally 10:15) after its parent job (10:10) —

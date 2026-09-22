@@ -118,12 +118,20 @@ void _unregister() {
 /// column assertion this file grows (its charter, per the header, is
 /// "the dynamic column responds to sort changes"). Anchor to `now` so
 /// the rendered string stays in a stable bucket.
+/// The base sits 90 minutes back, not 2 hours: every `_formatTime` in
+/// play buckets by whole hours, and a base exactly on the 1h/2h boundary
+/// made `_at(0)` render '2h ago' while `_at(5)` rendered '1h ago'. At 90
+/// minutes every offset used here stays inside one bucket with ~20
+/// minutes of headroom, so two fixtures "five minutes apart" also read
+/// the same. Nothing asserts these labels today; this keeps the first
+/// test that does from being flaky by construction.
 final DateTime _fixtureBase =
-    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+    DateTime.now().toUtc().subtract(const Duration(minutes: 90));
 
-/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
-/// preserve the original fixtures' relative ordering, which the
-/// created-at-descending sort (home_screen.dart:321) depends on.
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Every
+/// fixture in this file shared one literal, so they all pass 0 and stay
+/// tied, exactly as before; the parameter exists so a fixture added later
+/// can be ordered against these without reintroducing a literal.
 String _at(int minutesAfterBase) =>
     _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
 
@@ -137,7 +145,10 @@ Map<String, dynamic> _recipe({
       'name': name,
       'recipe_book_id': 'book-1',
       'recipe_book_name': 'Dinners',
-      'updated_at': '2026-04-01T00:00:00Z',
+      // Anchored together: these were the same instant before fxfuse, and
+      // leaving `updated_at` frozen would have claimed a recipe updated six
+      // months before it was created.
+      'updated_at': _at(0),
       'created_at': _at(0),
       'tags': <String>[],
       if (lastCooked != null) 'last_cooked': lastCooked,

@@ -113,7 +113,9 @@ Map<String, dynamic> _recipe({
       'recipe_book_id': 'book-1',
       'recipe_book_name': 'Dinners',
       'updated_at': '2026-04-01T00:00:00Z',
-      'created_at': '2026-04-01T00:00:00Z',  // age-independent
+      'created_at': '2026-04-01T00:00:00Z',  // age-independent — grid view + default `best` sort, so `created_at` reaches neither
+      // home_screen.dart:321's newest-sort branch nor dynamic_column.dart:32's 'Added' lens
+      // (table view only). No assertion here reads a relative-time string.
       'tags': <String>[],
     };
 
