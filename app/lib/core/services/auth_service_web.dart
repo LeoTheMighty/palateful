@@ -99,3 +99,5 @@ Future<void> logout(dynamic auth0Web) async {
   final web = auth0Web as Auth0Web;
   await web.logout(returnToUrl: _currentOrigin());
 }
+
+// webpr1 proof: benign app/ edit so the PR web-compile step runs and passes.
