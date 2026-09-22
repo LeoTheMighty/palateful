@@ -31,6 +31,13 @@ notices.
 | `recipes/add_recipe/ingredient_edits_mapping.dart:29,101` | `quantity`, `quantity_display` | `is num` / `is String` (tolerant) | ok |
 | `recipes/public_recipe_screen.dart:159`, `recipe_version_diff_screen.dart:220-239` | `quantity_display` | `?.toString()` (tolerant) | ok |
 
+The two strict `as String?` sites share **one** source: recipe detail and
+both cook modes (single recipe via `cook_plan.dart:289`, and meal via
+`meal_cook_mode_screen.dart:369-381`, which fetches each component's recipe)
+all read `GET /v1/recipes/{id}`, which declares `quantity_display: str`
+(`get_recipe.py:152`). So one serializer change on that endpoint crashes all of
+them at once. They are two cast sites, not two independent risks.
+
 Inferred, not measured: the grep covers only direct `json['…']` reads.
 Generated or indirect parsers were not swept.
 
@@ -62,3 +69,4 @@ Generated or indirect parsers were not swept.
 
 - 2026-09-22T20:00 — filed from cartdec (PR #40) at leonidbelyi-41's request.
   Inventory measured by grep over `app/lib`.
+- 2026-09-22T20:30 — corrected the inventory: the two strict `as String?` sites read the same endpoint (`GET /v1/recipes/{id}`), so it's one shared risk, not two. Confirmed that PR #40 changes no recipe route, so it can't regress them.
