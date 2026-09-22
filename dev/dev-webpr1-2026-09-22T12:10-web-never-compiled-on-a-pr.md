@@ -72,6 +72,14 @@ green. The break above is deliberate and was reverted.
   `--debug` 46s. The debug build catches this failure too, but only saves
   ~15s and does not compile the same way the deploy does, so `--release`
   wins. Runner timings are recorded in the status log.
+- **Known property of the change detection** (state it, don't rediscover it):
+  the step diffs the PR's **net** change against `base.sha`, so it skips
+  whenever the merged tree leaves `app/` untouched — including a PR that
+  breaks `app/` in one commit and reverts it in another, or whose app changes
+  cancel out across commits while an intermediate state is broken. That is
+  correct for a merge gate, where only the merged state ships, but it means
+  the step is not a per-commit check and won't catch a broken intermediate
+  state. Observed live: #50's revert commit skipped the step.
 - **Not doing**: running the web build on `main` pushes. `deploy-web`
   already compiles there; duplicating it would add minutes and catch
   nothing new.
@@ -86,7 +94,7 @@ green. The break above is deliberate and was reverted.
   - Deliberate stub/web signature drift (`64ca5abd`): step **ran and failed**
     in 65s — `Too few positional arguments: 3 required, 2 given.` /
     `Failed to compile application for the Web.`
-  - Benign `app/` edit (`b5ca7f1`-series): step **ran and passed** in 63s.
+  - Benign `app/` edit (`5388ce8e`): step **ran and passed** in 63s.
   - PR #49 itself, which touches no `app/` file: step **skipped**, job green.
   - **Added cost: ~65s of runner time, and only on PRs that touch `app/`.**
     `flutter-test` job wall-clock: 7m54s with the step skipped, 9m54s with it
