@@ -253,6 +253,12 @@ auth error, so "before rsh107" would let the real window open first.
 - [ ] **The invariant above is asserted**, not merely the flag: a test
       that an auth error which does not belong to the attempt cannot
       produce `AUTH_FAILED`.
+- [ ] **One test against a REAL SQLAlchemy-wrapped error**, not a
+      hand-built wrapper — the live-driver file
+      (`test_db_credentials_live_drivers.py`) already has the machinery
+      and a running Postgres. Without it the suite pins a wrapper shape
+      the drivers do not produce, and cannot distinguish a correct fix
+      from one that only looks correct against the fixtures.
 - [ ] **A timeout-path test at the budget boundary** — the one shape that
       reaches the bug through code we already ship, and the one the flag
       fix alone leaves green.
@@ -393,8 +399,30 @@ __cause__   : sqlite3.OperationalError
 cause is orig : True          <-- the same object
 ```
 
-So on the wrapper path `__cause__` carries nothing `.orig` does not, and
-the rule can be applied literally there. The one path that is **not**
+So on the wrapper path `__cause__` carries nothing `.orig` does not.
+
+⚠️ **THE TRAP: the test fixtures and the real driver disagree here, and
+the suite cannot tell you so** [M, 3b, confirmed by 98]:
+
+```
+real SQLAlchemy wrap (2.0.45):                __cause__ is .orig -> True
+hand-built OperationalError(stmt, {}, orig):  __cause__ is .orig -> False  (__cause__ is None)
+```
+
+Every classifier test builds wrappers the hand-built way — `wrapped()`
+is used at `:84`, `:142`, `:253`, `:269` and its own definition. So:
+
+- a fix that narrows to `.orig`-only passes the suite **and** is right in
+  prod;
+- a fix that leans on `__cause__ is .orig` passes in prod and **fails**
+  the suite;
+- a fix that silently depends on `__cause__` for the wrapper spine is
+  **green in every test** (where `__cause__` is `None`, so `.orig`
+  carries it) and diverges only on real errors.
+
+The suite cannot distinguish the third from the first. That is the
+"fixtures agree with the spec, the drivers don't" shape — the same gap
+that produced this workstream's original miss. The one path that is **not**
 wrapped is rsh105's `do_connect` listener, which sees the raw DBAPI error
 (pinned by `test_unwrapped_dbapi_error_matches_too`) — the error is then
 the node itself, needing no link at all. Neither observation licenses
@@ -406,6 +434,12 @@ change, not before it.
 `.orig` means *the same error, unwrapped* — structural, always safe to
 follow. `__cause__` / `__context__` mean *a different error, related in
 time* — which is the ambiguity that produced all of this.
+
+**Read it as "follow the wrapper spine, whichever attribute expresses
+it"** [3b, on their own rule]: `.orig` always, and `__cause__` **when it
+is the same object as `.orig`**. Applied literally as "`__cause__` is
+history, drop it", someone would drop a link that on real errors *is*
+the wrapper spine.
 
 ## Implementation note (0a): graph shape is the wrong basis
 
