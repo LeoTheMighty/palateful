@@ -4,8 +4,8 @@ type: dev
 created: 2026-07-27T12:34:00-06:00
 title: Secrets Manager password provider — connect-time credential resolution
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-rsh105 (session_012ayskbK7fN9sYRXQpAdJzu)
 branch: feat/dev-rsh105
 ---
 
@@ -102,3 +102,9 @@ which is what makes rsh106's wiring reviewable on its own terms.
 - 2026-07-27T12:34 — emitted from plan 462355 at RED-gate PASS. E-6 observed
   RED right-reason (`ModuleNotFoundError: utils.services.db_credentials`); see
   `_devx/workstreams/rotation-self-heal/evals/RED-report.md`.
+- 2026-09-22 — claimed by /devx (claim held locally on main — lane frozen by coordinator; not pushed). Worktree `.worktrees/dev-rsh105` on `feat/dev-rsh105` off `origin/main` @ faf35fa1.
+- 2026-09-22 — phase 2: spec ACs direct (v2 native); 10 ACs; workstream=rotation-self-heal; red-artifacts=libraries/utils/test/test_db_credential_provider.py. Re-ran RED: 13 failed + 3 errors, right reason (AttributeError on the provider names; 3 call-site tests fail on the absent rsh106 wiring).
+- 2026-09-22 — phase 3: implemented provider / resolver / registration + `CredentialResolutionError` in db_credentials.py. Artifact's two call-site tests (T6.3b, rsh106's) moved verbatim to `test_db_credential_wiring.py`, registered under rsh106; rsh105 registry entry deleted. Fixture fix in the artifact: blocks asyncpg import so its stated premise holds in the root venv (no assertion changed). Edge-case tests in `test_db_credentials_provider_edges.py` for the T2.8 gate.
+- 2026-09-22 — phase 4: 1-agent single-pass adversarial review; 3 findings (0 HIGH, 1 MED, 2 LOW); ALL fixed in-place. MED: SM-outage-on-retry error chain decides rsh102's probe verdict; made deliberate (auth error kept out of the chain, so the probe fails open) and pinned by a test. LOW: from-imported exception class goes stale under the artifact's importlib.reload (tests now look names up on the module); UP031 in new test. Re-review clean.
+- 2026-09-22 — phase 5: `npx nx run utils:test` 776 passed / 7 skipped, coverage gate OK (db_probe.py + db_credentials.py at 100% line+branch); `utils:lint` clean. Wiring file still RED (3 failed) under PYTEST_RUN_RED=1, as intended.
+- 2026-09-22 — phase 7: PR https://github.com/LeoTheMighty/palateful/pull/45 at deef7b7d. Merge held: main is a serialized deploy lane; needs Leo's approval relayed by the coordinator.
