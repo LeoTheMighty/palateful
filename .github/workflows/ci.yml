@@ -162,6 +162,14 @@ jobs:
       - name: Deploy-freshness self-test (E-7 step 5 guard)
         run: bash tools/deploy-freshness-self-test.sh
 
+      # Unconditional for the same reason: it reads every project.json, and
+      # the failure it guards (covcomb1) only shows under `-t test
+      # --parallel`, never when a target is run on its own.
+      - name: Pytest coverage-file isolation (covcomb1 guard)
+        run: |
+          python3 tools/pytest-coverage-isolation-check.py --self-test
+          python3 tools/pytest-coverage-isolation-check.py
+
   test:
     runs-on: ubuntu-latest
     needs: setup
