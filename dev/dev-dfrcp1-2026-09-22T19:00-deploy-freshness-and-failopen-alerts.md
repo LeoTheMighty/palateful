@@ -124,3 +124,15 @@ pool or an unreachable DB, so after it lands a total DB outage reads
   events each), with no gap across the :64 rollout at 11:09-11:16 — so
   `breaching` does not trade a blind spot for false alarms. Rationale recorded
   in the tf file, since the same question applies to every alarm in the ranking.
+- 2026-09-22T23:05 — 3b asked what happens if a SECOND replacement-driving
+  verdict is added. Checked rather than assumed: my sweep fails loudly in that
+  case (the new member joins FAIL_OPEN_VERDICTS and its sites are required to
+  log a phrase they shouldn't), so it is noisy, not silent — but it accuses the
+  wrong file. Added the inverse assertion where actionability is actually
+  decided: `test_only_auth_failed_is_special_cased_by_the_router` reads
+  health_router's source and requires that exactly one ProbeVerdict is compared
+  against. Mutation-verified (adding a 503 branch on UNREACHABLE fails it).
+  While there: rsh102's `test_only_auth_failed_is_actionable` CANNOT FAIL — it
+  builds `{v for v in ProbeVerdict if v is AUTH_FAILED}` and asserts that
+  equals `{AUTH_FAILED}`, true by construction for any enum. Reported to 3b;
+  not fixed here (rsh102's file, and selfheal1 is mid-flight over it).

@@ -212,3 +212,59 @@ def test_fail_open_verdicts_are_derived_not_hardcoded() -> None:
     assert "AUTH_FAILED" not in FAIL_OPEN_VERDICTS
     assert "UNKNOWN" in FAIL_OPEN_VERDICTS
     assert "UNREACHABLE" in FAIL_OPEN_VERDICTS
+
+
+# ---------------------------------------------------------------------------
+# The inverse invariant: only AUTH_FAILED is actionable.
+#
+# The sweep above defines fail-open as "every verdict except OK and
+# AUTH_FAILED". palateful-3b asked what happens if someone adds a SECOND
+# replacement-driving verdict. Measured answer: this file fails loudly, because
+# the new member lands in FAIL_OPEN_VERDICTS and its sites are then required to
+# log a phrase they have no reason to log. That is noisy, not silent — but it
+# points at the wrong file, so the invariant is worth asserting where it lives.
+#
+# `test_db_probe.py::test_only_auth_failed_is_actionable` was written for this
+# and CANNOT FAIL: it builds `{v for v in ProbeVerdict if v is AUTH_FAILED}`
+# and asserts the result equals `{AUTH_FAILED}` — true by construction for any
+# enum. The assertion below reads the router instead, which is where
+# actionability is actually decided.
+# ---------------------------------------------------------------------------
+
+#: The one verdict allowed to drive a task replacement (503 from the router).
+ACTIONABLE_VERDICT = "AUTH_FAILED"
+
+
+def _verdicts_compared_in(tree: ast.AST) -> set[str]:
+    """Every `ProbeVerdict.X` that appears in a comparison in `tree`."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        for operand in [node.left, *node.comparators]:
+            name = _verdict_name(operand)
+            if name is not None:
+                found.add(name)
+    return found
+
+
+def test_only_auth_failed_is_special_cased_by_the_router() -> None:
+    """The router may single out exactly one verdict, and it must be AUTH_FAILED.
+
+    Every other verdict falls through to the 200 path — that is what "fails
+    open" means, and it is what makes the phrase contract the only detector.
+    A second special-cased verdict changes which paths are fail-open, so it
+    must not land quietly.
+    """
+    path = _repo_root() / "services/api/src/routers/v1/health_router.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+    compared = _verdicts_compared_in(tree)
+
+    assert compared == {ACTIONABLE_VERDICT}, (
+        f"health_router.py compares against {sorted(compared)}, expected "
+        f"exactly ['{ACTIONABLE_VERDICT}']. If a verdict was added that drives "
+        "a task replacement, update FAIL_OPEN_VERDICTS and the alarm's "
+        "coverage together — the sweep above would otherwise demand a "
+        "'failing open' line from a path that is not failing open."
+    )
