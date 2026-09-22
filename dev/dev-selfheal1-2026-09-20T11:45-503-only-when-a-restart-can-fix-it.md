@@ -277,3 +277,15 @@ verdict alone and alarm on it, which captures most of the value.
   and every real rotation would downgrade — the self-heal silently deleted.
   A comment on `_downgrade_passwordless_auth_failure` says so at the place
   someone would have to change.
+- 2026-09-22T23:40 — replaced rsh102's `test_only_auth_failed_is_actionable`,
+  which could not fail: `{v for v in ProbeVerdict if v is AUTH_FAILED} ==
+  {AUTH_FAILED}` is true by construction for any enum contents. Its docstring
+  said "guards the fail-open invariant against a careless enum addition", and
+  **this story added `NOT_CONFIGURED` to that enum and it never noticed** —
+  which is the proof it was decorative. Caught by palateful-cc while building
+  dfrcp1's sweep on top of it, after I cited the test to them as if it were
+  verification without opening it. Replaced with a literal member-set
+  assertion (cannot self-satisfy), mutation-verified: adding a member fails
+  it. Actionability is now really pinned at the two places it is decided —
+  the router's 503 (dfrcp1's parse test) and the CLI's exit code, which ECS
+  reads as replace-or-not (`test_no_fail_open_verdict_ever_exits_non_zero`).

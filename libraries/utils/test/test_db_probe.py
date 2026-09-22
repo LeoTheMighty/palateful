@@ -289,10 +289,38 @@ async def test_probe_async_never_raises(monkeypatch):
     assert await db_probe.probe_async() is ProbeVerdict.UNKNOWN
 
 
-def test_only_auth_failed_is_actionable():
-    """Guards the fail-open invariant against a careless enum addition."""
-    actionable = {v for v in ProbeVerdict if v is ProbeVerdict.AUTH_FAILED}
-    assert actionable == {ProbeVerdict.AUTH_FAILED}
+def test_the_verdict_set_is_exactly_what_both_consumers_were_written_for():
+    """Forces a look at both consumers when a verdict is added.
+
+    This replaces rsh102's `test_only_auth_failed_is_actionable`, which read
+    as this guard but could not fail:
+
+        actionable = {v for v in ProbeVerdict if v is ProbeVerdict.AUTH_FAILED}
+        assert actionable == {ProbeVerdict.AUTH_FAILED}
+
+    The comprehension filters to `AUTH_FAILED` and the assertion checks the
+    result is `AUTH_FAILED` — true by construction for any enum contents.
+    selfheal1 added `NOT_CONFIGURED` and it never noticed, which is the
+    proof: the one careless-enum-addition it existed to catch walked past it.
+    Caught by palateful-cc while building dfrcp1's sweep on top of it.
+
+    A literal set cannot self-satisfy. Adding a member fails here, and the
+    failure is the prompt to decide what the new verdict does at each place
+    actionability is really decided — neither of which is this enum:
+
+      * the router's 503 — `test_only_auth_failed_is_special_cased_by_the_router`
+        (dfrcp1) parses `health_router.py` and requires exactly one verdict in
+        a comparison;
+      * the CLI's exit code, which ECS reads as replace-or-not —
+        `test_no_fail_open_verdict_ever_exits_non_zero` above.
+    """
+    assert {v.name for v in ProbeVerdict} == {
+        "OK",
+        "AUTH_FAILED",
+        "UNREACHABLE",
+        "UNKNOWN",
+        "NOT_CONFIGURED",
+    }
 
 
 # ---------------------------------------------------------------------------
