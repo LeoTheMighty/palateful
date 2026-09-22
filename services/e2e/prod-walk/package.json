@@ -1,0 +1,15 @@
+{
+  "name": "palateful-prod-walk",
+  "private": true,
+  "description": "Playwright walk of palateful.app (production) against a real signed-in session. See README.md.",
+  "type": "module",
+  "scripts": {
+    "capture-session": "node scripts/capture-session.mjs",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22",
+    "typescript": "5"
+  }
+}

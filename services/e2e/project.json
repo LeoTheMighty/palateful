@@ -2,7 +2,9 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "name": "e2e",
   "projectType": "application",
-  "tags": ["e2e"],
+  "tags": [
+    "e2e"
+  ],
   "targets": {
     "test": {
       "executor": "nx:run-commands",
@@ -36,6 +38,20 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "docker compose -f docker-compose.yml -f docker-compose.e2e.yml down",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "prod-capture-session": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "yarn --cwd services/e2e/prod-walk install --silent && cd services/e2e/prod-walk && node scripts/capture-session.mjs",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "prod-walk": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "yarn --cwd services/e2e/prod-walk install --silent && cd services/e2e/prod-walk && npx playwright install chromium && npx playwright test {args.test}",
         "cwd": "{workspaceRoot}"
       }
     }

@@ -1,0 +1,7 @@
+node_modules/
+test-results/
+playwright-report/
+# Defence in depth: the session file lives OUTSIDE the repo by default
+# (see lib/session.ts). If anyone points it inside, it must never be staged.
+*.storage.json
+*session*.json
