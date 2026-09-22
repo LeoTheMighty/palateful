@@ -68,6 +68,51 @@ The flag fix alone only helps where someone wrote `raise ... from`. The
 asymmetry bites wherever an exception is merely raised inside an `except`,
 which needs no `from` at all. So this spec carries both.
 
+## Severity: latent today, live at rsh106
+
+**The sentence that makes it legible:** B and C below are the *same
+exception*, and they get different verdicts depending on what happened to
+be in flight when the probe classified them.
+
+[M] Measured against the real `_classify` on the current tree:
+
+```
+A  within-attempt   RuntimeError raised while handling THAT attempt's auth error
+                    -> AUTH_FAILED      (arguably correct: auth did fail here)
+B  caller-nested    TimeoutError raised while handling an UNRELATED auth error
+                    -> AUTH_FAILED      <-- the bug: a transient becomes "replace this task"
+C  plain timeout    TimeoutError, no ambient handler
+                    -> UNREACHABLE
+```
+
+**`__context__` is set implicitly by the interpreter.** It needs no
+`raise ... from`, and therefore no author intent, to appear. That is why
+honouring `__suppress_context__` cannot fix this on its own: the flag is
+only present where someone wrote `from`, and the dangerous shape needs
+nobody to have written anything.
+
+**Not reachable in prod today** [I, from measured evidence]: [M] outside
+`db_probe.py` and its tests the only prod caller is
+`health_router.py:32`, which calls `cached_verdict_async()` in a `try`
+that is not handling anything else; the probe builds a fresh engine per
+call, and `_connect_once`'s `finally` swallows dispose failures rather
+than raising over a propagating auth error.
+
+**Two named conditions make it live — both are the next stories in this
+workstream:**
+
+1. **rsh106** wires rsh105's `do_connect` listener into the engine sites.
+   There, the only thing between a Secrets Manager outage and a full
+   drain is the *indentation of two lines* in `_make_do_connect`. [M]
+   Move them inside the handler and `is_auth_error` starts returning True
+   for an SM outage.
+2. **rsh107** adds a second consumer: a worker process that catches DB
+   errors around its own work — the caller-nested shape exactly.
+
+**This therefore BLOCKS rsh106**, and is not merely blocked-by rsh105.
+A latent bug with a named date of becoming live is more actionable than
+a severity rating.
+
 ## Acceptance criteria
 
 - [ ] `_chain` skips `__context__` on a node whose `__suppress_context__`
@@ -91,6 +136,16 @@ which needs no `from` at all. So this spec carries both.
 - [ ] rsh105's load-bearing-dedent comment in `_make_do_connect` is
       retired (or rewritten to point here) once the flag is honoured, so
       the codebase does not keep claiming a guarantee it no longer needs.
+- [ ] `is_missing_password`'s docstring no longer cites the rsh105 retry
+      path it describes today — [M] `_fetch` rejects a missing/empty/
+      non-string `password` field before any connect, and the retry path
+      has no env fallback, so the listener raises
+      `CredentialResolutionError` rather than connecting passwordless.
+      Reword per 3b: the veto defends a shape we cannot enumerate (any
+      caller whose chain carries both phrases should fail open, because a
+      task with no password to send cannot be fixed by replacing it), not
+      a description of what the listener does. Deferred here from #45 by
+      41's call, to avoid another CI cycle on an approved PR.
 - [ ] `is_missing_password`'s deliberate `EXPLICIT_LINKS` traversal is
       reconciled with the new behaviour — it already excludes
       `__context__` for its own reasons, and the two mechanisms must not
@@ -112,6 +167,10 @@ which needs no `from` at all. So this spec carries both.
 
 ## Status log
 
+- 2026-09-22T22:40 — severity measured by palateful-98 (A/B/C table
+  above) and ranked with 41: lands before rsh106; not escalated tonight,
+  because "prod is drainable right now" is not supported by the evidence.
+  If 0a or 3b constructs a prod-reachable B, it escalates immediately.
 - 2026-09-22T22:20 — 3b supplied the fail-safe-inversion framing and the
   `DatabaseNotConfigured` caution; both folded in above.
 - 2026-09-22T22:20 — filed by palateful-98. Idea and the two-variant
