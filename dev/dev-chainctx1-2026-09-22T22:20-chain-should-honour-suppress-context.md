@@ -133,6 +133,46 @@ workstream:**
 A latent bug with a named date of becoming live is more actionable than
 a severity rating.
 
+## The invariant to assert (3b) — not the flag fix
+
+**Every auth error reachable in the chain must belong to the attempt
+being classified.**
+
+That is the property. `__suppress_context__` is one mechanism that
+partially serves it and, measured, does not touch the timeout path at
+all — so a spec that pins the flag does not survive the next mechanism,
+and a spec that pins the invariant does.
+
+**A third reachable shape, inside `db_probe.py` itself** [M, found by 3b,
+reproduced by palateful-98]:
+
+```
+budget expires while an auth error is being handled
+  -> wait_for raises TimeoutError, __context__=CancelledError -> chain reaches the auth error
+  -> is_auth_error=True -> AUTH_FAILED
+```
+
+`wait_for` sets no `from`, so honouring `__suppress_context__` leaves
+this green. Reproduce it by shrinking `PROBE_TOTAL_TIMEOUT_S` in the test
+and having `_connect_once` await past it inside an `except` handling an
+auth error — no change to the real budget.
+
+**And the limit of that finding, stated in this order:** mechanically, a
+timeout produces `AUTH_FAILED` and therefore a drain. But in that
+scenario the auth error **belongs to the attempt** — the credentials
+really were rejected — so the verdict is *correct, reached by the wrong
+mechanism*. It is a false positive only once an auth error that does
+**not** belong to the attempt can be in scope. Today nothing produces
+one: fresh engine, one attempt per call. "A timeout drains the service"
+is accurate and reads as a live false positive, which it is not yet.
+
+**Which is exactly why this gates rsh106** [3b]: the listener rejects a
+cached password (auth error #1), refreshes, and proceeds — so an auth
+error that the refresh *already resolved* stays reachable for whatever
+fails next. That is the commit where the wrong mechanism finally produces
+the wrong answer. rsh107 adds a consumer but no resolved-then-proceed
+auth error, so "before rsh107" would let the real window open first.
+
 ## Acceptance criteria
 
 - [ ] `_chain` skips `__context__` on a node whose `__suppress_context__`
@@ -141,6 +181,12 @@ a severity rating.
       author has answered: there was no case in mind, and nothing is lost
       by narrowing.** See "The author's answer" below — do not preserve
       `__context__` out of deference to an intent that never existed.
+- [ ] **The invariant above is asserted**, not merely the flag: a test
+      that an auth error which does not belong to the attempt cannot
+      produce `AUTH_FAILED`.
+- [ ] **A timeout-path test at the budget boundary** — the one shape that
+      reaches the bug through code we already ship, and the one the flag
+      fix alone leaves green.
 - [ ] **A test asserting shape B directly**: a non-auth probe failure
       raised inside an unrelated auth handler classifies as non-auth.
       [0a] It passes today for a reason nobody wrote down, and would

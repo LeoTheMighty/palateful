@@ -2,74 +2,105 @@
 hash: ncfgverdict1
 type: dev
 created: 2026-09-22T22:10:00-06:00
-title: NOT_CONFIGURED is not UNREACHABLE — a missing credential must not read as a transient outage
+title: NOT_CONFIGURED must be loud for the worker, and must cover the passwordless-URL case
 from: dev/dev-selfheal1-2026-09-20T11:45-503-only-when-a-restart-can-fix-it.md
 status: ready
 owner: null
 branch: null
 ---
 
+## Correction to this spec's first draft
+
+The first draft asked for a `NOT_CONFIGURED` verdict to be **created**.
+[M] It already exists — selfheal1 (#52) shipped it: `ProbeVerdict.
+NOT_CONFIGURED` (`db_probe.py:154`), returned at `:401`, rendered by
+`health_router.py` as `{"status": "degraded"}` rather than `ok`, and the
+CLI's exit-0 choice is already argued in `main()`'s docstring. The draft
+was written from a message thread without reading the merged source, and
+it was wrong. What follows is the real remaining gap.
+
 ## Goal
 
-Give the probe a verdict that says "this task has no credential to
-connect with" and keep it distinct from "the database did not answer".
-Today both collapse into `UNREACHABLE`, which is cosmetic while nothing
-acts on the verdict — and stops being cosmetic at rsh107, where the
-worker health check does.
+Two things the merged verdict does not yet do, both of which bite at
+rsh107:
 
-`UNREACHABLE` means *try again, this may clear by itself*. A missing or
-passwordless `DATABASE_URL` never clears by itself. A worker sitting
-fail-open forever on a credential it was never given is the silent-void
-shape wearing a new label: the check reports a condition it cannot
-distinguish from a blip, nobody is paged, and the task is not doing its
-job.
+1. **It is silent where it matters.** [M, 0a] The CLI exits `0` for
+   `NOT_CONFIGURED` — deliberately, and the reasoning is right: ECS
+   treats any non-zero exit as unhealthy, so a distinct code would
+   replace the worker over exactly the condition this verdict was
+   invented to stop replacing tasks over. But rsh107 makes that CLI the
+   worker's container health check, and `/v1/health`'s `degraded` has no
+   worker equivalent. So a worker with no DB credential reports
+   **HEALTHY forever** while being structurally unable to do its job.
+   That is the silent-void shape, arrived at by correct reasoning about
+   503s.
+2. **It does not cover the passwordless-URL case.** [M]
+   `_downgrade_passwordless_auth_failure` (`db_probe.py:350`) classifies
+   a connection that *was* attempted and rejected against a URL carrying
+   no password, and returns `UNREACHABLE` — "may clear by itself" — for
+   a condition that never clears by itself.
 
 ## Acceptance criteria
 
-- [ ] A distinct `NOT_CONFIGURED` verdict exists, emitted when the
-      connection cannot be attempted for want of a credential (no URL, or
-      a URL carrying no password), and is never emitted for a connection
-      that was attempted and failed.
-- [ ] The check inspects **the URL actually being connected with** — never
-      `DB_PASSWORD` or any other env var directly. `DATABASE_URL` can carry
-      no password while `DB_PASSWORD` is populated, and vice versa; a
-      pre-connect check that asks the env var is a tidier-looking instance
-      of the wrong-path mistake that produced this whole workstream.
-      (0a's caveat against its own suggestion; 3b has it in the ACs too.)
-- [ ] `NOT_CONFIGURED` does **not** produce a 503. A restart cannot supply
-      a credential the task definition never had — the selfheal1 principle
-      applies unchanged.
-- [ ] `NOT_CONFIGURED` **is** distinguishable in logs/telemetry from
-      `UNREACHABLE`, so "this task is misconfigured" is a queryable state
-      rather than a silence. Fail-open without a signal is the failure mode
-      this spec exists to remove, not the fix.
-- [ ] A test pinning the asyncpg case below: a blank-password URL must
-      classify `NOT_CONFIGURED` via the URL check, **not** via the error.
+- [ ] **The spec decides the worker's answer, because rsh107 must consume
+      it and will otherwise pick one by accident.** Proposed: keep exit
+      `0` (a replacement cannot conjure a credential, and
+      `deployment_minimum_healthy_percent = 0` means a drain loop) **and**
+      make the condition alarm — the worker analogue of `degraded`. Not
+      a 503; not silence either. 0a raised this; it needs 41's ranking
+      against rsh107's own ACs before implementation.
+- [ ] The passwordless-URL case classifies `NOT_CONFIGURED` rather than
+      `UNREACHABLE`.
+- [ ] ~~Never emitted for a connection that was attempted and failed.~~
+      **Softened** [0a]: not emitted for a connection that failed for any
+      reason *other than* an absent credential. The original "never"
+      is violated by the only sane implementation — with a provider
+      registered, an empty resolved password is knowable only **at**
+      connect time, so a pre-connect check cannot cover the FR-5 case.
+- [ ] The check inspects **the URL actually being connected with** —
+      never `DB_PASSWORD` or any other env var directly. `DATABASE_URL`
+      can carry no password while `DB_PASSWORD` is populated, and vice
+      versa; a pre-connect check that asks the env var is a tidier-looking
+      instance of the wrong-path mistake that produced this workstream.
+- [ ] `NOT_CONFIGURED` stays **distinguishable from `UNREACHABLE` AND
+      keeps the shared `failing open` phrase** [M, 0a]. It has it today
+      (`db_probe.py:399`). 0e's G11 metric filter keys on that exact
+      string across all four fail-open branches and nothing enforces it,
+      so a future edit giving this verdict a more specific message —
+      which "distinguishable" actively invites — would silently drop it
+      out of the alarm with every test still green. The two requirements
+      collide unless the AC says both.
+- [ ] A test pinning the asyncpg case: a blank-password URL classifies
+      via the URL check, **not** via the error.
 
 ## Technical notes
 
-- **The distinction cannot come from the driver error.** [M, measured by
-  0a against an isolated pg16] On asyncpg a *missing* password is
-  byte-identical to a *wrong* one: `InvalidPasswordError`,
-  `sqlstate='28P01'`, `password authentication failed`. libpq's
-  `no password supplied` string — which `is_missing_password`
-  (`db_credentials.py`, added by 3b in #52) matches — is something asyncpg
-  never emits. So the async path has to detect the condition from the URL
-  before connecting; `db_probe._url_password_is_blank` is the existing
-  seam.
-- Interaction with rsh105 (#45): the `do_connect` listener resolves the
-  password at connect time when `DB_PASSWORD_SECRET_ARN` is set, so "the
-  URL carries no password" is not by itself a misconfiguration once FR-5
-  is wired (rsh106). The check must account for a provider being
-  registered on the engine, or it will report `NOT_CONFIGURED` for a
-  perfectly healthy rotating-credential task.
+- **The distinction cannot come from the driver error.** [M, 0a, against
+  an isolated pg16] On asyncpg a *missing* password is byte-identical to
+  a *wrong* one: `InvalidPasswordError`, `sqlstate='28P01'`,
+  `password authentication failed`. libpq's `no password supplied` — what
+  `is_missing_password` matches — is something asyncpg never emits.
+- **Interaction with rsh105/rsh106, and it cuts both ways.** Once FR-5 is
+  wired, "the URL carries no password" is the *normal* state of a healthy
+  rotating-credential task, so a naive URL check reports
+  `NOT_CONFIGURED` for a perfectly fine worker. The same precondition is
+  already flagged from the other side in
+  `_downgrade_passwordless_auth_failure`'s docstring: if anyone drops
+  `DB_PASSWORD` from the task definition — the natural end state of
+  "the secret is resolved at connect time" — **every real rotation
+  rejection silently downgrades and the self-heal is deleted.** Any
+  change here must consult the listener's resolved credential, not the
+  URL.
 - Land with or before rsh107; after it, a misconfigured worker fails open
   silently in production.
 
 ## Status log
 
-- 2026-09-22T22:10 — filed by palateful-98 at the coordinator's request
-  (41: "a spec written by the implementer beats one transcribed from a
-  message"). Distinction identified by palateful-0a; URL-not-env-var
-  constraint from 0a and 3b. Not yet reviewed by either — draft sent to
-  both for the shape before implementation starts.
+- 2026-09-22T23:05 — draft corrected by palateful-98 after reading the
+  merged source: the verdict already exists, so the spec is re-scoped to
+  the loudness gap and the passwordless-URL case. 0a's review supplied
+  the worker-silence gap, the "never" softening, and the phrase
+  collision; its finding that FR-5 makes a passwordless URL normal is
+  folded into the technical notes.
+- 2026-09-22T22:10 — filed by palateful-98 at the coordinator's request.
+  Distinction identified by palateful-0a.
