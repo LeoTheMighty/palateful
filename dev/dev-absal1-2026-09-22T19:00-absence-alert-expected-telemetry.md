@@ -176,8 +176,23 @@ with nobody noticing. G2 catches one instance; this catches the class (4f).
   the alert and the alert-about-the-alert together.
 
   **Mitigation Leo did want:** a periodic check that the subscription still
-  exists **and is `Confirmed`** (not `PendingConfirmation`), alerting if the
-  count drops to zero.
+  exists **and is confirmed**, alerting when it is not.
+
+  **The signal must be the CONFIRMED count, never the subscription count.**
+  This is the difference between a working check and a decorative one, and
+  given Leo has not subscribed yet it is the *likely first state*, not a
+  hypothetical: he creates the subscription, does not click the confirmation
+  link, and every count-based check reads as covered while nothing is
+  delivered. `sns list-subscriptions-by-topic` **returns unconfirmed
+  subscriptions too** — an unconfirmed one carries the literal string
+  `PendingConfirmation` in its `SubscriptionArn` field instead of a real
+  ARN — so a naive `length(Subscriptions)` counts exactly the case that
+  delivers nothing. [Documented API shape, not measured here: the account
+  has 0 subscriptions today, so no pending one exists to observe.]
+
+  Count only subscriptions whose `SubscriptionArn` is a real ARN (`arn:`),
+  and alert when that count is zero — including when raw subscriptions
+  exist. "A subscription exists" and "mail arrives" are different claims.
 
   **And the same weakness applies to that check**, which is why it is stated
   in the same breath rather than presented as a fix: the subscription-watcher
