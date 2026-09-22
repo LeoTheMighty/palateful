@@ -22,7 +22,7 @@ The attended proof of the whole stack: emit the first walkthrough from the insta
 - Launch command for the target build (cwd `app`): `flutter run -d chrome --web-port=8888 --dart-define=E2E_MODE=true --dart-define=API_BASE_URL=http://localhost:8000` — the `API_BASE_URL` define is load-bearing; without it the pass drives production. The skill offers the command when the build is absent.
 - One surface per invocation + per-day cap (bqa104's skill body) are the cost guardrails; recipe-import is the journey named by E-4's threshold.
 - Attended story: /devx can prepare the walkthrough emission, but the exploratory pass itself needs Leo in the loop — coordinate via INTERVIEW.md/MANUAL.md if picked up unattended.
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 6.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 6.
 
 ## Status log
 - 2026-07-27T11:44 — emitted from plan 41ee13 at RED-gate PASS (human-validation phase; E-3's RED artifact goes green here).

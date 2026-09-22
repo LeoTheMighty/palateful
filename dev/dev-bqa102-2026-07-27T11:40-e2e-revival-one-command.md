@@ -27,7 +27,7 @@ Make `npx nx run e2e:test` the full lifecycle (stack up → wait-healthy → all
 - Compose-merge lets the e2e overlay's `DATABASE_URL` win over `docker-compose.yml:87`.
 - The flow population is `run_all.sh`'s glob (`integration_test/0*_test.dart`); `perf_audit/` stays excluded by construction (subdirectory). The eval asserts pass count == glob count, so silent drops/adds fail loudly.
 - Parallel-safe with bqa101 and bqa103 (disjoint files/repos).
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 2 + §Current state (three latent defects).
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 2 + §Current state (three latent defects).
 
 ## Status log
 - 2026-07-27T11:40 — emitted from plan 41ee13 at RED-gate PASS (tests-first phase; RED artifact `evals/e2_e2e_one_command.sh` observed failing right-reason, see `evals/RED-report.md`).

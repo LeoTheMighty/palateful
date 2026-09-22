@@ -151,7 +151,7 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   `test_health_check_db_failure` pins the old blanket 503. Both become wrong
   the moment FR-2 ships. A registry entry left behind means this story shipped
   with its own acceptance test silently not running.
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 2.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 2.
 
 ## Status log
 

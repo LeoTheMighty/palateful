@@ -95,7 +95,7 @@ which is what makes rsh106's wiring reviewable on its own terms.
   `libraries/utils`, and the listener is dialect-agnostic.
 - RED artifact (do **not** re-author):
   `libraries/utils/test/test_db_credential_provider.py` (E-6, clause 1).
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 5.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 5.
 
 ## Status log
 

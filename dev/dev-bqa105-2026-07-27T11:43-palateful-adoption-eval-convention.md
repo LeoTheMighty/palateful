@@ -23,7 +23,7 @@ Pull the upstream work into palateful and make E-5 green by delivering the conve
 ## Technical notes
 - `right-reason` is exit-code-only in the gate (`gate-evals.ts:403-414`) — the printed-banner + `INFRA:` sentinel convention is what keeps RED-report quotes readable and wrong-reason RED detectable.
 - Depends on all of bqa101–bqa104: the qa flip builds on bqa101's interim values + bqa103's enum; the install needs bqa104's version bump; the demo flow's stack-down INFRA path exercises bqa102's stack.
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 5.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 5.
 
 ## Status log
 - 2026-07-27T11:43 — emitted from plan 41ee13 at RED-gate PASS (tests-first phase; RED artifact `evals/e5_red_browser_flow.sh` observed failing right-reason, see `evals/RED-report.md`).

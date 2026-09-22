@@ -70,7 +70,7 @@ ECS services.
   dependency — this story is unit-tested only).
 - RED artifact (do **not** re-author):
   `libraries/utils/test/test_rotation_redeploy_handler.py` (E-5).
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 3.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 3.
 
 ## Status log
 

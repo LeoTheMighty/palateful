@@ -86,7 +86,7 @@ everything enabled measures only the layer that wins.
 - **No production code.** The only new file is the eval record.
 - This story owns no E-id; it re-measures E-2's, E-5's and E-6's thresholds
   against production rather than against mocks. Verification type: human.
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 9.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 9.
 
 ## Status log
 

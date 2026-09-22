@@ -22,7 +22,7 @@ Make the `qa:` block in `devx.config.yaml` stop lying and turn E-1 green. The `p
 - Files: `devx.config.yaml` only.
 - Two-step flip is deliberate: `browser_harness` is the constrained upstream enum (`[playwright, cypress, none]` today; `claude-in-chrome` added in bqa103); `scripted_test_runner` is a free string. Schema validation is currently documentation-only (unenforced), but the conservative ordering costs nothing.
 - Parallel-safe with bqa102 and bqa103 (disjoint files/repos).
-- Full context: plan `_devx/workstreams/browser-qa-agent/plan.md` §Phase 1.
+- Full context: plan `_devx/workstreams/browser-qa-agent/plan/agent.md` §Phase 1.
 
 ## Status log
 - 2026-07-27T11:39 — emitted from plan 41ee13 at RED-gate PASS (tests-first phase; RED artifact `evals/e1_runner_resolution.sh` observed failing right-reason, see `evals/RED-report.md`).

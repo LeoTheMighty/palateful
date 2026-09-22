@@ -76,7 +76,7 @@ measures.
 - Verification type: human. RED artifact (stub, deferred):
   `_devx/workstreams/rotation-self-heal/evals/E-8_worker-healthcheck.md` (E-8,
   P1) — the observation protocol is pre-written; this story fills in actuals.
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 7.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 7.
 
 ## Status log
 

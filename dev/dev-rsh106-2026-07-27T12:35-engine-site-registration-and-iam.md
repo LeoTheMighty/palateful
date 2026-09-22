@@ -95,7 +95,7 @@ variable.
   task-definition change, i.e. terraform-only, so it needs Force Deploy.
 - Verification type: tests-after (plus the T6.3b addition to E-6's named P0
   artifact, which is tests-first).
-- Full context: `_devx/workstreams/rotation-self-heal/plan.md` §Phase 6.
+- Full context: `_devx/workstreams/rotation-self-heal/plan/agent.md` §Phase 6.
 
 ## Status log
 
