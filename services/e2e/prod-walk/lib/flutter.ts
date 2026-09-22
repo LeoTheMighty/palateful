@@ -36,7 +36,7 @@ export function captureAuthLog(page: Page): string[] {
   const lines: string[] = [];
   page.on("console", (msg) => {
     const t = msg.text();
-    if (!/Router redirect|onLoad|AuthService|Silent auth|Auth init/.test(t)) return;
+    if (!/Router redirect|onLoad|AuthService|Silent auth|Auth init|Auth callback/.test(t)) return;
     lines.push(/token/i.test(t) ? "[redacted: line mentions a token]" : t);
   });
   return lines;
@@ -74,4 +74,31 @@ export async function semanticsInventory(page: Page): Promise<string[]> {
       })
       .filter(Boolean),
   );
+}
+
+/**
+ * Auth0 denials come back to the app as `?error=…&error_description=…` and,
+ * on web, the app shows NO message — it lands silently on /login. These
+ * params are the only evidence of why, and the app sends them nowhere, so
+ * record them from every navigation the page makes.
+ */
+export function captureAuthErrors(page: Page): Array<{ url: string; error: string; description: string }> {
+  const seen: Array<{ url: string; error: string; description: string }> = [];
+  page.on("framenavigated", (frame) => {
+    if (frame !== page.mainFrame()) return;
+    const u = new URL(frame.url());
+    const error = u.searchParams.get("error");
+    if (error) seen.push({ url: `${u.origin}${u.pathname}`, error, description: u.searchParams.get("error_description") ?? "" });
+  });
+  return seen;
+}
+
+/** Auth-relevant cookies: names, domains, expiry — never values. The
+ *  auth.palateful.app session cookie is the ceiling on how long a reload can
+ *  restore a web session, since tokens live in memory only. */
+export async function authCookieExpiries(page: Page): Promise<string[]> {
+  const cookies = await page.context().cookies();
+  return cookies
+    .filter((c) => /auth|session|did|palateful/i.test(`${c.domain}${c.name}`))
+    .map((c) => `${c.domain}  ${c.name}  expires ${c.expires > 0 ? new Date(c.expires * 1000).toISOString() : "session-only"}`);
 }

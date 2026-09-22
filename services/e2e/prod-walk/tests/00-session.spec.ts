@@ -6,10 +6,19 @@
 // that never appears fails `enableSemantics`; a login screen shown to a
 // "signed-in" user fails the Google-button check.
 import { expect, test } from "@playwright/test";
-import { authSettled, captureAuthLog, enableSemantics, semanticsInventory } from "../lib/flutter.js";
+import {
+  authCookieExpiries,
+  authSettled,
+  captureAuthErrors,
+  captureAuthLog,
+  enableSemantics,
+  semanticsInventory,
+} from "../lib/flutter.js";
 
 test("a saved session opens the signed-in app, and survives a reload", async ({ page }, info) => {
   const authLog = captureAuthLog(page);
+  const authErrors = captureAuthErrors(page);
+  await info.attach("auth-cookies-at-start.txt", { body: (await authCookieExpiries(page)).join("\n"), contentType: "text/plain" });
 
   await page.goto("/", { waitUntil: "load" });
   const signedIn = await authSettled(page);
@@ -28,5 +37,10 @@ test("a saved session opens the signed-in app, and survives a reload", async ({ 
   await page.reload({ waitUntil: "load" });
   const stillSignedIn = await authSettled(page);
   await info.attach("auth-log-after-reload.txt", { body: authLog.join("\n"), contentType: "text/plain" });
+  await info.attach("auth-cookies-at-end.txt", { body: (await authCookieExpiries(page)).join("\n"), contentType: "text/plain" });
   expect(stillSignedIn, `after reload the app settled on ${page.url()} — session did not survive a refresh`).toBe(true);
+
+  // An Auth0 denial is silent on web (no message, just /login). If one
+  // happened at any point, fail with the reason the app never surfaces.
+  expect(authErrors, `Auth0 returned an error the app did not show: ${JSON.stringify(authErrors)}`).toEqual([]);
 });
