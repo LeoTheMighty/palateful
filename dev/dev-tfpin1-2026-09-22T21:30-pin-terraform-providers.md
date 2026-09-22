@@ -34,6 +34,14 @@ noise this invites.
       first draft read "1.4.2" that way, from the local CLI, while the raw
       object said 1.16.3. Read the object directly:
       `aws s3 cp s3://<bucket>/<key> - | jq .terraform_version`.
+- [ ] **Local plans need the *live* image tags too, not just the right CLI**
+      (palateful-4f). Under the correct 1.16.3, a plan with tags pinned to the
+      pre-#29 `848311af` showed `8 add, 3 change, 3 destroy`: a **rollback of
+      all four services**, with 3 task definitions replaced and 2 services
+      plus the Batch job updated. It looks like any other diff. Get the tags
+      from `tools/resolve-deployed-image-tags.sh` (tfgate1), which reads the
+      running task and job definitions. That's the same input CI's gated apply
+      uses, so a local plan and CI's plan share one instrument.
 - [ ] **Local plans must use the pinned version too.** A 1.4.2 plan against
       state written by 1.16.3 reported **6 spurious in-place updates**
       (ACM cert, ElastiCache, Redis SSM parameter, the **RDS instance**, two
@@ -55,3 +63,9 @@ noise this invites.
   the local CLI's version. Proved by a 1.16.3 plan: the six zero-diff updates a
   1.4.2 plan showed are gone. Added the `state pull` trap and the requirement
   for a local/CI version match.
+- 2026-09-22T23:45 — added the live-tags requirement (4f): a correct-CLI plan
+  with stale tags plans a rollback of all four services. Lesson recorded from
+  the six-phantom episode: palateful-0e and palateful-4f "independently"
+  verified the six zero-diffs, but both plans came from the same wrong-version
+  CLI. **Two readings that share one instrument error agree on the error.
+  Independence means independent instruments, not independent people.**
