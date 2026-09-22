@@ -285,7 +285,7 @@ noticing. G2 catches the DB instance; U3 catches the class.
 | **U3** | **No absence alert** (4f) | Silence as a failure mode — the class *both* this outage and the client mirror belong to (below) | Alert when expected telemetry (`service='client'` rows, or the `BootSmokeTest` canary) is absent for N days while `/v1/health` reports the API up |
 | **G10** | **Broken serving pool undetected after rsh102** (0a) | Pool exhaustion / dead sockets after failover | A separate pooled-path check, or a metric on request-level DB errors — not a health-probe change |
 | **G11** | **DB unreachable reads `ok`** (0a) | A total database outage | **No new code.** rsh102 already logs every fail-open branch; add one CloudWatch metric filter on the phrase **`failing open`** → alarm → G1. Verified on `feat/dev-rsh102`, four branches all use it: `db probe: database unreachable, failing open` (`db_probe.py:270`, WARNING), `db probe: unclassified failure, failing open` (`:277`), `db probe: classifier raised … failing open` (`:252`), `health check: probe raised — failing open` (`health_router.py:41`). **One filter on the shared phrase covers all four**, including failure modes nobody has named yet. Can't be wired until rsh102 deploys. rsh102 can't close this itself without contradicting itself: making UNREACHABLE fail the health check *is* the outage (0a) |
-| **G12** | **Silent-catch CI guard can't see auth** (2d) | The swallowed exceptions in N1 | `tools/no-silent-catch-check.sh` scans only `app/lib/features/**/services/` (line 29, 82); `auth_service.dart` is in `app/lib/core/`. Widen the scan. Same shape as a devx guard that checks only `dev/` specs |
+| **G12** | **Silent-catch CI guard can't see auth** (4f's N5 — same finding, one entry) | The swallowed exceptions in N1 | `tools/no-silent-catch-check.sh` scans only `app/lib/features/**/services/` (line 29, 82); `auth_service.dart` is in `app/lib/core/`. Widen the scan. Same shape as a devx guard that checks only `dev/` specs |
 | **G9** | Unauthenticated route sweeps unexamined | 2026-09-11 and 09-14: ~65 routes each in seconds, including admin routes (405/422, all rejected) [M] | Security question, not detection — flag, don't build yet. Nothing got through |
 
 ### Retention — the gap that decides whether you can investigate at all
@@ -380,3 +380,8 @@ priority.
   filter dropped it, because the message string and the `logger.warning(`
   call are on different lines. 0a's quote was exact. Pool-cycle reading kept
   at [I] with 0a's alternative explanations listed.
+- 2026-09-22T18:20 — attribution fix: G12 is **palateful-4f's** (its N5), not
+  2d's. 2d relayed it and says so. It is one finding under two labels, so it
+  is not double-counted in the merged list. It is measured, not relayed: the
+  scan root (`no-silent-catch-check.sh:29`) and walk (`:82`) were read before
+  it was added.
