@@ -148,3 +148,15 @@ pool or an unreachable DB, so after it lands a total DB outage reads
   "credential failure"; only absal1, alerting on the absence of an expected
   heartbeat from OUTSIDE GitHub, closes the rest. This step does not make
   absal1 optional.
+- 2026-09-23T00:10 — rebased onto fd732fab (selfheal1 merged). Two results worth
+  separating. (1) The sweep's design claim HELD: it passes against selfheal1's
+  9 emitters and the new NOT_CONFIGURED verdict with zero edits, because it
+  reads fail-open verdicts from the enum rather than a list. (2) My inverse
+  test was WRONG and the rebase proved it: it asserted "exactly one verdict is
+  compared against" in health_router, but selfheal1 correctly singles out
+  NOT_CONFIGURED for a `degraded` 200 — which is still failing open, nothing is
+  replaced. My guard would have blocked a legitimate fix to protect an
+  invariant I had mis-stated. Rewritten to assert what actually matters: only
+  AUTH_FAILED may produce a 503, since that is what replaces the task. Two
+  non-vacuity tests added beside it (a second 503 verdict is caught; a degraded
+  200 is not counted). 8/8 green.

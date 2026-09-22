@@ -235,36 +235,102 @@ def test_fail_open_verdicts_are_derived_not_hardcoded() -> None:
 ACTIONABLE_VERDICT = "AUTH_FAILED"
 
 
-def _verdicts_compared_in(tree: ast.AST) -> set[str]:
-    """Every `ProbeVerdict.X` that appears in a comparison in `tree`."""
-    found: set[str] = set()
+def _compare_operands(test: ast.expr) -> list[ast.expr]:
+    """Every operand of every comparison inside an `if` test."""
+    operands: list[ast.expr] = []
+    for node in ast.walk(test):
+        if isinstance(node, ast.Compare):
+            operands.extend([node.left, *node.comparators])
+    return operands
+
+
+def _branch_returns_503(body: list[ast.stmt]) -> bool:
+    """True if this branch returns a 503 response."""
+    for stmt in body:
+        for node in ast.walk(stmt):
+            if (
+                isinstance(node, ast.keyword)
+                and node.arg == "status_code"
+                and isinstance(node.value, ast.Constant)
+                and node.value.value == 503
+            ):
+                return True
+    return False
+
+
+def _verdicts_driving_replacement(tree: ast.AST) -> set[str]:
+    """Verdicts whose branch returns a 503 — i.e. that replace the task.
+
+    COMPARISON IS NOT ACTIONABILITY. The router legitimately singles out
+    other verdicts for other reasons: `NOT_CONFIGURED` gets a `degraded`
+    body with HTTP 200, which is still failing open — nothing is replaced.
+    The first version of this test asserted "exactly one verdict is compared
+    against" and failed on selfheal1's correct change; it would have blocked
+    a legitimate fix to protect an invariant it had mis-stated. What matters
+    is which verdict produces a 503.
+    """
+    driving: set[str] = set()
+
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Compare):
+        if not isinstance(node, ast.If):
             continue
-        for operand in [node.left, *node.comparators]:
-            name = _verdict_name(operand)
-            if name is not None:
-                found.add(name)
-    return found
+
+        compared = {
+            name
+            for operand in _compare_operands(node.test)
+            if (name := _verdict_name(operand)) is not None
+        }
+        if compared and _branch_returns_503(node.body):
+            driving |= compared
+
+    return driving
 
 
-def test_only_auth_failed_is_special_cased_by_the_router() -> None:
-    """The router may single out exactly one verdict, and it must be AUTH_FAILED.
+def test_only_auth_failed_drives_a_task_replacement() -> None:
+    """Exactly one verdict may produce a 503, and it must be AUTH_FAILED.
 
-    Every other verdict falls through to the 200 path — that is what "fails
-    open" means, and it is what makes the phrase contract the only detector.
-    A second special-cased verdict changes which paths are fail-open, so it
-    must not land quietly.
+    A 503 tells ECS to replace the task. Every other verdict — including
+    `NOT_CONFIGURED`, which answers 200 with a `degraded` body — fails open,
+    which is what makes the `failing open` phrase its only detector.
     """
     path = _repo_root() / "services/api/src/routers/v1/health_router.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
-    compared = _verdicts_compared_in(tree)
+    driving = _verdicts_driving_replacement(tree)
 
-    assert compared == {ACTIONABLE_VERDICT}, (
-        f"health_router.py compares against {sorted(compared)}, expected "
-        f"exactly ['{ACTIONABLE_VERDICT}']. If a verdict was added that drives "
-        "a task replacement, update FAIL_OPEN_VERDICTS and the alarm's "
-        "coverage together — the sweep above would otherwise demand a "
-        "'failing open' line from a path that is not failing open."
+    assert driving == {ACTIONABLE_VERDICT}, (
+        f"health_router.py drives a task replacement (503) for "
+        f"{sorted(driving)}, expected exactly ['{ACTIONABLE_VERDICT}']. "
+        "An empty set means the 503 branch moved and this guard stopped "
+        "guarding; a larger set means a new verdict replaces tasks, and "
+        "FAIL_OPEN_VERDICTS plus the alarm's coverage must change with it."
     )
+
+
+def test_the_replacement_check_can_fail() -> None:
+    """Non-vacuity: it must reject a second 503-driving verdict."""
+    source = """
+def health():
+    if verdict is ProbeVerdict.AUTH_FAILED:
+        return JSONResponse(status_code=503, content={})
+    if verdict is ProbeVerdict.UNREACHABLE:
+        return JSONResponse(status_code=503, content={})
+    return {"status": "ok"}
+"""
+    assert _verdicts_driving_replacement(ast.parse(source)) == {
+        "AUTH_FAILED",
+        "UNREACHABLE",
+    }
+
+
+def test_a_degraded_200_is_not_a_replacement() -> None:
+    """A verdict singled out for a non-503 response must not count."""
+    source = """
+def health():
+    if verdict is ProbeVerdict.AUTH_FAILED:
+        return JSONResponse(status_code=503, content={})
+    if verdict is ProbeVerdict.NOT_CONFIGURED:
+        return {"status": "degraded"}
+    return {"status": "ok"}
+"""
+    assert _verdicts_driving_replacement(ast.parse(source)) == {"AUTH_FAILED"}
