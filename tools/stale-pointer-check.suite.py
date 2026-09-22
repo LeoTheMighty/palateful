@@ -42,6 +42,16 @@ def allow(tmp, entry):
         fh.write(entry + "\n")
 
 
+def write_tracked(tmp, rel, body):
+    """Write a file AND stage it — the guard scans `git ls-files`, so an
+    unstaged file is invisible to it (correct for CI, where files are
+    committed, but a trap when writing cases)."""
+    p = tmp / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(body)
+    subprocess.run(["git", "add", "-A"], cwd=tmp, check=True)
+
+
 def newspec(body):
     def f(tmp):
         (tmp / "dev").mkdir(exist_ok=True)
@@ -70,6 +80,13 @@ CASES = [
      newspec("---\nhash: newspec\n---\n\n## Technical notes\n\nSee `some-other-thing/plan.md`.\n"), 0),
     ("8  pointer to the migrated path itself",
      newspec(f"---\nhash: newspec\n---\n\n## Technical notes\n\nFull context: `{MIGRATED}` §Phase 2.\n"), 0),
+    ("5b ALLOWLIST: rationale citing a line number (0a's repro)",
+     lambda tmp: (newspec(f"---\nhash: newspec\n---\n\n## Technical notes\n\nFull context: `{FLAT}`.\n")(tmp),
+                  allow(tmp, "dev/dev-newspec-2026-09-22T18:00-written-after-the-rename.md:7:historical; see ci.yml:748: for the auto-approve")), 0),
+    ("5c ALLOWLIST: mis-split must be LOUD, not silently ignored",
+     lambda tmp: allow(tmp, "dev/dev-newspec-2026-09-22T18:00-written-after-the-rename:7:no .md suffix"), 2),
+    ("8b NARROWED: stale pointer in an E-*.md outside evals/ is NOT exempt",
+     lambda tmp: write_tracked(tmp, "dev/E-something.md", f"## Technical notes\n\nSee `{FLAT}`.\n"), 1),
     ("9  COVERAGE: workstream tree emptied -> exit 2, not a silent pass",
      lambda tmp: shutil.rmtree(tmp / "_devx/workstreams/rotation-self-heal") or
                  shutil.rmtree(tmp / "_devx/workstreams/browser-qa-agent"), 2),

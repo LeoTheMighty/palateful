@@ -22,7 +22,10 @@ EXEMPTIONS
     *section* rather than by an inline marker matters: an inline escape
     comment would force an edit to the very lines the convention protects.
   * any path under `evals/` — specs legitimately reference eval records a
-    drill has yet to produce (e.g. `evals/E-drill-rotation.md`).
+    drill has yet to produce (e.g. `evals/E-drill-rotation.md`). Scoped to
+    the directory, not to an `E-*` filename prefix: the directory is the
+    convention, the prefix is a proxy for it, and a proxy would silently
+    skip a stale pointer in any future `E-*.md` living elsewhere.
   * `tools/stale-pointer-allowlist.txt`, format `file:lineno:rationale`,
     for anything else deliberate. A file, not an inline comment, for the
     same reason.
@@ -62,13 +65,22 @@ def load_allowlist():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        # Spec filenames in this repo contain colons (`…2026-09-22T18:00-…`),
-        # so a plain split(":") lands in the middle of the timestamp. Match the
-        # LAST `:<digits>:` instead, greedily taking everything before it as
-        # the path.
-        m = re.match(r"^(?P<file>.+):(?P<line>\d+):(?P<why>.*)$", line)
-        if not m:
-            print(f"stale-pointer-check: malformed allowlist line: {raw}", file=sys.stderr)
+        # Two hazards in this repo, pulling in opposite directions:
+        #   * paths contain colons — spec filenames carry timestamps
+        #     (`…2026-09-22T18:00-…`) — so splitting on the FIRST colon lands
+        #     inside the timestamp;
+        #   * rationales cite line numbers (`see ci.yml:748: for …`), so
+        #     anchoring on the LAST `:<digits>:` swallows the path into the
+        #     rationale and silently allowlists a file that doesn't exist.
+        # Lazy `.+?` stops at the first `:<digits>:`, which a timestamp cannot
+        # produce (`T18:00-` has no colon after the digits). The `.md` check
+        # then makes any remaining mis-split loud instead of silent: a
+        # mis-parsed entry exempts nothing, and the symptom would otherwise be
+        # "my allowlist entry is ignored" rather than "this line is malformed".
+        m = re.match(r"^(?P<file>.+?):(?P<line>\d+):(?P<why>.*)$", line)
+        if not m or not m.group("file").strip().endswith(".md"):
+            print(f"stale-pointer-check: malformed allowlist line (expected "
+                  f"`<path>.md:<lineno>:<rationale>`): {raw}", file=sys.stderr)
             sys.exit(2)
         allowed.add((m.group("file").strip(), int(m.group("line"))))
     return allowed
@@ -110,7 +122,7 @@ def main():
                 refs += 1
                 flat = WS_ROOT / slug / f"{artifact}.md"
                 migrated = WS_ROOT / slug / artifact / "agent.md"
-                if "/evals/" in m.group(0) or artifact.startswith("E-"):
+                if "/evals/" in m.group(0):
                     skipped_evals += 1
                     continue
                 if "status log" in section:
