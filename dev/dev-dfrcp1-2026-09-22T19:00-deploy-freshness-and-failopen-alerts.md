@@ -71,3 +71,36 @@ pool or an unreachable DB, so after it lands a total DB outage reads
 - 2026-09-22T19:00 — filed from obsgap1 (server-side detection inventory), merged ranking
   agreed with palateful-4f. Blocked-by: alrt1, tfgate1.
 - 2026-09-22T12:12:19-06:00 — claimed by /devx in session /devx-2026-09-22T1212-6355
+- 2026-09-22T20:55 — phase 2: spec ACs direct (v2 native); 4 ACs; workstream=none; red-artifacts=none.
+- 2026-09-22T21:10 — phase 3: G3 — deploy-freshness now records a verdict
+  (`fresh|stale|unknown`) and publishes red verdicts to `palateful-prod-alerts`
+  before failing the job, so a credential death (49 historical runs) is
+  distinguishable from a measured verdict. G11 — metric filter on `failing
+  open` → alarm → topic in `terraform/environments/prod/alarm_fail_open.tf`,
+  plus `libraries/utils/test/test_fail_open_phrase_sweep.py`. Coordinated the
+  phrase contract with palateful-3b (selfheal1): 9 emitters after its branch,
+  no rewording, so the filter covers them unchanged.
+- 2026-09-22T21:30 — phase 4: single-pass adversarial review; 5 findings (2 HIGH,
+  2 MED, 1 LOW); ALL fixed in-place — the load-bearing one: the SNS message was
+  a literal multi-line string inside `run: |`, whose unindented continuation
+  lines silently terminated the YAML block and broke the entire workflow file
+  (caught by parsing the YAML, not by reading it); rebuilt with printf. Also:
+  the sweep accepted a phrase logged in a nested earlier branch as cover for an
+  unphrased path (false pass — tightened to block level); the metric filter
+  hardcoded the log-group name (now `module.ecs.api_log_group_name`, new
+  output); comment cited line numbers that move (now cites the phrase and both
+  tests); ruff SIM102/SIM114/I001 in the new test. Re-review clean.
+- 2026-09-22T21:40 — phase 5: sweep 5/5 green and lint-clean; mutation-verified
+  twice against real sources — rewording `db_probe.py`'s unreachable branch and
+  `health_router.py`'s probe-raised branch each failed the sweep at the exact
+  line, and both files were restored. terraform fmt + validate pass. Workflow
+  YAML parses and the step graph is as intended. utils suite: 12 pre-existing
+  failures, all `ModuleNotFoundError: No module named 'alembic'` in files this
+  branch does not touch (environment artifact); `utils:lint` reports 4
+  pre-existing UP042/UP046 errors, also in untouched files (the known
+  missing-ruff-in-venv artifact). Neither set names anything from this branch.
+- 2026-09-22T21:45 — NOT met yet, and it is the AC that matters: "each alert
+  driven once and confirmed received". The topic has **zero subscriptions**
+  (measured: `aws sns list-subscriptions-by-topic` returns empty), so both
+  alarms currently publish into a void. Filed in MANUAL.md — Leo must subscribe
+  by hand before either detector can be verified end to end.

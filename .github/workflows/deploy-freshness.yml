@@ -54,6 +54,10 @@ env:
   CLUSTER: palateful-prod
   SERVICE: palateful-api-prod
   MAX_GAP_DAYS: 7
+  # The alert topic from alrt1 (terraform/modules/alerts). Subscriptions are
+  # created by hand, outside Terraform, so no address appears in this repo,
+  # in plan output, or in state — CI logs here are public.
+  TOPIC_NAME: palateful-prod-alerts
 
 jobs:
   check-freshness:
@@ -82,10 +86,35 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Measure gap between running image and its commit date
+        id: measure
         env:
           SYNTHETIC_GAP_DAYS: ${{ inputs.synthetic-gap-days }}
         run: |
           set -euo pipefail
+
+          # A VERDICT IS NOT THE SAME AS A FAILURE (G3, dfrcp1).
+          #
+          # This step now RECORDS its verdict and leaves the job's
+          # pass/fail to the `verdict` step below, so the notify step in
+          # between can tell the two failure shapes apart:
+          #
+          #   verdict=stale   — measured prod, it is too old. Notify.
+          #   verdict=unknown — measured prod, the tag isn't a commit here.
+          #                     Notify; unknown provenance is alarming.
+          #   verdict=fresh   — measured prod, it is current. Silence.
+          #   (no verdict)    — this step never got to a measurement. The
+          #                     49 runs before 2026-09-20 all died in
+          #                     configure-aws-credentials and measured
+          #                     NOTHING, while looking exactly as red as a
+          #                     real freeze. See the header note.
+          #
+          # The no-verdict case cannot notify from here: it means AWS
+          # credentials failed, and publishing to SNS needs those same
+          # credentials. Nothing this workflow can do reaches a human in
+          # that state — that gap is absal1's job (alert on the ABSENCE of
+          # an expected heartbeat), and it is the reason absal1 must land.
+          # Do not "fix" this by making the notify step run without a
+          # verdict; it would publish nothing and hide the gap.
 
           # THE FAMILY-SHORTCUT TRAP — do not "simplify" this to
           #   aws ecs describe-task-definition --task-definition palateful-api-prod
@@ -118,7 +147,11 @@ jobs:
             # commit here means unknown provenance — itself alarming, so fail.
             if ! git cat-file -e "${tag}^{commit}" 2>/dev/null; then
               echo "::error::Deployed tag '$tag' is not a commit in this repository — cannot date the deployment."
-              exit 1
+              {
+                echo "verdict=unknown"
+                echo "detail=Deployed tag '${tag}' is not a commit in this repository — cannot date the deployment. Image: ${image}"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
             fi
             deployed_ct=$(git log -1 --format=%ct "$tag")
             gap_days=$(( ($(date +%s) - deployed_ct) / 86400 ))
@@ -126,8 +159,61 @@ jobs:
           fi
 
           echo "Gap: ${gap_days} day(s); threshold: ${MAX_GAP_DAYS} day(s)."
+          echo "gap_days=${gap_days}" >> "$GITHUB_OUTPUT"
           if [ "$gap_days" -gt "$MAX_GAP_DAYS" ]; then
             echo "::error::Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
-            exit 1
+            {
+              echo "verdict=stale"
+              echo "detail=Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
+            } >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "Prod image is fresh (${gap_days}d <= ${MAX_GAP_DAYS}d)."
+          echo "verdict=fresh" >> "$GITHUB_OUTPUT"
+
+      # Publish the verdict BEFORE failing the job, so a red verdict reaches
+      # a human instead of sitting in a run nobody opens. Guarded on a
+      # verdict actually existing: see the no-verdict note above.
+      - name: Notify on a red verdict
+        if: steps.measure.outputs.verdict == 'stale' || steps.measure.outputs.verdict == 'unknown'
+        env:
+          VERDICT: ${{ steps.measure.outputs.verdict }}
+          DETAIL: ${{ steps.measure.outputs.detail }}
+        run: |
+          set -euo pipefail
+
+          # Look the ARN up by name rather than hardcoding it: the account
+          # id is not secret, but it has no business being in a public repo
+          # when one API call derives it. Topic: modules/alerts (alrt1).
+          topic_arn=$(aws sns list-topics \
+            --query "Topics[?ends_with(TopicArn, ':${TOPIC_NAME}')].TopicArn | [0]" \
+            --output text)
+
+          if [ -z "$topic_arn" ] || [ "$topic_arn" = "None" ]; then
+            echo "::error::Alert topic '${TOPIC_NAME}' not found — the verdict below reached nobody."
+            echo "$DETAIL"
+            exit 1
+          fi
+
+          # Built with printf rather than a literal multi-line string: an
+          # unindented continuation line inside `run: |` silently ends the
+          # block and breaks the whole workflow file.
+          message=$(printf '%s\n\nWorkflow run: %s/%s/actions/runs/%s\n\n%s\n' \
+            "$DETAIL" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+            "This is a measured verdict about prod, not a CI failure: the check reached AWS, read the running task definition, and this is what it found.")
+
+          aws sns publish \
+            --topic-arn "$topic_arn" \
+            --subject "palateful prod: deploy-freshness ${VERDICT}" \
+            --message "$message" > /dev/null
+
+          echo "Published '${VERDICT}' verdict to ${TOPIC_NAME}."
+
+      # The job's own pass/fail, kept separate from the measurement so the
+      # notify step above sits between them.
+      - name: Fail the check on a red verdict
+        if: steps.measure.outputs.verdict != 'fresh'
+        run: |
+          echo "::error::deploy-freshness verdict: ${{ steps.measure.outputs.verdict || 'none (no measurement was taken — see the step above)' }}"
+          exit 1
