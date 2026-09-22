@@ -307,16 +307,30 @@ the three the AC names", and nobody asked what a superset costs.
 negative costs a delayed self-heal; a false positive costs an outage.
 The matcher is deliberately narrow."*
 
-`__context__` can only ever **add** matches. It cannot recover a rotation
-that `.orig`/`__cause__` would miss; it can only turn non-auth failures
-into `AUTH_FAILED`. So the destructive predicate was widened in the one
-direction the file itself calls catastrophic, in the commit that says the
-matcher is deliberately narrow. The stated reasoning was false-negative
-coverage — "catch more wrapping shapes" — and the false-positive cost was
-never weighed.
+So the destructive predicate was widened beyond its AC, in the commit
+whose docstring says the matcher is deliberately narrow, with
+false-negative coverage as the stated reasoning and the false-positive
+cost never weighed.
 
-**Nothing is lost by narrowing the walk.** The fix is to bring
-`is_auth_error` down to `EXPLICIT_LINKS`, not to widen the veto.
+⚠️ **The rest of this answer was wrong, and its author asked for it to be
+corrected rather than softened.** The original read:
+
+> `__context__` can only ever **add** matches. It cannot recover a
+> rotation that `.orig`/`__cause__` would miss; it can only turn non-auth
+> failures into `AUTH_FAILED`. **Nothing is lost by narrowing the walk.**
+
+[M, 3b, confirmed by 0a and 98] False. On the `:96-104` shape
+`__context__` recovers a **true** positive: `ALL_LINKS=True`,
+`EXPLICIT=False`. The attempt really did fail auth and cleanup merely
+failed afterwards, so narrowing turns a genuine rotation into
+`UNREACHABLE` — no self-heal. The six-day-outage shape, very nearly
+shipped on the strength of that sentence.
+
+**The accurate version:** `__context__` was added beyond the AC without a
+named case, **and it turns out to cover a real one.** That does not make
+the addition principled — it was unexamined, and it also admits the false
+positives this spec exists to close — but "nothing is lost by narrowing"
+is wrong, and it is the clause someone would have acted on.
 
 ## Why no link set works (3b — the finding that redirects this spec)
 
@@ -466,6 +480,13 @@ is what defeats every traversal-only fix tried here.
 
 ## Status log
 
+- 2026-09-23T00:05 — "The author's answer" section corrected at 0a's
+  request: its claim that `__context__` can only add matches, and that
+  nothing is lost by narrowing, is false — measured. 0a also asked to
+  record that it backed 98's inversion of `:96-104` in one line without
+  reading the test, on a file it wrote. Both are kept visible rather than
+  edited away, because the spec's value is the record of which plausible
+  claims were wrong.
 - 2026-09-22T23:50 — **the spec's central AC was withdrawn.** 3b showed
   that narrowing `is_auth_error` to `EXPLICIT_LINKS` is harmful, not just
   insufficient: [M] it turns a real rotation with a noisy cleanup into
