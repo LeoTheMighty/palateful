@@ -160,3 +160,38 @@ with nobody noticing. G2 catches one instance; this catches the class (4f).
   us to a silent void — means the gate is not "the topic exists" but "the
   topic has a confirmed subscription", checked continuously. A deleted
   subscription is indistinguishable from silence at every layer above it.
+
+- 2026-09-22T22:00 — **ACCEPTED LIMITATION, recorded deliberately rather
+  than left implicit.** Leo's call, 2026-09-22.
+
+  > **If the SNS email subscription is deleted, every alert path goes silent
+  > simultaneously and nothing warns.** Accepted by Leo on 2026-09-22.
+
+  Why it is a single point of failure and not two paths: with email-via-SNS
+  as the primary channel, and the heartbeat alarm above also alerting by
+  email, **both terminate in the same inbox via the same subscription.**
+  That is genuinely two independent paths against a *dead watcher* — which
+  is the failure this story is about, and the one it does cover. It is not
+  two paths against a *dead subscription*: that single deletion takes out
+  the alert and the alert-about-the-alert together.
+
+  **Mitigation Leo did want:** a periodic check that the subscription still
+  exists **and is `Confirmed`** (not `PendingConfirmation`), alerting if the
+  count drops to zero.
+
+  **And the same weakness applies to that check**, which is why it is stated
+  in the same breath rather than presented as a fix: the subscription-watcher
+  alerts *through the subscription it is watching*, so in the exact scenario
+  it exists for — the subscription is gone — its alert cannot arrive either.
+  What it actually buys is narrower, and worth being precise about:
+  - it converts an invisible failure into a **recorded** one, discoverable
+    the next time anyone looks, instead of leaving nothing at all;
+  - it catches the **`PendingConfirmation`** case, where a subscription was
+    created but never confirmed — which looks like coverage in the console
+    and delivers nothing;
+  - it catches a drop to zero *while some other path still works*, if one is
+    ever added.
+
+  It does **not** close the accepted gap. Closing that needs a second channel
+  Leo reads, and there is not one today. A limitation that is written down is
+  survivable; one that is discovered during an incident is not.
