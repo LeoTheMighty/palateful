@@ -238,10 +238,18 @@ auth error, so "before rsh107" would let the real window open first.
 
 - [ ] `_chain` skips `__context__` on a node whose `__suppress_context__`
       is set, while continuing to walk `__cause__` and `.orig`.
-- [ ] `is_auth_error` walks `EXPLICIT_LINKS`, not `ALL_LINKS`. **The
-      author has answered: there was no case in mind, and nothing is lost
-      by narrowing.** See "The author's answer" below — do not preserve
-      `__context__` out of deference to an intent that never existed.
+- [ ] ⛔ **WITHDRAWN: "narrow `is_auth_error` to `EXPLICIT_LINKS`" as a
+      standalone fix.** It is not merely insufficient, it is **harmful**.
+      [M] Measured on the `:96-104` shape (cleanup fails while *this
+      attempt's* auth error is handled): `ALL_LINKS=True`,
+      `EXPLICIT_LINKS=False`. Narrowing alone turns a genuine rotation
+      accompanied by a noisy cleanup into `UNREACHABLE` — no 503, no
+      replacement, **no self-heal**. That is the six-day-outage shape
+      rsh102 exists to close. Found by 3b, confirmed here.
+- [ ] **Scope moves first.** `_classify` is given the attempt's own
+      exception and decides ownership where the attempt boundary is
+      known; only then is the link set a live question. The link-set
+      choice cannot be correct on its own — see "Why no link set works".
 - [ ] **The invariant above is asserted**, not merely the flag: a test
       that an auth error which does not belong to the attempt cannot
       produce `AUTH_FAILED`.
@@ -304,31 +312,94 @@ never weighed.
 **Nothing is lost by narrowing the walk.** The fix is to bring
 `is_auth_error` down to `EXPLICIT_LINKS`, not to widen the veto.
 
+## Why no link set works (3b — the finding that redirects this spec)
+
+The two cases are **the same graph shape with opposite right answers**:
+
+| case | shape | right answer |
+|---|---|---|
+| `:96-104` cleanup failure during *this attempt's* auth error | `RuntimeError.__context__ -> Auth` | `AUTH_FAILED` — the self-heal firing |
+| the timeout case | `TimeoutError -> CancelledError.__context__ -> Auth` | **not** `AUTH_FAILED` once the auth error is not the attempt's |
+
+`is_auth_error` cannot see attempt ownership, so **no choice of links is
+correct for both.** Traversal narrowing is therefore not a fix on its
+own; it is a fix only once scope moves. 3b's one-line statement of the
+invariant, which covers both rows:
+
+> The classifier answers *"was this attempt's connection refused on
+> credentials"*, and only the code that owns the attempt can say which
+> errors are this attempt's.
+
+"Follow wrapping, not history" is **how** to implement it; this is
+**why**.
+
+[M, 3b] Worth knowing for the design: inside the probe the same-attempt
+cleanup case mostly never reaches the classifier anyway —
+`_connect_once`'s `finally` swallows dispose failures precisely so a
+noisy dispose cannot mask an auth error
+(`test_a_failing_dispose_does_not_mask_an_auth_error`). The timeout path
+is the one that does reach it, because cancellation is not swallowed.
+
 ## Two merged tests stand in the way — update, do not delete
 
 [M, 3b, confirmed by 98] `test_db_credentials_classifier.py` pins the
 behaviour this spec changes, in two places:
 
-1. **`test_auth_error_found_through_context_chain` (:96-104)** asserts
-   `is_auth_error` returns True for an error raised *during* handling of
-   an auth error. **That is the bug, asserted as a requirement.** It is
-   the sharper of the two: narrowing to `EXPLICIT_LINKS` fails it
-   immediately. It must be **inverted** — the same shape, asserting
-   False — not deleted.
-2. **`test_auth_error_found_through_cause_chain` (:85-93)** sets
-   `outer.__cause__` under the docstring *"the shape a re-raising caller
-   produces"*. Its justification is the **caller** surface, which 3b and
-   0a have now measured closed — no caller can contaminate the
-   classification. So the test is not wrong, it is **obsolete in its
-   reasoning**: keep `__cause__` traversal (the fix still needs it), but
-   rewrite the docstring so the surviving justification is the wrapper
-   spine, not a caller shape that cannot occur.
+⚠️ **This spec said earlier that `:96-104` should be inverted. That was
+wrong** — 98 proposed it and 0a agreed; 3b read the test and refuted it.
+Recorded here rather than silently corrected, because inverting it is the
+intuitive move and the next reader will have the same instinct.
+
+1. **`test_auth_error_found_through_context_chain` (:96-104)** — **keep
+   the assertion.** It is not the bug pinned as a requirement: in that
+   shape the auth error *belongs to the attempt* (credentials genuinely
+   rejected, cleanup merely failed afterwards), so `AUTH_FAILED` is
+   correct and is the self-heal firing. Rewrite the docstring to say what
+   it actually pins — *a cleanup failure during this attempt's own auth
+   error must still classify `AUTH_FAILED`* — and **add the opposite case
+   beside it**: an auth error that does **not** belong to the attempt
+   must not. The pair is the specification.
+2. **`test_auth_error_found_through_cause_chain` (:85-93)** — keep the
+   assertion, rewrite the docstring: its stated justification is the
+   **caller** surface ("the shape a re-raising caller produces"), which
+   3b and 0a have measured closed.
+
+   ⚠️ The earlier reason given here for keeping it — "it is the only pin
+   on wrapper-spine traversal" — **is false**, caught by 0a. [M]
+   `test_auth_error_found_through_sqlalchemy_orig` (:80) pins the wrapper
+   spine via `wrapped()`, which builds `OperationalError(stmt, {}, orig)`
+   — `.orig`, never `__cause__`. 3b asserted it, 98 repeated it, 0a
+   checked it. Keeping `:85-93` may still be right; that justification is
+   not available.
 
 Handle both the way selfheal1 handled rsh102's E-2 fixture: **update in
-the same commit with the reasoning in the diff.** Do not delete —
-deleting (2) removes the only pin on wrapper-spine traversal, which the
-fix still depends on for SQLAlchemy's `.orig`. Do not let either quietly
-weaken into an assertion that passes whatever the code does.
+the same commit with the reasoning in the diff**, and never let either
+quietly weaken into an assertion that passes whatever the code does.
+
+## Does `__cause__` survive the rule? Measured: on the wrapper path it is redundant
+
+0a raised that "follow wrapping, not history" taken literally excludes
+`__cause__` too — it is `raise X from Y`, an author's attribution of a
+*different* exception — and flagged that it could not establish whether
+SQLAlchemy sets `__cause__` alongside `.orig` on a real wrapped error.
+
+[M, 98, SQLAlchemy 2.0.45, real wrapped DBAPI error from
+`conn.execute(text(...))` against a missing table]:
+
+```
+type        : sqlalchemy OperationalError
+.orig       : sqlite3.OperationalError
+__cause__   : sqlite3.OperationalError
+cause is orig : True          <-- the same object
+```
+
+So on the wrapper path `__cause__` carries nothing `.orig` does not, and
+the rule can be applied literally there. The one path that is **not**
+wrapped is rsh105's `do_connect` listener, which sees the raw DBAPI error
+(pinned by `test_unwrapped_dbapi_error_matches_too`) — the error is then
+the node itself, needing no link at all. Neither observation licenses
+dropping `__cause__` globally: that decision belongs with the scope
+change, not before it.
 
 ## The one-sentence rule (3b): follow wrapping, not history
 
@@ -361,6 +432,14 @@ is what defeats every traversal-only fix tried here.
 
 ## Status log
 
+- 2026-09-22T23:50 — **the spec's central AC was withdrawn.** 3b showed
+  that narrowing `is_auth_error` to `EXPLICIT_LINKS` is harmful, not just
+  insufficient: [M] it turns a real rotation with a noisy cleanup into
+  `UNREACHABLE`, deleting the self-heal. The two cases are the same graph
+  shape with opposite right answers, so no link set works and scope must
+  move first. 0a separately refuted the "only pin on wrapper-spine
+  traversal" claim, and 98 measured that SQLAlchemy sets
+  `__cause__` **is** `.orig` on the wrapper path.
 - 2026-09-22T23:30 — mechanism corrected twice more, each time by the
   peer who proposed the wrong version: 3b established that the
   **awaiting** frame sets `__context__` (refuting both "tasks isolate"
