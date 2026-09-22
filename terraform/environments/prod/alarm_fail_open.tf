@@ -63,10 +63,33 @@ resource "aws_cloudwatch_metric_alarm" "api_fail_open" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = 1
   evaluation_periods  = 1
+  datapoints_to_alarm = 1
 
-  # One occurrence is the signal. There is no legitimate volume of failing
-  # open, so no count threshold to tune (same reasoning as prsal1).
-  treat_missing_data = "notBreaching"
+  # SILENCE IS NOT HEALTH (4f's audit of this PR).
+  #
+  # A metric filter only sees log events. If the API stops logging — task
+  # dead, log driver broken, log group renamed — "no fail-open lines" and
+  # "no API at all" produce the same picture: no datapoints. Under
+  # `notBreaching` this alarm would sit green through a total outage, which
+  # is the exact shape of failure this story exists to end.
+  #
+  # `breaching` is safe here because the metric inherits the log group's
+  # continuity: `default_value = 0` emits a datapoint for every log event
+  # the filter processes, matching or not. So data exists whenever the API
+  # logs at all, and missing data means it isn't.
+  #
+  # MEASURED before choosing (2026-09-22, 24h of AWS/Logs IncomingLogEvents
+  # on this log group at 300s): 288 datapoints out of 288 possible buckets,
+  # ~20-23 events per bucket, no gaps — including across the :64 rollout at
+  # 11:09-11:16 that day. A deploy does not produce a missing bucket, so
+  # this does not trade a blind spot for a false-alarm generator.
+  #
+  # Chosen over an absence companion alarm (the G2 shape) deliberately: the
+  # companion would be a second alarm to wire, subscribe and verify for the
+  # same signal, and an unverified second alarm is how the first blind spot
+  # got here. Revisit if the log stream ever becomes genuinely bursty — then
+  # the companion, on a longer window, is the better instrument.
+  treat_missing_data = "breaching"
 
   alarm_actions = [module.alerts.topic_arn]
   ok_actions    = [module.alerts.topic_arn]

@@ -114,3 +114,13 @@ pool or an unreachable DB, so after it lands a total DB outage reads
   the notify step to `always()`, which reads outputs written before the
   failure. That is a better shape anyway: the exit code stays the check, and
   notification is additive rather than load-bearing. Self-test 9/9 green.
+- 2026-09-22T22:40 — 4f's audit (via 41): a metric filter sees nothing when the
+  task isn't logging, so "no fail-open lines" and "no API at all" were
+  indistinguishable under `notBreaching`. Chose `treat_missing_data =
+  "breaching"` over an absence companion, with `datapoints_to_alarm = 1` so a
+  single fail-open line still fires immediately. Measured first rather than
+  assuming the log stream is continuous: 24h of AWS/Logs IncomingLogEvents on
+  `/ecs/palateful-api-prod` at 300s gives 288/288 buckets populated (~20-23
+  events each), with no gap across the :64 rollout at 11:09-11:16 — so
+  `breaching` does not trade a blind spot for false alarms. Rationale recorded
+  in the tf file, since the same question applies to every alarm in the ranking.
