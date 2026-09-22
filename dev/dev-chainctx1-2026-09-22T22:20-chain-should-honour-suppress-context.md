@@ -304,6 +304,38 @@ never weighed.
 **Nothing is lost by narrowing the walk.** The fix is to bring
 `is_auth_error` down to `EXPLICIT_LINKS`, not to widen the veto.
 
+## Two merged tests stand in the way — update, do not delete
+
+[M, 3b, confirmed by 98] `test_db_credentials_classifier.py` pins the
+behaviour this spec changes, in two places:
+
+1. **`test_auth_error_found_through_context_chain` (:96-104)** asserts
+   `is_auth_error` returns True for an error raised *during* handling of
+   an auth error. **That is the bug, asserted as a requirement.** It is
+   the sharper of the two: narrowing to `EXPLICIT_LINKS` fails it
+   immediately. It must be **inverted** — the same shape, asserting
+   False — not deleted.
+2. **`test_auth_error_found_through_cause_chain` (:85-93)** sets
+   `outer.__cause__` under the docstring *"the shape a re-raising caller
+   produces"*. Its justification is the **caller** surface, which 3b and
+   0a have now measured closed — no caller can contaminate the
+   classification. So the test is not wrong, it is **obsolete in its
+   reasoning**: keep `__cause__` traversal (the fix still needs it), but
+   rewrite the docstring so the surviving justification is the wrapper
+   spine, not a caller shape that cannot occur.
+
+Handle both the way selfheal1 handled rsh102's E-2 fixture: **update in
+the same commit with the reasoning in the diff.** Do not delete —
+deleting (2) removes the only pin on wrapper-spine traversal, which the
+fix still depends on for SQLAlchemy's `.orig`. Do not let either quietly
+weaken into an assertion that passes whatever the code does.
+
+## The one-sentence rule (3b): follow wrapping, not history
+
+`.orig` means *the same error, unwrapped* — structural, always safe to
+follow. `__cause__` / `__context__` mean *a different error, related in
+time* — which is the ambiguity that produced all of this.
+
 ## Implementation note (0a): graph shape is the wrong basis
 
 The invariant **cannot be enforced by traversal rules alone**, for the
