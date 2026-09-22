@@ -28,8 +28,25 @@ pool or an unreachable DB, so after it lands a total DB outage reads
       log → alarm → topic. All four fail-open branches use it
       (`db_probe.py:252, :270, :277`; `health_router.py:41`). Can only be
       wired once rsh102 is **deployed**.
+      **Updated by selfheal1 (2026-09-22):** there are now **nine** emitters,
+      not four — seven in `db_probe.py`, two in `health_router.py` — and the
+      line numbers above are stale. Match on the phrase, never on lines. No
+      existing wording changed, so a filter written against the old four
+      still matches them. New ones: the passwordless-auth downgrade, the
+      `NOT_CONFIGURED` classify, the missing-password classify, `probe_sync`'s
+      absent-URL classify (which had no phrase at all until selfheal1 added
+      it), and the router's `NOT_CONFIGURED` branch. Note also that
+      `/v1/health` answers **HTTP 200 with `{"status": "degraded"}`** for
+      `NOT_CONFIGURED`, so `curl -sf` passes on it and this alarm is the only
+      thing that will ever report it.
 - [ ] **G11 ships with a test** asserting every fail-open branch emits
-      `failing open`, placed beside the filter. The filter makes the phrase a
+      `failing open`, placed beside the filter. selfheal1 pins the behaviour
+      by *driving* each path (`test_db_probe.py`,
+      `test_health_credential_probe.py`) — depend on those rather than
+      duplicating them, and make the new test the shape they cannot be: a
+      source-level sweep that fails when emitter **#10** lands without the
+      phrase. Anchor it on the verdicts (`ProbeVerdict` members and the
+      functions returning them), not on log-call pattern matching. The filter makes the phrase a
       contract, and nothing else enforces it: a rewording would silently drop a
       failure mode while every verdict test still passes (0a).
 - [ ] Each alert driven once and confirmed received.

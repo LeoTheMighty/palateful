@@ -135,6 +135,7 @@ def test_ttl_default_ignores_a_non_numeric_environment_value(monkeypatch):
 async def test_connect_once_is_a_noop_without_a_url(monkeypatch, fake_engine):
     built = fake_engine()
     monkeypatch.setattr(db_probe, "_probe_url", lambda: None)
+    monkeypatch.setattr(db_probe, "_database_expected", lambda: False)
 
     await db_probe._connect_once()
 
@@ -251,12 +252,29 @@ async def test_probe_async_returns_ok_on_success(monkeypatch):
             TimeoutError(), ProbeVerdict.UNREACHABLE, id="timeout"
         ),
         pytest.param(RuntimeError("???"), ProbeVerdict.UNKNOWN, id="unknown"),
+        pytest.param(
+            OperationalError(
+                "SELECT 1", {}, Exception("fe_sendauth: no password supplied")
+            ),
+            ProbeVerdict.UNREACHABLE,
+            id="no-password",
+        ),
+        pytest.param(
+            db_probe.DatabaseNotConfigured("x"),
+            ProbeVerdict.NOT_CONFIGURED,
+            id="not-configured",
+        ),
     ],
 )
 async def test_probe_async_classifies(monkeypatch, exc, expected):
     async def boom():
         raise exc
 
+    # A URL carrying a password, so the passwordless downgrade (selfheal1)
+    # is not what this parametrisation is measuring.
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app:pw@db/x"
+    )
     monkeypatch.setattr(db_probe, "_connect_once", boom)
     assert await db_probe.probe_async() is expected
 
@@ -271,10 +289,38 @@ async def test_probe_async_never_raises(monkeypatch):
     assert await db_probe.probe_async() is ProbeVerdict.UNKNOWN
 
 
-def test_only_auth_failed_is_actionable():
-    """Guards the fail-open invariant against a careless enum addition."""
-    actionable = {v for v in ProbeVerdict if v is ProbeVerdict.AUTH_FAILED}
-    assert actionable == {ProbeVerdict.AUTH_FAILED}
+def test_the_verdict_set_is_exactly_what_both_consumers_were_written_for():
+    """Forces a look at both consumers when a verdict is added.
+
+    This replaces rsh102's `test_only_auth_failed_is_actionable`, which read
+    as this guard but could not fail:
+
+        actionable = {v for v in ProbeVerdict if v is ProbeVerdict.AUTH_FAILED}
+        assert actionable == {ProbeVerdict.AUTH_FAILED}
+
+    The comprehension filters to `AUTH_FAILED` and the assertion checks the
+    result is `AUTH_FAILED` — true by construction for any enum contents.
+    selfheal1 added `NOT_CONFIGURED` and it never noticed, which is the
+    proof: the one careless-enum-addition it existed to catch walked past it.
+    Caught by palateful-cc while building dfrcp1's sweep on top of it.
+
+    A literal set cannot self-satisfy. Adding a member fails here, and the
+    failure is the prompt to decide what the new verdict does at each place
+    actionability is really decided — neither of which is this enum:
+
+      * the router's 503 — `test_only_auth_failed_is_special_cased_by_the_router`
+        (dfrcp1) parses `health_router.py` and requires exactly one verdict in
+        a comparison;
+      * the CLI's exit code, which ECS reads as replace-or-not —
+        `test_no_fail_open_verdict_ever_exits_non_zero` above.
+    """
+    assert {v.name for v in ProbeVerdict} == {
+        "OK",
+        "AUTH_FAILED",
+        "UNREACHABLE",
+        "UNKNOWN",
+        "NOT_CONFIGURED",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +643,7 @@ def test_probe_sync_is_ok_without_a_url(monkeypatch):
     from utils import constants
 
     monkeypatch.setattr(constants, "DATABASE_URL", None)
+    monkeypatch.setattr(constants, "ENVIRONMENT", "test")
     assert db_probe.probe_sync() is ProbeVerdict.OK
 
 
@@ -623,7 +670,9 @@ def test_probe_sync_uses_nullpool(monkeypatch):
 def test_probe_sync_classifies_and_disposes(monkeypatch, fake_sync_engine):
     from utils import constants
 
-    monkeypatch.setattr(constants, "DATABASE_URL", "postgresql://x/y")
+    # A URL with a password: incidental to what this asserts, but a
+    # passwordless one now classifies UNREACHABLE by design (selfheal1).
+    monkeypatch.setattr(constants, "DATABASE_URL", "postgresql://app:pw@db/x")
     engine = fake_sync_engine(fail_with=auth_error())
 
     assert db_probe.probe_sync() is ProbeVerdict.AUTH_FAILED
@@ -757,7 +806,9 @@ async def test_a_failing_dispose_does_not_mask_an_auth_error(monkeypatch):
 
     engine = ExplodingEngine(fail_with=auth_error())
     monkeypatch.setattr(db_probe, "create_async_engine", lambda url, **kw: engine)
-    monkeypatch.setattr(db_probe, "_probe_url", lambda: "postgresql+asyncpg://x/y")
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app:pw@db/x"
+    )
 
     assert await db_probe.probe_async() is ProbeVerdict.AUTH_FAILED
 
@@ -839,3 +890,432 @@ def test_probe_sync_never_passes_libpq_a_zero_timeout(monkeypatch):
 
     db_probe.probe_sync()
     assert seen["connect_args"]["connect_timeout"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# selfheal1 — verdicts a restart cannot fix must not drive a replacement
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("environment", "expected"),
+    [
+        pytest.param("prod", True, id="prod"),
+        pytest.param("dev", True, id="dev"),
+        pytest.param("test", False, id="test"),
+        pytest.param("development", False, id="local-compose"),
+        pytest.param(None, False, id="unset"),
+    ],
+)
+def test_database_expected_keys_on_the_deployed_environments(
+    monkeypatch, environment, expected
+):
+    """Explicit allowlist — the values Terraform injects, nothing guessed."""
+    from utils import constants
+
+    monkeypatch.setattr(constants, "ENVIRONMENT", environment)
+    assert db_probe._database_expected() is expected
+
+
+async def test_a_deployed_task_with_no_database_url_is_not_configured(
+    monkeypatch, fake_engine
+):
+    """The task is not OK — but a restart re-reads the same task definition.
+
+    Reachable without deleting anything: an empty injected `DB_PASSWORD`
+    makes `_build_database_url()` fall through to an unset `DATABASE_URL`.
+    """
+    built = fake_engine()
+    monkeypatch.setattr(db_probe, "_probe_url", lambda: None)
+    monkeypatch.setattr(db_probe, "_database_expected", lambda: True)
+
+    verdict = await db_probe.probe_async()
+
+    assert verdict is ProbeVerdict.NOT_CONFIGURED
+    assert verdict is not ProbeVerdict.AUTH_FAILED
+    assert built == {}, "there is no URL to build an engine from"
+
+
+def test_probe_sync_is_not_configured_in_a_deployed_environment(monkeypatch):
+    """rsh107's worker health check inherits this verdict via `probe_sync`."""
+    from utils import constants
+
+    monkeypatch.setattr(constants, "DATABASE_URL", None)
+    monkeypatch.setattr(constants, "ENVIRONMENT", "prod")
+    assert db_probe.probe_sync() is ProbeVerdict.NOT_CONFIGURED
+
+
+def test_cli_exits_zero_when_not_configured(monkeypatch, capsys):
+    """rsh107 runs this as the worker's ECS `CMD-SHELL` health check, and ECS
+    replaces a task on ANY non-zero exit. A distinct code here would drain
+    the worker over the one condition this verdict exists to stop draining
+    over — with `deployment_minimum_healthy_percent = 0` and no ALB floor,
+    permanently. The printed name is what tells an operator."""
+    monkeypatch.setattr(db_probe, "probe_sync", lambda: ProbeVerdict.NOT_CONFIGURED)
+    assert db_probe.main([]) == 0
+    assert capsys.readouterr().out.strip() == "NOT_CONFIGURED"
+
+
+@pytest.mark.parametrize(
+    "verdict", [v for v in ProbeVerdict if v is not ProbeVerdict.AUTH_FAILED]
+)
+def test_no_fail_open_verdict_ever_exits_non_zero(monkeypatch, verdict):
+    """The contract rsh107 depends on, pinned against future verdicts.
+
+    A new enum member that exits non-zero is a task-replacement instruction
+    for every `CMD-SHELL` consumer, however it was meant.
+    """
+    monkeypatch.setattr(db_probe, "probe_sync", lambda: verdict)
+    assert db_probe.main([]) == 0
+
+
+async def test_a_classifier_exception_in_the_missing_password_check_fails_open(
+    monkeypatch,
+):
+    def exploding(_exc):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(db_probe, "is_missing_password", exploding)
+
+    async def boom():
+        raise OSError("something ordinary")
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+    assert await db_probe.probe_async() is ProbeVerdict.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("exc", "level"),
+    [
+        pytest.param(
+            OperationalError(
+                "SELECT 1", {}, Exception("fe_sendauth: no password supplied")
+            ),
+            "ERROR",
+            id="no-password",
+        ),
+        pytest.param(db_probe.DatabaseNotConfigured("x"), "ERROR", id="not-configured"),
+        pytest.param(OSError("refused"), "WARNING", id="unreachable"),
+        pytest.param(RuntimeError("???"), "WARNING", id="unknown"),
+    ],
+)
+async def test_every_probe_async_fail_open_verdict_logs_failing_open(
+    monkeypatch, caplog, exc, level
+):
+    """`failing open` is a contract, not prose.
+
+    The fail-open alarm's metric filter (dfrcp1) will match that phrase;
+    fail-open means nothing else pages. A rewording would silently drop a
+    failure mode from alerting while every verdict test still passes.
+
+    **This covers the branches reachable through `probe_async` only.** The
+    other emitters have their own tests — the passwordless downgrade and the
+    classifier-raised branch below, `probe_sync`'s absent-URL classify in
+    `test_probe_sync_survives_a_classifier_failure_on_an_absent_url`, and
+    both router branches in
+    `services/api/tests/test_health_credential_probe.py`. Driving each path
+    cannot prove that a *tenth* emitter was not added without the phrase;
+    that is dfrcp1's source-level sweep, not this test.
+    """
+    import logging
+
+    async def boom():
+        raise exc
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    with caplog.at_level(logging.WARNING, logger=db_probe.logger.name):
+        verdict = await db_probe.probe_async()
+
+    assert verdict is not ProbeVerdict.AUTH_FAILED
+    matching = [r for r in caplog.records if "failing open" in r.getMessage()]
+    assert matching, f"no 'failing open' log line for {verdict!r}"
+    assert {r.levelname for r in matching} == {level}
+
+
+# ---------------------------------------------------------------------------
+# selfheal1 review fixes — the two paths that could still drain prod
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("url", "blank"),
+    [
+        # Absent is NOT_CONFIGURED's business, and uncertainty must never
+        # downgrade a real rotation.
+        pytest.param(None, False, id="absent-leaves-503-alone"),
+        pytest.param("", False, id="empty-leaves-503-alone"),
+        pytest.param("postgresql+asyncpg://app@db:5432/x", True, id="no-password"),
+        pytest.param("postgresql+asyncpg://app:@db:5432/x", True, id="empty-password"),
+        pytest.param(
+            "postgresql+asyncpg://app:%20%20@db:5432/x", True, id="whitespace-password"
+        ),
+        pytest.param(
+            "postgresql+asyncpg://app:hunter2@db:5432/x", False, id="real-password"
+        ),
+        pytest.param("::: not a url :::", False, id="unparseable-leaves-503-alone"),
+    ],
+)
+def test_url_password_is_blank(url, blank):
+    assert db_probe._url_password_is_blank(url) is blank
+
+
+async def test_a_rejection_for_a_passwordless_url_does_not_drive_a_replacement(
+    monkeypatch,
+):
+    """asyncpg md5-hashes the empty string when it has no password, so the
+    server answers 28P01 and the message signal is blind. `/v1/health` runs
+    this path — without the URL check, a `DATABASE_URL` with no password
+    component drains the service exactly as rsh102's `no password supplied`
+    case would have."""
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app@db:5432/x"
+    )
+
+    async def boom():
+        raise auth_error()
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    assert await db_probe.probe_async() is ProbeVerdict.UNREACHABLE
+
+
+async def test_a_real_rotation_still_self_heals(monkeypatch):
+    """The other half of the same guard: the downgrade must never swallow a
+    genuine rotation, or the six-day outage comes back."""
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app:hunter2@db:5432/x"
+    )
+
+    async def boom():
+        raise auth_error()
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    assert await db_probe.probe_async() is ProbeVerdict.AUTH_FAILED
+
+
+def test_probe_sync_downgrades_a_passwordless_rejection(monkeypatch, fake_sync_engine):
+    """rsh107's worker check inherits the same guard."""
+    from utils import constants
+
+    fake_sync_engine(fail_with=auth_error())
+    monkeypatch.setattr(constants, "DATABASE_URL", "postgresql://app@db:5432/x")
+
+    assert db_probe.probe_sync() is ProbeVerdict.UNREACHABLE
+
+
+async def test_a_chain_carrying_both_phrases_fails_open(monkeypatch):
+    """rsh105's retry path builds exactly this chain: reject the cached
+    password, refresh, get an empty secret, retry, raise the second `from`
+    the first. A task with no password to send cannot be fixed by replacing
+    it, so the missing-password signal vetoes the auth signal."""
+    try:
+        try:
+            raise auth_error()
+        except OperationalError as first:
+            raise OperationalError(
+                "SELECT 1", {}, Exception("fe_sendauth: no password supplied")
+            ) from first
+    except OperationalError as both:
+        chained = both
+
+    async def boom():
+        raise chained
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app:hunter2@db:5432/x"
+    )
+
+    assert await db_probe.probe_async() is ProbeVerdict.UNREACHABLE
+
+
+async def test_a_failing_probe_url_lookup_does_not_escape(monkeypatch):
+    """`_probe_url` is a seam, and seams get patched with things that raise.
+    It must not turn a classified verdict into an unhandled 500."""
+
+    def exploding():
+        raise RuntimeError("seam blew up")
+
+    monkeypatch.setattr(db_probe, "_probe_url", exploding)
+
+    async def boom():
+        raise auth_error()
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    assert await db_probe.probe_async() is ProbeVerdict.AUTH_FAILED
+
+
+def test_probe_sync_survives_a_classifier_failure_on_an_absent_url(
+    monkeypatch, caplog
+):
+    """Exit 1 means AUTH_FAILED to an operator mid-incident; an exception
+    escaping here would produce it for a task that merely has no URL.
+
+    It is also a fail-open verdict, so it owes the `failing open` phrase
+    like every other one — dfrcp1's metric filter is what makes it audible.
+    """
+    import logging
+
+    from utils import constants
+
+    monkeypatch.setattr(constants, "DATABASE_URL", None)
+    monkeypatch.setattr(constants, "ENVIRONMENT", "prod")
+
+    def exploding(_exc):
+        raise RuntimeError("classifier blew up")
+
+    monkeypatch.setattr(db_probe, "_classify", exploding)
+
+    with caplog.at_level(logging.WARNING, logger=db_probe.logger.name):
+        verdict = db_probe.probe_sync()
+
+    assert verdict is ProbeVerdict.UNKNOWN
+    assert any("failing open" in r.getMessage() for r in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    ["PROD", " prod ", "prod\n", "Dev"],
+    ids=["upper", "padded", "newline", "mixed-case"],
+)
+def test_database_expected_normalises_the_environment(monkeypatch, environment):
+    """A casing or whitespace difference must not silently re-enable the
+    "healthy forever with no database" verdict."""
+    from utils import constants
+
+    monkeypatch.setattr(constants, "ENVIRONMENT", environment)
+    assert db_probe._database_expected() is True
+
+
+def test_database_expected_ignores_a_non_string_environment(monkeypatch):
+    from utils import constants
+
+    monkeypatch.setattr(constants, "ENVIRONMENT", object())
+    assert db_probe._database_expected() is False
+
+
+def test_every_terraform_environment_is_covered():
+    """The allowlist is only honest while it matches Terraform.
+
+    A new `terraform/environments/<name>` whose `environment = "..."` is not
+    listed in `DEPLOYED_ENVIRONMENTS` would deploy with `NOT_CONFIGURED`
+    silently disabled — a green suite and a task that reports healthy with no
+    database. Fail here instead.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve()
+    while not (root / "terraform").is_dir():
+        assert root != root.parent, "repo root not found"
+        root = root.parent
+
+    declared = {
+        match.group(1)
+        for main_tf in (root / "terraform" / "environments").glob("*/main.tf")
+        for match in re.finditer(
+            r"^\s*environment\s*=\s*\"([^\"]+)\"", main_tf.read_text(), re.M
+        )
+    }
+
+    assert declared, "no Terraform environment declarations found"
+    assert declared <= db_probe.DEPLOYED_ENVIRONMENTS, (
+        f"Terraform deploys {sorted(declared - db_probe.DEPLOYED_ENVIRONMENTS)}, "
+        f"which db_probe.DEPLOYED_ENVIRONMENTS does not cover — an absent "
+        f"DATABASE_URL there would classify OK"
+    )
+
+
+async def test_an_ambient_context_does_not_veto_a_real_rotation(monkeypatch):
+    """`__context__` is set implicitly by any raise inside an `except`.
+
+    A probe reached from inside a handler for some earlier passwordless
+    failure must still report a genuine rotation — otherwise the veto
+    suppresses the self-heal over an unrelated coincidence of timing.
+    """
+    try:
+        raise OperationalError(
+            "SELECT 1", {}, Exception("fe_sendauth: no password supplied")
+        )
+    except OperationalError:
+        rotated = auth_error()  # __context__ set implicitly, no `from`
+
+    async def boom():
+        raise rotated
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app:pw@db/x"
+    )
+
+    assert await db_probe.probe_async() is ProbeVerdict.AUTH_FAILED
+
+
+async def test_a_wrapped_not_configured_still_classifies_not_configured(monkeypatch):
+    """Every other signal is chain-matched; this one must be too, or an
+    intervening wrapper silently degrades the verdict to UNKNOWN."""
+
+    async def boom():
+        raise OperationalError(
+            "SELECT 1", {}, db_probe.DatabaseNotConfigured("no URL")
+        )
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    assert await db_probe.probe_async() is ProbeVerdict.NOT_CONFIGURED
+
+
+def test_the_documented_production_spelling_is_a_deployed_environment(monkeypatch):
+    """`SETUP.md`'s production `.env` template writes `ENVIRONMENT=production`.
+
+    A task deployed from the documented template must not silently lose
+    `NOT_CONFIGURED`. (The spelling mismatch itself is filed as envspell1.)
+    """
+    from utils import constants
+
+    monkeypatch.setattr(constants, "ENVIRONMENT", "production")
+    assert db_probe._database_expected() is True
+
+
+async def test_the_passwordless_downgrade_logs_failing_open(monkeypatch, caplog):
+    """The one branch that suppresses a 503 — it owes the loudest log."""
+    import logging
+
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app@db/x"
+    )
+
+    async def boom():
+        raise auth_error()
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    with caplog.at_level(logging.WARNING, logger=db_probe.logger.name):
+        verdict = await db_probe.probe_async()
+
+    assert verdict is ProbeVerdict.UNREACHABLE
+    matching = [r for r in caplog.records if "failing open" in r.getMessage()]
+    assert matching and matching[0].levelname == "ERROR"
+
+
+async def test_the_classifier_raised_branch_logs_failing_open(monkeypatch, caplog):
+    import logging
+
+    def exploding(_exc):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(db_probe, "is_auth_error", exploding)
+
+    async def boom():
+        raise OSError("ordinary")
+
+    monkeypatch.setattr(db_probe, "_connect_once", boom)
+
+    with caplog.at_level(logging.WARNING, logger=db_probe.logger.name):
+        verdict = await db_probe.probe_async()
+
+    assert verdict is ProbeVerdict.UNKNOWN
+    assert any("failing open" in r.getMessage() for r in caplog.records)

@@ -21,7 +21,10 @@ duplicates.
 Expectations (`_devx/workstreams/rotation-self-heal/expectations.md`):
   E-2 (:21-32)  a fresh connection refused with SQLSTATE 28P01/28000 SHALL
                 return 503, so ECS replaces the task; the body identifies
-                the failure as credential-related.
+                the failure as credential-related. Narrowed by selfheal1:
+                `28000` counts only when the server says it rejected a
+                credential — not "no password supplied", which a restart
+                cannot fix.
   E-3 (:34-46)  any *other* connection failure SHALL return 200 —
                 replacing a task cannot fix connectivity, and mass
                 replacement escalates a transient blip into an outage.
@@ -82,8 +85,18 @@ AUTH_FAILURES = [
         ),
         id="28P01-password-authentication-failed",
     ),
+    # selfheal1 changed this case deliberately. rsh102 pinned
+    # `("no password supplied", "28000")` here as a 503. That message means
+    # the *client* had no password to send — an empty `DB_PASSWORD` in the
+    # task definition — and a replacement task reads the same empty value
+    # and fails identically; with `deployment_minimum_healthy_percent = 0`
+    # the service drains to zero and stays there. It moved to
+    # NON_AUTH_FAILURES below. `28000` keeps a 503 case, carrying the one
+    # message that says the server evaluated a credential and rejected it.
     pytest.param(
-        operational_error("no password supplied", "28000"),
+        operational_error(
+            'password authentication failed for user "palateful"', "28000"
+        ),
         id="28000-invalid-authorization",
     ),
 ]
@@ -104,6 +117,10 @@ NON_AUTH_FAILURES = [
     pytest.param(
         RuntimeError("something nobody anticipated"),
         id="unclassified-exception",
+    ),
+    pytest.param(
+        operational_error("fe_sendauth: no password supplied", "28000"),
+        id="28000-client-had-no-password",
     ),
 ]
 
@@ -383,17 +400,128 @@ async def test_interleaved_30s_and_60s_schedule_holds_the_budget(
 
 
 async def test_unset_database_url_is_ok_not_a_failure(monkeypatch, db_probe):
-    """Nothing to authenticate against is not an auth failure.
+    """Nothing to authenticate against is not an auth failure — where no
+    database is expected (here, `ENVIRONMENT=test`; see selfheal1's
+    `NOT_CONFIGURED` test below for a deployed environment).
 
     `utils.constants.ASYNC_DATABASE_URL` is `None` wherever the DB env is
     absent, and `database.py:79-80` already returns `(None, None)` there.
     Getting this wrong breaks `test_main.py:46` and
     `test_async_client_fixture.py:15` (plan.md:341-347).
     """
+    from utils import constants
+
+    # Explicit, not ambient: `conftest.py` sets ENVIRONMENT with
+    # `setdefault`, so an exported `ENVIRONMENT=dev` on a developer machine
+    # would otherwise flip this case to NOT_CONFIGURED.
+    monkeypatch.setattr(constants, "ENVIRONMENT", "test")
     monkeypatch.setattr(db_probe, "_probe_url", lambda: None)
 
     verdict = await db_probe.probe_async()
 
     assert verdict is db_probe.ProbeVerdict.OK, (
         f"an absent URL must classify OK, not a failure; got {verdict!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# selfheal1 — a 503 only when a restart can fix it
+# ---------------------------------------------------------------------------
+
+
+def test_a_task_with_no_password_is_not_replaced(client, failing_connect):
+    """An empty `DB_PASSWORD` is a deployment config error.
+
+    The replacement task reads the same task definition and fails the same
+    way, so a 503 would only drain the service. It fails open, logging the
+    `failing open` phrase at `error` — which **nothing consumes yet**;
+    dfrcp1 is the spec that turns it into an alarm.
+    """
+    failing_connect(operational_error("fe_sendauth: no password supplied", "28000"))
+
+    response = client.get("/v1/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "db": "UNREACHABLE"}
+
+
+def test_a_deployed_task_with_no_database_is_not_replaced_but_not_ok(
+    client, monkeypatch, db_probe
+):
+    """No `DATABASE_URL` in a deployed environment: every real request will
+    fail, so the body must stop asserting `OK` — but a restart re-reads the
+    same configuration, so it must not 503 either."""
+    from utils import constants
+
+    monkeypatch.setattr(constants, "ENVIRONMENT", "prod")
+    monkeypatch.setattr(db_probe, "_probe_url", lambda: None)
+
+    response = client.get("/v1/health")
+
+    assert response.status_code == 200, "a restart cannot fix this"
+    assert response.json() == {"status": "degraded", "db": "NOT_CONFIGURED"}, (
+        "the endpoint must stop asserting health it never checked"
+    )
+
+
+def test_a_task_whose_url_has_no_password_is_not_replaced(
+    client, monkeypatch, db_probe
+):
+    """The async path's half of Case 1.
+
+    asyncpg never says "no password supplied" — given no password it md5-
+    hashes the empty string, so the *server* answers 28P01 and the message
+    signal cannot see the difference. `/v1/health` runs the async probe, so
+    without the URL check this exact case — the spec's "a DATABASE_URL with
+    no password component" — would still drain the service.
+    """
+    monkeypatch.setattr(
+        db_probe, "_probe_url", lambda: "postgresql+asyncpg://app@db:5432/palateful"
+    )
+
+    rejected = operational_error(
+        'password authentication failed for user "app"', "28P01"
+    )
+
+    async def fake_connect_once():
+        raise rejected
+
+    monkeypatch.setattr(db_probe, "_connect_once", fake_connect_once)
+
+    response = client.get("/v1/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "db": "UNREACHABLE"}
+
+
+def test_both_router_fail_open_branches_log_failing_open(
+    client, failing_connect, monkeypatch, db_probe, caplog
+):
+    """The router's own two emitters, which the probe-level phrase test
+    cannot reach. dfrcp1's metric filter covers all of them or it
+    under-covers silently."""
+    import logging
+
+    from routers.v1 import health_router as router_module
+
+    with caplog.at_level(logging.WARNING):
+        # Branch 1: the router's own guard — the probe itself misbehaved.
+        async def probe_raises():
+            raise RuntimeError("the probe itself blew up")
+
+        # The router imports the symbol by name, so patch it there.
+        monkeypatch.setattr(router_module, "cached_verdict_async", probe_raises)
+        first = client.get("/v1/health").json()
+
+        # Branch 2: a deployed task with no database configured.
+        async def not_configured():
+            return db_probe.ProbeVerdict.NOT_CONFIGURED
+
+        monkeypatch.setattr(router_module, "cached_verdict_async", not_configured)
+        second = client.get("/v1/health").json()
+
+    assert first == {"status": "ok", "db": "UNKNOWN"}
+    assert second == {"status": "degraded", "db": "NOT_CONFIGURED"}
+    assert (
+        sum("failing open" in record.getMessage() for record in caplog.records) >= 2
     )

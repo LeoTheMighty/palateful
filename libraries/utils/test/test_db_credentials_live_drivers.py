@@ -207,3 +207,102 @@ async def test_the_probe_reports_ok_against_a_live_server_with_good_creds(
     monkeypatch.setattr(db_probe, "_probe_url", lambda: good)
 
     assert await db_probe.probe_async() is ProbeVerdict.OK
+
+
+# ---------------------------------------------------------------------------
+# selfheal1 — measured: what each driver does with NO password at all
+# ---------------------------------------------------------------------------
+#
+# rsh102 admitted `no password supplied` as an auth message and selfheal1
+# removes it, so the two drivers' real behaviour here is the evidence the
+# whole story rests on. It was never measured; these two tests measure it.
+
+
+def test_psycopg2_with_no_password_says_no_password_supplied(capsys):
+    """libpq refuses before contacting the server — the client-side case.
+
+    A restart re-reads the same empty value, so this must NOT classify as
+    an auth failure (which would drive an ECS replacement).
+    """
+    from utils.services.db_credentials import is_missing_password
+
+    with pytest.raises(psycopg2.OperationalError) as excinfo:
+        psycopg2.connect(
+            host=HOST,
+            port=PORT,
+            user=USER,
+            dbname=DBNAME,
+            connect_timeout=5,
+        )
+
+    exc = excinfo.value
+    with capsys.disabled():
+        print(
+            f"\n[selfheal1] psycopg2 no-password: {type(exc).__name__} "
+            f"pgcode={exc.pgcode!r} message={str(exc).strip()!r}"
+        )
+
+    assert is_missing_password(exc), (
+        f"psycopg2 must still be recognisable as the client-side case; "
+        f"message={str(exc)!r}"
+    )
+    assert is_auth_error(exc) is False, (
+        f"a task with no password to send must not drive a replacement; "
+        f"message={str(exc)!r}"
+    )
+
+
+async def test_asyncpg_with_no_password_looks_exactly_like_a_rotation(capsys):
+    """The measurement that forced the URL check.
+
+    asyncpg does not refuse client-side: with no password it md5-hashes the
+    empty string and sends it, so the *server* answers `28P01 password
+    authentication failed` — byte-for-byte a rotated credential. `/v1/health`
+    runs this driver, so the message signal cannot save it and
+    `db_probe._url_password_is_blank` has to decide from the URL instead.
+    """
+    asyncpg = pytest.importorskip("asyncpg")
+
+    from utils.services.db_credentials import is_missing_password
+
+    with pytest.raises(Exception) as excinfo:
+        await asyncpg.connect(
+            host=HOST,
+            port=PORT,
+            user=USER,
+            database=DBNAME,
+            timeout=5,
+        )
+
+    exc = excinfo.value
+    with capsys.disabled():
+        print(
+            f"\n[selfheal1] asyncpg no-password: {type(exc).__name__} "
+            f"sqlstate={getattr(exc, 'sqlstate', None)!r} "
+            f"message={str(exc).strip()!r}"
+        )
+
+    assert is_missing_password(exc) is False, (
+        "if asyncpg ever starts saying 'no password supplied', the "
+        "URL-based downgrade can be narrowed — but today it does not, and "
+        "that is why the downgrade exists"
+    )
+
+
+async def test_the_probe_does_not_replace_a_task_whose_url_has_no_password(
+    monkeypatch,
+):
+    """End-to-end against the live server, on the driver `/v1/health` uses.
+
+    Without the URL check this is a 503 from every task at once, over a
+    password the deployment never supplied.
+    """
+    pytest.importorskip("asyncpg")
+
+    from utils.services import db_probe
+    from utils.services.db_probe import ProbeVerdict
+
+    passwordless = f"postgresql+asyncpg://{USER}@{HOST}:{PORT}/{DBNAME}"
+    monkeypatch.setattr(db_probe, "_probe_url", lambda: passwordless)
+
+    assert await db_probe.probe_async() is ProbeVerdict.UNREACHABLE
