@@ -87,6 +87,11 @@ dev_dependencies:
     sdk: flutter
   integration_test:
     sdk: flutter
+  # Test-only: faking the web-auth platform to drive AuthService.login()
+  # (auth0_flutter doesn't re-export Auth0FlutterWebAuthPlatform). Pinned to
+  # the version auth0_flutter 1.14.0 already resolves, so nothing shipped
+  # changes.
+  auth0_flutter_platform_interface: 1.14.0
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
