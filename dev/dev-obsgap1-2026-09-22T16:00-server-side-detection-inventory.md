@@ -32,7 +32,9 @@ weeks — 238,258 failed logins between 2026-06-17 and 2026-07-31 — and not
 one mechanism told a human.** [M] It ended because a deploy on 07-31 happened
 to pick up the current credential, not because anything noticed. It is
 **scheduled to be able to recur on 2026-10-29**, the next credential
-rotation. [M for the date; I for the recurrence — see §4.]
+rotation. [M for the date. The mechanism is measured too: the probe deployed
+today passes straight through a password change (§4). Only the recurrence
+itself is a prediction — it depends on rsh102 being *deployed* first.]
 
 Three structural facts made it invisible, and each generalises:
 
@@ -62,13 +64,35 @@ recorded a genuine event, as opposed to existing or being scheduled.
 | **`request_latencies`** | ✅ 176k rows, ~30 d | today [M] | ❌ pull-only | Works, but see defects below |
 | **`error_logs` `service=api`** | ✅ | 2026-09-20 19:40 — **1 row in the entire 30 d window** (a 400) [M] | ❌ pull-only | Works; genuinely quiet (cross-checked: stdout shows **0** 5xx in 30 d) [M] |
 | **`error_logs` `service=worker`** | ✅ 60 rows | nightly 03:00 [M] | ❌ | **Noise, not failures** — `advance_recurrence_windows` audit rows mislabelled `service='worker'`; convention is `service='audit'` (4f measured: `per_rule_failures 0`) |
-| **`/v1/health` DB probe** | ✅ deployed in `848311af` | never fired a failure — `health check db probe failed`: **0** in 30 d [M] | indirectly (ECS replaces task) | Present but **not proven to catch rotation** — pooled `SELECT 1` [I, per rsh102] |
-| **`deploy-freshness.yml`** | ✅ daily | **today** — `Gap: 52 day(s); threshold: 7` → red, for the right reason [M] | ❌ red workflow, no notification path | **Works correctly, into a void.** 56 of 58 runs red [M] |
+| **`/v1/health` DB probe** | ✅ deployed in `848311af` | never fired a failure — `health check db probe failed`: **0** in 30 d [M] | indirectly (ECS replaces task) | **Present and demonstrably blind to rotation** — pooled `SELECT 1` passes through a password change (§4) [M, 0a] |
+| **`deploy-freshness.yml`** | ✅ daily | **today** — `Gap: 52 day(s); threshold: 7` → red, for the right reason [M] | ❌ red workflow, no notification path | **Works since 2026-09-20, into a void.** Only **4** scheduled runs have ever produced a verdict; the **49** before them died at `configure-aws-credentials` and measured nothing (see §1a) [M] |
 | **`bin/prod-status`** | on demand | today — correctly shows 52 d stale image [M] | human-pulled | Works; requires someone to run it |
 | **ALB target health** | ✅ `/v1/health`, 60 s, threshold 3 [M] | n/a | ❌ no alarm | Only as good as `/v1/health` |
 | **CloudWatch alarms** | ❌ **none exist** [M] | — | — | **Not present** |
 | **SNS / EventBridge / metric filters / Chatbot** | ❌ **none** [M] | — | — | **Not present** |
 | **`cleanup_error_logs`** | ✅ | prunes `error_logs` at 30 d [M] | — | Works — and erases history (§5) |
+
+### 1a. deploy-freshness — a red is not a verdict (corrected)
+
+The first draft said "56 of 58 runs red, for the right reason". **That
+generalised one run's log to 56 runs** — the same proxy error as reading a
+red as a verdict. Classified every run by its failing step [M]:
+
+| Runs | Event | Failed at | Meaning |
+|---|---|---|---|
+| **49** | schedule, 08-01 → 09-19 | `configure-aws-credentials` | **Died before measuring.** No verdict |
+| **4** | schedule, 09-20 → 09-22 | Measure gap | **Correct verdict**: 52 d stale |
+| 2 | manual, 07-31 | — (success) | Fix-branch runs |
+| 1 | manual, 07-31 | Measure gap | Fix-branch run |
+| 1 | manual, 07-31 | `configure-aws-credentials` | Fix-branch run |
+| 1 | schedule, 08-06 | no failed step recorded | Unclassified |
+
+So the detector **started working on 2026-09-20** (when #25 fixed its
+credentials) and has correctly reported a stale prod four times since, to
+no one. For its first seven weeks, every red meant "the check died", and
+was indistinguishable from "prod is stale" unless someone opened the log.
+(Credit: palateful-4f caught this; its count was 52 at credentials, mine
+is 49 scheduled + 1 manual — the finding is the same either way.)
 
 ### Defects found in the collectors themselves
 
@@ -125,30 +149,45 @@ independently of app deploys; its app half (the probe) is not. **The
 rotation it configured took effect; the guard it wrote did not.** [M for
 the commit and freeze; I that the rotation half was the part in force]
 
-### Can this surface to a user as "login failed"? — Yes, and it fits "random"
+### Can this surface to a user as "login failed"? — **No. Retracted.**
 
-- Any request needing a *new* DB connection fails with a 500 during the
-  window. The app's first authenticated call after sign-in, `GET
-  /v1/users/me`, needs the DB to resolve the user. [M for the dependency]
-- **The pattern matches "random".** Working after an incidental restart,
-  broken within a week at the next rotation, working again after the next
-  restart — from the outside, logins fail on some days and not others with
-  no visible cause. [I]
-- **What I cannot establish server-side:** whether Leo's specific failures
-  fell inside the window. The API cannot attribute requests to users
-  (`user_id` NULL, above), and the outage's own requests could not be
-  recorded (structural blindness). Needs his timestamps, or 2d's Auth0-side
-  view. [gap, not a finding]
-- **Since 2026-07-31 the API has recorded zero 401s and zero 5xx.** [M] So
-  any "login failed" *after* 07-31 is **not** this — it is either Auth0-side
-  or client-side. → **2d.**
+The first draft answered "yes, and it fits 'random'". **That was wrong**,
+and it had been relayed toward Leo before it was caught. palateful-2d
+refuted it from code; I verified each point before retracting [M]:
+
+- **"Login failed. Please try again." is set in exactly one place** —
+  `app/lib/features/auth/login_screen.dart:65` — and only when
+  `AuthService.login()` returns `false`.
+- **`AuthService.login()` makes no palateful API call.** It uses Auth0 web
+  auth and on-device secure storage only. A database that cannot
+  authenticate the app has no path into that code.
+- **A 500 on `/v1/users/me` after sign-in lets the user in.**
+  `_fetchUserAndCheckOnboarding()` swallows its error and routes to `/`.
+- **A 500 never clears credentials either.** `_isAuthError`
+  (`app/lib/main.dart:366`) is 401/403 only, so the outage did not look like
+  a logout. (2d; rules out my second inference too.)
+
+**What the outage *would* have looked like:** broken after login — data
+failing to load, screens erroring. Leo might loosely remember that as
+"login didn't work", but it **cannot** have produced the literal message.
+
+**The error that caused this:** I reasoned from "the first authenticated call
+needs the DB" to "login fails" without reading where the message comes from.
+The server-side dependency was real; the jump across the client boundary was
+not measured. 2d measured it.
+
+**What still holds, and sharpens the auth track:** since 2026-07-31 the API
+has recorded **zero 401s and zero 5xx** [M, cross-checked against stdout]. So
+if Leo has seen "Login failed" since August, it is **definitively** not this
+outage — it is the Auth0/client path 2d traced. When he last saw it is the
+question that settles it.
 
 ## 3. Leo's complaints vs. the server-side detectors
 
 | Complaint | What happened server-side | Would any server detector have caught it? |
 |---|---|---|
-| **"Random login failed"** | Likely the credential outage above, **within 06-17 → 07-31**. After 07-31: zero 401/5xx — not server-side. [M/I as marked] | **The data existed** — 238k FATALs in the RDS log. **Nothing read it.** Collected-but-unread |
-| **Credentials don't hold as long as they should** | No server evidence either way; the API recorded zero auth rejections in 30 d [M]. Plausibly Auth0 session/refresh config [I] — **2d's track**. Possibly also downstream of the outage if the app clears auth on a failed `/users/me` [I, 4f can confirm] | Not collected server-side — auth sessions live in Auth0 |
+| **"Random login failed"** | **Not the credential outage** — the message has no path to the API (§2, retracted). After 07-31: zero 401/5xx [M]. It is Auth0/client-side → **2d** (account-linking `api.access.deny()` is the prime suspect) | **Not collected anywhere.** `auth_service.dart` and `login_screen.dart` have no error reporting; `login()` swallows every exception into one string (4f, 2d) |
+| **Credentials don't hold as long as they should** | Zero auth rejections server-side in 30 d [M]. **Not downstream of the outage** — a 500 never clears credentials (§2). 2d's root cause: `tryRestoreCredentials` wiped saved credentials on `RENEW_FAILED`, which the SDK raises for *any* failed renewal including a flaky network at launch — so a good refresh token was destroyed with no request and no 401 | **Not collected.** The restore catch does `debugPrint` and wipes the session |
 | **Shopping cart broken for months** | `GET /v1/shopping-lists/{id}` returns **200**; the client crashes parsing `quantity` (Decimal serialized as a string). [M, cc] | **No — by construction.** The server did nothing wrong by its own lights. Zero 5xx, zero `error_logs`. The server-side answer to "was the API even called?" is **yes, and it succeeded**. The only server-visible symptom is **zero writes for weeks while reads continue** — see gap G5 |
 
 **The cart and the credential outage fail differently, and that matters for
@@ -162,12 +201,46 @@ contract test and a client-side detector (4f).
 **The next scheduled rotation is 2026-10-29.** [M, `NextRotationDate`]
 
 Deployed `848311af` has the DB probe, so this is not a repeat of the
-`c85e350` blind spot. But the probe runs `SELECT 1` through the connection
-pool, and a pooled connection authenticated before a rotation stays valid —
-Postgres checks the password only at connect time. **rsh102 (PR #29, open,
-being landed by 0a) exists precisely because the pooled probe can pass while
-new connections fail.** [I — this is rsh102's analysis, which I have not
-independently reproduced]
+`c85e350` blind spot. **But the pooled probe does not survive a rotation —
+now measured.** [M, palateful-0a, 2026-09-22, live pg16 using the real async
+pooled-engine shape `848311af` uses; `ALTER ROLE … PASSWORD` standing in for
+the rotation]:
+
+```
+before rotation : pooled SELECT 1 -> OK (pool warmed)
+ROTATED         : ALTER ROLE ... PASSWORD <new>
+after rotation  : OLD pooled probe -> OK            <- stale task reports HEALTHY
+after rotation  : new conn, start-time password -> InvalidPasswordError 28P01
+after rotation  : NEW rsh102 probe -> AUTH_FAILED
+```
+
+PostgreSQL authenticates once at session start, and changing a role's
+password does not terminate established sessions. So **the probe deployed
+today would answer healthy through the 10-29 rotation** while the pool's next
+fresh connection is rejected. The first draft cited this only as rsh102's
+analysis; it was untested by anyone until 0a ran it.
+
+It also explains a detail of §2 [I, 0a's reading, consistent with the data]:
+the **17- and 19-minute** delays between rotation and first failure are about
+what a pool cycling its connections would produce before it has to open a
+fresh one. The delay is the pool's cycle time, not the rotation's.
+
+**What rsh102 deliberately does *not* detect** — it fails open with 200 on
+each, by design [M, from 0a's scope statement]:
+
+- **A broken serving pool** (exhausted, or dead sockets after failover). The
+  fresh probe passes while real requests fail. The old pooled check *did*
+  catch this; rsh102's AC required removing it. **rsh102 trades seeing a
+  broken pool for seeing a rotation** — the right trade for this story, not a
+  free one.
+- **DB unreachable** (timeout, refused, DNS, SG change, AZ loss). By design —
+  but with G1 absent, **a total database outage reads `{"status":"ok"}`**.
+- pg_hba rejection / missing role / login denied (`28000` with no auth
+  message) — a restart cannot fix them.
+- No DB configured at all (`selfheal1` Case 2); the worker (rsh107); secrets
+  other than the RDS master.
+
+The first two become gaps G10 and G11 below.
 
 So whether 10-29 repeats the outage depends on rsh102 **deploying** before
 then — and prod has not deployed in 52 days. **The guard landing on `main`
@@ -196,6 +269,18 @@ they need different fixes.
 | **G6** | **No response-contract test** | **The cart**, and the May no-op fix (`a5c84386` patched a schema class no endpoint uses; its test tested the class, not the endpoint) | Contract test on the real endpoint's JSON asserting `quantity` is a number. cc is building it |
 | **G7** | `request_latencies.user_id` never populated | "Did *Leo's* request fail?" — unanswerable today | Populate it in the latency middleware |
 | **G8** | Observability shares fate with the DB | Any DB-auth or DB-down event recorded by the app itself | Structural. G2 is the cheap mitigation: the RDS log does not depend on app→DB auth |
+
+**The failure class G8 belongs to is wider than the DB** — 4f's framing,
+which I'd make the headline lesson: **the recorder depends on the thing that
+broke, so the failure produces silence instead of a signal.** `error_logs`
+lives in the DB that was rejecting auth. The client mirror needs a valid
+token, and delivered **zero rows for four weeks** (08-23 → 09-19) with nobody
+noticing. G2 catches the DB instance; U3 catches the class.
+| **N1** | **Auth path reports nothing** (4f) | **Both of Leo's auth complaints.** `auth_service.dart` / `login_screen.dart` have no `ErrorReporter` calls; the restore catch wipes the session with a `debugPrint` | A handful of catch blocks → Crashlytics. (The `error_logs` mirror needs a token, so it can't take pre-auth failures.) **No fix is in flight for auth** |
+| **U3** | **No absence alert** (4f) | Silence as a failure mode — the class *both* this outage and the client mirror belong to (below) | Alert when expected telemetry (`service='client'` rows, or the `BootSmokeTest` canary) is absent for N days while `/v1/health` reports the API up |
+| **G10** | **Broken serving pool undetected after rsh102** (0a) | Pool exhaustion / dead sockets after failover | A separate pooled-path check, or a metric on request-level DB errors — not a health-probe change |
+| **G11** | **DB unreachable reads `ok`** (0a) | A total database outage | A fail-open probe needs an *alarm* on its failure mode, not a 503 — log it and alarm via G1 |
+| **G12** | **Silent-catch CI guard can't see auth** (2d) | The swallowed exceptions in N1 | `tools/no-silent-catch-check.sh` scans only `app/lib/features/**/services/` (line 29, 82); `auth_service.dart` is in `app/lib/core/`. Widen the scan. Same shape as a devx guard that checks only `dev/` specs |
 | **G9** | Unauthenticated route sweeps unexamined | 2026-09-11 and 09-14: ~65 routes each in seconds, including admin routes (405/422, all rejected) [M] | Security question, not detection — flag, don't build yet. Nothing got through |
 
 ### Retention — the gap that decides whether you can investigate at all
@@ -208,13 +293,27 @@ RDS group matched, the outage would be unrecoverable and this section would
 read "unknown". Keep RDS logs indefinitely; consider a longer window for
 API stdout.
 
-## 6. Recommended order
+## 6. Recommended order — merged with palateful-4f
 
-**G1 first, because it is a multiplier:** without a push channel, every other
-gap closes into the same void deploy-freshness already fires into. Then
-**G2** (catches the outage class, and the log already exists), **G3** (the
-detector already works), **G5** (catches the cart server-side at zero client
-cost). G6 is being built by cc. G7 before anyone needs per-user forensics.
+One list, agreed with 4f, so Leo gets one ordering rather than two:
+
+1. **G1** — a push channel exists at all. Multiplier. (Pipe: here. "Is anyone told": 4f.)
+2. **G2** — RDS FATAL metric filter → alarm. Catches the six-week outage on minute one.
+3. **N1** — auth path reports to Crashlytics. **A multiplier on zero is zero**: G1 can't forward a signal that doesn't exist, and two of Leo's three complaints are auth with no fix in flight.
+4. Client parse-failure / recurrence alert (4f). Catches the cart, and the May no-op fix recurring.
+5. **G3** — deploy-freshness gets a recipient. Working since 09-20.
+6. **U3** — absence alert on expected telemetry. Catches the silence class.
+7. **G5** — write endpoint silent while reads continue.
+8. **G6** — contract test on real endpoint JSON (cc, in flight).
+9. Promote client `area`/`operation` out of `stack_trace` (4f).
+10. **G7** — populate `request_latencies.user_id`.
+
+Then G10, G11, G12. Tail items are in 4f's spec.
+
+**Crashlytics is the only possible push channel left in the system** now that
+the live AWS account is ruled out, and nobody can verify from here whether its
+non-fatal alerts are on (no read API). It decides whether the cart
+`_TypeError` ever emailed anyone. On Leo's checklist via 4f.
 
 **And land + deploy rsh102 before 2026-10-29.** That is a date, not a
 priority.
@@ -255,3 +354,16 @@ priority.
   across ~10 authenticated endpoints looked like two failed logins until the
   status codes were read — they were 405/422 from a scripted route sweep.
   The API recorded zero 401s in the window.
+- 2026-09-22T17:30 — **corrections, before merge.** (1) **Retracted** "the
+  outage can surface as 'login failed'": 2d showed from code that the message
+  has no path to the API, and a 500 neither blocks login nor clears
+  credentials. Verified each point before retracting. The inference crossed
+  the client boundary without measuring it. (2) **Corrected G3's "56 of 58
+  runs correctly red"** — it generalised one log to 56 runs; classified all 58
+  by failing step: 49 died at credentials, only 4 are verdicts. 4f caught it.
+  (3) **Upgraded §4 from inferred to measured** — 0a demonstrated on live pg16
+  that the pooled probe passes through a password change while fresh
+  connections get 28P01. (4) Added N1, U3 (4f), G10, G11 (0a), G12 (2d) and
+  adopted the merged order. Three of those four corrections came from peers
+  checking claims I had marked as findings; the fourth came from one I had
+  correctly marked as unverified.
