@@ -130,3 +130,45 @@
   Knowing about the trap was not enough: one session had saved it to memory an
   hour before falling into it, and caught it only because reading the log had
   become a habit. The habit is the control; the knowledge is not.
+
+- **A cited test is not evidence until someone has read it or watched it
+  fail.** Both real finds in selfheal1 (2026-09-22) came from distrusting
+  stated evidence rather than from reviewing the diff.
+  1. **The spec's own measured claim was measured on the wrong driver.**
+     rsh102 admitted `no password supplied` as an auth message. Against a live
+     server, psycopg2 does emit it — and **asyncpg never does**: given no
+     password it md5-hashes the empty string, so the server answers `28P01
+     password authentication failed`, byte-identical to a real rotation.
+     `/v1/health` runs asyncpg. Removing the message pattern therefore fixed
+     the case only on the path nothing uses, and the spec's own named trigger
+     could still drain prod. Mocks agreed with the spec; the drivers did not.
+  2. **A test whose docstring named this exact guard could not fail.**
+     `test_only_auth_failed_is_actionable` asserted
+     `{v for v in ProbeVerdict if v is AUTH_FAILED} == {AUTH_FAILED}` — true
+     by construction for any enum contents — under the docstring "guards the
+     fail-open invariant against a careless enum addition". selfheal1 added a
+     member to that enum and it stayed green. A test that cannot fail is worse
+     than no test: it occupies the slot where a real one would go, and its
+     name is load-bearing for everyone who greps instead of reading.
+
+  The link between them is provenance reading as proof. "rsh102 measured
+  this" and "rsh102 wrote that test for this purpose" both *sound* like
+  verification. The author of this story cited the test to a peer as
+  verification without opening it, and the peer nearly accepted it on that
+  say-so; the peer opened it, and that is the only reason it was caught.
+  Fix: before relying on a test, read its assertion, or mutate the thing it
+  claims to guard and watch it go red. Before relying on a measurement, check
+  what was measured — which driver, which environment, which code path.
+  Replacements for a tautological test should ship mutation-verified, and the
+  replacement should assert something a literal cannot satisfy on its own.
+
+- **`gh pr checks <n>` can report every check passing while a whole workflow
+  is still running.** On PR #52 it listed three checks (lint/test/coverage,
+  all `pass`) and no pending rows, while `CI & Deploy` — the workflow that
+  runs the Flutter tests and the prod Terraform apply — was still
+  `in_progress` at the same head. A monitor watching `all(.bucket!="pending")`
+  announced "ALL CHECKS TERMINAL" on that partial view, twice. Same family as
+  the exit-status traps above: a summary line that describes less than you
+  think it does. Fix: gate on a probe that aggregates **every run at the head
+  SHA** (`devx devx-helper await-remote-ci`, which folds all workflows into one
+  verdict), and treat `gh pr checks` as a convenience view, never as the gate.
