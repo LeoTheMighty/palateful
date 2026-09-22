@@ -542,3 +542,43 @@ the binding date is the next scheduled rotation, **2026-10-29**.
   *description*: I presented six phantom diffs as real, benign drift. I had
   also never checked which CLI version I was planning with. Found by
   palateful-0e and palateful-4f; relayed by the coordinator.
+- 2026-09-22T18:30Z — **point 6 converted from [I] inferred to [M] MEASURED:
+  the deployed probe opens a genuinely fresh connection.** This was the one
+  open item from the deploy verification, and the property the whole story
+  exists for. It could not be measured at the time because RDS logged no
+  successful connections; logconn1 (PR #42, merged `d0ef1c50`) turned
+  `log_connections` on, and the answer arrived within four minutes.
+
+  Before the apply: **0** `connection authorized` lines in the RDS log.
+  After:
+
+      18:24:11 UTC 10.1.0.235(37714) palateful@palateful ... SSL enabled (TLSv1.3)
+      18:25:11 UTC 10.1.0.235(46138) palateful@palateful ... SSL enabled (TLSv1.3)
+      18:26:11 UTC 10.1.0.235(56588) palateful@palateful ... SSL enabled (TLSv1.3)
+      18:27:11 UTC 10.1.0.235(33420) palateful@palateful ... SSL enabled (TLSv1.3)
+      18:28:11 UTC 10.1.0.235(49118) palateful@palateful ... SSL enabled (TLSv1.3)
+
+  Three things make this proof rather than suggestion:
+  - `10.1.0.235` is the running API task's own private IP (`describe-tasks`),
+    and the healthy ALB target — so these are the probe, not other traffic.
+  - Exactly **60 seconds** apart, which is `DB_PROBE_TTL_S = 60`. The cadence
+    is the cache's, not coincidence.
+  - **A different source port every time**, each with its own TLS handshake.
+    A reused pooled connection cannot produce a new port; every line is a new
+    TCP connection authenticating from scratch. That is precisely what the
+    old pooled probe could not do, and why it could not see a rotation.
+
+  **What this does NOT prove.** That a rotation self-heals. This shows the
+  mechanism running as designed against a *healthy* database. The failure
+  path — `AUTH_FAILED` → 503 → task replacement → recovery — is still
+  unexercised in prod and remains Leg A (rsh109, ~2026-10-06) or the
+  2026-10-29 rotation. The distinction is the same one that made the
+  original outage last six days: a probe that looks right on a healthy
+  system is not evidence about a broken one.
+
+  Method note, since the first reading was wrong: three minutes after the
+  apply the count was **0**, and one of the two queries returned
+  `ServiceUnavailableException`. A zero beside a failing query is not a
+  reading — the same shape as the four zeroes earlier in this log that came
+  from a start timestamp parsed six hours into the future. Confirmed the
+  stream was live (5 events since apply), then polled until lines appeared.
