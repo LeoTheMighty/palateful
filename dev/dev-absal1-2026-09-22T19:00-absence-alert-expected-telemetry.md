@@ -41,7 +41,73 @@ with nobody noticing. G2 catches one instance; this catches the class (4f).
 - **Prove it fires.** An alarm that has never been in ALARM state is a
   configured detector, not a verified one. Drive it into ALARM once (e.g.
   `aws cloudwatch set-alarm-state`) and confirm the email arrives.
+  **Read the 2026-09-22T21:10 status-log entry before relying on this**: as
+  of today there is no email to arrive — `palateful-prod-alerts` has 0
+  subscriptions and SES has 0 verified identities, so "drive it to ALARM and
+  confirm the email" currently confirms nothing.
 
 ## Status log
 - 2026-09-22T19:00 — filed from obsgap1 (server-side detection inventory), merged ranking
   agreed with palateful-4f. Blocked-by: alrt1, tfgate1.
+
+- 2026-09-22T21:10 — **recon from palateful-0a (rsh102/logconn1), read-only,
+  no writes.** Requested by the coordinator so it isn't lost in messages.
+  Ownership unchanged: this story is 30's. Everything below is measured.
+
+  **1. `palateful-prod-alerts` is unwired at BOTH ends.**
+
+      SNS topics            : dynamodb (0 subs), palateful-prod-alerts (0 subs)
+      CloudWatch alarms     : ZERO in the account
+
+  The 0-subscriptions half is known. The other half is that **nothing
+  publishes into it either** — there are no alarms at all. So it is not "a
+  channel nobody listens to", it is a channel with no speakers and no
+  listeners. The ACs above say to publish to `module.alerts.topic_arn` and
+  then "confirm the email arrives". Today that publish reaches nobody, and
+  there is no email. Both need a subscription to exist first.
+
+  **2. SES looks like a working path and sends nothing.**
+
+      sendingEnabled        : true
+      ProductionAccessEnabled: true        <- out of the sandbox
+      verified identities   : ZERO         <- (v1 and v2 both empty)
+
+  Production access without a verified identity sends nothing. Same shape as
+  the topic: existence mistaken for capability.
+
+  **3. The only non-AWS path already in production is FCM push**
+  (`libraries/utils/utils/services/push_notification.py`,
+  `FIREBASE_CREDENTIALS_JSON`). It works and is independent of SNS and
+  CloudWatch entirely — but it **routes through the API service**, so it
+  shares a blast radius with much of what is worth alerting on. Independent
+  of SNS is not the same as independent of the thing being watched. It only
+  qualifies if invoked from outside the API.
+
+  **4. The argument for this story's acceptance criteria.** The
+  outside-AWS watcher this story needs *already exists here*:
+  `deploy-freshness.yml`, scheduled, in GitHub Actions — structurally the
+  right shape, independent of SNS, CloudWatch and the API.
+
+  It failed **52 times against 2 successes**, every scheduled run for over a
+  month, dying at `configure-aws-credentials` before ever reaching its
+  measure step, and nobody noticed (measured by palateful-0e; run history
+  confirmed independently during rsh102's deploy verification).
+
+  So the independent path was built, ran daily, and was silently ineffective
+  for weeks. That is this story's own failure class, already realised, in
+  this repo. It argues the AC has to be stronger than "the alert fires":
+  **the alert must ARRIVE, at a human, and its own failure must be visible.**
+  A scheduled job red-lighting daily into an unread inbox is the same silent
+  void as a topic with 0 subscriptions, wearing different clothes.
+
+  **Two questions no AWS inspection can answer** (with Leo via the
+  coordinator): which channel does he actually read — everything in the
+  account today is one nobody reads — and do GitHub Actions failure
+  notifications reach him at all? The 52 unnoticed failures suggest not, and
+  if they don't, GitHub cannot be the fallback either.
+
+  **On the "don't publish failure into the channel you watch" constraint:**
+  the test has to be *break the channel, confirm the alert still arrives by
+  the independent path* — in both directions — not "the code has a second
+  path". Every path above currently fails that test, because there is no
+  second path yet.
