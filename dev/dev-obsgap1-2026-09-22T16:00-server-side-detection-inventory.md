@@ -220,10 +220,15 @@ today would answer healthy through the 10-29 rotation** while the pool's next
 fresh connection is rejected. The first draft cited this only as rsh102's
 analysis; it was untested by anyone until 0a ran it.
 
-It also explains a detail of §2 [I, 0a's reading, consistent with the data]:
+A possible explanation for a detail of §2 — **[I], and explicitly unmeasured**:
 the **17- and 19-minute** delays between rotation and first failure are about
 what a pool cycling its connections would produce before it has to open a
-fresh one. The delay is the pool's cycle time, not the rotation's.
+fresh one. 0a's experiment showed that a pooled connection survives a password
+change; it did **not** measure any pool's cycle time, and nothing rules out
+other causes of the delay: connection lifetime limits, traffic-driven
+checkouts, `pool_recycle`, or RDS-side behaviour. It stays inferred until
+someone checks prod's actual pool recycle interval against those gaps. (0a
+flagged its own first framing of this as overstated.)
 
 **What rsh102 deliberately does *not* detect** — it fails open with 200 on
 each, by design [M, from 0a's scope statement]:
@@ -279,7 +284,7 @@ noticing. G2 catches the DB instance; U3 catches the class.
 | **N1** | **Auth path reports nothing** (4f) | **Both of Leo's auth complaints.** `auth_service.dart` / `login_screen.dart` have no `ErrorReporter` calls; the restore catch wipes the session with a `debugPrint` | A handful of catch blocks → Crashlytics. (The `error_logs` mirror needs a token, so it can't take pre-auth failures.) **No fix is in flight for auth** |
 | **U3** | **No absence alert** (4f) | Silence as a failure mode — the class *both* this outage and the client mirror belong to (below) | Alert when expected telemetry (`service='client'` rows, or the `BootSmokeTest` canary) is absent for N days while `/v1/health` reports the API up |
 | **G10** | **Broken serving pool undetected after rsh102** (0a) | Pool exhaustion / dead sockets after failover | A separate pooled-path check, or a metric on request-level DB errors — not a health-probe change |
-| **G11** | **DB unreachable reads `ok`** (0a) | A total database outage | A fail-open probe needs an *alarm* on its failure mode, not a 503 — log it and alarm via G1 |
+| **G11** | **DB unreachable reads `ok`** (0a) | A total database outage | **No new code.** rsh102 already logs every fail-open branch; add one CloudWatch metric filter on the phrase **`failing open`** → alarm → G1. Verified on `feat/dev-rsh102`, four branches all use it: `db probe: database unreachable, failing open` (`db_probe.py:270`, WARNING), `db probe: unclassified failure, failing open` (`:277`), `db probe: classifier raised … failing open` (`:252`), `health check: probe raised — failing open` (`health_router.py:41`). **One filter on the shared phrase covers all four**, including failure modes nobody has named yet. Can't be wired until rsh102 deploys. rsh102 can't close this itself without contradicting itself: making UNREACHABLE fail the health check *is* the outage (0a) |
 | **G12** | **Silent-catch CI guard can't see auth** (2d) | The swallowed exceptions in N1 | `tools/no-silent-catch-check.sh` scans only `app/lib/features/**/services/` (line 29, 82); `auth_service.dart` is in `app/lib/core/`. Widen the scan. Same shape as a devx guard that checks only `dev/` specs |
 | **G9** | Unauthenticated route sweeps unexamined | 2026-09-11 and 09-14: ~65 routes each in seconds, including admin routes (405/422, all rejected) [M] | Security question, not detection — flag, don't build yet. Nothing got through |
 
@@ -367,3 +372,11 @@ priority.
   adopted the merged order. Three of those four corrections came from peers
   checking claims I had marked as findings; the fourth came from one I had
   correctly marked as unverified.
+- 2026-09-22T18:10 — G11 made concrete: no new code needed. Every fail-open
+  branch in rsh102 logs the phrase `failing open` (four sites, verified on the
+  PR branch), so one metric filter covers them all. Nearly recorded the
+  opposite: my first two searches missed `db_probe.py:270`. The first only
+  covered `services/api/src`; the second found the line but my `log|warn`
+  filter dropped it, because the message string and the `logger.warning(`
+  call are on different lines. 0a's quote was exact. Pool-cycle reading kept
+  at [I] with 0a's alternative explanations listed.
