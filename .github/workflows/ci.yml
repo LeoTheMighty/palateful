@@ -551,6 +551,10 @@ jobs:
       # JSON array of affected services — fed into the deploy-images matrix
       # so each image builds on its own runner in parallel.
       services_to_build: ${{ steps.affected.outputs.services_to_build }}
+      # tfgate1: true when the `terraform` nx project (terraform/**) is
+      # affected. Lets terraform-prod apply an infra-only change instead of
+      # skipping it — see terraform-prod.
+      terraform: ${{ steps.affected.outputs.terraform }}
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -596,6 +600,11 @@ jobs:
             echo "parser=true" >> "$GITHUB_OUTPUT"
           else
             echo "parser=false" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$AFFECTED" | grep -q "^terraform$"; then
+            echo "terraform=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "terraform=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Compose the deploy-images matrix. Two valid states:
@@ -720,19 +729,45 @@ jobs:
     # design, every image tag terraform applies is HEAD_SHA, and HEAD_SHA
     # only exists in ECR if deploy-images actually built and pushed. If
     # deploy-images is skipped (no service affected — pubspec/docs/pure
-    # terraform edits), terraform-prod also skips. Terraform-only changes
-    # land via force-deploy.yml, not via passive piggybacking on a
-    # deploy-pipeline that no longer has any image to anchor on.
-    needs: [resolve-tags, deploy-images]
+    # terraform edits), HEAD_SHA tags would point ECS at images that were
+    # never built.
+    #
+    # tfgate1 (2026-09-22): that used to mean a Terraform-only change was
+    # never applied — it merged, planned cleanly, and silently did not
+    # exist (force-deploy.yml, the documented escape hatch, rebuilds and
+    # redeploys everything and had never succeeded). Now a Terraform-only
+    # change (deploy-images skipped AND the terraform project affected)
+    # applies against the image tags production is ACTUALLY running,
+    # resolved from AWS by tools/resolve-deployed-image-tags.sh. No image
+    # moves, so the ECR constraint above still holds.
+    #
+    # `!cancelled()` is load-bearing: a job whose `needs` include a skipped
+    # job is itself skipped unless its `if` contains a status function —
+    # without it this job would still skip in exactly the case it exists
+    # for. It does NOT loosen the failure path: a failed or cancelled
+    # deploy-images is neither 'success' nor 'skipped', so terraform-prod
+    # still stays off.
+    needs: [detect-changes, resolve-tags, deploy-images]
     if: >-
+      !cancelled() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
-      needs.deploy-images.result == 'success'
+      needs.resolve-tags.result == 'success' &&
+      (needs.deploy-images.result == 'success' ||
+       (needs.deploy-images.result == 'skipped' &&
+        needs.detect-changes.outputs.terraform == 'true'))
     environment: production
     env:
-      API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
-      WORKER_TAG: ${{ needs.resolve-tags.outputs.worker_tag }}
-      MIGRATOR_TAG: ${{ needs.resolve-tags.outputs.migrator_tag }}
-      PARSER_TAG: ${{ needs.resolve-tags.outputs.parser_tag }}
+      # 'success' → images were just built under HEAD_SHA, use them.
+      # anything else (only 'skipped' can reach here) → Terraform-only
+      # change; apply against the tags production is running.
+      #
+      # The four *_TAG variables are deliberately NOT set here. They are
+      # written once, by the "Resolve image tags" step, to $GITHUB_ENV.
+      # Setting them at job level too would make the Terraform-only path
+      # depend on whether $GITHUB_ENV can override a job-level `env:` value
+      # — and if it can't, terraform would silently get HEAD_SHA tags for
+      # images that were never built. One writer, no precedence question.
+      IMAGES_BUILT: ${{ needs.deploy-images.result == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -753,6 +788,44 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # tfgate1: the single writer of API_TAG / WORKER_TAG / MIGRATOR_TAG /
+      # PARSER_TAG for every later step (plan, apply, parser drift check).
+      #   images built   → HEAD_SHA tags from resolve-tags (unchanged path)
+      #   Terraform-only → the tags production is running, from AWS. Never
+      #                    HEAD_SHA: those images were not built.
+      # The resolver fails loudly on any tag that isn't a 40-hex SHA — a
+      # blank tag would plan an image change, the one thing this path must
+      # not do.
+      - name: Resolve image tags
+        env:
+          HEAD_API_TAG: ${{ needs.resolve-tags.outputs.api_tag }}
+          HEAD_WORKER_TAG: ${{ needs.resolve-tags.outputs.worker_tag }}
+          HEAD_MIGRATOR_TAG: ${{ needs.resolve-tags.outputs.migrator_tag }}
+          HEAD_PARSER_TAG: ${{ needs.resolve-tags.outputs.parser_tag }}
+        run: |
+          if [ "$IMAGES_BUILT" = "true" ]; then
+            {
+              echo "API_TAG=$HEAD_API_TAG"
+              echo "WORKER_TAG=$HEAD_WORKER_TAG"
+              echo "MIGRATOR_TAG=$HEAD_MIGRATOR_TAG"
+              echo "PARSER_TAG=$HEAD_PARSER_TAG"
+            } >> "$GITHUB_ENV"
+            echo "Images built this run — applying HEAD_SHA tags."
+          else
+            echo "::notice title=Terraform-only apply::No images were built; applying against the image tags production is running."
+            tools/resolve-deployed-image-tags.sh deployed.env
+            {
+              while IFS='=' read -r k v; do
+                case "$k" in
+                  api_tag)      echo "API_TAG=$v" ;;
+                  worker_tag)   echo "WORKER_TAG=$v" ;;
+                  migrator_tag) echo "MIGRATOR_TAG=$v" ;;
+                  parser_tag)   echo "PARSER_TAG=$v" ;;
+                esac
+              done < deployed.env
+            } >> "$GITHUB_ENV"
+          fi
 
       - name: Terraform init (prod)
         run: terraform init -backend-config=../../backend-prod.hcl
