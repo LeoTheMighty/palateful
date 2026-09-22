@@ -42,6 +42,12 @@ noise this invites.
       from `tools/resolve-deployed-image-tags.sh` (tfgate1), which reads the
       running task and job definitions. That's the same input CI's gated apply
       uses, so a local plan and CI's plan share one instrument.
+- [ ] **Re-plan from a freshly rebased branch** (palateful-4f). Pinned CLI and
+      live tags are not sufficient. 4f's first re-plan of #38 proposed
+      **removing `log_connections = 1`**, because its tree predated #42 — the
+      plan would have quietly reverted merged work and looked like ordinary
+      drift. Under auto-apply, a stale branch doesn't just mis-report; it
+      reverts. Rebase, then plan, then merge, in that order.
 - [ ] **Local plans must use the pinned version too.** A 1.4.2 plan against
       state written by 1.16.3 reported **6 spurious in-place updates**
       (ACM cert, ElastiCache, Redis SSM parameter, the **RDS instance**, two
@@ -69,3 +75,8 @@ noise this invites.
   verified the six zero-diffs, but both plans came from the same wrong-version
   CLI. **Two readings that share one instrument error agree on the error.
   Independence means independent instruments, not independent people.**
+- 2026-09-23T00:45 — added the fresh-rebase requirement (4f). Three things are
+  now needed for a trustworthy local plan: the pinned CLI, live image tags, and
+  an up-to-date branch. Each was learned by one of them producing a confident,
+  wrong plan: phantom drift, a four-service rollback, and a silent revert of
+  merged work.
