@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-22T19:00:00-06:00
 title: Terraform-only changes merge cleanly and are never applied
 from: dev/dev-obsgap1-2026-09-22T16:00-server-side-detection-inventory.md
-status: in-progress
+status: done
 owner: palateful-0e
 branch: feat/dev-tfgate1
 ---
@@ -80,17 +80,32 @@ every undeployed change. It has run **twice (2026-04-16) and failed both times**
     `tools/`) affects **no** project, so merging it triggers no deploy and no
     apply. A Terraform-only file affects exactly `terraform`. Control: a
     service file affects `api`.
-  - **Baseline drift, the AC:** a read-only `terraform plan -lock=false` at
-    the deployed tags gives *0 add, 6 change, 0 destroy*. **No ECS task
-    definition, service or Batch job definition appears**, which confirms the
-    resolver matches what is applied. Diffing the six from the JSON plan:
-    **before == after on every attribute, and nothing is unknown after apply.**
-    They are zero-diff updates (ACM cert, ElastiCache RG, Redis SSM param, RDS
-    instance, two secret versions) that change no AWS resource, so nothing is
-    worse than 0a's baseline. State was written by Terraform 1.4.2, the same
-    version as the local run, so version skew isn't the cause. Providers are
-    not locked (no `.terraform.lock.hcl` is committed), so each CI run resolves
-    `aws ~> 5.0` fresh.
+  - **Baseline drift, the AC — the first answer here was WRONG; corrected
+    2026-09-23.** It read: *"0 add, 6 change, 0 destroy … zero-diff updates …
+    State was written by Terraform 1.4.2, the same version as the local run,
+    so version skew isn't the cause."* **Version skew was exactly the cause.**
+    - **There is no baseline drift.** Under Terraform **1.16.3**, the version
+      CI runs, a read-only plan at the deployed tags on plain `main` is
+      **`No changes. Your infrastructure matches the configuration.`**
+    - The six in-place updates (ACM cert, ElastiCache RG, Redis SSM param,
+      **RDS instance**, two secret versions) are what **Terraform 1.4.2**
+      plans against state written by 1.16.3. Before, after and sensitivity are
+      identical on all six; they vanish under 1.16.3.
+    - **How the wrong claim was made:** `terraform state pull` **re-stamps the
+      local CLI's version** when it serializes, so it reported "1.4.2" — my own
+      CLI, not the writer. The **raw** S3 object says `1.16.3`. Read the writer
+      with `aws s3 cp s3://palateful-terraform-state/prod/terraform.tfstate - |
+      jq .terraform_version`, never `state pull`.
+    - **Corroborated by CI, not just locally:** #29's real `terraform-prod`
+      (same provider v5.100.0) planned `3 add, 3 change, 3 destroy` — all
+      image-driven — and **never touched the six**.
+    - **palateful-4f independently "confirmed" the six and was also wrong**,
+      because both plans came from the same 1.4.2 CLI. **Two readings sharing
+      one instrument error agree on the error.**
+    - What stands: **no ECS task definition, service or Batch job definition
+      appears**, confirming the resolver matches what is applied. Providers
+      are not locked (no `.terraform.lock.hcl`), so each CI run resolves
+      `aws ~> 5.0` fresh; today 5.100.0. See **tfpin1**.
 - phase 4: single-pass adversarial review of the `ci.yml` diff. **1 HIGH, fixed:**
   the first draft set the four `*_TAG` values in the job-level `env:` *and*
   overrode them from a step via `$GITHUB_ENV`. If a job-level `env:` value
@@ -112,8 +127,28 @@ every undeployed change. It has run **twice (2026-04-16) and failed both times**
     fails on checksum.
   - **The CI IAM user has `IAMFullAccess` + `PowerUserAccess`**, which is
     effectively admin, on a public repo.
-- **Proof plan:** merging this PR changes nothing in prod (verified above).
-  The proof is the **next** Terraform-only merge actually creating a resource.
-  `alrt1` (`feat/dev-alrt1`, read-only plan: 2 add / 6 zero-diff / 0 destroy)
-  is the planned first test. It is not done until `palateful-prod-alerts`
-  exists in AWS.
+- **PROVEN 2026-09-23 — `done`.** Merging #36 changed nothing in prod, as
+  predicted (its main run 35759724879 skipped `terraform-prod`; verified it
+  skipped for the *right* reason, `Affected projects:` empty → `terraform=false`,
+  not a missing output). Then **alrt1 (`b1986ee5`) became the first
+  Terraform-only change ever applied by this repo's CI.** Run **35764133052**:
+  1. `detect-changes` → **`Affected projects: terraform`**
+  2. `deploy-images` → **skipped**
+  3. `terraform-prod` → **ran**, and used the **deployed** tag:
+     `api_tag=8d6b1329…` while HEAD was `b1986ee5`. This is the branch that had
+     never executed, and the one that would have pointed ECS at an unbuilt
+     image. Checking the tag against HEAD is the check that catches a rollback.
+  4. **`Apply complete! Resources: 2 added, 0 changed, 0 destroyed.`** — exactly
+     the pre-merge plan
+  5. **`arn:aws:sns:us-east-1:592349850338:palateful-prod-alerts` exists in
+     AWS**, with its CloudWatch publish policy.
+
+  Before this, a Terraform-only change merged, planned cleanly and silently did
+  nothing — the mechanism that stranded `e74303f3`'s health-probe fix behind
+  the April freeze while the credential outage ran for three more months.
+- **Landed by hand, not via `devx devx-helper claim`.** The helper creates the
+  worktree and branch as part of claiming, and both already existed from
+  building the fix, so it would have failed at its worktree stage. There is
+  therefore **no claim commit** for tfgate1; the spec frontmatter and the
+  DEV.md row were set directly. Recorded so the next reader doesn't read the
+  missing claim as drift.
