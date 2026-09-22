@@ -1,9 +1,27 @@
+import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/api_client.dart';
+
+/// True when [e] is the denial our Auth0 Action raises after linking a
+/// second provider to an existing account.
+///
+/// Checks the exception's message AND its details: on an `access_denied`
+/// redirect Auth0 carries the Action's text as `error_description`, and which
+/// of the two fields the SDK lands it in has not been observed on a device —
+/// this branch was unreachable until now. login() reports the exception, so
+/// the first real instance shows the actual shape.
+@visibleForTesting
+bool isAccountLinkedError(Object e) {
+  final text =
+      (e is WebAuthenticationException ? '${e.message} ${e.details}' : '$e')
+          .toLowerCase();
+  return text.contains('account has been linked') ||
+      text.contains('accounts have been linked');
+}
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -61,22 +79,21 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isLoading = false);
         context.go('/');
       } else {
-        setState(() {
-          _error = 'Login failed. Please try again.';
-          _isLoading = false;
-        });
+        // `login()` returns false only when the user dismissed the sign-in
+        // sheet. That's their choice, not a failure — no error message.
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       if (!mounted) return;
-
-      final errorMsg = e.toString().toLowerCase();
-      final isAccountLinked = errorMsg.contains('account has been linked') ||
-          errorMsg.contains('accounts have been linked');
-
+      // Reachable since login() stopped swallowing. The account-linked branch
+      // is the case our Auth0 Action produces on purpose (`api.access.deny()`
+      // after linking a second provider on the same email): the next sign-in
+      // succeeds, so say so rather than calling it a failure.
       setState(() {
-        _error = isAccountLinked
-            ? 'Your accounts have been linked! Please sign in again.'
-            : 'An error occurred: $e';
+        _error =
+            isAccountLinkedError(e)
+                ? 'Your accounts have been linked! Please sign in again.'
+                : 'Login failed. Please try again.';
         _isLoading = false;
       });
     }
@@ -237,20 +254,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 8),
 
-                // Dev token input toggle
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _showTokenInput = true;
-                    });
-                  },
-                  child: Text(
-                    'Use access token instead (for testing)',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                // Dev token input toggle. Debug builds only: it was shipping
+                // to prod, where a user sees "for testing" on the sign-in
+                // screen. `flutter test` runs in debug, so widget tests keep it.
+                if (kDebugMode)
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _showTokenInput = true;
+                      });
+                    },
+                    child: Text(
+                      'Use access token instead (for testing)',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
               ],
               if (_showTokenInput) ...[
                 Text(

@@ -28,16 +28,30 @@ class AuthService extends ChangeNotifier {
   // Web-specific auth instance
   dynamic _auth0Web;
 
-  AuthService() {
+  /// [credentialsManager] is a test seam, passed straight through to the
+  /// SDK's own `Auth0(..., credentialsManager:)` parameter. Production leaves
+  /// it null and gets the SDK default.
+  AuthService({CredentialsManager? credentialsManager}) {
     if (kIsWeb) {
       _auth0Web = platform.createAuth0Web(
         Environment.auth0Domain,
         Environment.auth0ClientId,
       );
     } else {
-      _auth0 = Auth0(Environment.auth0Domain, Environment.auth0ClientId);
+      _auth0 = Auth0(
+        Environment.auth0Domain,
+        Environment.auth0ClientId,
+        credentialsManager: credentialsManager,
+      );
     }
   }
+
+  /// Renew any access token with less than this left. Shared by startup
+  /// restore and [needsRefresh] so the two can never disagree about when a
+  /// token is "due" — they used to (restore renewed only once already
+  /// expired, `needsRefresh` fired at 5 min), and the gap between them sent
+  /// every cold start in that window down the raw renewal path.
+  static const int _refreshBufferSeconds = 300;
 
   /// Check for and restore persisted credentials on app startup
   Future<bool> tryRestoreCredentials() async {
@@ -49,20 +63,55 @@ class AuthService extends ChangeNotifier {
       debugPrint('AuthService.tryRestoreCredentials: hasValidCredentials=$hasValid');
 
       if (hasValid) {
-        _credentials = await _auth0!.credentialsManager.credentials();
+        // minTtl makes the MANAGED manager renew anything inside the buffer
+        // here, at restore — instead of handing back a nearly-expired token
+        // for `needsRefresh` to renew moments later through a second path.
+        _credentials = await _auth0!.credentialsManager.credentials(
+          minTtl: _refreshBufferSeconds,
+        );
         _userProfile = _credentials?.user;
         debugPrint('AuthService: Restored credentials from secure storage');
         notifyListeners();
         return true;
       }
-    } on CredentialsManagerException catch (e) {
+    } on CredentialsManagerException catch (e, st) {
       debugPrint('AuthService.tryRestoreCredentials error: $e');
-      if (e.isTokenRenewFailed || e.isNoRefreshTokenFound || e.isNoCredentialsFound) {
+      // Wipe the saved credentials ONLY when they are provably unusable:
+      // nothing stored, or no refresh token to renew with.
+      //
+      // Deliberately NOT on `isTokenRenewFailed`. The SDK wraps *every*
+      // failure of the renewal request as RENEW_FAILED — a revoked token,
+      // but equally no connectivity, a timeout, or an Auth0 5xx
+      // (Auth0.swift CredentialsManager: `.failure(let error)` →
+      // `CredentialsManagerError(code: .renewFailed, cause: error)`). Clearing
+      // on it meant a flaky connection at launch, with an expired access
+      // token, permanently deleted a perfectly good refresh token and forced
+      // a fresh login — "credentials don't hold", and random because it
+      // depends on the network at the moment the app opens. Prod agrees: 30
+      // days of API logs show zero 401s, so this fails on-device before any
+      // request is made. Keeping the credentials costs at most one more
+      // failed renewal next launch if the token really was revoked; a new
+      // login overwrites them anyway.
+      final unusable = e.isNoRefreshTokenFound || e.isNoCredentialsFound;
+      if (unusable) {
         await _auth0!.credentialsManager.clearCredentials();
-        debugPrint('AuthService: Cleared invalid credentials');
+        debugPrint('AuthService: Cleared unusable credentials');
       }
-    } catch (e) {
+      // Crashlytics, not error_logs: the error_logs mirror needs a signed-in
+      // user, which by definition there isn't here. The `code` and
+      // `details` carry the renewal's underlying cause, which is what tells
+      // a transient failure apart from a revoked token.
+      ErrorReporter.report(e, st, area: 'auth', operation: 'restoreCredentials', extras: {
+        'code': e.code,
+        'renewFailed': e.isTokenRenewFailed,
+        'noRefreshToken': e.isNoRefreshTokenFound,
+        'noCredentials': e.isNoCredentialsFound,
+        'cleared': unusable,
+        'details': e.details.toString(),
+      });
+    } catch (e, st) {
       debugPrint('AuthService.tryRestoreCredentials error: $e');
+      ErrorReporter.report(e, st, area: 'auth', operation: 'restoreCredentials');
     }
     return false;
   }
@@ -147,7 +196,9 @@ class AuthService extends ChangeNotifier {
           _credentials = credentials;
           _manualToken = credentials.accessToken;
           _userProfile = credentials.user;
-          debugPrint('Stored token: ${_manualToken?.substring(0, 20)}...');
+          // No token prefix: debugPrint is not stripped from release
+          // builds, and on web it lands in the browser console.
+          debugPrint('Stored token from onLoad');
           notifyListeners();
         }
       } catch (e) {
@@ -162,6 +213,10 @@ class AuthService extends ChangeNotifier {
   /// Log in with Auth0.
   /// Optionally pass [connection] to skip Universal Login and go directly
   /// to a social provider (e.g. 'google-oauth2', 'apple').
+  ///
+  /// Returns true on success and false when the user cancelled. Any other
+  /// failure is reported and **rethrown**, so the caller can tell the user
+  /// what actually happened instead of a generic "Login failed".
   Future<bool> login({String? connection}) async {
     try {
       _isLoading = true;
@@ -184,22 +239,40 @@ class AuthService extends ChangeNotifier {
           },
         );
         _userProfile = _credentials?.user;
-
-        // Store credentials for persistence across app restarts
-        if (_credentials != null) {
-          await _auth0!.credentialsManager.storeCredentials(_credentials!);
-          debugPrint('AuthService: Stored credentials to secure storage');
-        }
+        // No explicit storeCredentials: webAuthentication() defaults to
+        // useCredentialsManager: true, so the SDK's login() has already
+        // persisted these. A second store here was redundant, and the SDK
+        // documents store as not thread-safe against its managed renewals.
 
         _isLoading = false;
         notifyListeners();
         return true;
       }
-    } catch (e) {
-      debugPrint('Login error: $e');
+    } catch (e, st) {
       _isLoading = false;
       notifyListeners();
-      return false;
+      // Dismissing the sign-in sheet is a normal choice, not a failure: no
+      // error message, nothing reported.
+      if (e is WebAuthenticationException && e.isUserCancelledException) {
+        debugPrint('Login cancelled by user');
+        return false;
+      }
+      // Everything else used to be swallowed into `false`, so every failure —
+      // an Auth0 Action's deliberate `api.access.deny()` on account linking,
+      // a network error, ID-token validation — showed the same "Login
+      // failed", left no trace, and made the real condition unobservable
+      // ("random"). It also made the login screen's own handler for the
+      // account-linked message unreachable from the day it was written
+      // (a2aa52cb). Report it, then let the caller show the right message.
+      debugPrint('Login error: $e');
+      ErrorReporter.report(
+        e,
+        st,
+        area: 'auth',
+        operation: 'login',
+        extras: {'connection': connection ?? 'universal'},
+      );
+      rethrow;
     }
   }
 
@@ -322,29 +395,46 @@ class AuthService extends ChangeNotifier {
     if (_manualToken != null) return false;
     if (_credentials == null) return true;
     final expiresAt = _credentials!.expiresAt;
-    return expiresAt.isBefore(DateTime.now().add(const Duration(minutes: 5)));
+    return expiresAt.isBefore(
+      DateTime.now().add(const Duration(seconds: _refreshBufferSeconds)),
+    );
   }
 
   /// Refresh the access token
   Future<bool> refreshToken() async {
     if (kIsWeb) return false;
-    if (_credentials?.refreshToken == null) return false;
+    if (_auth0 == null) return false;
 
     try {
-      _credentials = await _auth0!.api.renewCredentials(
-        refreshToken: _credentials!.refreshToken!,
-      );
-
-      // Store the refreshed credentials
-      if (_credentials != null) {
-        await _auth0!.credentialsManager.storeCredentials(_credentials!);
-        debugPrint('AuthService: Stored refreshed credentials');
-      }
-
+      // Renew through the MANAGED credentials manager — never the raw
+      // `_auth0.api.renewCredentials`, which this used to call before
+      // storing the result by hand. Three reasons, in order of relevance to
+      // this tenant (Refresh Token Rotation ON, 0 s overlap):
+      //  1. Serialization. The managed manager queues concurrent renewals.
+      //     With rotation on and no overlap, two renewals presenting the same
+      //     refresh token is breach detection: Auth0 revokes the whole token
+      //     family and the user is logged out. The raw path could race the
+      //     manager's own renewal at startup.
+      //  2. Persistence. It stores the result itself; the SDK documents a
+      //     manual store afterwards as not thread-safe against it.
+      //  3. Latent, not live here: the raw call decodes `/oauth/token` as-is,
+      //     so if rotation were ever turned OFF the response would carry no
+      //     refresh token and storing it would wipe the saved one. The
+      //     managed renew backfills (Auth0.swift CredentialsManager:
+      //     `credentials.refreshToken ?? refreshToken`).
+      // What this does NOT fix: a renewal whose response is lost after Auth0
+      // has already rotated. The app keeps the old token, and presenting it
+      // with 0 s overlap revokes the family. Only a non-zero Rotation Overlap
+      // Period in the Auth0 dashboard covers that.
+      _credentials = await _auth0!.credentialsManager.renewCredentials();
+      _userProfile = _credentials?.user ?? _userProfile;
       notifyListeners();
       return true;
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('Token refresh error: $e');
+      // Reported: a failed renewal is what logs a user out early, and until
+      // now it left no trace anywhere.
+      ErrorReporter.report(e, st, area: 'auth', operation: 'refreshToken');
       return false;
     }
   }

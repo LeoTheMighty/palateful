@@ -34,7 +34,9 @@ Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
     final credentials = await web.onLoad(audience: audience);
     debugPrint('onLoad credentials: ${credentials != null}');
     if (credentials != null) {
-      debugPrint('Got access token: ${credentials.accessToken.substring(0, 20)}...');
+      // No token prefix — debugPrint ships in release and prints to the
+      // browser console.
+      debugPrint('Got access token');
     }
     return credentials;
   } catch (e) {
@@ -46,7 +48,7 @@ Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
       try {
         debugPrint('Had code in URL, trying to get stored credentials...');
         final storedCredentials = await web.credentials(audience: audience);
-        debugPrint('Got stored credentials: ${storedCredentials.accessToken.substring(0, 20)}...');
+        debugPrint('Got stored credentials');
         return storedCredentials;
       } catch (credError) {
         debugPrint('Failed to get stored credentials: $credError');
