@@ -94,9 +94,12 @@ jobs:
 
           # A VERDICT IS NOT THE SAME AS A FAILURE (G3, dfrcp1).
           #
-          # This step now RECORDS its verdict and leaves the job's
-          # pass/fail to the `verdict` step below, so the notify step in
-          # between can tell the two failure shapes apart:
+          # This step still exits non-zero on a red verdict — `tools/
+          # deploy-freshness-self-test.sh` extracts this body and asserts
+          # exactly that, and the exit code IS the check. What's new is
+          # that it RECORDS the verdict first, so the notify step below
+          # (which runs on `always()`, because this step has failed by
+          # then) can tell the two failure shapes apart:
           #
           #   verdict=stale   — measured prod, it is too old. Notify.
           #   verdict=unknown — measured prod, the tag isn't a commit here.
@@ -115,6 +118,14 @@ jobs:
           # an expected heartbeat), and it is the reason absal1 must land.
           # Do not "fix" this by making the notify step run without a
           # verdict; it would publish nothing and hide the gap.
+
+          # `tools/deploy-freshness-self-test.sh` extracts this step's body
+          # and runs it OUTSIDE Actions, where $GITHUB_OUTPUT does not exist
+          # and `set -u` turns a bare reference into a fatal error. Writing
+          # through this helper keeps the step runnable in both places — and
+          # keeps the self-test able to check the logic, which is the whole
+          # reason that harness exists.
+          emit() { printf '%s\n' "$@" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
           # THE FAMILY-SHORTCUT TRAP — do not "simplify" this to
           #   aws ecs describe-task-definition --task-definition palateful-api-prod
@@ -147,11 +158,9 @@ jobs:
             # commit here means unknown provenance — itself alarming, so fail.
             if ! git cat-file -e "${tag}^{commit}" 2>/dev/null; then
               echo "::error::Deployed tag '$tag' is not a commit in this repository — cannot date the deployment."
-              {
-                echo "verdict=unknown"
-                echo "detail=Deployed tag '${tag}' is not a commit in this repository — cannot date the deployment. Image: ${image}"
-              } >> "$GITHUB_OUTPUT"
-              exit 0
+              emit "verdict=unknown" \
+                   "detail=Deployed tag '${tag}' is not a commit in this repository — cannot date the deployment. Image: ${image}"
+              exit 1
             fi
             deployed_ct=$(git log -1 --format=%ct "$tag")
             gap_days=$(( ($(date +%s) - deployed_ct) / 86400 ))
@@ -159,23 +168,21 @@ jobs:
           fi
 
           echo "Gap: ${gap_days} day(s); threshold: ${MAX_GAP_DAYS} day(s)."
-          echo "gap_days=${gap_days}" >> "$GITHUB_OUTPUT"
+          emit "gap_days=${gap_days}"
           if [ "$gap_days" -gt "$MAX_GAP_DAYS" ]; then
             echo "::error::Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
-            {
-              echo "verdict=stale"
-              echo "detail=Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
-            } >> "$GITHUB_OUTPUT"
-            exit 0
+            emit "verdict=stale" \
+                 "detail=Prod is running an image ${gap_days} days old (threshold ${MAX_GAP_DAYS}d) — a deploy freeze is in progress. Check ci.yml deploy jobs and the production environment reviewer gate."
+            exit 1
           fi
           echo "Prod image is fresh (${gap_days}d <= ${MAX_GAP_DAYS}d)."
-          echo "verdict=fresh" >> "$GITHUB_OUTPUT"
+          emit "verdict=fresh"
 
       # Publish the verdict BEFORE failing the job, so a red verdict reaches
       # a human instead of sitting in a run nobody opens. Guarded on a
       # verdict actually existing: see the no-verdict note above.
       - name: Notify on a red verdict
-        if: steps.measure.outputs.verdict == 'stale' || steps.measure.outputs.verdict == 'unknown'
+        if: always() && (steps.measure.outputs.verdict == 'stale' || steps.measure.outputs.verdict == 'unknown')
         env:
           VERDICT: ${{ steps.measure.outputs.verdict }}
           DETAIL: ${{ steps.measure.outputs.detail }}
@@ -210,10 +217,3 @@ jobs:
 
           echo "Published '${VERDICT}' verdict to ${TOPIC_NAME}."
 
-      # The job's own pass/fail, kept separate from the measurement so the
-      # notify step above sits between them.
-      - name: Fail the check on a red verdict
-        if: steps.measure.outputs.verdict != 'fresh'
-        run: |
-          echo "::error::deploy-freshness verdict: ${{ steps.measure.outputs.verdict || 'none (no measurement was taken — see the step above)' }}"
-          exit 1

@@ -104,3 +104,13 @@ pool or an unreachable DB, so after it lands a total DB outage reads
   (measured: `aws sns list-subscriptions-by-topic` returns empty), so both
   alarms currently publish into a void. Filed in MANUAL.md — Leo must subscribe
   by hand before either detector can be verified end to end.
+- 2026-09-22T22:10 — CI caught what my local gates missed: `tools/deploy-freshness-self-test.sh`
+  runs in the `lint` job, and I never ran it. Two real defects, both mine:
+  (1) `$GITHUB_OUTPUT` is unbound when the harness runs the extracted step body
+  outside Actions under `set -u` — now written through an `emit` helper that
+  falls back to /dev/null; (2) deeper: the harness pins THE STEP BODY's exit
+  code as the verdict, and my restructure had moved the failure to a later
+  step, so a stale prod exited 0. Restored the step's own `exit 1` and moved
+  the notify step to `always()`, which reads outputs written before the
+  failure. That is a better shape anyway: the exit code stays the check, and
+  notification is additive rather than load-bearing. Self-test 9/9 green.
