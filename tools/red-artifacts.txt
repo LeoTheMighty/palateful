@@ -48,4 +48,4 @@
 # would also drop the passing tests it replaced, and `services/api`
 # pins `fail_under = 100`. Add a sibling file instead.
 
-libraries/utils/test/test_db_credential_provider.py:rsh105:secrets-manager-password-provider — SecretPasswordProvider / resolve_password_provider / register_rotating_credentials + the boto3 seam not implemented yet (rationale narrowed by rsh102, which created db_credentials.py itself for is_auth_error; the module now exists, the provider surface does not)
+libraries/utils/test/test_db_credential_wiring.py:rsh106:engine-site-registration-and-iam — database.py (3 engine sites) and libraries/agent runner.py/tasks.py do not call register_rotating_credentials yet (split out of test_db_credential_provider.py by rsh105, whose provider surface is GREEN and deliberately wires no call sites)
