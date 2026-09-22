@@ -47,18 +47,18 @@ Measured on `main`:
 
 ## Acceptance criteria
 
-- [ ] An import that exists **only** as a parser batch (pre-fan-out)
+- [x] An import that exists **only** as a parser batch (pre-fan-out)
       appears in the Imports tab's In Progress section. Either the tab
       reads `/v1/parser/batches` alongside jobs/items, or one server
       endpoint unions them — decide in the spike below, don't assume.
-- [ ] Counted and listed come from **one** source of truth. After the fix,
+- [x] Counted and listed come from **one** source of truth. After the fix,
       no state exists where the strip's count is non-zero and the Imports
       tab renders nothing. Assert this directly in a test, not by
       inspection.
-- [ ] An item in `pending` / `extracting` / `matching` whose parent job is
+- [x] An item in `pending` / `extracting` / `matching` whose parent job is
       NOT in `_inProgressJobStatuses` renders somewhere. Today it renders
       nowhere.
-- [ ] **`partial` cannot park a count as in-progress forever.** It is in
+- [x] **`partial` cannot park a count as in-progress forever.** It is in
       `isActive` and absent from `isTerminal`
       (`app/lib/features/recipes/add_recipe/models/import_batch.dart:48-58`),
       so a batch that stops there counts as in-progress indefinitely — a
@@ -66,7 +66,7 @@ Measured on `main`:
       ages out, or it renders as something the user can act on. A count
       that cannot reach zero is a permanent false badge and will be
       rediscovered as a new bug otherwise.
-- [ ] Tests close the gap that let this ship: **no existing test covers a
+- [x] Tests close the gap that let this ship: **no existing test covers a
       pending import at all.** `app/test/features/activity/imports_tab_test.dart`
       uses job status `processing` only; nothing covers job `pending` /
       `extracting` / `matching` / `awaiting_parser`, nothing covers item
@@ -98,3 +98,8 @@ Measured on `main`:
 ## Status log
 - 2026-09-22T22:00 — filed from the scoping pass on Leo's report; count/list table mismatch measured on main, split into impvis1 / acttab1 / cntlist1 with leonidbelyi-41, Leo chose to file all three and start here. Blocked-by: —.
 - 2026-09-22T22:20 — claimed for /devx (hand-claim: main is a serialized deploy lane, so the claim commit lands on feat/dev-impvis1, not main — coordinator leonidbelyi-41). Base: 2afd622e.
+- 2026-09-22T22:50 — phase 2: spec ACs direct (v2 native); 5 ACs; workstream=none; red-artifacts=none.
+- 2026-09-22T23:10 — phase 3: client-side union (spike outcome — the batches endpoint already returns each batch with its ImportJobs, so no new endpoint and no API deploy). Tab reads active batches, synthesises In Progress rows for pre-fan-out ones, dedups against listed jobs; stragglers collapse per job; `isInFlightAt` adds a 2h grace so a batch that never fans out stops counting.
+- 2026-09-22T23:30 — phase 4: single-agent adversarial review (read-only, diff 357 lines); 7 findings (2 HIGH, 1 MED-HIGH, 2 MED, 2 LOW); ALL fixed in-place. Load-bearing fix: the straggler branch fired on `awaiting_review`, which `create_recipe_task.py:465-483` sets while a job is STILL RUNNING, so a 50-URL bulk import would have rendered 48 separate rows — it now collapses to one row per job and skips cancelled imports. Second: synthetic `batch:`/`item:` ids were being pushed at a UUID-typed route (500 + an error_logs row per tap, on the row the user is most likely to tap); batch rows are now non-openable and straggler rows carry the real job id. Re-review of the changed hunks clean.
+- 2026-09-22T23:35 — RED honesty: of the 5 original tests, 2 fail without the fix (pre-fan-out batch, pending item under a finished job); the other 3 are guards that passed before. The 4 added in review (grace expiry, straggler collapse, cancelled leftovers, fixture-shape correction) all fail without their fixes.
+- 2026-09-22T23:40 — phase 5: flutter test 1639 passed, flutter analyze 0 errors, no-silent-catch-check OK. Filed debug/debug-impprog1 (blue rows always read "Importing 0 of N" — the list endpoint never sends `processed_items`, and the old fixtures invented it).

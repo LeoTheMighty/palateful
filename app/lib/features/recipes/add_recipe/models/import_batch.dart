@@ -1,6 +1,8 @@
 // Client-side model mirroring the response of `GET /v1/parser/batches/{id}`
 // from story 13.12.
 
+import '../../../../core/state/import_job_statuses.dart';
+
 class ImportBatch {
   final String id;
   final String status;
@@ -57,19 +59,17 @@ class ImportBatch {
         'failed',
       }.contains(status);
 
-  /// ImportJob statuses that mean the job has stopped moving.
+  /// How long a batch that has produced no ImportJobs may keep counting as
+  /// in flight.
   ///
-  /// Mirrors the server's vocabulary at
-  /// `libraries/utils/utils/models/import_job.py:37-38`. `awaiting_review`
-  /// counts as terminal *for the batch*: the import is done and the ball is
-  /// in the user's court, and the Imports tab already shows it in Needs
-  /// Review — so the batch has nothing left to contribute.
-  static const terminalImportJobStatuses = {
-    'completed',
-    'failed',
-    'cancelled',
-    'awaiting_review',
-  };
+  /// `!hasFannedOut` on its own meant "no jobs ⇒ in flight, forever", and
+  /// a batch can legitimately end with zero ImportJobs:
+  /// `parser_batch_completion.py:133-141` marks a batch `partial` and
+  /// returns without creating any when it has no `recipe_book_id` and some
+  /// OCR job failed. Nothing sweeps ParserBatch rows, so that batch would
+  /// count — and, since impvis1, render — for the life of the account.
+  /// Photo OCR finishes in minutes; hours means it is not coming.
+  static const preFanOutGrace = Duration(hours: 2);
 
   /// True once this batch has fanned out into ImportJobs.
   ///
@@ -80,17 +80,24 @@ class ImportBatch {
   bool get hasFannedOut => importJobs.isNotEmpty;
 
   /// True when at least one of this batch's ImportJobs is still moving.
-  bool get hasLiveImportJob => importJobs
-      .any((j) => !terminalImportJobStatuses.contains(j.status));
+  bool get hasLiveImportJob =>
+      importJobs.any((j) => !isJobTerminal(j.status));
 
   /// Whether this batch should be counted and shown as in-flight.
   ///
   /// Not the same as [isActive]. `partial` is in [isActive] and absent from
   /// [isTerminal], so a batch parked there counted as in-progress forever —
-  /// a badge that can never reach zero. Once a batch has fanned out, its
-  /// ImportJobs are the truth: if they have all stopped, the batch has
-  /// nothing left to report regardless of its own status.
-  bool get isInFlight => isActive && (!hasFannedOut || hasLiveImportJob);
+  /// a badge that can never reach zero. Two ways that happens, both closed
+  /// here: a batch that fanned out into jobs that have all finished (its
+  /// jobs are the truth, whatever the batch's own status says), and a batch
+  /// that never fanned out at all ([preFanOutGrace]).
+  bool isInFlightAt(DateTime now) {
+    if (!isActive) return false;
+    if (hasFannedOut) return hasLiveImportJob;
+    return now.difference(createdAt) < preFanOutGrace;
+  }
+
+  bool get isInFlight => isInFlightAt(DateTime.now());
 }
 
 class ImportBatchJob {

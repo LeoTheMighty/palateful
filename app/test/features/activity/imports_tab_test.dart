@@ -613,7 +613,9 @@ void main() {
           'status': 'running',
           'group_count': 3,
           'recipe_book_id': null,
-          'created_at': _at(0),
+          // Inside ImportBatch.preFanOutGrace (_fixtureBase is now-2h,
+          // which is exactly the boundary).
+          'created_at': _at(115),
           'completed_at': null,
           'error_message': null,
           'jobs': const [],
@@ -650,7 +652,10 @@ void main() {
             'status': 'processing',
             'source_type': 'photo',
             'total_items': 2,
-            'processed_items': 1,
+            // No `processed_items`: ListImportJobs.JobSummary does not send
+            // it (list_import_jobs.py), so a fixture that includes it tests
+            // a response shape production never produces. Every blue row
+            // really does read "Importing 0 of N" — filed as impprog1.
             'created_at': _at(1),
           },
         ],
@@ -681,7 +686,130 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(ImportRow), findsOneWidget);
-    expect(find.text('Importing 1 of 2'), findsOneWidget);
+    expect(find.text('Importing 0 of 2'), findsOneWidget);
+  });
+
+  testWidgets('a batch that never fanned out ages out (impvis1)',
+      (tester) async {
+    // parser_batch_completion.py:133-141 ends a batch as `partial` with NO
+    // ImportJobs when it has no recipe_book_id and an OCR job failed, and
+    // nothing sweeps ParserBatch rows. Without an age cap that batch counts
+    // — and, since this story, renders — for the life of the account.
+    final client = _FakeApiClient(
+      parserBatches: [
+        {
+          'id': 'batch-old',
+          'status': 'partial',
+          'group_count': 2,
+          'recipe_book_id': null,
+          'created_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(days: 3))
+              .toIso8601String(),
+          'completed_at': null,
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('All clear — no imports yet'), findsOneWidget);
+  });
+
+  testWidgets('stragglers collapse to ONE row per job (impvis1)',
+      (tester) async {
+    // create_recipe_task.py:465-483 flips a job to `awaiting_review` as
+    // soon as one item needs review, with the rest still `pending`. One row
+    // per straggling item turned a bulk import into dozens of rows and
+    // broke this section's job-granularity rule.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'awaiting_review': [
+          {
+            'id': 'job-bulk',
+            'status': 'awaiting_review',
+            'source_type': 'url',
+            'total_items': 6,
+            'processed_items': 1,
+            'created_at': _at(0),
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-bulk': [
+          for (var i = 0; i < 5; i++)
+            {
+              'id': 'item-$i',
+              'status': 'pending',
+              'source_type': 'url',
+              'created_at': _at(i + 1),
+            },
+          {
+            'id': 'item-review',
+            'status': 'awaiting_review',
+            'recipe_name': 'Needs a look',
+            'source_type': 'url',
+            'created_at': _at(9),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // One blue row for the five stragglers, one yellow row for the item
+    // that needs review — not five blue rows.
+    expect(find.text('Importing 0 of 5'), findsOneWidget);
+    expect(find.byType(ImportRow), findsNWidgets(2));
+  });
+
+  testWidgets('a cancelled import does not render its leftovers (impvis1)',
+      (tester) async {
+    // cancel_import_job.py:59-61 leaves the items alone. They are
+    // abandoned, not in flight — a progress ring on them would be a lie.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'cancelled': [
+          {
+            'id': 'job-x',
+            'status': 'cancelled',
+            'source_type': 'url',
+            'total_items': 3,
+            'processed_items': 0,
+            'created_at': _at(0),
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-x': [
+          {
+            'id': 'item-abandoned',
+            'status': 'pending',
+            'source_type': 'url',
+            'created_at': _at(1),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('All clear — no imports yet'), findsOneWidget);
   });
 
   testWidgets('a pending job renders In Progress (impvis1)', (tester) async {
