@@ -46,7 +46,7 @@ class _FakeApi extends ApiClient {
           'status': 'dismissed',
           'source_type': 'url',
           'archived_at': '2026-04-22T10:00:00Z',
-          'created_at': '2026-04-22T09:00:00Z',
+          'created_at': '2026-04-22T09:00:00Z',  // age-independent — provider-only test; no widget reads created_at
         },
       ],
       'next_cursor': null,

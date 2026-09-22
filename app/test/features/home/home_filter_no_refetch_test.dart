@@ -131,7 +131,7 @@ Map<String, dynamic> _recipe({
       'recipe_book_name': 'Dinners',
       'meal_type': mealType,
       'updated_at': '2026-04-01T00:00:00Z',
-      'created_at': '2026-04-01T00:00:00Z',
+      'created_at': '2026-04-01T00:00:00Z',  // age-independent
       'tags': <String>[],
     };
 

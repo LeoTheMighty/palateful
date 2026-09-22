@@ -11,6 +11,22 @@ import 'package:palateful/features/activity/providers/activity_read_provider.dar
 // irrd-7 integration test: yellow row → tap caret → expansion opens →
 // tap Review → assert GoRouter navigated to /recipes/import/review/:id.
 
+/// Base instant for every fixture timestamp in this file.
+///
+/// `ImportsTab` renders each row's `created_at` through `_formatTime`
+/// (imports_tab.dart:767), a `DateTime.now()`-relative formatter. The
+/// `awaiting_review` bucket these fixtures land in IS exempt from the
+/// 30-day cutoff at imports_tab.dart:168, so the filter can never drop
+/// them — but the rendered label still ages, so anchor it anyway.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// keep the item (originally 10:15) after its parent job (10:10) —
+/// the ordering `_byCreatedAtDesc` (imports_tab.dart:755) sorts on.
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Response<dynamic> _fakeResponse(dynamic data, {int status = 200}) => Response(
       data: data,
       requestOptions: RequestOptions(path: ''),
@@ -159,7 +175,7 @@ void main() {
             'id': 'job-r',
             'status': 'awaiting_review',
             'source_type': 'photo',
-            'created_at': '2026-04-18T10:10:00Z',
+            'created_at': _at(0),
           },
         ],
       },
@@ -173,7 +189,7 @@ void main() {
             'confidence_score': 0.62,
             'confidence_source': 'model',
             'awaiting_review_reason': 'low_confidence',
-            'created_at': '2026-04-18T10:15:00Z',
+            'created_at': _at(5),
           },
         ],
       },

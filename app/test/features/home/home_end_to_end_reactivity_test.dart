@@ -92,7 +92,7 @@ class _EndToEndApi extends ApiClient {
       'recipe_book_id': bookId,
       'meal_type': 'dinner',
       'updated_at': '2026-04-22T10:00:00Z',
-      'created_at': '2026-04-22T10:00:00Z',
+      'created_at': '2026-04-22T10:00:00Z',  // age-independent
       'tags': <String>[],
     };
     recipes = [...recipes, created];
@@ -107,7 +107,7 @@ Map<String, dynamic> _recipe({required String id, required String name}) => {
       'recipe_book_name': 'Dinners',
       'meal_type': 'dinner',
       'updated_at': '2026-04-01T00:00:00Z',
-      'created_at': '2026-04-01T00:00:00Z',
+      'created_at': '2026-04-01T00:00:00Z',  // age-independent
       'tags': <String>[],
     };
 

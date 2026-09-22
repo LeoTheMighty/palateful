@@ -27,7 +27,7 @@ Map<String, dynamic> _fakeMeResponse() => {
       'picture': null,
       'has_completed_onboarding': true,
       'default_recipe_book_id': null,
-      'created_at': '2026-01-01T00:00:00Z',
+      'created_at': '2026-01-01T00:00:00Z',  // age-independent — rendered as absolute "Member since <Month Year>"
       'username_changed_at': null,
       'pending_invitation_count': 0,
     };

@@ -73,13 +73,34 @@ void main() {
 // and the accompanying assertions above.
 // ---------------------------------------------------------------------------
 
+/// Base instant for every timestamp in this file's golden responses.
+///
+/// These fixtures live inside raw JSON string literals, so they cannot
+/// carry a Dart `// age-independent` comment without making the JSON
+/// unparseable — the escape hatch here is a computed value, not a marker.
+/// Nothing in this file compares them to `now` today (the tests only
+/// `jsonDecode` and assert on field presence/type), but these bodies are
+/// the golden shapes fed to the import/recipe surfaces that DO age:
+/// `imports_tab.dart`'s 30-day `completed`/`skipped` cutoff and the
+/// relative-date formatters (`import_row_expansion.dart:214`,
+/// `stage_timeline.dart:226`). Anchoring to `now` keeps the goldens
+/// replayable against those surfaces instead of rotting out of range.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// preserve the original fixtures' relative ordering — the dismissed
+/// import item was created five minutes before it was dismissed.
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Map<String, dynamic> _dismissGoldenResponse() =>
     jsonDecode(_dismissGoldenJson) as Map<String, dynamic>;
 
-const _dismissGoldenJson = '''
+final _dismissGoldenJson = '''
 {
   "item_id": "imp-123",
-  "dismissed_at": "2026-04-22T10:00:00+00:00",
+  "dismissed_at": "${_at(5)}",
   "job_dismissed": false,
   "item": {
     "id": "imp-123",
@@ -90,7 +111,7 @@ const _dismissGoldenJson = '''
     "error_message": "parser_timeout",
     "needs_review": false,
     "ai_cost_cents": 0,
-    "created_at": "2026-04-22T09:55:00+00:00"
+    "created_at": "${_at(0)}"
   }
 }
 ''';
@@ -98,7 +119,7 @@ const _dismissGoldenJson = '''
 Map<String, dynamic> _favoriteRecipeGoldenResponse() =>
     jsonDecode(_favoriteRecipeGoldenJson) as Map<String, dynamic>;
 
-const _favoriteRecipeGoldenJson = '''
+final _favoriteRecipeGoldenJson = '''
 {
   "id": "rec-abc",
   "name": "Test Recipe",
@@ -117,8 +138,8 @@ const _favoriteRecipeGoldenJson = '''
   "ingredients": [],
   "steps": [],
   "notes": [],
-  "created_at": "2026-04-22T10:00:00+00:00",
-  "updated_at": "2026-04-22T10:00:00+00:00",
+  "created_at": "${_at(5)}",
+  "updated_at": "${_at(5)}",
   "version_count": 0,
   "forked_from_recipe_id": null,
   "forked_from_book_id": null,
@@ -132,15 +153,15 @@ const _favoriteRecipeGoldenJson = '''
 Map<String, dynamic> _favoriteMealGoldenResponse() =>
     jsonDecode(_favoriteMealGoldenJson) as Map<String, dynamic>;
 
-const _favoriteMealGoldenJson = '''
+final _favoriteMealGoldenJson = '''
 {
   "id": "meal-1",
   "name": "Test Dinner",
   "description": null,
   "recipe_book_id": "book-1",
   "archived_at": null,
-  "created_at": "2026-04-22T10:00:00+00:00",
-  "updated_at": "2026-04-22T10:00:00+00:00",
+  "created_at": "${_at(5)}",
+  "updated_at": "${_at(5)}",
   "components": [],
   "is_favorite": true
 }

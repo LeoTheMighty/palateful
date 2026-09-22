@@ -14,11 +14,22 @@
 //   1. Append `// age-independent` to the line, when the fixture feeds a
 //      bucket the widget shows regardless of age (Needs Review, Failed).
 //   2. Add the file to `test/fixture_date_guard_baseline.txt` with a
-//      count — reserved for the 29 files that were already on the fuse
-//      when this landed. Raising a count needs reviewer sign-off.
+//      count. That file is GONE as of fxfuse — the 29 files / 66
+//      literals it grandfathered were drained (anchored to `now` where
+//      they reach a cutoff, marked `// age-independent` where they
+//      provably don't), and the guard treats an absent baseline as an
+//      empty one. Re-creating it grandfathers a live fuse, so it needs
+//      reviewer sign-off and a rationale naming the specific surface.
 //
 // The counts ratchet in both directions: cleaning a file up without
 // lowering its count fails too, so the baseline can only shrink.
+//
+// Escape 1 is a claim, not a comment: `// age-independent` asserts the
+// literal never reaches a `DateTime.now()`-relative comparison. Prove it
+// the way fxfuse did — `app/tool/time_travel_check.sh` re-runs the suite
+// with every fixture date shifted into the past, which is arithmetically
+// the same as advancing the clock, so a mis-marked literal fails there
+// instead of on a random morning months from now.
 
 import 'dart:convert';
 import 'dart:io';
@@ -124,6 +135,11 @@ List<String> offendingLines(String relPath) {
   return out;
 }
 
+/// The baseline as the guard sees it. An absent file is an empty
+/// baseline, not an error.
+Map<String, int> loadBaseline(File file) =>
+    file.existsSync() ? parseBaseline(file.readAsStringSync()) : <String, int>{};
+
 void main() {
   test('no new hardcoded created_at fixture dates under app/test/', () {
     final root = Directory('test');
@@ -134,7 +150,13 @@ void main() {
           "ci.yml's flutter-test job both provide)",
     );
 
-    final baseline = parseBaseline(File(_baselineFile).readAsStringSync());
+    // The baseline is optional by design: fxfuse drained it to zero and
+    // deleted it, and an absent file is the healthy steady state — every
+    // literal under `test/` is now either now-relative or explicitly
+    // marked `// age-independent`. Re-adding the file to grandfather a
+    // new fuse needs reviewer sign-off (and a rationale that says more
+    // than "pre-existing").
+    final baseline = loadBaseline(File(_baselineFile));
     final actual = scanUnmarked(root);
 
     final added = <String>[];
@@ -288,6 +310,26 @@ test/b_test.dart:1:pre-existing date fuse
         () => parseBaseline('test/a_test.dart\n'),
         throwsFormatException,
       );
+    });
+
+    // fxfuse drained the baseline to zero and deleted the file. An absent
+    // baseline must read as "nothing is grandfathered" — if it threw, the
+    // guard would be red for everyone the moment the fuse list hit zero,
+    // which is the one outcome that would push someone to re-add it.
+    late Directory tmp;
+    setUp(() => tmp = Directory.systemTemp.createTempSync('baseline-load'));
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    test('an absent baseline file is an empty baseline', () {
+      final missing = File('${tmp.path}/definitely_not_here.txt');
+      expect(missing.existsSync(), isFalse);
+      expect(loadBaseline(missing), isEmpty);
+    });
+
+    test('a present baseline file is still read', () {
+      final present = File('${tmp.path}/baseline.txt')
+        ..writeAsStringSync('test/a_test.dart:2:some rationale\n');
+      expect(loadBaseline(present), {'test/a_test.dart': 2});
     });
   });
 }

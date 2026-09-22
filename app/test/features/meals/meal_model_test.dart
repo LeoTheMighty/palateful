@@ -10,7 +10,7 @@ void main() {
         'description': 'tonight',
         'recipe_book_id': 'book-1',
         'archived_at': null,
-        'created_at': '2026-04-18T10:00:00Z',
+        'created_at': '2026-04-18T10:00:00Z',  // age-independent — fromJson round-trip; no widget, no now-comparison
         'updated_at': '2026-04-18T10:05:00Z',
         'components': [
           {
@@ -54,7 +54,7 @@ void main() {
         'name': 'Old Meal',
         'recipe_book_id': 'book-1',
         'archived_at': '2026-04-18T12:00:00Z',
-        'created_at': '2026-04-10T10:00:00Z',
+        'created_at': '2026-04-10T10:00:00Z',  // age-independent — fromJson round-trip; no widget, no now-comparison
         'updated_at': '2026-04-18T12:00:00Z',
         'components': [
           {
@@ -79,7 +79,7 @@ void main() {
         'id': 'meal-1',
         'name': 'X',
         'recipe_book_id': 'book-1',
-        'created_at': '2026-04-18T10:00:00Z',
+        'created_at': '2026-04-18T10:00:00Z',  // age-independent — fromJson round-trip; no widget, no now-comparison
         'updated_at': '2026-04-18T10:00:00Z',
       });
       expect(meal.components, isEmpty);
@@ -127,7 +127,7 @@ void main() {
           'id': 'meal-1',
           'name': 'X',
           'recipe_book_id': 'book-1',
-          'created_at': '2026-04-18T10:00:00Z',
+          'created_at': '2026-04-18T10:00:00Z',  // age-independent — fromJson round-trip; no widget, no now-comparison
           'updated_at': '2026-04-18T10:00:00Z',
         };
 

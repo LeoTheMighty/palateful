@@ -107,6 +107,26 @@ void _unregister() {
   }
 }
 
+/// Base instant for every fixture timestamp in this file.
+///
+/// This file pumps HomeScreen *in table view*, where every row renders
+/// the dynamic column — and the `Added` lens resolves `created_at`
+/// through `formatDynamicColumnRelativeDate`
+/// (lib/features/home/widgets/dynamic_column.dart:34,61), whose output
+/// string walks '3d ago' → '2w ago' → '5mo ago' → '1y ago' as the
+/// fixture ages. An absolute literal here is a fuse for any dynamic-
+/// column assertion this file grows (its charter, per the header, is
+/// "the dynamic column responds to sort changes"). Anchor to `now` so
+/// the rendered string stays in a stable bucket.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// preserve the original fixtures' relative ordering, which the
+/// created-at-descending sort (home_screen.dart:321) depends on.
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Map<String, dynamic> _recipe({
   required String id,
   required String name,
@@ -118,7 +138,7 @@ Map<String, dynamic> _recipe({
       'recipe_book_id': 'book-1',
       'recipe_book_name': 'Dinners',
       'updated_at': '2026-04-01T00:00:00Z',
-      'created_at': '2026-04-01T00:00:00Z',
+      'created_at': _at(0),
       'tags': <String>[],
       if (lastCooked != null) 'last_cooked': lastCooked,
     };

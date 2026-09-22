@@ -2,6 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:palateful/features/activity/widgets/import_activity_detail.dart';
 
+/// Base instant for every fixture timestamp in this file.
+///
+/// `ImportActivityDetail` renders both `created_at` and `updated_at`
+/// through `_formatTime` (import_activity_detail.dart:449) — a
+/// `DateTime.now()`-relative formatter whose output string changes as
+/// the fixture ages ('2h ago' → '3d ago' → '5mo ago' → '4/16/2026').
+/// Absolute dates would rot silently here, so anchor to `now`.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// preserve the original fixtures' relative ordering and — where the
+/// original had `created_at == updated_at` — their exact equality,
+/// which `_buildTimestamps` (import_activity_detail.dart:320) tests to
+/// decide whether to render the "Updated …" half of the row at all.
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Widget _host(Widget child) => MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: child)),
     );
@@ -18,8 +36,8 @@ void main() {
         'source_type': 'url',
         'source_url': 'https://example.com/recipe',
         'retry_count': 2,
-        'created_at': '2026-04-16T12:00:00Z',
-        'updated_at': '2026-04-16T12:05:00Z',
+        'created_at': _at(0),
+        'updated_at': _at(5),
       })));
       await tester.pump();
 
@@ -40,8 +58,8 @@ void main() {
         'source_type': 'url',
         'source_url': 'https://example.com/recipe',
         'retry_count': 0,
-        'created_at': '2026-04-16T12:00:00Z',
-        'updated_at': '2026-04-16T12:00:00Z',
+        'created_at': _at(0),
+        'updated_at': _at(0),
       })));
       await tester.pump();
 
@@ -57,8 +75,8 @@ void main() {
         'source_type': 'url',
         'source_url': 'https://example.com/recipe',
         'retry_count': 0,
-        'created_at': '2026-04-16T12:00:00Z',
-        'updated_at': '2026-04-16T12:00:00Z',
+        'created_at': _at(0),
+        'updated_at': _at(0),
       })));
       await tester.pump();
 
@@ -72,8 +90,8 @@ void main() {
         'error_message': 'boom',
         'source_type': 'url',
         'retry_count': 3,
-        'created_at': '2026-04-16T12:00:00Z',
-        'updated_at': '2026-04-16T12:00:00Z',
+        'created_at': _at(0),
+        'updated_at': _at(0),
       })));
       await tester.pump();
 
@@ -87,8 +105,8 @@ void main() {
         'error_message': 'nope',
         'source_type': 'url',
         'retry_count': 0,
-        'created_at': '2026-04-16T12:00:00Z',
-        'updated_at': '2026-04-16T12:00:00Z',
+        'created_at': _at(0),
+        'updated_at': _at(0),
       })));
       await tester.pump();
 
@@ -111,8 +129,8 @@ void main() {
         'source_type': 'spreadsheet',
         'source_reference': 'row 12',
         'retry_count': 0,
-        'created_at': '2026-04-16T12:00:00Z',
-        'updated_at': '2026-04-16T12:00:00Z',
+        'created_at': _at(0),
+        'updated_at': _at(0),
       })));
       await tester.pump();
 

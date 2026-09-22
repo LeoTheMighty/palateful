@@ -83,7 +83,7 @@ Map<String, dynamic> _baseItem({
     'ai_cost_cents': 0,
     'import_job_id': 'job-1',
     'created_recipe_id': null,
-    'created_at': '2026-04-25T10:00:00Z',
+    'created_at': '2026-04-25T10:00:00Z',  // age-independent: parsed, never rendered
     'updated_at': '2026-04-25T10:00:00Z',
     'last_successful_stage': 'extracted',
     'last_retry_at': null,

@@ -117,7 +117,7 @@ Map<String, dynamic> _mealPayload({String id = 'meal-1'}) => {
       'id': id,
       'name': 'Kale Salad Meal',
       'recipe_book_id': 'book-1',
-      'created_at': '2026-04-18T10:00:00Z',
+      'created_at': '2026-04-18T10:00:00Z',  // age-independent — parsed into Meal; no widget in this file
       'updated_at': '2026-04-18T10:00:00Z',
       'components': [
         {

@@ -6,6 +6,22 @@ import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/widgets/see_all_footer.dart';
 
+/// Base instant for every fixture timestamp in this file.
+///
+/// `SeeAllFooter` renders `_formatTime(row.archivedAt ?? row.createdAt)`
+/// (see_all_footer.dart:296 → :326), a `DateTime.now()`-relative
+/// formatter. `archived_at` is the value that actually reaches it, so
+/// both halves of the pair are anchored. See-all has no age cutoff —
+/// the fuse here is the rendered label, not the filter.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(hours: 2));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// keep `archived_at` after `created_at`, the ordering the original
+/// literals encoded (2026-01-01 created, 2026-02-01 archived).
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Response<dynamic> _fakeResponse(dynamic data) => Response(
       data: data,
       requestOptions: RequestOptions(path: ''),
@@ -45,8 +61,8 @@ class _Page {
         'failed_items': 0,
         'pending_review_items': 0,
         'recipe_book_id': 'bk',
-        'created_at': '2026-01-01T00:00:00Z',
-        'archived_at': '2026-02-01T00:00:00Z',
+        'created_at': _at(0),
+        'archived_at': _at(5),
       });
       items[jobId] = List.generate(itemsPerJob, (i) {
         return {
@@ -54,8 +70,8 @@ class _Page {
           'status': 'completed',
           'source_type': 'url',
           'recipe_name': '$prefix row $j-$i',
-          'created_at': '2026-01-01T00:00:00Z',
-          'archived_at': '2026-02-01T00:00:00Z',
+          'created_at': _at(0),
+          'archived_at': _at(5),
         };
       });
     }
@@ -147,7 +163,7 @@ class _FakeApiClient extends ApiClient {
 
   @override
   Future<Response> archiveImportItem(String id) async {
-    return _fakeResponse({'id': id, 'archived_at': '2026-04-18T12:00:00Z'});
+    return _fakeResponse({'id': id, 'archived_at': _at(10)});
   }
 }
 

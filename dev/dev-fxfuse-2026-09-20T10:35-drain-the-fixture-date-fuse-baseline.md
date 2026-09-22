@@ -4,9 +4,9 @@ type: dev
 created: 2026-09-20T10:35:00-06:00
 title: Drain the 29-file hardcoded-fixture-date baseline before the next one freezes deploys
 from: debug/debug-imptb1-2026-07-27T18:53-imports-tab-widget-tests-red-on-main.md
-status: ready
-owner: null
-branch: null
+status: in-progress
+owner: /devx-fxfuse
+branch: feat/dev-fxfuse
 ---
 
 ## Goal
@@ -100,3 +100,10 @@ diagnosis has now been paid for three times.
 - 2026-09-20 — filed from `/devx imptb1` Phase 8 gap-filing. imptb1 resolved as
   a duplicate of `imptab1`; this is the systemic residue neither ticket
   covered. `0a5c3d41` stopped the population growing; nothing shrinks it.
+- 2026-09-22 — phase 1: claimed on `feat/dev-fxfuse` (worktree `.worktrees/dev-fxfuse`).
+  Claim recorded on the feature branch, NOT on `main`: palateful `main` is a
+  serialized deploy lane right now (every push cancels the in-flight
+  `CI & Deploy`, which carries prod Terraform applies), so this run pushes
+  nothing to `main` until the coordinator signals a window.
+- 2026-09-22 — phase 2: spec ACs direct (v2 native); 6 ACs; workstream=none;
+  red-artifacts=none.
