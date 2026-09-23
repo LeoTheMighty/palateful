@@ -388,6 +388,43 @@ Spot-first restored (`spotback1`) **only because on-demand cannot launch**.
 Leo has filed the `L-DB2E81BA` increase. When granted, flip back to
 on-demand first — `odfirst1` / #76 holds the reasoning and the costing.
 
+## Spot capacity is scarce in the two AZs we are pinned to
+
+Measured 2026-09-23 with `get-spot-placement-scores` over the CE's five
+instance types. Scores are 1–10, higher is better, **advisory and
+account-relative** — a 1 is not "impossible". They are also time-varying:
+this session read the region-level score as **6** and 0e, minutes later,
+as **9**. Expected drift, not a disagreement. The per-AZ figures agreed.
+
+| Scope | Score | In our VPC? |
+|---|---|---|
+| Region-level, flexible across all 5 types | 6–9 | — *(a request we cannot make)* |
+| `us-east-1a` = `use1-az1` | **2** | ✅ |
+| `us-east-1b` = `use1-az2` | **1** | ✅ |
+| `us-east-1d` = `use1-az6`, best in region | **3** | ❌ |
+| `us-east-1c` = `use1-az4` | 2 | ❌ |
+| `us-east-1f` = `use1-az5` | 1 | ❌ |
+
+The VPC has exactly **two subnets** — `10.1.0.0/24` in 1a and `10.1.1.0/24`
+in 1b — and they are in the two lowest-scoring AZs available. **Both prod
+GPU compute environments, on-demand and spot, are pinned to the same two
+subnets**, so this is not specific to the spot path. All five AZs offer all
+five instance types (`describe-instance-type-offerings`, 5/5 each), so this
+is capacity scarcity, not availability.
+
+**Adding subnets buys at most a 3, not a 9.** (0e.) The best AZ available
+to anyone in this region scores 3; the region-level 9 is entirely an
+artifact of being allowed to float across AZs, which a two-subnet CE cannot
+do. Widening to 1d and 1c is still worth filing — 3 beats 1 — but it should
+be proposed as *"the best available is poor"*, not as *"we are leaving a 9
+on the table"*.
+
+**This completes the incident picture.** Both halves were broken, for
+unrelated reasons: spot-first was failing because spot GPU capacity is
+genuinely thin where we are pinned, **and** the on-demand fallback built to
+rescue exactly that case had a quota of 0. Neither finding explains the
+other.
+
 ## Correction: the cost model counted only the runs that worked
 
 #76 costed the on-demand fallback from **4.76 GPU-hours** — 24 succeeded
