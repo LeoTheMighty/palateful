@@ -246,29 +246,32 @@ resource "aws_batch_job_queue" "parser" {
   state    = "ENABLED"
   priority = 1
 
-  # odfirst1 (2026-09-23): ON-DEMAND FIRST, spot second. Leo's decision.
+  # TEMPORARY — spot first, on-demand second, because the AWS account is
+  # NOT PERMITTED to run on-demand G instances at all.
   #
-  # Order matters, but not the way pcap1 assumed. Batch reaches order 2
-  # only when order 1 **cannot allocate** — not when it allocates and fails
-  # to deliver. Observed 2026-09-23: with the job RUNNABLE for 88 minutes,
-  # the spot environment held desiredvCpus = 4 the whole time, produced
-  # **zero** instance requests and zero EC2 fleets, and the on-demand
-  # environment never left 0. Batch believed order 1 was viable, so the
-  # fallback was never reached. Spot-first fails open into "queued
-  # forever"; on-demand-first fails into "slightly more expensive".
+  #   L-DB2E81BA  "Running On-Demand G and VT instances"  = 0   <-- quota
+  #   L-3819A6DF  "All G and VT Spot Instance Requests"   = 32
   #
-  # Cost of the inversion at measured April volume (24 GPU jobs / 12 days,
-  # avg 11.9 min = 4.76 GPU-hours): about **$4.36/month**, ~7c per import.
-  # Spot stays at order 2 and still absorbs work whenever it has capacity,
-  # so the real figure lands below that.
+  # Quota-change history is EMPTY: it has been 0 since the account was
+  # created. Every April import ran on spot, which is why nobody hit it.
+  #
+  # So on-demand is at order 2 *only* because it currently cannot launch
+  # anything — not because spot-first is the better design. Leo has filed a
+  # limit increase for L-DB2E81BA. **When that is granted, flip this back to
+  # on-demand first (see odfirst1 / #76 for the reasoning and the costing).**
+  #
+  # Observed 2026-09-23 and worth knowing: with on-demand at order 1 and its
+  # quota at 0, Batch held `desiredvCpus = 4` on the incapable environment
+  # for 67 minutes and did **not** fall through to order 2. The fallback
+  # design assumed it would.
   compute_environment_order {
     order               = 1
-    compute_environment = aws_batch_compute_environment.parser_ondemand_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
   }
 
   compute_environment_order {
     order               = 2
-    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_ondemand_gpu.arn
   }
 
   tags = {
