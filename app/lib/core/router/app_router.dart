@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_it/get_it.dart';
+import 'activity_routes.dart';
 import '../di/injection.dart';
 import '../services/auth_service.dart';
 import '../services/client_latency_ingest.dart';
@@ -726,7 +727,7 @@ GoRouter get appRouter {
                   // navigations both resolve to the shell.
                   GoRoute(
                     path: 'import-history',
-                    redirect: (context, state) => '/activity?tab=imports',
+                    redirect: (context, state) => ActivityRoutes.hubPath,
                   ),
                 ],
               ),

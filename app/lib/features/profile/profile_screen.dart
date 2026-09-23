@@ -1,3 +1,4 @@
+import '../activity/providers/activity_tab_provider.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -617,6 +618,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     await getIt<PushNotificationService>().unregisterToken();
     await _authService.logout();
     _apiClient.clearAuthToken();
+    // The Activity tab choice — and its latch — live in an app-scoped
+    // provider that outlives the session, so without this the next user to
+    // sign in on this device inherits the previous one's choice AND a latch
+    // that suppresses the count-based pick for someone who never chose
+    // anything (acttab1).
+    ref.read(activityTabProvider.notifier).reset();
     if (!mounted) return;
     context.go('/login');
   }
