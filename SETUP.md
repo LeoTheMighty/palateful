@@ -665,7 +665,12 @@ OPENAI_MODEL=gpt-4o-mini
 # App
 DEBUG=false
 CORS_ORIGINS=["https://app.palateful.app"]
-ENVIRONMENT=production
+# MUST be exactly `prod`. Several gates compare this value against string
+# literals, and `production` is not one of them — it used to be this
+# template's value, which silently disabled the prod-only 4xx audit writer
+# for anyone who followed it (envspell1). Terraform injects `prod` into ECS;
+# this template now matches. See libraries/utils/utils/environment.py.
+ENVIRONMENT=prod
 
 # AWS
 AWS_REGION=us-east-1
