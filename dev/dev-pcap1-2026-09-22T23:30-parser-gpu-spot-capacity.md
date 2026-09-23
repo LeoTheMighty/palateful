@@ -282,6 +282,46 @@ than re-queueing to the environment that owned the previous attempt? The
 fallback's value rests on it, and it was reasoned from the queue-order
 semantics rather than measured.
 
+## Outcome 2026-09-23: the fallback did not work, and the order is inverted
+
+Leo re-submitted an import at **15:08:09 UTC**. Observed for **88 minutes**:
+
+| | |
+|---|---|
+| job status | `RUNNABLE`, **0 attempts** |
+| spot CE `desiredvCpus` | **4**, held throughout |
+| on-demand CE `desiredvCpus` | **0**, never moved |
+| container instances | **0** in both clusters |
+| spot instance requests today | **0** (last night: 3) |
+| EC2 fleets today | **0** |
+| both CEs | `VALID`, "ComputeEnvironment Healthy" |
+
+**Nothing was broken.** Batch decided order 1 *could* allocate, set a target
+of 4 vCPU, and retried fleet requests that never fulfilled — so **order 2
+was never reached**. This is 0e's corrected model confirmed by observation:
+order 2 engages when order 1 **cannot allocate**, not when it allocates and
+fails to deliver.
+
+Note this is *worse* than 2026-09-22, when three instances at least launched
+before being reclaimed. Tonight nothing launched at all, across five
+instance types.
+
+**Decision (Leo): on-demand becomes order 1, spot order 2** (`odfirst1`).
+Cost at measured April volume — 24 GPU jobs / 12 days, avg 11.9 min, 4.76
+GPU-hours: **~$4.36/month**, about 7c per import. The `$0.16/hr` spot figure
+is from a **code comment, not a measurement**, so the delta is approximate;
+the on-demand side ($0.526/hr) is from the AWS Pricing API.
+
+**The honest counterpoint, recorded because it is the lesson.** This makes
+pcap1's on-demand fallback **largely redundant** — it only helps in the case
+where spot cannot even be targeted, which is not the case that has occurred
+twice. The original design optimised for a saving of **about four dollars a
+month** at the cost of a feature that then failed twice, and the fix I built
+for it addressed the wrong half of the failure. Spot-first fails open into
+*queued forever*; on-demand-first fails into *slightly more expensive*.
+**Prefer the failure mode that degrades cost over the one that degrades
+function**, especially when the saving is this small.
+
 ## Technical notes
 
 - Evidence gathered read-only via `bin/prod-script` inside
@@ -319,3 +359,7 @@ semantics rather than measured.
   0e's independent re-confirmation.** This fix does **not** resurrect
   Leo's stuck batch `9384da8a…`; that needs 0e's write-back spec and a
   re-submit.
+- 2026-09-23 — fallback observed NOT engaging on a live import (88 min,
+  spot desired 4, on-demand 0, zero instance requests). Leo chose
+  on-demand-first; filed as `odfirst1`. pcap1's fallback is largely
+  redundant as a result, recorded above rather than quietly superseded.

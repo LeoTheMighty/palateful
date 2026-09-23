@@ -246,17 +246,29 @@ resource "aws_batch_job_queue" "parser" {
   state    = "ENABLED"
   priority = 1
 
-  # Order matters: Batch fills from order 1 and only reaches order 2 when
-  # the first environment cannot provide capacity. Spot first, on-demand
-  # as the fallback that makes an import actually complete (pcap1).
+  # odfirst1 (2026-09-23): ON-DEMAND FIRST, spot second. Leo's decision.
+  #
+  # Order matters, but not the way pcap1 assumed. Batch reaches order 2
+  # only when order 1 **cannot allocate** — not when it allocates and fails
+  # to deliver. Observed 2026-09-23: with the job RUNNABLE for 88 minutes,
+  # the spot environment held desiredvCpus = 4 the whole time, produced
+  # **zero** instance requests and zero EC2 fleets, and the on-demand
+  # environment never left 0. Batch believed order 1 was viable, so the
+  # fallback was never reached. Spot-first fails open into "queued
+  # forever"; on-demand-first fails into "slightly more expensive".
+  #
+  # Cost of the inversion at measured April volume (24 GPU jobs / 12 days,
+  # avg 11.9 min = 4.76 GPU-hours): about **$4.36/month**, ~7c per import.
+  # Spot stays at order 2 and still absorbs work whenever it has capacity,
+  # so the real figure lands below that.
   compute_environment_order {
     order               = 1
-    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_ondemand_gpu.arn
   }
 
   compute_environment_order {
     order               = 2
-    compute_environment = aws_batch_compute_environment.parser_ondemand_gpu.arn
+    compute_environment = aws_batch_compute_environment.parser_spot_gpu.arn
   }
 
   tags = {
