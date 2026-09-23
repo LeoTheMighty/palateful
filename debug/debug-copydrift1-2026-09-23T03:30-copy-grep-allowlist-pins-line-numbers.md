@@ -2,7 +2,7 @@
 hash: copydrift1
 type: debug
 created: 2026-09-23T03:30:00-06:00
-title: copy-grep-guard's allowlist pins line numbers, so any edit above an entry turns approved copy into a CI failure
+title: three guards, one trap, two halves — allowlists keyed by file:lineno rot, and their parsers split on the first colon
 from: dev/dev-acttab1-2026-09-22T22:05-explicit-activity-tab-wins.md
 status: ready
 owner: null
@@ -50,14 +50,34 @@ line 872 in that file.
 - [ ] Re-point the 22 existing entries to whatever format wins, in one
       commit, with the guard green before and after.
 
-## Technical notes
+## The pattern, which is the point
 
-- Same trap, same night, three guards: this one, the older
-  `tools/silent-catch-allowlist.txt` (still `file:lineno`, latent because
-  its paths are colon-free and edits above its entries have been rare),
-  and `tools/stale-pointer-check.py` in PR #47, where palateful-4f hit the
-  colon-split half of it. The core baseline added in PR #56 is the only
-  one built to resist both.
+This is not one file's bug. **Three guards reached for the same fragile
+shape — `file:lineno:rationale`, parsed by splitting on colons — and it
+failed in two different halves on the same night:**
+
+| guard | half that bit | state |
+|---|---|---|
+| `tools/copy-grep-guard.sh` + its allowlist | **line-number rot** — an edit above an entry moves the string | **live**; cost a CI cycle on acttab1 tonight |
+| `tools/silent-catch-allowlist.txt` | same shape, same rot | **latent** — its paths are colon-free and nobody has edited above its entries lately |
+| `tools/stale-pointer-check.py` (PR #47) | **colon-split** — a rationale citing `ci.yml:748` swallows the path | hit by palateful-4f, fixed there |
+
+The only one built to resist both is the core baseline added in PR #56
+(`tools/silent-catch-core-baseline.txt`: per-file counts, whole-file
+format validation, duplicate-row rejection, self-tested in all three
+failure directions).
+
+**And it resists them because of a message, not a rule.** I was about to
+ship the identical `file:lineno` shape in that baseline; palateful-4f
+warned me mid-work, having just hit the colon half in #47, and then
+corrected its own first suggestion (last-colon anchoring) when 0a found
+the case that breaks it too. Three independent authors reached for the
+same shape; the one that survived did so because someone happened to be
+looking at the right moment. That is not a repeatable defence, which is
+the argument for writing the pattern down here rather than fixing one
+file quietly.
+
+## Technical notes
 - `tools/silent-catch-allowlist.txt` should get the same treatment; it is
   filed separately as part of `scanmig1`, which already owns migrating the
   feature-services section onto the brace-matched scanner.
