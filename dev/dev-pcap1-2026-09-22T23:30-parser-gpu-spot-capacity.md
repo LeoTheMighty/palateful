@@ -447,6 +447,30 @@ maximum divergence anywhere is 0.23 s.
 misses precisely the timed-out ones** — the failures most worth finding.
 Sweep on `completed_at`, or on `status` directly.
 
+**Mechanism, found by palateful-0e and now owned by `prcon1` (#77).** The
+timeout write is not special. `updated_at` is `onupdate=func.now()`
+(`joins_base.py:16`), and Postgres `now()` is **transaction start time**,
+not statement time — 0e proved this read-only against prod rather than
+citing it: across a `pg_sleep(2)` inside one transaction, `now()` moved
+**0.000s** while `clock_timestamp()` moved **2.011s**. The watcher holds
+**one transaction open for the whole 90 minutes** (the per-poll re-fetch at
+`watch_parser_batch_task.py:75` is a SELECT, and the non-terminal path of
+`complete_parser_batch` deliberately writes nothing), while `completed_at`
+is Python wall-clock (`parser_batch_completion.py:242`). One write, two
+columns, two different clocks.
+
+**Why it's believable rather than merely consistent: it predicted my
+control.** `_mark_failed` commits, so the `parser_jobs` loop runs in a
+*fresh* transaction begun at the real time — their `updated_at` should
+track `completed_at` closely. Measured max divergence: **0.23s**. 0e
+derived the mechanism before re-reading that measurement, and it is the
+observation that would have falsified it.
+
+**Generalisation, which outlives this spec:** *any row written by a
+long-running task before its first commit carries an `updated_at` from when
+the task started, not from when the row changed.* That holds anywhere in
+this codebase a task holds a transaction open — not only here.
+
 ## Technical notes
 
 - Evidence gathered read-only via `bin/prod-script` inside
