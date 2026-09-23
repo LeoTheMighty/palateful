@@ -4,8 +4,8 @@ type: dev
 created: 2026-09-22T21:30:00-06:00
 title: ENVIRONMENT has five spellings and two of them silently disable prod-only code
 from: dev/dev-selfheal1-2026-09-20T11:45-503-only-when-a-restart-can-fix-it.md
-status: ready
-owner: null
+status: in-progress
+owner: /devx-2026-09-22T1809-40329
 branch: null
 ---
 
@@ -60,3 +60,4 @@ Consumers keying on an exact literal:
 - 2026-09-22T21:30 — filed from selfheal1's Phase 4 review (Blind Hunter F8).
   selfheal1 shipped the defensive `production` entry so its own verdict could
   not be silently lost; the underlying divergence is this spec.
+- 2026-09-22T18:09:06-06:00 — claimed by /devx in session /devx-2026-09-22T1809-40329

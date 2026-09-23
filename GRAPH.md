@@ -4,7 +4,7 @@
 
 # Story graph
 
-82 specs across 5 groups — 4 blocked · 27 done · 13 in-progress · 38 ready; 114 edges.
+93 specs across 5 groups — 4 blocked · 30 done · 15 in-progress · 44 ready; 126 edges.
 
 ## Legend
 
@@ -40,11 +40,17 @@ flowchart TD
     af8309["af8309 Continue 7c5cf2: rsh108 follow-up: run th…"]
     alrt1["alrt1 G1: SNS alert topic `palateful-prod-alert…"]
     authrep1["authrep1 N1 — the auth path reports its failures (…"]
+    bvcpu1["bvcpu1 Every Terraform apply proposes resetting…"]
+    chainctx1["chainctx1 _chain should honour __suppress_context__…"]
     clidet1["clidet1 Client-side detection and alerting — what…"]
     dfrcp1["dfrcp1 G3 + G11 — give deploy-freshness a recipi…"]
+    envspell1["envspell1 ENVIRONMENT has five spellings and two of…"]
     fxfuse["fxfuse Drain the 29-file hardcoded-fixture-date…"]
+    logconn1["logconn1 Enable log_connections so the rsh102 heal…"]
+    ncfgverdict1["ncfgverdict1 NOT_CONFIGURED must be loud for the worke…"]
     obsgap1["obsgap1 Server-side production detection — what e…"]
     prsal1["prsal1 Client parse-failure alert — a contract b…"]
+    qtyctr1["qtyctr1 One wire contract for quantity — clients…"]
     rdsal1["rdsal1 G2 — alarm on Postgres auth failures (the…"]
     rsh101["rsh101 Unblock the deploy path on main — repair…"]
     rsh102["rsh102 Credential-aware health probe — fresh con…"]
@@ -54,10 +60,12 @@ flowchart TD
     rsh106["rsh106 Engine-site registration + task-role IAM…"]
     rsh107["rsh107 Worker health check — remove healthStatus…"]
     rsh108["rsh108 Deploy-freeze visibility — scheduled fres…"]
-    rsh109["rsh109 Rotation drill — force a rotation and mea…"]
+    rsh109["rsh109 Rotation drill, Leg A — detection backsto…"]
+    rsh109b["rsh109b Rotation drill, Leg B — steady state (all…"]
     rshret["rshret Retro + LEARN.md updates (interim retro d…"]
     selfheal1["selfheal1 503 only when a restart can fix it — two…"]
     stalebk1["stalebk1 Backlog rows outlive the work they track…"]
+    syncprobe1["syncprobe1 probe_sync has neither a total timeout no…"]
     tfgate1["tfgate1 Terraform-only changes merge cleanly and…"]
   end
   subgraph sg_api_async_migration["api-async-migration (epic)"]
@@ -79,10 +87,12 @@ flowchart TD
   subgraph sg_standalone["standalone — no workstream or epic"]
     andph1["andph1 auth0_flutter's RedirectActivity manifest…"]
     aoc000["aoc000 Activity orphan cleanup — hard DELETE of…"]
+    apisweep["apisweep Something is enumerating the prod API: un…"]
     arci1["arci1 await-remote-ci reports success while a s…"]
     btri01["btri01 Triage legacy BUGS.md reports against cur…"]
     bugsact2a["bugsact2a Backend fields addendum for import-item d…"]
     bugsimppho7["bugsimppho7 Vision-extraction eval suite with image f…"]
+    cartdec["cartdec Shopping cart unusable for months: quanti…"]
     cldb01["cldb01 POST /v1/client-latencies returned 500 'p…"]
     covcomb1["covcomb1 Parallel pytest targets share one coverag…"]
     d19992["d19992 Random 'Login failed' and credentials tha…"]
@@ -109,6 +119,7 @@ flowchart TD
     rmi000["rmi000 Recime mass-import — Chrome extension MVP…"]
     rshred1["rshred1 rotation-self-heal RED artifacts break th…"]
     sru4["sru4 Presigned upload path for PDF / audio / v…"]
+    storesec["storesec GET /shopping-lists/store-sections is unr…"]
     svi000["svi000 Social-media video import — TikTok / Inst…"]
     tfship1["tfship1 iOS TestFlight — get a live build to test…"]
     xcstart1["xcstart1 Nothing enforces committing the version b…"]
@@ -165,9 +176,14 @@ flowchart TD
   bqaret --> bqa105
   bqaret --> bqa106
   bqaret --> bqa107
+  btri01 -.-> cartdec
   btri01 -.-> cldb01
   btri01 -.-> imptb1
   btri01 -.-> lgort1
+  cartdec -.-> apisweep
+  cartdec -.-> qtyctr1
+  cartdec -.-> storesec
+  chainctx1 --> rsh105
   dfrcp1 --> alrt1
   dfrcp1 --> rsh102
   dfrcp1 --> tfgate1
@@ -199,6 +215,7 @@ flowchart TD
   rsh101 --- |par| rsh103
   rsh101 --- |par| rsh108
   rsh102 -.-> covcomb1
+  rsh102 -.-> logconn1
   rsh102 --> rsh101
   rsh102 --- |par| rsh103
   rsh102 --> rshred1
@@ -206,14 +223,16 @@ flowchart TD
   rsh102 -.-> stalebk1
   rsh103 --- |par| rsh108
   rsh104 --> rsh103
+  rsh105 -.-> chainctx1
   rsh105 --> rsh102
   rsh106 --> rsh105
   rsh107 --> rsh102
   rsh107 --> rsh106
   rsh109 --> rsh104
-  rsh109 --> rsh106
-  rsh109 --> rsh107
-  rsh109 --> rsh108
+  rsh109 -.-> rsh109b
+  rsh109b --> rsh106
+  rsh109b --> rsh107
+  rsh109b --> rsh109
   rshret --> rsh101
   rshret --> rsh102
   rshret --> rsh103
@@ -223,7 +242,11 @@ flowchart TD
   rshret --> rsh107
   rshret --> rsh108
   rshret --> rsh109
+  selfheal1 -.-> envspell1
+  selfheal1 -.-> ncfgverdict1
   selfheal1 --> rsh102
+  selfheal1 -.-> syncprobe1
+  tfgate1 -.-> bvcpu1
   tfship1 -.-> fltpin1
   tfship1 -.-> iosdt1
   tfship1 -.-> xcstart1
@@ -248,27 +271,35 @@ flowchart TD
   class 462355 wip
   class absal1 ready
   class af8309 wip
-  class alrt1 ready
+  class alrt1 wip
   class authrep1 ready
+  class bvcpu1 wip
+  class chainctx1 ready
   class clidet1 ready
   class dfrcp1 wip
+  class envspell1 wip
   class fxfuse ready
+  class logconn1 wip
+  class ncfgverdict1 ready
   class obsgap1 done
   class prsal1 ready
+  class qtyctr1 ready
   class rdsal1 ready
   class rsh101 done
   class rsh102 done
   class rsh103 done
   class rsh104 ready
-  class rsh105 wip
+  class rsh105 done
   class rsh106 ready
   class rsh107 ready
   class rsh108 done
   class rsh109 ready
+  class rsh109b ready
   class rshret ready
-  class selfheal1 wip
+  class selfheal1 done
   class stalebk1 ready
-  class tfgate1 wip
+  class syncprobe1 ready
+  class tfgate1 done
   class aam22 done
   class aam23 done
   class aam24 ready
@@ -283,10 +314,12 @@ flowchart TD
   class ifh6 ready
   class andph1 ready
   class aoc000 ready
+  class apisweep ready
   class arci1 done
   class btri01 done
   class bugsact2a done
   class bugsimppho7 blocked
+  class cartdec wip
   class cldb01 ready
   class covcomb1 ready
   class d19992 wip
@@ -313,6 +346,7 @@ flowchart TD
   class rmi000 ready
   class rshred1 done
   class sru4 done
+  class storesec ready
   class svi000 ready
   class tfship1 ready
   class xcstart1 ready
