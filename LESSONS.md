@@ -288,8 +288,14 @@
     budget** — a deploy touching fewer of those legs is shorter — but the
     order of magnitude is "most of the run", not "a moment of handoff".
 
-    Two measurement traps while establishing that, both of which produced a
-    confident wrong number:
+    Three traps while establishing that, each of which produced a confident
+    wrong number:
+    (0) **Sampling an open interval measures how long you have been watching,
+    not how long it lasts.** Both sessions reported snapshots of the
+    still-open window — 5m36s and 6m11s — as if they were the span. Each
+    understated it roughly fourfold, in the same direction. A duration is only
+    computable once the thing has ended; until then the honest statement is
+    "still open after N".
     (a) **Run-elapsed is not window-open.** The run had been going 28 minutes,
     most of it `flutter-test`, when nobody would read it as done. The hazard
     starts the instant the **last gate** goes green. A figure taken from the
@@ -318,6 +324,19 @@
   errors. A summary showed a terminal word for a run that proved nothing; the
   jobs one cared about were terminal while the run that gates pushing was not.
   Each needs a query one layer below the summary (palateful-d9).
+
+  **Independent derivation catches independent mistakes — and only those.**
+  Re-deriving is the cheapest check here and it caught two real errors in one
+  evening, so keep doing it; just don't overclaim what agreement buys. Two
+  sessions querying the same API with different guards rule out each other's
+  arithmetic and sentinel errors. They rule out nothing upstream: on a wrong
+  value from the source, both derivations agree and the agreement makes the
+  error *more* credible — the same shape as two sessions "confirming" phantom
+  Terraform drift while running the same outdated CLI. Correlated error needs a
+  different **source**: another tool, another API surface, a human reading the
+  page. Where none is available, internal consistency — timestamps tiling
+  without gaps, two fields agreeing — is weak corroboration, and worth calling
+  **consistency**, not independence (palateful-d9).
 
   **The test, before believing any clean result: what does this print when the
   thing it measures never ran — and who receives that?** If the first answer
