@@ -419,6 +419,20 @@ do. Widening to 1d and 1c is still worth filing — 3 beats 1 — but it should
 be proposed as *"the best available is poor"*, not as *"we are leaving a 9
 on the table"*.
 
+**Observed at the flip, and it refines the earlier non-fall-through
+note.** Within about a minute of the queue order changing, desired capacity
+moved from `od=4, spot=0` — where it had sat for 105 minutes — to `od=0,
+spot=4`, for a job that was already RUNNABLE. So **a queue-order change
+does re-point pending demand for a queued job.** That does not contradict
+the earlier finding: *"Batch does not fall through to order 2 when order 1
+cannot allocate"* concerns fall-through within a fixed order; this concerns
+the order itself changing. Different mechanisms, both worth knowing.
+
+Caveat kept deliberately: `desiredvCpus` is a CE-level scaling signal, not
+a job placement, and the job was cancelled before anything launched — this
+shows the scaler followed the new order, **not** that the job would have
+run there.
+
 **This completes the incident picture.** Both halves were broken, for
 unrelated reasons: spot-first was failing because spot GPU capacity is
 genuinely thin where we are pinned, **and** the on-demand fallback built to
