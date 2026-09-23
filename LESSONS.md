@@ -290,3 +290,17 @@
   earlier the same sentence would have been worthless, because the denominator
   was zero.
 
+- **`git cherry` and `git diff origin/main` both lie about a squash-merged
+  branch, in the direction that makes you distrust a correct merge.**
+  Cleaning up three merged worktrees on 2026-09-23, `git cherry origin/main
+  <branch>` reported 2, 2 and 12 "unmerged" commits — for PRs that `gh pr
+  view` showed MERGED — and `git diff origin/main --stat` showed thousands
+  of deletions on each. Both are artifacts: squashing rewrites patch-ids so
+  `cherry` cannot match the commits, and the diff was the worktree being
+  *behind* main, not missing from it. Believe either one and you keep dead
+  worktrees forever, or "restore" work that is already shipped. Fix: verify
+  by **content** — grep main for the symbols, sections or file the branch
+  added (`git show origin/main:<path> | grep -c <symbol>`) — and treat `gh
+  pr view --json state` as the merge authority. Sign-flipped twin of the
+  exit-code and phantom-green lessons above: there, silence read as success;
+  here, a tool reports a problem that does not exist.
