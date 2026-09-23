@@ -279,7 +279,12 @@
     deploy**, and pushing then would have cancelled a live deployment with a
     green-looking justification. `gh run view --json jobs --jq '.jobs[] |
     select(.status!="completed") | .name'` shows what is still moving
-    (palateful-d9).
+    (palateful-d9). **It is a standing hazard, not freak timing:** the window
+    lasts as long as the image builds, which on this repo is minutes — it was
+    measured still open 4 minutes after the last test gate went green, with
+    four `deploy-images` jobs running. Measure the window from the last gate's
+    completion, not from the run's start; the run's own elapsed time is much
+    longer and answers a different question.
   - **`gh pr checks` printed all-passing while an entire workflow had not
     reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
     view, twice. Gate on a probe that aggregates every run at the head SHA;
