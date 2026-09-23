@@ -52,8 +52,16 @@ class ApiClient {
           bool refreshSucceeded = false;
           try {
             refreshSucceeded = await _authService!.refreshToken();
-          } catch (e) {
+          } catch (e, st) {
             debugPrint('Token refresh during request failed: $e');
+            // refreshToken() has its own catch-all and normally returns
+            // false, so reaching here means it threw on a path it does not
+            // model. Pre-auth: the 401 that got us here says the token on
+            // hand is already rejected, so the mirror cannot accept this.
+            ErrorReporter.reportPreAuth(e, st,
+                area: 'auth',
+                operation: 'apiClient.refreshOn401',
+                extras: {'path': error.requestOptions.path});
             refreshSucceeded = false;
           }
 
@@ -68,9 +76,22 @@ class ApiClient {
               final response = await _dio.fetch(opts);
               _isRefreshing = false;
               return handler.resolve(response);
-            } catch (retryError) {
+            } catch (retryError, retrySt) {
               // Retry itself failed (still 401, network blip, etc.).
               // Fall through to the original error instead of looping.
+              //
+              // Reported: a refresh that SUCCEEDED followed by a retry that
+              // failed is an auth failure with no other trace — the user
+              // sees the original error on whatever screen they were on and
+              // nothing records that the new token didn't work either.
+              // Mirrored, because the refresh just handed us a live token.
+              ErrorReporter.report(retryError, retrySt,
+                  area: 'auth',
+                  operation: 'apiClient.retryAfterRefresh',
+                  extras: {
+                    'path': error.requestOptions.path,
+                    'originalStatus': error.response?.statusCode,
+                  });
               _isRefreshing = false;
               return handler.next(error);
             }
@@ -82,9 +103,14 @@ class ApiClient {
           // redirects to /login.
           try {
             await _authService!.logout();
-          } catch (_) {
-            // Swallow — logout() already has its own catch-all that
-            // clears local state even if the Auth0 round-trip fails.
+          } catch (e, st) {
+            // logout() has its own catch-all that clears local state even
+            // when the Auth0 round-trip fails, so this is belt-and-braces —
+            // but an exception escaping it anyway means local state may NOT
+            // have been cleared, which strands the user in a signed-in shell
+            // with dead credentials. Pre-auth: refresh just failed.
+            ErrorReporter.reportPreAuth(e, st,
+                area: 'auth', operation: 'apiClient.logoutAfterRefreshFailure');
           }
           _authToken = null;
           _isRefreshing = false;

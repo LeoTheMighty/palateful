@@ -215,7 +215,7 @@ void main() async {
             ErrorReporter.setUserIdentifier(userData['id'].toString());
           }
         }
-      } catch (e) {
+      } catch (e, st) {
         debugPrint('Failed to fetch user data on startup: $e');
         if (_isAuthError(e)) {
           // Auth error (401/403): try refreshing token once, then logout
@@ -232,16 +232,41 @@ void main() async {
                 );
                 authService.updateAdminState(userData['is_admin'] ?? false);
               }
-            } catch (retryError) {
+            } catch (retryError, retrySt) {
               debugPrint('Retry after refresh also failed: $retryError');
+              // This line LOGS THE USER OUT at cold start, and until now it
+              // said so only to a debugPrint. It is the "my login doesn't
+              // hold" shape: the refresh worked, the retried /me still
+              // failed, and the app signs the user out on launch. Mirrored
+              // while the refreshed token is still live — after logout()
+              // there is nothing to authenticate with.
+              ErrorReporter.report(retryError, retrySt,
+                  area: 'auth',
+                  operation: 'coldStart.retryAfterRefresh',
+                  extras: {'forcedLogout': true});
               await authService.logout();
             }
           } else {
+            // Refresh failed outright after a 401/403 on /me: same forced
+            // logout, one branch over. refreshToken() reports the renewal
+            // failure itself; this records that it cost the session.
+            ErrorReporter.reportPreAuth(e, st,
+                area: 'auth',
+                operation: 'coldStart.refreshFailed',
+                extras: {'forcedLogout': true});
             await authService.logout();
           }
+        } else {
+          // Not an auth error — a network blip or a 5xx. The session is
+          // kept and the app retries on the next launch or navigation, so
+          // this is not a failure to act on. Recorded anyway: a cold start
+          // that cannot reach /me leaves the app with stale onboarding and
+          // admin state, and nothing else notices.
+          ErrorReporter.report(e, st,
+              area: 'auth',
+              operation: 'coldStart.fetchUser',
+              extras: {'forcedLogout': false});
         }
-        // Network/server errors: skip silently — user keeps auth state and
-        // the app will retry on next launch or navigation
       }
 
       // Initialize push notifications after auth. autoPrompt is gated on

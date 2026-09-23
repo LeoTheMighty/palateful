@@ -2,6 +2,9 @@ import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:auth0_flutter/auth0_flutter_web.dart';
 import 'package:flutter/foundation.dart';
 
+import 'auth_failure_mode.dart';
+import 'error_reporter.dart';
+
 /// Web implementation using Auth0Web
 
 Auth0Web createAuth0Web(String domain, String clientId) {
@@ -16,6 +19,10 @@ Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
   final uri = Uri.base;
   final hasCode = uri.queryParameters.containsKey('code');
   final hasError = uri.queryParameters.containsKey('error');
+  // `state` is what makes this OUR redirect rather than any URL that
+  // happens to carry `?error=` — a deep link, a shared link, a third-party
+  // redirect. Auth0 always round-trips it.
+  final hasState = uri.queryParameters.containsKey('state');
 
   debugPrint('onLoad: hasCode=$hasCode, hasError=$hasError, uri=$uri');
   debugPrint('onLoad: audience=$audience');
@@ -24,6 +31,31 @@ Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
     final error = uri.queryParameters['error'];
     final errorDesc = uri.queryParameters['error_description'];
     debugPrint('Auth callback error: $error - $errorDesc');
+    // Auth0 redirected back with an error instead of a code — an Action
+    // deny (including the account-linking one), a rejected callback URL, a
+    // blocked user. Not an exception, so no catch ever saw it; it returned
+    // null and the app simply stayed logged out.
+    if (hasState) {
+      // `state` is what makes this OUR redirect. Without the check, any URL
+      // carrying `?error=` reported — and re-reported on every reload,
+      // since the parameter stays in the address bar.
+      final mode = callbackFailureMode(error, errorDesc);
+      if (mode == null) {
+        debugPrint('Silent auth declined ($error) — expected, not reported');
+      } else {
+        ErrorReporter.reportPreAuth(
+          Exception('Auth0 callback error: $error'),
+          StackTrace.current,
+          area: 'auth',
+          operation: 'web.onLoad.callbackError',
+          extras: {
+            'failureMode': mode,
+            'error': error,
+            'errorDescription': errorDesc,
+          },
+        );
+      }
+    }
     return null;
   }
 
@@ -50,8 +82,15 @@ Future<Credentials?> onLoad(dynamic auth0Web, String audience) async {
         final storedCredentials = await web.credentials(audience: audience);
         debugPrint('Got stored credentials');
         return storedCredentials;
-      } catch (credError) {
+      } catch (credError, credSt) {
         debugPrint('Failed to get stored credentials: $credError');
+        // Last resort in the callback path: the URL carried a code, so the
+        // user did authenticate, and we still ended with no session. Silent
+        // until now, which is one of the shapes "login failed" takes.
+        ErrorReporter.reportPreAuth(credError, credSt,
+            area: 'auth',
+            operation: 'web.onLoad.storedCredentials',
+            extras: {'failureMode': authFailureMode(credError)});
       }
     }
 

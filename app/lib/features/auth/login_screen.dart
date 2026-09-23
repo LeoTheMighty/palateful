@@ -1,27 +1,16 @@
-import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/di/injection.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/api_client.dart';
+import '../../core/services/auth_failure_mode.dart';
+import '../../core/services/error_reporter.dart';
 
-/// True when [e] is the denial our Auth0 Action raises after linking a
-/// second provider to an existing account.
-///
-/// Checks the exception's message AND its details: on an `access_denied`
-/// redirect Auth0 carries the Action's text as `error_description`, and which
-/// of the two fields the SDK lands it in has not been observed on a device —
-/// this branch was unreachable until now. login() reports the exception, so
-/// the first real instance shows the actual shape.
-@visibleForTesting
-bool isAccountLinkedError(Object e) {
-  final text =
-      (e is WebAuthenticationException ? '${e.message} ${e.details}' : '$e')
-          .toLowerCase();
-  return text.contains('account has been linked') ||
-      text.contains('accounts have been linked');
-}
+/// Re-exported from `core/services/auth_failure_mode.dart`, where it lives
+/// so `AuthService` can tag reports with the same classification the screen
+/// shows copy for. Kept here for existing call sites and tests.
+export '../../core/services/auth_failure_mode.dart' show isAccountLinkedError;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -58,8 +47,21 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
+    // Set when the failure came out of `login()`, which reports it itself.
+    // `rethrow` preserves the stack, so reporting it again here would land
+    // in the SAME Crashlytics issue (non-fatals group by stack; `operation`
+    // is a custom key, not a grouping dimension) — one login failure
+    // counted twice, not two distinguishable events.
+    var reportedByAuthService = false;
+
     try {
-      final success = await _authService.login(connection: connection);
+      final bool success;
+      try {
+        success = await _authService.login(connection: connection);
+      } catch (_) {
+        reportedByAuthService = true;
+        rethrow;
+      }
 
       if (kIsWeb) {
         // Keep loading - page will redirect
@@ -83,7 +85,23 @@ class _LoginScreenState extends State<LoginScreen> {
         // sheet. That's their choice, not a failure — no error message.
         setState(() => _isLoading = false);
       }
-    } catch (e) {
+    } catch (e, st) {
+      // Reported BEFORE the mounted check: a user who backgrounds the app
+      // or navigates away mid-hand-off still had the failure, and dropping
+      // it here would be the same silent path this story exists to close.
+      // Only the setState below needs a live element.
+      if (!reportedByAuthService) {
+        // The post-login steps only: the ApiClient token hand-off and
+        // anything `_fetchUserAndCheckOnboarding` lets escape. `login()`'s
+        // own failures are already reported at their own stack.
+        ErrorReporter.reportPreAuth(e, st,
+            area: 'auth',
+            operation: 'loginScreen.postLogin',
+            extras: {
+              'failureMode': authFailureMode(e),
+              'connection': connection ?? 'universal',
+            });
+      }
       if (!mounted) return;
       // Reachable since login() stopped swallowing. The account-linked branch
       // is the case our Auth0 Action produces on purpose (`api.access.deny()`
@@ -109,8 +127,14 @@ class _LoginScreenState extends State<LoginScreen> {
           defaultRecipeBookId: userData['default_recipe_book_id'],
         );
       }
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('Failed to fetch user data: $e');
+      // NOT pre-auth: this runs with a token already set on the ApiClient,
+      // so the error_logs mirror can accept it and `audit_errors.py` can see
+      // it next to the server side of the same request. Swallowed by design
+      // — onboarding state is refetched on the next screen — but a rising
+      // count here is a signed-in user landing on a half-initialised app.
+      ErrorReporter.report(e, st, area: 'auth', operation: 'fetchUserAfterLogin');
     }
   }
 
@@ -136,7 +160,14 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       context.go('/');
-    } catch (e) {
+    } catch (e, st) {
+      // Manual-token sign-in (dev/E2E affordance). `_fetchUserAndCheckOnboarding`
+      // swallows and reports its own failures, so what reaches here is the
+      // token hand-off or the navigation. Pre-auth: the pasted token is the
+      // one under test and nothing else can authenticate a mirror POST.
+      ErrorReporter.reportPreAuth(e, st, area: 'auth', operation: 'loginScreen.tokenSignIn', extras: {
+        'failureMode': authFailureMode(e),
+      });
       if (mounted) {
         setState(() {
           _error = 'An error occurred: $e';
