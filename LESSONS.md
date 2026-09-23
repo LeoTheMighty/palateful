@@ -338,6 +338,19 @@
   without gaps, two fields agreeing — is weak corroboration, and worth calling
   **consistency**, not independence (palateful-d9).
 
+  **A change-only watcher is indistinguishable from a dead one, and it bit the
+  session writing this entry.** On 2026-09-23 a poller was set to print only on
+  state change, to keep the channel quiet. It then ran **75 minutes printing
+  nothing** while a production import sat stuck, and the silence was read as
+  "nothing to report". A warning that was due at the 60-minute mark was sent at
+  85 minutes, five minutes before the deadline it existed to pre-empt. Nothing
+  failed: the poller worked, the state genuinely had not changed, and every
+  individual reading was correct. **The defect was the reporting contract** —
+  "silence means no change" and "silence means I am dead" render identically.
+  The replacement prints **every** poll, plus an explicit `NO READING` when a
+  poll returns empty and an explicit line when it exits. Cheap, noisier, and it
+  cannot lie by omission.
+
   **The test, before believing any clean result: what does this print when the
   thing it measures never ran — and who receives that?** If the first answer
   is indistinguishable from success, it is not yet a check. If the second is
