@@ -4,9 +4,9 @@ type: dev
 created: 2026-09-22T22:05:00-06:00
 title: an explicit ?tab= wins over the count-based guess (tapping "imports in progress" lands on Notifications)
 from: dev/dev-impvis1-2026-09-22T22:00-imports-tab-shows-every-in-flight-import.md
-status: ready
-owner: null
-branch: null
+status: in-progress
+owner: /devx-c2872fff
+branch: feat/dev-acttab1
 ---
 
 ## Goal
@@ -77,3 +77,4 @@ outright** — a different bug with a different fix.
 
 ## Status log
 - 2026-09-22T22:05 — filed from the scoping pass on Leo's report, split out of impvis1 so the tab-selection defect is not fixed by accident inside a data-source change. Blocked-by: —.
+- 2026-09-23T01:20 — claimed for /devx (hand-claim: main is a serialized deploy lane, claim commit lands on feat/dev-acttab1). Base: 0cffbe11, which includes impvis1 (#56) — so the Imports tab now has something to render when the tab selection is right, which is what makes this half testable end to end.
