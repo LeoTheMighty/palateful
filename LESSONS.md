@@ -263,6 +263,56 @@
   - **A guard whose empty result and its failure produced the same exit
     code** — an empty `grep` piped into `while read` ran once with an empty
     value and set status 1 (palateful-3b).
+  - **A `cancelled` run reads as a pass in a list.** `CI & Deploy` run
+    `35805870538` at `37d02bb0` is `completed / cancelled` — a later merge's
+    `cancel-in-progress` killed it mid-`flutter-test`. In `gh run list` that
+    sits in the same column as a success, and it proved nothing: the first CI
+    run of that change on `main` never finished. Read the **specific run's**
+    `status,conclusion`, and for a merge find the next *terminal* run whose
+    head has your merge as an ancestor (`git merge-base --is-ancestor`)
+    (palateful-d9).
+  - **Every test job green while the run itself is still going.** Run
+    `35806423249` at `51b321e0`: `flutter-test`, `test`, `lint`,
+    `check-models`, `setup`, `terraform` all success — and the run
+    `in_progress`, because it had moved into `deploy-web` and four
+    `deploy-images` jobs. "All tests green" reads as done; it was **mid prod
+    deploy**, and pushing then would have cancelled a live deployment with a
+    green-looking justification. `gh run view --json jobs --jq '.jobs[] |
+    select(.status!="completed") | .name'` shows what is still moving
+    (palateful-d9). **It is a standing hazard, not freak timing: the window lasts
+    as long as the whole deploy tail.** Measured end to end on run
+    `35806423249` — last gate `test` green **01:51:45Z**, last job
+    `deploy-services` done **02:14:37Z**: **22m52s**. The tail was
+    `deploy-web` → four `deploy-images` → `terraform-prod` → `run-migrator` →
+    `deploy-services`. **Treat ~23 minutes as one measured instance, not a
+    budget** — a deploy touching fewer of those legs is shorter — but the
+    order of magnitude is "most of the run", not "a moment of handoff".
+
+    Three traps while establishing that, each of which produced a confident
+    wrong number:
+    (0) **Sampling an open interval measures how long you have been watching,
+    not how long it lasts.** Both sessions reported snapshots of the
+    still-open window — 5m36s and 6m11s — as if they were the span. Each
+    understated it roughly fourfold, in the same direction. A duration is only
+    computable once the thing has ended; until then the honest statement is
+    "still open after N".
+    (a) **Run-elapsed is not window-open.** The run had been going 28 minutes,
+    most of it `flutter-test`, when nobody would read it as done. The hazard
+    starts the instant the **last gate** goes green. A figure taken from the
+    run's start overstates it by an order of magnitude.
+    (b) **A still-running job's `completedAt` is a zero-value timestamp**
+    (`0001-01-01`), not null. Naively taking `max(completedAt)` silently
+    excludes exactly the jobs holding the window open and reports a **shorter,
+    terminal-looking** duration — 2m17s here, against 6m11s and still open.
+    **The obvious alternative fix is the same bug respelled:** a running job's
+    `conclusion` is `''`, not null, so filtering on `.conclusion == null`
+    matched **0** of the 4 running jobs while `status != "completed"` matched
+    all 4 (verified on this run). The robust form is to treat *not completed*
+    as the signal and **refuse to compute a duration at all**, rather than to
+    special-case the sentinel value — a zero-value field will keep finding new
+    spellings. The final 22m52s above was only computed **after**
+    asserting the run itself read `completed` and no job was outstanding; on
+    an in-flight run that same arithmetic is the bug.
   - **`gh pr checks` printed all-passing while an entire workflow had not
     reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
     view, twice. Gate on a probe that aggregates every run at the head SHA;
@@ -270,14 +320,59 @@
     from the cited-test entry by palateful-3b — the `gh`-specific detail stays
     cross-referenced there.)
 
+  A useful way to name the last three: they are **terminal-state-of-the-wrong-thing**
+  errors. A summary showed a terminal word for a run that proved nothing; the
+  jobs one cared about were terminal while the run that gates pushing was not.
+  Each needs a query one layer below the summary (palateful-d9).
+
+  **Independent derivation catches independent mistakes — and only those.**
+  Re-deriving is the cheapest check here and it caught two real errors in one
+  evening, so keep doing it; just don't overclaim what agreement buys. Two
+  sessions querying the same API with different guards rule out each other's
+  arithmetic and sentinel errors. They rule out nothing upstream: on a wrong
+  value from the source, both derivations agree and the agreement makes the
+  error *more* credible — the same shape as two sessions "confirming" phantom
+  Terraform drift while running the same outdated CLI. Correlated error needs a
+  different **source**: another tool, another API surface, a human reading the
+  page. Where none is available, internal consistency — timestamps tiling
+  without gaps, two fields agreeing — is weak corroboration, and worth calling
+  **consistency**, not independence (palateful-d9).
+
+  **A change-only watcher is indistinguishable from a dead one, and it bit the
+  session writing this entry.** On 2026-09-23 a poller was set to print only on
+  state change, to keep the channel quiet. It then ran **75 minutes printing
+  nothing** while a production import sat stuck, and the silence was read as
+  "nothing to report". A warning that was due at the 60-minute mark was sent at
+  85 minutes, five minutes before the deadline it existed to pre-empt. Nothing
+  failed: the poller worked, the state genuinely had not changed, and every
+  individual reading was correct. **This is a contract defect, not a watcher
+  bug** — nothing in the code was broken, and rewriting the poller more
+  carefully would not have helped. "Silence means no change" and "silence means I am dead" render
+  identically, so the channel cannot carry the difference. Note that
+  print-on-change is exactly what one reaches for to keep a channel quiet,
+  which is why this recurs: the instinct that makes a watcher polite is the
+  same one that makes it unfalsifiable. **A reporting contract has to
+  distinguish three states — progress, no-change, and no-longer-running —
+  and only the third is dangerous to leave unsaid.**
+  The replacement prints **every** poll, plus an explicit `NO READING` when a
+  poll returns empty and an explicit line when it exits. Cheap, noisier, and it
+  cannot lie by omission.
+
   **The test, before believing any clean result: what does this print when the
   thing it measures never ran — and who receives that?** If the first answer
   is indistinguishable from success, it is not yet a check. If the second is
   "nobody", it is not yet a detector. The alarm-with-no-subscriber passes the
   first clause and fails the second.
 
-  **The enforcement is cheaper than the reasoning: drive the check into its
-  failure state once and watch it fail.** A mutation test of one CI guard
+  **The enforcement is cheaper than the reasoning: drive the check into the
+  failure state *the test names*, not merely into some failure state.** A test
+  can fail for a reason unrelated to its subject just as easily as it can pass
+  for one, so "it goes red without the fix" is not enough — simulate the
+  specific defect. On `impvis1`, five tests were called regression coverage and
+  **only two actually failed without the fix**; the other three were guards
+  that passed before it (palateful-79). Where a test passes for a reason
+  unrelated to the thing it names, that is the neighbouring *wrong-evidence*
+  mechanism rather than this one — see the provenance entries. A mutation test of one CI guard
   against ten planted violations caught four shapes it had silently missed,
   including the exact form the codebase already used (palateful-3b). Where the
   signal is *silence*, first show that silence is abnormal — treating missing
