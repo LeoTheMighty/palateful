@@ -358,6 +358,14 @@
   poll returns empty and an explicit line when it exits. Cheap, noisier, and it
   cannot lie by omission.
 
+  **The same shape bit the check written to catch it.** Verifying #69 had
+  merged, a content grep for a sentence in the merged text returned **0** on a
+  main that did contain it — the sentence had been re-wrapped, so the pattern
+  straddled a line break. Verify-by-content needs a fragment that **cannot
+  cross a wrap**. Otherwise the technique that protects against a false
+  "merged" manufactures a false "not merged", and a prose file re-flows
+  constantly. Grep a short distinctive phrase, not a sentence.
+
   **The test, before believing any clean result: what does this print when the
   thing it measures never ran — and who receives that?** If the first answer
   is indistinguishable from success, it is not yet a check. If the second is
@@ -396,6 +404,8 @@
   worktrees forever, or "restore" work that is already shipped. Fix: verify
   by **content** — grep main for the symbols, sections or file the branch
   added (`git show origin/main:<path> | grep -c <symbol>`) — and treat `gh
-  pr view --json state` as the merge authority. Sign-flipped twin of the
+  pr view --json state` as the merge authority. In prose files, grep a phrase
+  short enough that it cannot straddle a line wrap (see the verdict entry
+  above); a re-wrapped sentence reports 0 on a file that contains it. Sign-flipped twin of the
   exit-code and phantom-green lessons above: there, silence read as success;
   here, a tool reports a problem that does not exist.
