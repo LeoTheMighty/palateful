@@ -105,6 +105,46 @@ be a no-op. It becomes destructive only because a different mechanism can mark
 a batch terminal while the work is still queued. **The guard faithfully
 protects a lie.** A periodic sweep alone does **not** fix this.
 
+### The trap this sets for the fix: `updated_at` is written at transaction start
+
+The obvious way to write the sweep — "find batches whose `updated_at` is
+older than N minutes" — **misses precisely the rows this spec is about.**
+
+palateful-4f measured the divergence: on the 11 April batches
+`updated_at - completed_at` is +0.002s to +0.242s, but on the two September
+timeout rows it is **-5383s** — `updated_at` sits 90 minutes *before* the
+row's own terminal write. My probe reads the same thing on `2ca59c8c`:
+`created=17:11:36 upd=17:12:07 done=18:41:49`.
+
+The mechanism is not specific to the timeout path, which is why it belongs
+in the spec rather than in a code comment:
+
+1. `updated_at` is `onupdate=func.now()` (`models/joins_base.py:16`), and
+   Postgres `now()` is **transaction start**, not statement time. Verified
+   against prod, read-only: inside one transaction across a `pg_sleep(2)`,
+   `now()` moved `0.000s` while `clock_timestamp()` moved `2.011s`.
+2. The watcher holds **one transaction open for the full 90 minutes**. The
+   per-poll re-fetch (`watch_parser_batch_task.py:75`) is a SELECT, and the
+   non-terminal path of `complete_parser_batch` explicitly leaves the row
+   untouched, so nothing commits.
+3. `completed_at = datetime.now(UTC)` (`parser_batch_completion.py:242`) is
+   Python wall-clock. So the same write records the true time in
+   `completed_at` and the transaction's start time in `updated_at`.
+
+**The hypothesis predicts 4f's control measurement, which is why I believe
+it rather than merely fitting it**: `_mark_failed` commits, and the
+`parser_jobs` are then updated in a *fresh* transaction begun at the real
+time — so their `updated_at` should track `completed_at` closely. 4f
+measured max divergence 0.23s on `parser_jobs`. That is the prediction.
+
+The generalisation is the part worth carrying: **any row written by a
+long-running task before its first commit carries an `updated_at` from when
+the task started, not from when the row changed.** Anywhere in this codebase
+that a task holds a transaction, `updated_at` is unreliable as a
+"recently changed" signal.
+
+Sweep on `status` and `completed_at`. Never on `updated_at`.
+
 ## Acceptance criteria
 
 - [ ] **Reconciliation is a periodic sweep over non-terminal rows**, not an
@@ -132,6 +172,10 @@ protects a lie.** A periodic sweep alone does **not** fix this.
       another silent detector. Ties to `absal1`.
 - [ ] Proven by driving a job to each outcome and watching the rows follow,
       not by reading the sweep.
+- [ ] **The sweep does not key on `updated_at`.** It is written at
+      transaction start, so on exactly the timed-out rows it predates the
+      row's own terminal write by 90 minutes. Key on `status` +
+      `completed_at`, and assert it in a test rather than a comment.
 
 ## Technical notes
 
@@ -166,3 +210,15 @@ protects a lie.** A periodic sweep alone does **not** fix this.
   and withdrawn; the trigger remains unidentified (`wkrst1`). What survived
   every correction is the process-lifetime dependency, which is what the fix
   must remove.
+- 2026-09-23T18:55 — added the `updated_at` trap section + its AC. 4f measured
+  the divergence (-5383s on the two September timeout rows vs +0.002..0.242s
+  on the April rows) and addressed it here from `pcap1`; I confirmed it from
+  my own probe (`2ca59c8c`: upd=17:12:07, done=18:41:49) and then established
+  the mechanism rather than the correlation: Postgres `now()` is
+  transaction-start, proven read-only against prod (`now()` +0.000s across a
+  `pg_sleep(2)` while `clock_timestamp()` moved +2.011s), and the watcher
+  holds one transaction open for the full 90 minutes. The mechanism predicts
+  4f's control — `parser_jobs`, written after `_mark_failed` commits, should
+  track closely, and they do (max 0.23s). Generalised in the spec: any row
+  written by a long-running task before its first commit carries an
+  `updated_at` from when the task started.
