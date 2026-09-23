@@ -19,6 +19,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 
 ## Loose ends from executed epics (independent, parallel-safe)
 
+- [ ] `dev/dev-vrfmrg1-2026-09-23T19:35-verify-merged-helper.md` — `tools/verify-merged.sh <path> <fragment>`: verify by content against `origin/main` with whitespace normalised, so a line wrap cannot turn a merged change into a false "not merged". Twice on 2026-09-23 a sentence-length grep returned 0 against a main that contained the text — the second time on the very caveat warning against sentence-length greps. Status: ready. Blocked-by: —. From: LESSONS.md (squash-merge + verdict-silence entries).
 - [-] `dev/dev-mvp1-2026-07-27T17:04-multi-image-group-index-fix.md` — Fix multi-image group_index so one upload session yields one recipe. Status: blocked (awaiting diagnostic info from Leo — initial one-line client-fix hypothesis invalidated in review; see spec status log). From: epic-mvp-finalization.
 - [-] `dev/dev-bugsimppho7-2026-07-27T17:06-vision-extraction-eval-suite.md` — Vision-extraction eval suite with image fixtures and recipe-count gate. Status: blocked. Blocked-by: —. From: epic-bugs-import-photo-pipeline (pho-1..6 done).
 - ~~`dev/dev-bugscal3b-2026-07-27T17:07-backend-recurrence-expansion.md` — Backend server-side recurrence expansion in ListMealEvents.~~ Status: superseded (2026-07-27 verification: recurring-meals epics deliver this via slot-rule + materialization; residual resurrection bug filed as debug rcres1; the deferred bugs-cal-3 recurrence UI is no longer blocked).
