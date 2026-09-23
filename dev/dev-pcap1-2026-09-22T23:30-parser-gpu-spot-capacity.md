@@ -135,6 +135,14 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
 
 ## Acceptance criteria
 
+- [ ] **Record which compute environment ran each attempt** on the next
+      multi-attempt job (`describe-jobs → attempts[].container.taskArn`).
+      This is what discharges the reclamation-fallback assumption; the
+      drill does not.
+- [ ] **Independent re-confirmation by a session that did not make the
+      change** (carried from `debug/debug-parsercap1`; owner palateful-0e).
+      One session's read of prod is a strong lead, not a licence — and not
+      a self-check.
 - [ ] **Settle the open question by re-running**: is the capacity failure
       permanent, or was tonight unlucky? One spot-only pool with no
       fallback fails either way, and a single data point cannot separate
@@ -158,6 +166,65 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
       needs Leo's approval before running. A capacity fix that has never
       been exercised against an empty pool is a configured fix, not a
       verified one.
+
+## Ownership after reconciling with parsercap1 and prcon1
+
+Three specs described one incident. Merged 2026-09-23 so no AC is silently
+dropped when one closes:
+
+| Concern | Owner | State |
+|---|---|---|
+| Capacity: fallback, wider pool, reclaim-aware retries | **pcap1** (this) | Applied `fb2892d0` |
+| Fallback drill — is it permanent or was tonight unlucky? | **pcap1** (this) | **Owed**, proposed below, needs Leo |
+| **Independent re-confirmation before/after changing the compute environment** — carried from `debug/debug-parsercap1`'s first AC | **palateful-0e** | **Owed** |
+| Write-back: a Batch job dies and the rows stay `submitted` | **`dev/dev-prcon1`** | Ready |
+| April stale state: 14 `parser_jobs` `running` + 7 `submitted`, `parser_batch_id IS NULL` | **`dev/dev-prcon1`** | Ready |
+| Rendering a dead batch as failed | `impvis1` / #56 (palateful-79) | Merged |
+
+`debug/debug-parsercap1` is closed as **superseded**, pointing here and at
+prcon1. It is not deleted: it holds the original investigation.
+
+**This spec does not resurrect Leo's stuck batch `9384da8a…`.** That needs
+prcon1's write-back plus a re-submit.
+
+## Correction: "the fallback is load-bearing" is NOT established
+
+palateful-0e proposed that framing and has since walked it back, and the
+walk-back is right. The reasoning was: reclamation happens *after*
+allocation, so only on-demand survives it. **That does not follow.**
+
+Batch picks a compute environment when it **schedules an attempt**, based
+on where it can place work. Reclamation is not a placement failure — so
+if the spot environment can still allocate, a retry is likely placed on
+**order 1 again**. Order 2 engages when order 1 **cannot allocate**, which
+is exactly the condition we did *not* observe on 2026-09-22. In the worst
+case all 10 attempts burn on spot.
+
+What rescues it is correlation, not mechanism: reclamation usually happens
+*under* capacity pressure, so spot often also fails to allocate and order 2
+then engages. That is a probabilistic argument. Neither session found a
+documented guarantee.
+
+**How to settle it by measurement, not documentation.** The task ARN
+embeds the compute environment name:
+`arn:aws:ecs:…:task/palateful-parser-spot-gpu-prod-…_Batch_…/…`
+So `describe-jobs → attempts[].container.taskArn` reveals **which
+environment ran each attempt**. Verified against the 2026-09-22 failure:
+all three attempts report the spot environment. (That job predates the
+fallback, so it proves the method, not the behaviour.)
+
+**Therefore, and this matters for the drill below:**
+- forcing spot `max_vcpus = 0` proves **order-2 placement works at all** —
+  a genuine prerequisite, and it rules out a mis-ordered queue;
+- it tests **allocation-failure fallback**, *not* **reclamation fallback**,
+  which is the assumption actually in doubt;
+- only **per-attempt CE inspection on a real multi-attempt job** discharges
+  it. That costs nothing and needs no forcing — it just needs the next
+  failure.
+
+Until then, pcap1's honest claim is: the wider pool and the retry policy
+are improvements on their own, and the fallback **may or may not** engage
+on reclamation.
 
 ## Proposed fallback drill — NOT YET RUN, needs Leo's approval
 
