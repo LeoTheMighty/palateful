@@ -322,6 +322,72 @@ for it addressed the wrong half of the failure. Spot-first fails open into
 **Prefer the failure mode that degrades cost over the one that degrades
 function**, especially when the saving is this small.
 
+## The root cause: the account was never permitted to run on-demand G instances
+
+**`L-DB2E81BA` "Running On-Demand G and VT instances" = 0.** Adjustable,
+and the quota-change history is **empty** — it has been 0 since the account
+was created. Spot is permitted: `L-3819A6DF` = 32.
+
+**Why nobody checked: the adjacent quota is fine.** `L-3819A6DF` is **32**.
+Two near-identically named GPU quotas, one healthy and one zero — so anyone
+asking *"do we have GPU quota in this account?"* finds a reassuring number
+and stops. The reassuring reading was real; it just answered a different
+question. `L-DB2E81BA` is `adjustable: true`, so the remedy is a support
+request, not a redesign — and **an adjustable quota at 0 with an empty
+change history is specifically the signature of "nobody ever asked"**, as
+distinct from a hard limit. (Contrast drawn by palateful-0a, who also
+re-verified both quotas independently from the live account.)
+
+AZs are ruled out: the CEs use `us-east-1a` and `us-east-1b`, and
+`g4dn.xlarge`, `g5.xlarge` and `g6.xlarge` are all offered in 1a, 1b, 1c,
+1d and 1f.
+
+**Why a quota of 0 was invisible rather than merely unnoticed: there was no
+on-demand path to exercise.** `parser_ondemand_gpu` first entered the module
+in `fb2892d0` (#63) on **2026-09-22** — before that commit the queue had
+exactly one compute environment and it was spot. So every April import ran on
+spot by construction, not by chance. The account has been forbidden to run
+on-demand G instances since it was created, and until last night nothing ever
+asked it to. The first thing that did was the fallback built to make the
+pipeline more reliable.
+
+**So pcap1's on-demand fallback was structurally incapable of launching a
+single instance, from the moment it was written.** Not "engages only when
+spot cannot allocate" — the account may not run these instances at all.
+
+### The lesson: verified the shape, never the capability
+
+The fallback was checked, and checked again, and both checks passed:
+- the author planned it, applied it, and confirmed 5 instance types, `max
+  8`, `ENABLED/VALID`, queue order 2;
+- **palateful-0e independently re-confirmed all of it from AWS**, including
+  catching a real defect (the pool was narrower than spot's);
+- a pre-registered plan matched the apply exactly; every post-apply check
+  passed.
+
+**Every one of those checks was about the shape of the configuration. None
+asked whether the account was permitted to create the resource.** Two
+sessions confirmed the wiring; neither confirmed the capability.
+
+**General form: for any resource a change depends on, confirm the account
+can actually create it — not merely that the configuration refers to it
+correctly.** A service quota of 0 produces a `VALID` / "ComputeEnvironment
+Healthy" environment, a standing `desiredvCpus`, and silence.
+
+### Observed: Batch does not fall through an incapable order-1
+
+With on-demand at order 1 and its quota at 0, Batch held `desiredvCpus = 4`
+on the incapable environment for **67 minutes** and **never fell through to
+order 2**. The whole fallback design assumed it would. Worth knowing
+independently of the quota: an order-1 environment that cannot deliver is
+not automatically skipped.
+
+### Status
+
+Spot-first restored (`spotback1`) **only because on-demand cannot launch**.
+Leo has filed the `L-DB2E81BA` increase. When granted, flip back to
+on-demand first — `odfirst1` / #76 holds the reasoning and the costing.
+
 ## Technical notes
 
 - Evidence gathered read-only via `bin/prod-script` inside
@@ -363,3 +429,8 @@ function**, especially when the saving is this small.
   spot desired 4, on-demand 0, zero instance requests). Leo chose
   on-demand-first; filed as `odfirst1`. pcap1's fallback is largely
   redundant as a result, recorded above rather than quietly superseded.
+- 2026-09-23 — root cause found: on-demand G quota is 0 and always has
+  been, so the fallback could never launch. Reverted to spot-first
+  temporarily (`spotback1`); Leo filed the limit increase. Recorded the
+  general lesson — verified the shape, never the capability — and the
+  observation that Batch does not fall through an incapable order-1.
