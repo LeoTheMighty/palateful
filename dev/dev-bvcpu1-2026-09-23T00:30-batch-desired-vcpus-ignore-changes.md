@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-23T00:30:00-06:00
 title: Every Terraform apply proposes resetting Batch desired_vcpus to 0
 from: dev/dev-tfgate1-2026-09-22T19:00-terraform-only-changes-never-apply.md
-status: in-progress
+status: done
 owner: palateful-0e
 branch: feat/dev-bvcpu1
 ---
@@ -54,9 +54,7 @@ Terraform managing it, not to gate the reset on an idle queue.
 - [x] **Proven:** plan with the fix is **`No changes. Your infrastructure
       matches the configuration.`** while live desired is still **4**. Before
       the fix, the same plan showed 1 change.
-- [ ] Merged. **Check the queue before merging — merging is the apply.**
-      `min_vcpus`/`max_vcpus` stay managed, so a real change to either still
-      applies.
+- [x] Merged and **applied**, verified against a live queue.
 
 ## Technical notes
 
@@ -68,3 +66,24 @@ Terraform managing it, not to gate the reset on an idle queue.
 ## Status log
 - 2026-09-23T00:30 — filed and fixed in one pass; it blocks every apply in the
   lane, so it goes ahead of #39.
+- 2026-09-23T01:40 — **done, and verified against the harmful condition being
+  live.** Merged as `5dbb241e`. Predictions were recorded *before* the apply
+  and all five held:
+  1. `Affected projects: terraform`
+  2. `deploy-images` skipped
+  3. `terraform-prod` ran on the **deployed** tag `9c626c5a…` while HEAD was
+     `5dbb241e` (the resolver returned a different tag from alrt1's apply,
+     because #40 deployed in between — it reads the running task definitions
+     each time, so it tracks reality rather than a constant)
+  4. plan **`No changes.`**, apply **`Apply complete! Resources: 0 added, 0
+     changed, 0 destroyed.`**
+  5. Batch untouched: **desired 4**, min 0, **1 RUNNABLE** job
+  **The failure signature (`1 changed`, `desired_vcpus 4 -> 0`) did not
+  appear.** The apply ran while a job was queued and Batch had scaled up —
+  the exact condition under which the old config would have taken that
+  capacity away. Third Terraform-only change applied by the tfgate1 gate.
+- 2026-09-23T01:40 — **the first attempt never applied.** `5dbb241e`'s first
+  run failed in `setup` on a transient PyPI timeout, which skipped
+  `detect-changes`, `terraform-prod` and every deploy leg. The merge looked
+  landed while prod still had the old behaviour. Filed as **applygap1**: an
+  apply that never ran is indistinguishable from a deploy that ran and failed.
