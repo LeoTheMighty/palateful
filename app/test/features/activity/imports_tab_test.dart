@@ -177,6 +177,13 @@ final DateTime _fixtureBase =
 /// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
 /// preserve the original fixtures' relative ordering, which the
 /// created-at-descending sort assertions depend on.
+/// A fixture timestamp roughly `months` in the past. Relative for the same
+/// reason as [_at]: absolute dates rot.
+String _monthsAgo(int months) => DateTime.now()
+    .toUtc()
+    .subtract(Duration(days: 30 * months))
+    .toIso8601String();
+
 String _at(int minutesAfterBase) =>
     _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
 
@@ -784,8 +791,11 @@ void main() {
           'status': 'failed',
           'group_count': 1,
           'recipe_book_id': null,
-          'created_at': '2026-04-16T00:17:00Z',
-          'completed_at': '2026-04-16T00:20:00Z',
+          // Relative, per fixture_date_guard_test: hardcoded fixture dates
+          // rot silently (that is what imptab1 was). ~5 months back, the
+          // age of the real April rows.
+          'created_at': _monthsAgo(5),
+          'completed_at': _monthsAgo(5),
           'error_message': null,
           'jobs': const [],
           'import_jobs': const [],
