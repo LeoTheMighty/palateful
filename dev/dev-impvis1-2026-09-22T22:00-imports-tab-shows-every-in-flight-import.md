@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-22T22:00:00-06:00
 title: the Imports tab shows every in-flight import, whatever table it lives in
 from: dev/dev-authrep1-2026-09-22T19:00-auth-path-error-reporting.md
-status: in-progress
+status: done
 owner: /devx-c2872fff
 branch: feat/dev-impvis1
 ---
@@ -106,3 +106,4 @@ Measured on `main`:
 - 2026-09-23T00:20 — **AC revision on new evidence.** palateful-4f joined the batch behind Leo's report to a specific AWS Batch job: `parser_batches` 9384da8a (status `submitted`, 0 import_jobs) → Batch job `parser-batch-84a8e0d3`, created the same second, never started, three attempts dead on `instance-terminated-no-capacity`, terminal FAILED 22:17Z. The state this story renders is DEAD, not in flight. The Activity tab was empty because `import_jobs` has zero rows for tonight — they were never created — so the emptiness was never a rendering bug, and "1 import in progress" was reading the batch row correctly. Changed accordingly: a batch past the grace window with no ImportJobs now renders in **Failed** as "Import failed — the parser never started" instead of being hidden. Hiding it would have left Leo with silence; rendering it In Progress would have been a spinner that never stops. Copy says what is known (it never started), not the cause — the client cannot distinguish capacity from crash, and nothing server-side marks the batch failed at all. Filed `debug/debug-parsercap1` for the pipeline itself (nothing has completed since April; 14 parser_jobs stuck `running`), flagged for independent re-confirmation since the measurement is another session's.
 - 2026-09-23T00:30 — phase 5 (re-run): flutter test 1640 passed, flutter analyze 0 errors. 12 impvis1 tests now, incl. the stalled-batch row and its non-interactivity.
 - 2026-09-23T00:50 — pile risk checked and closed [M, palateful-4f]: only 3 batches in the whole table have zero ImportJobs — tonight's (`submitted`, active) and two from April (`failed`, terminal). So the fixed tab shows Leo ONE "never started" row, not five months of them; no capping or grouping needed. The two April rows do reach the client but the tab asks for active batches only, so they render nowhere; pinned by a test, because applying tonight's copy to them would be inventing a cause for a five-month-old failure nobody diagnosed. The 14 stuck `parser_jobs` cannot render at all — `parser_batch_id IS NULL` on every one, so they never reach `/v1/parser/batches`.
+- 2026-09-23T01:05 — merged via PR #56 (squash → beb1266a). Rebased onto post-#49 main and re-verified before merge (1641 tests, web compile clean).

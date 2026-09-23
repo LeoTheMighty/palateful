@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-22T19:00:00-06:00
 title: N1 — the auth path reports its failures (both of Leo's auth complaints are uncollected)
 from: dev/dev-obsgap1-2026-09-22T16:00-server-side-detection-inventory.md
-status: in-progress
+status: done
 owner: /devx-c2872fff
 branch: feat/dev-authrep1
 ---
@@ -42,3 +42,4 @@ forward a signal that doesn't exist, so this ranks #3 overall.
 - 2026-09-22T14:20 — phase 3: auth path reports at every catch. Scope grew beyond the spec's list once the widened guard could see: `api_client.dart`'s 401 refresh interceptor (3 catches, incl. the refresh-succeeded-then-retry-failed case), `main.dart`'s cold-start block (the forced logout on a failed `/me`), and `auth_service_web.dart`'s callback paths. Sink chosen per event by whether the token can still authenticate the mirror, not per call site.
 - 2026-09-22T15:05 — phase 4: 3-agent parallel adversarial review (blind hunter / edge cases / acceptance audit); 30 findings (8 HIGH, 14 MED, 8 LOW); ALL fixed in-place. Load-bearing fix: the scanner had two false-verdict bugs in opposite directions — a `}` in a string after a `${...}` truncated the catch body (flagging a catch that reports) and safe tokens were matched against raw source (so a comment saying "rethrow" rescued a swallow) — plus the guard failed OPEN on a duplicated baseline row. Re-review clean; every finding now has a self-test fixture.
 - 2026-09-22T15:20 — phase 5: local gates green — flutter test 1667 passed, flutter analyze 0 errors, no-silent-catch-check + 18-assertion self-test OK, `flutter build web --release` exit 0 (PR CI never compiles web; only pushes to main do, so a web-only break would surface as a failed deploy).
+- 2026-09-23T01:05 — merged via PR #51 (squash → 385ed35c). Rebased onto post-#49 main and re-verified before merge (1667 tests, guard + 18-case self-test, web compile now that #49 runs it on PRs).
