@@ -388,6 +388,65 @@ Spot-first restored (`spotback1`) **only because on-demand cannot launch**.
 Leo has filed the `L-DB2E81BA` increase. When granted, flip back to
 on-demand first — `odfirst1` / #76 holds the reasoning and the costing.
 
+## Correction: the cost model counted only the runs that worked
+
+#76 costed the on-demand fallback from **4.76 GPU-hours** — 24 succeeded
+April `parser_jobs` × 11.89 min. That excluded the **16 failed jobs**, which
+averaged **12.92 min** and ran as long as **20.1**. Failed jobs occupy the
+GPU for their whole run; several fail *because* they ran long.
+
+Real April basis, from `completed_at`: **40 jobs, 8.20 GPU-hours,
+2026-04-09 → 04-22** (14 days, not the 12 first written). **+72% on the
+basis**, scaling the published $4.36/month to roughly **$7.50** — *scaled
+from the published figure, not re-derived from instance pricing*. Leo has
+the corrected number; his decision is unchanged.
+
+**The generalisation, which is the actual finding:** *a cost model built
+from successful runs understates anything whose failures consume the same
+resource.* This is the survivorship shape — reasoning from the healthy
+population — and here it is worse than neutral, because **a failure that
+runs to the 30-minute timeout costs more than a success.** The population I
+dropped was the expensive one.
+
+Same shape as the defect the stale-pointer guard was built to avoid:
+counting only stale-*shaped* hits made "nothing is stale" and "I matched
+almost nothing" the same output. Whenever a number is derived from a
+filtered set, state the filter next to the number.
+
+**Not a correction — a number that looks alarming and means nothing.**
+April `import_jobs` show `completed_at - created_at` averaging **290
+minutes**, to a maximum of **1247**. That is not pipeline latency:
+`import_jobs.created_at` is set **after** parsing finishes, and the interval
+from import-job creation to its last `parser_job` completing is **0.0
+minutes on all six rows**. It measures the **user's review-and-confirm
+phase**. Reported as latency it would send someone hunting a performance
+problem that is Leo reading his own recipes.
+
+## For prcon1: the two failure modes are distinguishable in the data
+
+No new instrumentation needed. A sweep can tell them apart today:
+
+| Failure mode | `status` | `completed_at` |
+|---|---|---|
+| Watcher timed out (90 min) | `failed` | ≈ `created_at` + 90 min |
+| Celery worker restarted | `submitted` | **NULL, forever** |
+
+The second is last night's `9384da8a`, which sat `submitted` for 21.7 hours
+because the in-process sleep loop died with its worker and nothing ever
+wrote a terminal status. This retroactively confirms 0e's account of that
+window.
+
+**Paired hazard, and they compound: `updated_at` is not bumped by the
+timeout write.** Measured per row — on all 11 April batches
+`updated_at - completed_at` is **+0.002 to +0.242 s** (same transaction);
+on the two September timeout rows it is **−5383 s**, i.e. `updated_at` sits
+90 minutes *before* the row's own terminal write. On `parser_jobs` the
+maximum divergence anywhere is 0.23 s.
+
+**So a sweep that looks for "recently changed batches" by `updated_at`
+misses precisely the timed-out ones** — the failures most worth finding.
+Sweep on `completed_at`, or on `status` directly.
+
 ## Technical notes
 
 - Evidence gathered read-only via `bin/prod-script` inside
