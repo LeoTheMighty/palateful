@@ -32,11 +32,20 @@ be re-confirmed before anyone acts on the infra side):
   None of any status since, until tonight's attempt produced none at all.
 - **14 `parser_jobs` have been stuck in `running` since April.**
 
-Inference, not measurement: the pipeline has been broken since roughly
-late April. What is measured is that nothing has succeeded since then and
-that tonight failed on capacity; nobody has yet separated "broken" from
-"not attempted" for the months in between. The 14 stuck-`running` rows
-argue for attempts that hung rather than an absence of attempts.
+**Correction, 2026-09-23 — the "broken since April" framing was wrong.**
+palateful-4f went back and measured it: **tonight's batch is the first
+`parser_batches` row created since 2026-04-22.** There are no batch rows
+at all in between. So for those five months the pipeline was not failing
+— **nothing was asking it to run**. What is measured is that the first
+attempt after the gap died on capacity. Whether it would also have failed
+in June is untested and now untestable.
+
+The 14 stuck `parser_jobs` do not contradict that: **their
+`parser_batch_id` is NULL** (all 14 `running`, 2026-04-09 → 04-11, plus 7
+of 8 `submitted`). They are pre-batch-era single jobs with no batch
+parent, so they never reach `/v1/parser/batches` and cannot appear on any
+client surface. They are real stale state, invisible to this surface and
+to any count.
 
 ## Why this matters beyond the pipeline
 
@@ -53,9 +62,13 @@ waiting. See its status log — the ACs were revised on this evidence.
 - [ ] Re-confirm the measurements above independently before changing
       infrastructure. One session's read of prod is a strong lead, not a
       license to change a compute environment.
-- [ ] Separate "broken since April" from "not attempted since April":
-      count `parser_batches` rows created per month since 2026-04, and
-      how many reached a terminal status.
+- [x] Separate "broken since April" from "not attempted since April" —
+      done: zero batch rows between 2026-04-22 and tonight, so the gap is
+      absence of attempts, not accumulated failure. The open question is
+      narrower than first written: **is the capacity failure permanent or
+      was tonight unlucky?** One spot-only GPU pool with no fallback can
+      fail either way, and one data point cannot tell them apart. Re-run a
+      batch and see.
 - [ ] The compute environment gets an on-demand fallback, or the
       allocation strategy changes, or the failure is surfaced — a
       spot-only GPU pool with no fallback fails exactly this way under
@@ -65,10 +78,19 @@ waiting. See its status log — the ACs were revised on this evidence.
       looks at `ImportJob`, so a `submitted` batch stays `submitted`
       forever and no user-visible surface can ever call it failed. This
       is the root of impvis1's "a batch that never fans out" problem.
-- [ ] The 14 `parser_jobs` stuck in `running` since April are resolved or
-      explained.
+- [ ] The 14 `parser_jobs` stuck in `running` since April (plus 7
+      `submitted`) are resolved or explained. `parser_batch_id IS NULL` on
+      all of them — pre-batch-era rows that no surface can show and no
+      count includes. Invisible stale state is its own problem even when
+      nothing renders it.
 
 ## Technical notes
+
+- A better staleness signal than the client's wall-clock grace window, if
+  the server ever exposes it: tonight's batch has `updated_at` **24ms**
+  after `created_at` and untouched since. A row whose `updated_at` never
+  moved off its creation is stale regardless of what its status says.
+  `_serialize_batch` does not currently send `updated_at`.
 
 - Related client-side work: `impvis1` (renders aged-out batches honestly),
   `cntlist1` (count/list predicate reconciliation).

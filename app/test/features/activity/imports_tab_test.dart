@@ -769,6 +769,40 @@ void main() {
         findsOneWidget);
   });
 
+  testWidgets('a terminal batch never gets the "never started" copy (impvis1)',
+      (tester) async {
+    // Two April batches are `failed` with zero ImportJobs and still pass
+    // the server's visibility branch, so they reach the client. They are
+    // NOT "never started" — their cause is unknown and they are five
+    // months old. The tab asks for active batches only, so they are not
+    // rendered here at all; this pins that, because applying tonight's
+    // copy to them would be inventing a cause.
+    final client = _FakeApiClient(
+      parserBatches: [
+        {
+          'id': 'batch-april',
+          'status': 'failed',
+          'group_count': 1,
+          'recipe_book_id': null,
+          'created_at': '2026-04-16T00:17:00Z',
+          'completed_at': '2026-04-16T00:20:00Z',
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Import failed — the parser never started'), findsNothing);
+    expect(find.text('All clear — no imports yet'), findsOneWidget);
+  });
+
   testWidgets('stragglers collapse to ONE row per job (impvis1)',
       (tester) async {
     // create_recipe_task.py:465-483 flips a job to `awaiting_review` as
