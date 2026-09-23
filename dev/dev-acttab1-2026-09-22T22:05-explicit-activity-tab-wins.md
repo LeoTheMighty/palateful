@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-22T22:05:00-06:00
 title: an explicit ?tab= wins over the count-based guess (tapping "imports in progress" lands on Notifications)
 from: dev/dev-impvis1-2026-09-22T22:00-imports-tab-shows-every-in-flight-import.md
-status: in-progress
+status: done
 owner: /devx-c2872fff
 branch: feat/dev-acttab1
 ---
@@ -89,3 +89,4 @@ outright** — a different bug with a different fix.
 - 2026-09-23T03:00 — RED verified per test, by simulating each defect in turn rather than assuming: latch disabled → the bug test and the trade-off test fail; one-shot removed → the one-shot test fails; `fromWire` restored for the latch decision → the typo test fails. Each new test fails against the specific defect it guards.
 - 2026-09-23T03:05 — phase 5 (re-run): flutter test 1685 passed, flutter analyze 0 errors.
 - 2026-09-23T03:20 — CI red on a guard I never ran locally: `copy-grep-guard` pins its allowlist by **line number** (`profile_screen.dart:865`), and the 7 lines I added for the logout reset pushed that text to 872, so an allowlisted string read as a new violation. Fixed by re-pinning to 872. Two things worth keeping: this is a live instance of exactly the drift that made impvis1's core baseline count catches per file instead of pinning `file:lineno` — the same trap, in a guard that already had it; and my local gate was my own habit (tests + the one guard I'd worked on) rather than the nine `bash tools/*` steps CI actually runs. Now running all nine before every push.
+- 2026-09-23T16:40 — merged via PR #74 (squash → aebb0dca). Landed as a cherry-pick onto current main because #68/#72/#73 carried the same work on SHAs that had lost their Actions dispatch (mechanism in debug/debug-copydrift1). **Ships in build 93, not 92** — the 1.0.64+92 bump (#71) merged first.
