@@ -139,6 +139,22 @@ positive identification, never an inference from absence.
   unknown -> True otherwise starts exercising the 4xx audit writer in a
   suite that sets no database.
 
+## Why the independent review's null result is worth something here
+
+A clean second review is usually weak evidence — it rules out what the
+reviewer thought to look for. It is stronger here for one structural reason:
+**the code being replaced was byte-exact**, so "did this get stricter or
+looser?" had a crisp, mechanically checkable answer. The reviewer could
+enumerate inputs and diff old behaviour against new, rather than judge
+whether a gate "looks right".
+
+The next security-shaped change may not have that baseline — replacing a
+fuzzy check with another fuzzy check, or adding a gate where none existed.
+A clean review then proves considerably less, and the way to buy back the
+evidence is to manufacture a baseline first: pin the current behaviour in a
+test *before* changing it, so the diff is against something measured rather
+than something remembered.
+
 ## Technical notes
 
 - `db_probe._database_expected` shares the normaliser but **keeps its own
@@ -157,3 +173,16 @@ positive identification, never an inference from absence.
   selfheal1 shipped the defensive `production` entry so its own verdict could
   not be silently lost; the underlying divergence is this spec.
 - 2026-09-22T18:09:06-06:00 — claimed by /devx in session /devx-2026-09-22T1809-40329
+- 2026-09-23T02:40 — **independently verified by palateful-0a** at 3fd547c0,
+  at 41's direction, because the author had already armed this boundary once.
+  It confirmed byte-exactness against the six shapes named here plus thirteen
+  more nobody listed (including `te\u017ft`, the casefold widening); located
+  the three bypass call sites itself rather than working from the author's
+  list (they matched); confirmed each site keeps its three independent
+  conditions; confirmed `is_recording_environment` cannot reach a permission;
+  re-measured the prod posture itself rather than accepting the measurement
+  here (`palateful-api-prod:68`, `ENVIRONMENT=prod`, `E2E_TEST_MODE` absent
+  from both `environment` and `secrets`); and **proved the new CI gate can
+  fail by planting a real violation**. It also found a fourth `e2e_test_mode`
+  site (`agent_loop.py:58`) that gates on the flag alone and grants no
+  identity — not an auth bypass, filed separately as #67.
