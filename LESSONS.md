@@ -162,6 +162,31 @@
   Replacements for a tautological test should ship mutation-verified, and the
   replacement should assert something a literal cannot satisfy on its own.
 
+  3. **A guard asserting the wrong invariant is not a weaker guard — it is an
+     obstacle.** The replacement written for (2) in dfrcp1 asserted "exactly
+     one `ProbeVerdict` is compared against in `health_router`". That is not
+     the invariant. selfheal1 correctly singles out `NOT_CONFIGURED` for a
+     `degraded` **200** — still failing open, nothing replaced — so the guard
+     went red on a legitimate change while still admitting the thing it
+     existed to catch (a second verdict driving a 503 would have to be
+     compared against too, and so would have looked identical). It was caught
+     only by rebasing onto the branch it would have blocked. Fix: assert the
+     **consequence**, not a proxy for it — "only `AUTH_FAILED` produces a 503"
+     rather than "only `AUTH_FAILED` is mentioned", because the 503 is what
+     replaces the task. Same root as (1) and (2): a proxy standing in for the
+     fact, from the third direction — a measurement of the wrong thing, a test
+     that checks its own construction, and now a guard aimed one level off the
+     property it protects.
+
+     The counter-example from the same story is worth keeping beside it,
+     because it shows the discipline working: the fail-open phrase sweep in
+     that PR derives its verdict set from the `ProbeVerdict` enum rather than
+     a list, and passed unchanged against selfheal1's nine emitters and its
+     new enum member. That design claim was made to a peer **before** the
+     other branch existed and survived contact with it. Anchor a guard to the
+     thing that changes, and it keeps working; anchor it to a restatement of
+     the thing, and it breaks on the first correct change.
+
 - **`gh pr checks <n>` can report every check passing while a whole workflow
   is still running.** On PR #52 it listed three checks (lint/test/coverage,
   all `pass`) and no pending rows, while `CI & Deploy` — the workflow that
