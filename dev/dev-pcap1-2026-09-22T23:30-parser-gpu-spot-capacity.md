@@ -328,6 +328,16 @@ function**, especially when the saving is this small.
 and the quota-change history is **empty** — it has been 0 since the account
 was created. Spot is permitted: `L-3819A6DF` = 32.
 
+**Why nobody checked: the adjacent quota is fine.** `L-3819A6DF` is **32**.
+Two near-identically named GPU quotas, one healthy and one zero — so anyone
+asking *"do we have GPU quota in this account?"* finds a reassuring number
+and stops. The reassuring reading was real; it just answered a different
+question. `L-DB2E81BA` is `adjustable: true`, so the remedy is a support
+request, not a redesign — and **an adjustable quota at 0 with an empty
+change history is specifically the signature of "nobody ever asked"**, as
+distinct from a hard limit. (Contrast drawn by palateful-0a, who also
+re-verified both quotas independently from the live account.)
+
 AZs are ruled out: the CEs use `us-east-1a` and `us-east-1b`, and
 `g4dn.xlarge`, `g5.xlarge` and `g6.xlarge` are all offered in 1a, 1b, 1c,
 1d and 1f.
