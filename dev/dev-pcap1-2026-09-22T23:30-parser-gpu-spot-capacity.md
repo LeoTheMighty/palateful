@@ -135,6 +135,27 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
 
 ## Acceptance criteria
 
+- [ ] **Record which compute environment ran each attempt** (palateful-0e's
+      wording, kept because the last clause is the load-bearing part):
+      > When the job is re-submitted, read `describe-jobs →
+      > jobs[0].attempts[].container.taskArn` for **every** attempt and
+      > record which compute environment ran each one. The ARN embeds the
+      > CE name (e.g. `…/palateful-parser-spot-gpu-prod-…_Batch_…`).
+      > **A successful import does not discharge this AC** — a job that
+      > succeeds on its first spot attempt proves nothing about fallback.
+      > The AC is discharged only by an attempt observed running on the
+      > **on-demand** CE, or by an explicit note that no reclamation
+      > occurred and the assumption is still untested.
+
+      The likeliest outcome now that the pool is wider is that the first
+      attempt succeeds — which would read as "the fallback works" while
+      leaving the assumption the fix rests on unverified. That is tonight's
+      LESSONS entry (#64) landing on this very change, so the escape clause
+      stays.
+- [ ] **Independent re-confirmation by a session that did not make the
+      change** (carried from `debug/debug-parsercap1`; owner palateful-0e).
+      One session's read of prod is a strong lead, not a licence — and not
+      a self-check.
 - [ ] **Settle the open question by re-running**: is the capacity failure
       permanent, or was tonight unlucky? One spot-only pool with no
       fallback fails either way, and a single data point cannot separate
@@ -152,9 +173,114 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
       which. Until then, any count the app shows is untrustworthy.
 - [ ] Tonight's batch `9384da8a…` is resolved, not left `submitted`.
 - [ ] Proven by driving it: submit an import while spot capacity is
-      unavailable and show the outcome. A capacity fix that has never
+      unavailable and show the outcome — **recording which compute
+      environment the attempt landed on**, since a success on order 1
+      proves the pipeline, not the fallback. Method proposed above;
+      needs Leo's approval before running. A capacity fix that has never
       been exercised against an empty pool is a configured fix, not a
       verified one.
+
+## Ownership after reconciling with parsercap1 and prcon1
+
+Three specs described one incident. Merged 2026-09-23 so no AC is silently
+dropped when one closes:
+
+| Concern | Owner | State |
+|---|---|---|
+| Capacity: fallback, wider pool, reclaim-aware retries | **pcap1** (this) | Applied `fb2892d0` |
+| Fallback drill — is it permanent or was tonight unlucky? | **pcap1** (this) | **Owed**, proposed below, needs Leo |
+| **Independent re-confirmation before/after changing the compute environment** — carried from `debug/debug-parsercap1`'s first AC | **palateful-0e** | **Owed** |
+| Write-back: a Batch job dies and the rows stay `submitted` | **`dev/dev-prcon1`** | Ready |
+| April stale state: 14 `parser_jobs` `running` + 7 `submitted`, `parser_batch_id IS NULL` | **`dev/dev-prcon1`** | Ready |
+| Rendering a dead batch as failed | `impvis1` / #56 (palateful-79) | Merged |
+
+`debug/debug-parsercap1` is closed as **superseded**, pointing here and at
+prcon1. It is not deleted: it holds the original investigation.
+
+**This spec does not resurrect Leo's stuck batch `9384da8a…`.** That needs
+prcon1's write-back plus a re-submit.
+
+## Correction: "the fallback is load-bearing" is NOT established
+
+palateful-0e proposed that framing and has since walked it back, and the
+walk-back is right. The reasoning was: reclamation happens *after*
+allocation, so only on-demand survives it. **That does not follow.**
+
+Batch picks a compute environment when it **schedules an attempt**, based
+on where it can place work. Reclamation is not a placement failure — so
+if the spot environment can still allocate, a retry is likely placed on
+**order 1 again**. Order 2 engages when order 1 **cannot allocate**, which
+is exactly the condition we did *not* observe on 2026-09-22. In the worst
+case all 10 attempts burn on spot.
+
+What rescues it is correlation, not mechanism: reclamation usually happens
+*under* capacity pressure, so spot often also fails to allocate and order 2
+then engages. That is a probabilistic argument. Neither session found a
+documented guarantee.
+
+**How to settle it by measurement, not documentation.** The task ARN
+embeds the compute environment name:
+`arn:aws:ecs:…:task/palateful-parser-spot-gpu-prod-…_Batch_…/…`
+So `describe-jobs → attempts[].container.taskArn` reveals **which
+environment ran each attempt**. Verified against the 2026-09-22 failure:
+all three attempts report the spot environment. (That job predates the
+fallback, so it proves the method, not the behaviour.)
+
+**Therefore, and this matters for the drill below:**
+- forcing spot `max_vcpus = 0` proves **order-2 placement works at all** —
+  a genuine prerequisite, and it rules out a mis-ordered queue;
+- it tests **allocation-failure fallback**, *not* **reclamation fallback**,
+  which is the assumption actually in doubt;
+- only **per-attempt CE inspection on a real multi-attempt job** discharges
+  it. That costs nothing and needs no forcing — it just needs the next
+  failure.
+
+Until then, pcap1's honest claim is: the wider pool and the retry policy
+are improvements on their own, and the fallback **may or may not** engage
+on reclamation.
+
+## Proposed fallback drill — NOT YET RUN, needs Leo's approval
+
+**The problem with waiting.** The fallback only engages when spot cannot
+serve. If we wait for that to happen naturally, **the first real test of
+this code is an actual user import** — which is how tonight went. A drill
+is the alternative: force the condition deliberately, at a chosen moment,
+with someone watching.
+
+**Method (controllable, reversible):**
+1. Confirm the parser queue is idle (`RUNNING/RUNNABLE/STARTING/SUBMITTED`
+   all 0).
+2. Set the **spot** compute environment's `max_vcpus` to **0** via
+   Terraform and apply. Spot can then allocate nothing, which is a
+   stronger condition than a real exhaustion.
+3. Submit one parser batch.
+4. Expect: the job cannot be placed on order 1, Batch places it on the
+   **on-demand** environment at order 2, an instance starts, and the job
+   runs to completion. Record the compute environment the attempt landed
+   on, not just that the job succeeded.
+5. Revert `max_vcpus` and apply.
+
+**Risk, stated plainly: this is a production Terraform change whose whole
+purpose is to make production fail over.** Between steps 2 and 5, an
+import Leo submits can only run on the 8-vCPU on-demand environment. If
+step 5 is forgotten, spot stays disabled and every subsequent import runs
+at on-demand price. Mitigations: run it while the queue is idle, keep the
+window short, and treat step 5 as part of the drill rather than cleanup.
+Same shape as `rsh109`'s rotation drill — a deliberate, attended
+production exercise, not a background task.
+
+**What the drill proves that a normal import does not.** A successful
+import while spot capacity is *available* proves the pipeline works end
+to end. It proves **nothing about the fallback**, because order 1 served
+it. Only a placement on order 2 tests the change that pcap1 calls
+load-bearing.
+
+**Open assumption this drill also settles** (raised to palateful-0e for
+independent confirmation): does Batch actually place a *retry* on the
+next compute environment in the queue after a host-level kill, rather
+than re-queueing to the environment that owned the previous attempt? The
+fallback's value rests on it, and it was reasoned from the queue-order
+semantics rather than measured.
 
 ## Technical notes
 
@@ -184,3 +310,12 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
   on-demand cost. Framing corrected from 0e's independent verification:
   the failure is reclamation *after* allocation, which makes the fallback
   load-bearing and the wider pool a cheap extra.
+- 2026-09-23 — applied to prod (`fb2892d0`, apply run 35803059252):
+  3 added, 1 changed, 2 destroyed, matching the pre-registered plan
+  exactly; the old spot CE went as a deposed object *after* the new one
+  and after the queue was repointed, so `create_before_destroy` is
+  verified behaviour rather than an assumption. Configured-correctly pass
+  green. **Still owed: the fallback drill (proposed above, not run) and
+  0e's independent re-confirmation.** This fix does **not** resurrect
+  Leo's stuck batch `9384da8a…`; that needs 0e's write-back spec and a
+  re-submit.

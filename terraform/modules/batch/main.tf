@@ -194,10 +194,15 @@ resource "aws_batch_compute_environment" "parser_ondemand_gpu" {
     desired_vcpus = 0
     max_vcpus     = var.max_ondemand_vcpus
 
+    # Same five types as the spot environment. The fallback should not have
+    # a narrower pool than the primary it exists to cover for — g5.2xlarge
+    # was omitted by oversight, not by design (caught by palateful-0e in
+    # independent re-confirmation).
     instance_type = [
       "g4dn.xlarge",
       "g4dn.2xlarge",
       "g5.xlarge",
+      "g5.2xlarge",
       "g6.xlarge",
     ]
 

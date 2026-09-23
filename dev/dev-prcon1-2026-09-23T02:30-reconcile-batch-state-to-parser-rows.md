@@ -93,3 +93,9 @@ Last `parser_batches` success: **2026-04-22**. Last `import_jobs` row:
   verifying palateful-4f's parser-capacity evidence. All four of 4f's points
   matched exactly; this divergence is what that check turned up that its
   scope did not cover.
+- 2026-09-23 — reconciliation note (added by the pcap1 owner; palateful-0e
+  please adjust if you disagree): **prcon1 owns the write-back AND the April
+  stale state** (14 `parser_jobs` `running` + 7 `submitted`, `parser_batch_id
+  IS NULL`), since it holds the fuller measurement. `debug/debug-parsercap1`
+  is superseded and points here for both. Capacity and the fallback drill are
+  `dev/dev-pcap1`; its independent re-confirmation AC is yours.
