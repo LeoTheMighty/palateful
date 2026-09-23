@@ -409,3 +409,41 @@
   above); a re-wrapped sentence reports 0 on a file that contains it. Sign-flipped twin of the
   exit-code and phantom-green lessons above: there, silence read as success;
   here, a tool reports a problem that does not exist.
+
+- **A number computed over a population you are not in describes something
+  other than you — and the exclusion is usually correlated with the thing
+  you are measuring.** Two instances from 2026-09-23, same shape, different
+  systems.
+
+  **Cost from successes only.** The parser GPU cost model was built from 24
+  *succeeded* April jobs averaging 11.89 min, giving 4.76 GPU-hours and
+  $4.36/month. It silently dropped the 16 **failed** jobs — which averaged
+  **12.92 min** and ran to **20.1**. A failed GPU job holds the GPU for its
+  whole run, and several fail *because* they ran long, so the excluded
+  population was the expensive one. Real basis: **40 jobs, 8.20 GPU-hours**
+  over 2026-04-09 → 04-22. That is +72%, scaling the figure to roughly
+  **$7.50/month** (scaled from the published number, not re-derived from
+  instance pricing). Measured by palateful-4f, who found and corrected it.
+
+  **A score for a request we cannot make.** The region-level EC2 spot
+  placement score for our five GPU instance types reads **9** — healthy. Our
+  Batch compute environment is pinned to two subnets, `us-east-1a`
+  (`use1-az1`) and `us-east-1b` (`use1-az2`), which score **2** and **1**
+  single-AZ. The best AZ in the region scores 3 and we have no subnet in it.
+  The 9 is real; it describes a request that can float across every AZ, and
+  the CE cannot make that request. (Measured directly; spot scores are
+  point-in-time by design, so the exact digits move — the gap is the point.)
+
+  **Why this is worse than a neutral undercount:** in both cases the
+  filtering is *adverse*. Failures consume more of the resource than
+  successes; the AZs we are pinned to are worse than the ones the regional
+  average is carried by. Dropping the bad half doesn't add noise, it moves
+  the answer one direction, and the direction is always "things look fine".
+
+  **The test, before quoting any aggregate:** *what was excluded to produce
+  this number, and does the exclusion correlate with the quantity?* If you
+  cannot name the excluded population, you do not yet know what the number
+  is of. "Average duration of successful runs" and "average duration" are
+  different statistics, and only one of them predicts a bill. Sibling of the
+  verdict-silence entry above: there, a check that never ran looked like a
+  pass; here, a population that was never counted looks like the whole.
