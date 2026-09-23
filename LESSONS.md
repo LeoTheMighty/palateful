@@ -276,8 +276,15 @@
   "nobody", it is not yet a detector. The alarm-with-no-subscriber passes the
   first clause and fails the second.
 
-  **The enforcement is cheaper than the reasoning: drive the check into its
-  failure state once and watch it fail.** A mutation test of one CI guard
+  **The enforcement is cheaper than the reasoning: drive the check into the
+  failure state *the test names*, not merely into some failure state.** A test
+  can fail for a reason unrelated to its subject just as easily as it can pass
+  for one, so "it goes red without the fix" is not enough — simulate the
+  specific defect. On `impvis1`, five tests were called regression coverage and
+  **only two actually failed without the fix**; the other three were guards
+  that passed before it (palateful-79). Where a test passes for a reason
+  unrelated to the thing it names, that is the neighbouring *wrong-evidence*
+  mechanism rather than this one — see the provenance entries. A mutation test of one CI guard
   against ten planted violations caught four shapes it had silently missed,
   including the exact form the codebase already used (palateful-3b). Where the
   signal is *silence*, first show that silence is abnormal — treating missing
