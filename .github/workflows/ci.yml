@@ -162,6 +162,14 @@ jobs:
       - name: Deploy-freshness self-test (E-7 step 5 guard)
         run: bash tools/deploy-freshness-self-test.sh
 
+      # stptr1 — a rename sweep can only fix files that exist when it runs.
+      # A spec written afterwards from an older template carries a stale
+      # path, and because the file is new there is no conflict to raise, so
+      # it merges silently. Fails on a pointer to a migrated workstream
+      # artifact; exempts `## Status log` history and `evals/` outputs.
+      - name: No stale workstream pointers (stptr1 guard)
+        run: python3 tools/stale-pointer-check.py
+
   test:
     runs-on: ubuntu-latest
     needs: setup

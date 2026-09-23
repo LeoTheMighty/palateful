@@ -1,0 +1,15 @@
+# stptr1 — stale-pointer allowlist.
+#
+# Format: file:lineno:rationale (colon-separated; trailing rationale free-form).
+# Lines starting with `#` are comments.
+#
+# Only for a deliberate stale pointer OUTSIDE a `## Status log` section —
+# status-log lines are exempt by section, so they never need an entry, and
+# adding one would mean editing append-only history to satisfy a guard.
+#
+# Entries require a code-review comment on the PR that adds them.
+#
+# Line numbers drift across edits. If the guard flags a moved line, re-verify
+# the rationale still holds, then update the number here.
+
+# (empty — no deliberate stale pointers outside status logs today)
