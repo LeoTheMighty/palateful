@@ -279,12 +279,24 @@
     deploy**, and pushing then would have cancelled a live deployment with a
     green-looking justification. `gh run view --json jobs --jq '.jobs[] |
     select(.status!="completed") | .name'` shows what is still moving
-    (palateful-d9). **It is a standing hazard, not freak timing:** the window
-    lasts as long as the image builds, which on this repo is minutes — it was
-    measured still open 4 minutes after the last test gate went green, with
-    four `deploy-images` jobs running. Measure the window from the last gate's
-    completion, not from the run's start; the run's own elapsed time is much
-    longer and answers a different question.
+    (palateful-d9). **It is a standing hazard, not freak timing:** the window is
+    at least the length of the slowest image build. On run `35806423249` the
+    last gate went green at 01:51:45Z, `deploy-web` took 2m13s, and the four
+    `deploy-images` jobs were **still running 5m36s later** — so it is minutes
+    on every Docker-building deploy, not a handoff you would have to be
+    unlucky to hit.
+
+    Two measurement traps while establishing that, both of which produced a
+    confident wrong number:
+    (a) **Run-elapsed is not window-open.** The run had been going 28 minutes,
+    most of it `flutter-test`, when nobody would read it as done. The hazard
+    starts the instant the **last gate** goes green. A figure taken from the
+    run's start overstates it by an order of magnitude.
+    (b) **A still-running job's `completedAt` is a zero-value timestamp**
+    (`0001-01-01`), not null. Naively taking `max(completedAt)` silently
+    excludes exactly the jobs holding the window open and reports a **shorter,
+    terminal-looking** duration — 2m17s here, against 5m36s and counting.
+    Guard the sentinel, or compute from `status != "completed"` instead.
   - **`gh pr checks` printed all-passing while an entire workflow had not
     reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
     view, twice. Gate on a probe that aggregates every run at the head SHA;
