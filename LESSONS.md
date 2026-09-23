@@ -200,10 +200,15 @@
      `hasExplicitTab == true`, had registered no count listeners, and the
      counts fired into nothing.
 
-     Generally: **re-pumping the same widget type with different constructor
-     arguments does not give you a fresh `State`.** Distinct keys, a different
-     widget type, or it is the same instance — which makes every test of the
-     form "what happens when a second X mounts" suspect until checked.
+     Generally: **re-pumping the same widget type with no distinguishing key
+     does not give you a fresh `State`**, whatever the constructor arguments
+     say. The null key is the load-bearing condition, measured with an
+     isolated probe counting `initState` calls: same type and null keys,
+     pumped twice → `inits=1`; same type with **distinct keys** → `inits=2`;
+     two in one tree → `inits=2`. So plenty of legitimate re-pumps do remount,
+     and distinct keys are the remedy rather than a coincidence. What stays
+     suspect until checked is every test of the form "what happens when a
+     second X mounts".
 
      **The tell was inside the passing run.** The helper was
      `_selectedTabs(tester).single`, and `.single` throws on more than one
@@ -212,6 +217,24 @@
      produced, printed nothing, and went unread — a green run's incidental
      facts are evidence too, and this class is caught by reading them rather
      than by adding another assertion.
+
+  The spine of all four: **an instrument aimed at the wrong thing returns a
+  real answer to a question nobody asked**, and a real answer is the hardest
+  kind to doubt. The wrong driver, the self-satisfying assertion, the guard
+  aimed one level off its property, the screen that was never rebuilt — in
+  each, the apparatus worked and the aim was off. Two more from the same day,
+  recorded here rather than as their own entry: a go_router test asserted on
+  "the last build" while the old route rebuilds behind the new one in an
+  `IndexedStack`, and so reported the **opposite** answer; and
+  `terraform state pull` re-stamps the running CLI's version, so asking it who
+  wrote state returns your own version (1.4.2 reported, 1.16.3 in the raw S3
+  object) — that one reached a merged spec as a wrong claim.
+
+  Fix, in the order that actually catches things: say out loud what the
+  instrument would report if the thing you care about had never happened; if
+  that is indistinguishable from the answer you just got, you have not
+  measured it yet. Then read the incidental facts of the passing run, not only
+  its verdict.
 
 - **`gh pr checks <n>` can report every check passing while a whole workflow
   is still running.** On PR #52 it listed three checks (lint/test/coverage,
