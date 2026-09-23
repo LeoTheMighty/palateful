@@ -295,8 +295,14 @@
     (b) **A still-running job's `completedAt` is a zero-value timestamp**
     (`0001-01-01`), not null. Naively taking `max(completedAt)` silently
     excludes exactly the jobs holding the window open and reports a **shorter,
-    terminal-looking** duration — 2m17s here, against 5m36s and counting.
-    Guard the sentinel, or compute from `status != "completed"` instead.
+    terminal-looking** duration — 2m17s here, against 6m11s and still open.
+    **The obvious alternative fix is the same bug respelled:** a running job's
+    `conclusion` is `''`, not null, so filtering on `.conclusion == null`
+    matched **0** of the 4 running jobs while `status != "completed"` matched
+    all 4 (verified on this run). The robust form is to treat *not completed*
+    as the signal and **refuse to compute a duration at all**, rather than to
+    special-case the sentinel value — a zero-value field will keep finding new
+    spellings.
   - **`gh pr checks` printed all-passing while an entire workflow had not
     reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
     view, twice. Gate on a probe that aggregates every run at the head SHA;
