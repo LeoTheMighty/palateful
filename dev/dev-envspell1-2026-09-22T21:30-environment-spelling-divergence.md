@@ -11,6 +11,15 @@ branch: feat/dev-envspell1
 
 ## Goal
 
+> **Opposite defaults are not enough, because normalisation is itself
+> directional.** This is the finding. The first implementation gave the two
+> predicates carefully opposite defaults and then a *shared* normaliser —
+> which made all three auth-bypass gates looser than the byte-exact
+> comparisons they replaced, while its comments claimed unchanged
+> strictness. Decide the normalisation per predicate, by what the wrong
+> answer costs: a stray newline tolerated is correct for a recorder and
+> wrong for an authentication boundary.
+>
 > **Read this before reaching for a "canonicalise the spelling" helper.**
 > Three of the gates keyed on `ENVIRONMENT` are **Auth0 bypasses** that
 > return a fixed test user without verifying a token. Any normalisation that
