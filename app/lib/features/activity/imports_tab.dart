@@ -63,6 +63,10 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   final _readProvider = getIt<ActivityReadProvider>();
 
   List<_JobView> _inProgress = [];
+
+  /// Parser batches that produced no ImportJobs and are past the grace
+  /// window — dead, not slow. Rendered in Failed (see parsercap1).
+  List<_JobView> _stalledBatches = [];
   List<_ItemView> _needsReview = [];
   List<_ItemView> _failed = [];
   List<_ItemView> _autoImported = [];
@@ -176,13 +180,34 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       // today, so the two cannot disagree yet; if something starts to, an
       // archived-but-not-dismissed job would resurrect its batch here.
       final renderedJobIds = rawJobs.map((j) => j['id'].toString()).toSet();
-      inProgress.addAll(
-        (await _loadPreFanOutBatches())
-            .where((b) => b.importJobs
-                .every((ij) => !renderedJobIds.contains(ij.id)))
-            .map(_JobView.fromBatch),
-      );
+      final now = DateTime.now();
+      final orphanBatches = (await _loadPreFanOutBatches())
+          .where((b) =>
+              b.importJobs.every((ij) => !renderedJobIds.contains(ij.id)))
+          .toList();
       if (!mounted) return;
+
+      inProgress.addAll(
+        orphanBatches.where((b) => b.isInFlightAt(now)).map(_JobView.fromBatch),
+      );
+
+      // Past the grace window with no ImportJobs, a batch is not slow — it
+      // is dead, and saying "In Progress" about it is a spinner that never
+      // stops. Measured case (parsercap1): batch 9384da8a submitted
+      // 19:10:33Z, its AWS Batch job never started, three attempts died on
+      // `instance-terminated-no-capacity`, terminal FAILED at 22:17Z, zero
+      // ImportJobs ever created. Nothing server-side reconciles the batch
+      // row, so it still reads `submitted` — age is the only signal the
+      // client has, which is why this says "never started" rather than
+      // claiming to know the cause.
+      // Only batches that never fanned out. One whose jobs exist but are
+      // absent from `rawJobs` (dismissed, say) is not dead — its jobs are
+      // accounted for elsewhere, and calling it failed would be a second
+      // row for an import the user already dealt with.
+      final stalledBatches = orphanBatches
+          .where((b) => !b.isInFlightAt(now) && !b.hasFannedOut)
+          .map(_JobView.fromStalledBatch)
+          .toList();
 
       // Auto-Imported + Skipped cut off at 30 days — older entries are
       // reachable via See-all. Needs Review + Failed are actionable, so
@@ -272,6 +297,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       skipped.sort(_byCreatedAtDesc);
 
       setState(() {
+        _stalledBatches = stalledBatches;
         _inProgress = inProgress;
         _needsReview = needsReview;
         _failed = failed;
@@ -322,7 +348,11 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       return raw
           .whereType<Map>()
           .map((m) => ImportBatch.fromJson(m.cast<String, dynamic>()))
-          .where((b) => b.isInFlight)
+          // `isActive` (the raw status), NOT `isInFlight`: the caller
+          // partitions these into still-working and dead, and filtering by
+          // in-flight here would drop the dead ones before they could be
+          // rendered as failed.
+          .where((b) => b.isActive)
           .toList();
     } catch (e, st) {
       ErrorReporter.report(e, st,
@@ -475,6 +505,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
     final visibleInProgress = _inProgress;
 
     final allEmpty = visibleInProgress.isEmpty &&
+        _stalledBatches.isEmpty &&
         visibleReview.isEmpty &&
         visibleFailed.isEmpty &&
         visibleAutoImported.isEmpty &&
@@ -556,18 +587,20 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
           ),
           ImportStateSection(
             label: 'Failed',
-            count: visibleFailed.length,
+            count: visibleFailed.length + _stalledBatches.length,
             color: stateColors.failed,
-            children: visibleFailed
-                .map((i) => _buildSwipeableItemRow(
-                      item: i,
-                      stateColor: stateColors.failed,
-                      chipLabel: 'Failed',
-                      rowState: ImportRowState.failed,
-                      onTap: () => context
-                          .push('/recipes/import/review/${i.id}'),
-                    ))
-                .toList(),
+            children: [
+              ..._stalledBatches
+                  .map((b) => _buildStalledBatchRow(b, stateColors)),
+              ...visibleFailed.map((i) => _buildSwipeableItemRow(
+                    item: i,
+                    stateColor: stateColors.failed,
+                    chipLabel: 'Failed',
+                    rowState: ImportRowState.failed,
+                    onTap: () =>
+                        context.push('/recipes/import/review/${i.id}'),
+                  )),
+            ],
           ),
           ImportStateSection(
             label: 'Auto-Imported',
@@ -666,6 +699,26 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
             ? () => context.push('/recipes/import/review-list/${job.id}')
             : null,
       ),
+    );
+  }
+
+  /// A batch whose parser job never produced anything.
+  ///
+  /// No swipe and no tap: there is no ImportItem to archive and no
+  /// ImportJob to open — the rows behind it were never created. The copy
+  /// says what is known (it never started) and not what caused it; the
+  /// client cannot tell a capacity failure from a crash, and nothing
+  /// server-side has marked the batch failed at all (parsercap1).
+  Widget _buildStalledBatchRow(_JobView batch, ImportStateColors states) {
+    final photos = batch.totalItems;
+    return ImportRow(
+      id: batch.id,
+      sourceIcon: _iconForSourceType('photo'),
+      title: photos == 1 ? '1 photo' : '$photos photos',
+      statusLabel: 'Import failed — the parser never started',
+      stateColor: states.failed,
+      stateChipLabel: 'Failed',
+      timeLabel: _formatTime(batch.createdAt),
     );
   }
 
@@ -983,6 +1036,19 @@ class _JobView {
   /// a 500 and an `error_logs` row per tap, on the row the user is most
   /// likely to tap because it is the one they are waiting on.
   factory _JobView.fromBatch(ImportBatch b) => _JobView(
+        id: 'batch:${b.id}',
+        openable: false,
+        sourceType: 'photo',
+        sourceUrl: null,
+        totalItems: b.groupCount,
+        processedItems: 0,
+        createdAt: b.createdAt,
+      );
+
+  /// A batch that produced no ImportJobs and is past the grace window.
+  /// Same shape as [fromBatch] — nothing to open, because there is still no
+  /// ImportJob behind it.
+  factory _JobView.fromStalledBatch(ImportBatch b) => _JobView(
         id: 'batch:${b.id}',
         openable: false,
         sourceType: 'photo',

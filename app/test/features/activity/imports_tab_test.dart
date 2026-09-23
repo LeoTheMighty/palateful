@@ -720,7 +720,53 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('All clear — no imports yet'), findsOneWidget);
+    // Not hidden — said plainly. parsercap1 measured the real case: the
+    // batch's AWS Batch job never started, died on
+    // `instance-terminated-no-capacity`, and produced zero ImportJobs.
+    // Nothing server-side marks the batch failed, so it still reads
+    // `submitted`; hiding it would leave Leo with silence, and rendering
+    // it In Progress would be a spinner that never stops.
+    expect(find.text('All clear — no imports yet'), findsNothing);
+    expect(find.text('Import failed — the parser never started'),
+        findsOneWidget);
+    expect(find.text('2 photos'), findsOneWidget);
+  });
+
+  testWidgets('a stalled batch row cannot be tapped or swiped (impvis1)',
+      (tester) async {
+    // There is no ImportJob to open and no ImportItem to archive — the
+    // rows behind it were never created.
+    final client = _FakeApiClient(
+      parserBatches: [
+        {
+          'id': 'batch-dead',
+          'status': 'submitted',
+          'group_count': 1,
+          'recipe_book_id': null,
+          'created_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 5))
+              .toIso8601String(),
+          'completed_at': null,
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(Dismissible), findsNothing);
+    await tester.tap(find.text('Import failed — the parser never started'));
+    await tester.pump();
+    // No navigation, no exception.
+    expect(find.text('Import failed — the parser never started'),
+        findsOneWidget);
   });
 
   testWidgets('stragglers collapse to ONE row per job (impvis1)',
