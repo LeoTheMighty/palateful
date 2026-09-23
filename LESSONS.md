@@ -345,8 +345,15 @@
   "nothing to report". A warning that was due at the 60-minute mark was sent at
   85 minutes, five minutes before the deadline it existed to pre-empt. Nothing
   failed: the poller worked, the state genuinely had not changed, and every
-  individual reading was correct. **The defect was the reporting contract** —
-  "silence means no change" and "silence means I am dead" render identically.
+  individual reading was correct. **This is a contract defect, not a watcher bug** — nothing in the
+  code was broken, and rewriting the poller more carefully would not have
+  helped. "Silence means no change" and "silence means I am dead" render
+  identically, so the channel cannot carry the difference. Note that
+  print-on-change is exactly what one reaches for to keep a channel quiet,
+  which is why this recurs: the instinct that makes a watcher polite is the
+  same one that makes it unfalsifiable. **A reporting contract has to
+  distinguish three states — progress, no-change, and no-longer-running —
+  and only the third is dangerous to leave unsaid.**
   The replacement prints **every** poll, plus an explicit `NO READING` when a
   poll returns empty and an explicit line when it exits. Cheap, noisier, and it
   cannot lie by omission.
