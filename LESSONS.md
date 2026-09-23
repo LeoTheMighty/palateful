@@ -187,6 +187,32 @@
      thing that changes, and it keeps working; anchor it to a restatement of
      the thing, and it breaks on the first correct change.
 
+  4. **A test can exercise real production code, pass, and still measure
+     something that could not have failed.** (acttab1, 2026-09-22, palateful-79.)
+     A widget test pumped `ActivityScreen(initialTab: 'imports')`, then pumped
+     `ActivityScreen()`, drove the counts and asserted the tab. It passed
+     identically before and after the fix, while the commit message cited it
+     as pinning the behaviour change. Flutter never remounted: both trees were
+     `ProviderScope > MaterialApp > ActivityScreen` with the same runtimeType
+     and null keys, so `Widget.canUpdate` held at every level — the Element
+     was updated, the **State object reused**, `initState` never ran again.
+     There was no second screen. The one screen still held
+     `hasExplicitTab == true`, had registered no count listeners, and the
+     counts fired into nothing.
+
+     Generally: **re-pumping the same widget type with different constructor
+     arguments does not give you a fresh `State`.** Distinct keys, a different
+     widget type, or it is the same instance — which makes every test of the
+     form "what happens when a second X mounts" suspect until checked.
+
+     **The tell was inside the passing run.** The helper was
+     `_selectedTabs(tester).single`, and `.single` throws on more than one
+     match. That it never threw proved exactly one TabBar was mounted, which
+     proved the second screen did not exist. The disconfirming evidence was
+     produced, printed nothing, and went unread — a green run's incidental
+     facts are evidence too, and this class is caught by reading them rather
+     than by adding another assertion.
+
 - **`gh pr checks <n>` can report every check passing while a whole workflow
   is still running.** On PR #52 it listed three checks (lint/test/coverage,
   all `pass`) and no pending rows, while `CI & Deploy` — the workflow that
