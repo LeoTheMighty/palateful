@@ -2,59 +2,146 @@
 hash: envspell1
 type: dev
 created: 2026-09-22T21:30:00-06:00
-title: ENVIRONMENT has five spellings and two of them silently disable prod-only code
+title: ENVIRONMENT has five spellings and the gates using it fail in opposite directions
 from: dev/dev-selfheal1-2026-09-20T11:45-503-only-when-a-restart-can-fix-it.md
 status: in-progress
 owner: /devx-2026-09-22T1809-40329
-branch: null
+branch: feat/dev-envspell1
 ---
 
 ## Goal
 
-`ENVIRONMENT` is compared against exact string literals in prod-only code
-paths, and the repo carries five spellings of it. A task deployed from the
-**documented** template silently loses behaviour that the code believes is
-on.
+> **Read this before reaching for a "canonicalise the spelling" helper.**
+> Three of the gates keyed on `ENVIRONMENT` are **Auth0 bypasses** that
+> return a fixed test user without verifying a token. Any normalisation that
+> loosens matching moves an authentication bypass toward armed. That is a
+> security consequence hiding inside what looks like a config tidy-up.
 
-Spellings found (2026-09-22):
+`ENVIRONMENT` is compared against string literals in gates that fail in
+**opposite directions**, and the repo carries five spellings of it.
+
+**Measured 2026-09-22, before changing anything:**
 
 | Spelling | Where |
 |---|---|
-| `prod` | `terraform/environments/prod/main.tf:42` (what ECS actually injects) |
-| `dev` | `terraform/environments/dev/main.tf:40` |
-| `production` | `SETUP.md:668` — the production `.env` template |
-| `development` | `docker-compose.e2e.yml:18` |
-| `test` | `services/api/tests/conftest.py:17` |
+| `prod` | `terraform/environments/prod/main.tf` -> ECS. **What prod actually runs** (`palateful-api-prod:66` and `palateful-worker-prod:56` both measured). |
+| `dev` | `terraform/environments/dev/main.tf` -> ECS. A **deployed** environment, not a local one — the trap in the name. |
+| `development` | `docker-compose.e2e.yml` |
+| `test` | `services/api/tests/conftest.py` |
+| `production` | the **root** `SETUP.md`'s production `.env` template (`docs/SETUP.md` is a different file and never had the line) |
 
-Consumers keying on an exact literal:
+So the 4xx audit writer **is working in prod today** — the original filing
+implied it had been silently quiet, which is false. The hazard is for
+whoever deploys from the documented template.
 
-- `libraries/utils/utils/api/endpoint.py:234` — `if ENVIRONMENT != "prod": return`.
-  The 4xx audit writer. Under the documented `production` template it writes
-  nothing, and nothing says so.
-- `libraries/utils/utils/services/db_probe.py` — `DEPLOYED_ENVIRONMENTS`
-  (selfheal1). Defensively accepts `production` already; that is a patch over
-  this bug, not a fix for it.
+**Two sources, which can disagree in one process.**
+`utils.constants.ENVIRONMENT` reads `os.environ` directly.
+`services/api/src/config.Settings.environment` is a pydantic field
+defaulting to `"dev"`. With `ENVIRONMENT` unset, one is `None` and the other
+is `"dev"`.
+
+**Six consumers, two failure directions:**
+
+- `utils/api/endpoint.py` — `!= "prod"` gates the 4xx audit writer. An
+  unrecognised spelling **silently disables a recorder**. Fails quiet.
+- `services/api/src/dependencies.py` (**two** call sites) and
+  `services/api/src/mcp_server/auth.py` — `in ("development", "test")` gates
+  an **Auth0 bypass**. An unrecognised spelling must **deny**. Fails closed,
+  and must keep failing closed.
+- `utils/services/db_probe.py` — `DEPLOYED_ENVIRONMENTS` allowlist
+  (selfheal1). Unknown -> not deployed.
+- `services/api/src/config.py` — interpolated into **AWS resource names**
+  (`palateful-imports-{env}` and four more). Prod sets all five explicitly,
+  so this is a fallback; a wrong spelling would only bite a deployment that
+  omits them.
+- `services/api/src/api/v1/admin/get_logs.py` — maps `dev` -> `prod` for a
+  CloudWatch log group. Naming, not gating.
+- `services/parser/project.json` — `${ENVIRONMENT:-dev}` in queue names.
+
+## Why one canonical string is the wrong fix
+
+A single helper has a single default, and these gates need opposite ones.
+Make unknown mean "not production" and a typo silently stops recording;
+make unknown mean "local" and a typo arms an auth bypass. The safe default
+is a property of **what the wrong answer costs**, not of the variable.
+
+So: two predicates, opposite defaults, in `utils/environment.py`.
+
+    is_production(value)            unknown -> True   (recorders stay on)
+    is_local_bypass_allowed(value)  unknown -> False  (the bypass stays shut)
+
+They are deliberately **not inverses**. `staging` records like production
+*and* refuses the bypass; `dev` does neither. Same rule the health probe
+arrived at in selfheal1: the privileged or destructive decision needs
+positive identification, never an inference from absence.
 
 ## Acceptance criteria
 
-- [ ] One normalisation helper (strip + casefold + a canonical alias map) that
-      every `ENVIRONMENT` comparison in Python goes through. No new bare
-      `== "prod"` anywhere.
-- [ ] `SETUP.md` and every template agree with what Terraform injects; the
-      canonical value is stated in exactly one place.
-- [ ] A test that fails if a comparison against a bare `ENVIRONMENT` literal
-      is reintroduced (grep-guard in the style of `tools/no-silent-catch-check.sh`).
-- [ ] `db_probe.DEPLOYED_ENVIRONMENTS` drops the defensive `production` entry
-      once the canonical value is enforced — with its test updated in the same
-      commit.
+- [x] Two predicates with opposite defaults. **Normalisation is
+      per-predicate, not shared**: `is_recording_environment` normalises
+      case and whitespace (`"PROD"`, `" prod\n"` all read as `prod`);
+      `is_local_bypass_allowed` compares **byte-exactly**, so it is no
+      looser than the tuple tests it replaced.
+- [x] Every gate routed through them. No bare `== "prod"` left outside the
+      predicates' own module.
+- [x] `BYPASS_ELIGIBLE` excludes `dev`, and says why in the code: the
+      deployed dev environment is reachable from the internet.
+- [x] The root `SETUP.md`'s template says `prod`, with a comment saying why
+      the exact string matters.
+- [x] `.env.example` documents the local default and its consequence
+      (unset counts as production for recorders).
+- [x] A CI grep guard blocking new bare comparisons, with an allowlist for
+      naming-not-gating cases (`tools/environment-gate-check.sh`,
+      `tools/environment-gate-allowlist.txt`), wired into `ci.yml`.
+- [x] The guard is **mutation-verified** against ten planted shapes —
+      `==`/`!=` in either operand order, `in` against tuple/list/set
+      literals, `os.environ["ENVIRONMENT"]` and `os.environ.get(...)`, a
+      gate with a trailing comment — plus a pure comment that must *not*
+      trip it, plus a drifted allowlist fingerprint that must fail loudly.
+      Shapes it still misses are named in the script header rather than
+      implied absent.
+- [x] Tests pin the asymmetry itself, not just the recognised spellings.
+- [ ] ~~`db_probe.DEPLOYED_ENVIRONMENTS` drops the defensive `production`
+      entry.~~ **Withdrawn.** Keeping it is the fail-safe direction, and a
+      deployment that predates the SETUP.md correction must not silently
+      lose `NOT_CONFIGURED`. It costs nothing to keep.
+
+## What adversarial review changed
+
+- **The first implementation made all three bypass gates looser** and its
+  own comments claimed the opposite. Sharing one normaliser between the
+  predicates meant `TEST`, `Test`, `" test "`, `"test\n"` and `"\xa0test"`
+  denied the bypass before the change and armed it after. Normalisation is
+  itself directional: tolerating a stray newline is right when a mismatch
+  costs a silent recorder and wrong when it costs an authentication bypass.
+  `is_local_bypass_allowed` is now byte-exact and pinned as a property.
+- `is_production` was renamed `is_recording_environment`: a general-sounding
+  name invites reuse in the permissive direction (`if is_production():
+  use_real_payment_key()`), where unknown -> True is exactly backwards.
+- The guard missed list/set-literal membership, reversed operands and direct
+  `os.environ` reads — the last being the shape `utils/constants.py` itself
+  uses, and so the likeliest re-introduction. Pattern widened; remaining
+  blind spots documented in the script.
+- Allowlist entries carry a **fingerprint** of the exempted line, not just a
+  line number, so an exemption cannot drift onto code nobody reviewed.
+- `"local"` was dropped from `NON_PRODUCTION`: it had no measured source,
+  and that set is the fail-quiet one.
+- `libraries/utils/test/conftest.py` now declares `ENVIRONMENT=test`, because
+  unknown -> True otherwise starts exercising the 4xx audit writer in a
+  suite that sets no database.
 
 ## Technical notes
 
-- Blast radius is "prod-only behaviour that fails silent", which is exactly
-  the class this workstream exists to eliminate; the audit writer has
-  presumably been quiet for anyone following SETUP.md.
-- Check for non-Python consumers too (`bin/`, workflows) before declaring the
-  list complete.
+- `db_probe._database_expected` shares the normaliser but **keeps its own
+  default** (unknown -> False). `is_production`'s unknown -> True is right
+  for recorders and wrong there: it would make every local run with no
+  database assert `NOT_CONFIGURED`.
+- Measured: the bypass is not armed in prod by two independent conditions —
+  `ENVIRONMENT=prod`, and no `E2E_TEST_MODE` in the task definition at all
+  (`e2e_test_mode` defaults to `False`).
+- The third bypass copy (`mcp_server/auth.py`) and the second one in
+  `dependencies.py` were **found by the guard**, not by reading — the
+  original spec named one call site.
 
 ## Status log
 - 2026-09-22T21:30 — filed from selfheal1's Phase 4 review (Blind Hunter F8).

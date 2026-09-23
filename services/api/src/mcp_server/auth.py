@@ -19,6 +19,7 @@ from config import settings
 from starlette.types import ASGIApp, Receive, Scope, Send
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
+from utils.environment import is_local_bypass_allowed
 from utils.services.async_database import AsyncDatabase
 from utils.services.database import Database
 
@@ -129,9 +130,13 @@ async def _authenticate(authorization: str | None) -> tuple[User, Database]:
 
     database = Database()
     try:
+        # envspell1: third copy of the e2e bypass gate (the other two are in
+        # `dependencies.py`). Routed through `is_local_bypass_allowed`, which
+        # denies anything it does not positively recognise — `dev` included,
+        # because the deployed dev environment is reachable from the internet.
         if (
             settings.e2e_test_mode
-            and settings.environment in ("development", "test")
+            and is_local_bypass_allowed(settings.environment)
             and token == _E2E_TOKEN
         ):
             user = database.find_or_create_by(

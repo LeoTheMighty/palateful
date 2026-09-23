@@ -103,11 +103,11 @@ PROBE_CONNECT_TIMEOUT_S = 2.0
 #: (`terraform/environments/{prod,dev}/main.tf` → `modules/ecs`). An
 #: explicit allowlist, not a guess: anywhere else (tests, local runs with
 #: no DB) an absent URL is a legitimate state and still classifies `OK`.
-#: `"production"` is included because `SETUP.md`'s production `.env`
-#: template uses that spelling: a task deployed from the documented
-#: template must not silently lose this verdict. (The mismatch itself is a
-#: real bug — `utils.api.endpoint` keys its prod audit writer on the exact
-#: string `"prod"` — filed separately as `envspell1`.)
+#: `"production"` is included because the root `SETUP.md`'s production
+#: `.env` template used that spelling: a task deployed from that template
+#: before envspell1 corrected it must not silently lose this verdict.
+#: (envspell1 has since routed the gates through `utils.environment`; this
+#: entry stays because keeping it is the fail-safe direction.)
 #: Compared case-insensitively and whitespace-stripped, so `"PROD"` or a
 #: newline-padded value cannot silently disable `NOT_CONFIGURED`.
 #: `test_every_terraform_environment_is_covered` fails if a new Terraform
@@ -224,11 +224,14 @@ def _database_expected() -> bool:
     Read at call time, like `_probe_url`, for the same reasons.
     """
     from utils import constants
+    from utils.environment import canonical_environment
 
-    environment = constants.ENVIRONMENT
-    if not isinstance(environment, str):
-        return False
-    return environment.strip().lower() in DEPLOYED_ENVIRONMENTS
+    # envspell1: normalisation is shared, the DEFAULT is not. This predicate
+    # keeps its own allowlist and its own unknown -> False, because an
+    # unrecognised value here must not start asserting NOT_CONFIGURED for
+    # every local run with no database. `is_recording_environment`'s unknown -> True is
+    # right for recorders and wrong here.
+    return canonical_environment(constants.ENVIRONMENT) in DEPLOYED_ENVIRONMENTS
 
 
 def _ttl_default() -> float:

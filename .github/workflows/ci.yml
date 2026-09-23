@@ -364,6 +364,9 @@ jobs:
       - name: No cook-mode chat references (cmrc-2 grep guard)
         run: bash tools/no-cook-chat-check.sh
 
+      - name: No bare ENVIRONMENT comparisons (envspell1 grep guard)
+        run: bash tools/environment-gate-check.sh
+
       - name: No direct Image.network (ffm-11 grep guard)
         run: bash tools/image-network-check.sh
 

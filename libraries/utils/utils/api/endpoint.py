@@ -218,10 +218,16 @@ class Endpoint:
         `audit_errors.py --drill api:APIException` surface the
         error_code + body_keys + user/path tuple that triage needs.
 
-        Strict env gate: writes only when `ENVIRONMENT == "prod"`. The
+        Env gate: writes only where production records, decided by
+        `utils.environment.is_recording_environment` — unknown spellings
+        count as production, so a typo makes this noisier, not quieter
+        (envspell1). **This is a deliberate change of default**: processes
+        that set no `ENVIRONMENT` at all now write here. The
         test suite runs thousands of 4xx assertions and the dev stack
-        hits a lot of access-denied paths during iteration; mirroring
-        all of them into error_logs would drown the real prod signal.
+        hits a lot of access-denied paths during iteration; mirroring all of
+        them into error_logs would drown the real prod signal. That still
+        holds for anything that *declares* a non-production environment —
+        which is why both test conftests and `.env.example` set one.
 
         Swallows every exception — audit must never fail a response.
         Matches the 5xx writer's contract.
@@ -231,7 +237,15 @@ class Endpoint:
             if not isinstance(status, int) or status < 400 or status >= 500:
                 return
             from utils.constants import ENVIRONMENT
-            if ENVIRONMENT != "prod":
+            from utils.environment import is_recording_environment
+
+            # envspell1: was `ENVIRONMENT != "prod"`, which silently stopped
+            # recording for every other spelling of the same intent —
+            # including `production`, which docs/SETUP.md's own template
+            # used. `is_recording_environment` treats an unrecognised or missing value
+            # as production, so a config typo makes this recorder noisier
+            # rather than quieter.
+            if not is_recording_environment(ENVIRONMENT):
                 return
 
             method = None
