@@ -46,6 +46,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
   /// explicit `?tab=` and to auto-switch once counts resolve.
   final ActivityReadProvider _readProvider = getIt<ActivityReadProvider>();
 
+  /// True while a provider-driven `animateTo` is in flight, so its settle
+  /// isn't mistaken for a user gesture. Cleared when that settle arrives.
+  bool _animatingFromProvider = false;
+
   @override
   void initState() {
     super.initState();
@@ -53,9 +57,15 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
     // otherwise pick the tab with more actionable items (tie → Notifications).
     // The router is the source of truth for the first frame; subsequent tab
     // switches flow provider → controller (and vice versa).
-    final hasExplicitTab = widget.initialTab != null;
+    // `tryFromWire`, not `fromWire`: an unrecognised value is NOT an
+    // explicit request. `?tab=improts` from a truncated deep link or a
+    // stale push payload used to count as one and latch the session to
+    // Notifications permanently — the bug this story fixes, re-entered
+    // through the front door.
+    final routeTab = ActivityTab.tryFromWire(widget.initialTab);
+    final hasExplicitTab = routeTab != null;
     final initial = hasExplicitTab
-        ? ActivityTab.fromWire(widget.initialTab)
+        ? routeTab
         : initialTabFromCounts(
             notifications: _readProvider.notificationsCount.value,
             importsActionable: _readProvider.importsActionableCount.value,
@@ -94,6 +104,13 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
   void _maybeAutoSwitchTab() {
     if (!mounted) return;
     if (_userTouchedTab) return;
+    // One shot. These listeners live as long as the screen — which, for the
+    // bottom-nav instance inside the shell's IndexedStack, is the life of
+    // the process — so without this the "cold-start fallback" would keep
+    // firing: a notification arriving 20 minutes later would throw a user
+    // mid-scroll from Imports to Notifications. Cold start is the only
+    // moment this guess is wanted.
+    _dropCountListeners();
     final target = initialTabFromCounts(
       notifications: _readProvider.notificationsCount.value,
       importsActionable: _readProvider.importsActionableCount.value,
@@ -105,11 +122,16 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
     ref.read(activityTabProvider.notifier).suggestTab(target);
   }
 
+  /// Idempotent — called on the first resolve and again on dispose.
+  void _dropCountListeners() {
+    _readProvider.notificationsCount.removeListener(_maybeAutoSwitchTab);
+    _readProvider.importsActionableCount.removeListener(_maybeAutoSwitchTab);
+  }
+
   @override
   void dispose() {
     _tabController.removeListener(_onControllerChange);
-    _readProvider.notificationsCount.removeListener(_maybeAutoSwitchTab);
-    _readProvider.importsActionableCount.removeListener(_maybeAutoSwitchTab);
+    _dropCountListeners();
     _tabController.dispose();
     super.dispose();
   }
@@ -120,6 +142,15 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
     // provider mid-swipe.
     if (_tabController.indexIsChanging) return;
     if (_syncingFromController) return;
+    if (_animatingFromProvider) {
+      // A programmatic `animateTo` settling, not a gesture. This used to
+      // set `_userTouchedTab`, so the flag read "the user swiped" after
+      // nobody had touched anything — harmless in effect, but it made the
+      // flag mean something other than its name, and it is the only guard
+      // left on the non-deliberate path.
+      _animatingFromProvider = false;
+      return;
+    }
     // abi-4: user has explicitly touched a tab. Latch the override flag
     // so the async auto-switch from resolved counts doesn't fire.
     _userTouchedTab = true;
@@ -133,6 +164,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
 
   void _syncControllerFromProvider(ActivityTab tab) {
     if (_tabController.index != tab.index) {
+      _animatingFromProvider = true;
       _tabController.animateTo(tab.index);
     }
   }
