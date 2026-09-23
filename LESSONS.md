@@ -279,12 +279,14 @@
     deploy**, and pushing then would have cancelled a live deployment with a
     green-looking justification. `gh run view --json jobs --jq '.jobs[] |
     select(.status!="completed") | .name'` shows what is still moving
-    (palateful-d9). **It is a standing hazard, not freak timing:** the window is
-    at least the length of the slowest image build. On run `35806423249` the
-    last gate went green at 01:51:45Z, `deploy-web` took 2m13s, and the four
-    `deploy-images` jobs were **still running 5m36s later** — so it is minutes
-    on every Docker-building deploy, not a handoff you would have to be
-    unlucky to hit.
+    (palateful-d9). **It is a standing hazard, not freak timing: the window lasts
+    as long as the whole deploy tail.** Measured end to end on run
+    `35806423249` — last gate `test` green **01:51:45Z**, last job
+    `deploy-services` done **02:14:37Z**: **22m52s**. The tail was
+    `deploy-web` → four `deploy-images` → `terraform-prod` → `run-migrator` →
+    `deploy-services`. **Treat ~23 minutes as one measured instance, not a
+    budget** — a deploy touching fewer of those legs is shorter — but the
+    order of magnitude is "most of the run", not "a moment of handoff".
 
     Two measurement traps while establishing that, both of which produced a
     confident wrong number:
@@ -302,7 +304,9 @@
     all 4 (verified on this run). The robust form is to treat *not completed*
     as the signal and **refuse to compute a duration at all**, rather than to
     special-case the sentinel value — a zero-value field will keep finding new
-    spellings.
+    spellings. The final 22m52s above was only computed **after**
+    asserting the run itself read `completed` and no job was outstanding; on
+    an in-flight run that same arithmetic is the bug.
   - **`gh pr checks` printed all-passing while an entire workflow had not
     reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
     view, twice. Gate on a probe that aggregates every run at the head SHA;
