@@ -4,7 +4,7 @@ type: dev
 created: 2026-07-27T12:34:00-06:00
 title: Secrets Manager password provider — connect-time credential resolution
 from: plan/plan-462355-2026-07-27T10:51-rotation-self-heal.md
-status: in-progress
+status: done
 owner: /devx-rsh105 (session_012ayskbK7fN9sYRXQpAdJzu)
 branch: feat/dev-rsh105
 ---
@@ -108,3 +108,6 @@ which is what makes rsh106's wiring reviewable on its own terms.
 - 2026-09-22 — phase 4: 1-agent single-pass adversarial review; 3 findings (0 HIGH, 1 MED, 2 LOW); ALL fixed in-place. MED: SM-outage-on-retry error chain decides rsh102's probe verdict; made deliberate (auth error kept out of the chain, so the probe fails open) and pinned by a test. LOW: from-imported exception class goes stale under the artifact's importlib.reload (tests now look names up on the module); UP031 in new test. Re-review clean.
 - 2026-09-22 — phase 5: `npx nx run utils:test` 776 passed / 7 skipped, coverage gate OK (db_probe.py + db_credentials.py at 100% line+branch); `utils:lint` clean. Wiring file still RED (3 failed) under PYTEST_RUN_RED=1, as intended.
 - 2026-09-22 — phase 7: PR https://github.com/LeoTheMighty/palateful/pull/45 at deef7b7d. Merge held: main is a serialized deploy lane; needs Leo's approval relayed by the coordinator.
+- 2026-09-23 — merged via PR #45 (squash → b5dcc333). Deployed and verified in prod: run 35786099652 all legs success; api + worker both 1/1 ACTIVE on b5dcc333; `/v1/health` → `{"status":"ok","db":"OK"}` (unchanged, which is the point — zero call sites wired); no secretsmanager/db_credentials/boto/CredentialResolution/failing-open lines in 120 log lines per service.
+- 2026-09-23 — deviations from the ACs, all recorded in PR #45: `tools/red-artifacts.txt` entry moved to rsh106 with the two call-site tests split verbatim into `test_db_credential_wiring.py`; the E-6 artifact's asyncpg fixture premise fixed (no assertion changed); `test_db_credentials_provider_edges.py` added for the T2.8 100% gate.
+- 2026-09-23 — follow-ups filed: `chainctx1` (PR #59) **blocks rsh106** — the listener is what first puts a *resolved* auth error in scope for the classifier; `ncfgverdict1` (PR #59).
