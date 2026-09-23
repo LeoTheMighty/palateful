@@ -6,6 +6,7 @@ import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/activity_screen.dart';
 import 'package:palateful/features/activity/providers/activity_read_provider.dart';
+import 'package:palateful/features/activity/providers/activity_tab_provider.dart';
 import 'package:palateful/features/recipes/add_recipe/batch_parser_service.dart';
 
 /// acttab1 — where the tap to "imports in progress" actually loses its tab.
@@ -39,28 +40,9 @@ void main() {
     }
   });
 
-  testWidgets('an explicit tab survives counts resolving afterwards',
+  testWidgets('a tab-less screen auto-switches on the FIRST resolved counts',
       (tester) async {
-    _register();
-    await tester.pumpWidget(_wrap(const ActivityScreen(initialTab: 'imports')));
-    await tester.pump();
-    expect(_selectedTab(tester), _imports);
-
-    // Counts land after mount. This screen was given a tab, so nothing here
-    // should move it — even when the counts say Notifications.
-    final read = GetIt.instance<ActivityReadProvider>();
-    read.notificationsCount.value = 3;
-    read.importsActionableCount.value = 0;
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(_selectedTab(tester), _imports);
-  });
-
-  testWidgets('a tab-less screen still auto-switches on resolved counts',
-      (tester) async {
-    // The behaviour that must NOT be broken by the fix: arriving at
-    // /activity with no ?tab= picks the busier side.
+    // The cold-start affordance, which the fix must not break.
     _register();
     await tester.pumpWidget(_wrap(const ActivityScreen()));
     await tester.pump();
@@ -74,33 +56,29 @@ void main() {
     expect(_selectedTab(tester), _imports);
   });
 
-  testWidgets('the latch is session-wide, and that is the trade-off',
-      (tester) async {
-    // Deliberate consequence, pinned so it is a decision and not a
-    // surprise: once anything chooses a tab on purpose — a route's ?tab=
-    // or the user's own swipe — the count-based guess stops firing for
-    // the rest of the session, on every screen, because the provider is
-    // app-scoped. The guess is a cold-start affordance ("abi-4: cold-start
-    // fallback"); overriding a deliberate choice with it is the rug-pull
-    // this story exists to stop. If that ever needs to be per-screen, the
-    // provider has to stop being shared first.
+  testWidgets('and NOT on later ones — the guess is one-shot', (tester) async {
+    // These listeners live as long as the screen, and the bottom-nav
+    // instance lives as long as the process. Before the one-shot, a
+    // notification arriving twenty minutes later threw a user mid-scroll
+    // from Imports to Notifications.
     _register();
-    await tester.pumpWidget(_wrap(const ActivityScreen(initialTab: 'imports')));
-    await tester.pump();
-    expect(_selectedTab(tester), _imports);
-
-    // A later screen with no ?tab=, and counts that would have said
-    // Notifications.
     await tester.pumpWidget(_wrap(const ActivityScreen()));
     await tester.pump();
+
     final read = GetIt.instance<ActivityReadProvider>();
+    read.notificationsCount.value = 0;
+    read.importsActionableCount.value = 5;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_selectedTab(tester), _imports, reason: 'first resolve applies');
+
+    // Later traffic on the other side.
     read.notificationsCount.value = 9;
-    read.importsActionableCount.value = 0;
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(_selectedTab(tester), _imports,
-        reason: 'the earlier deliberate choice still holds');
+        reason: 'a later count change must not move the tab under the user');
   });
 
   testWidgets(
@@ -108,40 +86,110 @@ void main() {
       '(acttab1 — the reported bug)', (tester) async {
     _register();
 
-    // Both mounted at once, sharing one ProviderScope — the shape the
-    // IndexedStack produces when /activity was visited before the strip's
-    // push. The tab-less one registers the count listeners.
-    await tester.pumpWidget(
-      ProviderScope(
-        child: MaterialApp(
-          home: Column(
-            children: const [
-              Expanded(child: ActivityScreen()),
-              Expanded(child: ActivityScreen(initialTab: 'imports')),
-            ],
-          ),
-        ),
-      ),
-    );
+    // Both mounted in one tree, sharing the ProviderScope — the shape the
+    // shell's IndexedStack produces when /activity was already visited
+    // before the strip's push. The tab-less one owns the count listeners.
+    await tester.pumpWidget(_wrapBoth(
+      const ActivityScreen(),
+      const ActivityScreen(initialTab: 'imports'),
+    ));
     await tester.pump();
 
     // The counts the reported case produces: a pending PARSER BATCH is not
-    // an ImportItem, so imports_actionable is 0 and the tie — or any
-    // notification at all — resolves to Notifications.
+    // an ImportItem, so imports_actionable is 0 and any notification at all
+    // resolves to Notifications.
     final read = GetIt.instance<ActivityReadProvider>();
     read.notificationsCount.value = 1;
     read.importsActionableCount.value = 0;
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    // The explicitly-routed screen must still be on Imports. Before the
-    // fix the app-scoped provider carries the tab-less screen's
-    // auto-switch into it, which is how Leo's tap lands on an empty
-    // Notifications tab.
     final selected = _selectedTabs(tester);
-    expect(selected.length, 2, reason: 'both screens mounted');
+    expect(selected.length, 2, reason: 'both screens really are mounted');
     expect(selected.last, _imports,
         reason: 'the screen routed with ?tab=imports keeps its tab');
+  });
+
+  testWidgets('the latch is session-wide, and that is the trade-off',
+      (tester) async {
+    // Deliberate consequence, pinned so it is a decision and not a
+    // surprise: once something chooses a tab on purpose, the count-based
+    // guess stops firing for the session — including for a screen that
+    // never had a `?tab=` of its own, because the provider is shared.
+    //
+    // Asserted on the PROVIDER, not on the second screen's TabBar: every
+    // mounted screen follows the provider by design, so the tab-less
+    // screen moving to Imports here is the shared state working, not the
+    // guess winning. What the latch changes is whether the guess can write
+    // at all.
+    _register();
+    await tester.pumpWidget(_wrapBoth(
+      const ActivityScreen(initialTab: 'imports'),
+      const ActivityScreen(),
+    ));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ActivityScreen).first),
+    );
+    expect(container.read(activityTabProvider), ActivityTab.imports);
+
+    // Counts that strongly favour the other side. Pre-fix the tab-less
+    // screen's listener writes Notifications here and both screens move.
+    final read = GetIt.instance<ActivityReadProvider>();
+    read.notificationsCount.value = 9;
+    read.importsActionableCount.value = 0;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(container.read(activityTabProvider), ActivityTab.imports,
+        reason: 'the guess cannot overwrite a deliberate choice');
+    expect(_selectedTabs(tester).first, _imports,
+        reason: 'and the explicitly-routed screen is still showing it');
+  });
+
+  testWidgets('an UNRECOGNISED ?tab= does not latch anything',
+      (tester) async {
+    // `?tab=improts` from a truncated deep link or a stale push payload is
+    // not a deliberate request. `fromWire` maps it to notifications, so it
+    // used to latch the session there permanently — the reported bug,
+    // re-entered through the front door.
+    _register();
+    await tester.pumpWidget(_wrapBoth(
+      const ActivityScreen(initialTab: 'improts'),
+      const ActivityScreen(),
+    ));
+    await tester.pump();
+
+    final read = GetIt.instance<ActivityReadProvider>();
+    read.notificationsCount.value = 0;
+    read.importsActionableCount.value = 5;
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(_selectedTabs(tester).last, _imports,
+        reason: 'the count-based guess still works after a typo tab');
+  });
+
+  testWidgets('reset() drops the latch, as sign-out does', (tester) async {
+    _register();
+    await tester.pumpWidget(_wrap(const ActivityScreen(initialTab: 'imports')));
+    await tester.pump();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ActivityScreen)),
+    );
+    expect(container.read(activityTabProvider), ActivityTab.imports);
+
+    container.read(activityTabProvider.notifier).reset();
+    await tester.pump();
+
+    expect(container.read(activityTabProvider), ActivityTab.notifications,
+        reason: 'the next user starts from the cold-start default');
+    // And the guess works again for them.
+    container.read(activityTabProvider.notifier).suggestTab(ActivityTab.imports);
+    expect(container.read(activityTabProvider), ActivityTab.imports,
+        reason: 'suggestTab is no longer latched out');
   });
 }
 
@@ -223,3 +271,18 @@ void _register() {
 
 Widget _wrap(Widget child) =>
     ProviderScope(child: MaterialApp(home: child));
+
+/// Two ActivityScreens in one ProviderScope, mounted in the given order.
+/// Keys force distinct Elements: two `ActivityScreen()`s with null keys and
+/// the same runtimeType would have their State REUSED across a re-pump,
+/// which is how an earlier draft of these tests ended up asserting nothing.
+Widget _wrapBoth(Widget first, Widget second) => ProviderScope(
+      child: MaterialApp(
+        home: Column(
+          children: [
+            Expanded(child: KeyedSubtree(key: const ValueKey('a'), child: first)),
+            Expanded(child: KeyedSubtree(key: const ValueKey('b'), child: second)),
+          ],
+        ),
+      ),
+    );

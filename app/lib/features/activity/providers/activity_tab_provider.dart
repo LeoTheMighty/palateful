@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// The two tabs on the Activity Hub.
@@ -17,14 +16,23 @@ enum ActivityTab {
 
   /// Parse a wire value; unknown / null falls back to notifications
   /// (cold-start default).
-  static ActivityTab fromWire(String? value) {
+  static ActivityTab fromWire(String? value) =>
+      tryFromWire(value) ?? ActivityTab.notifications;
+
+  /// Parse a wire value, or null when it isn't one of ours.
+  ///
+  /// [fromWire] cannot tell `?tab=notifications` from `?tab=improts` — both
+  /// come back as notifications. That difference matters to the latch in
+  /// [ActivityTabNotifier]: a deliberate request should hold the tab for the
+  /// session, a typo in a push payload or a truncated deep link should not.
+  static ActivityTab? tryFromWire(String? value) {
     switch (value) {
       case 'imports':
         return ActivityTab.imports;
       case 'notifications':
         return ActivityTab.notifications;
       default:
-        return ActivityTab.notifications;
+        return null;
     }
   }
 
@@ -34,11 +42,12 @@ enum ActivityTab {
 /// `?tab=` override. Lands on whichever side has more actionable items;
 /// ties fall to Notifications (cold-start default).
 ///
-/// Called from `ActivityScreen.initState` with the latest counts, and
-/// again in a post-frame callback if the counts resolve asynchronously
-/// AFTER mount (cold-start / cache-cleared session). The screen's
-/// `_userTouchedTab` latch blocks the second call if the user has
-/// already manually swiped a tab — no rug-pull.
+/// Called from `ActivityScreen.initState` with the latest counts, and once
+/// more if the counts resolve asynchronously AFTER mount (cold-start /
+/// cache-cleared session). Two things stop it pulling the rug: it routes
+/// through [ActivityTabNotifier.suggestTab], which loses to any deliberate
+/// choice, and the screen drops its count listeners after the first resolve
+/// so a later count change cannot move a tab the user is already reading.
 ActivityTab initialTabFromCounts({
   required int notifications,
   required int importsActionable,
@@ -49,11 +58,17 @@ ActivityTab initialTabFromCounts({
 
 /// The currently-selected Activity Hub tab.
 ///
-/// App-scoped (not `autoDispose`) so tab switches within a session are
-/// remembered. Cold-start defaults to [ActivityTab.notifications] (a new
-/// process always starts fresh). The `ActivityScreen` initializes the
-/// provider from the route's `?tab=` query param on mount, then syncs
-/// the `TabController` to follow.
+/// App-scoped (not `autoDispose`) so a deliberate tab choice outlives any
+/// one screen — which is also why it needs the latch below: every mounted
+/// `ActivityScreen` reads and writes this one value. Cold-start defaults to
+/// [ActivityTab.notifications]; [ActivityTabNotifier.reset] returns it there
+/// on sign-out, since the process (and therefore this provider) outlives a
+/// session.
+///
+/// Note a consequence: once something latches, a tab-less mount computes its
+/// own `initial` from counts and its `suggestTab` no-ops, so this provider
+/// can hold a tab the visible screen is not on. The `TabController` is the
+/// visual source of truth and re-syncs on the next real change.
 class ActivityTabNotifier extends Notifier<ActivityTab> {
   /// True once something chose this tab deliberately — a route's `?tab=`,
   /// or the user's own swipe. Blocks the count-based guess from overriding
@@ -89,10 +104,14 @@ class ActivityTabNotifier extends Notifier<ActivityTab> {
     state = tab;
   }
 
-  /// Test-only: reset the latch. The provider is app-scoped, so without
-  /// this a single deliberate selection would leak across test cases.
-  @visibleForTesting
-  void resetForTest() {
+  /// Drop the latch and return to the cold-start default.
+  ///
+  /// Called on sign-out: the provider lives for the whole process, so
+  /// without this the next user inherits the previous one's tab choice —
+  /// and, worse, their latch, which would suppress the count-based pick for
+  /// a user who has never chosen anything. Same symptom as the bug this
+  /// story fixes, arrived at from a different direction.
+  void reset() {
     _chosenDeliberately = false;
     state = ActivityTab.notifications;
   }
