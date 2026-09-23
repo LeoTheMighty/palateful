@@ -358,6 +358,17 @@
   poll returns empty and an explicit line when it exits. Cheap, noisier, and it
   cannot lie by omission.
 
+  **A second, independent reason to print every poll: individual readings
+  mislead even when the watcher is healthy.** Watching three PRs to green on
+  2026-09-23, the pass count went *backwards* twice — `5 pass 2 pending` to
+  `6 pass 4 pending`, then `7 pass 3 pending` to `9 pass 1 pending` — because
+  new check runs register as pending after earlier ones have already passed.
+  Any single snapshot of "9 pass, 1 pending" supports "nearly done", and it
+  was wrong twice. **The sequence is the signal; the snapshot is not.** The
+  first argument for printing every poll is that silence hides a dead
+  watcher. This one holds even when nothing is wrong: a live watcher's
+  readings are only interpretable against the ones before them.
+
   **The same shape bit the check written to catch it.** Verifying #69 had
   merged, a content grep for a sentence in the merged text returned **0** on a
   main that did contain it — the sentence had been re-wrapped, so the pattern
