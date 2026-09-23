@@ -197,3 +197,18 @@
   think it does. Fix: gate on a probe that aggregates **every run at the head
   SHA** (`devx devx-helper await-remote-ci`, which folds all workflows into one
   verdict), and treat `gh pr checks` as a convenience view, never as the gate.
+
+- **A spec written from a message thread is written from relayed context,
+  and relayed context goes stale.** `ncfgverdict1` was filed asking for a
+  `NOT_CONFIGURED` verdict to be *created*; it already existed, shipped by
+  #52 — enum, return site, `degraded` rendering, and the CLI's exit-code
+  reasoning all merged. Two peers had described the gap accurately when
+  they described it; the source moved underneath the description. A
+  reviewer caught one AC that contradicted the implementation, and opening
+  the file showed the whole framing was stale, not one clause. Same family
+  as the cited-test lesson above: a description of code is not the code.
+  Fix: before filing a spec, open every file it names and read the current
+  state, even when — especially when — the person who described it wrote
+  it. Correct the framing, not just the clause the reviewer flagged, and
+  say in the spec that the first draft was wrong so nobody implements
+  against a premise that was never true. Twice in one day (2026-09-22).
