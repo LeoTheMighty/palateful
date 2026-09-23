@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// The two tabs on the Activity Hub.
@@ -54,11 +55,46 @@ ActivityTab initialTabFromCounts({
 /// provider from the route's `?tab=` query param on mount, then syncs
 /// the `TabController` to follow.
 class ActivityTabNotifier extends Notifier<ActivityTab> {
+  /// True once something chose this tab deliberately — a route's `?tab=`,
+  /// or the user's own swipe. Blocks the count-based guess from overriding
+  /// it.
+  ///
+  /// acttab1: this provider is app-scoped, so a screen mounted WITHOUT a
+  /// `?tab=` keeps count listeners alive and calls [setTab] when they
+  /// resolve — moving every other mounted screen with it, including one
+  /// that was just routed to an explicit tab. Measured in
+  /// `activity_screen_tab_override_test`: tapping "1 import in progress"
+  /// pushed `/activity?tab=imports`, the older screen's listener resolved
+  /// (a pending parser batch contributes 0 to `imports_actionable`), and
+  /// the new screen was dragged to Notifications. Per-screen latches
+  /// cannot fix that — the state being fought over is shared, so the latch
+  /// belongs with it.
+  bool _chosenDeliberately = false;
+
   @override
   ActivityTab build() => ActivityTab.notifications;
 
+  /// Select a tab because something asked for it: a route parameter or a
+  /// user gesture. Latches out the count-based guess for this session.
   void setTab(ActivityTab tab) {
+    _chosenDeliberately = true;
     state = tab;
+  }
+
+  /// Select a tab from resolved counts. A no-op once [setTab] has run, so
+  /// a late-resolving count cannot pull the rug out from under a
+  /// deliberate choice.
+  void suggestTab(ActivityTab tab) {
+    if (_chosenDeliberately) return;
+    state = tab;
+  }
+
+  /// Test-only: reset the latch. The provider is app-scoped, so without
+  /// this a single deliberate selection would leak across test cases.
+  @visibleForTesting
+  void resetForTest() {
+    _chosenDeliberately = false;
+    state = ActivityTab.notifications;
   }
 }
 

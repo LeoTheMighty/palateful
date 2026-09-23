@@ -63,8 +63,15 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (ref.read(activityTabProvider) != initial) {
-        ref.read(activityTabProvider.notifier).setTab(initial);
+      final notifier = ref.read(activityTabProvider.notifier);
+      if (hasExplicitTab) {
+        // A route said which tab. Latch it, so a screen mounted earlier
+        // without one cannot drag this one away when its counts resolve
+        // (acttab1) — the provider is app-scoped and shared by every
+        // mounted ActivityScreen.
+        notifier.setTab(initial);
+      } else if (ref.read(activityTabProvider) != initial) {
+        notifier.suggestTab(initial);
       }
     });
 
@@ -92,7 +99,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
       importsActionable: _readProvider.importsActionableCount.value,
     );
     if (ref.read(activityTabProvider) == target) return;
-    ref.read(activityTabProvider.notifier).setTab(target);
+    // `suggestTab`, not `setTab`: this is the guess from counts, and it
+    // must lose to any deliberate choice — including one made by a
+    // different screen that shares this provider.
+    ref.read(activityTabProvider.notifier).suggestTab(target);
   }
 
   @override

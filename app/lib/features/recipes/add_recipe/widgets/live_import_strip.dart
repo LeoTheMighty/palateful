@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/router/activity_routes.dart';
 import '../../../../core/theme/import_state_colors.dart';
 import '../state/import_batches_provider.dart';
 
@@ -41,7 +42,7 @@ class LiveImportStrip extends ConsumerWidget {
           // Close the Add Recipe sheet, then route to the Activity Hub's
           // imports filter. The hub owns the full list + actions.
           Navigator.of(context).maybePop();
-          context.push('/activity?tab=imports');
+          context.push(ActivityRoutes.hubPath);
         },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
