@@ -50,6 +50,33 @@ on this probe, and after FR-5 each fresh connection also costs a
 misses coalesce onto one in-flight attempt rather than each opening their
 own connection. A plain TTL cache would let both checkers through on the
 same tick — the exact window the budget is meant to cover.
+
+Rate limiting — the sync path has no cache, deliberately
+--------------------------------------------------------
+`probe_sync` is **not** cached and **not** single-flight, and porting
+`cached_verdict_async`'s machinery to it would be worse than useless:
+
+    A module-global TTL cache in a process that starts fresh every
+    invocation rate-limits nothing. It passes its own tests, looks
+    correct, and never prevents a single connection.
+
+rsh107 consumes this module as a container health check — `CMD-SHELL`
+running `python -m utils.services.db_probe` — which is a **new Python
+interpreter every tick**. `_cached` / `_inflight` are module globals;
+they start empty every time. The async cache works only because uvicorn
+is one long-lived process serving `/v1/health`.
+
+What rate-limits the sync path is therefore the **schedule**: at an
+interval of `SYNC_PROBE_MIN_CHECK_INTERVAL_S` or slower, the invocation
+rate is already what `DB_PROBE_TTL_S` buys the async side. That makes the
+interval a load-bearing assumption living in Terraform, invisible from
+here — so it is pinned by `test_sync_probe_interval_assumption_holds`
+rather than by this paragraph. A comment that can rot into a lie is worse
+than no comment.
+
+If an **in-process** caller of `probe_sync` ever appears (today there is
+none outside this module's own tests), it needs its own rate limiting and
+this reasoning no longer covers it.
 """
 
 from __future__ import annotations
@@ -97,6 +124,43 @@ DEFAULT_PROBE_TTL_S = 60.0
 # the whole attempt in `probe_async`.
 PROBE_TOTAL_TIMEOUT_S = 2.5
 PROBE_CONNECT_TIMEOUT_S = 2.0
+
+# --- the sync twin's budget (syncprobe1) ---------------------------------
+#
+# `asyncio.wait_for` has NO sync equivalent, so `probe_sync` cannot be
+# wrapped in one hard deadline. Three libpq settings cover three different
+# ways the same attempt hangs, and it is worth being precise about which
+# covers what, because the obvious one covers the least:
+#
+#   connect_timeout           establishment only (already set above)
+#   statement_timeout         the SERVER cancels a slow `SELECT 1`
+#   keepalives + count/interval   the CLIENT gives up on a dead peer
+#
+# `statement_timeout` alone does NOT close the gap this story is about.
+# It is enforced server-side: after an RDS failover leaves a half-open
+# TCP, the server is not reachable to enforce anything and the client sits
+# in `recv()` with no data. Only TCP keepalives bound that case, and they
+# bound it at `idle + interval * count`, not at the statement budget.
+#
+# So the honest statement of the sync budget is:
+#   * slow-but-alive database  -> statement_timeout, ~0.5s
+#   * unreachable at connect   -> connect_timeout, ~2s (libpq clamps 1->2)
+#   * half-open after failover -> keepalives, ~9s worst case
+#   * anything else            -> the container's `healthCheck.timeout`,
+#                                 which is the only true hard deadline and
+#                                 belongs to rsh107, not to this module.
+PROBE_SYNC_STATEMENT_TIMEOUT_MS = 500
+PROBE_SYNC_KEEPALIVES_IDLE_S = 3
+PROBE_SYNC_KEEPALIVES_INTERVAL_S = 2
+PROBE_SYNC_KEEPALIVES_COUNT = 3
+
+#: The interval at or above which a caller may invoke `probe_sync` without
+#: a cache in front of it. **This is a contract with rsh107's worker health
+#: check**, and `test_sync_probe_interval_assumption_holds` fails if that
+#: check is ever configured to run faster. See "Rate limiting — the sync
+#: path has no cache, deliberately" in the module docstring for why the
+#: schedule, rather than a cache, is the rate limit here.
+SYNC_PROBE_MIN_CHECK_INTERVAL_S = 30.0
 
 #: The `ENVIRONMENT` values under which a database is *expected*: exactly
 #: the ones Terraform injects into the ECS task definitions
@@ -269,7 +333,10 @@ def _coerce_ttl(raw: object) -> float | None:
               FR-5, a `get_secret_value`), defeating the rate limit this
               module exists to provide.
 
-    Negatives are rejected for the same reason as `nan`.
+    Negatives are rejected for the same reason as `nan`, and so is
+    **zero**: a TTL of 0 means no comparison ever holds, so every caller
+    opens a fresh connection and a `get_secret_value` with it. It defeats
+    the budget exactly as `nan` does, and it is likelier to be typed.
     """
     if raw is None:
         return None
@@ -277,7 +344,7 @@ def _coerce_ttl(raw: object) -> float | None:
         value = float(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
-    if value != value or value in (float("inf"), float("-inf")) or value < 0:
+    if value != value or value in (float("inf"), float("-inf")) or value <= 0:
         return None
     return value
 
@@ -518,7 +585,18 @@ async def cached_verdict_async(ttl_s: float | None = None) -> ProbeVerdict:
     """
     global _inflight
 
-    ttl = _ttl_default() if ttl_s is None else ttl_s
+    # Routed through `_coerce_ttl` rather than trusted: an explicit
+    # `ttl_s=0` / `nan` / negative from a caller defeats the rate limit
+    # just as surely as the same value from the environment, and that
+    # path was validated while this one was not.
+    coerced = None if ttl_s is None else _coerce_ttl(ttl_s)
+    if ttl_s is not None and coerced is None:
+        logger.warning(
+            "cached_verdict_async(ttl_s=%r) is not a usable TTL; using the "
+            "configured default",
+            ttl_s,
+        )
+    ttl = _ttl_default() if coerced is None else coerced
 
     cached = _cached
     if cached is not None and (_now() - cached[0]) < ttl:
@@ -550,12 +628,43 @@ async def cached_verdict_async(ttl_s: float | None = None) -> ProbeVerdict:
 # --------------------------------------------------------------------------
 
 
+def _sync_connect_args(connect_timeout: int) -> dict:
+    """libpq settings bounding each way a sync probe can hang.
+
+    `options` carries `statement_timeout`, which the **server** enforces
+    against a slow `SELECT 1`. The keepalive settings are what bound a
+    **dead peer**, where the server can enforce nothing because nothing
+    reaches it — the half-open TCP after an RDS failover that this story
+    exists to stop hanging on.
+
+    A psycopg2-only shape: the async twin passes asyncpg's own
+    `timeout` and gets its hard deadline from `asyncio.wait_for` instead.
+    """
+    return {
+        "connect_timeout": connect_timeout,
+        "options": f"-c statement_timeout={PROBE_SYNC_STATEMENT_TIMEOUT_MS}",
+        "keepalives": 1,
+        "keepalives_idle": PROBE_SYNC_KEEPALIVES_IDLE_S,
+        "keepalives_interval": PROBE_SYNC_KEEPALIVES_INTERVAL_S,
+        "keepalives_count": PROBE_SYNC_KEEPALIVES_COUNT,
+    }
+
+
 def probe_sync() -> ProbeVerdict:
     """Blocking twin of `probe_async`, for non-async callers.
 
     Used by the CLI below and by the worker health check (rsh107), which
     has no event loop of its own. Builds its own `NullPool` engine off
     the sync URL for the same reason the async path does.
+
+    **Behaviour change (syncprobe1):** the probe now sets
+    `statement_timeout` and TCP keepalives on its own connection, so a
+    query that hangs is cancelled rather than blocking forever. This
+    affects the probe's connection only — `NullPool`, opened and disposed
+    per call — never the application engines in `utils.services.database`.
+    A cancelled `SELECT 1` surfaces as a driver error, classifies
+    non-auth, and therefore **fails open**: a slow database reports
+    `UNREACHABLE`, never `AUTH_FAILED`.
     """
     from sqlalchemy import create_engine
 
@@ -594,7 +703,7 @@ def probe_sync() -> ProbeVerdict:
         engine = create_engine(
             url,
             poolclass=NullPool,
-            connect_args={"connect_timeout": connect_timeout},
+            connect_args=_sync_connect_args(connect_timeout),
         )
     except Exception as exc:  # noqa: BLE001 - classification is the point
         return _classify(exc)
