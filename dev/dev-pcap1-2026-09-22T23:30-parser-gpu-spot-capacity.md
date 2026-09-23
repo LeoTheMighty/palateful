@@ -135,10 +135,23 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
 
 ## Acceptance criteria
 
-- [ ] **Record which compute environment ran each attempt** on the next
-      multi-attempt job (`describe-jobs → attempts[].container.taskArn`).
-      This is what discharges the reclamation-fallback assumption; the
-      drill does not.
+- [ ] **Record which compute environment ran each attempt** (palateful-0e's
+      wording, kept because the last clause is the load-bearing part):
+      > When the job is re-submitted, read `describe-jobs →
+      > jobs[0].attempts[].container.taskArn` for **every** attempt and
+      > record which compute environment ran each one. The ARN embeds the
+      > CE name (e.g. `…/palateful-parser-spot-gpu-prod-…_Batch_…`).
+      > **A successful import does not discharge this AC** — a job that
+      > succeeds on its first spot attempt proves nothing about fallback.
+      > The AC is discharged only by an attempt observed running on the
+      > **on-demand** CE, or by an explicit note that no reclamation
+      > occurred and the assumption is still untested.
+
+      The likeliest outcome now that the pool is wider is that the first
+      attempt succeeds — which would read as "the fallback works" while
+      leaving the assumption the fix rests on unverified. That is tonight's
+      LESSONS entry (#64) landing on this very change, so the escape clause
+      stays.
 - [ ] **Independent re-confirmation by a session that did not make the
       change** (carried from `debug/debug-parsercap1`; owner palateful-0e).
       One session's read of prod is a strong lead, not a licence — and not
