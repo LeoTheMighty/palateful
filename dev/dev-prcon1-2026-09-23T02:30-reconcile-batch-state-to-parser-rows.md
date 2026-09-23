@@ -11,70 +11,109 @@ branch: null
 
 ## Goal
 
-**A parser job can fail in AWS Batch and the database never hears about it.**
-The app then believes the import is still in progress — permanently.
+> **This spec's original premise was WRONG and is corrected below (2026-09-23).**
+> It was filed as "nothing reconciles terminal AWS Batch state back to parser
+> rows". Reconcilers exist. The defect is different, and worse.
 
-This is the week's pattern in the **data layer** rather than the alerting
-layer, and it is the part that survives `pcap1`: widening the instance pool
-and adding an on-demand fallback make failures rarer, they do not make a
-failure visible.
+**Two independent defects, both observed live in prod.**
 
-## Measured 2026-09-23 (read-only prod)
+### Defect 1 — the safety net dies with its process
 
-**A — a live divergence, created today:**
+Completion has a primary path and a safety net:
+- **Primary:** the Batch container itself POSTs `/parser/batches/{id}/complete`
+  on exit (`run_job.py`).
+- **Safety net:** `watch_parser_batch_task`, dispatched at
+  `create_parser_batch.py:103`, for when the container crashes or is
+  Spot-interrupted before it can call back.
 
-| Where | State |
+**The safety net is an in-process blocking loop** —
+`for attempt in range(180)` with `time.sleep(30)` inline
+(`watch_parser_batch_task.py:102`), i.e. **one Celery worker blocking for 90
+minutes**. It is not a scheduled re-check. **Kill the process and the vigil is
+gone; nothing re-arms it**, and the batch stays `submitted` forever.
+
+**Observed (measured):** batch `9384da8a` (2026-09-22 19:10:33Z) was still
+`submitted` with `completed_at` NULL **21.7 hours later**, while batch
+`49ba1ba6` under identical code *did* time out. The discriminator is a worker
+replacement inside the vigil's window — ECS events for
+`palateful-worker-prod`:
+```
+20:05:58  has stopped 1 running tasks: (733963f4…)
+20:05:59  has started 1 tasks: (c38fa30a…)
+20:07:43  has stopped 1 running tasks: (c38fa30a…)
+20:07:44  has started 1 tasks: (7ce79282…)
+20:11:30  deployment ecs-svc/5381258920964928019 completed
+```
+20:05:58 is inside 19:10:33 → 20:40:33, ~35 min before the timeout would have
+fired.
+
+**Deploys are one cause, not the cause.** Three separate attributions to a
+specific deploy were made and all three were withdrawn: the worker replacement
+at 20:05:58 is **eleven minutes before** `fd732fab`'s first ECS-touching leg
+(`terraform-prod` 20:17:15, `deploy-services` 20:19:22). **The trigger for the
+20:05 replacement is unidentified** — see `wkrst1`.
+
+**That is the argument for the fix.** A mechanism that survives only while one
+process stays alive for 90 minutes will be broken by things nobody classified
+as a deploy, so **no deploy-scheduling discipline repairs it**. Reconciliation
+must be a **periodic sweep over non-terminal rows**, not an in-process vigil.
+Lengthening the budget makes a bigger target, not a safer one.
+
+### Defect 2 — the timeout writes a false terminal, and the idempotence guard then protects it
+
+The vigil's expiry writes `failed` **unconditionally**, without re-checking
+whether AWS still has the job. Observed live:
+
+| | |
 |---|---|
-| AWS Batch job `parser-batch-84a8e0d3` (`4875e2e1-…`) | **FAILED**, 3 attempts, all `startedAt: null` (spot reclaimed each host) |
-| `parser_batches` row (2026-09-22 19:10:33) | **`submitted`** |
-| `parser_jobs` row (2026-09-22 19:10:33) | **`submitted`** |
+| DB, batch `49ba1ba6` | **`failed`** at **16:38:22Z**, *"Watcher timed out after 90 minutes"* |
+| AWS, job `d1945302`, same moment | **`RUNNABLE`**, `attempts: 0`, `startedAt: null` — **never started** |
 
-The Batch job reached a terminal state; both rows still say `submitted`.
-**Nothing writes the failure back**, so this will recur on every failure.
+The job was *queued*, not failed. Then
+`parser_batch_completion.py:49` does its job correctly:
 
-**B — April strandings, five months old:**
+```python
+if parser_batch.status in TERMINAL_STATUSES:   # ("succeeded","failed","partial")
+    return parser_batch.status                  # no-op
+```
 
-| `parser_jobs` status | `parser_batch_id` | count | window |
-|---|---|---|---|
-| **`running`** | **NULL** | **14** | 2026-04-09 → 04-11 |
-| `submitted` | NULL | 7 | 2026-04-09 → 04-10 |
-| `failed` | NULL | 12 | 2026-04-09 → 04-11 |
-| `succeeded` | NULL | 11 | 2026-04-10 → 04-11 |
+So when the container eventually finishes and calls back, it is told `failed`,
+**returns HTTP 200**, and exits. **No `ImportJob`, no `ImportItem`, no recipe,
+and no record anywhere that a completed parse was discarded.** The user must
+resubmit; the GPU work is paid for and thrown away.
 
-The 14 `running` rows are the ones that matter: **stuck in a non-terminal
-state since April, with no batch to join to**, so they are invisible to any
-surface that counts by batch. The NULL-batch rows all predate `parser_batches`
-(first row 2026-04-15), i.e. they are pre-batch-era.
-
-Last `parser_batches` success: **2026-04-22**. Last `import_jobs` row:
-**2026-04-26**.
-
-**Not stuck, do not touch:** `import_jobs` has 2 `awaiting_review` and
-`import_items` 4 `awaiting_review` (last 2026-04-26). Those are waiting on a
-*person*, which is a legitimate non-terminal state.
+**The guard is correct in isolation** — re-entering a finished batch *should*
+be a no-op. It becomes destructive only because a different mechanism can mark
+a batch terminal while the work is still queued. **The guard faithfully
+protects a lie.** A periodic sweep alone does **not** fix this.
 
 ## Acceptance criteria
 
-- [ ] A reconciler maps terminal AWS Batch state onto `parser_batches` /
-      `parser_jobs`: a FAILED job marks its rows failed, with the reason
-      (`Host EC2 … terminated` is different from an app error and should
-      survive into `error_message`).
-- [ ] **Decide explicitly what happens to the 14 stranded `running` rows, and
-      say which in the spec before implementing:** reconcile them against
-      Batch (their jobs are long gone from Batch's retention, so this will
-      likely fail), or **mark them terminal** with a reason recording that
-      they were stranded by a pre-`parser_batches` code path. **Do not leave
-      the decision to the implementation.**
-- [ ] Rows awaiting a human (`awaiting_review`) are never touched. The test
+- [ ] **Reconciliation is a periodic sweep over non-terminal rows**, not an
+      in-process vigil. It must survive worker replacement, because worker
+      replacement is routine and not always a deploy.
+- [ ] **The timeout stops writing terminal states for work AWS still holds.**
+      Before marking anything failed, re-query Batch: if the job is
+      `SUBMITTED`/`PENDING`/`RUNNABLE`/`STARTING`/`RUNNING`, it is **not**
+      failed. Prefer leaving it non-terminal for the sweep over writing a
+      false terminal.
+- [ ] **A callback arriving at an already-terminal batch is recorded, not
+      silently dropped.** Today it returns 200 and vanishes. At minimum log +
+      alert; ideally, a batch marked failed *only* by timeout should be
+      recoverable when real output later arrives.
+- [ ] **Decide explicitly what happens to the stranded rows, before
+      implementing** — `9384da8a` and the 14 April `parser_jobs` stuck
+      `running` with `parser_batch_id IS NULL` (2026-04-09 → 04-11). Their
+      Batch jobs are long past retention, so a sweep that only reads live
+      Batch cannot resolve them. Reconcile or mark terminal, but **say which
+      in the spec**.
+- [ ] Rows awaiting a **human** (`awaiting_review`) are never swept. The test
       is "is the system still going to act on this?", not "is it
       non-terminal?".
-- [ ] Idempotent and safe to re-run; it must not resurrect archived rows.
-- [ ] **Divergence is surfaced, not just repaired.** A row non-terminal for
-      longer than the Batch timeout (1800 s) plus a margin, with no
-      corresponding live Batch job, should reach the alert topic — otherwise
-      the reconciler becomes another silent detector. Ties to `absal1`.
-- [ ] Proven by driving a job to FAILED and watching the rows reach a terminal
-      state, not by reading the reconciler.
+- [ ] **Divergence is surfaced, not just repaired** — otherwise the sweep is
+      another silent detector. Ties to `absal1`.
+- [ ] Proven by driving a job to each outcome and watching the rows follow,
+      not by reading the sweep.
 
 ## Technical notes
 
@@ -99,3 +138,13 @@ Last `parser_batches` success: **2026-04-22**. Last `import_jobs` row:
   IS NULL`), since it holds the fuller measurement. `debug/debug-parsercap1`
   is superseded and points here for both. Capacity and the fallback drill are
   `dev/dev-pcap1`; its independent re-confirmation AC is yours.
+- 2026-09-23 — **rewritten; original premise refuted.** Reconcilers exist
+  (`watch_parser_batch_task`, 90 min; `watch_parser_job_task`, 20 min) and the
+  primary path is the container's own callback. The defects are (1) the safety
+  net is an in-process vigil that dies with its worker and is never re-armed,
+  and (2) its timeout writes a false terminal that the idempotence guard then
+  protects, discarding a real result. Both observed live in prod today.
+  Three attributions of the worker replacement to a specific deploy were made
+  and withdrawn; the trigger remains unidentified (`wkrst1`). What survived
+  every correction is the process-lifetime dependency, which is what the fix
+  must remove.
