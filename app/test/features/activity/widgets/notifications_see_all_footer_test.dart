@@ -6,6 +6,32 @@ import 'package:get_it/get_it.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/widgets/notifications_see_all_footer.dart';
 
+/// Base instant for every fixture timestamp in this file.
+///
+/// `NotificationsSeeAllFooter` renders
+/// `_formatTime(row.archivedAt ?? row.createdAt)`
+/// (notifications_see_all_footer.dart:328 → :351), a
+/// `DateTime.now()`-relative formatter that walks
+/// 'just now' → '3d ago' → '5mo ago' → an absolute date as the fixture
+/// ages. `archived_at` is the value that actually reaches it, so both
+/// halves of the pair are anchored. See-all has no age cutoff — the
+/// fuse here is the rendered label, not the filter.
+/// The base sits 90 minutes back, not 2 hours: every `_formatTime` in
+/// play buckets by whole hours, and a base exactly on the 1h/2h boundary
+/// made `_at(0)` render '2h ago' while `_at(5)` rendered '1h ago'. At 90
+/// minutes every offset used here stays inside one bucket with ~20
+/// minutes of headroom, so two fixtures "five minutes apart" also read
+/// the same. Nothing asserts these labels today; this keeps the first
+/// test that does from being flaky by construction.
+final DateTime _fixtureBase =
+    DateTime.now().toUtc().subtract(const Duration(minutes: 90));
+
+/// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
+/// keep `archived_at` after `created_at`, the ordering the original
+/// literals encoded (2026-01-01 created, 2026-02-01 archived).
+String _at(int minutesAfterBase) =>
+    _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
+
 Response<dynamic> _fakeResponse(dynamic data, {int status = 200}) => Response(
       data: data,
       requestOptions: RequestOptions(path: ''),
@@ -22,8 +48,8 @@ Map<String, dynamic> _page(int n, {String prefix = 'row', String? next}) {
         'type': 'partner_action',
         'title': '$prefix title $i',
         'read': true,
-        'created_at': '2026-01-01T00:00:00Z',
-        'archived_at': '2026-02-01T00:00:00Z',
+        'created_at': _at(0),
+        'archived_at': _at(5),
       };
     }),
     'next_cursor': next,

@@ -12,7 +12,7 @@ void main() {
         'is_shared': false,
         'items': [],
         'members': [],
-        'created_at': '2024-01-01T00:00:00.000Z',
+        'created_at': '2024-01-01T00:00:00.000Z',  // age-independent — fromJson assertions only; createdAt never read
         'updated_at': '2024-01-02T00:00:00.000Z',
       };
 
@@ -30,7 +30,7 @@ void main() {
         'owner_id': 'user-1',
         'items': [],
         'members': [],
-        'created_at': '2024-01-01T00:00:00.000Z',
+        'created_at': '2024-01-01T00:00:00.000Z',  // age-independent — fromJson assertions only; createdAt never read
         'updated_at': '2024-01-01T00:00:00.000Z',
       };
 
@@ -45,7 +45,7 @@ void main() {
         'owner_id': 'user-1',
         'items': [],
         'members': [],
-        'created_at': '2024-01-01T00:00:00.000Z',
+        'created_at': '2024-01-01T00:00:00.000Z',  // age-independent — fromJson assertions only; createdAt never read
         'updated_at': '2024-01-01T00:00:00.000Z',
       };
 
@@ -61,8 +61,14 @@ void main() {
         'owner_id': 'user-1',
         'items': [],
         'members': [],
-        'created_at': '2024-03-01T10:00:00.000Z',
-        'updated_at': '2024-03-15T18:30:00.000Z',
+        // The two lines below carry both markers. `no-time-travel`: the
+        // assertions read the absolute month and day, so
+        // tool/time_travel_check.sh must not shift them. That
+        // tag means "the harness can't judge this line", NOT "this line is
+        // exempt from rot" — if an assertion here ever becomes age-relative,
+        // drop the tag and anchor to `now` instead.
+        'created_at': '2024-03-01T10:00:00.000Z',  // age-independent, no-time-travel
+        'updated_at': '2024-03-15T18:30:00.000Z',  // age-independent, no-time-travel
       };
 
       final list = ShoppingList.fromJson(json);

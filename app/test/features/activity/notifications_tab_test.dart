@@ -134,21 +134,21 @@ void main() {
         'type': 'partner_action',
         'title': 'Partner added a recipe',
         'read': true,
-        'created_at': '2026-04-16T12:00:00Z',
+        'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
       },
       {
         'id': 'imp-1',
         'type': 'import_failed',
         'title': 'Import failed (should not render)',
         'read': true,
-        'created_at': '2026-04-16T12:05:00Z',
+        'created_at': '2026-04-16T12:05:00Z',  // age-independent — NotificationsTab never reads created_at
       },
       {
         'id': 'a-2',
         'type': 'invitation',
         'title': 'You were invited',
         'read': true,
-        'created_at': '2026-04-16T12:10:00Z',
+        'created_at': '2026-04-16T12:10:00Z',  // age-independent — NotificationsTab never reads created_at
       },
     ]);
     _register(api);
@@ -169,14 +169,14 @@ void main() {
         'type': 'partner_action',
         'title': 'Row to archive',
         'read': true,
-        'created_at': '2026-04-16T12:00:00Z',
+        'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
       },
       {
         'id': 'a-2',
         'type': 'invitation',
         'title': 'Stays',
         'read': true,
-        'created_at': '2026-04-16T12:05:00Z',
+        'created_at': '2026-04-16T12:05:00Z',  // age-independent — NotificationsTab never reads created_at
       },
     ]);
     _register(api);
@@ -204,7 +204,7 @@ void main() {
         'type': 'partner_action',
         'title': 'Row to archive',
         'read': true,
-        'created_at': '2026-04-16T12:00:00Z',
+        'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
       },
     ]);
     _register(api);
@@ -228,7 +228,7 @@ void main() {
         'type': 'partner_action',
         'title': 'Row to archive',
         'read': true,
-        'created_at': '2026-04-16T12:00:00Z',
+        'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
       },
     ])
       ..failArchive = true;
@@ -274,7 +274,7 @@ void main() {
           'type': 'partner_action',
           'title': 'Shared a recipe',
           'read': false,
-          'created_at': '2026-04-22T10:00:00Z',
+          'created_at': '2026-04-22T10:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
       ])
         // Backend populates the field — tab should NOT hit /unread-count.
@@ -299,7 +299,7 @@ void main() {
           'type': 'partner_action',
           'title': 'Legacy backend',
           'read': false,
-          'created_at': '2026-04-22T10:00:00Z',
+          'created_at': '2026-04-22T10:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
       ])
         // Field absent — simulates pre-ffm-4 backend.
@@ -340,7 +340,7 @@ void main() {
           'type': 'partner_action',
           'title': 'Already read',
           'read': true,
-          'created_at': '2026-04-22T10:00:00Z',
+          'created_at': '2026-04-22T10:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
       ])
         ..unreadCountField = 0;

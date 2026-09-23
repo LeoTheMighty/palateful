@@ -27,7 +27,7 @@ Map<String, dynamic> _fullMeal({
       'id': id,
       'name': 'Weeknight Pasta',
       'recipe_book_id': bookId,
-      'created_at': '2026-04-01T00:00:00Z',
+      'created_at': '2026-04-01T00:00:00Z',  // age-independent — bus payload parsed into Meal; never rendered
       'updated_at': '2026-04-01T00:00:00Z',
       'is_favorite': isFavorite,
       'components': components,

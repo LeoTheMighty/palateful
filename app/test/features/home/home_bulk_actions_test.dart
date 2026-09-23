@@ -122,7 +122,7 @@ class _FakeApi extends ApiClient {
       'id': mealId,
       'name': 'Some Meal',
       'recipe_book_id': 'book-1',
-      'created_at': '2026-04-18T10:00:00Z',
+      'created_at': '2026-04-18T10:00:00Z',  // age-independent: response discarded
       'updated_at': '2026-04-20T00:00:00Z',
       'components': [],
     });

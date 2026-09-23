@@ -80,7 +80,7 @@ Map<String, dynamic> _mealJson(String bookId) => {
       'id': 'meal-new',
       'name': 'New Meal',
       'recipe_book_id': bookId,
-      'created_at': '2026-04-18T10:00:00Z',
+      'created_at': '2026-04-18T10:00:00Z',  // age-independent — provider-only test; no widget renders this date
       'updated_at': '2026-04-18T10:00:00Z',
       'is_favorite': false,
       'components': <Map<String, dynamic>>[],

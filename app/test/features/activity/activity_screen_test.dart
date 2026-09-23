@@ -129,21 +129,21 @@ void main() {
           'type': 'partner_action',
           'title': 'Partner added a recipe',
           'read': false,
-          'created_at': '2026-04-16T12:00:00Z',
+          'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
         {
           'id': 'a-2',
           'type': 'invitation',
           'title': 'You were invited',
           'read': false,
-          'created_at': '2026-04-16T12:05:00Z',
+          'created_at': '2026-04-16T12:05:00Z',  // age-independent — NotificationsTab never reads created_at
         },
         {
           'id': 'a-3',
           'type': 'meal_reminder',
           'title': 'Already acknowledged',
           'read': true,
-          'created_at': '2026-04-16T11:00:00Z',
+          'created_at': '2026-04-16T11:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
       ],
     );
@@ -171,14 +171,14 @@ void main() {
           'type': 'import_failed',
           'title': 'Import failed',
           'read': false,
-          'created_at': '2026-04-16T12:00:00Z',
+          'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
         {
           'id': 'p-1',
           'type': 'partner_action',
           'title': 'Partner did a thing',
           'read': false,
-          'created_at': '2026-04-16T12:05:00Z',
+          'created_at': '2026-04-16T12:05:00Z',  // age-independent — NotificationsTab never reads created_at
         },
       ],
     );
@@ -234,7 +234,7 @@ void main() {
           'type': 'partner_action',
           'title': 'already read',
           'read': true,
-          'created_at': '2026-04-16T12:00:00Z',
+          'created_at': '2026-04-16T12:00:00Z',  // age-independent — NotificationsTab never reads created_at
         },
       ],
     );
