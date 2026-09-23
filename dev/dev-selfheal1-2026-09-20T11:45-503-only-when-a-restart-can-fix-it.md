@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-20T11:45:00-06:00
 title: 503 only when a restart can fix it — two health-probe cases that drain instead of heal
 from: dev/dev-rsh102-2026-07-27T12:31-credential-aware-health-probe.md
-status: in-progress
+status: done
 owner: /devx-selfheal1-manual
 branch: feat/dev-selfheal1
 ---
@@ -289,3 +289,43 @@ verdict alone and alarm on it, which captures most of the value.
   it. Actionability is now really pinned at the two places it is decided —
   the router's 503 (dfrcp1's parse test) and the CLI's exit code, which ECS
   reads as replace-or-not (`test_no_fail_open_verdict_ever_exits_non_zero`).
+- 2026-09-22T14:20 — merged via PR #52 (squash -> fd732fab).
+- 2026-09-22T14:30 — **deployed and verified in prod.** `palateful-api-prod:66`
+  serving image `api:fd732fab1b71ca4a6f6fff883f620a1fca2f4b1d`, byte-equal to
+  the merge commit; rollout COMPLETED, 1/1 running, task `HEALTHY`. Worker on
+  `:56`, COMPLETED 1/1. Endpoint `200 {"status":"ok","db":"OK"}` across 15
+  requests; 12 rapid probes 0.14-0.31s with no fresh-connection outlier,
+  consistent with the 60s TTL serving a cached verdict. Zero `failing open`
+  and zero `db probe` lines in `/ecs/palateful-api-prod` over 25 minutes —
+  and the window was confirmed non-empty, so that is a clean reading rather
+  than an empty query. The new verdicts themselves were **not** exercised in
+  prod: proving them means removing a credential from a live task, which is
+  breaking prod to watch it fail open. Left for the dev environment and an
+  explicit ask.
+- 2026-09-22T14:30 — measured against the merged probe on a live pg16, the
+  table the follow-up work turns on:
+
+      wrong password       -> AUTH_FAILED    (correct: this is the rotation)
+      NO password          -> UNREACHABLE
+      EMPTY password ''    -> UNREACHABLE
+      whitespace pwd ' '   -> UNREACHABLE
+      correct password     -> OK
+      absent URL (prod)    -> NOT_CONFIGURED
+
+  On asyncpg all three passwordless inputs are byte-identical to a wrong
+  password. `ncfgverdict1` argues rows 2-4 should read `NOT_CONFIGURED`.
+- 2026-09-22T14:30 — `ncfgverdict1` was filed independently by a peer while
+  this session held an unpushed copy; theirs is richer (it carries the
+  alarm-in-this-story AC and 0a's softening of the never-emitted clause), so
+  the local duplicate was dropped rather than merged. `envspell1` and
+  `syncprobe1` were filed from this story's review and are on `main`.
+- 2026-09-22T14:30 — **shared test Postgres, ownership recorded.** This
+  session started `selfheal1-pg` (`pgvector/pgvector:pg16`, `localhost:5432`,
+  db `test`, postgres/postgres) for the local gates and left it running
+  deliberately: port 5432 is not a choice (`migrator:migrate-test` hardcodes
+  it), peers may have come to depend on it without knowing it is mine, and
+  stopping it mid-run would break them. Test migrations only, no real data;
+  `docker stop selfheal1-pg` is safe once the lane is quiet. Note
+  `test_db_credentials_live_drivers.py` **skips silently** when nothing is
+  reachable there, so removing it does not fail a suite — it quietly removes
+  the measurement that changed this story.
