@@ -145,22 +145,63 @@ def test_bypass_eligible_is_a_subset_of_non_production():
 @pytest.mark.parametrize(
     "raw",
     [
+        # case
         pytest.param("TEST", id="upper"),
         pytest.param("Test", id="title"),
+        pytest.param("tEsT", id="mixed"),
         pytest.param("DEVELOPMENT", id="upper-development"),
+        pytest.param("Development", id="title-development"),
+        # surrounding whitespace
         pytest.param(" test ", id="padded"),
+        pytest.param(" test", id="leading-space"),
+        pytest.param("test ", id="trailing-space"),
+        pytest.param("\ttest", id="leading-tab"),
+        pytest.param("Test\t", id="title-trailing-tab"),
+        # line endings and the space that does not look like one
         pytest.param("test\n", id="newline"),
+        pytest.param("test\r\n", id="crlf"),
         pytest.param("\xa0test", id="nbsp — str.strip() removes it"),
         pytest.param("test\x0b", id="vertical-tab"),
+        # U+017F LATIN SMALL LETTER LONG S. `"te\u017ft".casefold() == "test"`,
+        # so this is the ONE input that distinguishes `.lower()` from
+        # `.casefold()`. "Use casefold, it is more correct for Unicode" is a
+        # true statement a reviewer would nod at, and it would arm the bypass.
+        # The character is invisible in review; that is why it is named here.
+        pytest.param("te\u017ft", id="U+017F-long-s-casefold-widening"),
+        # other near misses
+        pytest.param("test\x00", id="nul-suffix"),
+        pytest.param("\uff54\uff45\uff53\uff54", id="fullwidth"),
+        # wrong environments entirely
+        pytest.param("dev", id="dev — DEPLOYED, reachable from the internet"),
+        pytest.param("prod", id="prod"),
+        pytest.param("production", id="production"),
+        pytest.param("", id="empty"),
     ],
 )
 def test_near_miss_spellings_never_arm_the_bypass(raw):
-    """envspell1's first draft shared one normaliser between both predicates,
-    which made these six inputs arm a bypass that byte-exact comparison had
-    denied. Normalisation is directional: tolerating a stray newline is right
-    when a mismatch costs a silent recorder and wrong when it costs an
-    authentication bypass. Caught by adversarial review, not by me.
+    """Byte-exact. Each of these either armed the bypass in envspell1's first
+    implementation — which shared one normaliser between both predicates — or
+    would arm it under a "more forgiving" comparison.
+
+    The shared-normaliser bug and thirteen of these shapes came from review,
+    not from the author: adversarial review found the looseness, and
+    independent verification (palateful-0a) supplied the rest.
     """
+    assert is_local_bypass_allowed(raw) is False
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(None, id="none"),
+        pytest.param(0, id="int-zero"),
+        pytest.param(True, id="bool"),
+        pytest.param(["test"], id="list"),
+        pytest.param(b"test", id="bytes"),
+        pytest.param(object(), id="object"),
+    ],
+)
+def test_bypass_denies_non_strings(raw):
     assert is_local_bypass_allowed(raw) is False
 
 
