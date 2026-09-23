@@ -172,4 +172,18 @@ diagnosis has now been paid for three times.
   passes 3/3 standalone. Filed as `debug/debug-perfflake1` + a DEBUG.md row
   rather than absorbed into this story — a wall-clock assertion that a busy
   host can red is a product judgment about what the gate protects.
+- 2026-09-22 — phase 7: rebased onto `840af8e2` after main moved (#51, #56, #60
+  and bookkeeping). Conflicts in DEV.md / TEST.md / DEBUG.md only, all
+  keep-main's-rows-and-append. Two substantive re-checks rather than a
+  force-resolve, because #56 touched both files this story leans on:
+  `imports_tab.dart`'s 30-day cutoff still exempts `awaiting_review` + `failed`
+  and still cuts `completed` + `skipped` (the triage's premise holds), and
+  `imports_tab_test.dart`'s `_fixtureBase` still matches the nightly job's
+  control regex exactly once (verified by running the regex, not by reading
+  it) — had #56 reshaped that anchor, the control would have failed its
+  `assert n == 1` every night. Re-ran everything on the new base: guard 23
+  tests green, `flutter test` **1688 passed / exit 0** (up from 1642; main
+  added tests), `tool/time_travel_check.sh` **1688 passed / exit 0** shifting
+  134 ISO + 64 constructor dates across 72 files. Identical shift counts to
+  the pre-rebase run, so main's new tests carry no fixture dates of their own.
 
