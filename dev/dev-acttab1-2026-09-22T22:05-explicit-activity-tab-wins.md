@@ -43,21 +43,21 @@ outright** — a different bug with a different fix.
 
 ## Acceptance criteria
 
-- [ ] **First task, before any design:** a widget test that pushes
+- [x] **First task, before any design:** a widget test that pushes
       `/activity?tab=imports` from another shell branch and asserts which
       tab renders. It settles reuse-vs-fresh-construction, and its result
       picks the fix. Do not design around the mechanism above until the
       test confirms which one is live — it was inferred from reading, not
       observed.
-- [ ] An explicit `?tab=` is honoured on arrival and is not overridden
+- [x] An explicit `?tab=` is honoured on arrival and is not overridden
       afterwards by another instance's count-based auto-switch.
-- [ ] The count-based guess still works where it belongs: arriving at
+- [x] The count-based guess still works where it belongs: arriving at
       `/activity` with no `?tab=` picks the busier tab, ties →
       Notifications, as today.
-- [ ] A regression test for the cross-instance case: an ActivityScreen
+- [x] A regression test for the cross-instance case: an ActivityScreen
       already mounted without `?tab=` must not pull a newly-pushed
       explicit-tab screen off its tab.
-- [ ] `live_import_strip.dart:42-45` uses `ActivityRoutes.hubPath`
+- [x] `live_import_strip.dart:42-45` uses `ActivityRoutes.hubPath`
       (`app/lib/core/router/activity_routes.dart:12`) instead of the
       hard-coded literal, as does
       `app/lib/features/home/widgets/batch_import_status_widget.dart:91`.
@@ -78,3 +78,8 @@ outright** — a different bug with a different fix.
 ## Status log
 - 2026-09-22T22:05 — filed from the scoping pass on Leo's report, split out of impvis1 so the tab-selection defect is not fixed by accident inside a data-source change. Blocked-by: —.
 - 2026-09-23T01:20 — claimed for /devx (hand-claim: main is a serialized deploy lane, claim commit lands on feat/dev-acttab1). Base: 0cffbe11, which includes impvis1 (#56) — so the Imports tab now has something to render when the tab selection is right, which is what makes this half testable end to end.
+- 2026-09-23T01:40 — phase 2: spec ACs direct; 5 ACs; workstream=none.
+- 2026-09-23T01:55 — first task done, and it ruled a suspect OUT. `app/test/core/router/activity_tab_push_test.dart` measures go_router on a minimal StatefulShellRoute.indexedStack: pushing `/activity?tab=imports` from another branch BUILDS A FRESH screen and delivers the parameter, even when the branch was already visited without a tab (recorded sequence `[null, imports, null]` — the tab-less route rebuilds behind the new one in the IndexedStack, which is why asserting on "the last build" first reported the opposite). So router reuse is not the bug, and `ActivityScreen` having no `didUpdateWidget` does not matter here.
+- 2026-09-23T02:05 — the real mechanism, reproduced in `activity_screen_tab_override_test.dart`: the spec's inferred cause was right. A screen mounted WITHOUT `?tab=` keeps count listeners alive; when they resolve it calls `setTab` on the app-scoped provider, and every other mounted screen follows — including one just routed to an explicit tab. With the reported counts (a pending parser batch contributes 0 to `imports_actionable`) the explicit-Imports screen is dragged to Notifications. Test failed before the fix, passes after.
+- 2026-09-23T02:10 — phase 3: the latch lives WITH the shared state, not per screen — `setTab` (deliberate: a route's `?tab=` or a user swipe) latches out `suggestTab` (the count-based guess). A per-screen flag cannot fix a fight over app-scoped state. Trade-off pinned by its own test: after any deliberate choice the cold-start guess stops firing for the session, on every screen. Also replaced the three hard-coded `'/activity?tab=imports'` literals with `ActivityRoutes.hubPath`.
+- 2026-09-23T02:15 — phase 5: flutter test 1683 passed, flutter analyze 0 errors.
