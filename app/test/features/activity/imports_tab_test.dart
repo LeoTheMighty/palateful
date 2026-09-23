@@ -27,10 +27,37 @@ class _FakeApiClient extends ApiClient {
   bool archiveThrows = false;
   int archiveErrorStatus = 500;
 
+  /// Parser batches returned by `listParserBatches`. impvis1: a photo
+  /// import is a ParserBatch before it fans out into ImportJobs, and the
+  /// tab could not see that state at all.
+  final List<dynamic> parserBatches;
+
+  final List<bool> parserBatchCalls = [];
+  bool parserBatchesThrow = false;
+
   _FakeApiClient({
     this.jobsByStatus = const {},
     this.itemsByJobId = const {},
+    this.parserBatches = const [],
   });
+
+  @override
+  Future<Response> listParserBatches({
+    bool activeOnly = false,
+    int limit = 20,
+  }) async {
+    parserBatchCalls.add(activeOnly);
+    if (parserBatchesThrow) {
+      throw DioException(
+        requestOptions: RequestOptions(path: '/v1/parser/batches'),
+        response: Response(
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 503,
+        ),
+      );
+    }
+    return _fakeResponse({'batches': parserBatches});
+  }
 
   @override
   Future<Response> listImportJobs({
@@ -150,6 +177,13 @@ final DateTime _fixtureBase =
 /// A fixture timestamp `minutesAfterBase` past [_fixtureBase]. Offsets
 /// preserve the original fixtures' relative ordering, which the
 /// created-at-descending sort assertions depend on.
+/// A fixture timestamp roughly `months` in the past. Relative for the same
+/// reason as [_at]: absolute dates rot.
+String _monthsAgo(int months) => DateTime.now()
+    .toUtc()
+    .subtract(Duration(days: 30 * months))
+    .toIso8601String();
+
 String _at(int minutesAfterBase) =>
     _fixtureBase.add(Duration(minutes: minutesAfterBase)).toIso8601String();
 
@@ -563,6 +597,417 @@ void main() {
     expect(find.textContaining('Failed · 1'), findsOneWidget);
     expect(find.textContaining('Needs Review · 1'), findsOneWidget);
     expect(find.textContaining('Auto-Imported · 1'), findsOneWidget);
+  });
+
+  // ---------------------------------------------------------------
+  // impvis1 — the pending cases. NOTHING above this line covered an
+  // import that is still in flight: every in-progress fixture used job
+  // status `processing`, no fixture used item status `pending`, and no
+  // test touched the parser-batch source at all. That is why Leo's
+  // "1 import in progress, empty tab" survived to production.
+  // ---------------------------------------------------------------
+
+  testWidgets('a pre-fan-out parser batch renders In Progress (impvis1)',
+      (tester) async {
+    // The exact state Leo hit: the Add Recipe strip counts this batch
+    // from /v1/parser/batches while jobs and items are both empty.
+    final client = _FakeApiClient(
+      jobsByStatus: const {},
+      itemsByJobId: const {},
+      parserBatches: [
+        {
+          'id': 'batch-1',
+          'status': 'running',
+          'group_count': 3,
+          'recipe_book_id': null,
+          // Inside ImportBatch.preFanOutGrace (_fixtureBase is now-2h,
+          // which is exactly the boundary).
+          'created_at': _at(115),
+          'completed_at': null,
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    // Not pumpAndSettle: the in-progress row's progress indicator animates
+    // forever, so it never settles (same reason as the four-section test).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('All clear — no imports yet'), findsNothing,
+        reason: 'the batch exists, so the tab is not empty');
+    expect(find.text('Importing 0 of 3'), findsOneWidget);
+    expect(client.parserBatchCalls, contains(true),
+        reason: 'the tab asks for active batches only');
+  });
+
+  testWidgets('a fanned-out batch does not double-count its jobs (impvis1)',
+      (tester) async {
+    // Once the batch has produced an ImportJob, that job is already in the
+    // jobs list — a synthesised batch row on top would show one import
+    // twice.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'processing': [
+          {
+            'id': 'job-1',
+            'status': 'processing',
+            'source_type': 'photo',
+            'total_items': 2,
+            // No `processed_items`: ListImportJobs.JobSummary does not send
+            // it (list_import_jobs.py), so a fixture that includes it tests
+            // a response shape production never produces. Every blue row
+            // really does read "Importing 0 of N" — filed as impprog1.
+            'created_at': _at(1),
+          },
+        ],
+      },
+      parserBatches: [
+        {
+          'id': 'batch-1',
+          'status': 'running',
+          'group_count': 2,
+          'recipe_book_id': null,
+          'created_at': _at(0),
+          'completed_at': null,
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [
+            {'id': 'job-1', 'status': 'processing'},
+          ],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    // Not pumpAndSettle: the in-progress row's progress indicator animates
+    // forever, so it never settles (same reason as the four-section test).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(ImportRow), findsOneWidget);
+    expect(find.text('Importing 0 of 2'), findsOneWidget);
+  });
+
+  testWidgets('a batch that never fanned out ages out (impvis1)',
+      (tester) async {
+    // parser_batch_completion.py:133-141 ends a batch as `partial` with NO
+    // ImportJobs when it has no recipe_book_id and an OCR job failed, and
+    // nothing sweeps ParserBatch rows. Without an age cap that batch counts
+    // — and, since this story, renders — for the life of the account.
+    final client = _FakeApiClient(
+      parserBatches: [
+        {
+          'id': 'batch-old',
+          'status': 'partial',
+          'group_count': 2,
+          'recipe_book_id': null,
+          'created_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(days: 3))
+              .toIso8601String(),
+          'completed_at': null,
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Not hidden — said plainly. parsercap1 measured the real case: the
+    // batch's AWS Batch job never started, died on
+    // `instance-terminated-no-capacity`, and produced zero ImportJobs.
+    // Nothing server-side marks the batch failed, so it still reads
+    // `submitted`; hiding it would leave Leo with silence, and rendering
+    // it In Progress would be a spinner that never stops.
+    expect(find.text('All clear — no imports yet'), findsNothing);
+    expect(find.text('Import failed — the parser never started'),
+        findsOneWidget);
+    expect(find.text('2 photos'), findsOneWidget);
+  });
+
+  testWidgets('a stalled batch row cannot be tapped or swiped (impvis1)',
+      (tester) async {
+    // There is no ImportJob to open and no ImportItem to archive — the
+    // rows behind it were never created.
+    final client = _FakeApiClient(
+      parserBatches: [
+        {
+          'id': 'batch-dead',
+          'status': 'submitted',
+          'group_count': 1,
+          'recipe_book_id': null,
+          'created_at': DateTime.now()
+              .toUtc()
+              .subtract(const Duration(hours: 5))
+              .toIso8601String(),
+          'completed_at': null,
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(Dismissible), findsNothing);
+    await tester.tap(find.text('Import failed — the parser never started'));
+    await tester.pump();
+    // No navigation, no exception.
+    expect(find.text('Import failed — the parser never started'),
+        findsOneWidget);
+  });
+
+  testWidgets('a terminal batch never gets the "never started" copy (impvis1)',
+      (tester) async {
+    // Two April batches are `failed` with zero ImportJobs and still pass
+    // the server's visibility branch, so they reach the client. They are
+    // NOT "never started" — their cause is unknown and they are five
+    // months old. The tab asks for active batches only, so they are not
+    // rendered here at all; this pins that, because applying tonight's
+    // copy to them would be inventing a cause.
+    final client = _FakeApiClient(
+      parserBatches: [
+        {
+          'id': 'batch-april',
+          'status': 'failed',
+          'group_count': 1,
+          'recipe_book_id': null,
+          // Relative, per fixture_date_guard_test: hardcoded fixture dates
+          // rot silently (that is what imptab1 was). ~5 months back, the
+          // age of the real April rows.
+          'created_at': _monthsAgo(5),
+          'completed_at': _monthsAgo(5),
+          'error_message': null,
+          'jobs': const [],
+          'import_jobs': const [],
+        },
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Import failed — the parser never started'), findsNothing);
+    expect(find.text('All clear — no imports yet'), findsOneWidget);
+  });
+
+  testWidgets('stragglers collapse to ONE row per job (impvis1)',
+      (tester) async {
+    // create_recipe_task.py:465-483 flips a job to `awaiting_review` as
+    // soon as one item needs review, with the rest still `pending`. One row
+    // per straggling item turned a bulk import into dozens of rows and
+    // broke this section's job-granularity rule.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'awaiting_review': [
+          {
+            'id': 'job-bulk',
+            'status': 'awaiting_review',
+            'source_type': 'url',
+            'total_items': 6,
+            'processed_items': 1,
+            'created_at': _at(0),
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-bulk': [
+          for (var i = 0; i < 5; i++)
+            {
+              'id': 'item-$i',
+              'status': 'pending',
+              'source_type': 'url',
+              'created_at': _at(i + 1),
+            },
+          {
+            'id': 'item-review',
+            'status': 'awaiting_review',
+            'recipe_name': 'Needs a look',
+            'source_type': 'url',
+            'created_at': _at(9),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // One blue row for the five stragglers, one yellow row for the item
+    // that needs review — not five blue rows.
+    expect(find.text('Importing 0 of 5'), findsOneWidget);
+    expect(find.byType(ImportRow), findsNWidgets(2));
+  });
+
+  testWidgets('a cancelled import does not render its leftovers (impvis1)',
+      (tester) async {
+    // cancel_import_job.py:59-61 leaves the items alone. They are
+    // abandoned, not in flight — a progress ring on them would be a lie.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'cancelled': [
+          {
+            'id': 'job-x',
+            'status': 'cancelled',
+            'source_type': 'url',
+            'total_items': 3,
+            'processed_items': 0,
+            'created_at': _at(0),
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-x': [
+          {
+            'id': 'item-abandoned',
+            'status': 'pending',
+            'source_type': 'url',
+            'created_at': _at(1),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('All clear — no imports yet'), findsOneWidget);
+  });
+
+  testWidgets('a pending job renders In Progress (impvis1)', (tester) async {
+    // Every prior in-progress fixture used `processing`. A job that has
+    // been accepted but never picked up sits in `pending` — the state a
+    // lost Celery dispatch leaves behind, and the one Leo would call
+    // "pending".
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'pending': [
+          {
+            'id': 'job-p',
+            'status': 'pending',
+            'source_type': 'url',
+            'source_url': 'https://example.com/r',
+            'total_items': 1,
+            'processed_items': 0,
+            'created_at': _at(0),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    // Not pumpAndSettle: the in-progress row's progress indicator animates
+    // forever, so it never settles (same reason as the four-section test).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('All clear — no imports yet'), findsNothing);
+    expect(find.text('Importing 0 of 1'), findsOneWidget);
+  });
+
+  testWidgets('a pending item under a finished job still renders (impvis1)',
+      (tester) async {
+    // Item statuses pending/extracting/matching fell through `default:
+    // break` and were visible only via the parent job's Blue row. When the
+    // parent has moved on, nothing rendered them — while the server's
+    // imports_actionable counted every one.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'completed': [
+          {
+            'id': 'job-c',
+            'status': 'completed',
+            'source_type': 'url',
+            'total_items': 2,
+            'processed_items': 1,
+            'created_at': _at(0),
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-c': [
+          {
+            'id': 'item-stuck',
+            'status': 'pending',
+            'source_type': 'url',
+            'created_at': _at(1),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    // Not pumpAndSettle: the in-progress row's progress indicator animates
+    // forever, so it never settles (same reason as the four-section test).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('All clear — no imports yet'), findsNothing);
+    expect(find.byType(ImportRow), findsOneWidget);
+  });
+
+  testWidgets('a batches outage costs only the batch rows (impvis1)',
+      (tester) async {
+    // Jobs and items are the main surface. A /v1/parser/batches failure
+    // must degrade to "no pre-fan-out rows", not to an error screen —
+    // the failure is reported, not swallowed.
+    final client = _FakeApiClient(
+      jobsByStatus: {
+        'processing': [
+          {
+            'id': 'job-1',
+            'status': 'processing',
+            'source_type': 'url',
+            'total_items': 1,
+            'processed_items': 0,
+            'created_at': _at(0),
+          },
+        ],
+      },
+    )..parserBatchesThrow = true;
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    // Not pumpAndSettle: the in-progress row's progress indicator animates
+    // forever, so it never settles (same reason as the four-section test).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('Failed to load imports'), findsNothing);
+    expect(find.byType(ImportRow), findsOneWidget);
   });
 
   testWidgets('yellow row taps navigate to review screen', (tester) async {

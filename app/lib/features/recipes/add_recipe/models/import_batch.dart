@@ -1,6 +1,8 @@
 // Client-side model mirroring the response of `GET /v1/parser/batches/{id}`
 // from story 13.12.
 
+import '../../../../core/state/import_job_statuses.dart';
+
 class ImportBatch {
   final String id;
   final String status;
@@ -56,6 +58,46 @@ class ImportBatch {
         'succeeded',
         'failed',
       }.contains(status);
+
+  /// How long a batch that has produced no ImportJobs may keep counting as
+  /// in flight.
+  ///
+  /// `!hasFannedOut` on its own meant "no jobs ⇒ in flight, forever", and
+  /// a batch can legitimately end with zero ImportJobs:
+  /// `parser_batch_completion.py:133-141` marks a batch `partial` and
+  /// returns without creating any when it has no `recipe_book_id` and some
+  /// OCR job failed. Nothing sweeps ParserBatch rows, so that batch would
+  /// count — and, since impvis1, render — for the life of the account.
+  /// Photo OCR finishes in minutes; hours means it is not coming.
+  static const preFanOutGrace = Duration(hours: 2);
+
+  /// True once this batch has fanned out into ImportJobs.
+  ///
+  /// Before this, the batch is the ONLY record of the import: the Imports
+  /// tab's jobs/items queries cannot see it, which is the gap that let a
+  /// photo import count on the Add Recipe strip while the tab rendered
+  /// nothing (impvis1).
+  bool get hasFannedOut => importJobs.isNotEmpty;
+
+  /// True when at least one of this batch's ImportJobs is still moving.
+  bool get hasLiveImportJob =>
+      importJobs.any((j) => !isJobTerminal(j.status));
+
+  /// Whether this batch should be counted and shown as in-flight.
+  ///
+  /// Not the same as [isActive]. `partial` is in [isActive] and absent from
+  /// [isTerminal], so a batch parked there counted as in-progress forever —
+  /// a badge that can never reach zero. Two ways that happens, both closed
+  /// here: a batch that fanned out into jobs that have all finished (its
+  /// jobs are the truth, whatever the batch's own status says), and a batch
+  /// that never fanned out at all ([preFanOutGrace]).
+  bool isInFlightAt(DateTime now) {
+    if (!isActive) return false;
+    if (hasFannedOut) return hasLiveImportJob;
+    return now.difference(createdAt) < preFanOutGrace;
+  }
+
+  bool get isInFlight => isInFlightAt(DateTime.now());
 }
 
 class ImportBatchJob {

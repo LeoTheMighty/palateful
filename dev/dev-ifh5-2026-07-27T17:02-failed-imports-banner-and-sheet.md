@@ -5,7 +5,7 @@ created: 2026-07-27T17:02:00-06:00
 title: Frontend — FailedImportsBanner + FailedImportsSheet wired into Import Activity Hub
 from: _bmad-output/planning-artifacts/epic-import-flow-hardening.md
 status: ready
-blocked-by: [ifh3, ifh4]
+blocked-by: []
 branch: feat/dev-ifh5
 ---
 
@@ -30,3 +30,4 @@ Give failed imports a user-visible, actionable surface. A new `FailedImportsServ
 
 ## Status log
 - 2026-07-27T17:00 — imported from BMAD (epic file + sprint-status.yaml) during BMAD→devx migration; predecessor stories ifh-1 (88c04d7), ifh-2 (51f76f1) already on main
+- 2026-09-22T22:15 — unblocked: ifh3 merged `0c379514`, ifh4 merged `c8f700ab`, both `status: done`. The frontmatter and the DEV.md row had gone stale together (stalebk1 shape), so nothing surfaced this as ready. Cleared during the impvis1 scoping pass; no scope change.
