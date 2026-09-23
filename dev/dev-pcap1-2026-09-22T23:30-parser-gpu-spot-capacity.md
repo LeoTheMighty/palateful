@@ -330,8 +330,16 @@ was created. Spot is permitted: `L-3819A6DF` = 32.
 
 AZs are ruled out: the CEs use `us-east-1a` and `us-east-1b`, and
 `g4dn.xlarge`, `g5.xlarge` and `g6.xlarge` are all offered in 1a, 1b, 1c,
-1d and 1f. Every April import ran on **spot**, which is why nobody ever hit
-this.
+1d and 1f.
+
+**Why a quota of 0 was invisible rather than merely unnoticed: there was no
+on-demand path to exercise.** `parser_ondemand_gpu` first entered the module
+in `fb2892d0` (#63) on **2026-09-22** — before that commit the queue had
+exactly one compute environment and it was spot. So every April import ran on
+spot by construction, not by chance. The account has been forbidden to run
+on-demand G instances since it was created, and until last night nothing ever
+asked it to. The first thing that did was the fallback built to make the
+pipeline more reliable.
 
 **So pcap1's on-demand fallback was structurally incapable of launching a
 single instance, from the moment it was written.** Not "engages only when
