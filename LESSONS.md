@@ -109,7 +109,7 @@
   through a five-PR merge wave — the more of it has been overtaken.
 
 - **An exit status you didn't capture directly is not a reading, and in this
-  environment it lies in four separate ways.** Over 2026-09-20/21 four
+  environment it lies in five separate ways.** Over 2026-09-20/22 five
   sessions each got a false or empty "pass" from the same family:
   1. **Piped `$?`.** `npm test | tail -20; echo "rc=$?"` reports `tail`'s
      exit. One session printed `REAL_EXIT=0` over eleven typecheck failures.
@@ -120,8 +120,15 @@
      a real failure.
   4. **`${PIPESTATUS[0]}` is bash-only, and the shell here is zsh**, where it
      expands to nothing and prints a blank `EXIT=`. This is the most dangerous
-     of the four, because it produces no error at all, and a blank status reads
+     for reading, because it produces no error at all, and a blank status reads
      as "fine" when skimming. (zsh's equivalent is lowercase `$pipestatus`.)
+  5. **`;` where you meant `&&`, between a test and a commit.** `flutter test
+     …; git commit … && git push` commits and pushes whatever the suite did —
+     the status existed, was never consulted, and the result is a red branch
+     rather than a wrong answer on screen (2026-09-22, impvis1, fab56b40: a
+     fixture-date guard failure pushed, caught only when reading the log
+     afterwards). The other four mislead you; this one ships. Gate the commit
+     on the run — `cmd && git commit` — or capture the status and branch on it.
 
   Fix: put nothing between the command and its status —
   `cmd > log 2>&1; echo "X_EXIT=$?"`, or `cmd && echo ok || echo FAILED` —

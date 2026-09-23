@@ -86,6 +86,13 @@ waiting. See its status log — the ACs were revised on this evidence.
 
 ## Technical notes
 
+- Worth recording against the rest of this week's collection: while writing
+  impvis1's test for these batches I hardcoded a fixture date, and
+  `fixture_date_guard_test` failed on it — the guard exists precisely
+  because hardcoded fixture dates rot, and it caught its own author. Nearly
+  every other detector examined this week was silent, decorative, or
+  unheard; this one fired. That is what the working case looks like.
+
 - A better staleness signal than the client's wall-clock grace window, if
   the server ever exposes it: tonight's batch has `updated_at` **24ms**
   after `created_at` and untouched since. A row whose `updated_at` never
