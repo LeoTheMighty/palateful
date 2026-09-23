@@ -263,12 +263,34 @@
   - **A guard whose empty result and its failure produced the same exit
     code** — an empty `grep` piped into `while read` ran once with an empty
     value and set status 1 (palateful-3b).
+  - **A `cancelled` run reads as a pass in a list.** `CI & Deploy` run
+    `35805870538` at `37d02bb0` is `completed / cancelled` — a later merge's
+    `cancel-in-progress` killed it mid-`flutter-test`. In `gh run list` that
+    sits in the same column as a success, and it proved nothing: the first CI
+    run of that change on `main` never finished. Read the **specific run's**
+    `status,conclusion`, and for a merge find the next *terminal* run whose
+    head has your merge as an ancestor (`git merge-base --is-ancestor`)
+    (palateful-d9).
+  - **Every test job green while the run itself is still going.** Run
+    `35806423249` at `51b321e0`: `flutter-test`, `test`, `lint`,
+    `check-models`, `setup`, `terraform` all success — and the run
+    `in_progress`, because it had moved into `deploy-web` and four
+    `deploy-images` jobs. "All tests green" reads as done; it was **mid prod
+    deploy**, and pushing then would have cancelled a live deployment with a
+    green-looking justification. `gh run view --json jobs --jq '.jobs[] |
+    select(.status!="completed") | .name'` shows what is still moving
+    (palateful-d9).
   - **`gh pr checks` printed all-passing while an entire workflow had not
     reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
     view, twice. Gate on a probe that aggregates every run at the head SHA;
     treat `gh pr checks` as a convenience view, never the gate. (Moved here
     from the cited-test entry by palateful-3b — the `gh`-specific detail stays
     cross-referenced there.)
+
+  A useful way to name the last three: they are **terminal-state-of-the-wrong-thing**
+  errors. A summary showed a terminal word for a run that proved nothing; the
+  jobs one cared about were terminal while the run that gates pushing was not.
+  Each needs a query one layer below the summary (palateful-d9).
 
   **The test, before believing any clean result: what does this print when the
   thing it measures never ran — and who receives that?** If the first answer
