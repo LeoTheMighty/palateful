@@ -10,6 +10,8 @@ the verdict mapping, the single-flight cache, the sync twin and the CLI
 from __future__ import annotations
 
 import asyncio
+import math
+from pathlib import Path
 
 import pytest
 from sqlalchemy.exc import OperationalError
@@ -751,7 +753,19 @@ def test_coerce_ttl_rejects_the_dangerous_numbers(raw):
 def test_coerce_ttl_accepts_a_plain_number():
     assert db_probe._coerce_ttl("12.5") == 12.5
     assert db_probe._coerce_ttl(" 60 ") == 60.0
-    assert db_probe._coerce_ttl("0") == 0.0
+
+
+def test_coerce_ttl_rejects_zero(): # syncprobe1
+    """Changed from accepting `0`: it defeats the budget like `nan`.
+
+    A TTL of 0 means no cache comparison ever holds, so every caller opens
+    a fresh connection — and, after FR-5, a `get_secret_value` with it.
+    The old assertion (`_coerce_ttl("0") == 0.0`) pinned the opposite;
+    it is replaced rather than deleted so the change is visible in the
+    diff, and `0` is likelier to be typed than `nan` is.
+    """
+    assert db_probe._coerce_ttl("0") is None
+    assert db_probe._coerce_ttl(0) is None
 
 
 def test_ttl_default_survives_a_garbage_constant(monkeypatch):
@@ -1319,3 +1333,175 @@ async def test_the_classifier_raised_branch_logs_failing_open(monkeypatch, caplo
 
     assert verdict is ProbeVerdict.UNKNOWN
     assert any("failing open" in r.getMessage() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# syncprobe1 — the sync path's budget, and the interval it assumes
+# ---------------------------------------------------------------------------
+
+
+class _CountingProbe:
+    """A stand-in `probe_async` that records how often it really ran."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def __call__(self):
+        self.calls += 1
+        return ProbeVerdict.OK
+
+
+
+def test_sync_connect_args_bound_each_way_a_probe_hangs():
+    """Three settings, three different hangs. The obvious one covers least.
+
+    `statement_timeout` is server-enforced, so it does nothing for a
+    half-open TCP where the server is unreachable — that is what the
+    keepalives are for. Asserted together because dropping either one
+    silently re-opens a hang this story closed.
+    """
+    args = db_probe._sync_connect_args(2)
+
+    assert args["connect_timeout"] == 2
+    assert (
+        args["options"]
+        == f"-c statement_timeout={db_probe.PROBE_SYNC_STATEMENT_TIMEOUT_MS}"
+    )
+    assert args["keepalives"] == 1
+    assert args["keepalives_idle"] == db_probe.PROBE_SYNC_KEEPALIVES_IDLE_S
+    assert args["keepalives_interval"] == db_probe.PROBE_SYNC_KEEPALIVES_INTERVAL_S
+    assert args["keepalives_count"] == db_probe.PROBE_SYNC_KEEPALIVES_COUNT
+
+
+def test_statement_timeout_leaves_room_inside_the_total_budget():
+    """connect + statement must fit the budget the async twin enforces."""
+    connect_s = max(1, math.ceil(db_probe.PROBE_CONNECT_TIMEOUT_S))
+    statement_s = db_probe.PROBE_SYNC_STATEMENT_TIMEOUT_MS / 1000
+    assert connect_s + statement_s <= db_probe.PROBE_TOTAL_TIMEOUT_S, (
+        f"a slow-but-alive database would exceed the async twin's "
+        f"{db_probe.PROBE_TOTAL_TIMEOUT_S}s budget: {connect_s}s connect + "
+        f"{statement_s}s statement"
+    )
+
+
+def test_probe_sync_hands_the_driver_its_budget(monkeypatch, fake_sync_engine):
+    """The settings must reach `create_engine`, not merely exist."""
+    import sqlalchemy
+
+    from utils import constants
+
+    captured = {}
+
+    def fake_create_engine(url, **kwargs):
+        captured.update(kwargs)
+        return FakeSyncEngine()
+
+    monkeypatch.setattr(constants, "DATABASE_URL", "postgresql://u:p@h/db")
+    monkeypatch.setattr(sqlalchemy, "create_engine", fake_create_engine)
+
+    assert db_probe.probe_sync() is ProbeVerdict.OK
+    assert "statement_timeout" in captured["connect_args"]["options"]
+    assert captured["connect_args"]["keepalives"] == 1
+
+
+def test_a_cancelled_statement_fails_open(monkeypatch, fake_sync_engine):
+    """A statement timeout is not a credential failure.
+
+    The server cancelling `SELECT 1` says nothing about the password, so
+    it must classify non-auth. Reporting `AUTH_FAILED` here would replace
+    every task over a slow database.
+
+    The fixture is the shape a real one has — [M] measured against a live
+    pg16: psycopg2 raises `QueryCanceled` (`pgcode` 57014), a subclass of
+    `OperationalError`, which SQLAlchemy wraps. An earlier version of this
+    test used a bare `Exception` and asserted `UNREACHABLE`; that fails,
+    because a bare exception is `UNKNOWN`. The fake was wrong, not the
+    code — exactly the fixtures-disagree-with-drivers trap this
+    workstream keeps hitting.
+    """
+    from utils import constants
+
+    monkeypatch.setattr(constants, "DATABASE_URL", "postgresql://u:p@h/db")
+
+    class QueryCanceledLike(Exception):
+        def __init__(self):
+            super().__init__("canceling statement due to statement timeout")
+            self.pgcode = "57014"
+
+    fake_sync_engine(
+        fail_with=OperationalError("SELECT 1", {}, QueryCanceledLike())
+    )
+    assert db_probe.probe_sync() is ProbeVerdict.UNREACHABLE
+
+
+@pytest.mark.parametrize("bad", [0, "nan", -5], ids=["zero", "nan", "negative"])
+def test_cached_verdict_rejects_an_unusable_ttl_from_a_caller(
+    monkeypatch, caplog, bad
+):
+    """A caller's `ttl_s` gets the same validation the env var gets.
+
+    `cached_verdict_async(ttl_s=0)` would otherwise open a fresh
+    connection — and after FR-5 a `get_secret_value` — on every request,
+    defeating the rate limit this module exists to provide. The env path
+    was validated and this one was not.
+    """
+    import logging
+
+    probe = _CountingProbe()  # per-test: a module-level one accumulates
+    db_probe._reset_verdict_cache()
+    monkeypatch.delenv("DB_PROBE_TTL_S", raising=False)
+    monkeypatch.setattr(db_probe, "probe_async", probe)
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(db_probe.cached_verdict_async(ttl_s=bad))
+        # A second call inside the default TTL must be served from cache:
+        # proof the bad value was replaced, not merely logged.
+        asyncio.run(db_probe.cached_verdict_async(ttl_s=bad))
+
+    assert probe.calls == 1, (
+        f"ttl_s={bad!r} was honoured: {probe.calls} probes ran where the "
+        f"default TTL should have allowed 1"
+    )
+    assert "not a usable TTL" in caplog.text
+
+
+def test_sync_probe_interval_assumption_holds():
+    """The sync path has no cache; the SCHEDULE is its rate limit.
+
+    That assumption lives in Terraform and nothing else in Python depends
+    on it visibly, so this is the only thing standing between "documented
+    absence of a cache" and a comment that has quietly become false.
+    Modelled on `test_probe_budget_fits_inside_the_tightest_health_check`,
+    which pins the probe budget against the ALB's `timeout`.
+
+    rsh107 has not added the worker health check yet. Until it does this
+    asserts the ABSENCE, so the test fails the moment one appears without
+    an interval — the author then has to wire it deliberately rather than
+    discover this paragraph later.
+    """
+    import re
+
+    root = Path(__file__).resolve().parents[3]
+    ecs = (root / "terraform" / "modules" / "ecs" / "main.tf").read_text()
+
+    worker_start = ecs.index('resource "aws_ecs_task_definition" "worker"')
+    worker_block = ecs[worker_start:]
+    health = re.search(r"healthCheck\s*=\s*\{(.*?)\}", worker_block, re.S)
+
+    if health is None:
+        assert "healthCheck" not in worker_block, (
+            "the worker task definition grew a healthCheck this test could "
+            "not parse — wire its interval to SYNC_PROBE_MIN_CHECK_INTERVAL_S"
+        )
+        return
+
+    interval = re.search(r"interval\s*=\s*(\d+)", health.group(1))
+    assert interval is not None, "worker healthCheck has no interval"
+    assert int(interval.group(1)) >= db_probe.SYNC_PROBE_MIN_CHECK_INTERVAL_S, (
+        f"the worker health check runs every {interval.group(1)}s, faster "
+        f"than the {db_probe.SYNC_PROBE_MIN_CHECK_INTERVAL_S}s this module "
+        f"documents as its rate limit. probe_sync has NO cache — a "
+        f"CMD-SHELL check is a fresh interpreter per tick, so module "
+        f"globals cannot cache anything. Either raise the interval or give "
+        f"the sync path real rate limiting."
+    )
