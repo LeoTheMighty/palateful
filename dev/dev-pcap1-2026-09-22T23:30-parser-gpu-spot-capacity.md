@@ -282,6 +282,40 @@ than re-queueing to the environment that owned the previous attempt? The
 fallback's value rests on it, and it was reasoned from the queue-order
 semantics rather than measured.
 
+## Standing rule for this repo: a Batch queue references CEs by ARN
+
+**Replacing a compute environment mints a new ARN, and
+`aws_batch_job_queue` references environments *by ARN*.** If the queue is
+not rewired in the same apply, an order entry points at a **deposed**
+environment and that environment **silently does not exist** for
+scheduling. For the on-demand fallback specifically, the fallback would be
+absent exactly when it is needed — the failure shape this spec exists to
+prevent, inside the component built to prevent it.
+
+**Changing `instance_type` forces replacement**, so this is not an exotic
+path: adding one instance type to a list triggers it. Observed twice:
+- **#63** replaced the spot CE (adding four types) — queue rewired, order 1
+  tracks the new ARN;
+- **#65** replaced the on-demand CE (adding `g5.2xlarge`) — queue rewired,
+  order 2 tracks the new ARN `…011700706000000001`.
+
+Both times Terraform's graph handled replace-and-rewire. **Two worked
+instances are evidence, not a guarantee** — the next CE replacement
+deserves the same check.
+
+**How to check it so the check can actually fail** (palateful-0e). The
+naive check — *"order 2 points at an on-demand CE with 5 types"* — returns
+**PASS either way**, because a deposed environment is also an on-demand CE
+with the same name shape. **The after-state alone cannot distinguish
+success from the failure.** So:
+1. **Before** the apply, record the current order-N **ARN suffix**.
+2. **After**, assert the order-N ARN is *different* and that every queue
+   entry resolves by **set membership against live CE ARNs** — a deposed
+   reference then surfaces as unresolvable rather than as a
+   plausible-looking name.
+3. Assert no ENABLED CE is left unreferenced by the queue (set-difference
+   of live ARNs against queue-referenced ARNs).
+
 ## Technical notes
 
 - Evidence gathered read-only via `bin/prod-script` inside
@@ -319,3 +353,7 @@ semantics rather than measured.
   0e's independent re-confirmation.** This fix does **not** resurrect
   Leo's stuck batch `9384da8a…`; that needs 0e's write-back spec and a
   re-submit.
+- 2026-09-23 — recorded the ARN standing rule after #65's apply, with 0e's
+  discriminating-check method. Both CE replacements so far rewired the
+  queue correctly; the rule exists so the next one is verified rather than
+  assumed.
