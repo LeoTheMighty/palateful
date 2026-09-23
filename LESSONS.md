@@ -219,3 +219,74 @@
   it. Correct the framing, not just the clause the reviewer flagged, and
   say in the spec that the first draft was wrong so nobody implements
   against a premise that was never true. Twice in one day (2026-09-22).
+
+- **The absence of a verdict reads as a verdict.** This is the umbrella over
+  several entries here. A check that never ran, a query that matched nothing,
+  a loop that iterated zero times and a detector nobody subscribed to all
+  produce the same artifact as success: **silence, or a zero**. Nothing in the
+  output says "I did not measure this", so a skim reads it as "measured, and
+  fine". Over 2026-09-20/23 it cost this repo real time roughly a dozen times.
+
+  Distinguish it from two neighbours, because merging them makes all three
+  unactionable. **Wrong evidence** — a measurement on the wrong driver, a test
+  that checks its own construction — is covered by the provenance entries
+  (palateful-cc). **Provenance as proof** — a cited test trusted because
+  someone said it passed — is the cited-test entry (palateful-3b,
+  `fd732fab`). **This entry is the third case: no evidence at all, with the
+  absence read as positive evidence.** Wrong-thing, said-so, and no-thing.
+
+  Instances, each measured:
+  - **An empty CloudWatch Insights result is not a zero.** A `parse`-regex
+    query matched nothing; "0 password-authentication failures" read as good
+    news. A positive control on a string known to be present is what exposed
+    it — and the real count was 573,039.
+  - **`terraform state pull` re-stamps the *local* CLI's version.** Asked who
+    wrote prod state, it answered with my own version (1.4.2); the raw S3
+    object said 1.16.3. A tool answering a different question than the one
+    asked. Read the object, not the tool. This shipped a wrong claim into a
+    merged spec before it was caught.
+  - **A watcher loop that exhausts its iterations prints its trailing lines
+    and no verdict.** Nearly reported a green SHA with nothing behind it, on a
+    PR that was conflicting at that moment.
+  - **A CloudWatch metric filter sees only log events**, so "no fail-open
+    lines" and "no API at all" are the same picture: no datapoints. Under
+    `treat_missing_data = notBreaching` the alarm stays green through a total
+    outage (palateful-cc, found by 4f in review).
+  - **An alarm with no subscriber.** Configured, wired, in OK state, and
+    `list-subscriptions-by-topic` empty. Every dashboard reads "alarm
+    configured"; it is operationally identical to no alarm, and **nothing
+    anywhere reports it as wrong** (palateful-cc).
+  - **A test that skips when its dependency is absent.** Stopping the local
+    Postgres removes the measurement and the suite still prints *passed*.
+    Skip-as-pass is the purest form, because pytest designed it to look benign
+    (palateful-3b).
+  - **A guard whose empty result and its failure produced the same exit
+    code** — an empty `grep` piped into `while read` ran once with an empty
+    value and set status 1 (palateful-3b).
+  - **`gh pr checks` printed all-passing while an entire workflow had not
+    reported**, and a monitor announced "ALL CHECKS TERMINAL" on that partial
+    view, twice. Gate on a probe that aggregates every run at the head SHA;
+    treat `gh pr checks` as a convenience view, never the gate. (Moved here
+    from the cited-test entry by palateful-3b — the `gh`-specific detail stays
+    cross-referenced there.)
+
+  **The test, before believing any clean result: what does this print when the
+  thing it measures never ran — and who receives that?** If the first answer
+  is indistinguishable from success, it is not yet a check. If the second is
+  "nobody", it is not yet a detector. The alarm-with-no-subscriber passes the
+  first clause and fails the second.
+
+  **The enforcement is cheaper than the reasoning: drive the check into its
+  failure state once and watch it fail.** A mutation test of one CI guard
+  against ten planted violations caught four shapes it had silently missed,
+  including the exact form the codebase already used (palateful-3b). Where the
+  signal is *silence*, first show that silence is abnormal — treating missing
+  data as breaching is only defensible after measuring that 288/288 five-minute
+  buckets are normally populated (palateful-cc).
+
+  The counter-example worth copying: 4f's cart verification reported its
+  **denominator** — 3 cart loads, recorder demonstrably alive across those
+  minutes — before claiming "0 `_TypeError` since the deploy". Forty minutes
+  earlier the same sentence would have been worthless, because the denominator
+  was zero.
+
