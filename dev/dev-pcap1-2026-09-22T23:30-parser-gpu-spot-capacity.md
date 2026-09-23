@@ -152,9 +152,55 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
       which. Until then, any count the app shows is untrustworthy.
 - [ ] Tonight's batch `9384da8a…` is resolved, not left `submitted`.
 - [ ] Proven by driving it: submit an import while spot capacity is
-      unavailable and show the outcome. A capacity fix that has never
+      unavailable and show the outcome — **recording which compute
+      environment the attempt landed on**, since a success on order 1
+      proves the pipeline, not the fallback. Method proposed above;
+      needs Leo's approval before running. A capacity fix that has never
       been exercised against an empty pool is a configured fix, not a
       verified one.
+
+## Proposed fallback drill — NOT YET RUN, needs Leo's approval
+
+**The problem with waiting.** The fallback only engages when spot cannot
+serve. If we wait for that to happen naturally, **the first real test of
+this code is an actual user import** — which is how tonight went. A drill
+is the alternative: force the condition deliberately, at a chosen moment,
+with someone watching.
+
+**Method (controllable, reversible):**
+1. Confirm the parser queue is idle (`RUNNING/RUNNABLE/STARTING/SUBMITTED`
+   all 0).
+2. Set the **spot** compute environment's `max_vcpus` to **0** via
+   Terraform and apply. Spot can then allocate nothing, which is a
+   stronger condition than a real exhaustion.
+3. Submit one parser batch.
+4. Expect: the job cannot be placed on order 1, Batch places it on the
+   **on-demand** environment at order 2, an instance starts, and the job
+   runs to completion. Record the compute environment the attempt landed
+   on, not just that the job succeeded.
+5. Revert `max_vcpus` and apply.
+
+**Risk, stated plainly: this is a production Terraform change whose whole
+purpose is to make production fail over.** Between steps 2 and 5, an
+import Leo submits can only run on the 8-vCPU on-demand environment. If
+step 5 is forgotten, spot stays disabled and every subsequent import runs
+at on-demand price. Mitigations: run it while the queue is idle, keep the
+window short, and treat step 5 as part of the drill rather than cleanup.
+Same shape as `rsh109`'s rotation drill — a deliberate, attended
+production exercise, not a background task.
+
+**What the drill proves that a normal import does not.** A successful
+import while spot capacity is *available* proves the pipeline works end
+to end. It proves **nothing about the fallback**, because order 1 served
+it. Only a placement on order 2 tests the change that pcap1 calls
+load-bearing.
+
+**Open assumption this drill also settles** (raised to palateful-0e for
+independent confirmation): does Batch actually place a *retry* on the
+next compute environment in the queue after a host-level kill, rather
+than re-queueing to the environment that owned the previous attempt? The
+fallback's value rests on it, and it was reasoned from the queue-order
+semantics rather than measured.
 
 ## Technical notes
 
@@ -184,3 +230,12 @@ recurrence, stops burning retries in 30 minutes), and **2 if he accepts
   on-demand cost. Framing corrected from 0e's independent verification:
   the failure is reclamation *after* allocation, which makes the fallback
   load-bearing and the wider pool a cheap extra.
+- 2026-09-23 — applied to prod (`fb2892d0`, apply run 35803059252):
+  3 added, 1 changed, 2 destroyed, matching the pre-registered plan
+  exactly; the old spot CE went as a deposed object *after* the new one
+  and after the queue was repointed, so `create_before_destroy` is
+  verified behaviour rather than an assumption. Configured-correctly pass
+  green. **Still owed: the fallback drill (proposed above, not run) and
+  0e's independent re-confirmation.** This fix does **not** resurrect
+  Leo's stuck batch `9384da8a…`; that needs 0e's write-back spec and a
+  re-submit.
