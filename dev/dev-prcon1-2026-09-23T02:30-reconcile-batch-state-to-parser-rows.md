@@ -69,6 +69,24 @@ whether AWS still has the job. Observed live:
 | DB, batch `49ba1ba6` | **`failed`** at **16:38:22Z**, *"Watcher timed out after 90 minutes"* |
 | AWS, job `d1945302`, same moment | **`RUNNABLE`**, `attempts: 0`, `startedAt: null` — **never started** |
 
+**Twice in one day.** The resubmit repeated it exactly, and this one was
+watched to the second: batch `2ca59c8c` → **`failed` at 18:41:49Z**, same
+message, while AWS job `2e878fd3` read **`RUNNABLE`, `attempts: 0`,
+`startedAt: null`** at that same instant. Two dated instances, four hours
+apart, same mechanism.
+
+**Root cause of *why* neither job started** (palateful-4f): service quota
+**`L-DB2E81BA`, "Running On-Demand G and VT instances", is `0`** — the AWS
+default, never raised. After the CE reorder put on-demand first, jobs queued
+against a pool **the account is not permitted to run at all**. So these jobs
+were never going to start, timeout or no timeout.
+
+**That is what makes the false-terminal defect worth fixing independently.**
+The quota explains the *stall*; it does not excuse writing `failed` onto work
+AWS still has queued, nor discarding the eventual output. Had the quota been
+fine and the job merely slow, the same write would have destroyed a genuinely
+recoverable import — which is what happened to the 09-22 batch.
+
 The job was *queued*, not failed. Then
 `parser_batch_completion.py:49` does its job correctly:
 
