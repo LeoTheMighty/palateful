@@ -442,3 +442,36 @@ output or CI logs — this repo and its Actions logs are public. That is why
 
 A configured alarm that has never fired is not a verified one. If step 1 or 2
 produces no email, the detector is not working, whatever the AWS console says.
+
+## Verify the first `fixture time-travel` nightly run (filed by fxfuse, 2026-09-23)
+
+`.github/workflows/fixture-time-travel.yml` landed with PR #54 and first fires
+at **09:12 UTC**. It has never run in CI — its negative control has only been
+proven on a laptop — so until someone reads the first run, "the check still
+bites" is a claim, not a measurement.
+
+```bash
+gh run list --workflow "fixture time-travel" --limit 3 \
+  --json status,conclusion,createdAt,url
+```
+
+Read the result by **which step** failed, because the two failures mean
+opposite things and want opposite fixes:
+
+- **"Time-travel the suite" fails** → a fixture is on a fuse. Some test's date
+  will age out of a `DateTime.now()`-relative window. Triage it like any red
+  test, but read `app/tool/time_travel_check.sh`'s header first: an assertion
+  on an *absolute* date (or one whose interval crosses a DST boundary when
+  shifted) fails here while a real clock advance would not, and that class gets
+  a `// no-time-travel` tag rather than a "fix".
+- **"Negative control" fails** → **the harness stopped detecting a frozen
+  fixture.** Nothing is wrong with the fixtures; the check itself has gone
+  blind, which means the green from the step above proves nothing. Fix the
+  harness before trusting any subsequent pass. The job prints `::error::` lines
+  saying exactly this.
+
+The control re-freezes `_fixtureBase` in
+`app/test/features/activity/imports_tab_test.dart` and asserts its regex
+matched exactly once. If someone reshapes that anchor, the control throws
+`assert n == 1` — which reads as a failure but is really "the control can no
+longer find what it rewrites". That is the likeliest first-year breakage.
