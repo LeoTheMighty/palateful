@@ -87,7 +87,7 @@ resource "aws_ecr_lifecycle_policy" "parser" {
         # a slow leak; replace-on-write means one bad tagging event destroys
         # the last good image — and the tagger is exactly the thing that
         # might be wrong. Three survives a mistake and still bounds the
-        # cost: for the parser post-ocrload1 that is ~6-9 GB, not ~33 GB.
+        # cost: for the parser post-ocrload1 that is ~4.5 GB, not ~44 GB.
         rulePriority = 2
         description  = "Keep the last 3 known-good images, whatever their age"
         selection = {
@@ -188,7 +188,7 @@ resource "aws_ecr_lifecycle_policy" "additional" {
         # a slow leak; replace-on-write means one bad tagging event destroys
         # the last good image — and the tagger is exactly the thing that
         # might be wrong. Three survives a mistake and still bounds the
-        # cost: for the parser post-ocrload1 that is ~6-9 GB, not ~33 GB.
+        # cost: for the parser post-ocrload1 that is ~4.5 GB, not ~44 GB.
         rulePriority = 2
         description  = "Keep the last 3 known-good images, whatever their age"
         selection = {
