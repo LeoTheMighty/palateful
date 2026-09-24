@@ -450,6 +450,37 @@ who has thirty.**
   four. Nobody has built it. **Until someone does, the honest status of (h)
   is: detected by other people noticing, and by nothing else.**
 
+  **Demonstrated instance of (c), 2026-09-24 — two adjacent job names, one
+  green and one not, and the misreading is available to anyone who looks.**
+  (Spotted by palateful-0a; verified here independently.) `odback1`'s deploy
+  run was cancelled mid-flight by two merges landing on top of it
+  (`cancel-in-progress`, both keyed on `refs/heads/main`), killing
+  `terraform-prod` before it started. The run then reads:
+
+  ```
+  run 36050394812   terraform       : success      <- the VALIDATE job
+                    terraform-prod  : cancelled    <- the APPLY job
+  ```
+
+  and **the pull request's own checks view renders it worse still**:
+
+  ```
+  terraform       pass
+  terraform-prod  skipping          <- not "cancelled"
+  ```
+
+  So a reader glancing at the merged PR sees *green terraform, prod apply
+  not needed* and concludes the change is live. **It is not — the live
+  queue still read the old ordering.** Two jobs whose names differ by a
+  suffix, one reporting the opposite of the other, and the aggregate view
+  relabels the failure as a skip.
+
+  **Only a read of the live resource distinguishes them.** The check that
+  worked was `describe-job-queues` against AWS, not any view of the run.
+  Compare (h): *a claim in prose gets less checking than the code* — here a
+  **status view** gets less checking than the thing it describes, for the
+  same reason. It renders as an answer.
+
   **(i) A corrected premise does not correct the numbers derived from
   it.** Distinct from a stale fact and from a wrong measurement: the fact
   *was* corrected, in the sentence that stated it, and the arithmetic
