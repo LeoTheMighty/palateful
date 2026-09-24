@@ -458,3 +458,21 @@
   different statistics, and only one of them predicts a bill. Sibling of the
   verdict-silence entry above: there, a check that never ran looked like a
   pass; here, a population that was never counted looks like the whole.
+
+- **Before specifying an artifact, ask who opens it.** A file, an endpoint, an
+  alarm, a report — name the thing that will read it, and check that the thing
+  exists. On 2026-09-23 a session specified a Playwright `storageState` for a
+  QA identity, a coordinator relayed the instruction, and both agreed; nobody
+  asked what would load the file. Nothing would: there is no Playwright in the
+  repo, and the QA agent is Claude-in-Chrome, which attaches to a running
+  browser profile and cannot read one. The check took two minutes and it
+  removed the whole artifact — along with a credential that would otherwise
+  have transited a script we wrote, an environment we read, and error paths we
+  would have had to prove never print it. The replacement (a dedicated Chrome
+  profile signed in once by hand) has none of those surfaces.
+
+  This is the same question as "name the file the person will actually open",
+  asked one step earlier: that one catches a misplaced *recording* at review
+  time; this one catches a misconceived *artifact* at specification time,
+  before anyone builds it. Fewer moving parts is the lesser reason to prefer
+  the simpler shape. **Fewer places a credential can appear is the real one.**
