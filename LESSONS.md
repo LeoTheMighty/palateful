@@ -298,6 +298,25 @@
   commit is safe to squeeze past a lane hold: the docs-only one feels harmless
   and is specifically the one that can make the apply vanish rather than fail.
 
+  **A cancelled run is the RECOVERABLE outcome; a green one is the lossy one.**
+  That is backwards from instinct and it is the part that matters.
+  `detect-changes` computes its affected set from `nx-set-shas`, which bases on
+  the last **successful** run of the workflow — not on `HEAD~1`. So:
+
+  - A **cancelled** run does not advance the base. The orphaned change stays
+    inside the next run's range and gets carried. Measured tonight: the run
+    that inherited two cancelled merges used `Base d0dcb5e2` (the last
+    successful run, #94) against `Head 6b4e23ab` — a four-commit range
+    spanning both orphans. Two independent routes then covered the apply.
+  - A run that goes **green while skipping the apply** *does* advance the
+    base. The base moves past the orphaned change and no later run can see
+    it. Lost permanently, with nothing anywhere reporting a failure.
+
+  A docs-only merge is exactly the second shape. So the hazard is not "a
+  docs-only merge cancels an apply" — it is "a docs-only merge cancels an
+  apply **and then its own run succeeds without applying**". Two conditions,
+  and the second is the one that makes it unrecoverable.
+
   Two consequences that outlive the incident:
 
   1. **A merged PR is not a deployed PR, and the gap is silent.** A cancelled
