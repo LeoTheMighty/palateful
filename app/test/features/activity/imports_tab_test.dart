@@ -6,6 +6,8 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:palateful/core/services/api_client.dart';
 import 'package:palateful/features/activity/imports_tab.dart';
+import 'package:palateful/features/activity/widgets/import_row_caret.dart';
+import 'package:palateful/features/recipes/add_recipe/models/import_batch.dart';
 import 'package:palateful/features/activity/providers/activity_read_provider.dart';
 import 'package:palateful/features/activity/widgets/import_row.dart';
 
@@ -641,7 +643,13 @@ void main() {
 
     expect(find.text('All clear — no imports yet'), findsNothing,
         reason: 'the batch exists, so the tab is not empty');
-    expect(find.text('Importing 0 of 3'), findsOneWidget);
+    // impstat1: "Importing 0 of 3" was a number the client could not know.
+    // What it can know is that the photos were accepted and no machine has
+    // taken them yet, and for how long.
+    expect(
+      find.textContaining('Waiting for a parser machine'),
+      findsOneWidget,
+    );
     expect(client.parserBatchCalls, contains(true),
         reason: 'the tab asks for active batches only');
   });
@@ -734,8 +742,12 @@ void main() {
     // `submitted`; hiding it would leave Leo with silence, and rendering
     // it In Progress would be a spinner that never stops.
     expect(find.text('All clear — no imports yet'), findsNothing);
-    expect(find.text('Import failed — the parser never started'),
-        findsOneWidget);
+    // impstat1: not "failed" — nothing failed and nothing succeeded. Past
+    // the watcher's budget nobody is looking at this batch any more.
+    expect(
+      find.textContaining('stopped responding'),
+      findsOneWidget,
+    );
     expect(find.text('2 photos'), findsOneWidget);
   });
 
@@ -769,11 +781,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.byType(Dismissible), findsNothing);
-    await tester.tap(find.text('Import failed — the parser never started'));
+    await tester.tap(find.textContaining('stopped responding'));
     await tester.pump();
-    // No navigation, no exception.
-    expect(find.text('Import failed — the parser never started'),
-        findsOneWidget);
+    // No navigation, no exception — and no retry button, because nothing
+    // in the system can resubmit a batch (verified against the parser
+    // router: eight endpoints, none of them a resubmit).
+    expect(find.textContaining('stopped responding'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, 'Retry'), findsNothing);
   });
 
   testWidgets('a terminal batch never gets the "never started" copy (impvis1)',
@@ -900,6 +914,213 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(find.text('All clear — no imports yet'), findsOneWidget);
+  });
+
+  // ---------------------------------------------------------------
+  // impstat1 — the row says what is actually happening. Leo: "they're not
+  // clickable or expandable so I don't have any input into what's
+  // happening except that the import isn't working", said while an import
+  // had been queued 85+ minutes with zero attempts.
+  // ---------------------------------------------------------------
+
+  Map<String, dynamic> _batch({
+    required String id,
+    required Duration age,
+    String status = 'submitted',
+    int groupCount = 2,
+    List<dynamic> jobs = const [],
+    List<dynamic> importJobs = const [],
+  }) =>
+      {
+        'id': id,
+        'status': status,
+        'group_count': groupCount,
+        'recipe_book_id': null,
+        'created_at':
+            DateTime.now().toUtc().subtract(age).toIso8601String(),
+        'completed_at': null,
+        'error_message': null,
+        'jobs': jobs,
+        'import_jobs': importJobs,
+      };
+
+  testWidgets('a queued batch says how long it has been waiting (impstat1)',
+      (tester) async {
+    final client = _FakeApiClient(
+      parserBatches: [_batch(id: 'b1', age: const Duration(minutes: 85))],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('Waiting for a parser machine'), findsOneWidget);
+    // 85 minutes reads as "1 h 25 min" — coarse on purpose, and past an
+    // hour the hours form is what a person actually wants.
+    expect(find.textContaining('1 h 25 min'), findsOneWidget);
+  });
+
+  testWidgets('a short wait reads in minutes (impstat1)', (tester) async {
+    final client = _FakeApiClient(
+      parserBatches: [_batch(id: 'b-new', age: const Duration(minutes: 7))],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('queued 7 min'), findsOneWidget);
+  });
+
+  testWidgets('just under the watcher budget is still queued (impstat1)',
+      (tester) async {
+    final client = _FakeApiClient(
+      parserBatches: [
+        _batch(
+          id: 'b-edge',
+          age: ImportBatch.watcherBudget - const Duration(minutes: 1),
+        ),
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('Waiting for a parser machine'), findsOneWidget);
+    expect(find.textContaining('stopped responding'), findsNothing);
+  });
+
+  testWidgets('past the watcher budget it is unattended, not queued '
+      '(impstat1)', (tester) async {
+    final client = _FakeApiClient(
+      parserBatches: [
+        _batch(
+          id: 'b-old',
+          age: ImportBatch.watcherBudget + const Duration(minutes: 1),
+        ),
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('stopped responding'), findsOneWidget);
+    expect(find.textContaining('Waiting for a parser machine'), findsNothing);
+  });
+
+  testWidgets('a stuck batch recovers to DONE, never to "parsing" '
+      '(impstat1)', (tester) async {
+    // The server never writes an intermediate status —
+    // parser_batch_completion.py writes only on terminal — so a batch that
+    // reported stuck and is then picked up shows nothing new for the whole
+    // run and then completes. Asserting stuck → running would be asserting
+    // something that cannot happen.
+    final client = _FakeApiClient(
+      parserBatches: [
+        _batch(
+          id: 'b-recover',
+          age: ImportBatch.watcherBudget + const Duration(minutes: 30),
+          status: 'succeeded',
+          importJobs: const [
+            {'id': 'job-done', 'status': 'completed'},
+          ],
+        ),
+      ],
+      jobsByStatus: {
+        'completed': [
+          {
+            'id': 'job-done',
+            'status': 'completed',
+            'source_type': 'photo',
+            'total_items': 2,
+            'created_at': _at(0),
+          },
+        ],
+      },
+      itemsByJobId: {
+        'job-done': [
+          {
+            'id': 'item-done',
+            'status': 'completed',
+            'created_recipe_id': 'r-1',
+            'recipe_name': 'Parsed at last',
+            'source_type': 'photo',
+            'created_at': _at(1),
+          },
+        ],
+      },
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.textContaining('stopped responding'), findsNothing,
+        reason: 'a completed batch is no longer stuck');
+    expect(find.text('Parsed at last'), findsOneWidget);
+  });
+
+  testWidgets('tapping a batch row expands to per-photo detail (impstat1)',
+      (tester) async {
+    // `jobs[]` has been on the wire since the endpoint was written and no
+    // UI ever rendered it.
+    final client = _FakeApiClient(
+      parserBatches: [
+        _batch(
+          id: 'b-photos',
+          age: const Duration(minutes: 10),
+          groupCount: 2,
+          jobs: const [
+            {
+              'id': 'pj-1',
+              'status': 'submitted',
+              'input_s3_key': 'uploads/leo/fish-pie.jpg',
+              'group_index': 0,
+              'extracted_text': null,
+              'error_message': null,
+            },
+            {
+              'id': 'pj-2',
+              'status': 'failed',
+              'input_s3_key': 'uploads/leo/blurry.jpg',
+              'group_index': 1,
+              'extracted_text': null,
+              'error_message': 'No text found in image',
+            },
+          ],
+        ),
+      ],
+    );
+    _register(client);
+
+    await tester.pumpWidget(_wrap(const ImportsTab()));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Collapsed: no per-photo detail.
+    expect(find.text('fish-pie.jpg'), findsNothing);
+
+    await tester.tap(find.byType(ImportRowCaret).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('fish-pie.jpg'), findsOneWidget);
+    expect(find.text('blurry.jpg'), findsOneWidget);
+    expect(find.text('Failed to parse'), findsOneWidget);
+    expect(find.text('No text found in image'), findsOneWidget);
   });
 
   testWidgets('a pending job renders In Progress (impvis1)', (tester) async {

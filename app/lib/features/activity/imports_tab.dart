@@ -657,9 +657,18 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   Widget _buildInProgressRow(_JobView job, ImportStateColors states) {
     final total = job.totalItems;
     final done = job.processedItems;
-    final statusLabel = total > 0
-        ? 'Importing $done of $total'
-        : 'Importing…';
+    // A batch row speaks for a parser batch, and what is true about one is
+    // narrower than "Importing X of N": the photos have been accepted and
+    // are waiting for a GPU machine. The server never records the moment a
+    // machine picks them up — `parser_batch_completion.py` writes only on
+    // terminal — so "Parsing…" is not a state this client can honestly
+    // render (impstat1). Waiting, and for how long, is.
+    final batch = job.batch;
+    final statusLabel = batch != null
+        ? 'Waiting for a parser machine · queued ${_formatDuration(batch.ageAt(DateTime.now()))}'
+        : total > 0
+            ? 'Importing $done of $total'
+            : 'Importing…';
     return _ExpandableRow(
       rowId: job.id,
       recipeName: _jobTitle(job),
@@ -678,6 +687,7 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
       onRetry: null,
       onViewRecipe: null,
       onArchive: null,
+      expansion: batch == null ? null : _buildBatchExpansion(batch, states),
       row: ImportRow(
         id: job.id,
         sourceIcon: _iconForSourceType(job.sourceType),
@@ -709,17 +719,128 @@ class _ImportsTabState extends ConsumerState<ImportsTab>
   /// says what is known (it never started) and not what caused it; the
   /// client cannot tell a capacity failure from a crash, and nothing
   /// server-side has marked the batch failed at all (parsercap1).
-  Widget _buildStalledBatchRow(_JobView batch, ImportStateColors states) {
-    final photos = batch.totalItems;
-    return ImportRow(
-      id: batch.id,
-      sourceIcon: _iconForSourceType('photo'),
-      title: photos == 1 ? '1 photo' : '$photos photos',
-      statusLabel: 'Import failed — the parser never started',
-      stateColor: states.failed,
-      stateChipLabel: 'Failed',
-      timeLabel: _formatTime(batch.createdAt),
+  Widget _buildStalledBatchRow(_JobView view, ImportStateColors states) {
+    final photos = view.totalItems;
+    final b = view.batch;
+    return _ExpandableRow(
+      rowId: view.id,
+      recipeName: photos == 1 ? '1 photo' : '$photos photos',
+      itemIdForTelemetry: null,
+      retryCount: 0,
+      lastRetryAt: null,
+      errorMessage: null,
+      sourceType: 'photo',
+      sourceReference: null,
+      confidenceScore: null,
+      confidenceSource: null,
+      rowState: null,
+      onReview: null,
+      onRetry: null,
+      onViewRecipe: null,
+      onArchive: null,
+      expansion: b == null ? null : _buildBatchExpansion(b, states),
+      row: ImportRow(
+        id: view.id,
+        sourceIcon: _iconForSourceType('photo'),
+        title: photos == 1 ? '1 photo' : '$photos photos',
+        // Not "failed": nothing has failed, and nothing has succeeded
+        // either. Past the watcher's budget nobody is looking at this batch
+        // any more, and the only path left is a callback that does not
+        // retry (cbretry1). That is what the row says, and it offers no
+        // retry because no endpoint can resubmit a batch.
+        statusLabel:
+            "This import stopped responding. It hasn't been picked up by "
+            'a parser machine.',
+        stateColor: states.failed,
+        stateChipLabel: 'Stuck',
+        timeLabel: _formatTime(view.createdAt),
+        trailing: ImportRowCaret(
+          rowId: view.id,
+          recipeName: photos == 1 ? '1 photo' : '$photos photos',
+        ),
+      ),
     );
+  }
+
+  /// The per-photo detail a batch row expands to show.
+  ///
+  /// `jobs[]` has been on the wire since the endpoint was written and no UI
+  /// has ever rendered it (impstat1). Expansion rather than navigation
+  /// because a pre-fan-out batch has no ImportJob to navigate to.
+  Widget _buildBatchExpansion(ImportBatch b, ImportStateColors states) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final photo in b.jobs)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(photo.displayName),
+                        Text(
+                          _photoStatusLabel(photo.status),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        if (photo.errorMessage != null &&
+                            photo.errorMessage!.isNotEmpty)
+                          Text(
+                            photo.errorMessage!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: states.failed),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (b.jobs.isEmpty)
+            // Real and worth saying: the batch exists, the photos were
+            // accepted, and no per-photo record has been created yet.
+            Text(
+              'No per-photo detail yet — the parser has not started.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Plain-language per-photo status. `running` is absent deliberately: the
+  /// server never writes it (see impstat1's spec), so rendering copy for it
+  /// would be inventing a state.
+  String _photoStatusLabel(String status) {
+    switch (status) {
+      case 'pending':
+      case 'submitted':
+        return 'Waiting for a parser machine';
+      case 'succeeded':
+        return 'Parsed';
+      case 'failed':
+        return 'Failed to parse';
+      default:
+        return status;
+    }
+  }
+
+  /// "2 min", "85 min", "3 h 5 min" — coarse on purpose. A queue wait is
+  /// not precise enough to warrant seconds, and false precision is the
+  /// habit this surface is trying to break.
+  String _formatDuration(Duration d) {
+    if (d.inMinutes < 1) return 'less than a minute';
+    if (d.inMinutes < 60) return '${d.inMinutes} min';
+    final hours = d.inHours;
+    final mins = d.inMinutes % 60;
+    return mins == 0 ? '$hours h' : '$hours h $mins min';
   }
 
   /// Synthesizes a stage timeline for a blue (in-progress) job row.
@@ -951,6 +1072,11 @@ class _ExpandableRow extends ConsumerWidget {
   final VoidCallback? onArchive;
   final Widget row;
 
+  /// A custom expansion body, for rows with no `item_id` to hang the
+  /// telemetry expansion off — a parser batch, which expands to per-photo
+  /// detail from `jobs[]` instead (impstat1).
+  final Widget? expansion;
+
   const _ExpandableRow({
     required this.rowId,
     required this.recipeName,
@@ -968,6 +1094,7 @@ class _ExpandableRow extends ConsumerWidget {
     required this.onViewRecipe,
     required this.onArchive,
     required this.row,
+    this.expansion,
   });
 
   @override
@@ -981,6 +1108,7 @@ class _ExpandableRow extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         row,
+        if (expanded && expansion != null) expansion!,
         if (expanded && itemIdForTelemetry != null)
           ImportRowExpansion(
             itemId: itemIdForTelemetry!,
@@ -1011,6 +1139,11 @@ class _JobView {
   /// False when [id] is not a real ImportJob id — a synthesised row for a
   /// parser batch that has not fanned out. Those rows have nothing to open.
   final bool openable;
+
+  /// The parser batch this row stands for, when it stands for one. Carries
+  /// the per-photo `jobs` the row expands to show — data the API has always
+  /// sent and the UI never rendered (impstat1).
+  final ImportBatch? batch;
   final String? sourceType;
   final String? sourceUrl;
   final int totalItems;
@@ -1020,6 +1153,7 @@ class _JobView {
   _JobView({
     required this.id,
     this.openable = true,
+    this.batch,
     required this.sourceType,
     required this.sourceUrl,
     required this.totalItems,
@@ -1038,6 +1172,7 @@ class _JobView {
   factory _JobView.fromBatch(ImportBatch b) => _JobView(
         id: 'batch:${b.id}',
         openable: false,
+        batch: b,
         sourceType: 'photo',
         sourceUrl: null,
         totalItems: b.groupCount,
@@ -1051,6 +1186,7 @@ class _JobView {
   factory _JobView.fromStalledBatch(ImportBatch b) => _JobView(
         id: 'batch:${b.id}',
         openable: false,
+        batch: b,
         sourceType: 'photo',
         sourceUrl: null,
         totalItems: b.groupCount,

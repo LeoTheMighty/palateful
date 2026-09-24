@@ -59,6 +59,31 @@ class ImportBatch {
         'failed',
       }.contains(status);
 
+  /// How long anything is still watching a batch.
+  ///
+  /// **This duplicates a server constant** and must be kept in step with it:
+  /// `watch_parser_batch_task.py` polls every `POLL_INTERVAL_SECONDS = 30`
+  /// for `MAX_POLL_ATTEMPTS = 180` — 90 minutes — and then stops. Past that,
+  /// nothing is watching the batch at all: the only remaining path home is
+  /// the container's completion callback, which is a single un-retried POST
+  /// (see `debug/debug-cbretry1`). A batch older than this is not "still
+  /// queued", it is unattended, and the UI must stop implying otherwise.
+  ///
+  /// Pinned by a test against the two server numbers. A UI that says "stuck"
+  /// at the wrong threshold is its own false verdict.
+  static const watcherBudget = Duration(minutes: 90);
+
+  /// True when nothing is watching this batch any more and it has produced
+  /// nothing — the state Leo's import reached at 90+ minutes with zero
+  /// instance requests.
+  bool isUnattendedAt(DateTime now) =>
+      !hasFannedOut &&
+      !isTerminal &&
+      now.difference(createdAt) >= watcherBudget;
+
+  /// How long this batch has been waiting, for display.
+  Duration ageAt(DateTime now) => now.difference(createdAt);
+
   /// How long a batch that has produced no ImportJobs may keep counting as
   /// in flight.
   ///
@@ -69,7 +94,10 @@ class ImportBatch {
   /// OCR job failed. Nothing sweeps ParserBatch rows, so that batch would
   /// count — and, since impvis1, render — for the life of the account.
   /// Photo OCR finishes in minutes; hours means it is not coming.
-  static const preFanOutGrace = Duration(hours: 2);
+  /// Was two hours, chosen before the watcher's budget was known; now the
+  /// same 90 minutes, so "stopped counting as in flight" and "nothing is
+  /// watching any more" are one moment rather than two.
+  static const preFanOutGrace = watcherBudget;
 
   /// True once this batch has fanned out into ImportJobs.
   ///
