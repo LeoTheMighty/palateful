@@ -1,0 +1,191 @@
+---
+hash: asgalarm1
+type: dev
+created: 2026-09-24T09:40:00-06:00
+title: Alert on failed instance launches — AWS already writes the diagnosis, nobody reads it
+from: leonidbelyi-41, relaying Leo, after spotback1 found 756 failed launch activities carrying both incidents' root causes verbatim
+spawned: pcap1
+status: ready
+owner: null
+branch: null
+---
+
+## What makes this different from everything else in the ranking
+
+**The signal already exists, is already durable, and is already correct.**
+Nobody has to build detection. AWS has been writing the diagnosis of both
+production incidents, in plain English, at the moment each occurred, into a
+surface no one has ever read.
+
+**Spot, 2026-09-24T15:32:40Z** — written while a user's import sat queued:
+
+> `Could not launch Spot Instances. UnfulfillableCapacity - Unable to
+> fulfill capacity due to your request configuration. Launching EC2
+> instance failed.`
+
+**On-demand, 2026-09-23T18:53:59Z:**
+
+> `Could not launch On-Demand Instances. VcpuLimitExceeded - You have
+> requested more vCPU capacity than your current vCPU limit of 0 allows for
+> the instance bucket that the specified instance type belongs to.`
+
+These **name the cause**. They do not imply it or require correlation. The
+second one says *"your current vCPU limit of 0"* — the finding that took two
+sessions and several hours to reach by inference from quota tables.
+
+**Volume, measured 2026-09-24:**
+
+| Auto Scaling Group | Failed activities | Since |
+|---|---|---|
+| `…parser-spot-gpu-prod-…` | **540** | 2026-09-23T15:10Z |
+| `…parser-ondemand-gpu-prod-…` | **216** | 2026-09-23 |
+| **Total** | **756** | — |
+
+**756 recorded failures. Zero alerts. Zero reads.**
+
+### Why no existing detector could have caught either
+
+**The job never failed.** It stayed `RUNNABLE` and the Batch job status was
+correct throughout. Nothing in the pipeline was in an error state: the
+queue was healthy, both compute environments read `VALID`/`ENABLED`, and
+`desiredvCpus` was a perfectly ordinary 4. **The failure lived one layer
+below everything anyone was watching**, in the ASG that Batch manages on
+our behalf and that no dashboard, alarm or script in this repo mentions.
+
+This is also why it survived two independent verifications of the compute
+environments — see pcap1's *"verified the shape, never the capability"*.
+
+## Goal
+
+When an instance launch fails, a human learns within minutes, with AWS's own
+message in the alert.
+
+## Design
+
+**EventBridge, not CloudWatch metrics.** Measured 2026-09-24: the ASGs have
+**no** CloudWatch metrics published and `EnabledMetrics` is `[]`, and Batch
+creates these ASGs so we do not own their configuration. But EC2 Auto
+Scaling emits **`EC2 Instance Launch Unsuccessful`** to the default event
+bus, and the account currently has **zero EventBridge rules** — so this is
+greenfield rather than a modification.
+
+```
+EventBridge rule
+  source       = ["aws.autoscaling"]
+  detail-type  = ["EC2 Instance Launch Unsuccessful"]
+  → target: module.alerts.topic_arn
+```
+
+The event detail carries `StatusMessage` — the verbatim text above — so the
+alert names the cause without a lookup.
+
+**Deliberately not scoped to the parser ASGs.** Any failed launch in this
+account is worth knowing about, and scoping to names that Batch generates
+(`…-asg-986a0e04-…`) would break on the next compute-environment
+replacement, which `pcap1` has already done twice.
+
+### Rate limiting is required, not optional
+
+540 failures in 24 hours is **one every ~2.7 minutes**, and they arrive in
+bursts of two or three per attempt. A rule that pages on every event is a
+rule someone mutes in an hour — which is (b) by another route: a detector
+whose output reaches a human who has stopped listening.
+
+Either an SNS-side throttle, or a small Lambda/metric-filter that converts
+events to a **count** and alarms on *"failed launches > 0 over 15 minutes"*.
+Prefer the count: it fires once per incident rather than once per attempt,
+and its recovery is meaningful.
+
+## The blocker that makes this honest
+
+**`palateful-prod-alerts` has zero confirmed subscriptions.** Measured
+2026-09-22 and unchanged: the three existing alarms publish into a void.
+**Shipping this rule without a subscriber produces a fourth detector that
+tells nobody** — corollary (b) of the consolidated LESSONS entry, committed
+by the spec that cites it.
+
+`MANUAL.md` already carries `dfrcp1` — *subscribe to
+`palateful-prod-alerts`* — and it blocks two detectors today. **This makes
+three. This spec is not done until a confirmed subscription exists**, and
+`length(Subscriptions[?starts_with(SubscriptionArn,'arn:')])` is the check,
+because a `PendingConfirmation` subscription appears in the console and
+delivers nothing.
+
+## Acceptance criteria
+
+- [ ] EventBridge rule exists, targets `module.alerts.topic_arn`, in
+      terraform — not click-ops.
+- [ ] **Driven into the failure state and observed.** Not "configured".
+      Uniquely for this spec, **the failure is happening right now** — the
+      spot ASG is failing every few minutes — so the rule can be verified
+      against a live, ongoing, real failure the moment it is applied.
+      There is no excuse here for shipping an unexercised detector.
+- [ ] The alert body contains the verbatim `StatusMessage`. An alert that
+      says "a launch failed" without saying `VcpuLimitExceeded … limit of 0`
+      throws away the entire value of this signal.
+- [ ] Rate limiting demonstrated against the current burst: confirm the
+      chosen mechanism emits **once per incident**, not 540 times.
+- [ ] **A confirmed (not `PendingConfirmation`) subscription exists on
+      `palateful-prod-alerts`** before this is called done.
+- [ ] Retroactive check: the rule would have fired on 2026-09-23T18:53:59Z
+      and on 2026-09-24T15:32:40Z. State which, and why.
+
+## Technical notes
+
+**Cost:** negligible. EventBridge charges nothing for AWS-source events on
+the default bus; SNS email is effectively free at this volume once rate
+limiting is in place.
+
+**This is the cheapest item in the detection ranking by a wide margin**, and
+it is cheaper than anything in `clidet1`, because the collection problem is
+already solved by AWS. Every other gap in that ranking requires instrumenting
+something. This one requires subscribing to something.
+
+**The `azwide1` connection.** `UnfulfillableCapacity - Unable to fulfill
+capacity due to your request configuration` is **AWS pointing at the
+request configuration** — five instance types across two AZs. That is
+evidence for widening rather than a placement-score inference. It does not
+change `azwide1`'s ceiling of 3 or its blast radius, and Leo's decision
+still waits on `L-DB2E81BA`; but the argument there is now AWS's rather
+than ours.
+
+## Status log
+
+- 2026-09-24 — filed by palateful-4f at Leo's direction via
+  leonidbelyi-41, jumping the filing halt. Found while watching a live
+  import stall: `describe-scaling-activities` on the Batch-managed ASGs
+  carries both incidents' root causes verbatim, 756 failures deep, unread.
+  The same lookup also corrected an earlier claim of mine that the
+  on-demand environment "produced zero instance requests" — it produced
+  216 failed ones; I had queried `describe-fleets` and
+  `describe-spot-instance-requests`, which correctly return nothing because
+  Batch uses neither.
+- 2026-09-24 — implemented by palateful-0a. All four of the spec's measured
+  claims re-verified first, not assumed: 3 ASGs all report **0** enabled
+  metrics (my first query filtered on `Batch` in the name and matched
+  nothing — an empty result, not an empty metrics list; re-run unfiltered);
+  the account has **0** EventBridge rules; `palateful-prod-alerts` now has
+  **1 confirmed, 0 pending** subscriptions, so the spec's own blocker is
+  cleared; and spot is still failing live (16:28:23Z and 16:27:22Z today).
+
+  **Design deviation, and why.** The spec prefers a count-based alarm for
+  rate limiting, but AC-3 requires the verbatim `StatusMessage` in the alert
+  body — and a CloudWatch alarm notification cannot carry the triggering log
+  line. Those two ACs cannot both be satisfied by one alarm. Resolved without
+  a Lambda (there is no Lambda anywhere in this Terraform, so one would be
+  new infrastructure) by using the house pattern from `alarm_fail_open.tf`:
+  EventBridge → log group → metric filter → alarm, with **AWS's own wording
+  for both known causes carried in `alarm_description`**, which *is* included
+  in the SNS payload. The live event's exact text stays authoritative in the
+  log group, and the description says so.
+
+  **One filter on `$.source`, not per-cause filters on
+  `$.detail.StatusMessage`.** That JSON path is the one thing here that
+  cannot be verified before a real event lands, and if it were wrong every
+  per-cause filter would match nothing — a detector that alerts on nothing,
+  which is the failure this spec exists to end. Per-cause enrichment is a
+  follow-up once a live event confirms the shape; the live drive will
+  produce that shape within minutes of apply.
+
+  `alarm_description` hit AWS's 1024-character limit on the first plan and
+  was trimmed to 776, keeping both verbatim messages.
