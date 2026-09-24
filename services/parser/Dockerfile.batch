@@ -54,8 +54,10 @@ RUN poetry config virtualenvs.create false \
 # MODEL_SUBFOLDER. Pinning only here would fix nothing — `from_pretrained`
 # is what selects at load time.
 #
-# `allow_patterns` also shrinks this layer from ~11.8 GB to ~2 GB, because
-# it stops baking the 1.5 weights we never load.
+# `allow_patterns` is an **optimisation, not the fix** — it shrinks this
+# layer from ~11.8 GB to ~2 GB by no longer baking 1.5 weights we never
+# load. The repair is `subfolder=` at load time in run_job.py. A smaller
+# image is therefore NOT evidence that the model pin took effect.
 ARG MODEL_REVISION=47644ecc4fc854efa4f505155158831f36773ee4
 ARG MODEL_SUBFOLDER=v1.0
 ENV MODEL_REVISION=${MODEL_REVISION} \

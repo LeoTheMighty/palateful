@@ -57,10 +57,23 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
 # The source had not changed since 2026-04-16. The image rebuilt on
 # 2026-09-23 broke because the *data* moved under it.
 #
-# So both of these are pinned, and both must stay pinned together:
-#   MODEL_REVISION  — the repo commit
-#   MODEL_SUBFOLDER — `v1.0`, upstream's own archive of the version our
-#                     pinned transformers understands
+# **MODEL_SUBFOLDER is the repair. MODEL_REVISION is not.** Measured from
+# inside the broken image (2026-09-24) rather than inferred:
+#
+#   snapshots/47644ecc…/config.json       model_type hunyuan_vl,
+#                                         transformers_version 5.15.0.dev0,
+#                                         NO top-level `rope_scaling`,
+#                                         text_config.rope_parameters
+#                                           .xdrope_section = [16,16,16,16]
+#   snapshots/47644ecc…/v1.0/config.json  the 1.0 config, present all along
+#
+# Two consequences that are easy to get backwards:
+#
+#   * `47644ecc…` is the revision the build *already* resolved. Pinning it
+#     changes nothing today — it is protection against future drift.
+#   * **`v1.0/` was already in the image.** A working config sat beside the
+#     broken one the whole time; `from_pretrained` took the root because
+#     nothing told it otherwise. `subfolder=` is what tells it.
 #
 # Pinning only the download would look correct and fix nothing: it is
 # `from_pretrained` that selects at load time.
