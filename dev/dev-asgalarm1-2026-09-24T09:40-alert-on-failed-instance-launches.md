@@ -189,3 +189,14 @@ than ours.
 
   `alarm_description` hit AWS's 1024-character limit on the first plan and
   was trimmed to 776, keeping both verbatim messages.
+- 2026-09-24 — **the `notBreaching` limitation is the same unresolved shape
+  as absal1's, and whoever solves liveness should solve both.** This alarm
+  cannot distinguish "no failed launches" from "the EventBridge rule is
+  gone"; absal1 cannot distinguish "telemetry is healthy" from "the watcher
+  stopped running", and its own channel-watcher alerts through the channel
+  it watches. In all three cases the detector is blind to its own input
+  path, and no threshold, default or `treat_missing_data` setting reaches
+  it — the check would have to come from outside the thing being checked.
+  They are one problem wearing three costumes, and fixing them separately
+  would mean building the same external heartbeat three times. Cross-filed
+  so the next person to pick up liveness finds both ends of it.
