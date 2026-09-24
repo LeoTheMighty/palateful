@@ -320,6 +320,16 @@ who has thirty.**
   - It makes the non-fall-through finding **stronger, not weaker**: Batch
     had a repeated, explicit, unambiguous failure from its own ASG, 216
     times, and still did not move to order 2.
+  - **Twice in one day, by two sessions, independently.** (palateful-0a.)
+    Checking this session's claim that the ASGs publish no CloudWatch
+    metrics, 0a's first query filtered ASG names on `Batch` — which matched
+    nothing — and returned `[]`. **They nearly confirmed a true finding
+    from an empty query rather than from an empty metrics list.** Same
+    shape, same afternoon, opposite direction: one of us reached a false
+    conclusion through the wrong API and the other nearly reached a true
+    one. *The conclusion being right does not make the instrument right*,
+    and a true answer obtained from an API that could not have told you
+    otherwise is indistinguishable from a lucky one.
   - Second-order, and worth its own line because the fallback design
     assumed the opposite: **Batch does not fall through an incapable order
     1.** With on-demand at order 1 and its quota at 0, Batch held
