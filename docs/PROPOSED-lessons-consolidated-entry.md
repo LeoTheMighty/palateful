@@ -339,6 +339,24 @@ who has thirty.**
   - The check that collapses all three of these into one question:
     **could this call have returned the other answer?** If not, it cannot
     bear on the claim, however true its output is.
+  - **And the reason this defect survives: the repetition felt like
+    corroboration.** (palateful-0a's formulation, of my error.) I ran
+    `describe-fleets` and `describe-spot-instance-requests` against Batch
+    repeatedly over two days and built a reported finding on them. **Running
+    an incapable call more often produces more confidence and no more
+    information.** So this class is not worn down by use — it survives
+    exactly as long as nobody asks the question, and heavy use makes it
+    *more* entrenched rather than less. **Suspect the calls you trust most**,
+    because they are the ones you have never re-derived.
+  - A second self-inflicted case the same evening, smaller and worth
+    keeping for the symmetry: a stated recovery window
+    (*"expect ~19:58–20:05Z, later than that is worth a second look"*)
+    derived from **one** model of how CloudWatch aligns a 900s evaluation
+    window, with the model left unstated. 0a produced a second, equally
+    plausible derivation giving **20:06–20:16Z** — so the threshold I
+    attached would have flagged a healthy recovery as a defect. **A
+    threshold is only as good as the model behind it, and a threshold
+    quoted without its model reads as measured.**
   - **Twice in one day, by two sessions, independently.** (palateful-0a.)
     Checking this session's claim that the ASGs publish no CloudWatch
     metrics, 0a's first query filtered ASG names on `Batch` — which matched
