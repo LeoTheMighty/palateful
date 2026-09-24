@@ -93,3 +93,76 @@ reports the same red X.
   SHA) would have destroyed real work. **The check that settled it was local
   evidence: reflog, parents, and the diff against `main`** — not a second
   query to the same source that produced the doubtful reading.
+- 2026-09-24 — **a live instance, with the exact misreading this spec is about
+  available on a merged PR right now.**
+
+  `#96` (the Batch queue-order flip) merged as `55731990` at 19:46Z. Two
+  further merges landed while its run was still in `flutter-test` —
+  `e611e4ff` at 19:52:18Z and `6b4e23ab` at 19:52:26Z, eight seconds apart —
+  and `cancel-in-progress` killed the run. Measured:
+
+  ```
+  run 36050394812 (55731990)
+    terraform      : completed/success      <- the PR validate job
+    terraform-prod : cancelled  19:53:45Z   <- the apply
+  live queue order1 @ 19:53:58Z: palateful-parser-spot   <- unchanged
+  ```
+
+  **The apply never ran, and `gh pr checks` on the merged PR shows a green
+  `terraform`.** Anyone confirming the deploy the obvious way — glance at the
+  merged PR, see terraform green — concludes the flip is live. It is not.
+  Three sessions spent roughly ten minutes reasoning about an apply that had
+  already been cancelled before any of us named it.
+
+  **Two distinct defects, and they compound:**
+
+  1. **`mergeStateStatus` does not describe main.** `gh pr view` read `CLEAN`
+     for both merges. `CLEAN` is the PR *against* main; it says nothing about
+     what main is currently running. There is no field in that response that
+     would have shown an in-flight apply, so no amount of care with that call
+     resolves it — the check has to be a different call:
+     `gh api "repos/…/actions/runs?head_sha=$(git rev-parse origin/main)"`,
+     and wait if the tip's run is `in_progress`.
+  2. **The job-name collision is permanent, not intermittent.** `terraform`
+     (validate) and `terraform-prod` (apply) sit on the same run, and the
+     first is green on every PR. Unlike the `gh run list` staleness fault,
+     this one is present every single time.
+  3. **`gh pr checks` cannot answer the question at all.** On `#96` it reads:
+
+     ```
+     gh pr checks 96  -> run 36049602691  branch=fix/dev-odback1  event=pull_request
+                         terraform      pass
+                         terraform-prod skipping
+     gh run view      -> run 36050394812  branch=main             event=push
+                         terraform      completed/success
+                         terraform-prod completed/cancelled
+     ```
+
+     The first is not mislabelling the second — **it is a different run.**
+     `gh pr checks` reports the pre-merge PR run, where `terraform-prod`
+     correctly skips because a PR never applies. The apply lives on the
+     post-merge `push` run, which that command never reads. So
+     `terraform-prod: skipping` is a correct answer to a question nobody
+     asked, and **no output `gh pr checks` could ever produce would show an
+     apply cancelled.** A reader confirming a deploy that way has not
+     measured anything.
+
+     (First written here as "the aggregate view relabels `cancelled` as
+     `skipping`". That was wrong and worth recording as wrong: it is a
+     falsifiable claim about `gh`, it is false, and the first person to test
+     it would have discounted this whole entry. The true mechanism is the
+     stronger one.)
+
+  **The rule that survives both:** never conclude an apply landed from a job
+  name, a green check, or a merge commit. **Read the applied state itself.**
+  Here that was `order1` from `describe-job-queues` — which said `spot`
+  throughout and was the only reading that never lied. Confirming the change
+  is *in the tree* is a separate question again, and needs content not
+  ancestry: `merge-base --is-ancestor` is satisfied by a revert too, so pair
+  it with reading the value out of `origin/main`.
+
+  Not lost, for the record: `6b4e23ab` descends from `55731990`, so the next
+  run carries the change and will apply it — *if no further merge preempts
+  that one too*. The state is "delayed and repeatedly preemptable", not
+  "reverted", and the distinction matters because the remedy is a merge
+  freeze rather than a re-merge.
