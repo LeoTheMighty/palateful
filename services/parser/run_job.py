@@ -43,11 +43,41 @@ def parse_s3_uri(uri: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+# ocrload1 (2026-09-24): PIN THE MODEL, NOT JUST THE CODE.
+#
+# `Dockerfile.batch` pins transformers to an exact commit but downloaded the
+# model with no revision. On 2026-07-06 upstream re-pointed the repo root to
+# **HunyuanOCR-1.5** and archived 1.0 under `v1.0/`. The two configs are
+# incompatible: 1.0 carries a top-level `rope_scaling` holding
+# `xdrope_section`; 1.5 nests it under `text_config.rope_parameters`. The
+# pinned transformers commit reads `config.rope_scaling["xdrope_section"]`,
+# so a rebuild that picked up 1.5 crashes on model construction with
+# `TypeError: 'NoneType' object is not subscriptable`.
+#
+# The source had not changed since 2026-04-16. The image rebuilt on
+# 2026-09-23 broke because the *data* moved under it.
+#
+# So both of these are pinned, and both must stay pinned together:
+#   MODEL_REVISION  — the repo commit
+#   MODEL_SUBFOLDER — `v1.0`, upstream's own archive of the version our
+#                     pinned transformers understands
+#
+# Pinning only the download would look correct and fix nothing: it is
+# `from_pretrained` that selects at load time.
+MODEL_REVISION = os.environ.get(
+    "MODEL_REVISION", "47644ecc4fc854efa4f505155158831f36773ee4"
+)
+MODEL_SUBFOLDER = os.environ.get("MODEL_SUBFOLDER", "v1.0")
+
+
 def load_model(model_name: str):
     """Load model and processor once."""
     device = get_device()
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
-    print(f"Loading model {model_name} on {device} with {dtype}...")
+    print(
+        f"Loading model {model_name} (revision={MODEL_REVISION[:12]}, "
+        f"subfolder={MODEL_SUBFOLDER}) on {device} with {dtype}..."
+    )
 
     # Qwen2-VL-style token budget: each 28x28 patch is one visual token.
     # 1280*28*28 ≈ 1M pixels caps KV cache so large images fit alongside the model on a 16GB GPU.
@@ -55,6 +85,8 @@ def load_model(model_name: str):
     max_pixels = int(os.environ.get("MAX_PIXELS", 1280 * 28 * 28))
     processor = AutoProcessor.from_pretrained(
         model_name,
+        revision=MODEL_REVISION,
+        subfolder=MODEL_SUBFOLDER,
         use_fast=False,
         trust_remote_code=True,
         min_pixels=min_pixels,
@@ -62,6 +94,8 @@ def load_model(model_name: str):
     )
     model = ModelClass.from_pretrained(
         model_name,
+        revision=MODEL_REVISION,
+        subfolder=MODEL_SUBFOLDER,
         dtype=dtype,
         device_map="auto" if device != "cpu" else None,
         attn_implementation="eager",

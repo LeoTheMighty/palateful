@@ -42,7 +42,29 @@ RUN poetry config virtualenvs.create false \
 # Per https://github.com/Tencent-Hunyuan/HunyuanOCR — this commit has not been
 # merged into a release yet, so we pin to the exact commit Tencent recommends.
 # Pre-download model weights BEFORE overriding transformers (huggingface_hub is intact here)
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('tencent/HunyuanOCR')"
+#
+# ocrload1 (2026-09-24): PINNED. This previously took no `revision`, so the
+# image baked whatever was at the repo root on build day. On 2026-07-06
+# upstream re-pointed the root to HunyuanOCR-1.5 and archived 1.0 under
+# `v1.0/`; 1.5's config has no top-level `rope_scaling`, which the pinned
+# transformers commit below indexes into. The 2026-09-23 rebuild therefore
+# crashed on model construction from source that had not changed since April.
+#
+# The revision and subfolder MUST match `run_job.py`'s MODEL_REVISION /
+# MODEL_SUBFOLDER. Pinning only here would fix nothing — `from_pretrained`
+# is what selects at load time.
+#
+# `allow_patterns` also shrinks this layer from ~11.8 GB to ~2 GB, because
+# it stops baking the 1.5 weights we never load.
+ARG MODEL_REVISION=47644ecc4fc854efa4f505155158831f36773ee4
+ARG MODEL_SUBFOLDER=v1.0
+ENV MODEL_REVISION=${MODEL_REVISION} \
+    MODEL_SUBFOLDER=${MODEL_SUBFOLDER}
+RUN python -c "\
+from huggingface_hub import snapshot_download; \
+snapshot_download('tencent/HunyuanOCR', \
+                  revision='${MODEL_REVISION}', \
+                  allow_patterns='${MODEL_SUBFOLDER}/*')"
 
 # Now install pinned transformers with hunyuan_vl support.
 # --no-deps prevents reinstalling torch/nvidia/huggingface_hub which conflict.
