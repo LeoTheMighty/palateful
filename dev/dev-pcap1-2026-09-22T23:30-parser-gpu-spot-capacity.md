@@ -355,6 +355,34 @@ pipeline more reliable.
 single instance, from the moment it was written.** Not "engages only when
 spot cannot allocate" — the account may not run these instances at all.
 
+### The quota history apportions this correctly: nobody neglected it
+
+All three quota requests this account has ever made are for **spot**
+(`L-3819A6DF`), and **zero** for on-demand:
+
+| Created | Quota | Desired | Status | Turnaround |
+|---|---|---|---|---|
+| 2026-02-01 | `L-3819A6DF` spot | 8 | CASE_CLOSED | 1.5 h |
+| 2026-04-08 | `L-3819A6DF` spot | 32 | CASE_CLOSED | 166 h (6.9 days) |
+| 2026-04-15 | `L-3819A6DF` spot | 32 | CASE_CLOSED | 17.6 h |
+
+AWS's default for **both** quotas is 0, so spot's 32 is entirely the product
+of those three asks. In April someone hit a GPU capacity wall and raised
+spot, twice.
+
+**So this is not a maintenance failure. (leonidbelyi-41's framing, and it is
+the accurate one.) There was nothing to ask for until the fallback existed,
+and the fallback was built without asking.** The account was configured
+correctly for the pipeline that existed. The gap opened at the moment a new
+path was added — which is exactly when nobody thinks to re-ask a question
+that was settled for the old one.
+
+**Filed 2026-09-24 on Leo's authorisation**: request
+`d7d10d1a05364c05ae06844f6209a22a3aIf45IN`, desired 32, `PENDING`. Tracked
+in `MANUAL.md`. **`CASE_CLOSED` will not mean granted** — the check is the
+quota's `Value`. We only know April's three succeeded because
+`L-3819A6DF` now reads 32.
+
 ### The lesson: verified the shape, never the capability
 
 The fallback was checked, and checked again, and both checks passed:
