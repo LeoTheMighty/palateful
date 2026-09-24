@@ -463,9 +463,15 @@
   alarm, a report — name the thing that will read it, and check that the thing
   exists. On 2026-09-23 a session specified a Playwright `storageState` for a
   QA identity, a coordinator relayed the instruction, and both agreed; nobody
-  asked what would load the file. Nothing would: there is no Playwright in the
-  repo, and the QA agent is Claude-in-Chrome, which attaches to a running
-  browser profile and cannot read one. The check took two minutes and it
+  asked what would load the file. Nothing would: **no `package.json` depends
+  on Playwright** — 106 files mention it, 90 of them under `_bmad/`, all
+  framework docs describing a harness this repo never installed — and the QA
+  agent is Claude-in-Chrome, which attaches to a running browser profile and
+  cannot read a `storageState` at all. (The first draft of this entry said
+  "there is no Playwright in the repo", which a reviewer corrected: the
+  mentions are real, the dependency is not. The conclusion held on the
+  stronger evidence, but the overstated version would have been the thing
+  someone later disproved with one grep and then distrusted the rest.) The check took two minutes and it
   removed the whole artifact — along with a credential that would otherwise
   have transited a script we wrote, an environment we read, and error paths we
   would have had to prove never print it. The replacement (a dedicated Chrome
