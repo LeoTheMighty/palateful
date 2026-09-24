@@ -117,7 +117,11 @@ nothing told it otherwise. **`subfolder='v1.0'` is the entire repair.**
 That is why the failure *looked* like a dependency problem and was not.
 
 **3. Withdrawn — verification by image size.** `allow_patterns` is an
-optimisation (~11 GB → ~2–3 GB). A smaller image evidences that line and
+optimisation. **Measured after the apply: the model layer went 3,495 MB →
+1,494 MB — a ~2 GB saving, not the ~10 GB first estimated.** (That estimate
+was computed from the 11.8 GB layer, which was later *proved* not to hold
+the model — the premise was corrected and the derived number was not.)
+A smaller image evidences that line and
 says nothing about the pin, which acts at load time. **Only a completed
 import verifies the pin.**
 
