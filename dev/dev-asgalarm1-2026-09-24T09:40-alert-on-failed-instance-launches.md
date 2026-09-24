@@ -265,3 +265,29 @@ than ours.
   on the same answer by accident is indistinguishable from a real
   corroboration, and the only thing that separated them was re-running it
   unfiltered.
+- 2026-09-24 — **the pipeline is measurably lossless, and the same number
+  exposes a blind spot.** At 19:38Z, with the alarm still in `ALARM` since
+  18:17:51.289Z, the log group held **385** events since 18:00Z and the metric
+  summed to **exactly 385** over the same span (65 / 70 / 72 / 70 / 72 / 28 in
+  the 900s buckets from 18:15). Filter and metric agreeing to the event is
+  stronger evidence that no events are being dropped between EventBridge, the
+  log group and the metric filter than either figure is on its own — a count
+  that merely looks plausible proves nothing about the stage before it.
+
+  `NumberOfMessagesPublished` and `NumberOfNotificationsDelivered` both stayed
+  at **1.0** across all 385. That is the count-based design working. It is
+  also why **a second, unrelated failure during this window would have been
+  silent** — a CloudWatch alarm notifies on state transition, so everything
+  after the first one is unreported. Filed as `edgetrig1`; it is the third
+  instance of the same shape as this alarm's `notBreaching` limitation and
+  `absal1`'s channel watcher.
+
+  **Correction to a figure already in circulation:** the 2m56s from job
+  submission (18:14:55Z) to alarm (18:17:51Z) is arithmetically right but is
+  **not this alarm's detection latency**. A 900s period can only fire when a
+  period closes; the burst began ~18:15 against a boundary at 18:17:00, plus
+  ~51s of CloudWatch evaluation delay. Starting just *after* a boundary would
+  have taken **~15m50s** for the identical burst. Expected ~8 minutes, worst
+  ~16. Recorded because "under three minutes" had already been reported to
+  Leo, and because it is the same error as the window calibration above — a
+  margin nobody chose, restated as a property.
