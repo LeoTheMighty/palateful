@@ -200,3 +200,68 @@ than ours.
   They are one problem wearing three costumes, and fixing them separately
   would mean building the same external heartbeat three times. Cross-filed
   so the next person to pick up liveness finds both ends of it.
+- 2026-09-24 — **applied, then exercised by a real burst. All four checks
+  passed; nothing was manufactured.**
+
+  **Apply.** `#87` merged as `41e7a8f8`; `terraform-prod` job log reads
+  `Apply complete! Resources: 6 added, 0 changed, 0 destroyed.` at
+  17:22:29Z — matching the pre-registered plan exactly, and read from the
+  job log rather than inferred from the merge. All six resources were then
+  verified individually. The alarm settled `INSUFFICIENT_DATA` → `OK` at
+  17:23:51 with CloudWatch stating *"1 missing datapoint was treated as
+  [NonBreaching]"*, which is the `treat_missing_data` setting confirming
+  itself rather than being read back off the config.
+
+  **Drive.** Leo's retry queued at 18:14:55Z and spot failed as it has been
+  failing. Four independent checks, each of which could have failed alone:
+
+  1. The log group received **38 events** against ~35 visible `Failed`
+     scaling activities — the rule matches a real
+     `EC2 Instance Launch Unsuccessful`. This was the only genuinely
+     unverified element before the drive.
+  2. The metric filter recorded datapoints — the alarm reason cites `5.0`
+     in the 18:02 period.
+  3. The alarm transitioned `OK` → `ALARM` at 18:17:51Z: *"Threshold
+     Crossed: 1 out of the last 1 datapoints [5.0] was greater than or
+     equal to the threshold (1.0)"*.
+  4. **One email, not 38**: `NumberOfMessagesPublished 1.0`,
+     `NumberOfNotificationsDelivered 1.0`. The count-based design did the
+     thing it was chosen for.
+
+  **The event shape, now measured, resolving the deferred question above:**
+
+  ```
+  source     : aws.autoscaling
+  detail-type: EC2 Instance Launch Unsuccessful
+  detail keys: Origin, Destination, Action, Description, EndTime, RequestId,
+               ActivityId, StartTime, EC2InstanceId, StatusCode,
+               StatusMessage, Details, Cause, AutoScalingGroupName
+  StatusMessage: "Could not launch Spot Instances. UnfulfillableCapacity -
+                  Unable to fulfill capacity due to your request
+                  configuration…"
+  ```
+
+  `$.detail.StatusMessage` is present, so per-cause enrichment is now a
+  viable follow-up — explicitly a follow-up, not a change to what shipped.
+
+  **This proves nothing about `ocrload1`.** The GPU job was still `RUNNABLE`
+  throughout. The alarm firing means the detector works, not that the
+  capacity problem moved.
+
+  **Window calibration — the margin here is luck, not design.** The
+  15-minute period was sized against this spec's own "one failure every
+  ~2.7 minutes". The real rate in the drive was one every **~13–16
+  seconds** — roughly an order of magnitude faster. The window survives
+  because a count-over-15-minutes alarm degrades gracefully as the rate
+  rises (more events, same one alert), not because anyone picked 900s with
+  this rate in mind. Recording it so the next person sizing a window off
+  the 2.7-minute figure knows that figure is a 24-hour average across idle
+  stretches, not a burst rate.
+
+  **Near-miss worth keeping.** The first `EnabledMetrics` check in the
+  entry above returned `[]` because my filter on `Batch` in the ASG name
+  matched nothing — an *empty query*, not an empty metrics list. It would
+  have confirmed 4f's claim by accident. An independent check that lands
+  on the same answer by accident is indistinguishable from a real
+  corroboration, and the only thing that separated them was re-running it
+  unfiltered.
