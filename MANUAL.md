@@ -277,6 +277,50 @@
 
 ## AWS account limits
 
+- [x] **GRANTED 2026-09-24.** `L-DB2E81BA` reads **32.0**. AWS case
+  **179026203300222**, approved *"EC2 Instances / All G and VT instances,
+  New Limit = 32"*, closed 19:29:25Z, applied value turned over ~19:37:56Z.
+  Ordering restored to on-demand-first by `odback1` (#96). The rest of this
+  row is kept because **the check below is the reusable part** — and it
+  nearly caught us out in both directions on the day.
+
+  ### `CASE_CLOSED` does not mean granted. And `0.0` does not mean denied.
+
+  **Read the applied value, not the case status:**
+
+  ```bash
+  aws service-quotas get-service-quota \
+      --service-code ec2 --quota-code L-DB2E81BA --query 'Quota.Value'
+  ```
+
+  All three of this account's earlier quota requests read `CASE_CLOSED`; we
+  only ever knew they succeeded because `L-3819A6DF` reads 32. **On
+  2026-09-24 an approval email arrived at 19:29:25Z and the applied value
+  still read `0.0` at 19:35Z.** Acting on the email would have put on-demand
+  at order 1 against a zero quota — the 2026-09-23 incident recreated, on
+  top of a job that was queued at the time.
+
+  **But the rule fails in the other direction too.** (palateful-0a, who hit
+  it.) **A `0.0` is only meaningful alongside how long ago the case closed.**
+  Inside the stated propagation window — the approval email gives one; it
+  was **30 minutes** in this case — a granted quota and a denied one are
+  **byte-identical** through the API. `list-service-quotas` shows *applied*
+  state and carries no pending field at all.
+
+  ```bash
+  aws service-quotas list-requested-service-quota-change-history-by-quota \
+      --service-code ec2 --quota-code L-DB2E81BA
+  ```
+
+  **Check the change history, or the email's effective time, before
+  concluding either way.** A reader who has only the first half of this rule
+  will confidently make the second mistake.
+
+  **Worth knowing: the failure mode was a documented propagation window, not
+  an error state.** That makes it *more* likely to recur, not less.
+
+<details><summary>Original entry, kept for the reasoning (filed 2026-09-23)</summary>
+
 - [ ] **Request an increase to the on-demand GPU service quota — the parser's
   on-demand compute environment cannot launch a single instance until it is
   granted.** (filed 2026-09-23, from pcap1 / LESSONS corollary (g))
@@ -316,6 +360,8 @@
   **Two separate problems, in order.** The ordering revert (#78) *restores
   service*. This quota request *makes on-demand real*. Neither substitutes
   for the other, and only the first is urgent.
+
+</details>
 
   *How this was missed, recorded because it is the same shape as the rest:
   the quota and the compute environment were both measured and correct; the
