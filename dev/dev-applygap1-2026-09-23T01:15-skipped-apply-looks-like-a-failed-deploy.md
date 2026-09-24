@@ -161,8 +161,40 @@ reports the same red X.
   ancestry: `merge-base --is-ancestor` is satisfied by a revert too, so pair
   it with reading the value out of `origin/main`.
 
-  Not lost, for the record: `6b4e23ab` descends from `55731990`, so the next
-  run carries the change and will apply it — *if no further merge preempts
-  that one too*. The state is "delayed and repeatedly preemptable", not
-  "reverted", and the distinction matters because the remedy is a merge
-  freeze rather than a re-merge.
+  **Not lost tonight — but "a cancelled apply is only delayed" is not a
+  general rule, and the first draft of this entry stated it as one.**
+
+  Measured from run `36051071511`'s setup job:
+
+  ```
+  Base SHA  d0dcb5e2   <- the last SUCCESSFUL run of this workflow
+  Head SHA  6b4e23ab
+  ```
+
+  `nx-set-shas` bases on the last *successful* run, not the previous commit.
+  So the range spans `55731990`, the terraform project is affected, and the
+  apply happens. That gives the real distinction:
+
+  - **A run that is cancelled does not advance the base.** The orphaned
+    change stays inside the next run's range. Recoverable.
+  - **A run that goes green while skipping the apply does advance it.** The
+    base moves past the orphaned change and no later run can see it.
+    **Permanently lost, and silently.**
+
+  So the hazard is not "a docs-only merge cancels an apply" — that alone
+  survives. It is **"a docs-only merge cancels an apply and then its own run
+  succeeds without applying"**, which is exactly what a docs-only merge does:
+  `deploy-images` skipped, `detect-changes.terraform` false, `terraform-prod`
+  skipped, run green, base advances. Both conditions are required, and the
+  second is the one that converts delay into loss.
+
+  **`tfgate1`'s comment at `ci.yml:779` does not cover this.** It solves a
+  Terraform-only *change*. It does not solve a Terraform change *orphaned by
+  a later unrelated merge whose run succeeds* — and that case is invisible
+  precisely because the run is green.
+
+  Operationally: after a merge that cancels a run, re-checking is not enough.
+  **Check whether the replacement run will actually apply**, because a green
+  replacement is worse than a cancelled one and looks better. (Credit: d9
+  found the `detect-changes` gap; the base-advance mechanism and the
+  cancelled-versus-green split were measured here from the run log.)
