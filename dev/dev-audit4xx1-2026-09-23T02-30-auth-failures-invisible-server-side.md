@@ -72,17 +72,45 @@ the claim.
 
 - [ ] A dependency-raised `APIException` leaves a row. Widen at
       `main.py:166`, which is the path that currently drops them.
-- [ ] **A volume cap, with its behaviour stated.** Routine token expiry is
-      high-frequency and must not turn `error_logs` into a firehose. Say what
-      the cap is, what it drops when hit, and **how an operator can tell
-      dropping happened** — a cap that silently discards is the same failure
-      class this story is about.
-      **Do not copy the client half's shape:** palateful-79 confirms
-      `ErrorReporter` has no dedupe, no cooldown and no seen-set — that is an
-      absence, not a design, tolerable there only because Crashlytics groups
-      server-side and rows are free. `error_logs` is a table and this side
-      pays per row. A **per-user-per-error-code cooldown** is the suggested
-      shape, since the failure being guarded is one device retrying in a loop.
+- [ ] **A volume cap, sized from the measured load.** The load here is
+      **poller-driven, not user-driven** — measured on `main` by
+      palateful-79, who owns the client half:
+
+        ActivityReadProvider._pollInterval   30s  (activity_read_provider.dart:284)
+        import_batches_provider               5s while a batch is active, 30s idle
+        mutation-triggered reload floor      10s
+
+      A device whose refresh token is dead therefore does **not** produce one
+      401 when the user taps something. It produces one every **5 to 30
+      seconds, indefinitely, with the app merely open**. `_isRefreshing`
+      (`api_client.dart:16,50-51`) guards re-entry within a single request,
+      not across polls, so nothing stops the cycle.
+
+      Consequences for the design:
+      - A cooldown under ~30s buys almost nothing — the slow path already
+        ticks at 30s, so you would still take ~2 rows/minute per device
+        forever. **Minimum 5 minutes; default 15.** At 15 minutes a looping
+        device contributes **4 rows/hour** instead of ~720 at the 5s cadence
+        — still obviously visible in triage, and unable to drown the table.
+      - **Record the suppressed count on the row that does get written**
+        ("401 for user X, 137 suppressed in the last 15 min"). The count *is*
+        the signal: one 401 is routine expiry, 137 is a device in a loop.
+        A cap that hides the magnitude is barely better than one that drops
+        silently.
+      - **Key on (user, error_code, path)**, not (user, error_code). A user
+        stuck on `/v1/activities/unread-count` while also failing on
+        `/v1/import-jobs` must not collapse into one row — for the auth class
+        the endpoint is often the only clue to *which* poller is looping.
+      - **Known limitation, note it rather than build it:** a per-user cap
+        does nothing for a credential invalid for *everyone* — a signing-key
+        rotation floods the table one capped user at a time. A global rate on
+        `error_type='HTTPException', status=401` is the guard that saves the
+        table in the incident that actually matters.
+
+      **Do not copy the client half's shape:** `ErrorReporter` has no dedupe,
+      no cooldown and no seen-set — an absence, not a design, tolerable there
+      only because Crashlytics groups server-side and rows are free. This side
+      pays per row.
 - [ ] The original intent of that handler is preserved: these must still not
       be logged as 500s by the error-tracking middleware.
 - [ ] A test asserting a dependency-raised 401 produces a row. The current
@@ -94,6 +122,10 @@ the claim.
       and *does* mirror. A small number of auth failures therefore already
       reach `error_logs` as `service='client'`. Do not assume every such row
       duplicates a server row, and do not build dedupe on that assumption.
+      **This AC depends on a runtime property of another codebase**:
+      `AuthService._canMirrorReport` decides the sink at the moment of
+      failure. If that is ever "simplified" to a per-call-site decision, this
+      AC silently becomes wrong — so a change there needs a look here.
 
 ## Out of scope, and stated so nobody reads this as "4xx are now recorded"
 
