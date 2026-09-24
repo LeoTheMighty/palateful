@@ -97,3 +97,31 @@ backlog row against the merge that ended the work.
   sharpening detail, found while filing: the detectors are not missing, they
   are mutually-referential — `doctor`'s `dead-blocker` check fired for bqa102
   and structurally could not fire for rsh102.
+- 2026-09-24 — **a second instance, and with it the mechanism rather than
+  another example.** asgalarm1 shipped (applied 17:22:29Z, exercised by a real
+  burst) while its DEV.md row read `[/]` / "Status: in-progress" and its spec
+  frontmatter read `status: ready`. Neither matched reality — but the point is
+  that **it is specifically the *pair* that hides the item**:
+
+  - a row saying `in-progress` is skipped by whoever scans for work to **pick
+    up**;
+  - frontmatter saying `ready` is skipped by whoever scans for work that is
+    **done**.
+
+  Either one alone gets caught by one of the two scans. Both together get
+  caught by neither, because each scan has a legitimate reason to pass over
+  it. That is why this class survives having detectors pointed at it, and it
+  generalises the mutually-referential observation in the entry above: it is
+  not that the detectors are missing or badly written, it is that a
+  disagreeing pair presents a plausible face to every reader who might have
+  noticed.
+
+  **A reconciler for this must therefore compare the two records against each
+  other, not either one against a scan's expectations.** A check that asks
+  "are there in-progress rows with no open PR?" passes this case; a check that
+  asks "does the row agree with the frontmatter?" catches it without needing
+  to know anything about reality at all — and a disagreement is always worth a
+  human look even when neither side is the wrong one.
+
+  Found only because the person who had just shipped it happened to look.
+  Nobody scanning DEV.md would have surfaced it.
