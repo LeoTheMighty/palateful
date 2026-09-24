@@ -279,6 +279,25 @@
   distinguishes from `skipped`. So the PR page, the checks list and the merge
   itself all agree that everything worked.
 
+  **There are two silences here, and the second is worse.** A cancelled job is
+  one: no summary view distinguishes it from skipped, but a specific run id
+  will show it. The other is a job that was **never scheduled**, where a check
+  looking for a failed or cancelled `terraform-prod` finds nothing wrong
+  because nothing is there. Measured on real runs:
+
+  ```
+  019c9160 (docs-only)       detect-changes success  deploy-images skipped  terraform-prod SKIPPED
+  41e7a8f8 (terraform-only)  detect-changes success  deploy-images skipped  terraform-prod SUCCESS
+  ```
+
+  `terraform-prod` (`ci.yml:797-803`) requires `deploy-images == 'success'`, or
+  `skipped` **and** `detect-changes.outputs.terraform == 'true'`. A docs-only
+  merge satisfies neither, so the job never exists and the run goes green
+  having applied nothing. **Absence must be read as *not applied*, never as
+  *nothing to do*** (0e's line). It also inverts the intuition about which
+  commit is safe to squeeze past a lane hold: the docs-only one feels harmless
+  and is specifically the one that can make the apply vanish rather than fail.
+
   Two consequences that outlive the incident:
 
   1. **A merged PR is not a deployed PR, and the gap is silent.** A cancelled
