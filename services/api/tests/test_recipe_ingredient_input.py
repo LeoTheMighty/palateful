@@ -283,3 +283,61 @@ class TestUpdateRecipeNameOrId:
             },
         )
         assert response.status_code == 400
+
+
+class TestCreateRecipeIngredientIdIsNotTheJoinRowId:
+    """recid500: `RecipeIngredient` has a composite PK and no `id` column.
+
+    `create_recipe` read `recipe_ingredient.id` when building the response.
+    It shipped, and every manual creation carrying an ingredient 500'd for
+    every user — while each attempt left a partial recipe behind, because the
+    rows are committed before the response is built.
+
+    The identical defect was found, fixed and regression-tested on the sibling
+    endpoint (`update_recipe.py:295`, `test_recipe.py::…returns_ingredient_id`).
+    That test stayed green throughout, because it covers the endpoint that was
+    fixed. A regression test named for a defect protects one call site, not a
+    codebase.
+
+    It survived review because the mock DB's `_apply_column_defaults` assigned
+    `id` to any model lacking one — manufacturing the very attribute whose
+    absence was the bug. That is closed now; this test fails without the fix.
+    """
+
+    def test_response_ingredient_id_is_the_ingredient_id(
+        self, client, mock_async_db, book_and_membership
+    ):
+        """The `id` the client receives must be the ingredient's own id."""
+        response = client.post(
+            f"/v1/recipe-books/{book_and_membership}/recipes",
+            json={
+                "name": "Banana Bread",
+                "ingredients": [
+                    {"name": "mashed bananas", "quantity": 3, "unit": "cup"}
+                ],
+                "steps": [{"instruction": "Mash the bananas."}],
+            },
+        )
+
+        assert response.status_code == 201, response.text
+        ingredients = response.json()["ingredients"]
+        assert len(ingredients) == 1
+
+        # The contract update_recipe already keeps: the response `id` is the
+        # ingredient id, not a join-row id (there is no such thing).
+        assert ingredients[0]["id"] == ingredients[0]["ingredient"]["id"]
+
+    def test_the_real_model_has_no_id_attribute(self):
+        """Pin the premise, so the test above cannot quietly become vacuous.
+
+        If `RecipeIngredient` ever gains an `id`, this fails and whoever
+        added it has to decide what the response should carry — rather than
+        the guard silently starting to pass for a new reason.
+        """
+        from utils.models.recipe_ingredient import RecipeIngredient
+
+        ri = RecipeIngredient(recipe_id="r", ingredient_id="i")
+        assert not hasattr(ri, "id"), (
+            "RecipeIngredient now has an `id`; recid500's premise changed. "
+            "Revisit create_recipe/update_recipe response ids deliberately."
+        )
