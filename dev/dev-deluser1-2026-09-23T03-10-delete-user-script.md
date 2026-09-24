@@ -123,3 +123,29 @@ that only does the second half will appear to work and silently undo itself.
   evidence handle has to carry **the command**, not just the claim and the
   ref — a reader given the grep could have seen the same-line assumption in
   seconds. Filed against the entry this repo now carries on that subject.
+- 2026-09-24 — shipped as PR #89 (merged `6b4e23ab`): `delete_user.py`
+  plus the scoped `qa_cleanup.py` sibling.
+- 2026-09-24 — **the guard refused the only operation it was built
+  for.** [M] The prod QA identity has `email IS NULL` (`name='QA Tester'`,
+  `is_admin=False`), so `--confirm-email` could not be satisfied and both
+  scripts refused the approved cleanup. The refusal was *correct* — a
+  null email means the two-identifier property is unavailable, not met,
+  and accepting a blank would have produced a confirmation artefact
+  rather than a confirmation. Fixed by confirming against `--confirm-name`
+  when no email exists; **not** by `--confirm-user-id`, since repeating
+  the id the lookup already used guards against mistyping it once but not
+  against confidently pasting the wrong id twice, which is the realistic
+  failure.
+- 2026-09-24 — **design rule worth carrying past this spec:** a guard's
+  precondition tends to get written from the common case, so it fails in
+  the uncommon case it exists for. Second instance the same night —
+  `terraform-prod`'s `!cancelled()` (`ci.yml:788`) exists because a job
+  whose `needs` include a skipped job is itself skipped "in exactly the
+  case it exists for".
+- 2026-09-24 — the four target rows (2 `Test Banana Bread` recipes,
+  2 orphan `mashed bananas` ingredients) are **left in place** pending the
+  fix. Re-checked against live prod: both recipes present in book
+  `dff7cc6a…`, each ingredient referenced once and only from inside the
+  target recipes, `pantry=0`, `shopping_list_items=0`, book has a single
+  member (the QA user, as owner). The delete stays self-contained
+  whenever it happens.

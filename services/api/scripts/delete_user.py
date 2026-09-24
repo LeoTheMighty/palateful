@@ -40,11 +40,19 @@ Guards
 ======
 Two independent confirmations, neither of which is a bare "I'm sure":
 
-* `--confirm-email` must exactly match (case-insensitively) the email of
-  the user that `--id-or-email` resolved to. The lookup and your belief
-  about who you are deleting have to agree — a typo in either one fails
-  closed. A user with no email on record cannot be confirmed, and so
-  cannot be deleted by this script.
+* A second, **different** identifier must agree with the lookup: usually
+  `--confirm-email`, matched case-insensitively against the resolved
+  user's email. A typo in either one fails closed.
+
+  **Corrected 2026-09-24.** This previously said a user with no email
+  "cannot be confirmed, and so cannot be deleted by this script", and
+  documented that as deliberate on the assumption such users are edge
+  cases. [M] The one prod test identity that has ever been pointed at
+  this script is exactly that case — `email IS NULL` — so the guard
+  refused the only operation it was built for. A null email means the
+  two-identifier property is **unavailable**, not satisfied: the fix is
+  to confirm against another identifier (`--confirm-name`), never to
+  accept a blank as a match. See `confirm_identity`.
 * **Admin accounts are refused outright, with no override.** A `--force`
   flag is a flag that can be added by reflex; there is deliberately none
   here. If deleting an admin is ever genuinely required, add that
@@ -145,6 +153,64 @@ def _looks_like_uuid(value: str) -> bool:
     except (ValueError, AttributeError, TypeError):
         return False
     return True
+
+
+def confirm_identity(
+    user: dict, confirm_email: str | None, confirm_name: str | None
+) -> tuple[bool, str]:
+    """Check that a second, *different* identifier agrees with the lookup.
+
+    The property this enforces is not "the operator typed a confirmation".
+    It is **two different identifiers agree**, so that a typo in either
+    one resolves to a disagreement and fails closed.
+
+    Email is the confirmation when the user has one. When the email is
+    NULL — [M] which the prod QA identity is, measured 2026-09-24 — the
+    property is *unavailable*, not satisfied, so the script asks for
+    `--confirm-name` instead and refuses if neither is available.
+
+    **Deliberately not `--confirm-user-id`.** Re-typing the id the lookup
+    already used guards against mistyping it once, but not against
+    confidently pasting the *wrong* id twice — which is the realistic
+    failure, because an id comes from somewhere else (a spec, a message,
+    a dashboard) and is pasted, not typed. A confirmation that can be
+    satisfied by repeating the same wrong input is a confirmation
+    artefact, not a check.
+    """
+    email = (user.get("email") or "").strip().lower()
+    name = (user.get("name") or "").strip()
+
+    if email:
+        if not confirm_email:
+            return False, (
+                "this user has an email, so --confirm-email is required "
+                "(it must match the resolved user)"
+            )
+        if confirm_email.strip().lower() != email:
+            return False, (
+                "--confirm-email does not match the resolved user's email. "
+                "The lookup and your expectation disagree, which is what "
+                "this check is for."
+            )
+        return True, "confirmed by email"
+
+    if name:
+        if not confirm_name:
+            return False, (
+                "this user has no email on record, so --confirm-name is "
+                f"required instead (the resolved user is named {name!r})"
+            )
+        if confirm_name.strip() != name:
+            return False, (
+                "--confirm-name does not match the resolved user's name."
+            )
+        return True, "confirmed by name (user has no email)"
+
+    return False, (
+        "this user has neither an email nor a name, so nothing can "
+        "corroborate the lookup; refusing rather than proceeding on a "
+        "single identifier"
+    )
 
 
 def find_user(conn: Connection, id_or_email: str) -> list[dict[str, Any]]:
@@ -339,7 +405,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--id-or-email", required=True)
     parser.add_argument(
         "--confirm-email",
-        help="must match the resolved user's email; required with --yes",
+        help="must match the resolved user's email; required with --yes "
+        "when the user has one",
+    )
+    parser.add_argument(
+        "--confirm-name",
+        help="must match the resolved user's name; used instead of "
+        "--confirm-email when the user has no email on record",
     )
     parser.add_argument(
         "--auth0-disabled",
@@ -399,23 +471,13 @@ def main(argv: list[str] | None = None) -> int:
                   "--confirm-email and --auth0-disabled to commit.")
             return 0
 
-        confirm = (args.confirm_email or "").strip().lower()
-        actual = (user.get("email") or "").strip().lower()
-        if not actual:
-            print(
-                "REFUSING: this user has no email on record, so "
-                "--confirm-email cannot corroborate the lookup.",
-                file=sys.stderr,
-            )
+        ok, reason = confirm_identity(
+            user, args.confirm_email, args.confirm_name
+        )
+        if not ok:
+            print(f"REFUSING: {reason}", file=sys.stderr)
             return 1
-        if confirm != actual:
-            print(
-                "REFUSING: --confirm-email does not match the resolved "
-                "user's email. The lookup and your expectation disagree, "
-                "which is what this check is for.",
-                file=sys.stderr,
-            )
-            return 1
+        print(f"Identity {reason}.")
         if not args.auth0_disabled:
             print(
                 "REFUSING: pass --auth0-disabled to attest that the Auth0 "

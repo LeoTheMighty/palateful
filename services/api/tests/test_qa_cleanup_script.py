@@ -272,3 +272,46 @@ def test_ingredients_are_not_a_shared_catalogue():
         "Re-derive the rule before changing this assertion."
     )
     assert "canonicalization" in source.lower()
+
+
+# --- confirmation when there is no email (2026-09-24 correction) ------------
+
+NO_EMAIL_USER = {
+    "id": QA_ID, "email": None, "name": "QA Tester", "is_admin": False
+}
+
+
+def test_a_user_without_an_email_is_confirmed_by_name(run_script):
+    """The prod QA identity: `email IS NULL`, name 'QA Tester'.
+
+    This script exists to clean that account, and the email guard
+    refused it — the guard's precondition was written from the common
+    case, and the case it was built for is the uncommon one.
+    """
+    code, executed = run_script(
+        ["--id-or-email", QA_ID, "--confirm-name", "QA Tester",
+         "--recipe", RECIPE_ID, "--yes"],
+        user=NO_EMAIL_USER,
+    )
+    assert code == 0
+    assert [s for s in executed if s.startswith("DELETE FROM recipes")]
+
+
+def test_a_blank_confirmation_never_counts_as_a_match(run_script, capsys):
+    code, executed = run_script(
+        ["--id-or-email", QA_ID, "--confirm-email", "",
+         "--recipe", RECIPE_ID, "--yes"],
+        user=NO_EMAIL_USER,
+    )
+    assert code == 1
+    assert not [s for s in executed if s.startswith("DELETE")]
+    assert "--confirm-name" in capsys.readouterr().err
+
+
+def test_name_cannot_substitute_when_an_email_exists(run_script):
+    code, executed = run_script(
+        ["--id-or-email", QA_EMAIL, "--confirm-name", "QA",
+         "--recipe", RECIPE_ID, "--yes"],
+    )
+    assert code == 1
+    assert not [s for s in executed if s.startswith("DELETE")]

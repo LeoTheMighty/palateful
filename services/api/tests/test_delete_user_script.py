@@ -283,3 +283,70 @@ def test_verify_can_be_disabled(run_script, capsys):
         reappears=True,
     )
     assert code == 0, "--verify-after 0 skips the check entirely"
+
+
+# --- confirmation when there is no email (2026-09-24 correction) ------------
+
+
+def test_a_user_without_an_email_is_confirmed_by_name(run_script):
+    """The prod QA identity's shape: `email IS NULL`, name 'QA Tester'.
+
+    The guard previously refused this outright, documented as deliberate
+    on the assumption that null-email users are edge cases. The one prod
+    identity ever pointed at this script is exactly that case, so the
+    guard refused the only operation it was built for.
+    """
+    code, executed = run_script(
+        ["--id-or-email", QA_ID, "--confirm-name", "QA Tester",
+         "--auth0-disabled", "--yes", "--verify-after", "0"],
+        user=_user(email=None, name="QA Tester"),
+    )
+    assert code == 0
+    assert [s for s in executed if s.startswith("DELETE FROM users")]
+
+
+def test_a_blank_confirmation_never_counts_as_a_match(run_script, capsys):
+    """Empty-equals-empty is defeating the guard, not satisfying it."""
+    code, executed = run_script(
+        ["--id-or-email", QA_ID, "--confirm-email", "", "--auth0-disabled",
+         "--yes", "--verify-after", "0"],
+        user=_user(email=None, name="QA Tester"),
+    )
+    assert code == 1
+    assert not [s for s in executed if s.startswith("DELETE")]
+    assert "--confirm-name" in capsys.readouterr().err
+
+
+def test_a_wrong_name_fails_closed(run_script):
+    code, executed = run_script(
+        ["--id-or-email", QA_ID, "--confirm-name", "QA Testr",
+         "--auth0-disabled", "--yes", "--verify-after", "0"],
+        user=_user(email=None, name="QA Tester"),
+    )
+    assert code == 1
+    assert not [s for s in executed if s.startswith("DELETE")]
+
+
+def test_email_confirmation_is_still_required_when_one_exists(run_script):
+    """A named user with an email cannot be confirmed by name instead.
+
+    Otherwise the weaker identifier becomes an opt-out from the stronger
+    one, which is the same defeat as accepting a blank.
+    """
+    code, executed = run_script(
+        ["--id-or-email", QA_EMAIL, "--confirm-name", "QA",
+         "--auth0-disabled", "--yes", "--verify-after", "0"],
+    )
+    assert code == 1
+    assert not [s for s in executed if s.startswith("DELETE")]
+
+
+def test_a_user_with_neither_identifier_is_refused(run_script, capsys):
+    code, executed = run_script(
+        ["--id-or-email", QA_ID, "--confirm-name", "", "--auth0-disabled",
+         "--yes", "--verify-after", "0"],
+        user=_user(email=None, name=None),
+    )
+    assert code == 1
+    assert not [s for s in executed if s.startswith("DELETE")]
+    assert "neither an email nor a name" in capsys.readouterr().err
