@@ -510,7 +510,16 @@ No new instrumentation needed. A sweep can tell them apart today:
 | Watcher timed out (90 min) | `failed` | ≈ `created_at` + 90 min |
 | Celery worker restarted | `submitted` | **NULL, forever** |
 
-The second is last night's `9384da8a`, which sat `submitted` for 21.7 hours
+**Third dated instance, 2026-09-24 19:45:08.529Z** — and the cleanest, because
+every competing explanation was already excluded: the quota had been granted,
+the reorder was ready, capacity was irrelevant. Batch job `f3ed6032` created
+18:14:55.224, `parser_batches` row `169cc629` marked `failed` /
+*"Watcher timed out after 90 minutes"* at `completed_at` 19:45:08.529 while
+AWS still reported `RUNNABLE` with 0 attempts. `updated_at` reads
+18:15:25.494 — **89.6 minutes before the row's own terminal write**, a third
+independent reproduction of 0e's transaction-start mechanism.
+
+The second is 2026-09-22's `9384da8a`, which sat `submitted` for 21.7 hours
 because the in-process sleep loop died with its worker and nothing ever
 wrote a terminal status. This retroactively confirms 0e's account of that
 window.
@@ -525,6 +534,25 @@ maximum divergence anywhere is 0.23 s.
 **So a sweep that looks for "recently changed batches" by `updated_at`
 misses precisely the timed-out ones** — the failures most worth finding.
 Sweep on `completed_at`, or on `status` directly.
+
+**A prediction about this must name which store to read.** An exact
+timestamp is not enough. On 2026-09-24 the watcher's deadline was called to
+within 13 seconds — and a session checking `describe-jobs` at 12 and 43
+seconds *after* it fired read `RUNNABLE`, correctly, and concluded the
+watcher had not run. **Nothing `describe-jobs` could have returned would
+have shown otherwise**, because the watcher writes the database and never
+touches the AWS job.
+
+*"AWS says `RUNNABLE`"* and *"the DB says `failed`"* are **simultaneously
+true**, and either alone gives a confident wrong answer about the other.
+An exact time pointed at the wrong surface is still unfalsifiable — it just
+fails silently, later. (Sharpened with palateful-0a, who hit it.)
+
+**And the watcher does not cancel the AWS job.** A causal chain of the form
+*watcher fires → queue pressure ends* is wrong: the two feel like one event
+and are two. The job stays queued, the compute environment stays at its
+`desiredvCpus`, and any burst it is driving continues. Every timed-out batch
+therefore leaves a live orphan behind it.
 
 **Mechanism, found by palateful-0e and now owned by `prcon1` (#77).** The
 timeout write is not special. `updated_at` is `onupdate=func.now()`
