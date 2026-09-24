@@ -471,7 +471,16 @@
   "there is no Playwright in the repo", which a reviewer corrected: the
   mentions are real, the dependency is not. The conclusion held on the
   stronger evidence, but the overstated version would have been the thing
-  someone later disproved with one grep and then distrusted the rest.) The check took two minutes and it
+  someone later disproved with one grep and then distrusted the rest.)
+
+  **Durable prose is where overclaiming does the most damage and gets caught
+  the latest.** A loose claim in a chat message is corrected in minutes by
+  whoever is reading; the same claim in a lessons file, a spec or a docstring
+  is read months later by someone with no way to check it and no one to ask.
+  The test before writing a sweeping version: *does the conclusion need it?*
+  Here it did not — "no Playwright dependency in any manifest" carried the
+  whole argument, and "no Playwright in the repo" added nothing but exposure.
+  When the stronger phrasing buys nothing, it is not emphasis, it is debt. The check took two minutes and it
   removed the whole artifact — along with a credential that would otherwise
   have transited a script we wrote, an environment we read, and error paths we
   would have had to prove never print it. The replacement (a dedicated Chrome
