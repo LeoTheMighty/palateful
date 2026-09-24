@@ -21,6 +21,16 @@ The conclusion is not *more* tests of the existing kind. It is that a detector
 needs to be tested for what it stays silent about, which is a different
 question from whether it speaks.
 
+> **Premise check, added 2026-09-24 after filing:** this story assumes the
+> `ALARM` state **ends**. Measured that night, it may not — `asgalarm1` was
+> still in `ALARM` 32 minutes and two-plus full periods after its last
+> datapoint, with `notBreaching` set. Filed as `stuckalarm1`. If that holds,
+> the gap below is not "silent until the first incident clears" but **silent
+> permanently**, and the two must be fixed together: restoring recovery
+> without fixing the edge-trigger still leaves the second concurrent
+> incident unreported, and fixing the edge-trigger while the alarm sticks
+> fixes nothing at all.
+
 ## Goal
 
 A CloudWatch alarm notifies on **state transition**, not on badness. Once it
