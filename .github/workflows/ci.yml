@@ -162,6 +162,16 @@ jobs:
       - name: Deploy-freshness self-test (E-7 step 5 guard)
         run: bash tools/deploy-freshness-self-test.sh
 
+      # Unconditional for the same reason as the step above: nx does not map
+      # auth0/. The account-linking Action runs on every Auth0 login, and a
+      # syntax error or uncaught throw in it fails ALL logins. On 2026-09-22 a
+      # terminal paste collapsed its newlines, its // comments swallowed the
+      # rest of the code, and Auth0 rejected every login (ACTION_MALFORMED).
+      # This checks it parses both as written and on one line, and checks its
+      # logic. Pure Node, no dependencies, no Auth0 access.
+      - name: Auth0 account-linking Action (paste-safety + logic)
+        run: node auth0/actions/post-login-account-linking.test.js
+
   test:
     runs-on: ubuntu-latest
     needs: setup
