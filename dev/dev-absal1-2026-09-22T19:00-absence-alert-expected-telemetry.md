@@ -4,9 +4,9 @@ type: dev
 created: 2026-09-22T19:00:00-06:00
 title: U3 — alert when an expected signal goes silent
 from: dev/dev-obsgap1-2026-09-22T16:00-server-side-detection-inventory.md
-status: ready
-owner: null
-branch: null
+status: in-review
+owner: palateful-30
+branch: feat/dev-absal1
 ---
 
 ## Goal
@@ -19,12 +19,12 @@ with nobody noticing. G2 catches one instance; this catches the class (4f).
 
 ## Acceptance criteria
 
-- [ ] Alert when expected telemetry is absent for N days while `/v1/health`
+- [x] Alert when expected telemetry is absent for N days while `/v1/health`
       reports the API up: `service='client'` rows, or the `BootSmokeTest`
       canary.
-- [ ] The detector runs **outside** the thing it watches. An absence alert
+- [x] The detector runs **outside** the thing it watches. An absence alert
       that itself needs the DB or a valid token has the same blind spot.
-- [ ] Proven by suppressing the signal once and confirming the alert fires.
+- [x] Proven by suppressing the signal once and confirming the alert fires.
 
 ## Technical notes
 
@@ -210,3 +210,66 @@ with nobody noticing. G2 catches one instance; this catches the class (4f).
   It does **not** close the accepted gap. Closing that needs a second channel
   Leo reads, and there is not one today. A limitation that is written down is
   survivable; one that is discovered during an incident is not.
+
+- 2026-09-24 — **implemented** (palateful-30): `.github/workflows/absence-alert.yml`
+  plus `tools/absence-alert-self-test.sh`, wired into the CI lint job. **No
+  Terraform**, so it is not blocked behind an IaC approval.
+
+  **A premise I had wrong, corrected before merge.** The first version said the
+  detector "fails through GitHub's own notification path". It does not:
+  **GitHub Actions email is deliberately switched off for this account**, which
+  is why `deploy-freshness` failed 52 consecutive times against 2 successes
+  with nobody hearing it — not inattention, an unreachable channel (0a, #55).
+  A check whose verdict cannot arrive is the very failure this story is about.
+  So the verdict now **leaves GitHub**: a firing telemetry verdict is published
+  to `palateful-prod-alerts`, and the job still fails so the run stays
+  discoverable.
+
+  **Design, and the bind, stated rather than papered over.** Quoting Leo's
+  accepted limitation verbatim (#55):
+
+  > **If the SNS email subscription is deleted, every alert path goes silent
+  > simultaneously and nothing warns.** Accepted by Leo on 2026-09-22.
+
+  The channel check therefore **does not publish its own finding**: with no
+  confirmed subscriber, publishing "this topic has no confirmed subscriber"
+  into that topic is the void describing itself. What it buys is narrower and
+  worth naming — the failure becomes *recorded* rather than invisible, and
+  `PendingConfirmation` gets caught. A dead *watcher* is a different failure
+  and is covered by a heartbeat to a subscriber-less topic; that topic and its
+  alarm are Terraform and are **not** created here, so the step says the cover
+  is missing on every run rather than implying it exists.
+
+  **Counting confirmed, not subscriptions** (0a): `list-subscriptions-by-topic`
+  returns unconfirmed entries too, whose `SubscriptionArn` is the literal
+  `PendingConfirmation`. The check counts only `arn:`-prefixed entries, and
+  uses `SubscriptionsPending` to tell "created but never confirmed" apart from
+  "nobody subscribed" — they read identically in a count and want opposite
+  actions.
+
+  **Measurements** (live):
+  - 2026-09-22: `palateful-prod-alerts` had **0 confirmed** subscriptions, so
+    every alarm alrt1 wired up was publishing into a void. The check fired on
+    exactly that, which is the AC's "prove it fires" — production supplied the
+    suppression.
+  - 2026-09-24: **1 confirmed** email subscription
+    (`SubscriptionsConfirmed=1`, `SubscriptionsPending=0`, one `arn:` entry).
+    The gap was real and is now closed; the live run is green on that half.
+  - The mirror path has **0 hits in 30 days**, and prod logs **no POST lines of
+    any kind in 3 days**, while `/v1/health` matches the same query. So the
+    telemetry half reports itself **inert** rather than red: "expected" is
+    established from a 25-day baseline, and it begins detecting by itself once
+    the mirror reports at all (authrep1). A flat "0 hits = alert" rule would
+    have shipped permanently red and taught everyone to ignore it.
+  - `--query 'length(events)'` errors on an empty result and `--max-items`
+    paginates; fixed to `--limit 1 --no-paginate --query 'length(events || [])'`.
+
+  **Self-test: 13/13**, and it asserts **delivery**, not just exit codes —
+  which topic was published to, and that the channel-death case publishes
+  nothing. An exit-code-only test would have passed against the wrong premise
+  above.
+
+  **Left open, owned by whoever can write Terraform:** the heartbeat topic
+  `palateful-prod-heartbeat` and a CloudWatch alarm on its
+  `NumberOfMessagesPublished`. Until it exists, this workflow's own death is
+  still invisible.
