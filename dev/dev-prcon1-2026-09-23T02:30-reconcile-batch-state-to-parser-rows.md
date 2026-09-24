@@ -145,6 +145,46 @@ that a task holds a transaction, `updated_at` is unreliable as a
 
 Sweep on `status` and `completed_at`. Never on `updated_at`.
 
+**Third instance, 2026-09-24 — and it is the one that generalises the other
+two, because it was written by the NORMAL completion path.** Batch
+`2d125b0d` (created 15:26:36) had its AWS job fail genuinely; the watcher's
+own poll caught it and wrote the terminal status at 16:41:46 with AWS's real
+reason. **No timeout was involved at any point.** The divergence is
+identical in shape:
+
+| | `updated_at` | `completed_at` | divergence |
+|---|---|---|---|
+| Timeout path, `49ba1ba6` / `2ca59c8c` (09-23) | transaction start | real | **-5383s** |
+| **Normal completion, `2d125b0d` (09-24)** | **15:27:06** | **16:41:46** | **-4480s** |
+
+The original framing — "the timeout write doesn't bump `updated_at`" — is
+therefore **too narrow and should not be repeated**. The timeout path is not
+special. The watcher holds one transaction across its entire poll loop, so
+**every** write it makes carries a transaction-start `updated_at`, whichever
+branch produced it. A sweep keyed on `updated_at` misses rows stranded by
+any of them.
+
+## What did NOT happen on 2026-09-24, and why it belongs in this spec
+
+The same run is the clearest evidence of where this defect's boundary lies.
+AWS reported `FAILED`; the watcher's own poll detected it; the database
+recorded a terminal status carrying AWS's real reason (`Essential container
+in task exited`) **14m50s inside the 90-minute mark**. No false terminal, no
+discarded result, no idempotence-guard collision.
+
+**When the container's outcome reaches AWS and the watcher is alive to see
+it, the existing path works.** The defects in this spec are what happens
+when one of those two conditions fails — the vigil dies with its worker, or
+the deadline expires while AWS still holds the job. Whoever implements the
+sweep should know they are covering those gaps, **not** replacing a path
+that is broken in the normal case. Recording the success as precisely as the
+failures is what makes that boundary legible.
+
+(Separately: that container lived **34 seconds** against an April baseline
+of 11.89 min succeeded / 12.92 min failed. That is a different defect,
+filed as `ocrload1` — a model-load crash — and is explicitly not in scope
+here.)
+
 ## Acceptance criteria
 
 - [ ] **Reconciliation is a periodic sweep over non-terminal rows**, not an
@@ -172,6 +212,11 @@ Sweep on `status` and `completed_at`. Never on `updated_at`.
       another silent detector. Ties to `absal1`.
 - [ ] Proven by driving a job to each outcome and watching the rows follow,
       not by reading the sweep.
+- [ ] **The sweep's own success case is asserted, not assumed.** A test must
+      cover the 2026-09-24 shape: AWS reports terminal, the watcher is alive,
+      and the existing path records it correctly **without** the sweep acting.
+      A sweep that "fixes" rows the normal path already handled is a
+      regression, and nothing currently distinguishes the two.
 - [ ] **The sweep does not key on `updated_at`.** It is written at
       transaction start, so on exactly the timed-out rows it predates the
       row's own terminal write by 90 minutes. Key on `status` +
@@ -222,3 +267,12 @@ Sweep on `status` and `completed_at`. Never on `updated_at`.
   track closely, and they do (max 0.23s). Generalised in the spec: any row
   written by a long-running task before its first commit carries an
   `updated_at` from when the task started.
+- 2026-09-24T16:50 — added the third `updated_at` instance, measured on batch
+  `2d125b0d`. It is the one that generalises: the write came from the normal
+  completion path with no timeout involved (`updated_at` 15:27:06,
+  `completed_at` 16:41:46, -4480s), so "the timeout write doesn't bump
+  `updated_at`" is too narrow and the transaction-holding mechanism is the
+  cause. Also recorded what did NOT happen in that run — AWS reported FAILED,
+  the watcher caught it, the DB recorded the real reason 14m50s inside the
+  90-minute mark — because it marks the boundary of what this spec is fixing.
+  The container's 34-second life is `ocrload1`, not this.
