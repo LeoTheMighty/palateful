@@ -70,10 +70,17 @@ resource "aws_ecr_lifecycle_policy" "parser" {
         action = { type = "expire" }
       },
       {
-        # 2 — PROTECTED. ECR has no "keep" action: protection is expressed
-        # by claiming the image with a higher-priority rule that will not
-        # expire it. An image is acted on by the LOWEST-numbered rule it
-        # matches, so `known-good-*` never reaches the 30-day rule below.
+        # 2 — PROTECTED.
+        #
+        # **ECR has no "keep" verb.** There is no rule that preserves an
+        # image; every rule's only action is `expire`. Protection is
+        # therefore expressed *by claiming the image with a higher-priority
+        # rule that will not expire it* — an image is acted on by the
+        # LOWEST-numbered rule it matches, so `known-good-*` is consumed
+        # here and never reaches the 30-day rule below.
+        #
+        # Do not try to add a "keep" rule; it does not exist. If this looks
+        # backwards, that is why.
         #
         # Bounded rather than infinite, answering "replace or accumulate?":
         # **accumulate, but keep only the last 3.** Infinite accumulation is
@@ -164,10 +171,17 @@ resource "aws_ecr_lifecycle_policy" "additional" {
         action = { type = "expire" }
       },
       {
-        # 2 — PROTECTED. ECR has no "keep" action: protection is expressed
-        # by claiming the image with a higher-priority rule that will not
-        # expire it. An image is acted on by the LOWEST-numbered rule it
-        # matches, so `known-good-*` never reaches the 30-day rule below.
+        # 2 — PROTECTED.
+        #
+        # **ECR has no "keep" verb.** There is no rule that preserves an
+        # image; every rule's only action is `expire`. Protection is
+        # therefore expressed *by claiming the image with a higher-priority
+        # rule that will not expire it* — an image is acted on by the
+        # LOWEST-numbered rule it matches, so `known-good-*` is consumed
+        # here and never reaches the 30-day rule below.
+        #
+        # Do not try to add a "keep" rule; it does not exist. If this looks
+        # backwards, that is why.
         #
         # Bounded rather than infinite, answering "replace or accumulate?":
         # **accumulate, but keep only the last 3.** Infinite accumulation is
