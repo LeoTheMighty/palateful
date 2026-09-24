@@ -299,6 +299,27 @@ who has thirty.**
   - **Therefore: after a miss of this shape, a third confirmation of the
     same layer buys nothing** — and adding one is the instinct. Change
     altitude instead.
+  - **Second instance, and it is the same error committed while diagnosing
+    the first.** Asked whether the incapable environment had *tried*, this
+    session ran `describe-fleets` and `describe-spot-instance-requests`,
+    got nothing from either, and reported that the on-demand environment
+    "produced zero instance requests and zero EC2 fleets" — building part
+    of the non-fall-through finding on it. **Batch managed compute
+    environments launch through an Auto Scaling Group and use neither
+    API.** Both correctly returned nothing, because nothing uses them.
+    `describe-scaling-activities` showed **216 failed launches**, each
+    carrying `VcpuLimitExceeded … your current vCPU limit of 0`.
+  - **An empty result from the wrong API is indistinguishable from an idle
+    system.** That is (g) with a new face: not "is the account permitted to
+    create this" but "is this query pointed at the mechanism actually in
+    use". Both are the layer beneath the one being checked, and both
+    produce a confident, well-formed, entirely wrong reading. Cross-check
+    with (c): the reading was empty *and* clean, and the denominator —
+    *does this API ever return anything for this resource?* — was never
+    asked.
+  - It makes the non-fall-through finding **stronger, not weaker**: Batch
+    had a repeated, explicit, unambiguous failure from its own ASG, 216
+    times, and still did not move to order 2.
   - Second-order, and worth its own line because the fallback design
     assumed the opposite: **Batch does not fall through an incapable order
     1.** With on-demand at order 1 and its quota at 0, Batch held
