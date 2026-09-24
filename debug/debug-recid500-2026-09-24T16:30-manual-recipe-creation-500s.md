@@ -104,17 +104,17 @@ regression test covers the endpoint that was fixed, which is why it is green.
 
 ## Acceptance criteria
 
-- [ ] `POST /v1/recipe-books/{id}/recipes` with ≥1 ingredient returns 200 and a
-      usable `ingredients[].id` (mirroring update_recipe: the ingredient id).
-- [ ] A test that fails RED on current main **against a real
-      `RecipeIngredient`**, not a mock that has been given an `id`.
-- [ ] The harness hole is closed or made loud: `_apply_column_defaults` must
-      not invent `id` on a model whose mapper has no `id` column. Closing it
-      may turn other tests red — those are the same bug, not collateral.
-- [ ] Decide the orphan rows: two partial `Test Banana Bread` recipes exist in
-      prod. Deleting them is a **write** and needs Leo's approval.
-- [ ] Sweep for the same shape on other join models (`CalendarUser`,
-      `RecipeBookUser`, `ShoppingListUser`, …) reading `.id`.
+- [x] `POST /v1/recipe-books/{id}/recipes` with ≥1 ingredient returns 201 and a
+      usable `ingredients[].id` (mirrors update_recipe: the ingredient id).
+- [x] A test that fails RED **against a real `RecipeIngredient`**, not a mock
+      that has been given an `id`.
+- [x] The harness hole is closed: `_apply_column_defaults` no longer invents
+      `id` on a model whose mapper has no `id` column. **It turned nothing else
+      red** — full suite 2641 passed, 100% coverage — so no other tested path
+      depended on the invented attribute.
+- [ ] Decide the orphan rows (see below). Deleting is a **write** and needs
+      Leo's own approval; a relayed approval is not enough. **Not done.**
+- [x] Sweep for the same shape on other join models — see Sweep result.
 
 ## Technical notes
 
@@ -126,8 +126,49 @@ regression test covers the endpoint that was fixed, which is why it is green.
 - Prod deployed revision at time of failure: `palateful-api-prod:65`
   (`9c626c5a`).
 
+## Evidence: the two partial recipes, recorded before any deletion
+
+```
+8b63fd62-3ea6-444b-a5c1-4a82f76637e9 | 'Test Banana Bread' | servings=8 prep=15 cook=55
+  created 2026-09-24T16:28:13.608Z | steps=0
+  ingredients(1): [0] 3.000 '' mashed bananas  ing_id=944d9bdd-f995-4959-8bb5-a1d7d5eb4975
+
+f4d8018c-b471-4c72-9037-41c642eab5ec | 'Test Banana Bread' | servings=8 prep=15 cook=55
+  created 2026-09-24T16:28:33.224Z | steps=0
+  ingredients(1): [0] 3.000 '' mashed bananas  ing_id=416239bf-9092-4902-a69f-7f90fd8ec15d
+```
+
+Two things this record shows that the summary count did not:
+
+1. **The debris is wider than the recipes.** Each attempt created its own
+   `ingredients` row for the same text — `944d9bdd…` and `416239bf…` — so
+   failed saves also pollute the ingredients table. Deleting only the two
+   recipes leaves two orphan ingredient rows.
+2. **`unit_display` is empty** on both, though the payload said "3 cup mashed
+   bananas". Quantity survived, unit did not. A **separate** defect on the same
+   endpoint, not chased here.
+
+## Sweep result: `RecipeIngredient` was the only one
+
+Static sweep over all non-test source for `.id` read on a variable assigned
+from any of the 15 `JoinsBase` models. Three hits, all **false positives**:
+`RecipeNote` and `RecipeVersion` declare their own `id` column despite
+extending `JoinsBase` (`recipe_note.py:22`, `recipe_version.py:26`). So
+extending `JoinsBase` does not by itself mean "no id" — which is why the
+harness fix inspects the **mapper's columns** rather than the base class.
+
 ## Status log
 
 - 2026-09-24T16:45 — filed from 41's QA walkthrough. Root cause measured in
   prod via read-only probes; traceback absent server-side, recovered from the
   client mirror row and confirmed against the model definition.
+- 2026-09-24T17:40 — fixed. Order was deliberate: closed the harness hole
+  FIRST, which turned the existing create-recipe tests red with the exact
+  production message, then applied the one-line fix. Mutation-verified the new
+  regression test by reverting the fix and watching it fail; restored from a
+  `cp` backup, not the index. (First attempt used `git stash push` with a bad
+  pathspec and silently stashed nothing — trusting it would have "verified"
+  RED against an unmutated tree. Same family as every other instrument that
+  answers a question you did not ask.) Full suite 2641 passed, 100% coverage.
+  Orphan-row deletion deliberately NOT done: it is an irreversible production
+  write and a peer relay is not the user's approval.
