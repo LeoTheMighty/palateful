@@ -79,6 +79,31 @@ EventBridge rule
 The event detail carries `StatusMessage` — the verbatim text above — so the
 alert names the cause without a lookup.
 
+### The one unverified assumption in this spec
+
+**That EC2 Auto Scaling actually emits `EC2 Instance Launch Unsuccessful`
+to the default event bus for these failures.** I have *not* measured it. I
+measured the ASG activities (`describe-scaling-activities`, 756 records),
+the absence of CloudWatch metrics, and the absence of EventBridge rules —
+all read from the live account. The event emission is AWS-documented
+behaviour that **cannot be observed read-only**: with no rule and no
+archive configured, nothing records what the default bus carries.
+
+Stated here rather than assumed, per the entry's own rule about claims that
+carry no evidence handle. **The first implementation step is to find out**,
+and it is cheap: create the rule with a CloudWatch Logs target before an
+SNS one, wait a few minutes — the spot ASG is failing continuously — and
+read the log group.
+
+**If the event does not arrive**, the fallbacks in order of preference:
+1. An **EventBridge archive** on the default bus, to see what is actually
+   published before designing against it.
+2. **CloudTrail** — the `RunInstances` / fleet-level failures are API
+   calls, so they are recorded whether or not an ASG event fires.
+3. A scheduled Lambda polling `describe-scaling-activities` directly. Least
+   elegant, but it reads the surface we *know* carries the data, because
+   that is the surface this spec was written from.
+
 **Deliberately not scoped to the parser ASGs.** Any failed launch in this
 account is worth knowing about, and scoping to names that Batch generates
 (`…-asg-986a0e04-…`) would break on the next compute-environment
