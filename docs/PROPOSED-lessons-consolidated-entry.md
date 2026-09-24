@@ -486,6 +486,23 @@ who has thirty.**
   state.** Throughout this incident `order1` from `describe-job-queues` was
   the only reading that never lied.
 
+  **The general form, and it cuts both ways: the run's status is a claim
+  about CI; the resource is the fact.** (leonidbelyi-41's phrasing.) When
+  they disagree — or when one is merely *absent* — the resource wins.
+
+  - **Direction 1, the failure that opened the evening:** `terraform`
+    reported `success` while `terraform-prod` was cancelled, so a green job
+    stood in for an apply that never ran.
+  - **Direction 2, the same day, inverted:** the queue order read
+    `ONDEMAND` from AWS at 20:40:05Z while the job that caused it had **no
+    conclusion at all** — mid-flight, no status to report. **Waiting for
+    the green job would have meant reporting something already true as
+    though it were not yet.** The change was live; only the *claim about
+    it* was pending.
+  - So the status view is not merely *less* reliable than the resource —
+    it is **differently timed**, and it lags in one direction and leads in
+    the other. Neither error is visible from the status view alone.
+
   **And a note on my own error here, because it is (h) in miniature:** I
   wrote that the view *"relabels `cancelled` as `skipping`"*. That is a
   falsifiable claim about `gh`, and it is **false** — the first person to
