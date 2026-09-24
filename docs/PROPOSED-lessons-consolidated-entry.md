@@ -161,7 +161,25 @@ who has thirty.**
     a transport failure. `ssh -T git@github.com` authenticated fine
     throughout. **Confirm with `git ls-remote` before concluding anything
     from a push or fetch error**, in either direction: the failure messages
-    were wrong about both success and cause.
+    were wrong about both success and cause — and about **persistence**,
+    which is the third shape: a genuine failure of push *and* `ls-remote`
+    in the same command, both succeeding seconds later, nothing changed.
+    **Unreliable about success, about cause, and about persistence.** No
+    amount of care at the reading layer fixes a reading that varies; only
+    retrying and cross-checking does, which is (c)'s answer arriving at
+    the transport layer. (3b.)
+  - **The consequence that makes this dangerous rather than annoying:
+    never re-push on the strength of an error message.** (41.) A retry
+    after a *false* failure is how you get duplicate commits, or a
+    force-push over your own successful work. Check the remote first;
+    retry the *check*; re-push only once the remote is reachable and
+    demonstrably lacks the commit.
+  - **A half-right rule is worse than none once it has been circulated,
+    because it carries the authority of having come from coordination.**
+    (41, on their own earlier guidance.) The first version said *"verify
+    with `ls-remote`"* — which leaves a reader taking one failed
+    `ls-remote` as proof of an outage. Same class of wrong answer, one
+    step along.
   - Third layer, same shape one notch smaller: *"zero `package.json` files
     depend on it"* was **accurate and incomplete** — it never asked about
     Python. No `pyproject.toml` declares Playwright either, and the sole
