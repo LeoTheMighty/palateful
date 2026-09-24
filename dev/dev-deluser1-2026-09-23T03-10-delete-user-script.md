@@ -35,12 +35,26 @@ that only does the second half will appear to work and silently undo itself.
 
 ## Measured shape of the problem (2026-09-23)
 
-- **34 models reference a user** via `user_id` / `owner_id` / `created_by` /
-  `invited_by`. 31 of those FKs declare an `ondelete`; **3 do not** and will
-  raise on a plain `DELETE`.
-- Repo-wide the mix is `CASCADE` ×56, `SET NULL` ×43, `RESTRICT` ×4. So a
-  single `DELETE FROM users` neither fully cascades nor fully fails — it
-  partially succeeds, which is the worst of the three outcomes.
+> **Corrected 2026-09-24.** Three of the numbers first filed here were
+> wrong; see the status log for how. The measured shape is:
+
+- **44 FK columns across 33 tables reference `users.id`.** Exactly **one**
+  lacks an `ondelete`: `ingredients.submitted_by_id` (NO ACTION). A plain
+  `DELETE FROM users` therefore fails only if the target submitted
+  ingredients — narrower than first filed, but still a partial success
+  rather than a clean one. Keep the by-name handling: the script outlives
+  any one identity.
+- **No `RESTRICT` among the user FKs at all**, so the original open question
+  about a blocking FK has a settled answer — it does not arise.
+- **`error_logs.user_id` has no foreign key at all** — a bare `UUID` column
+  (`error_log.py:24`). Error history survives a deletion, which was the
+  original conclusion, but **not** by `SET NULL`: nothing nulls those rows,
+  so they keep a `user_id` pointing at a user who no longer exists. The
+  dry-run has to show them, or "deleted" claims something false.
+- **Neither hard delete nor anonymise achieves "no test data left."**
+  Measured on the QA identity: **768 referencing rows, 761 of them
+  `client_latencies` on a `SET NULL` FK**, which survive a hard delete
+  unattributed, plus 6 dangling `error_logs`.
 - Membership tables (`calendar_user`, `pantry_user`, `recipe_book_user`,
   `shopping_list_user`, `meal_event_participant`) carry **two** user FKs
   (`user_id` and `invited_by`), so a row can survive as an orphan referencing
@@ -55,15 +69,15 @@ that only does the second half will appear to work and silently undo itself.
 - [ ] **Dry-run prints exactly what would be removed**, per table, with
       counts — not a summary. This is the output a human approves before a
       destructive prod action, so it must be readable and complete.
-- [ ] Decide and document **hard delete vs anonymise**, rather than picking
-      silently. Anonymising (null the auth0_id/email, mark archived) keeps FK
-      graphs intact and preserves aggregate history; hard delete actually
-      removes the data. The `SET NULL` FKs suggest the schema already expects
-      the anonymise shape for some tables.
-- [ ] Handles the three user-referencing FKs that declare no `ondelete`, and
-      the double-FK membership tables, explicitly — by name, with a test.
-- [ ] Refuses to run against a user that is not the designated test identity
-      unless `--force` is passed, and names the guard in its docstring. A
+- [x] **Decided: hard delete**, not anonymise (palateful-98, agreed by 41).
+      With the caveat above — neither achieves "no test data left" — so the
+      dry-run prints **"removed" and "kept, unattributed" as separate
+      sections**. One number would assert a cleanliness that is not achieved.
+- [ ] Handles `ingredients.submitted_by_id` (the one FK with no `ondelete`)
+      and the double-FK membership tables explicitly — by name, with a test.
+- [x] **Decided: the guard is `--confirm-email` plus refusing `is_admin`
+      outright, with no override** (palateful-98) — not `--force`. A flag you
+      can add is a flag you can add by reflex. A
       script that can delete Leo's account by typo is worse than no script.
 - [ ] Documents the ordering requirement at the top: **disable the Auth0
       identity first**, or the deletion undoes itself on the next request.
@@ -76,15 +90,36 @@ that only does the second half will appear to work and silently undo itself.
 
 - Do not build this as an API endpoint. It is an ops action, run rarely, with
   a human reading a dry-run first — the same shape as `promote_admin.py`.
-- `error_log.user_id` is `SET NULL`, so deleting a user does **not** destroy
-  the error history — worth stating, because the instinct is to assume it
-  does and to avoid deleting for that reason.
-- Check whether any table's `RESTRICT` FK blocks deletion outright; if so the
-  script must say which and why rather than failing with a raw
-  `IntegrityError`.
+- Deleting a user does **not** destroy error history — worth stating, since
+  the instinct is to assume it does and avoid deleting for that reason. But
+  those rows **dangle** rather than null out; see above.
+- The ordering requirement cannot be enforced by the script: there is no
+  Auth0 Management API client in the repo, only JWKS verification. It takes
+  an explicit `--auth0-disabled` attestation and **re-queries after
+  committing** — if the row has reappeared, the deletion undid itself and it
+  says so loudly (palateful-98).
 
 ## Status log
 - 2026-09-23T03:10 — filed at 41's direction alongside Leo's decision to
   create a prod test user now, so the reversibility work is tracked rather
   than remembered. The FK counts above are measured from
   `libraries/utils/utils/models/`, not estimated.
+- 2026-09-24 — **three of this spec's measured claims were wrong.** Corrected
+  above by palateful-98 from prod's `information_schema`, and reproduced
+  independently here from the models, which agree with prod. 44 FK columns
+  rather than 34 models; **one** missing `ondelete` rather than three; no
+  `RESTRICT` among user FKs; and `error_logs.user_id` has no FK at all rather
+  than `SET NULL`.
+
+  **The method was at fault, not the care.** The original count came from a
+  grep requiring `users.id` and `ondelete` **on the same line**, and
+  SQLAlchemy conventionally splits `mapped_column(UUID,
+  ForeignKey("users.id", ondelete="CASCADE"), …)` across lines — so every
+  multi-line declaration read as "no `ondelete`". A regex over the whole
+  `ForeignKey("users.id" …)` block returns 44 and 1, matching prod exactly.
+
+  These numbers were measured, labelled measured, and wrong. That is the
+  failure mode "I measured it" does not protect against, and the reason an
+  evidence handle has to carry **the command**, not just the claim and the
+  ref — a reader given the grep could have seen the same-line assumption in
+  seconds. Filed against the entry this repo now carries on that subject.
