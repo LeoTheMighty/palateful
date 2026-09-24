@@ -10,6 +10,17 @@ owner: null
 branch: null
 ---
 
+## Why this row exists
+
+**None of the three gaps below would be caught by a test asking "does the
+alarm fire?" — because in all three cases it does.** That is the whole reason
+this is worth a story. Every one of them was found by hand, by whoever had
+just shipped the thing and happened to look at it while it was live; none was
+found by the test suite, and none would be, however much of it there were.
+The conclusion is not *more* tests of the existing kind. It is that a detector
+needs to be tested for what it stays silent about, which is a different
+question from whether it speaks.
+
 ## Goal
 
 A CloudWatch alarm notifies on **state transition**, not on badness. Once it
