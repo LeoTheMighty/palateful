@@ -1,4 +1,4 @@
-# Prepared LESSONS.md entry — one entry, corollaries (a)-(i)
+# Prepared LESSONS.md entry — one entry, corollaries (a)-(j)
 # Owner: this session (pen taken at 0a's offer). For review by 0a and 3b.
 
 **Index — the shape in eight lines, for the reader who has ninety seconds.
@@ -492,6 +492,56 @@ who has thirty.**
   test it would find `gh` behaving correctly and discount everything around
   it. **A wrong mechanism attached to a right conclusion is worse than no
   mechanism**, because it is the part a sceptical reader checks first.
+
+  **(j) A remedy has preconditions, and they are checked less often than
+  the diagnosis.** A fix copied from a case where it worked can plan
+  clean, apply clean, and do nothing — because the condition that made it
+  work was in the *situation*, not in the fix. (palateful-0a, 2026-09-24,
+  who caught it before it was applied.)
+
+  - Worked instance. `asgalarm1` reached `ALARM` correctly and then **could
+    not return to `OK`** — 32 minutes after the last datapoint, two full
+    900s periods, `TreatMissingData = notBreaching`, no transition. The
+    obvious diagnosis was right: the metric filter has **no
+    `defaultValue`**, so a quiet period emits *nothing* rather than a zero
+    and the alarm sees missing data. **The obvious remedy —
+    `default_value = 0`, which this repo already uses twice — would have
+    changed nothing.**
+  - **Why.** `defaultValue` emits a zero for each *non-matching* log event
+    the filter processes. It needs traffic. Both existing uses say so in
+    their own comments: `alarm_fail_open.tf` relies on *"a datapoint for
+    every log event the filter processes, matching or not"* (288/288
+    buckets), and `alarm_rds_auth.tf` on the export's *"steady checkpoint
+    heartbeat"*. **Both depend on the log group carrying unrelated
+    traffic.**
+  - **The new alarm's log group has none.** Verified: `/aws/events/
+    palateful-prod-asg-launch-failure` is fed by exactly one EventBridge
+    rule, pattern `{"detail-type":["EC2 Instance Launch Unsuccessful"],
+    "source":["aws.autoscaling"]}`. **Every delivered event matches**, so a
+    quiet period is **zero lines**, not non-matching lines, and
+    `defaultValue` has nothing to fire on. 0 events since 19:51Z.
+  - **So the remedy would have planned clean, applied clean, and done
+    nothing** — which is `applygap1`'s failure arriving *as a fix*. The
+    diagnosis was checked; the remedy's precondition was not, because it
+    came with a track record.
+  - **The check: a fix that worked elsewhere carries the elsewhere with
+    it.** Ask what made it work there, then confirm that thing is present
+    here. A precedent is evidence about a situation, not about a
+    mechanism.
+  - **What nobody claimed, and it is the disciplined part.** 0a had already
+    predicted the recovery twice (~20:06:51Z, ~20:15:51Z) and been wrong
+    twice, so declined to assert *"CloudWatch does not evaluate without
+    data"* on top of a model already shown incomplete. One datum contradicts
+    the simple version anyway: `17:23:51 INSUFFICIENT_DATA → OK` happened
+    with **no data ever recorded**, so absence *can* drive a transition.
+    **The observation stands without a mechanism; the mechanism stays
+    open.**
+  - **Operational consequence, which needs no mechanism at all:** an alarm
+    that fires correctly and cannot leave `ALARM` is **stuck loud** — and
+    because CloudWatch alarms are edge-triggered, every *subsequent*
+    incident is then silent **indefinitely**, not merely until the first
+    resolves. A detector built to end exactly this failure is permanently
+    deaf after its first real firing.
 
   **(i) A corrected premise does not correct the numbers derived from
   it.** Distinct from a stale fact and from a wrong measurement: the fact
