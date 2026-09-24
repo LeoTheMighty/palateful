@@ -267,6 +267,19 @@ Read-only — no mutations, no audit row. Safe to run freely.
 Exit codes: `0` rows emitted, `2` empty (informational), `1` DB /
 runtime error, or malformed `--drill`.
 
+**What this table does not contain.** A count of zero or one here means
+*nothing reached this table*, not *nothing happened*. Telling those apart
+takes reading `endpoint.py` and `main.py:166`, not another query: the 4xx
+audit writer fires only for an `APIException` raised **inside an endpoint
+body**, so every dependency-raised auth failure — expired or invalid token —
+is absent by construction. Measured 2026-09-22: `service='api'` had **one row
+in the life of the deployment**. The client's view of the same failure lives
+in Crashlytics, not here, and `service='client'` rows are only the subset of
+failures that held a usable token to send the report with. For the auth class
+the two views are disjoint, not complementary — the failures that matter most
+are the ones that could not authenticate a report of themselves. Tracked by
+`audit4xx1`.
+
 <!-- devx:start -->
 # CLAUDE.md — Agent context for this project
 
