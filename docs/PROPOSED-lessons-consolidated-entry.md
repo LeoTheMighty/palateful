@@ -1,6 +1,23 @@
 # Prepared LESSONS.md entry — one entry, corollaries (a)-(h)
 # Owner: this session (pen taken at 0a's offer). For review by 0a and 3b.
 
+**Index — the shape in eight lines, for the reader who has ninety seconds.
+The instances below are what make it persuasive; they are for the reader
+who has thirty.**
+
+| | |
+|---|---|
+| **(a)** | A detector must be proven able to fail. Drive it into the failure state once. |
+| **(b)** | Its output must reach a human by a path independent of what it watches. |
+| **(c)** | A clean reading must be distinguishable from an empty one. Assert non-zero input. |
+| **(d)** | Evidence must cover the path *and the input in use* — not *a* path. |
+| **(e)** | A guard can enforce a condition's *spelling* without enforcing its *presence*. |
+| **(f)** | A post-change check needs a prior value, or it cannot fail. |
+| **(g)** | Verified the shape, never the capability. Confirm the account can *create* it. |
+| **(h)** | A claim in prose gets less checking than the code it describes, and carries more weight. **No detector exists for this one.** |
+
+---
+
 - **A detector can look like coverage while providing none.** Configured is
   not working. Everything below is one shape: something reads as covered,
   and the reading is indistinguishable from real coverage.
@@ -95,12 +112,21 @@
   - The measurement was correct, live and real. It covered *wrong
     password* on both drivers, and was then generalised to *missing
     password*, which it never touched.
-  - **The cost, and it nearly shipped:** selfheal1 Case 1 proposes dropping
-    the `no password supplied` pattern so an unset `DB_PASSWORD` stops
-    causing a 503 loop. On asyncpg that changes nothing — the missing
-    password still returns `28P01`, which rsh102's own narrowing treats as
-    sufficient. A filed fix that would have looked right and changed
-    nothing on the path that matters.
+  - **The cost, and what it changed:** selfheal1 Case 1 as *specified*
+    proposed dropping the `no password supplied` pattern so an unset
+    `DB_PASSWORD` stops causing a 503 loop. On asyncpg that mechanism is
+    **inert** — the missing password still returns `28P01`, which rsh102's
+    own narrowing treats as sufficient. A filed fix that would have looked
+    right and changed nothing on the path that matters.
+    **The measurement killed the mechanism before it shipped, so what
+    landed in `fd732fab` decides from the credential rather than the
+    error**: `_url_password_is_blank()` (`db_probe.py:249`) asks the
+    configuration, and the downgrade at `:419` turns `AUTH_FAILED` into
+    `UNREACHABLE` **only** when the URL that failed carries no usable
+    password. Everything else passes through, so a genuine rotation still
+    self-heals. *(Read from `origin/main` rather than from the spec —
+    3b flagged that the original wording described a proposal in the
+    present tense and would read in three months as a live bug.)*
   - This is why (d) is its own corollary: nothing was green-by-construction
     (a) and no reading was empty (c). **(a) and (c) were caught by tooling;
     (d) reached a story's acceptance criteria and would have shipped.**
@@ -241,6 +267,15 @@
     `desiredvCpus = 4` on the incapable environment for **67 minutes** and
     never reached order 2. An untested assumption about a dependency's
     behaviour is the same illusion one layer out.
+  - **Reconciling this with the opposite-sounding observation in (h)**,
+    because the two bullets discuss the same counter and a sceptical reader
+    will test them against each other first. They are not in conflict:
+    **fall-through within a fixed order never happened; re-pointing after
+    the order itself changed happened within a minute.** Batch binds the
+    environment at scheduling, so an incapable order 1 simply holds — but
+    editing `computeEnvironmentOrder` re-evaluates that binding. Two
+    different mechanisms, one counter. Neither was verified before it was
+    relied on, which is why both are here.
 
   **(h) A claim in prose receives less checking than the code it describes,
   while carrying more weight.** (Observed by palateful-3b in their own
@@ -340,7 +375,23 @@ until someone has read it or watched it fail"** (merged in `fd732fab`,
 #52). Appending this entry beside it ships the three-overlapping-entries
 problem *inside the fix for it*.
 
+**Checked rather than remembered, because "nothing of its content is lost"
+is the load-bearing claim here.** 3b's #52 work landed as **two separate
+bullets**, not one: *"A cited test is not evidence…"* at `LESSONS.md:141`
+and *"`gh pr checks <n>` can report every check passing…"* at `:197`. So
+replacing the first does **not** take the second with it — which is why the
+plan below is safe, and it happened to be true for a reason neither of us
+had stated until 3b read the file. Confirm both line numbers before
+editing; they move.
+
 So, when the lane opens:
+
+0. **Delete this file.** `docs/PROPOSED-lessons-consolidated-entry.md`
+   exists only so the draft could be reviewed without touching the shared
+   `LESSONS.md`. Leaving it ships the entry **twice** — a 366-line
+   near-copy that greps identically and then drifts. **That is this
+   entry's own duplication hazard, delivered by the commit that fixes
+   it.** (3b.) The landing commit must remove it.
 
 1. **Replace** 3b's "A cited test is not evidence…" entry with this one.
    Its two instances are folded in with attribution — the rsh102 driver
