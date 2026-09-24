@@ -100,6 +100,33 @@ who has thirty.**
   - Fix: `tools/stale-pointer-check.py` prints what it scanned and **exits
     2 on an implausible count** rather than passing.
 
+  **The worst case of (c), and the only one with no answer in it at all.**
+  Every other instance in this entry is a *correct answer to a different
+  question*. This one is **no answer, rendered indistinguishable from a
+  good one by the output format** — and it sat directly on the safety check
+  for a push to a **public** repository.
+
+  - Auditing eight branches for credentials before publishing them, the
+    scan pipeline hit `ugrep: error: invalid syntax` on `^\+\+\+`, wrote
+    the error to **stderr**, and left **empty stdout** beneath a header
+    reading *"blank = no hits"*. **The scan never ran.** The output of a
+    clean audit and of an audit that did not execute were byte-identical.
+  - **Nothing but a negative control would have caught it.** Not care, not
+    re-reading the command, not checking the output twice — the command
+    *looked* right and its output *looked* like success. Planting
+    `+password = hunter2` and asserting the scanner returns **1** converts
+    an unfalsifiable clean into a tested one.
+  - **Second instance the same hour, same shape, different cause:** a push
+    verifier reported `MISMATCH` on four branches that had pushed
+    correctly, because it compared `git rev-parse --short` (8 characters)
+    against `cut -c1-7`. **The comparator was wrong, not the thing
+    compared.**
+  - **Rule: before trusting a check that reports "fine", prove it can
+    report "not fine".** (leonidbelyi-41.) Both of these were working
+    commands producing confident wrong readings, and in both the fault was
+    in the apparatus rather than the subject. A check you have never seen
+    fail is a check you have never tested.
+
   **(d) Evidence must cover the path AND the input in use — not *a* path.**
   The tell is provenance standing in for scope: "rsh102 measured this"
   sounds like verification and never says *what was covered*.
