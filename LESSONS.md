@@ -265,6 +265,20 @@
 
   If `main`'s tip has an `in_progress` run, wait.
 
+  The measured trail, three merges into one lane:
+
+  ```
+  55731990 (#96)  CI & Deploy  cancelled     id=36050394812
+  e611e4ff (#91)  CI & Deploy  cancelled     id=36051055815
+  6b4e23ab (#89)  CI & Deploy  in_progress   id=36051071511   <- carries all three
+  ```
+
+  **Each cancelled PR still shows green on `gh pr checks`.** The job named
+  `terraform` is the *validate* step and it succeeded; the deploy died
+  downstream, in jobs that report `cancelled`, which no summary view
+  distinguishes from `skipped`. So the PR page, the checks list and the merge
+  itself all agree that everything worked.
+
   Two consequences that outlive the incident:
 
   1. **A merged PR is not a deployed PR, and the gap is silent.** A cancelled
