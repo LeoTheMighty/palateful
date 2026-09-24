@@ -89,10 +89,48 @@ The image built 2026-09-23 baked **1.5**, whose config has no top-level
 nothing in our repository changed. **April baked 1.0 because that is what
 was at the root in April.**
 
-**Still inferred, and cheap to confirm:** that the image actually contains
-1.5. `docker run` the image and print `config.rope_scaling` and the model
-directory's `config.json`. Everything above is read from Hugging Face and
-our Dockerfile; the contents of the built image are not.
+### Confirmed by measurement, 2026-09-24 — and it corrected two things
+
+`docker pull` was unavailable (16.6 GB image, 8.3 GB free), so the 3.5 GB
+layer was streamed out of ECR through `tar`, extracting only the config
+blobs. **Read from the image that crashed:**
+
+```
+snapshots/47644ecc…/config.json      <- what from_pretrained loaded
+  model_type            hunyuan_vl
+  transformers_version  5.15.0.dev0
+  rope_scaling          ABSENT at top level  ->  None  ->  the TypeError
+  text_config.rope_parameters.xdrope_section = [16, 16, 16, 16]
+
+snapshots/47644ecc…/v1.0/config.json <- present in the image all along
+```
+
+**1. `revision=` is not the repair.** The snapshot directory is
+`47644ecc…` — **the revision the build had already resolved.** Pinning it
+changes nothing today; it is protection against future drift. The first
+version of this spec, and the first commit message, credited it as the fix.
+
+**2. `v1.0/` was already in the image.** Downloading everything at the
+revision brought the archive along, so **a working config sat beside the
+broken one the whole time** and `from_pretrained` took the root because
+nothing told it otherwise. **`subfolder='v1.0'` is the entire repair.**
+That is why the failure *looked* like a dependency problem and was not.
+
+**3. Withdrawn — verification by image size.** `allow_patterns` is an
+optimisation (~11 GB → ~2–3 GB). A smaller image evidences that line and
+says nothing about the pin, which acts at load time. **Only a completed
+import verifies the pin.**
+
+**Why this beats the deduction it replaces:** the deduction was *our
+inference plus a web fetch of what upstream publishes today*. **Upstream
+can change again; the image cannot.** Prefer the artefact that cannot move
+under you.
+
+**Honest limit:** the root config blob came from the image; the `v1.0`
+blob did not extract on that pass, so its schema is still read from Hugging
+Face. **One-and-a-half arms, not two.** The conclusion does not depend on
+the second — the root config alone produces the `TypeError` — but the claim
+about the method does.
 
 ## There is no rollback
 
