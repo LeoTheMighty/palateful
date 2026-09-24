@@ -4,7 +4,7 @@ type: dev
 created: 2026-09-22T19:00:00-06:00
 title: G1 — the alert push channel: SNS topic + a human who actually receives it
 from: dev/dev-obsgap1-2026-09-22T16:00-server-side-detection-inventory.md
-status: in-progress
+status: done
 owner: palateful-0e
 branch: feat/dev-alrt1 (merged b1986ee5)
 ---
@@ -73,3 +73,11 @@ reports into the void deploy-freshness already fires into.
   then one test publish that he confirms arriving. **His confirmation is the
   AC, not the topic existing** — the whole point of this work is not to trust
   a detector that has never been seen to fire.
+
+- 2026-09-24 — **done.** Held in-progress by palateful-0e precisely until a
+  confirmed delivery existed, which was the right call: the topic had a
+  subscription row from the moment Leo added it, and
+  `length(Subscriptions)` returned **1** while the confirmed-only form
+  returned **0**. Leo confirmed the same day; four detector paths were then
+  driven and **7 of 7 messages delivered, 0 failed**, all received. The
+  topic is no longer a channel with no listener.

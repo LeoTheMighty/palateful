@@ -20,8 +20,13 @@ pool or an unreachable DB, so after it lands a total DB outage reads
 
 ## Acceptance criteria
 
-- [ ] **G3:** deploy-freshness notifies on a red *verdict*: publish to the
-      topic or add a failure-notification step. It must distinguish a real
+- [x] **G3:** deploy-freshness notifies on a red *verdict*: publish to the
+      topic or add a failure-notification step. **Verified end to end
+      2026-09-24** by dispatching with `synthetic-gap-days=30` — the
+      workflow's own test input, not an imitation. Run `36023584634`
+      concluded `failure` (correct: a red verdict exits non-zero by design),
+      the `Notify on a red verdict` step published, and the email arrived.
+      See `synthmark1` for the marker defect this exposed. It must distinguish a real
       verdict from the check dying at credentials, since 49 of its runs were
       the latter.
 - [ ] **G11:** one metric filter on the phrase **`failing open`** in the API
@@ -49,7 +54,20 @@ pool or an unreachable DB, so after it lands a total DB outage reads
       functions returning them), not on log-call pattern matching. The filter makes the phrase a
       contract, and nothing else enforces it: a rewording would silently drop a
       failure mode while every verdict test still passes (0a).
-- [ ] Each alert driven once and confirmed received.
+- [x] **Each alert driven once and confirmed received.** Done 2026-09-24,
+      after Leo subscribed and confirmed. Four paths driven, **7 messages
+      published, 7 delivered, 0 failed**, all seven confirmed in his inbox
+      with subjects and ALARM/OK pairing as predicted:
+      `api-fail-open` (15:48:00/15:48:30), `rds-auth-failures`
+      (15:50:53/15:51:19), `rds-log-export-silent` (15:53:50/15:54:16), and
+      deploy-freshness as a single prose email (15:54:36).
+      **The subscription check that matters** is
+      `length(Subscriptions[?starts_with(SubscriptionArn,'arn:')])` — when
+      first checked it returned **0** against a `length(Subscriptions)` of
+      **1**, because the row was `PendingConfirmation`.
+      **Caveat: driving deploy-freshness exposed a defect — its test mode
+      emits an alert with no test marker that asserts a measurement it did
+      not make. Filed as `synthmark1`.**
 
 ## Technical notes
 

@@ -456,6 +456,32 @@ and forms a real verdict; run 35704107068 logged `Deployed image:
 monitor now works — and is correctly reporting a stale prod **to nobody**,
 because nothing in palateful pushes to a human (see `dev-obsgap1` G1/G3).
 
+## ~~dfrcp1 — subscribe to `palateful-prod-alerts`~~ — **DONE 2026-09-24**
+
+**Leo subscribed and confirmed on 2026-09-24. Four detector paths were then
+driven and received: 7 published, 7 delivered, 0 failed.** Nothing below is
+outstanding; it is kept because the verification recipe and the
+subscription-check gotcha are worth having.
+
+**The gotcha, which caught us in real time:** when first checked, the
+subscription existed but read `SubscriptionArn: PendingConfirmation`. So
+`length(Subscriptions)` returned **1** — the number that would have been
+reported as success — while the confirmed-only form returned **0**:
+
+```bash
+aws sns list-subscriptions-by-topic --topic-arn <topic> \
+    --query "length(Subscriptions[?starts_with(SubscriptionArn,'arn:')])"
+```
+
+**Use that form. A `PendingConfirmation` row appears in the console and
+delivers nothing.**
+
+**Still open, filed separately:** `synthmark1` — driving deploy-freshness
+through `synthetic-gap-days` emits an alert with no test marker that
+asserts a measurement it never made.
+
+<details><summary>Original entry (historical)</summary>
+
 ## dfrcp1 — subscribe to `palateful-prod-alerts` (blocks two detectors)
 
 **Measured 2026-09-22:** the topic exists
@@ -489,6 +515,8 @@ output or CI logs — this repo and its Actions logs are public. That is why
 
 A configured alarm that has never fired is not a verified one. If step 1 or 2
 produces no email, the detector is not working, whatever the AWS console says.
+
+</details>
 
 ## Verify the first `fixture time-travel` nightly run (filed by fxfuse, 2026-09-23)
 
