@@ -8,6 +8,7 @@ Conventions: `[ ]` ready · `[/]` in-progress · `[-]` blocked · `[x]` done · 
 
 ## Epic — import-flow-hardening (active; ifh-1/2 already on main)
 
+- [/] `dev/dev-asgalarm1-2026-09-24T09:40-alert-on-failed-instance-launches.md` — Alert on failed instance launches: 756 recorded ASG launch failures carrying both incidents' root causes verbatim, zero alerts, zero reads. EventBridge → log group → metric filter → alarm → `palateful-prod-alerts`. Status: in-progress. Blocked-by: —. Specced by palateful-4f, implemented by palateful-0a. Terraform — merging is the apply.
 - [x] `dev/dev-ifh3-2026-07-27T17:00-ios-share-extension-failure-state.md` — iOS Share Extension — persist failure state + system notification on permanent failures. Status: done. PR: https://github.com/LeoTheMighty/palateful/pull/5 (merged `0c379514`). Blocked-by: —. Parallel-safe with ifh4 (disjoint files: Swift vs Dart).
 - [x] `dev/dev-ifh4-2026-07-27T17:01-reconciler-backoff-permanent-failure-ux.md` — Dart Reconciler — exponential backoff + permanent-failure UX. Status: done. PR: https://github.com/LeoTheMighty/palateful/pull/8 (merged `c8f700ab`). Blocked-by: —. Parallel-safe with ifh3.
 - [ ] `dev/dev-ifh5-2026-07-27T17:02-failed-imports-banner-and-sheet.md` — Frontend — FailedImportsBanner + FailedImportsSheet wired into Import Activity Hub. Status: ready. Blocked-by: — (ifh3 merged `0c379514`, ifh4 merged `c8f700ab`; unblocked since, the row and its blockers went stale together — stalebk1 shape).
