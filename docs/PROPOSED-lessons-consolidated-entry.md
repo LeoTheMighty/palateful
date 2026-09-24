@@ -319,7 +319,26 @@ who has thirty.**
     asked.
   - It makes the non-fall-through finding **stronger, not weaker**: Batch
     had a repeated, explicit, unambiguous failure from its own ASG, 216
-    times, and still did not move to order 2.
+    times, and still did not move to order 2. **Stronger again on
+    2026-09-24:** with the quota granted and order 2 fully capable, Batch
+    *still* left on-demand at `desiredvCpus 0` while order 1 failed every
+    ten seconds. The earlier observation was never a clean test — order 2
+    was also incapable. **Order 2 is not a fallback.**
+  - **The actionable form, and it is about predictions rather than
+    queries: a falsifiable prediction must name which *store* to read.**
+    An exact timestamp is not sufficient. The watcher's 90-minute deadline
+    was called to within **13 seconds** — and a session checking
+    `describe-jobs` at 12 and 43 seconds *after* it fired read `RUNNABLE`,
+    correctly, and concluded it had not run. **No value `describe-jobs`
+    could have returned would have shown otherwise**, because the watcher
+    writes the database and never touches the AWS job. *"AWS says
+    `RUNNABLE`"* and *"the DB says `failed`"* were **simultaneously true**.
+    An exact time aimed at the wrong surface is still unfalsifiable — it
+    just fails silently, later. (With palateful-0a, who hit it and named
+    it.)
+  - The check that collapses all three of these into one question:
+    **could this call have returned the other answer?** If not, it cannot
+    bear on the claim, however true its output is.
   - **Twice in one day, by two sessions, independently.** (palateful-0a.)
     Checking this session's claim that the ASGs publish no CloudWatch
     metrics, 0a's first query filtered ASG names on `Batch` — which matched
