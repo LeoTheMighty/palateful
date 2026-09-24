@@ -313,9 +313,16 @@ sizing prod QA volume should know that before running walkthroughs, not
 after. The dry-run prints "removed" and "kept, unattributed" separately
 for this reason.
 
-Guards, both deliberate: `--confirm-email` must match the resolved user's
-email (the lookup and your belief must agree, so a typo in either fails
-closed), and **admin accounts are refused outright with no override** — a
+Guards, both deliberate: a second, **different** identifier must agree
+with the lookup — `--confirm-email` normally, or `--confirm-name` when
+the user has **no email on record** — so a typo in either fails closed.
+(Corrected 2026-09-24: the null-email case was originally refused
+outright as a deliberate edge case, and the one prod test identity is
+exactly that case, so the guard refused the only operation it was built
+for. A blank is never accepted as a match; `--confirm-user-id` is
+deliberately not offered, because repeating the id the lookup used
+guards against mistyping it once but not against pasting the wrong id
+twice.) And **admin accounts are refused outright with no override** — a
 `--force` flag is one that gets added by reflex. Schema drift also fails
 closed: the script reads the FK graph from `information_schema` at run
 time and refuses if it finds a blocking FK it does not handle by name
@@ -370,8 +377,10 @@ rather than a shared catalogue (`utils/models/ingredient.py`); if that
 changes, `test_ingredients_are_not_a_shared_catalogue` fails rather than
 the script silently widening.
 
-Same guards as `delete_user.py`: `--confirm-email` must match the resolved
-user, and **admin accounts are refused outright with no override**.
+Same guards as `delete_user.py`: a second, different identifier must
+agree with the lookup (`--confirm-email`, or `--confirm-name` when the
+user has no email), and **admin accounts are refused outright with no
+override**.
 
 Writes an audit row (`service="audit"`, `error_type="QaCleanupAudit"`).
 
