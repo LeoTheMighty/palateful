@@ -548,6 +548,24 @@ true**, and either alone gives a confident wrong answer about the other.
 An exact time pointed at the wrong surface is still unfalsifiable — it just
 fails silently, later. (Sharpened with palateful-0a, who hit it.)
 
+**Operational rule that follows, and it runs in BOTH directions.**
+(leonidbelyi-41, who had been enforcing only one of them.) The watcher is
+an in-process 90-minute sleep loop in the Celery worker, so:
+
+- **A deploy must not start during an import** — `deploy-services` replaces
+  the worker task and the running vigil dies with it. That is `prcon1`'s
+  2026-09-22 mechanism, and it is why `9384da8a` sat `submitted` for 21.7
+  hours.
+- **An import must not start during a deploy** — the same replacement kills
+  a vigil that has only just begun, and the import then has no failsafe at
+  all from its first minute.
+
+**"Freeze merges during an import" is only half of it.** Measured
+2026-09-24: `deploy-services` succeeded at **20:43:52Z**, so every watcher
+older than that is already gone; a second deploy was in flight at 21:42Z
+while a resubmit was being staged. The two have to be **interleaved
+deliberately**, not merely kept from overlapping in one direction.
+
 **And the watcher does not cancel the AWS job.** A causal chain of the form
 *watcher fires → queue pressure ends* is wrong: the two feel like one event
 and are two. The job stays queued, the compute environment stays at its
