@@ -275,6 +275,53 @@
   `devx manage` / `devx loop` run only while you start them yourself.
   Filed: 2026-07-27T16:00:08.032Z  <!-- devx:init-failure:supervisor-install-deferred -->
 
+## AWS account limits
+
+- [ ] **Request an increase to the on-demand GPU service quota — the parser's
+  on-demand compute environment cannot launch a single instance until it is
+  granted.** (filed 2026-09-23, from pcap1 / LESSONS corollary (g))
+
+  **The ask.** AWS Service Quotas, EC2, quota **`L-DB2E81BA`** — *"Running
+  On-Demand G and VT instances"*.
+
+      current value      0.0
+      adjustable         true
+      change history     0 entries — never requested, since account creation
+      request            32 vCPUs   (8 is the functional floor)
+
+  **Why 32 and why 8 is the floor.** `palateful-parser-ondemand-gpu-prod` is
+  `ENABLED`/`VALID` with `maxvCpus 8`, so **below 8 it cannot reach its own
+  maximum**. The spot equivalent `L-3819A6DF` is **32**, matching the spot
+  environment's `maxvCpus 32` — so **32 is what makes on-demand a real peer
+  rather than a token fallback**. Instance pool for both:
+  `g4dn.xlarge / g6.xlarge / g5.xlarge / g4dn.2xlarge / g5.2xlarge`.
+
+  **It is a support request, not a code change**, with hours-to-days
+  turnaround — which is why filing it early matters and why nothing in the
+  repo can substitute for it.
+
+  ⚠️ **Until it is granted, the queue must stay spot-first.** `odfirst1`
+  (#76, merged) put on-demand at order 1; that met a quota of 0 and took the
+  pipeline down — a job sat `RUNNABLE` for 85 minutes on 2026-09-23 while
+  spot idled at order 2, because **Batch does not fall through an incapable
+  order 1**. `spotback1` (#78) reverts to spot-first. **Do not "fix" the
+  spot-first ordering as an oversight** — it is deliberate and load-bearing
+  until this quota exists.
+
+  **Follow-up, once granted:** flip the ordering back to `#76`'s
+  (on-demand first, spot second) and confirm a job actually starts on
+  on-demand. The remedy and its follow-up are in the same row on purpose, so
+  the second half is not rediscovered later.
+
+  **Two separate problems, in order.** The ordering revert (#78) *restores
+  service*. This quota request *makes on-demand real*. Neither substitutes
+  for the other, and only the first is urgent.
+
+  *How this was missed, recorded because it is the same shape as the rest:
+  the quota and the compute environment were both measured and correct; the
+  layer above — the queue ordering and the job list — was inferred rather
+  than checked. Two layers measured, the third assumed.*
+
 ## Cross-repo work awaiting a commit
 
 - [ ] **arci1 — commit the `await-remote-ci` fix in `~/personal/devx`** (filed
