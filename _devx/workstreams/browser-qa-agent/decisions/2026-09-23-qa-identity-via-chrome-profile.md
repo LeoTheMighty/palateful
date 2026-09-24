@@ -28,12 +28,17 @@ file and redacted error paths.
 
 **It has no consumer.** Verified rather than taken on report:
 
-- **No Playwright dependency exists.** No `package.json` in the repo depends
-  on it. The 105 files that mention "playwright" are BMAD framework
-  documentation and manifests — reference material describing a harness
-  this repo does not install. *(3b's report said "no Playwright anywhere in
-  the repo", which is loose; the accurate claim is that there is no
-  Playwright **harness**, only docs that name one.)*
+- **No Playwright dependency exists.** Counted on `origin/main`:
+  **105 files** mention "playwright", **90 of them under `_bmad/`** —
+  framework documentation and manifests describing a harness this repo does
+  not install. **Zero `package.json` files depend on it**, and no
+  `pyproject.toml` declares it. The single hit in
+  `services/parser/poetry.lock` is `nbconvert`'s optional `webpdf` extra,
+  which is not installed.
+  *(3b's report said "no Playwright anywhere in the repo". That is loose —
+  a reader disproves it with one grep and then distrusts the rest. The
+  accurate claim is that there is no Playwright **harness**, only docs that
+  name one, and the argument never needed the sweeping version.)*
 - **The actual e2e suite is `flutter drive` + ChromeDriver**
   (`services/e2e/scripts/run_all.sh`), which does not consume a
   `storageState`.
@@ -71,7 +76,9 @@ exists.
 ## Constraint: the QA identity is not yet reversible
 
 **`deluser1` — the script that would remove a prod user — does not exist.**
-It is filed in PR #84 and unmerged.
+PR #84 is the **spec**, not the script. **Merging #84 does not make the
+identity reversible**; only an implemented script does, and that needs an
+implementer and a second reader before anyone starts.
 
 Until it lands:
 
@@ -82,7 +89,8 @@ Until it lands:
 
 That is a real limit on how freely the agent should be pointed at prod, and
 it belongs next to "we have a QA identity now" rather than in a separate
-ticket. Treat prod walkthroughs as append-only until `deluser1` merges.
+ticket. **Treat prod walkthroughs as append-only until the `deluser1`
+script exists and has been run successfully** — not until its spec merges.
 
 ## Provenance
 
