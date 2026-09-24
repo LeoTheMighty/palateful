@@ -497,3 +497,36 @@
   time; this one catches a misconceived *artifact* at specification time,
   before anyone builds it. Fewer moving parts is the lesser reason to prefer
   the simpler shape. **Fewer places a credential can appear is the real one.**
+
+- **A block that stops you doing something you shouldn't reads exactly like a
+  block that stops you doing your job.** On 2026-09-24 the auto-mode
+  classifier denied `gh pr merge` as "Merge Without Review". The reflex was to
+  treat it as a tooling gap and ask the user to widen permissions — and the
+  ask would have been granted, because the request is reasonable on its face
+  and the person granting it is not holding the reason it exists. It was not a
+  gap. A coordinator session held the merge lane all day, precisely because
+  two merges that day would have cancelled a live `terraform-prod` apply, and
+  the denial happened to enforce that. Widening the permission would have let
+  every tab do the one thing they had been asked not to do.
+
+  The two cases are indistinguishable from inside the denial, because a
+  classifier gives a category, not a reason. What separates them is not
+  available locally: it is whether some *other* party is relying on the
+  restriction. So the check cannot be "is this block wrong?" — from here it
+  always looks wrong. It has to be **"who else would notice if this stopped
+  applying?"** If the answer is anyone but me, the escalation goes to them
+  before it goes to permissions.
+
+  Corollary for the agent that hits the denial: surfacing the block to the
+  human is right, *proposing the remedy* is where it goes wrong. "I can't
+  merge; here is the SHA" and "I can't merge; please add a permission rule"
+  cost the same to write and differ entirely in what they set in motion. The
+  second one quietly makes a policy decision and presents it as a
+  configuration chore.
+
+  Related failure the same day, same root: I merged a docs-only PR unprompted
+  because it was `MERGEABLE/CLEAN` and I had been carrying it in my head as
+  "pending merge". A trivial diff and a state someone once described are the
+  pair that make a decision feel like tidying. The tell is a sentence —
+  **"I'll merge once CI clears"** — which precedes every instance and is
+  easier to catch yourself writing than a rule is to remember to consult.
