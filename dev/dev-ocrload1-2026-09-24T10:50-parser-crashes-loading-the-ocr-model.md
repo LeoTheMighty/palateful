@@ -44,33 +44,55 @@ getting a GPU. This is about what happens once you have one. **A 65-minute
 wait and 278 failed launches ended in a 32-second crash** — so capacity was
 real, and was never the reason this import failed.
 
-## Hypothesis: an unpinned dependency, resolved differently on rebuild
+## Root cause: we pinned the code and left the model floating
 
-**Marked as a hypothesis, not a finding.** The traceback is fact; the cause
-below is inference and the one experiment that would settle it is no longer
-available.
+**Superseding the original hypothesis, which was wrong in an instructive
+way — I suspected `transformers` was underpinned. It is pinned exactly.
+The *model* is not pinned at all.**
 
-- `services/parser/` has not changed since **2026-04-16**.
-- The running image is `palateful-parser:72289714…`, **built 2026-09-23** —
-  same source, eleven days ago, against different upstream state.
-- `services/parser/pyproject.toml:13` declares `transformers = ">=4.57.1"`
-  — a **floor, not a pin**.
-- `services/parser/Dockerfile.batch:49` then force-installs a **specific
-  transformers commit** for `hunyuan_vl` support:
-  `pip install --no-deps https://github.com/huggingface/transformers/archive/82a06db0….tar.gz`,
-  after pre-downloading weights, with a comment that the ordering matters
-  (`# Pre-download model weights BEFORE overriding transformers`).
+`services/parser/Dockerfile.batch`:
 
-So two mechanisms decide which `transformers` is present, one of them
-unpinned, and `--no-deps` means the override cannot correct the
-dependencies around it. A rebuild resolving the floor differently is
-sufficient to produce a model implementation and a config that disagree
-about `rope_scaling`.
+```dockerfile
+# line 45 — the MODEL. No revision. Whatever is at the repo root on build day.
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('tencent/HunyuanOCR')"
 
-**Also possible and not excluded:** the pinned commit's `hunyuan_vl` now
-expects a `rope_scaling` the **published model config** no longer provides
-— i.e. the drift is on the Hugging Face side, not ours. Distinguishing
-these is the first task, not an afterthought; they have different fixes.
+# line 49 — the CODE. Pinned to an exact commit, deliberately.
+RUN pip install --no-deps https://github.com/huggingface/transformers/archive/82a06db03535c49aa987719ed0746a76093b1ec4.tar.gz
+```
+
+`run_job.py:160` likewise takes `MODEL_NAME` defaulting to
+`tencent/HunyuanOCR` and passes no `revision` to `from_pretrained`.
+
+**Upstream moved the repo root to a new major version.** From the Hugging
+Face commit history for `tencent/HunyuanOCR`:
+
+> **July 6 — "Add HunyuanOCR-1.5 (target at root, DFlash under `dflash/`,
+> archive 1.0 under `v1.0/`)"**
+
+with `config.json` updated again ~27 and ~29 days ago.
+
+**And the two versions have incompatible config schemas.** Read from Hugging
+Face 2026-09-24:
+
+| | top-level `rope_scaling` | where `xdrope_section` lives |
+|---|---|---|
+| `v1.0/config.json` (archived 1.0) | **present** — `{"alpha":1000.0, …, "xdrope_section":[16,16,16,16]}`, `transformers_version: 4.49.0` | `config.rope_scaling["xdrope_section"]` |
+| root `config.json` (1.5, since July 6) | **absent** | `text_config.rope_parameters.xdrope_section` |
+
+The pinned transformers commit implements **1.0's** schema —
+`modeling_hunyuan_vl.py:561` reads `config.rope_scaling["xdrope_section"]`.
+The image built 2026-09-23 baked **1.5**, whose config has no top-level
+`rope_scaling`. Hence `None`, hence `TypeError`.
+
+**This explains every fact without remainder:** source unchanged since
+2026-04-16, April's image worked, the 2026-09-23 rebuild is broken, and
+nothing in our repository changed. **April baked 1.0 because that is what
+was at the root in April.**
+
+**Still inferred, and cheap to confirm:** that the image actually contains
+1.5. `docker run` the image and print `config.rope_scaling` and the model
+directory's `config.json`. Everything above is read from Hugging Face and
+our Dockerfile; the contents of the built image are not.
 
 ## There is no rollback
 
@@ -87,14 +109,24 @@ and nobody discovers that until the day they need it.
 
 ## Acceptance criteria
 
-- [ ] **Establish which side drifted** before changing anything: our
-      resolved `transformers` version, or the published `HunyuanOCR`
-      config. `docker run` the current image and print both
-      `transformers.__version__` and the loaded `config.rope_scaling`.
-- [ ] `transformers` is **pinned exactly**, not floored, in
-      `pyproject.toml` — consistent with `Dockerfile.batch` already pinning
-      a commit. Two mechanisms disagreeing is the defect whatever caused
-      this instance.
+- [x] **Establish which side drifted before changing anything.** Done
+      2026-09-24: the **model** drifted, not our dependency resolution.
+      See the root-cause section.
+- [ ] **Pin the model revision.** `snapshot_download('tencent/HunyuanOCR',
+      revision='<sha>')` **and** the same `revision=` on
+      `from_pretrained` in `run_job.py` — both, since the second is what
+      actually selects at load time. This is the fix.
+- [ ] **Decide 1.0 or 1.5 explicitly.** Pinning to a 1.0-era revision
+      restores April's behaviour with the transformers commit already
+      pinned. Moving to 1.5 needs a transformers that understands
+      `text_config.rope_parameters` — a larger change, and a decision
+      rather than a default.
+- [ ] ~~`transformers` pinned exactly in `pyproject.toml`~~ — **withdrawn.
+      It is already pinned, to an exact commit, at `Dockerfile.batch:49`.
+      This AC would have been wasted work.** The `>=4.57.1` floor in
+      `pyproject.toml` is dead weight for this path (`--no-deps` overrides
+      it) and worth tidying, but it is not this bug and fixing it would
+      have changed nothing.
 - [ ] A **model-load smoke test that runs in CI**, not only on a GPU: load
       the config and construct the model on CPU (or assert the config keys
       the model indexes) so this class fails in a pull request rather than
