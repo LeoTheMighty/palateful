@@ -1,4 +1,4 @@
-# Prepared LESSONS.md entry — one entry, corollaries (a)-(h)
+# Prepared LESSONS.md entry — one entry, corollaries (a)-(i)
 # Owner: this session (pen taken at 0a's offer). For review by 0a and 3b.
 
 **Index — the shape in eight lines, for the reader who has ninety seconds.
@@ -412,6 +412,44 @@ who has thirty.**
   `stale-pointer` guards. 3b judges it would have caught three of their
   four. Nobody has built it. **Until someone does, the honest status of (h)
   is: detected by other people noticing, and by nothing else.**
+
+  **(i) A corrected premise does not correct the numbers derived from
+  it.** Distinct from a stale fact and from a wrong measurement: the fact
+  *was* corrected, in the sentence that stated it, and the arithmetic
+  downstream went on propagating. (This session, 2026-09-24.)
+
+  - Worked instance. I assumed the parser image's **11.8 GB layer** held
+    the pre-baked model, and predicted an `allow_patterns` change would
+    take it "**~11.8 GB → ~2 GB**". I then *proved* the model lives in the
+    **3.5 GB** layer — that is how I read its configs — and **repeated the
+    old figure anyway**, in a commit message, a code comment, two specs and
+    a PR body. Measured after the apply: the model layer went
+    **3,495 MB → 1,494 MB**, about **2 GB**, not ~10. A 14.63 GB image
+    would have read as a failed fix against my published number.
+  - **Corrections travel to the sentence that was wrong. They do not travel
+    to the arithmetic downstream of it.** (leonidbelyi-41's framing.)
+
+  **The rule, in two parts, because one is not enough:**
+
+  1. **When you correct a premise, grep for every *spelling* of the number
+     you derived from it.** Mine appeared as `~11.8 GB -> ~2 GB`,
+     `~11 GB → ~2–3 GB` (en-dash and arrow), and I would have declared the
+     sweep clean after matching only the first.
+  2. **And for anything *computed* from it, which no textual search can
+     find.** A `~6–9 GB` cost estimate in a different spec's comment never
+     contained "11.8" at all; it was derived from it. **You only find that
+     one by knowing what you computed** — the grep cannot help you.
+
+  **Note the shape of (1)'s near-miss**: a sweep that reports success after
+  matching one of three spellings is *the same failure the rule exists to
+  prevent*, committed by the rule. Compare (c): the clean reading and the
+  incomplete one are indistinguishable without asserting coverage.
+
+  - **A wrong figure that merges is a wrong figure inherited.** The bad
+    number reached `main` in `Dockerfile.batch:58` and would have taught
+    the next reader that `allow_patterns` saves 10 GB, **with no reason to
+    doubt it** — the comment sits beside the code it describes, which is
+    exactly what makes a code comment persuasive.
 
   **Two live instances of the illusion, measured 2026-09-22:**
   - `palateful-prod-alerts` has **0 subscriptions**, and the account has
