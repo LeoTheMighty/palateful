@@ -521,12 +521,22 @@
   long. The short form then travels further and faster than the long one
   precisely *because* it is clean.
 
-  **The practical rule that survives:** when a finding compresses into one
-  satisfying sentence, that is the signal to write the condition back in,
-  not the signal that you have understood it. Ask *"true because of what?"*
-  and put the answer in the same sentence, even when it spoils it. If the
-  condition cannot be stated, the finding is not ready to be shared as a
-  rule — only as an observation with its date on it.
+  **The compression is selected for, which is why it hit three people in an
+  hour rather than three times in a month.** The short form travels further,
+  so what reaches a fifth reader is systematically the version with its
+  conditions stripped — and each relay between sessions is another
+  compression step. That gives the rule two halves, one for each end:
+
+  - **Sending:** when a finding compresses into one satisfying sentence, that
+    is the signal to write the condition back in, not the signal that you
+    have understood it. Ask *"true because of what?"* and put the answer in
+    the same sentence, even when it spoils it. If the condition cannot be
+    stated, the finding is not ready to be shared as a rule — only as an
+    observation with its date on it.
+  - **Receiving:** when a finding arrives already clean, **treat the
+    cleanliness as evidence it has been through hands, not as evidence it is
+    well-understood.** Each of the three relays that night was accepted
+    *because* it arrived tidy.
 
   **Corollary, from the same night:** a **cancelled** CI run is the
   recoverable outcome and a **green** one can be the lossy outcome, because
@@ -535,3 +545,13 @@
   treated as the goal state by all three sessions. **A status that means
   "nothing is wrong" is not the same as a status that means "the thing
   happened."** See the `applygap1` status log for the measured instance.
+
+  **And the ordering that saved it was an accident, which is the part most
+  worth recording.** `#91` and `#89` both touch `services/api`, so
+  `deploy-images` returns success and the flip applies. Had the docs-only
+  `#88` or `#95` gone first instead, `odback1` would have been permanently
+  lost with a green run on main to show for it. Nobody reasoned their way to
+  that ordering — those were simply the two PRs that happened to be ready.
+  An accident that looks like judgement has to be written down as an
+  accident, or the next person inherits a rule with no mechanism under it
+  and applies it where it does not hold.
