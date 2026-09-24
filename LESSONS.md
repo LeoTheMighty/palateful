@@ -463,15 +463,21 @@
   alarm, a report — name the thing that will read it, and check that the thing
   exists. On 2026-09-23 a session specified a Playwright `storageState` for a
   QA identity, a coordinator relayed the instruction, and both agreed; nobody
-  asked what would load the file. Nothing would: **no `package.json` depends
-  on Playwright** — 106 files mention it, 90 of them under `_bmad/`, all
-  framework docs describing a harness this repo never installed — and the QA
-  agent is Claude-in-Chrome, which attaches to a running browser profile and
-  cannot read a `storageState` at all. (The first draft of this entry said
+  asked what would load the file. Nothing would: **nothing declares a
+  Playwright dependency** — not a `package.json`, not a `pyproject.toml` (the
+  sole lockfile hit is `nbconvert`'s uninstalled `webpdf` extra in
+  `services/parser/poetry.lock`) — and the QA agent is Claude-in-Chrome,
+  which attaches to a running browser profile and cannot read a
+  `storageState` at all. 105 files on `main` mention Playwright; 90 are under
+  `_bmad/`, framework docs for a harness this repo never installed. (The first draft of this entry said
   "there is no Playwright in the repo", which a reviewer corrected: the
   mentions are real, the dependency is not. The conclusion held on the
   stronger evidence, but the overstated version would have been the thing
-  someone later disproved with one grep and then distrusted the rest.)
+  someone later disproved with one grep and then distrusted the rest. The
+  corrected draft then said 106, because the count had been taken on a tree
+  containing this entry — which by then mentioned Playwright. A reviewer
+  measuring `origin/main` got 105. Even the fix needed a second measurement,
+  on the right tree.)
 
   **Durable prose is where overclaiming does the most damage and gets caught
   the latest.** A loose claim in a chat message is corrected in minutes by
