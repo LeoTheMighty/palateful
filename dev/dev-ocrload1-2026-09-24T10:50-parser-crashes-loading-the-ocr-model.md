@@ -126,11 +126,37 @@ inference plus a web fetch of what upstream publishes today*. **Upstream
 can change again; the image cannot.** Prefer the artefact that cannot move
 under you.
 
-**Honest limit:** the root config blob came from the image; the `v1.0`
-blob did not extract on that pass, so its schema is still read from Hugging
-Face. **One-and-a-half arms, not two.** The conclusion does not depend on
-the second — the root config alone produces the `TypeError` — but the claim
-about the method does.
+**Both arms, measured from the same image. No web dependency remains:**
+
+| | root config (loaded, crashed) | `v1.0/` config (what the pin selects) |
+|---|---|---|
+| `transformers_version` | **5.15.0.dev0** | **4.49.0** |
+| top-level `rope_scaling` | **absent** → `None` → the `TypeError` | **present**, `xdrope_section [16,16,16,16]` |
+| `text_config.rope_parameters` | present, `xdrope_section [16,16,16,16]` | absent |
+
+**The schema moved; the data did not.** `xdrope_section` is `[16,16,16,16]`
+in both — it simply relocated. And the file `subfolder='v1.0'` selects has
+exactly the shape the pinned transformers commit reads.
+
+### Two errors made while closing this, both worth keeping
+
+**1. I reported a gap that had already closed.** I ran `find` while the
+stream was still writing, saw one blob, and wrote up "one-and-a-half arms".
+Both had extracted. **Reading a measurement before it finished and
+describing the intermediate state as the result** — the same error as
+misreading a CloudWatch metric mid-aggregation earlier the same day, except
+this one made me *understate* the evidence. **Both directions of the same
+fault in one session: the error is in the timing, not in wanting a
+particular answer.**
+
+**2. I built a fix for a failure that wasn't happening.** Believing the
+extraction had failed, I wrote a second script on a confident theory —
+`tar` taking SIGPIPE from a `head -2` pipe. The theory was plausible and
+the problem did not exist. Stopped before it ran.
+
+**Rule: before building the fix, confirm the failure is still happening.**
+That is the same shape as this spec's own two-day dependency hypothesis —
+plausible, carefully reasoned, and about the wrong thing.
 
 ## There is no rollback
 
