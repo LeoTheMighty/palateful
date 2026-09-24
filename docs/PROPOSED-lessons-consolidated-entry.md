@@ -450,36 +450,48 @@ who has thirty.**
   four. Nobody has built it. **Until someone does, the honest status of (h)
   is: detected by other people noticing, and by nothing else.**
 
-  **Demonstrated instance of (c), 2026-09-24 — two adjacent job names, one
-  green and one not, and the misreading is available to anyone who looks.**
-  (Spotted by palateful-0a; verified here independently.) `odback1`'s deploy
-  run was cancelled mid-flight by two merges landing on top of it
-  (`cancel-in-progress`, both keyed on `refs/heads/main`), killing
-  `terraform-prod` before it started. The run then reads:
+  **Demonstrated instance, 2026-09-24 — `gh pr checks` cannot tell you
+  whether the apply ran.** (Found by palateful-0a; my first write-up of it
+  was wrong and their correction is the version below.)
+
+  `odback1`'s deploy was cancelled mid-flight by two merges landing on
+  `main` (`cancel-in-progress`, both keyed on `refs/heads/main`), killing
+  `terraform-prod` before it started. **The flip did not apply.** Yet:
 
   ```
-  run 36050394812   terraform       : success      <- the VALIDATE job
-                    terraform-prod  : cancelled    <- the APPLY job
+  gh pr checks 96   terraform       pass
+                    terraform-prod  skipping
   ```
 
-  and **the pull request's own checks view renders it worse still**:
+  **That is not a mislabelled cancellation. It is a different run.**
+  Verified by following the links the command emits:
 
   ```
-  terraform       pass
-  terraform-prod  skipping          <- not "cancelled"
+  gh pr checks 96 -> run 36049602691  sha 39a6347d  branch fix/dev-odback1  event pull_request
+  the cancelled apply -> run 36050394812  sha 55731990  branch main         event push
   ```
 
-  So a reader glancing at the merged PR sees *green terraform, prod apply
-  not needed* and concludes the change is live. **It is not — the live
-  queue still read the old ordering.** Two jobs whose names differ by a
-  suffix, one reporting the opposite of the other, and the aggregate view
-  relabels the failure as a skip.
+  `terraform-prod: skipping` is **correct** for the pre-merge run — a pull
+  request never applies. **`gh pr checks` reads the PR's run and is
+  structurally incapable of reporting the post-merge apply**, which lives
+  on the `push` run against `main` that it never looks at.
 
-  **Only a read of the live resource distinguishes them.** The check that
-  worked was `describe-job-queues` against AWS, not any view of the run.
-  Compare (h): *a claim in prose gets less checking than the code* — here a
-  **status view** gets less checking than the thing it describes, for the
-  same reason. It renders as an answer.
+  So it is *"a correct answer to a question nobody asked"* — and it is the
+  **"could this call have returned the other answer?"** check again, in a
+  command everyone runs constantly. **No output of `gh pr checks` could
+  ever have shown that apply cancelled.** A reader confirming a deploy that
+  way has measured nothing.
+
+  **Rule: never confirm an apply from a PR's checks. Read the applied
+  state.** Throughout this incident `order1` from `describe-job-queues` was
+  the only reading that never lied.
+
+  **And a note on my own error here, because it is (h) in miniature:** I
+  wrote that the view *"relabels `cancelled` as `skipping`"*. That is a
+  falsifiable claim about `gh`, and it is **false** — the first person to
+  test it would find `gh` behaving correctly and discount everything around
+  it. **A wrong mechanism attached to a right conclusion is worse than no
+  mechanism**, because it is the part a sceptical reader checks first.
 
   **(i) A corrected premise does not correct the numbers derived from
   it.** Distinct from a stale fact and from a wrong measurement: the fact
