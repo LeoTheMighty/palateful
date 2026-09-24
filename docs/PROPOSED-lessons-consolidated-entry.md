@@ -142,6 +142,26 @@ who has thirty.**
   - **Even the fix needed a second measurement**, on a tree nobody had
     checked they were in. Being told "measure it" does not help; naming the
     ref does. Write `git grep … origin/main`, not `git grep …`.
+  - **A shared object store means `git show <sha>` proves nothing about the
+    remote.** (3b, who caught it in their own verification and stopped
+    short of overstating it.) Their `git fetch` of a pushed branch failed
+    with `Permission denied (publickey)`, yet `git show e7c07fe1` **worked**
+    — every worktree in this repo shares one object store, and another
+    session had already pulled the object. For a moment the content of an
+    object *believed* to have come from the remote had been verified
+    without the remote ever being reached. `git ls-remote` closed it: the
+    remote genuinely carries that SHA, and content-addressing then makes
+    the local object necessarily identical. **Both halves are needed; only
+    the second one talks to the remote.**
+  - Environmental, and load-bearing for the above: **git's push and fetch
+    error messages were unreliable in this window.** Two sessions, same
+    hour — a push that reported `Permission denied (publickey)` three times
+    had in fact already succeeded (`Everything up-to-date` on the next
+    attempt), and a fetch reported the same permissions error for what was
+    a transport failure. `ssh -T git@github.com` authenticated fine
+    throughout. **Confirm with `git ls-remote` before concluding anything
+    from a push or fetch error**, in either direction: the failure messages
+    were wrong about both success and cause.
   - Third layer, same shape one notch smaller: *"zero `package.json` files
     depend on it"* was **accurate and incomplete** — it never asked about
     Python. No `pyproject.toml` declares Playwright either, and the sole
