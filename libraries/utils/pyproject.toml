@@ -7,7 +7,12 @@ exclude_lines = ['if TYPE_CHECKING:', 'if catalyst:', 'pragma: no cover']
 show_missing = true
 
 [tool.pytest.ini_options]
-addopts = "--cov --cov-report html:'../../coverage/libraries/utils/html' --cov-report xml:'../../coverage/libraries/utils/coverage.xml' --html='../../reports/libraries/utils/unittests/html/index.html' --junitxml='../../reports/libraries/utils/unittests/junit.xml'"
+# Report paths (xml/html/junit) are pinned by the nx `test` target, not here:
+# the target runs from the workspace root, and addopts paths resolve against
+# the invocation cwd, so no single relative path is right for every caller.
+# `--cov` must not be the last addopt: it takes an optional value and would
+# swallow the test path the nx target passes, collecting the whole repo.
+addopts = "--cov --cov-report=term"
 asyncio_mode = "auto"
 
 [tool.poetry]
