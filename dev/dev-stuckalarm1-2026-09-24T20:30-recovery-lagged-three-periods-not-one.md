@@ -137,3 +137,31 @@ from `notBreaching`, **not** from a datapoint existing.
   to recover a 15-minute window.** Kept, with the false version above it
   rather than deleted, because a spec that quietly changes its own premise
   teaches nothing about how the premise was reached.
+
+- 2026-09-24T20:45 — **the generalisable form, which is about calibration
+  rather than CloudWatch.** I had two failed predictions of this same process
+  within the hour. I treated them as background — embarrassing, already
+  corrected, not bearing on the next question. They were the opposite:
+  **prior failures to predict a process are evidence about your own
+  resolution, not noise to set aside.** Two misses inside an hour said,
+  quantitatively, that I could not yet tell *late* from *never* on this
+  system. That should have widened the interval I was willing to call
+  normal. Instead it dropped out of the reckoning entirely, and what filled
+  the gap was the more alarming of two available stories — the one with less
+  support behind it.
+
+  The asymmetry is the dangerous part. A miscalibrated interval does not
+  produce random errors; it produces **confident ones in the direction of
+  whichever story is easier to tell**, and "the thing is broken" is always
+  easier to tell than "I don't yet know how long this takes". So the check
+  is not "am I sure?" but **"how many times have I been wrong about this
+  exact process today, and have I widened anything as a result?"**
+
+  Worth noting the one prediction that held: the cause discriminator for the
+  `OK` (spot desired 4 → 0 before `order1` flips = the cancel, not the flip)
+  resolved exactly as pre-registered. The difference is that it was a
+  prediction about **which of several causes**, decided by an observation
+  chosen in advance — not a prediction about **when**, against a process
+  whose timing I had already demonstrated I could not model. Pre-registration
+  worked; the timing estimates that failed were never pre-registered as
+  falsifiable, they were stated as expectations.
