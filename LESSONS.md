@@ -246,3 +246,44 @@
   think it does. Fix: gate on a probe that aggregates **every run at the head
   SHA** (`devx devx-helper await-remote-ci`, which folds all workflows into one
   verdict), and treat `gh pr checks` as a convenience view, never as the gate.
+
+- **Merging to `main` cancels whatever `main` is already running — including a
+  `terraform-prod` apply mid-flight.** `ci.yml` keys `concurrency` on
+  `refs/heads/main` with `cancel-in-progress: true`, so each merge kills the
+  previous merge's run. Measured 2026-09-24: two merges eight seconds apart
+  cancelled #96's `terraform-prod` at 19:53:45Z, before the Batch queue flip
+  applied. The merges succeeded, the PRs read "merged", and the change they
+  were carrying never reached production.
+
+  **`mergeStateStatus: CLEAN` does not cover this.** It describes the PR
+  against `main`; it says nothing about what `main` is currently running. The
+  pre-merge check that does:
+
+  ```bash
+  gh api "repos/<owner>/<repo>/actions/runs?head_sha=$(git rev-parse origin/main)"
+  ```
+
+  If `main`'s tip has an `in_progress` run, wait.
+
+  Two consequences that outlive the incident:
+
+  1. **A merged PR is not a deployed PR, and the gap is silent.** A cancelled
+     run is not a red run — nothing pages, nothing retries, and the PR page
+     looks identical either way. After a merge that matters, verify the thing
+     in production (`describe-services` for the running task definition, the
+     deployed image tag against the merge SHA), not the merge.
+  2. **The failure is in the lane, not in any one change.** Each merge is
+     individually correct; the second is what destroys the first. So the check
+     belongs to whoever holds the merge button for the lane, and it has to run
+     *before* the merge — afterwards there is nothing to observe but a run that
+     quietly stopped.
+
+  This is the same family as the entry above, arrived at from the operational
+  side rather than the instrumental one: a capability described (or acted on)
+  at the moment it was *decided* rather than the moment it was *available*.
+  The distance between those two is however long the lane takes, and every
+  instance today lived in that gap — an alarm count stated before the apply, a
+  deploy history stated from memory rather than from ECS, a cleanup script
+  described as ready while its PR was still open, and this one, which was not a
+  description at all but an action taken through the rule that exists to
+  prevent it.
