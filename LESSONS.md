@@ -497,3 +497,41 @@
   time; this one catches a misconceived *artifact* at specification time,
   before anyone builds it. Fewer moving parts is the lesser reason to prefer
   the simpler shape. **Fewer places a credential can appear is the real one.**
+
+- **The moment a finding is clean enough to state in one sentence is the
+  moment it stops carrying its own conditions.** On 2026-09-24 three
+  sessions made the same error inside one hour, each while actively being
+  careful about exactly this:
+
+  - *"`6b4e23ab` descends from `55731990`, so nothing is lost"* — true that
+    night, stated as a rule. Ancestry covers the code; `detect-changes`
+    decides whether it is acted on.
+  - *"A cancelled apply is delayed and repeatedly preemptable, not
+    reverted"* — true only while the preempting runs keep getting cancelled.
+    A replacement run that goes **green** while skipping the apply advances
+    `nx-set-shas`' base past the orphaned change and the loss becomes
+    permanent. Written an hour after citing the durable-prose entry above.
+  - The orphan mechanism itself, stated without the second condition.
+
+  Three lapses in an hour, by three people each holding the warning in mind,
+  is not three lapses. **It is structural, and the mechanism is compression.**
+  A finding arrives with its conditions attached because you just derived it.
+  Restating it shorter is how it gets shared, and the conditions are the
+  first thing that goes, because they are the part that makes the sentence
+  long. The short form then travels further and faster than the long one
+  precisely *because* it is clean.
+
+  **The practical rule that survives:** when a finding compresses into one
+  satisfying sentence, that is the signal to write the condition back in,
+  not the signal that you have understood it. Ask *"true because of what?"*
+  and put the answer in the same sentence, even when it spoils it. If the
+  condition cannot be stated, the finding is not ready to be shared as a
+  rule — only as an observation with its date on it.
+
+  **Corollary, from the same night:** a **cancelled** CI run is the
+  recoverable outcome and a **green** one can be the lossy outcome, because
+  green advances the base and cancelled does not. That inverts the instinct
+  everyone in the room was operating on — "get a green run on main" was
+  treated as the goal state by all three sessions. **A status that means
+  "nothing is wrong" is not the same as a status that means "the thing
+  happened."** See the `applygap1` status log for the measured instance.
