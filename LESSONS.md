@@ -596,16 +596,48 @@
     is a single `--dart-define` inside one script; any path that skips the
     script is unsafe.
 
+  **There is a third case, and it is the only one safe without vigilance:
+  a capability that was never representable.** Checking whether invitations
+  could produce an ownerless recipe book — the remaining path into
+  membership state — the answer was not "a guard refuses it". It was that
+  `owner` **is not in the set of offerable roles at all**
+  (`invitations/helpers.py:26-32`: `recipe_book` maps to
+  `{editor, viewer}`). Acceptance grants exactly `invitation.role_offered`,
+  and that field can only ever hold a value from the set. **Nothing needs to
+  refuse, because nothing can ask.** What makes it structural rather than
+  lucky is that *both* entry points — the invitation path and the
+  invite-link path — call the same `validate_resource_and_role`, rather than
+  one of them remembering to.
+
+  So the three cases, worst to best:
+  1. **An absence** — the capability is present, the call path merely isn't.
+     Safe only while nobody adds a caller.
+  2. **A guard** — code that checks and refuses. Safe while the guard is
+     correct, reachable, and on every path.
+  3. **Not representable** — the dangerous value cannot be expressed.
+     Nothing to bypass, nothing to keep correct.
+
+  Prefer 3 where the shape of the data allows it. Most of the time it
+  doesn't, and then 2 — but knowing which one you have is the point, because
+  1 is routinely described as though it were 2.
+
   **The useful part is that the test is cheap and answerable:** for any
   dangerous capability, ask *what would happen if someone called it* — not
   *does anyone call it today*. If the answer is "it would work", you have an
   absence, and the fix is a mechanism that refuses rather than a convention
   that avoids.
 
-  **Bounded, deliberately:** the likeliest third instance was checked and is
-  **clean** — all 16 admin routes carry `require_admin_async`, enforced at
-  the router rather than assumed from the UI hiding the screen. So this is
+  **Bounded, deliberately — two of four surfaces checked, not "clean".**
+  Admin routes: **clean**, all 16 carry `require_admin_async` at the router
+  rather than relying on the UI hiding the screen. Invitation and
+  invite-link acceptance: **clean**, and for the stronger reason above.
+  **Unexamined: the MCP surface, and worker task entry points.** So this is
   two instances in the e2e-and-legacy space, not an established design
-  habit; calling it a habit on two examples would be the over-fit this file
-  warns about elsewhere. Worth re-testing if a third turns up somewhere
-  unrelated, because that changes what the fix should be.
+  habit — calling it a habit on two examples would be the over-fit this file
+  warns about elsewhere, and calling two-of-four "clean" would be the
+  absence-shaped claim this entry is about.
+
+  **Stated open question, so it is not rediscovered:** an *editor* may
+  invite another editor (`helpers.py:71` admits owner **or** editor as
+  sender). That is a product-intent question rather than a security one and
+  nobody has confirmed it is deliberate.
