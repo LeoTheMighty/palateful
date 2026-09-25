@@ -50,9 +50,42 @@ cascading deletion is that nobody has added the button yet.
 So the feature is complete in every layer except the one that would make it
 visible, and it looks reviewed because it *was* — just never connected.
 
+## Answered by the history: deliberately unreachable, not unshipped
+
+These imply opposite next actions, so it was worth checking rather than
+assuming. `git log -S deleteRecipeBook -- app/lib` gives a clean answer:
+
+**Story 2.8, "Archive & Restore Recipe Books — soft delete with archived
+books screen" (`3a1f7e2f`), replaced the delete call site with archive:**
+
+    - Future<void> _deleteRecipeBook() async {
+    + Future<void> _archiveRecipeBook() async {
+    -   await _apiClient.deleteRecipeBook(widget.recipeBookId);
+    +   await _apiClient.archiveRecipeBook(widget.recipeBookId);
+    -   _deleteRecipeBook();
+    +   _archiveRecipeBook();
+
+So a UI caller **did** exist, and a deliberate product decision removed it:
+soft delete replaced hard delete, and the archived-books screen shipped in
+the same commit. The client path was left wired behind it.
+
+**This changes the risk and the recommendation.** It is not half-built work
+waiting to be finished — it is a **shipped product decision with its
+implementation still loaded**. Someone re-wiring `deleteRecipeBook` would be
+**reversing Story 2.8 without knowing they were**, and the absence of a
+caller would read to them as "never finished" rather than "deliberately
+withdrawn". That is the precise misreading this spec exists to prevent, and
+it makes option (2) the one the evidence supports.
+
+**The live exposure is the server side.** `DELETE /v1/recipe-books/{id}` is
+still routed and still cascades, so the API permits the hard delete the
+product chose to stop offering. Any client — or any script — can still do
+what the UI deliberately stopped doing.
+
 ## The decision this needs
 
-Not "add a delete button". Someone has to decide which of these is true:
+The history points at (2). Someone still has to decide, because the server
+side is a separate question from the client one:
 
 1. **Delete is intended**, and the missing piece is a UI with a confirmation
    proportional to a cascading permanent delete (recipe count shown, typed
@@ -68,7 +101,14 @@ it reachable in one line without anyone reviewing the consequence.
 
 ## Acceptance criteria
 
-- [ ] A decision recorded between (1) and (2) above, with the reason.
+- [ ] A decision recorded between (1) and (2) above, with the reason — and
+      it must engage with Story 2.8 rather than re-deciding in ignorance of
+      it. Choosing (1) means deliberately reversing a shipped decision, which
+      is allowed but should be conscious.
+- [ ] A separate decision on the **server** endpoint, which the client
+      choice does not settle: it remains routed and cascading regardless, so
+      "remove the client path" leaves the capability intact for anything
+      holding a token.
 - [ ] If (1): the confirmation states **what will be deleted, counted** —
       "Delete <name> and its 37 recipes?" — not a generic "Are you sure?".
       A cascading delete whose blast radius is invisible at the moment of
