@@ -5,16 +5,23 @@
 The instances below are what make it persuasive; they are for the reader
 who has thirty.**
 
-| | |
-|---|---|
-| **(a)** | A detector must be proven able to fail. Drive it into the failure state once. |
-| **(b)** | Its output must reach a human by a path independent of what it watches. |
-| **(c)** | A clean reading must be distinguishable from an empty one. Assert non-zero input. |
-| **(d)** | Evidence must cover the path *and the input in use* — not *a* path. |
-| **(e)** | A guard can enforce a condition's *spelling* without enforcing its *presence*. |
-| **(f)** | A post-change check needs a prior value, or it cannot fail. |
-| **(g)** | Verified the shape, never the capability. Confirm the account can *create* it. |
-| **(h)** | A claim in prose gets less checking than the code it describes, and carries more weight. **No detector exists for this one.** |
+**The third column is the honest part** (3b's suggestion, and the entry's
+own thesis applied to itself): without it, eleven corollaries *read* as
+eleven defences. Four are habits, and **two have no detector at all.**
+
+| | | what catches it |
+|---|---|---|
+| **(a)** | A detector must be proven able to fail. Drive it into the failure state once. | tooling |
+| **(b)** | Its output must reach a human by a path independent of what it watches. | tooling |
+| **(c)** | A clean reading must be distinguishable from an empty one. Assert non-zero input. | tooling |
+| **(d)** | Evidence must cover the path *and the input in use* — not *a* path. | a person re-measuring |
+| **(e)** | A guard can enforce a condition's *spelling* without enforcing its *presence*. | tooling |
+| **(f)** | A post-change check needs a prior value, or it cannot fail. | a person re-measuring |
+| **(g)** | Verified the shape, never the capability. Confirm the account can *create* it. | a person re-measuring |
+| **(h)** | A claim in prose gets less checking than the code it describes, and carries more weight. | **nothing** |
+| **(i.1)** | A corrected premise does not correct its derived numbers — grep every *spelling*. | a habit |
+| **(i.2)** | …and anything *computed* from it, which no text search can reach. | **nothing** |
+| **(j)** | A remedy has preconditions, checked less often than the diagnosis. | a habit |
 
 ---
 
@@ -41,6 +48,17 @@ who has thirty.**
     the probe never sees the credential change.
   - An alarm that has never been in ALARM state is a *configured*
     detector, not a *verified* one. `set-alarm-state` costs one command.
+  - **(a) applied to a fix, not a detector.** (palateful-3b, #108.) The
+    calendar rendered its empty state before the first fetch resolved, so a
+    loading week was indistinguishable from an empty one. The first fix
+    early-returned a spinner for the whole body — and **reintroduced the
+    same indistinguishability one level up**: a new week is not a first
+    load, but it looks exactly like one, because the provider is keyed by
+    range. It blanked the week header on every navigation. **A screenshot
+    review would have passed it.** What caught it was two *existing*
+    navigation tests, written for another purpose entirely — **which is the
+    strongest argument for keeping tests that assert structure nobody is
+    currently changing.**
 
   **(b) A detector's output must reach a human by a path independent of
   what it watches.** Mine, plus cc's half.
@@ -537,6 +555,52 @@ who has thirty.**
   it. **A wrong mechanism attached to a right conclusion is worse than no
   mechanism**, because it is the part a sceptical reader checks first.
 
+  **(i) A corrected premise does not correct the numbers derived from
+  it.** Distinct from a stale fact and from a wrong measurement: the fact
+  *was* corrected, in the sentence that stated it, and the arithmetic
+  downstream went on propagating. (This session, 2026-09-24.)
+
+  - Worked instance. I assumed the parser image's **11.8 GB layer** held
+    the pre-baked model, and predicted an `allow_patterns` change would
+    take it "**~11.8 GB → ~2 GB**". I then *proved* the model lives in the
+    **3.5 GB** layer — that is how I read its configs — and **repeated the
+    old figure anyway**, in a commit message, a code comment, two specs and
+    a PR body. Measured after the apply: the model layer went
+    **3,495 MB → 1,494 MB**, about **2 GB**, not ~10. A 14.63 GB image
+    would have read as a failed fix against my published number.
+  - **Corrections travel to the sentence that was wrong. They do not travel
+    to the arithmetic downstream of it.** (leonidbelyi-41's framing.)
+
+  **The rule, in two parts, because one is not enough:**
+
+  1. **When you correct a premise, grep for every *spelling* of the number
+     you derived from it.** Mine appeared as `~11.8 GB -> ~2 GB`,
+     `~11 GB → ~2–3 GB` (en-dash and arrow), and I would have declared the
+     sweep clean after matching only the first.
+  2. **And for anything *computed* from it, which no textual search can
+     find.** A `~6–9 GB` cost estimate in a different spec's comment never
+     contained "11.8" at all; it was derived from it. **You only find that
+     one by knowing what you computed** — the grep cannot help you.
+
+     **Part 2 has no detector, and it is not a rule in the way part 1 is.**
+     (3b.) Part 1 is mechanical: run the grep, vary the spelling, done. Part
+     2 asks you to remember what you multiplied — and **a reader who treats
+     the two-part rule as uniformly actionable will run the grep, find all
+     three spellings, and still ship the derived figure.** Stated plainly
+     here because the pair otherwise reads as complete when half of it is
+     an appeal to memory. Same admission as (h).
+
+  **Note the shape of (1)'s near-miss**: a sweep that reports success after
+  matching one of three spellings is *the same failure the rule exists to
+  prevent*, committed by the rule. Compare (c): the clean reading and the
+  incomplete one are indistinguishable without asserting coverage.
+
+  - **A wrong figure that merges is a wrong figure inherited.** The bad
+    number reached `main` in `Dockerfile.batch:58` and would have taught
+    the next reader that `allow_patterns` saves 10 GB, **with no reason to
+    doubt it** — the comment sits beside the code it describes, which is
+    exactly what makes a code comment persuasive.
+
   **(j) A remedy has preconditions, and they are checked less often than
   the diagnosis.** A fix copied from a case where it worked can plan
   clean, apply clean, and do nothing — because the condition that made it
@@ -580,50 +644,33 @@ who has thirty.**
     with **no data ever recorded**, so absence *can* drive a transition.
     **The observation stands without a mechanism; the mechanism stays
     open.**
-  - **Operational consequence, which needs no mechanism at all:** an alarm
-    that fires correctly and cannot leave `ALARM` is **stuck loud** — and
-    because CloudWatch alarms are edge-triggered, every *subsequent*
-    incident is then silent **indefinitely**, not merely until the first
-    resolves. A detector built to end exactly this failure is permanently
-    deaf after its first real firing.
+  **Operational consequence — promoted out of the instance, because it is a
+  property of every alarm in the account and not of this one.** (3b.)
 
-  **(i) A corrected premise does not correct the numbers derived from
-  it.** Distinct from a stale fact and from a wrong measurement: the fact
-  *was* corrected, in the sentence that stated it, and the arithmetic
-  downstream went on propagating. (This session, 2026-09-24.)
+  **An alarm that fires correctly and cannot leave `ALARM` is stuck loud.**
+  CloudWatch alarms are **edge-triggered** — they notify on state
+  *transition* — so while one sits in `ALARM`, every **subsequent** incident
+  is silent. If the recovery is slow, the blind window is long; if recovery
+  never comes, a detector built to end exactly this failure is **permanently
+  deaf after its first real firing.**
 
-  - Worked instance. I assumed the parser image's **11.8 GB layer** held
-    the pre-baked model, and predicted an `allow_patterns` change would
-    take it "**~11.8 GB → ~2 GB**". I then *proved* the model lives in the
-    **3.5 GB** layer — that is how I read its configs — and **repeated the
-    old figure anyway**, in a commit message, a code comment, two specs and
-    a PR body. Measured after the apply: the model layer went
-    **3,495 MB → 1,494 MB**, about **2 GB**, not ~10. A 14.63 GB image
-    would have read as a failed fix against my published number.
-  - **Corrections travel to the sentence that was wrong. They do not travel
-    to the arithmetic downstream of it.** (leonidbelyi-41's framing.)
+  *(Measured on 2026-09-24: recovery took **46m20s** from the last datapoint.
+  So the window is bounded, not infinite — but 46 minutes of silence begins
+  the moment the first incident is detected.)*
 
-  **The rule, in two parts, because one is not enough:**
+  **And unlike most of this entry, it is mechanically sweepable.** The
+  exposure is a **pair**, and both halves are queryable:
 
-  1. **When you correct a premise, grep for every *spelling* of the number
-     you derived from it.** Mine appeared as `~11.8 GB -> ~2 GB`,
-     `~11 GB → ~2–3 GB` (en-dash and arrow), and I would have declared the
-     sweep clean after matching only the first.
-  2. **And for anything *computed* from it, which no textual search can
-     find.** A `~6–9 GB` cost estimate in a different spec's comment never
-     contained "11.8" at all; it was derived from it. **You only find that
-     one by knowing what you computed** — the grep cannot help you.
+  1. does the metric filter set **`defaultValue`**? and
+  2. does its log group receive events the filter's pattern **does not**
+     match?
 
-  **Note the shape of (1)'s near-miss**: a sweep that reports success after
-  matching one of three spellings is *the same failure the rule exists to
-  prevent*, committed by the rule. Compare (c): the clean reading and the
-  incomplete one are indistinguishable without asserting coverage.
-
-  - **A wrong figure that merges is a wrong figure inherited.** The bad
-    number reached `main` in `Dockerfile.batch:58` and would have taught
-    the next reader that `allow_patterns` saves 10 GB, **with no reason to
-    doubt it** — the comment sits beside the code it describes, which is
-    exactly what makes a code comment persuasive.
+  **An alarm is exposed when the answer to both is no** — no default, and a
+  dedicated log group, so a quiet period produces no datapoints rather than
+  zeroes. `describe-metric-filters` answers the first for every filter in
+  the account; the second needs one look at what writes to each log group.
+  **That is a sweep somebody could actually run**, which is more than can
+  be said for most of what is written here.
 
   **Two live instances of the illusion, measured 2026-09-22:**
   - `palateful-prod-alerts` has **0 subscriptions**, and the account has
@@ -651,8 +698,16 @@ who has thirty.**
 
 ## The entry caught itself: this document's own review accounting
 
-**Worked example of (i), found in the review of this entry, 2026-09-24.**
-Recorded here rather than in a corollary because it is about *this file*.
+**Worked example of (h) and (i), found in the review of this entry,
+2026-09-24.** Recorded here rather than inside a corollary because it is
+about *this file*. **(h)** because the inaccurate thing was a claim in
+prose, and nothing checked it; **(i)** because a true-as-stated claim was
+then reused for a purpose it did not cover.
+
+**3b, whose claim it was, offered it as an (h) instance themselves** — and
+argued it is a cleaner one than their Playwright miscount, *"because there
+was no carelessness in the framing at all, only in the number inside it."*
+**The disciplined-sounding sentence was the inaccurate one.**
 
 palateful-3b completed a review pass and reported it with unusual care —
 *"complete through `e7c07fe1`, minus two commits I have not read"* — and
