@@ -72,6 +72,15 @@ jobs:
     # exempt this job or move the AWS secrets to repo scope.
     environment: production
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 22s across the last 5 successful
+    # runs (7s, 10s, 12s, 13s, 22s) — two AWS reads and a git log.
+    # 
+    # This one matters more than its runtime suggests. A detector that can
+    # hang for six hours while nothing says so is not a detector: this job
+    # exists to notice silence, and without a ceiling it can itself go
+    # silent in exactly the way it was built to catch. 10m is ~27x the
+    # observed max, so a slow AWS API cannot trip it.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:

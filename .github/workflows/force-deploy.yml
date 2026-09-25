@@ -31,6 +31,9 @@ env:
 jobs:
   deploy-images:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 15m09s (parser) in run 24536897073.
+    # Matches ci.yml's deploy-images — same work, same ceiling.
+    timeout-minutes: 40
     environment: production
     # Parallel fan-out: one runner per service.
     strategy:
@@ -70,6 +73,9 @@ jobs:
 
   terraform-prod:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 30s, but an apply waits on AWS
+    # resource creation that this sample never exercised. Matches ci.yml.
+    timeout-minutes: 30
     needs: deploy-images
     environment: production
     env:
@@ -137,6 +143,8 @@ jobs:
 
   run-migrator:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: observed max 1m25s. ECS task run + migration.
+    timeout-minutes: 20
     needs: terraform-prod
     environment: production
     steps:
@@ -198,6 +206,10 @@ jobs:
 
   deploy-services:
     runs-on: ubuntu-latest
+    # Ceiling, not a target: no successful sample exists — the only two runs
+    # of this workflow failed here (8m before failing). ECS rolling deploy
+    # waits for a stable service; matches ci.yml rather than being guessed.
+    timeout-minutes: 30
     needs: [run-migrator, terraform-prod, deploy-images]
     environment: production
     steps:
