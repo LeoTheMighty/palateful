@@ -637,6 +637,23 @@
   warns about elsewhere, and calling two-of-four "clean" would be the
   absence-shaped claim this entry is about.
 
+  **Why the bound is worth the sentence it costs.** The invite result came
+  out of a caveat made with **no evidence either way** — having verified two
+  endpoints refuse owner self-removal, *"two doors are locked is not the
+  same as the room being sealed"*. Resolving it took about four minutes. Its
+  value was never that it turned out to matter; it is that **a caveat costs
+  one sentence and is cheap to discharge, and the cost of not making one is
+  unbounded** — nobody knows to look, because nothing says the question
+  exists. Had it gone the other way it would have been the only thing in the
+  repo pointing at an ownerless-book path.
+
+  So the remedy for a claim that covers less than it reads is **not more
+  caution in the prose** — it is writing the uncovered part down as a
+  **named question**, with a scope and a way to resolve it. That one had a
+  name, a boundary and a check, which is the only reason it could be closed
+  at all. An unnamed misgiving cannot be discharged by anyone, including the
+  person who had it.
+
   **Stated open question, so it is not rediscovered:** an *editor* may
   invite another editor (`helpers.py:71` admits owner **or** editor as
   sender). That is a product-intent question rather than a security one and
