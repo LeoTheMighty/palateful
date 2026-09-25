@@ -13,6 +13,8 @@ import 'core/debug/perf_dio_interceptor.dart';
 import 'core/debug/perf_overlay.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
+import 'core/router/url_strategy_stub.dart'
+    if (dart.library.html) 'core/router/url_strategy_web.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/api_client.dart';
 import 'core/services/cook_timer_notification_service.dart';
@@ -40,6 +42,12 @@ final DateTime _bootT0 = DateTime.now();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Web: path URLs, not hash URLs. Flutter web's default
+  // `HashUrlStrategy` makes the router read only the fragment, so a real
+  // path like `/activity?tab=notifications` resolves to `/` and the app
+  // sits on Home while the address bar says otherwise. No-op off web.
+  // Must run before the router is built.
+  useAppUrlStrategy();
 
   // Initialize Firebase (skip in E2E mode — no push notifications needed,
   // and waiting on Firebase delays test startup significantly)
