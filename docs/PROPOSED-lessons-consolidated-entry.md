@@ -45,7 +45,12 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
   it watches.** Ask: *what does this need in order to work, and is that
   inside the blast radius of the failure it exists to catch?* Where it
   structurally cannot cover a case, **name and assign the gap; don't paper
-  it.**
+  it** — and **say how much it misses**, because that is the actionable
+  half. cc's #48 notify step **cannot fire when AWS credentials are the
+  failure, since publishing needs them — and that was 49 of the 52
+  historical failures.** Without the number, "name the gap" is good
+  manners; with it, **the detector was structurally blind to 94% of what it
+  existed to catch, and saying so was the deliverable.**
   → *evidence: 52 unheard `deploy-freshness` failures; `error_logs` living
   in the database that was refusing connections.*
 
@@ -67,14 +72,25 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
 
   **Before trusting a check that reports "fine", prove it can report "not
   fine".**
+
+  **And note what the failures had in common.** Four query bugs in one
+  evening — two wrong `awk` ranges, a short-vs-full SHA comparison, a
+  miscounted commit range — and **every one reported the safe-sounding
+  answer**: *"no pointers"*, *"MISMATCH"*, *"reviewed minus two"*. All
+  understated rather than overstated. **That is luck, not design** (3b), and
+  a set of broken comparators that happened to fail conservatively is not
+  evidence that the next one will.
   → *evidence: six-hour timestamp skew, the stale-pointer guard's blind
   count, a fixture the guard could not see, "0 cart errors" over 0 loads.*
 
   **(d) Evidence must cover the path AND the input in use — not *a* path.**
   The tell is provenance standing in for scope: *"rsh102 measured this"*
-  sounds like verification and never says what was covered. **(a) and (c)
-  are caught by tooling; (d) reached a story's acceptance criteria and would
-  have shipped.**
+  sounds like verification and never says what was covered. **What makes it
+  hard is that nothing looks wrong: the measurement is correct, live and
+  real — it just covered a different input.** (The asyncpg case measured
+  *wrong password* on both drivers, and was then generalised to *missing
+  password*, which it never touched.) **(a) and (c) are caught by tooling;
+  (d) reached a story's acceptance criteria and would have shipped.**
   → *evidence: the asyncpg/psycopg2 driver mismatch; the wrong-tree grep;
   `git show` proving nothing about a remote across a shared object store.*
 
