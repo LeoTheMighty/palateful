@@ -576,3 +576,36 @@
   **As an author:** the better a paragraph reads, the more it needs its
   evidence handle attached. Fluency is not evidence, and it is *persuasive*
   in the precise way evidence is supposed to be.
+- **A guard refuses; an absence merely hasn't been asked yet.** When the
+  answer to *"is this safe?"* is *"nothing calls it"* or *"the script always
+  passes the right flag"*, that is not a guard. The capability is fully
+  present and **adding a caller is sufficient to unlock it** — nothing in
+  the system is positioned to object. A guard is a mechanism that says no
+  when asked; an absence is a habit of not asking.
+
+  Two instances, 2026-09-24, from unrelated areas:
+  - `DELETE /v1/recipe-books/{id}` deletes a book **and cascades to every
+    recipe in it**. Routed, live, and wired through every client layer —
+    api client, service, mutation type, user-facing failure copy, a test.
+    **No screen calls it.** The history shows why: Story 2.8 replaced the
+    delete call site with archive. So the protection is that a product
+    decision removed the caller, not that anything refuses the call.
+  - `E2E_MODE=true` with no override builds a bundle pointed at
+    **production with the auth bypass armed**, because production is the
+    default and the flag carries no environment condition. The protection
+    is a single `--dart-define` inside one script; any path that skips the
+    script is unsafe.
+
+  **The useful part is that the test is cheap and answerable:** for any
+  dangerous capability, ask *what would happen if someone called it* — not
+  *does anyone call it today*. If the answer is "it would work", you have an
+  absence, and the fix is a mechanism that refuses rather than a convention
+  that avoids.
+
+  **Bounded, deliberately:** the likeliest third instance was checked and is
+  **clean** — all 16 admin routes carry `require_admin_async`, enforced at
+  the router rather than assumed from the UI hiding the screen. So this is
+  two instances in the e2e-and-legacy space, not an established design
+  habit; calling it a habit on two examples would be the over-fit this file
+  warns about elsewhere. Worth re-testing if a third turns up somewhere
+  unrelated, because that changes what the fix should be.
