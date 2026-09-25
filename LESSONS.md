@@ -558,7 +558,19 @@
   about **good prose versus bad prose**, and it is the worse of the two,
   because the better you write the less anyone checks you.
 
-  **As a reviewer:** sample the passages that read best. They are the ones
+  **It runs in both directions, and the second is worse.** A claim that
+  reads *alarmingly* also gets less scrutiny, because nobody wants to be the
+  person who argued against taking a security finding seriously — the social
+  cost of challenging it falls entirely on the challenger. Worked instance,
+  same evening: grepping admin endpoint files for `is_admin` returns **zero
+  references in 14 of 16 files**. *"16 admin routes with no authorization
+  check"* is dramatic, publishable, and **false** — the guard is
+  `require_admin_async`, enforced one level up at the router, on all 16.
+  A finding that flatters the finder's diligence and alarms the reader is
+  the least likely of all claims to be checked.
+
+  **As a reviewer:** sample the passages that read best — and the ones that
+  alarm you most. They are the ones
   nobody stopped on, so they are where an unchecked claim survives longest —
   the opposite of where attention goes naturally.
   **As an author:** the better a paragraph reads, the more it needs its
