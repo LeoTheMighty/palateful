@@ -37,6 +37,33 @@
 # `estimatePantryExpiry` change nothing, so a direct read cannot
 # desynchronise a view.
 #
+# HOW THIS GUARD WAS VALIDATED, AND WHY IT MATCHES THE RECEIVER
+#
+# The first version of this script matched `.deletePantryIngredient(` on
+# ANY receiver. It flagged the five legitimate `PantryService` call sites
+# alongside the one bug — and, the part that matters, it **exited 1
+# identically whether the bug was present or absent**. A check whose
+# output does not vary with the thing it checks is worse than no check:
+# it looks like it is working, and the first person to notice the noise
+# switches it off with a reasonable commit message. Then the class is
+# unprotected and nobody thinks to look.
+#
+# The repair was to match the RECEIVER (an ApiClient-shaped one) rather
+# than allowlist the false positives. Allowlisting is the tempting fix
+# and it is how a guard rots: every new legitimate call site adds an
+# exemption, until the exemptions describe the rule and the rule
+# describes nothing.
+#
+# So: if you change PATTERN, re-run the two-way check rather than reading
+# the output and nodding.
+#
+#   bash tools/no-direct-pantry-mutation-check.sh; echo $?   # want 0
+#   # then swap one PantryService pantry call for getIt<ApiClient>()
+#   bash tools/no-direct-pantry-mutation-check.sh; echo $?   # want 1
+#   # then revert
+#
+# Verified both ways 2026-09-24.
+#
 # Exit codes:
 #   0 — clean
 #   1 — offending call site found (list printed to stderr)
