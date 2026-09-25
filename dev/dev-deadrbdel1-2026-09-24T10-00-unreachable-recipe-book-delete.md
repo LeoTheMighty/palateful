@@ -122,6 +122,32 @@ it reachable in one line without anyone reviewing the consequence.
 - [ ] Note for whoever implements: the endpoint's existing `is_system` and
       owner-only guards stay regardless; they are not the gap.
 
+## The same shape as `e2eprod1` — two instances, so a pattern
+
+`e2eprod1` (filed in PR #103, not yet on `main` at time of writing):
+`E2E_MODE=true` with no `API_BASE_URL` override builds a bundle that talks
+to **production with the auth bypass armed**, because production is the
+default in `environment.dart:9-12` and `kE2EMode` carries no environment
+condition. Its only protection today is a single `--dart-define` inside
+`run_all.sh`.
+
+Put beside this story, the shared shape is sharper than "dead code":
+
+> **The capability is fully present, and the only thing preventing its use
+> is that the current call path happens not to exercise it. Adding a caller
+> is sufficient to unlock it, and nothing in the system would object.**
+
+- `e2eprod1`: the guard is that the one script everyone uses passes the
+  right flag. Any path that skips the script is unsafe.
+- This story: the guard is that no screen calls a method the client already
+  exposes. Any screen that calls it is a permanent cascading delete.
+
+Neither has a mechanism that would **refuse** the dangerous use — they have
+a habit of not requesting it. That is the distinction worth carrying: a
+guard refuses; an absence merely hasn't been asked yet. Two instances in
+one day from unrelated areas suggests looking for a third rather than
+treating either as a quirk.
+
 ## Technical notes
 
 - Relevant to the QA identity: this endpoint can permanently remove QA books
