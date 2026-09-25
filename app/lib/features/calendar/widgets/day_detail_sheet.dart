@@ -47,6 +47,11 @@ class DayDetailSheet extends ConsumerWidget {
     // Use the last-known data during refetch so the sheet doesn't flash
     // to a spinner after a mutation.
     final events = asyncEvents.value ?? const <MealEvent>[];
+    // ...but on the FIRST load there is no last-known data, and falling
+    // back to an empty list renders the "no meals planned" row — which is
+    // indistinguishable from a day that genuinely has none. Only the
+    // first load takes this branch; a refetch has `value` non-null.
+    final isFirstLoad = asyncEvents.value == null && asyncEvents.isLoading;
 
     return SafeArea(
       child: Padding(
@@ -89,7 +94,12 @@ class DayDetailSheet extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
 
-            if (events.isEmpty)
+            if (isFirstLoad)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (events.isEmpty)
               _EmptyDayRow(onPlanMeal: () {
                 Navigator.pop(context);
                 onPlanMeal();
