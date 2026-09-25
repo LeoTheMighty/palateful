@@ -244,6 +244,42 @@ void main() {
       expect(api.getDefaultPantryCalls, greaterThan(baseline));
     });
 
+    // pantrysync — the shopping-list check-off auto-adds to the pantry on
+    // the SERVER, so this client has no item payload to assert. It emits
+    // PantryChangedExternally instead, and an open pantry list must
+    // re-read on it. Before this, neither the auto-add nor its Undo
+    // emitted anything and an open list stayed wrong until the provider's
+    // 10-minute TTL backstop.
+    //
+    // This is the two-tab bug in automated form: the mounted provider is
+    // the "pantry tab left open", and `getDefaultPantryCalls` increasing
+    // is that tab re-reading rather than showing a stale list.
+    test('invalidates on PantryChangedExternally for same pantry', () async {
+      await container.read(pantryIngredientsProvider('p1').future);
+      final baseline = api.getDefaultPantryCalls;
+      await Future<void>.delayed(Duration.zero);
+      emitMutation(const PantryChangedExternally(
+        pantryId: 'p1',
+        reason: 'shopping-list check-off auto-add',
+      ));
+      await Future<void>.delayed(Duration.zero);
+      await container.read(pantryIngredientsProvider('p1').future);
+      expect(api.getDefaultPantryCalls, greaterThan(baseline));
+    });
+
+    test('PantryChangedExternally for another pantry does NOT invalidate',
+        () async {
+      await container.read(pantryIngredientsProvider('p1').future);
+      final baseline = api.getDefaultPantryCalls;
+      await Future<void>.delayed(Duration.zero);
+      emitMutation(const PantryChangedExternally(
+        pantryId: 'p-other',
+        reason: 'shopping-list check-off auto-add',
+      ));
+      await Future<void>.delayed(Duration.zero);
+      expect(api.getDefaultPantryCalls, baseline);
+    });
+
     test('does NOT invalidate on event for a different pantry', () async {
       await container.read(pantryIngredientsProvider('p1').future);
       final baseline = api.getDefaultPantryCalls;
