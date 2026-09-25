@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'error_reporter.dart';
+
 /// Tells **"never signed in on this browser"** apart from **"signed in and
 /// lost it"**.
 ///
@@ -22,7 +24,35 @@ class WebSessionMarker {
 
   static const String key = 'auth.hadWebSession';
 
+  /// Storage failing is reported **once per process**. It is a persistent
+  /// condition (private mode, blocked site data), not an event, and the
+  /// read happens on every startup — reporting each time would bury the
+  /// signal under its own repetition.
+  static bool _reportedStorageFailure = false;
+
   final SharedPreferencesLoader _load;
+
+  /// Whether this process should report a storage failure now.
+  ///
+  /// The report itself is written **inline in each catch**, not behind a
+  /// helper: `tools/silent_catch_scan.py` requires
+  /// `ErrorReporter.report*(` in the catch body and deliberately will not
+  /// follow a call out of it, because it cannot verify what the callee
+  /// does. That rule caught the first version of this class, which
+  /// `debugPrint`-ed and moved on — and it was right to. Storage being
+  /// unavailable means session persistence is **silently degraded**: no
+  /// marker is written, so a later session loss goes unreported and looks
+  /// like a first visit. This file exists to make that failure class
+  /// visible, so it must not fail invisibly itself.
+  static bool _shouldReportStorageFailure() {
+    if (_reportedStorageFailure) return false;
+    _reportedStorageFailure = true;
+    return true;
+  }
+
+  @visibleForTesting
+  static void resetStorageFailureReported() =>
+      _reportedStorageFailure = false;
 
   /// True when this browser has completed a login at least once.
   ///
@@ -34,8 +64,14 @@ class WebSessionMarker {
     try {
       final prefs = await _load();
       return prefs.getBool(key) ?? false;
-    } catch (e) {
-      debugPrint('WebSessionMarker.had failed: $e');
+    } catch (e, st) {
+      debugPrint('WebSessionMarker read failed: $e');
+      if (_shouldReportStorageFailure()) {
+        ErrorReporter.reportPreAuth(e, st,
+            area: 'auth',
+            operation: 'webSessionMarker.read',
+            extras: {'failureMode': 'sessionMarkerStorageUnavailable'});
+      }
       return false;
     }
   }
@@ -53,8 +89,14 @@ class WebSessionMarker {
       } else {
         await prefs.remove(key);
       }
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('WebSessionMarker write failed: $e');
+      if (_shouldReportStorageFailure()) {
+        ErrorReporter.reportPreAuth(e, st,
+            area: 'auth',
+            operation: 'webSessionMarker.write',
+            extras: {'failureMode': 'sessionMarkerStorageUnavailable'});
+      }
     }
   }
 
