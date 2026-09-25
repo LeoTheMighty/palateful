@@ -1,7 +1,7 @@
 # Apparent coverage — the worked instances
 
 **Companion to the `LESSONS.md` entry *"A detector can look like coverage
-while providing none."*** The entry carries the root, the eleven corollaries
+while providing none."*** The entry carries the root, the ten corollaries
 and each one's rule. **This file carries the evidence.**
 
 Split out on 2026-09-24 at 3b's recommendation, measured rather than felt:
@@ -10,7 +10,7 @@ file, and 44× its median entry of 18 lines**, replacing one of 56. That
 changes what `LESSONS.md` is.
 
 **The risk of this split, named by 3b when proposing it:** an evidence file
-nobody opens makes the instances decorative, and the entry becomes eleven
+nobody opens makes the instances decorative, and the entry becomes ten
 assertions with citations — *uncomfortably close to (h)*. Two rules follow
 and both are honoured in the entry:
 
@@ -29,8 +29,9 @@ The instances below are what make it persuasive; they are for the reader
 who has thirty.**
 
 **The third column is the honest part** (3b's suggestion, and the entry's
-own thesis applied to itself): without it, eleven corollaries *read* as
-eleven defences. Four are habits, and **two have no detector at all.**
+own thesis applied to itself): without it, ten corollaries *read* as ten
+defences. Four of the eleven rows are habits or nothing, and **two have no
+detector at all.** (Eleven rows, ten corollaries: (i) splits.)
 
 | | | what catches it |
 |---|---|---|

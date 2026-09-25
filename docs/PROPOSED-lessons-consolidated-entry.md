@@ -15,9 +15,9 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
   provided no coverage, since nobody heard it. A root about *green* leaves
   the loudest instance outside it.
 
-  **The third column is the honest part.** Without it, eleven corollaries
-  read as eleven defences — **four are habits, and two have no detector at
-  all.**
+  **The third column is the honest part.** Without it, ten corollaries read
+  as ten defences — **four of the eleven rows are habits or nothing, and two
+  have no detector at all.** (Eleven rows, ten corollaries: (i) splits.)
 
   | | | what catches it |
   |---|---|---|
@@ -217,7 +217,11 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
    passing…"* at `:197`. Verified by reading the file: #52 landed as **two**
    separate bullets. Re-confirm both line numbers before editing; they move.
 
-**Review state:** 3b's pass is complete at 798 lines and all eleven
-corollaries. **0a has signed off on (g) only** and has not read (i), (j), or
+**Review state:** 3b's pass is complete — the content at 798 lines, the
+207-line split, and the restorations at `2aee4359`. **Ten corollaries,
+(a)–(j)**; the index has eleven rows because (i) splits into (i.1) and
+(i.2). *"Eleven corollaries" was said repeatedly tonight by both of us and
+was wrong — a number derived from the row count, propagating past the
+premise it came from, which is (i) in the review of the entry about (i).* **0a has signed off on (g) only** and has not read (i), (j), or
 anything added on 2026-09-24. The author measuring their own commits is
 bookkeeping, not review.
