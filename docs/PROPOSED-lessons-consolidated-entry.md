@@ -68,7 +68,14 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
   - **Never let two views of one source corroborate each other — they are
     the same claim twice.** `CLEAN` beside an empty run list; a rollup
     beside a listing. **Independence is a property of the failure modes, not
-    of the commands.**
+    of the commands.** Sharper (3b): **agreement between two views is
+    worthless unless their failure modes differ**, and **two greps over the
+    same file almost never qualify, however differently they are written.**
+    Worked instance from this entry's own review: two sessions independently
+    counted its corollaries as eleven — one from the index rows, one from a
+    grep that double-counted `(h)` — **and agreed.** What broke it was a
+    third view with a *different* failure mode: counting evidence pointers
+    rather than headers.
 
   **Before trusting a check that reports "fine", prove it can report "not
   fine".**
@@ -216,6 +223,15 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
 4. **Do not delete** 3b's *"`gh pr checks <n>` can report every check
    passing…"* at `:197`. Verified by reading the file: #52 landed as **two**
    separate bullets. Re-confirm both line numbers before editing; they move.
+
+**On the self-applications, before anyone adds a fourth** (3b's caution,
+and it is the right one): this document contains three instances produced
+by its own review — **(h)** in its review accounting, **(i)** in a derived
+corollary count, **(c)** in two sessions agreeing on that wrong count.
+None were planted. **But a document that keeps demonstrating its own thesis
+is enjoyable to write and easy to over-fit.** Keep a fourth only if it
+teaches something the first three do not; otherwise it is a pattern we are
+looking for rather than one we are finding.
 
 **Review state:** 3b's pass is complete — the content at 798 lines, the
 207-line split, and the restorations at `2aee4359`. **Ten corollaries,
