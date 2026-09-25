@@ -85,6 +85,15 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen>
       }
     });
 
+    // Observability, not behaviour (acttab1). Until path URLs landed,
+    // `?tab=` never reached this screen at all, so the explicit-beats-guess
+    // rule had never been exercised — and with a window occluded there is
+    // no rendering either, so nothing distinguished "Notifications
+    // selected" from "Imports selected". One line makes the resolution
+    // observable from the console instead of inferred from an empty DOM.
+    debugPrint('ActivityScreen tab resolved: ${initial.wire} '
+        '(explicit=$hasExplicitTab, raw=${widget.initialTab})');
+
     _tabController = TabController(
       length: ActivityTab.values.length,
       vsync: this,
