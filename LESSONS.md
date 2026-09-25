@@ -654,6 +654,20 @@
   at all. An unnamed misgiving cannot be discharged by anyone, including the
   person who had it.
 
+  **The same habit, applied to what you *did* cover: a self-dating claim
+  degrades gracefully; an undated one rots.** A cross-reference written as
+  *"filed in PR #103, **not yet on `main` at time of writing**"* ages into a
+  historical note once that PR lands — false in fact, still true as written,
+  and a reader can see which. *"Not on main"* would simply have become a
+  falsehood, and the only fix would be remembering to go back. **It is the
+  same move as naming the ref in a grep** (`git grep … origin/main`, not
+  `git grep …`): both convert a claim about a moving target into a claim
+  about a fixed one, for the price of a few words.
+
+  The pair covers both halves of writing for someone who arrives after the
+  state has moved: **a cheap caveat makes the uncovered part checkable
+  later; self-dating makes the covered part honestly re-readable later.**
+
   **Stated open question, so it is not rediscovered:** an *editor* may
   invite another editor (`helpers.py:71` admits owner **or** editor as
   sender). That is a product-intent question rather than a security one and
