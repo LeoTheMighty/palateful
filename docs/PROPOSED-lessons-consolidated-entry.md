@@ -135,6 +135,34 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
     **suspect the calls you trust most**, because they are the ones you have
     never re-derived.
 
+  **The limiting case of (g), where (g)'s own rule cannot be followed.**
+  (leonidbelyi-41.) (g) says *confirm the account can create it* — which
+  assumes the answer is readable somewhere. **Sometimes it is not.**
+  `gh pr merge` refuses a PR touching `.github/workflows/` without the
+  `workflow` OAuth scope, and **no surface reports this until the merge is
+  attempted.** The PR reads `CLEAN` throughout, correctly: `CLEAN` answers
+  *"do the checks pass"*, and **nobody asked it "can this be merged by
+  me"**. Four of five affected PRs sat fully green and unmergeable,
+  advertising readiness.
+
+  **What makes it more than an anecdote: it was found on the fifth affected
+  PR, not the first — and not through carelessness.** There was nothing to
+  find. **The information did not exist anywhere until someone acted.**
+
+  **Portable form: a permission failure that only exists at the moment of
+  action is invisible to every check that runs beforehand.** IAM evaluated
+  at write time, a branch protection rule, a DB grant. **The pre-flight is
+  honest and the answer is not in it.**
+
+  Distinct from (c), and worth saying how: (c) is a check that *failed* and
+  looked clean. **This is a check that succeeded and looked like a different
+  check** — the tooling manufactures the false confidence, not the author.
+  Distinct from the rest of (g) too: there, the reassuring reading answered
+  the wrong question *and the right question was answerable*. **Here it
+  cannot be asked at all**, which is why the rule is not "ask better" but
+  **"know which authorities are only evaluated on use, and budget a failed
+  attempt as the cheapest probe."**
+
   **A falsifiable prediction must also name which *store* to read**, not
   only when. *"AWS says RUNNABLE"* and *"the DB says failed"* were
   simultaneously true.
@@ -233,8 +261,11 @@ is enjoyable to write and easy to over-fit.** Keep a fourth only if it
 teaches something the first three do not; otherwise it is a pattern we are
 looking for rather than one we are finding.
 
-**Review state:** 3b's pass is complete — the content at 798 lines, the
-207-line split, and the restorations at `2aee4359`. **Ten corollaries,
+**Review state:** **3b's pass is complete and covers the entire entry** —
+the content at 798 lines, the 207-line split, the restorations at
+`2aee4359`, and the count fix. *(An earlier figure of "417 of 698 lines"
+circulated after 3b's first pass and is now stale by two rounds; the entry
+is 243 lines with the evidence in a companion.)* **Ten corollaries,
 (a)–(j)**; the index has eleven rows because (i) splits into (i.1) and
 (i.2). *"Eleven corollaries" was said repeatedly tonight by both of us and
 was wrong — a number derived from the row count, propagating past the
