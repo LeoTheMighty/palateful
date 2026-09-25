@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/di/injection.dart';
-import '../../../core/services/api_client.dart';
 import 'package:palateful/core/config/environment.dart' show kE2EMode;
 import '../../../core/theme/theme.dart';
 import '../../../services/share_service.dart';
@@ -15,6 +14,8 @@ import '../services/shopping_cart_service.dart';
 import '../widgets/member_presence.dart';
 import '../widgets/shopping_list_item_tile.dart';
 import '../../../core/services/error_reporter.dart';
+import '../../../core/state/mutation_bus.dart';
+import '../../pantry/services/pantry_service.dart';
 import '../../../shared/widgets/error_banner.dart';
 
 /// Full screen shopping list view.
@@ -182,11 +183,31 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
   /// Shows a "Added to pantry — Undo" snackbar when the backend reports a
   /// pantry auto-add (pantry-3 hook).
+  ///
+  /// Both halves of this notify the pantry, and they do it differently on
+  /// purpose. The **add** happened on the server — this client never saw
+  /// the pantry item's payload, only its id — so it emits
+  /// [PantryChangedExternally] and lets an open pantry view re-read.
+  /// The **undo** is performed by this client through [PantryService],
+  /// which emits `PantryItemRemoved` with the id it just deleted.
+  ///
+  /// Before this, neither direction emitted anything: the add bypassed the
+  /// client entirely and the undo called `ApiClient` directly, so an open
+  /// pantry list missed the item going in and kept the phantom going out,
+  /// self-correcting only on the provider's 10-minute TTL backstop.
   void _maybeShowPantryUndoSnackbar(ShoppingListItem updated) {
     if (!mounted) return;
     final pantryId = updated.pantryId;
     final pantryIngredientId = updated.pantryIngredientId;
     if (pantryId == null || pantryIngredientId == null) return;
+
+    // The server added it; tell any open pantry view to re-read. Cheap by
+    // construction: the pantry providers are autoDispose, so with no
+    // pantry screen mounted this invalidates nothing and costs no request.
+    emitMutation(PantryChangedExternally(
+      pantryId: pantryId,
+      reason: 'shopping-list check-off auto-add',
+    ));
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -195,7 +216,9 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
           label: 'Undo',
           onPressed: () async {
             try {
-              await getIt<ApiClient>().deletePantryIngredient(
+              // Through PantryService, not ApiClient: the service emits
+              // PantryItemRemoved so an open pantry list drops the row.
+              await getIt<PantryService>().deletePantryIngredient(
                 pantryId,
                 pantryIngredientId,
               );
