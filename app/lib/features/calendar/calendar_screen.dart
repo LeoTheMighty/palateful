@@ -593,9 +593,17 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       );
     }
 
-    // Render the day columns straight through. `lastValue ?? []` gives an
-    // empty grid during the first load — matches the pre-refactor
-    // behavior where day headers render while events are in flight.
+    // Render the day columns straight through — the week header and day
+    // names must survive navigation, so this never early-returns.
+    //
+    // `eventsKnown` is the fix for the loading-vs-empty collapse: until
+    // the first fetch for THIS week resolves, `lastValue` is null and
+    // `eventsByDay` is empty for every day, which used to render a full
+    // week of "Tap to plan a meal" — byte-identical to a genuinely empty
+    // week. The cell uses this to say "not known yet" instead of
+    // asserting "nothing planned". A refetch keeps `lastValue`, so an
+    // already-loaded week never flickers.
+    final eventsKnown = lastValue != null;
     final eventsByDay = _groupByDay(lastValue ?? const []);
     return RefreshIndicator(
       onRefresh: _refreshGrid,
@@ -605,7 +613,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           children:
-              _weekDays.map((d) => _buildDayColumn(d, eventsByDay)).toList(),
+              _weekDays
+                  .map((d) => _buildDayColumn(d, eventsByDay, eventsKnown))
+                  .toList(),
         ),
       ),
     );
@@ -614,6 +624,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   Widget _buildDayColumn(
     DateTime day,
     Map<DateTime, List<MealEvent>> eventsByDay,
+    bool eventsKnown,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final appColors = context.appColors;
@@ -688,7 +699,16 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             ),
           ),
 
-          if (events.isEmpty)
+          if (!eventsKnown)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: SizedBox(
+                height: 14,
+                width: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (events.isEmpty)
             GestureDetector(
               onTap: () => _openDayDetailSheet(day),
               child: Padding(
