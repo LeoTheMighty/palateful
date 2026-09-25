@@ -77,6 +77,17 @@ Split on 3b's measured recommendation — inline this was **798 lines in a
     third view with a *different* failure mode: counting evidence pointers
     rather than headers.
 
+    **And the agreement is what made it unexaminable** (41): both sources
+    were **people**, both counted **honestly**, and **neither would have
+    re-derived a figure the other had confirmed.** Two independent errors
+    converging on the same number is **the most convincing possible wrong
+    answer** — more convincing than either alone, and it removes the only
+    prompt that would have triggered a re-count. The rule is usually stated
+    against redundant *tooling*; it applies identically to redundant
+    *colleagues*, and there it is harder to see, because agreement between
+    two careful people reads as diligence rather than as a single
+    observation.
+
   **Before trusting a check that reports "fine", prove it can report "not
   fine".**
 
