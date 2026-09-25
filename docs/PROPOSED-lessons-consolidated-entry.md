@@ -649,6 +649,51 @@ who has thirty.**
 
 ---
 
+## The entry caught itself: this document's own review accounting
+
+**Worked example of (i), found in the review of this entry, 2026-09-24.**
+Recorded here rather than in a corollary because it is about *this file*.
+
+palateful-3b completed a review pass and reported it with unusual care —
+*"complete through `e7c07fe1`, minus two commits I have not read"* — and
+explicitly refused to let the word "reviewed" cover material they had not
+opened, saying **that distinction is the entry's own subject.**
+
+**It was wrong by 6×.** Measured:
+
+| | `e7c07fe1` (the review point) | `e35c7dea` (current) |
+|---|---|---|
+| lines | 417 | **698** |
+| corollaries | 9 | **11** |
+| commits since | — | **12** |
+
+The twelve added **281 lines and two entirely new corollaries**, (i) and
+(j), which no reviewer has seen. One of the two commits 3b named was not
+even on this branch.
+
+**Nothing about that conduct was careless.** The claim was bounded, honest,
+and volunteered. **It was checked against memory rather than against the
+branch** — and a carefully-bounded honest claim is *precisely* the kind that
+gets trusted without re-derivation. `git log e7c07fe1..HEAD` was the only
+thing that produced the real number.
+
+**It then propagated one hop, which is the part worth keeping.** The
+coordinator was about to record the entry as *"waiting on 0a alone"* — a
+true-as-stated claim used for a purpose it did not cover. **Two people
+behaving correctly, and the state of the document drifting to 60% reviewed
+while reading as done.**
+
+**The honest state, at the time of writing:** 3b's pass covers 417 of 698
+lines and 9 of 11 corollaries; 0a has signed off on **(g)** only; **nobody
+has read (i) or (j).** The author measuring their own twelve commits is
+bookkeeping, not review.
+
+**And the general rule the whole exercise produced** (leonidbelyi-41):
+**never let two views of one source corroborate each other — they are the
+same claim twice.** `CLEAN` beside an empty run list, a rollup beside a
+listing, a status view beside a status view. Independence is a property of
+the *failure modes*, not of the commands.
+
 ## Landing plan — REPLACE, don't append (hazard flagged by 3b via 0a)
 
 `LESSONS.md` on main already carries 3b's **"A cited test is not evidence
