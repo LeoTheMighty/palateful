@@ -15,6 +15,20 @@ branch: null
 talks to production with a working auth bypass.** Nothing fails, nothing
 warns. Make that combination impossible to build or impossible to run.
 
+## Read this first: the obvious fix does not work
+
+**`assert` is stripped in Dart release builds.** The natural implementation —
+an assert beside the flag — is present in every build you would test it in
+and **absent from the one that matters**. It protects debug and profile and
+vanishes from the release bundle, which is precisely the build most likely to
+be pointed at something real.
+
+That is not a subtle bug. It is a guard **designed to be unobservable in the
+case it exists for**, and anyone writing this without the AC below would ship
+it and reasonably believe they were covered. The guard must be an
+unconditional `throw`/abort, and it must be **proven to fire in a release
+build**.
+
 ## The mechanism, verified from source
 
 Two independent facts that are individually reasonable and jointly dangerous:
@@ -65,13 +79,16 @@ is the same failure shape as an unlisted case elsewhere in this codebase.
 Proposed permitted set, to confirm during implementation:
 `localhost`, `127.0.0.1`, `[::1]`, `10.0.2.2` (Android emulator host loopback),
 and `host.docker.internal`. Anything else with `E2E_MODE=true` is a failure.
-Fails **closed**: a new legitimate local host must be added deliberately.
 
-**2. `assert` is the wrong tool — it is stripped in release builds.**
-Dart removes `assert` in release mode, so an assert-based guard protects
-debug and profile and silently vanishes from exactly the build most likely to
-be pointed somewhere real. **The check must be an unconditional
-`throw`/abort**, not an assert.
+**Fail-closed is the design rule.** A production denylist fails **open** for
+any host nobody listed — staging, a preview deploy, a new domain sail
+through. The local allowlist fails **closed**: adding a legitimate host is a
+deliberate act instead of an omission. Same shape as `environment-gate-check.sh`
+being blind to what it does not mention.
+
+**2. `assert` is the wrong tool — see the section at the top.** Restated here
+because it is a decision and not only a warning: **the check must be an
+unconditional `throw`/abort**, never an assert.
 
 **3. Where it lives: beside the flag, not beside the caller.**
 The check belongs in `environment.dart` (or a function it exposes, invoked as
