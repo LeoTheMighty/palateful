@@ -1,0 +1,50 @@
+# Cloudflare Pages response headers. Format: a path pattern, then indented
+# `name: value` lines. More specific patterns win over `/*`.
+#
+# WHY THIS FILE EXISTS
+#
+# Pages' default for static assets is `public, max-age=14400, must-revalidate`
+# — four hours — and Flutter's web build emits `main.dart.js` with NO content
+# hash in the filename. `flutter_bootstrap.js` hardcodes `"mainJsPath":
+# "main.dart.js"`, and there is no service worker. So nothing anywhere breaks
+# the cache: a returning user keeps executing whatever build their browser
+# already holds for up to four hours after a deploy.
+#
+# Measured on the live site before this change (2026-09-24):
+#
+#   main.dart.js  initiatorType "script"  transferSize 0        encodedBodySize 1345037  <- what the page RAN
+#   main.dart.js  initiatorType "fetch"   transferSize 1345885  encodedBodySize 1345585  <- what the network SERVES
+#
+# Different sizes, and `transferSize: 0` means the browser never asked.
+#
+# The consequences are not subtle: every web deploy has a rolling four-hour
+# window where existing users run the old app; a fix can be "live" and reach
+# nobody who already had the site open; two users on the same URL can be on
+# different builds; and QA against the deployed app is unreliable by default,
+# which caught a session mid-verification with no warning.
+#
+# WHY REVALIDATION AND NOT A LONGER CACHE WITH HASHED NAMES
+#
+# A content-hashed filename is the better fix — it makes the bundle immutable
+# and cacheable forever. It is not available from the build: `flutter build
+# web` has no hashing option in 3.41.7, and the emitted bootstrap names
+# `main.dart.js` literally. Hashing would mean renaming the artifact after the
+# build and rewriting the bootstrap's buildConfig — machinery this repo would
+# own and that would break on each Flutter upgrade. If Flutter gains native
+# asset hashing, prefer it and delete these rules.
+#
+# WHAT REVALIDATION COSTS, measured rather than assumed:
+#
+#   cold GET   200  4,772,611 bytes  0.265s
+#   revalidate 304  0 bytes          0.114s
+#
+# A 304 carries no body. The cost is one conditional request per asset per
+# page load — one round trip, no payload — against a site with a handful of
+# users. The cost of the alternative is shipping a fix that reaches nobody
+# for four hours.
+#
+# The rule is blanket on purpose. Nothing this build emits carries a content
+# hash, so there is no file for which a long cache is safe. An exception list
+# would be a list of things that happen not to have changed yet.
+/*
+  cache-control: public, max-age=0, must-revalidate
