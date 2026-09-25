@@ -576,3 +576,99 @@
   **As an author:** the better a paragraph reads, the more it needs its
   evidence handle attached. Fluency is not evidence, and it is *persuasive*
   in the precise way evidence is supposed to be.
+- **A guard refuses; an absence merely hasn't been asked yet.** When the
+  answer to *"is this safe?"* is *"nothing calls it"* or *"the script always
+  passes the right flag"*, that is not a guard. The capability is fully
+  present and **adding a caller is sufficient to unlock it** — nothing in
+  the system is positioned to object. A guard is a mechanism that says no
+  when asked; an absence is a habit of not asking.
+
+  Two instances, 2026-09-24, from unrelated areas:
+  - `DELETE /v1/recipe-books/{id}` deletes a book **and cascades to every
+    recipe in it**. Routed, live, and wired through every client layer —
+    api client, service, mutation type, user-facing failure copy, a test.
+    **No screen calls it.** The history shows why: Story 2.8 replaced the
+    delete call site with archive. So the protection is that a product
+    decision removed the caller, not that anything refuses the call.
+  - `E2E_MODE=true` with no override builds a bundle pointed at
+    **production with the auth bypass armed**, because production is the
+    default and the flag carries no environment condition. The protection
+    is a single `--dart-define` inside one script; any path that skips the
+    script is unsafe.
+
+  **There is a third case, and it is the only one safe without vigilance:
+  a capability that was never representable.** Checking whether invitations
+  could produce an ownerless recipe book — the remaining path into
+  membership state — the answer was not "a guard refuses it". It was that
+  `owner` **is not in the set of offerable roles at all**
+  (`invitations/helpers.py:26-32`: `recipe_book` maps to
+  `{editor, viewer}`). Acceptance grants exactly `invitation.role_offered`,
+  and that field can only ever hold a value from the set. **Nothing needs to
+  refuse, because nothing can ask.** What makes it structural rather than
+  lucky is that *both* entry points — the invitation path and the
+  invite-link path — call the same `validate_resource_and_role`, rather than
+  one of them remembering to.
+
+  So the three cases, worst to best:
+  1. **An absence** — the capability is present, the call path merely isn't.
+     Safe only while nobody adds a caller.
+  2. **A guard** — code that checks and refuses. Safe while the guard is
+     correct, reachable, and on every path.
+  3. **Not representable** — the dangerous value cannot be expressed.
+     Nothing to bypass, nothing to keep correct.
+
+  Prefer 3 where the shape of the data allows it. Most of the time it
+  doesn't, and then 2 — but knowing which one you have is the point, because
+  1 is routinely described as though it were 2.
+
+  **The useful part is that the test is cheap and answerable:** for any
+  dangerous capability, ask *what would happen if someone called it* — not
+  *does anyone call it today*. If the answer is "it would work", you have an
+  absence, and the fix is a mechanism that refuses rather than a convention
+  that avoids.
+
+  **Bounded, deliberately — two of four surfaces checked, not "clean".**
+  Admin routes: **clean**, all 16 carry `require_admin_async` at the router
+  rather than relying on the UI hiding the screen. Invitation and
+  invite-link acceptance: **clean**, and for the stronger reason above.
+  **Unexamined: the MCP surface, and worker task entry points.** So this is
+  two instances in the e2e-and-legacy space, not an established design
+  habit — calling it a habit on two examples would be the over-fit this file
+  warns about elsewhere, and calling two-of-four "clean" would be the
+  absence-shaped claim this entry is about.
+
+  **Why the bound is worth the sentence it costs.** The invite result came
+  out of a caveat made with **no evidence either way** — having verified two
+  endpoints refuse owner self-removal, *"two doors are locked is not the
+  same as the room being sealed"*. Resolving it took about four minutes. Its
+  value was never that it turned out to matter; it is that **a caveat costs
+  one sentence and is cheap to discharge, and the cost of not making one is
+  unbounded** — nobody knows to look, because nothing says the question
+  exists. Had it gone the other way it would have been the only thing in the
+  repo pointing at an ownerless-book path.
+
+  So the remedy for a claim that covers less than it reads is **not more
+  caution in the prose** — it is writing the uncovered part down as a
+  **named question**, with a scope and a way to resolve it. That one had a
+  name, a boundary and a check, which is the only reason it could be closed
+  at all. An unnamed misgiving cannot be discharged by anyone, including the
+  person who had it.
+
+  **The same habit, applied to what you *did* cover: a self-dating claim
+  degrades gracefully; an undated one rots.** A cross-reference written as
+  *"filed in PR #103, **not yet on `main` at time of writing**"* ages into a
+  historical note once that PR lands — false in fact, still true as written,
+  and a reader can see which. *"Not on main"* would simply have become a
+  falsehood, and the only fix would be remembering to go back. **It is the
+  same move as naming the ref in a grep** (`git grep … origin/main`, not
+  `git grep …`): both convert a claim about a moving target into a claim
+  about a fixed one, for the price of a few words.
+
+  The pair covers both halves of writing for someone who arrives after the
+  state has moved: **a cheap caveat makes the uncovered part checkable
+  later; self-dating makes the covered part honestly re-readable later.**
+
+  **Stated open question, so it is not rediscovered:** an *editor* may
+  invite another editor (`helpers.py:71` admits owner **or** editor as
+  sender). That is a product-intent question rather than a security one and
+  nobody has confirmed it is deliberate.
