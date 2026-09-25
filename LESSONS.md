@@ -530,3 +530,49 @@
   pair that make a decision feel like tidying. The tell is a sentence —
   **"I'll merge once CI clears"** — which precedes every instance and is
   easier to catch yourself writing than a rule is to remember to consult.
+
+- **A claim that reads well gets less scrutiny than one that reads badly,
+  independent of whether it is true.** Review attention is allocated by
+  fluency, not by risk — a clumsy sentence makes a reader stop and work out
+  what it means, and working it out is when they notice it is wrong. A
+  polished one is understood instantly and therefore examined never. The
+  polish does the work the evidence was supposed to do.
+
+  Two instances from 2026-09-24, both caught by the other person rather than
+  the author:
+  - A reviewer applied their own stated criterion — *keep an instance inline
+    when the rule IS the instance* — to three corollaries, then demoted the
+    one number that turned a fourth from etiquette into an instruction (a
+    detector blind to 49 of 52 historical failures). Same test, opposite
+    answer. **They did not notice because the demoted version still read
+    fine.**
+  - I wrote a careful boundary on a review — *"complete through `<sha>`; I
+    have not read those two commits"* — naming two commits by memory. It was
+    twelve commits, 281 lines and two whole corollaries, and one commit I
+    named was on a different branch. **The disciplined-sounding sentence was
+    the inaccurate one**, and it read as more rigorous than an unbounded
+    claim would have.
+
+  This is the cousin of *"a claim in prose receives less checking than the
+  code it describes"*: that one is about prose versus code, this one is
+  about **good prose versus bad prose**, and it is the worse of the two,
+  because the better you write the less anyone checks you.
+
+  **It runs in both directions, and the second is worse.** A claim that
+  reads *alarmingly* also gets less scrutiny, because nobody wants to be the
+  person who argued against taking a security finding seriously — the social
+  cost of challenging it falls entirely on the challenger. Worked instance,
+  same evening: grepping admin endpoint files for `is_admin` returns **zero
+  references in 14 of 16 files**. *"16 admin routes with no authorization
+  check"* is dramatic, publishable, and **false** — the guard is
+  `require_admin_async`, enforced one level up at the router, on all 16.
+  A finding that flatters the finder's diligence and alarms the reader is
+  the least likely of all claims to be checked.
+
+  **As a reviewer:** sample the passages that read best — and the ones that
+  alarm you most. They are the ones
+  nobody stopped on, so they are where an unchecked claim survives longest —
+  the opposite of where attention goes naturally.
+  **As an author:** the better a paragraph reads, the more it needs its
+  evidence handle attached. Fluency is not evidence, and it is *persuasive*
+  in the precise way evidence is supposed to be.
