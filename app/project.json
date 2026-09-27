@@ -7,24 +7,42 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["flutter test"],
+        "commands": [
+          "flutter test"
+        ],
         "cwd": "{projectRoot}"
       }
     },
     "analyze": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["flutter analyze --no-fatal-warnings --no-fatal-infos"],
+        "commands": [
+          "flutter analyze --no-fatal-warnings --no-fatal-infos"
+        ],
         "cwd": "{projectRoot}"
       }
     },
     "build-web": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["flutter build web --release"],
+        "commands": [
+          "flutter build web --release"
+        ],
+        "cwd": "{projectRoot}"
+      }
+    },
+    "serve-local": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "bash ../scripts/serve-local.sh"
+        ],
         "cwd": "{projectRoot}"
       }
     }
   },
-  "tags": ["app", "flutter"]
+  "tags": [
+    "app",
+    "flutter"
+  ]
 }

@@ -533,11 +533,56 @@ docker compose --profile migrate up migrator
 
 ### 7. Run the Flutter app
 
+**Web, against the local API — use this:**
+
+```bash
+npx nx run app:serve-local
+```
+
+⚠️ **Do not use a bare `flutter run` to test against your local stack.**
+`app/lib/core/config/environment.dart:9-12` defaults `API_BASE_URL` to
+**`https://api.palateful.app`**, so `flutter run -d chrome` with no
+`--dart-define` serves a *locally built* app wired to **production** — with
+your own credentials. That is how someone edits a real recipe believing they
+are in a sandbox. These lines said exactly that for months (fixed by
+`localserve1`).
+
+`app:serve-local` passes the defines for you, **refuses** a non-local
+`API_BASE_URL`, and checks the stack is actually up before serving.
+
+**It needs the e2e overlay**, not a plain `docker compose up`:
+
+```bash
+npx nx run e2e:stack-up     # docker-compose.yml + docker-compose.e2e.yml
+```
+
+Only the overlay sets `ENVIRONMENT=development`. `services/api/src/config.py:41`
+defaults it to **`"dev"`**, and the auth bypass at
+`services/api/src/dependencies.py:107-110` requires
+`environment in ("development", "test")` — **`"dev"` is not `"development"`**,
+so a plain stack rejects the test token and **every request 401s with nothing
+explaining why.** The overlay also repoints the API at the **`test`** database,
+so QA writes cannot touch your local dev data.
+
+**No password, no Auth0, no QA account.** `serve-local` sets
+`--dart-define=E2E_MODE=true`; `app/lib/main.dart:142-152` then sends the fixed
+token `e2e-test-token`, which the local API accepts. You land past onboarding
+with a default calendar and the "Trying Out" recipe book — but **no recipes,
+pantry or list items**, so seed anything you need to act on.
+
+**The bypass token is not a production risk**, and it matters not to overstate
+it: the gate needs `e2e_test_mode` **and** a development `environment`. Live
+prod runs `ENVIRONMENT=prod` with `E2E_TEST_MODE` unset — two independent
+reasons it fails closed. **Don't weaken the gate to test only the flag**; that
+protection is why the token can be a hardcoded constant.
+
+**Other targets** (these talk to **production** unless you add the defines
+yourself — that is correct for testing against prod, and deliberate):
+
 ```bash
 cd app
 flutter pub get
 flutter run              # auto-selects connected device
-flutter run -d chrome    # web
 flutter run -d ios       # iOS Simulator
 flutter run -d emulator  # Android Emulator
 ```
