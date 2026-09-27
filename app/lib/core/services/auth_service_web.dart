@@ -2,6 +2,7 @@ import 'package:auth0_flutter/auth0_flutter.dart';
 import 'package:auth0_flutter/auth0_flutter_web.dart';
 import 'package:flutter/foundation.dart';
 import 'auth_failure_mode.dart';
+import 'auth_return_url.dart';
 import 'error_reporter.dart';
 import 'web_session_marker.dart';
 
@@ -186,18 +187,9 @@ Future<void> _reportSessionLossIfAny({
   );
 }
 
-/// Returns the current page origin without query params or fragments.
-/// Omits default ports (80 for http, 443 for https) so the URL matches
-/// what is registered as a callback URL in Auth0 exactly.
-String _currentOrigin() {
-  final uri = Uri.base;
-  final isDefaultPort = (uri.scheme == 'https' && uri.port == 443) ||
-      (uri.scheme == 'http' && uri.port == 80) ||
-      uri.port == 0;
-  final host = isDefaultPort ? uri.host : '${uri.host}:${uri.port}';
-  final path = uri.path.isEmpty ? '/' : uri.path;
-  return '${uri.scheme}://$host$path';
-}
+/// The URL Auth0 returns to. See [authReturnUrl] — a true origin, with no
+/// path, because Auth0 matches it against a registered allowlist.
+String _currentOrigin() => authReturnUrl(Uri.base);
 
 Future<void> loginWithRedirect(dynamic auth0Web, String audience, {String? connection}) async {
   final web = auth0Web as Auth0Web;
