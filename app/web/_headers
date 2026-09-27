@@ -48,3 +48,13 @@
 # would be a list of things that happen not to have changed yet.
 /*
   cache-control: public, max-age=0, must-revalidate
+  # DIAGNOSTIC, remove once answered (debug/debug-cachezone-…). PR #114
+  # shipped the rule above; the served `cache-control` on /main.dart.js did
+  # not change, while /manifest.json and /index.html did. This marker says
+  # whether Cloudflare applied our rules at all for static assets:
+  #   present on /main.dart.js + cache-control still max-age=14400
+  #       → the rules applied and a zone setting (Browser Cache TTL) rewrote
+  #         one of them; the fix is in the dashboard, not this repo.
+  #   absent on /main.dart.js, present on /manifest.json
+  #       → Pages skips _headers for static assets; different fix entirely.
+  x-headers-applied: cachezone
