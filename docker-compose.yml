@@ -92,7 +92,19 @@ services:
         condition: service_completed_successfully
 
   localstack:
-    image: localstack/localstack:latest
+    # localserve1 (2026-09-27): PINNED. `:latest` now resolves to a LocalStack
+    # **Pro** build (2026.8.4, built 2026-09-23) which exits 55 with
+    # "License activation failed" unless LOCALSTACK_AUTH_TOKEN is set — and
+    # because `worker` declares it a healthy-dependency, an unhealthy
+    # localstack takes the whole `nx run e2e:stack-up` down with it.
+    #
+    # Same shape as ocrload1: the source did not change, the tag floated, and
+    # upstream changed what `latest` means. Pin the image, not just the code.
+    #
+    # 3.8 is the last widely-available community line that needs no licence.
+    # Only `worker` depends on this; `db` + `api` come up without it, which is
+    # enough for app QA (see scripts/serve-local.sh).
+    image: localstack/localstack:3.8
     restart: unless-stopped
     ports:
       - '4566:4566'
