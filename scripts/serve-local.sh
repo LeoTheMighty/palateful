@@ -66,7 +66,19 @@ if ! curl -fsS --max-time 3 "$API_BASE_URL/v1/health" >/dev/null 2>&1; then
   exit 3
 fi
 
+# `chrome` launches a *fresh* Chrome that the Claude-in-Chrome extension is
+# not attached to, so a browser-driven QA session cannot reach the app —
+# it was hardcoded, and 0e had to work around it by hand. `web-server`
+# instead serves the app and prints a URL, which an already-open,
+# already-extended browser can navigate to:
+#
+#     FLUTTER_DEVICE=web-server npx nx run app:serve-local
+#
+# Default unchanged, so an interactive run behaves exactly as before.
+FLUTTER_DEVICE="${FLUTTER_DEVICE:-chrome}"
+
 echo "serving against $API_BASE_URL (E2E_MODE=true, no credentials needed)"
-exec flutter run -d chrome \
+echo "device: $FLUTTER_DEVICE  (FLUTTER_DEVICE=web-server for automated QA)"
+exec flutter run -d "$FLUTTER_DEVICE" \
   --dart-define=API_BASE_URL="$API_BASE_URL" \
   --dart-define=E2E_MODE=true
