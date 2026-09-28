@@ -93,9 +93,29 @@ void resetRouter() {
   _pendingDeepLink = null;
 }
 
-/// cla-4: single observer instance reused across the root Navigator and
-/// every branch Navigator. Declared lazily so tests / hot-restart paths
-/// don't pin a stale GoRouter reference.
+/// The observer used for `reportTabSwap` only — **never attached to a
+/// Navigator.**
+///
+/// A Flutter `NavigatorObserver` may attach to exactly one Navigator;
+/// `HeroControllerScope` asserts `observer.navigator == null` when it
+/// installs one. cla-4 shared a single instance across the root Navigator
+/// and every shell branch, which `StatefulShellRoute.indexedStack` gives
+/// its own Navigator each — so the second attach threw
+/// `observer.navigator == null is not true` and the content pane rendered
+/// the red error screen.
+///
+/// **In release that assertion is stripped**, so production did not throw:
+/// the `navigator` field was silently overwritten by the last attach, and
+/// route/paint events were attributed to one Navigator instead of six.
+/// Debug failed loudly; release failed wrongly and silently, which is why
+/// nothing in production QA ever surfaced it.
+///
+/// Sharing was never needed: the observer holds no cross-Navigator state.
+/// Its only mutable field is a debug log latch (now static, so "warn
+/// once" still holds across instances), and the state that genuinely is
+/// shared — `ClientLatencyIngest` — is resolved per event through a
+/// closure. So each Navigator gets its own instance via
+/// [_newPerfObserver], and they all write to the same ingest.
 PerfNavigatorObserver? _perfObserver;
 
 /// Drop the cached observer. Companion to [resetRouter] for hot-restart
@@ -104,8 +124,10 @@ void resetPerfNavigatorObserver() {
   _perfObserver = null;
 }
 
-PerfNavigatorObserver _resolvePerfObserver() {
-  return _perfObserver ??= PerfNavigatorObserver(
+/// A fresh observer for one Navigator. One per attach site — see
+/// [_perfObserver] for why they must not be shared.
+PerfNavigatorObserver _newPerfObserver() {
+  return PerfNavigatorObserver(
     // e2egetit: resolve through the registration guard, not straight out
     // of GetIt. `main()` skips `_bootstrapClientLatencyIngest()` under
     // `E2E_MODE=true` and runs it `unawaited` otherwise, so the observer
@@ -118,6 +140,10 @@ PerfNavigatorObserver _resolvePerfObserver() {
     routePathResolver: () => _router?.state.fullPath,
   );
 }
+
+/// The unattached instance backing [perfNavigatorObserver].
+PerfNavigatorObserver _resolvePerfObserver() =>
+    _perfObserver ??= _newPerfObserver();
 
 /// Exposed for `ScaffoldWithBottomNav` (cla-4): bottom-tab swaps don't
 /// fire `didPush` on any Navigator, so the shell calls this when the
@@ -204,7 +230,6 @@ String? resolveAuthRedirect({
 }
 
 GoRouter get appRouter {
-  final perfObserver = _resolvePerfObserver();
   _router ??= GoRouter(
     navigatorKey: _rootNavigatorKey,
     // NO `initialLocation`. Setting it to '/login' meant the router
@@ -220,7 +245,7 @@ GoRouter get appRouter {
     // mobile — which is the correct behaviour on both. Nothing else here
     // depended on starting at '/login': the `redirect` below sends an
     // unauthenticated user there from wherever they land.
-    observers: [CrashlyticsNavObserver(), perfObserver],
+    observers: [CrashlyticsNavObserver(), _newPerfObserver()],
     refreshListenable: getIt<AuthService>(),
     redirect: (context, state) {
       final authService = getIt<AuthService>();
@@ -703,7 +728,7 @@ GoRouter get appRouter {
           // Home tab (index 0)
           StatefulShellBranch(
             navigatorKey: _homeNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/',
@@ -737,7 +762,7 @@ GoRouter get appRouter {
           // Cart tab (index 1)
           StatefulShellBranch(
             navigatorKey: _cartNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/cart',
@@ -755,7 +780,7 @@ GoRouter get appRouter {
           // Activity tab (index 2)
           StatefulShellBranch(
             navigatorKey: _activityNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/activity',
@@ -792,7 +817,7 @@ GoRouter get appRouter {
           // Calendar tab (index 3)
           StatefulShellBranch(
             navigatorKey: _calendarNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/calendar',
@@ -814,7 +839,7 @@ GoRouter get appRouter {
           // Profile tab (index 4)
           StatefulShellBranch(
             navigatorKey: _profileNavigatorKey,
-            observers: [perfObserver],
+            observers: [_newPerfObserver()],
             routes: [
               GoRoute(
                 path: '/profile',
