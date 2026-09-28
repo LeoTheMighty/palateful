@@ -672,3 +672,30 @@
   invite another editor (`helpers.py:71` admits owner **or** editor as
   sender). That is a product-intent question rather than a security one and
   nobody has confirmed it is deliberate.
+
+- **Code behind a `dart.library.html` conditional import is unanalysable
+  and untestable, and it hid three separate defects in one night.**
+  `flutter analyze` resolves the **stub** side of
+  `import 'x_stub.dart' if (dart.library.html) 'x_web.dart';`, so it never
+  sees the web branch; unit tests run on the VM and get the stub too. A
+  private function in a `*_web.dart` file therefore **cannot be asserted
+  on at all** — not even by someone who suspects it is wrong. On
+  2026-09-25: (1) `usePathUrlStrategy` was never called, so the router
+  read only the URL fragment and every path URL resolved to `/`, with
+  `analyze` clean throughout; (2) adding `flutter_web_plugins` could have
+  broken mobile builds and only a real `flutter build web` proved the seam
+  compiled; (3) `_currentOrigin()` was documented as "the current page
+  origin" and appended `uri.path` — name, doc and body disagreed, nothing
+  could test it, and it survived until path URLs made the path real and
+  Auth0 rejected `returnTo` for every non-Home route, breaking sign-in and
+  sign-out in production. Three instances in one file family is structural,
+  not coincidence. Fix: keep only the platform call behind the seam and
+  extract the logic into a platform-neutral helper (`authReturnUrl(Uri)`,
+  `WebSessionMarker`, `resolveAuthRedirect`), then test the helper; and run
+  `flutter build web` for any change touching a `*_web.dart` or its pubspec
+  entry, because a clean `analyze` says nothing about it. Related: (3) was
+  also **correct for a reason nobody knew it depended on** — hash routing
+  kept `Uri.base.path` at `/`, so the wrong code returned the right answer
+  until an unrelated change removed the invariant. Grep for other readers
+  of whatever invariant you are removing; `Uri.base` had exactly two, and
+  knowing that bounded the blast radius.
