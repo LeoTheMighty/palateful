@@ -91,32 +91,78 @@ services:
       migrator:
         condition: service_completed_successfully
 
+  # flociswap1 (2026-09-27): replaces localstack/localstack with floci.
+  #
+  # WHY — not "the tag drifted"
+  # ---------------------------
+  # **LocalStack's community edition was sunset in March 2026.** The `:latest`
+  # break localserve1 pinned around was the free tier being *withdrawn*. So
+  # `localstack:3.8` is a fixed point *before* the sunset — not an
+  # old-but-supported release — and will never receive a fix, security included.
+  #
+  # What we use it for is load-bearing: **SQS is the Celery broker**
+  # (`CELERY_BROKER_URL: sqs://`, wired at `utils/services/celery.py:24,35`).
+  # Without it the worker has no task queue and no background work runs at all.
+  #
+  # floci is **MIT** (github.com/floci-io/floci), needs no account or token, and
+  # starts in ~0.02s (native Quarkus) against LocalStack's ~30s.
+  #
+  # PINNED EXACTLY. **A floating tag is a dependency you have not declared**,
+  # and this file has been broken by one twice. Note `floci/floci` — the
+  # `hectorvent/floci` reference a sibling repo pins says RELOCATED in its own
+  # description, i.e. a stale reference one level above a floating tag.
+  #
+  # MEASURED, not assumed (2026-09-27)
+  # ----------------------------------
+  # * **kombu round-trips.** A real Celery-transport publish+consume succeeded
+  #   through floci. This is the test that matters — "SQS answers a curl" does
+  #   not imply kombu is happy, and kombu is what the worker uses.
+  # * **It needs `AWS_ENDPOINT_URL` as an env var**, which this compose file
+  #   already sets on `worker`. `broker_transport_options['endpoint_url']` alone
+  #   did *not* redirect kombu — it silently went to real AWS and returned
+  #   `InvalidClientTokenId`. **Identical against localstack:3.8**, so this is
+  #   pre-existing behaviour and not a floci difference.
+  # * **Persistence does not work at 1.0.11 and is not relied on here.**
+  #   `FLOCI_STORAGE_MODE=disk` is *invalid* and was echoed back in the startup
+  #   log (`Storage mode: disk`) while the StorageFactory said
+  #   `Creating memory storage` — a config value echoed back is not a config
+  #   value honoured. `persistent` is a valid value, is accepted, and **still**
+  #   loses queues and S3 objects across a restart; the JSON files it names are
+  #   never written. So memory mode is declared explicitly rather than pretended
+  #   around. (mycase_hal's `memory` + `tmpfs` may be the only working mode
+  #   rather than a deliberate choice.)
+  # * **Ephemeral is acceptable for this use.** A broker losing queued tasks on
+  #   a local restart is tolerable — Celery redeclares queues on connect. It
+  #   would *not* be acceptable for S3, where the parser writes objects a later
+  #   job reads; but **local S3 was never emulated here** (only `worker` gets
+  #   `AWS_ENDPOINT_URL`; `parser` is profile-gated with no override and no
+  #   credentials), so restoring parity means SQS and nothing else.
   localstack:
-    # localserve1 (2026-09-27): PINNED. `:latest` now resolves to a LocalStack
-    # **Pro** build (2026.8.4, built 2026-09-23) which exits 55 with
-    # "License activation failed" unless LOCALSTACK_AUTH_TOKEN is set — and
-    # because `worker` declares it a healthy-dependency, an unhealthy
-    # localstack takes the whole `nx run e2e:stack-up` down with it.
-    #
-    # Same shape as ocrload1: the source did not change, the tag floated, and
-    # upstream changed what `latest` means. Pin the image, not just the code.
-    #
-    # 3.8 is the last widely-available community line that needs no licence.
-    # Only `worker` depends on this; `db` + `api` come up without it, which is
-    # enough for app QA (see scripts/serve-local.sh).
-    image: localstack/localstack:3.8
+    image: floci/floci:1.0.11
     restart: unless-stopped
     ports:
       - '4566:4566'
     environment:
-      SERVICES: sqs
-      DEBUG: 0
-      LS_LOG: warning
+      FLOCI_STORAGE_MODE: memory
       AWS_DEFAULT_REGION: us-east-1
-    volumes:
-      - localstack_data:/var/lib/localstack
     healthcheck:
-      test: ['CMD', 'awslocal', 'sqs', 'list-queues']
+      # floci ships **no `awslocal` and no `wget`** — the old
+      # `awslocal sqs list-queues` probe cannot be reused, and a wget probe
+      # exits 127, never passes, and since `worker` declares this a
+      # *healthy*-dependency the worker would never start. That is the very
+      # failure this swap removes, so it was worth testing rather than assuming.
+      # `curl` and `bash` are present.
+      #
+      # There is also no health path: `/`, `/health` and `/_localstack/health`
+      # all return 500, because floci serves an AWS API rather than a status
+      # page. So the probe is a real SQS call — which is what the worker needs,
+      # making a pass mean something. Proven both ways: exit 0 against floci,
+      # exit 7 against a dead port.
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS -X POST http://localhost:4566/ -d "Action=ListQueues&Version=2012-11-05" >/dev/null',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -182,4 +228,3 @@ services:
 volumes:
   postgres_data:
   # redis_data:
-  localstack_data:
