@@ -191,6 +191,29 @@ variable "api_task_memory" {
   EOT
 }
 
+# ─── shk101 (2026-11-25) — shake-to-report rollout ring ───
+
+variable "shake_report_ring" {
+  type        = string
+  default     = "admins"
+  description = <<-EOT
+    Who the app's shake-to-report admits: "off" (no one), "admins" (only
+    admins) or "everyone". Served to clients on GET /v1/flags/perf as
+    `shake_report`; clients pick up a change within 5 minutes of the
+    deploy that carries it. Set it HERE: terraform owns the API task
+    definition's environment, so a value set by a console-made revision
+    is replaced by the next deploy. The API also refuses to start on a
+    value outside the three (services/api/src/config.py), so this
+    validation exists to fail the plan before a bad value can register a
+    revision whose tasks would never become healthy.
+  EOT
+
+  validation {
+    condition     = contains(["off", "admins", "everyone"], var.shake_report_ring)
+    error_message = "shake_report_ring must be exactly one of \"off\", \"admins\", \"everyone\" (lower-case)."
+  }
+}
+
 # ─── Cluster ───
 
 resource "aws_ecs_cluster" "main" {
@@ -299,6 +322,8 @@ resource "aws_ecs_task_definition" "api" {
         # aam-24 cutover, sync drops to 5/10 in a separate PR.
         { name = "DB_ASYNC_POOL_SIZE", value = "20" },
         { name = "DB_ASYNC_MAX_OVERFLOW", value = "40" },
+        # shk101: the shake-to-report ring, served on /v1/flags/perf.
+        { name = "SHAKE_REPORT_RING", value = var.shake_report_ring },
       ]
 
       secrets = concat(

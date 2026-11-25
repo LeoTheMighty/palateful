@@ -1,0 +1,221 @@
+{
+  "rows": [
+    {
+      "id": "G-1",
+      "status": "covered",
+      "where": "Design \u00a7 Feedback launcher (trigger tag); \u00a7 Rollout ring and switch; Migration plan step 7",
+      "note": "self-judged by the authoring session (no subagent tool). Design supplies the tag G-1 counts and the rollout that reaches non-admins; the count itself is an outcome, scored by E-1's Measure."
+    },
+    {
+      "id": "G-2",
+      "status": "partial",
+      "where": "Design \u00a7 Recognizer; Unresolved design questions 2; Assumptions 2",
+      "note": "self-judged by the authoring session (no subagent tool). Mechanism and its physics are specified, but whether 2 g / 4 reversals hits 9 of 10 real shakes with 0 kitchen prompts is unproven until E-7 runs on hardware. The design says so."
+    },
+    {
+      "id": "G-3",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch; Constraints (terraform owns env); Trade-offs (terraform over console)",
+      "note": "self-judged by the authoring session (no subagent tool). Client refresh is 5 min (RQ5), inside the 10-minute budget; durability across deploys via terraform."
+    },
+    {
+      "id": "G-4",
+      "status": "partial",
+      "where": "Design \u00a7 Host (routing on tap); Migration plan step 6; Assumptions 1",
+      "note": "self-judged by the authoring session (no subagent tool). Depends on arq103's route reaching main (external). Until then admins get feedback by the route-exists check."
+    },
+    {
+      "id": "UC-1",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer, \u00a7 Host, \u00a7 Feedback launcher",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "UC-2",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer (reversal shape), \u00a7 Host (4 s prompt, mute)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "UC-3",
+      "status": "covered",
+      "where": "Design \u00a7 Host (routing on tap: push, pop returns)",
+      "note": "self-judged by the authoring session (no subagent tool). Return-to-screen relies on arq103's pop-to-pusher (RQ12)."
+    },
+    {
+      "id": "UC-4",
+      "status": "covered",
+      "where": "Design \u00a7 Host (suppression), \u00a7 Modal-route tracking",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "UC-5",
+      "status": "covered",
+      "where": "Design \u00a7 Feedback launcher (Profile keeps its tile); Wrap (arq103 tile)",
+      "note": "self-judged by the authoring session (no subagent tool). Dev-request tap path is arq103's dashboard tile."
+    },
+    {
+      "id": "UC-6",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch (device switch)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "UC-7",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch (server, terraform)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "UC-8",
+      "status": "covered",
+      "where": "Design \u00a7 Feedback launcher (flush at startup and resume)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-1",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer (MotionSource), \u00a7 Host (eligibility, lifecycle)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-2",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-3",
+      "status": "covered",
+      "where": "Design \u00a7 Host (the prompt)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-4",
+      "status": "covered",
+      "where": "Design \u00a7 Host (suppression), \u00a7 Modal-route tracking",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-5",
+      "status": "covered",
+      "where": "Design \u00a7 Host (routing on tap)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-6",
+      "status": "covered",
+      "where": "Design \u00a7 Feedback launcher",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-7",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "CAP-8",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch (hint)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-1",
+      "status": "covered",
+      "where": "Design \u00a7 Host (eligibility: platform, kE2EMode); \u00a7 Recognizer failure handling",
+      "note": "self-judged by the authoring session (no subagent tool). Web never subscribes; missing sensor \u2192 breadcrumb, no UI."
+    },
+    {
+      "id": "FR-2",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer (MotionSource, 20 ms); Constraints 1-2",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-3",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer (algorithm steps 1-5, ShakeTuning)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-4",
+      "status": "covered",
+      "where": "Design \u00a7 Recognizer step 5 (cooldown); \u00a7 Host (two ignored \u2192 session mute)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-5",
+      "status": "covered",
+      "where": "Design \u00a7 Host (the prompt: floating SnackBar, 4 s, persist: accessibleNavigation, copy, closed reasons)",
+      "note": "self-judged by the authoring session (no subagent tool). Re-judged after the RED-stage revise: the 4 s fade holds only because the design now passes `persist` explicitly; Flutter 3.41 persists any snackbar with an action by default (RQ10, corrected). Screen-reader persistence comes from the same flag."
+    },
+    {
+      "id": "FR-6",
+      "status": "covered",
+      "where": "Design \u00a7 Host (suppression list); \u00a7 Modal-route tracking",
+      "note": "self-judged by the authoring session (no subagent tool). Text focus via EditableTextState ancestor (RQ7)."
+    },
+    {
+      "id": "FR-7",
+      "status": "covered",
+      "where": "Design \u00a7 Host (routing on tap: isAdmin twice, route-exists check, push)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-8",
+      "status": "covered",
+      "where": "Design \u00a7 Host (eligibility inputs)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-9",
+      "status": "covered",
+      "where": "Design \u00a7 Feedback launcher",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-10",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch (server, client, last value, admins default)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-11",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch (device switch)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-12",
+      "status": "covered",
+      "where": "Design \u00a7 Rollout ring and switch (hint)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    },
+    {
+      "id": "FR-13",
+      "status": "covered",
+      "where": "Design \u00a7 Interfaces row 2; Migration plan step 1",
+      "note": "self-judged by the authoring session (no subagent tool). Server-first ordering is the migration plan's step 1."
+    },
+    {
+      "id": "FR-14",
+      "status": "covered",
+      "where": "Design \u00a7 Feedback launcher (Profile tile stays); Wrap (arq103 tile)",
+      "note": "self-judged by the authoring session (no subagent tool). "
+    }
+  ],
+  "extras": [
+    {
+      "item": "Web feedback gains platform `web` (today none is sent on web)",
+      "where": "Design \u00a7 Feedback launcher",
+      "note": "Falls out of not reading defaultTargetPlatform on web; server already accepts `web`."
+    },
+    {
+      "item": "Route-exists check before pushing the admin route",
+      "where": "Design \u00a7 Host (routing on tap)",
+      "note": "Fail-to-user against a future revert of arq103; no PRD ID asks for it explicitly."
+    }
+  ],
+  "hygiene": []
+}

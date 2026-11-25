@@ -1,10 +1,16 @@
 """Application configuration using Pydantic Settings."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from utils.constants import DATABASE_URL as _UTILS_DATABASE_URL
+
+# The shake-to-report rollout ring's values (shk101). One definition: the
+# setting and `GET /v1/flags/perf`'s response both use it, and terraform's
+# `var.shake_report_ring` validation lists the same three.
+ShakeReportRing = Literal["off", "admins", "everyone"]
 
 
 class Settings(BaseSettings):
@@ -65,6 +71,16 @@ class Settings(BaseSettings):
     # rate. Default: everything on, 100% sampled.
     client_latency_ingest_enabled: bool = True
     client_latency_sampling_rate: float = 1.0
+
+    # Shake-to-report rollout ring (shk101) — served beside the latency
+    # flags on `GET /v1/flags/perf`, which the client already fetches at
+    # boot and every 5 min. `off` admits no one, `admins` only admins,
+    # `everyone` every eligible user. Set by terraform
+    # (`var.shake_report_ring` → `SHAKE_REPORT_RING` on the API task
+    # definition), so a console-set value lasts only until the next
+    # terraform-managed revision. An invalid value fails startup here, and
+    # terraform's own validation refuses it at plan time first.
+    shake_report_ring: ShakeReportRing = "admins"
 
     @field_validator("client_latency_sampling_rate")
     @classmethod

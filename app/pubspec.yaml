@@ -85,6 +85,12 @@ dependencies:
   # every outbound event with the correct `app_version`. Transitive via
   # firebase_core, pinned explicitly so the import site is obvious.
   package_info_plus: ^9.0.0
+  # shk103: gravity-removed acceleration for shake-to-report. Pinned to the
+  # 6.1 line: 7.0 raised the Android floor to AGP 8.12.1 / Gradle 8.13 /
+  # Kotlin 2.2.0, and the app is on AGP 8.7.3 / Gradle 8.12 / Kotlin 2.1.0.
+  # From 6.0 it needs NSMotionUsageDescription in ios/Runner/Info.plist.
+  # Imported only by lib/core/shake/motion_source.dart.
+  sensors_plus: ">=6.1.1 <7.0.0"
 
 dev_dependencies:
   flutter_test:
