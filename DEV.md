@@ -68,7 +68,7 @@ Dependency shape: bqa101 ∥ bqa102 ∥ bqa103 (disjoint files/repos) → bqa104
 
 A deliberate shake on an iOS or Android phone shows a prompt; a tap opens the dev-request form for an admin (arq103's `/admin/dev-requests/new`, external gate X-1) and the feedback sheet for everyone else, recording the screen. A false shake must cost nothing: prompt before form, suppression while busy, a server-side ring (`off`/`admins`/`everyone`, starts `admins`) and a device switch. The four P0 evals boot the real app and are sha-locked — stories make them pass, never re-author them. Plan: `_devx/workstreams/shake-to-report/plan/agent.md`.
 
-- [ ] `dev/dev-shk101-2026-11-25T10:03-server-trigger-and-ring.md` — Server accepts the trigger and serves the ring. Status: ready. Blocked-by: —. Parallel-safe with shk103. **Merging deploys; must precede any client that sends `trigger`.**
+- [ ] `dev/dev-shk101-2026-11-25T10:03-server-trigger-and-ring.md` — Server accepts the trigger and serves the ring. Status: in-review (PR #134 into the workstream branch). Blocked-by: —. Parallel-safe with shk103. **Merging deploys; must precede any client that sends `trigger`.**
 - [ ] `dev/dev-shk103-2026-11-25T10:03-motion-dependency-and-recognizer.md` — Motion dependency and the shake recognizer. Status: ready. Blocked-by: —. Parallel-safe with shk101, shk102. Riskiest: no PR-time iOS/Android build; its pubspec edit fires Xcode Cloud.
 - [ ] `dev/dev-shk102-2026-11-25T10:03-feedback-launcher.md` — One feedback launcher with an app-wide flush. Status: ready. Blocked-by: shk101. Parallel-safe with shk103.
 - [ ] `dev/dev-shk104-2026-11-25T10:03-shake-host.md` — Shake host — prompt, suppression, feedback for every admitted user. Status: ready. Blocked-by: shk102, shk103.
