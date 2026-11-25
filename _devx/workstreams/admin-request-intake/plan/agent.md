@@ -94,15 +94,14 @@ endpoint; it is listed at Phase 2, where it first can.
 
 ## Phase checklist
 
-- [ ] Phase 1: Request storage and the create endpoint
-- [ ] Phase 2: Operator channel — prod-script arguments, read and write scripts
-- [ ] Phase 3: Request-a-change form in the admin panel
-- [ ] Phase 4: List, detail and cancel endpoints
-- [ ] Phase 5: Panel list and detail screens
-- [ ] Phase 6: Pipeline progress fields in the write script
-- [ ] Phase 7: Fault signals — faults and fault-adopt modes
-- [ ] Phase 8: Adopted faults as rows, and routing moves
-
+- [ ] Phase 1: Request storage and the create endpoint (dev spec: arq101)
+- [ ] Phase 2: Operator channel — prod-script arguments, read and write scripts (dev spec: arq102)
+- [ ] Phase 3: Request-a-change form in the admin panel (dev spec: arq103)
+- [ ] Phase 4: List, detail and cancel endpoints (dev spec: arq104)
+- [ ] Phase 5: Panel list and detail screens (dev spec: arq105)
+- [ ] Phase 6: Pipeline progress fields in the write script (dev spec: arq106)
+- [ ] Phase 7: Fault signals — faults and fault-adopt modes (dev spec: arq107)
+- [ ] Phase 8: Adopted faults as rows, and routing moves (dev spec: arq108)
 **External gates (orchestrator bridge and router, devx split/combine — other repos, O-5):**
 
 - **X-1 — bridge, slice 1** (`~/.claude/orchestrator`). Poll, acknowledge,
