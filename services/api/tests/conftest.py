@@ -74,6 +74,25 @@ def _reset_db_probe_verdict_cache():
     db_probe._reset_verdict_cache()
 
 
+# arq102 — Python children must not start pytest-cov's subprocess coverage.
+# pytest-cov 6 exports COV_CORE_* so that every child Python starts coverage
+# (its pytest-cov.pth). This project's coverage config lives in
+# pyproject.toml, not .coveragerc, so a child gets COV_CORE_CONFIG=":" and no
+# COV_CORE_BRANCH, and records *statement* data; the end-of-session combine
+# then dies with "Can't combine statement coverage data with branch data"
+# (INTERNALERROR, suite red, 324 orphaned .coverage.* files — measured
+# 2026-11-25 once the devreq evals, which run bin/prod-script and the
+# operator scripts as children, entered default collection). No api test
+# measures src/ through a child process (the only other one mocks Popen),
+# so dropping the variables loses no coverage. Guarded by
+# tests/test_dev_requests_channel.py::test_child_processes_do_not_start_coverage.
+@pytest.fixture(autouse=True)
+def _no_subprocess_coverage(monkeypatch):
+    for name in [k for k in os.environ if k.startswith("COV_CORE_")]:
+        monkeypatch.delenv(name)
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Model-like objects for mocking database results
 # ---------------------------------------------------------------------------
