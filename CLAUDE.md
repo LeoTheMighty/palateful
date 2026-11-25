@@ -18,10 +18,16 @@ shipped.
 
 What that means in practice:
 
-- **Bump `app/pubspec.yaml`'s `version:` as part of any change under
-  `app/lib/`.** The `major.minor.patch+build` version is what a native release
-  is cut from; a UI change that merges without a bump cannot reach a device,
-  and nothing in CI will tell you. Bump the build number at minimum.
+- **Every change under `app/lib/` owes a version bump — but the bump belongs
+  to the release that carries it, not necessarily to the phase's own PR.** The
+  `major.minor.patch+build` version in `app/pubspec.yaml` is what a native
+  release is cut from, so a UI change that never gets a bump can never reach a
+  device, and nothing in CI will tell you. A multi-phase workstream may defer
+  the bump to its final merge — that is deliberate, because touching
+  `app/pubspec.yaml` on `main` fires Xcode Cloud and a mid-workstream bump
+  spends a build (and an Apple review) on a half-built feature. What is never
+  OK is a UI change reaching `main` with no bump *planned*: say which release
+  carries it, and treat the `v*.*.*` tag as the proof it happened.
 - **A native release needs a `v*.*.*` tag.** `mobile-builds.yml` fires only on
   such a tag (or manual dispatch) and uploads to the Play **internal** track;
   `promote-android.yml` moves it onward. iOS goes out through
