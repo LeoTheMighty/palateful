@@ -75,9 +75,9 @@
 - **Priority:** P0
 - **Covers:** `G-4, UC-4, UC-5, UC-6, CAP-5, FR-11, FR-12`
 - **Trigger:** `dev_requests_write.py transition` calls against a real
-  Postgres: every slice edge, a sample of illegal and widening edges, stale
-  `from` values, repeats, bad arguments, a wrong `--sha`, and an adopt after
-  the submitter lost admin.
+  Postgres: every slice edge, a sample of edges FR-12 never gives the
+  bridge in any phase, stale `from` values, repeats, bad arguments, a wrong
+  `--sha`, and an adopt after the submitter lost admin.
 - **Expectation (EARS):** When the write script is asked for a status
   change, the system SHALL apply it only if FR-12 gives that edge to the
   bridge and the row is in the stated `from` status, SHALL treat a repeat as
@@ -85,8 +85,10 @@
   exactly one audit row per applied change.
 - **Threshold:** 7 of 7 slice edges (`submitted`→`received`, and
   `submitted`/`received` → `accepted`/`declined`/`withdrawn`) applied with 1
-  audit row each; 6 of 6
-  sampled illegal or widening edges → `illegal_transition`; stale `from` →
+  audit row each; 6 of 6 sampled never-legal edges
+  (`received`→`submitted`, `accepted`→`received`, `declined`→`accepted`,
+  `withdrawn`→`received`, `submitted`→`shipped`, `stopped`→`building`) →
+  `illegal_transition`; stale `from` →
   `conflict`; repeat → `changed: false` and 0 new audit rows; 4 of 4 bad
   arguments → `invalid_argument`; wrong `--sha` → `sha_mismatch`; revoked
   submitter → `submitter_revoked`; 0 status changes on any refusal.
