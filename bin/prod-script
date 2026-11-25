@@ -62,12 +62,14 @@ if len(payload) > limit:
 print(base64.b64encode(payload.encode("ascii")).decode("ascii"))
 ' "$ARGV_MAX_BYTES" "$@") || exit 1
 fi
-# Whatever produced it, only base64 text may be substituted into the prelude.
-if [[ ! "$ARGS_B64" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
-  echo "REFUSED: argument encoding produced unexpected output" >&2
-  exit 1
-fi
 ARGV0_B64=$(printf '%s' "$SCRIPT" | base64 | tr -d '\n')
+# Whatever produced them, only base64 text may be substituted into the prelude.
+for encoded in "$ARGS_B64" "$ARGV0_B64"; do
+  if [[ ! "$encoded" =~ ^[A-Za-z0-9+/]+={0,2}$ ]]; then
+    echo "REFUSED: argument encoding produced unexpected output" >&2
+    exit 1
+  fi
+done
 
 CLUSTER="palateful-prod"
 SERVICE="palateful-api-prod"
