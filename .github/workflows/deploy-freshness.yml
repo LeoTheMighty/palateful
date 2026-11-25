@@ -6,6 +6,26 @@
 # mitigation is a separate file with its own schedule trigger, so a red
 # ci.yml cannot skip it. A push-triggered job inside ci.yml would have been
 # skipped throughout the very incident that motivated this check.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# IF THIS CHECK IS RED AND YOU ARE HERE TO FIX IT: it is probably working.
+#
+# A red run means prod really is more than 7 days behind main. As of
+# 2026-09-20 that is the expected result on EVERY firing: the API has run
+# task-definition :63 (commit 848311af, 2026-07-31) continuously, and only
+# a change under services/ will move it — ci.yml computes services_to_build
+# from the diff, so PRs touching app/, tools/, .github/ or docs deploy
+# nothing. The check going red daily is the freeze being visible, which is
+# the entire point of the file.
+#
+# Fix the deploy, not the check. See MANUAL.md (E-7 step 6b) and rsh102 —
+# the credential-rotation fix must reach prod before 2026-10-29.
+#
+# Historical note: this check authenticated for the first time on
+# 2026-09-20 (run 35528125176). The 50 scheduled runs before it all died in
+# configure-aws-credentials for want of `environment: production`, so it
+# had never once measured prod. A GREEN run here is newer than any red one.
+# ─────────────────────────────────────────────────────────────────────────
 name: deploy-freshness
 
 on:

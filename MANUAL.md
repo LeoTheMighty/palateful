@@ -191,13 +191,29 @@
   gh run list --workflow=deploy-freshness.yml --event=schedule --limit 60 \
     --json createdAt,conclusion
   ```
-- [ ] **E-7 step 6b — after this branch merges, confirm a scheduled run goes
-  GREEN.** This is what actually remains, and it is a confirmation of the fix,
-  not of the mechanism. **All 50 firings above failed** in
-  `configure-aws-credentials` (`Credentials could not be loaded`) because
-  `main`'s copy has no `environment: production` — i.e. the freeze detector has
-  never measured prod, not once, since the day it shipped. The next scheduled
-  run after merge should reach the measure step and print a gap.
+- [x] **E-7 step 6b — CLOSED 2026-09-20. The check measured prod for the
+  first time in its existence.** Run
+  [35528125176](https://github.com/LeoTheMighty/palateful/actions/runs/35528125176)
+  fired unattended at **18:09:04Z**, authenticated, and reported:
+  ```
+  Running task definition: .../task-definition/palateful-api-prod:63
+  Deployed commit: 848311af 2026-07-31 10:24:08 -0600
+  Gap: 51 day(s); threshold: 7 day(s).
+  ::error::Prod is running an image 51 days old (threshold 7d)
+  ```
+  The 50 firings before it all died in `configure-aws-credentials`
+  (`Credentials could not be loaded`) because `main`'s copy had no
+  `environment: production`. Run 51 reached ECS. The difference was PR #25.
+
+  🔴 **THIS CHECK WILL REPORT RED ON EVERY FIRING, AND THAT IS CORRECT.**
+  If a red `deploy-freshness` cron brought you here: the check is working.
+  Prod is genuinely stale — the API has run task-definition `:63` since
+  2026-07-31. It will keep reporting red until a change under `services/`
+  actually deploys, because `services_to_build` comes up empty for PRs that
+  only touch `app/`, `tools/`, `.github/` or docs. **Do not "fix" the check.**
+  The fix is landing the deploy. See `rsh102` — the rotation fix must reach
+  prod before the 2026-10-29 rotation.
+
   ⚠ **Do not wait for 09:00 MDT.** These 50 runs normally landed
   **15:27Z–20:44Z** (drift up to 5.7h past the declared `0 15 * * *`), with a
   one-day excursion on 2026-08-28 to 00:19Z and 23:58Z. Check "a run landed in
