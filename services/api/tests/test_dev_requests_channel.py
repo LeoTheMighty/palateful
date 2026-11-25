@@ -399,3 +399,26 @@ def test_arguments_travel_only_inside_the_base64_payload(probe, tmp_path):
     payload = base64.b64decode(m.group(1)).decode()
     args_b64 = re.search(r'b64decode\("([A-Za-z0-9+/=]+)"\)\.decode\("ascii"\)', payload).group(1)
     assert json.loads(base64.b64decode(args_b64)) == [arg]
+
+
+# ---------------------------------------------------------------------------
+# Children of the test process run without pytest-cov's subprocess hook
+# ---------------------------------------------------------------------------
+
+
+def test_child_processes_do_not_start_coverage(eval_db):
+    """conftest's _no_subprocess_coverage: a child that started coverage
+    would write statement-only data and break the session's branch combine.
+
+    Under `api:test` (coverage on) the parent's pytest-cov has exported
+    COV_CORE_*; the assertion is that a child, built the way the harness
+    builds every child environment, sees none of it."""
+    probe = (
+        "import os, sys; "
+        "print(sorted(k for k in os.environ if k.startswith('COV_CORE_'))); "
+        "print('coverage' in sys.modules)"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe], env=_child_env(eval_db), capture_output=True, text=True
+    ).stdout.split("\n")
+    assert out[:2] == ["[]", "False"], out
