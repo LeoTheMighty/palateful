@@ -58,6 +58,39 @@ reports the same red X.
       distinction is **"was an apply expected?"**, i.e. `detect-changes.terraform`,
       **not** "did a job get skipped".
 
+## Sharper form: three states look green, and only the job conclusion separates them
+
+*(Added by the pcap1 owner after verifying two applies tonight; owner,
+please adjust.)* This spec's premise — **an apply that never ran is not an
+apply that succeeded** — has a third case beyond *skipped*: **cancelled**.
+
+`ci.yml`'s concurrency group cancels an in-flight run when the next push
+lands, so **a merge whose run is cancelled never applies at all**, and the
+lane simply moves on. Cancelled, skipped and succeeded all leave a
+green-ish history, and **only the job-level conclusion tells them apart**.
+
+Consequences for anyone verifying an apply by hand, until this spec's
+verdict job exists:
+
+1. **The verifying run is the next terminal run whose SHA has your merge as
+   an ancestor** — not the run at your merge SHA, which may have been
+   cancelled by a later merge. Check it as
+   `git merge-base --is-ancestor <merge-sha> <run-head-sha>`, **not** by
+   matching SHAs. (palateful-d9, after #61's merge cancelled `37d02bb0`'s
+   run.)
+2. **Require `terraform-prod` to report `success`, not `skipped`** — and
+   not merely that the run is green. That clause is the one that gets
+   dropped.
+3. **Read the apply log for named resources** creating/destroying, rather
+   than the run's colour. Two applies were confirmed this way tonight
+   (`fb2892d0` → run 35803059252, `1bab0aa8` → run 35805024532, both with
+   `terraform-prod: success`); had either been cancelled, a
+   colour-only check would have reported a verified apply for Terraform
+   that never executed.
+
+This is an argument *for* this spec's verdict job, not a substitute: every
+step above is a human doing what a job should emit once.
+
 ## Technical notes
 
 - Related but not the same as **dfrcp1** (deploy-freshness gets a recipient).
@@ -93,3 +126,7 @@ reports the same red X.
   SHA) would have destroyed real work. **The check that settled it was local
   evidence: reflog, parents, and the diff against `main`** — not a second
   query to the same source that produced the doubtful reading.
+- 2026-09-23 — added the cancelled-run case and the by-hand verification
+  form (ancestor check, `terraform-prod: success` not `skipped`, read the
+  apply log). From verifying #63 and #65's applies, plus palateful-d9's
+  finding that #61's merge cancelled an earlier run.
