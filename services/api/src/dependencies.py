@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from utils.api.endpoint import APIException
 from utils.classes.error_code import ErrorCode
 from utils.constants import LOGGING_LEVEL
+from utils.environment import is_local_bypass_allowed
 from utils.models.calendar import Calendar
 from utils.models.calendar_user import CalendarUser
 from utils.models.recipe_book import RecipeBook
@@ -104,9 +105,19 @@ async def get_current_user(
     token = authorization[7:]  # Remove "Bearer "
 
     # E2E test bypass: skip Auth0, return a fixed test user
-    # Safety: only allow in development/test environments, never in production
+    # Safety: only allow in development/test environments, never in production.
+    #
+    # envspell1: the environment test moved to
+    # `utils.environment.is_local_bypass_allowed`, which denies anything it
+    # does not positively recognise — missing, unrecognised, non-string. It
+    # compares EXACTLY — no strip, no lowercase — so it is byte-for-byte as
+    # strict as the tuple test it replaced. (The first draft of envspell1
+    # normalised here and made this gate looser: `TEST`, `" test "` and
+    # `"test\n"` denied before and armed after. Adversarial review caught it.)
+    # `dev` is deliberately not eligible: the deployed dev environment is
+    # reachable from the internet. All three conditions remain independent.
     if (settings.e2e_test_mode
-            and settings.environment in ("development", "test")
+            and is_local_bypass_allowed(settings.environment)
             and token == _E2E_TOKEN):
         user = database.find_or_create_by(
             User,
@@ -323,9 +334,10 @@ async def get_current_user_async(
 
     token = authorization[7:]
 
+    # envspell1: same gate as the sync twin above — see the note there.
     if (
         settings.e2e_test_mode
-        and settings.environment in ("development", "test")
+        and is_local_bypass_allowed(settings.environment)
         and token == _E2E_TOKEN
     ):
         user = await database.find_or_create_by(
