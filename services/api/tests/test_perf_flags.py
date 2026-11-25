@@ -21,6 +21,9 @@ class TestGetPerfFlags:
         ) as mock_settings:
             mock_settings.client_latency_ingest_enabled = False
             mock_settings.client_latency_sampling_rate = 1.0
+            # shk101: the response also carries the shake ring, and a
+            # bare MagicMock attribute is not a valid ring value.
+            mock_settings.shake_report_ring = "admins"
             response = unauthed_client.get("/v1/flags/perf")
             assert response.status_code == 200
             body = response.json()
@@ -34,6 +37,9 @@ class TestGetPerfFlags:
         ) as mock_settings:
             mock_settings.client_latency_ingest_enabled = True
             mock_settings.client_latency_sampling_rate = 0.1
+            # shk101: the response also carries the shake ring, and a
+            # bare MagicMock attribute is not a valid ring value.
+            mock_settings.shake_report_ring = "admins"
             response = unauthed_client.get("/v1/flags/perf")
             assert response.status_code == 200
             body = response.json()
