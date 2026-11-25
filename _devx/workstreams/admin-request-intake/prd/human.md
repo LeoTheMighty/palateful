@@ -43,6 +43,29 @@ A thin slice that proves one request can travel the whole path:
 - **Pipeline progress** written back by the bridge: scoping through
   shipped, and "waiting on Leo" with a reason.
 
+## Faults, after that
+
+The running system becomes a second source:
+
+- **Signals, not text.** Server errors grouped by a stable signature:
+  service, error type, route template, code locations, count. No message,
+  trace or raw path, because those echo what callers sent.
+- **Bounded.** At most 50 signatures a poll, the rest summed into one
+  overflow record.
+- **Adopted the same way.** Leo adopts a fault; its samples cross to the
+  laptop once, and it becomes a tracked row.
+
+## Routing
+
+Items join existing workstreams instead of each getting its own:
+
+- **Fit or create** at adoption, proposed from shared files, confirmed by
+  Leo.
+- **Split and combine** need new devx primitives; Palateful only moves each
+  row to follow its work.
+- **Never from text.** Code locations decide. Hub files like
+  `dependencies.py` never count.
+
 ## The contract with the bridge
 
 The bridge lives in the orchestrator repo, outside this workstream. It is
@@ -63,12 +86,14 @@ built against a fixed contract:
 
 - **Any admin** may file.
 - **Only Leo, at the laptop,** may adopt or decline.
-- **Leo merges** every PR by hand, and the `production` environment now
-  waits on his approval before any deploy.
+- **Leo merges** every PR by hand. Deploys are automatic on merge, so the
+  merge is the last human step before production.
 
 ## Not in this workstream
 
-- **The bridge itself**, and anything else in the orchestrator repo.
+- **The bridge and the router**, and anything else in the orchestrator
+  repo; **split and combine** in devx.
+- **AWS-side fault sources** and client-reported errors.
 - **Auto-adopt or auto-merge.**
 - **The later brakes:** a CI request guard, a credential-free request tab,
   separate identities.

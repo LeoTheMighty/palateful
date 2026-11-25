@@ -7,7 +7,10 @@
 <!-- Seed: docs/admin-request-pipeline.md on branch
      docs/admin-request-pipeline (PR #124, head 53cb59a4). Leo accepted its
      four recommendations and changed one thing: a thin vertical slice
-     first, then widen along the design's six-phase shape. -->
+     first, then widen along the design's six-phase shape.
+     Revised 2026-11-24 (`devx revise 1e84ad --touched prd`): Leo added a
+     second intake (faults reported by the running system) and routing
+     (fit / create / split / combine), relayed by the orchestrator tab. -->
 
 ## Problem
 
@@ -33,12 +36,47 @@ orchestrator reads. The devx gates cannot enforce that: Gate 1 checks
 structure, and a malicious request written in EARS passes it. The laundering
 step is Leo's adoption, not a gate.
 
-**Premise changed since the design was written.** The design's §11.1 found
-that the `production` environment had no protection rules. As of
-2026-11-24 it has a required reviewer (`LeoTheMighty`; checked with
-`gh api repos/LeoTheMighty/palateful/environments/production`). A merge to
-`main` still starts the deploy pipeline, but nothing reaches AWS until Leo
-approves it. Every PR this workstream causes will wait on him.
+**A second intake: faults.** Leo wants the running system to report what
+is broken, so that a fault can become an investigation the same way a
+request becomes work. Palateful already records server errors in
+`error_logs`. A fault differs from a request in two ways that set this
+PRD's shape:
+
+- **Machine-written, but not trustworthy.** Exception messages, stack
+  traces and request paths echo whatever the caller sent, and `client` rows
+  are written through a user endpoint
+  (`services/api/src/api/v1/user/record_client_error.py:63`). So a fault
+  signal carries only fields that server code chose: never a message, a
+  trace's text or a raw path.
+- **Unbounded volume.** One admin types a few requests a month; one bad
+  deploy writes thousands of rows an hour. Deduplication into signatures
+  and a hard cap on what one poll returns matter more here than laundering
+  does.
+
+**Routing.** Leo does not want one workstream per item: "see if it can fit
+into a similar workstream … and then when it's different enough … split
+workstreams". Four operations are first-class: **fit** an item into an open
+workstream, **create** one when nothing fits, **split** one that has grown
+incoherent, **combine** two that turned out to be the same. devx has a
+primitive only for create. Split and combine are devx engine work, and the
+routing decision is orchestrator work; both are other repos (O-5). This PRD
+specifies the signals Palateful supplies and the row bookkeeping routing
+needs, and names the rest as external gates.
+
+**Premise changed twice since the design was written.** The design's §11.1
+found that the `production` environment had no protection rules. At the
+start of this session it had a required reviewer; by the revision it had
+none again: Leo removed it and chose automatic deployment on merge (0
+protection rules, checked with
+`gh api repos/LeoTheMighty/palateful/environments/production`). So the
+merge is literally the deploy, with nothing behind it, and MERGE is the
+only human checkpoint between agent work and production.
+
+**The backend is quiet.** The last commit touching `services/`,
+`libraries/` or `terraform/` is `cd6a3c3e` (2026-09-24); none of the 14
+commits on `main` since then touched them. A fault intake will mostly
+report on code that has not changed in two months, so it is sized for a
+trickle of new signatures, not for a busy deploy pipeline.
 
 ## Goals
 
@@ -57,6 +95,13 @@ approves it. Every PR this workstream causes will wait on him.
 - **G-5** (widening — visible state): By 2027-02-28, 0 requests sit in
   `submitted` or `received` for more than 7 days, and 100% of requests filed
   after the panel list lands show their current state in the panel.
+- **G-6** (slice 2 — faults): By 2027-04-30, 100% of new server-side error
+  signatures reach the bridge as exactly 1 signal within 10 minutes of
+  their first occurrence, and 0 fault signals carry message, trace or
+  raw-path text.
+- **G-7** (routing): By 2027-05-31, at least 1 adopted item has been routed
+  into an existing workstream by fit, and 0 fault signatures are attached
+  to more than 1 open workstream.
 
 ## Non-goals
 
@@ -64,7 +109,22 @@ approves it. Every PR this workstream causes will wait on him.
   external gate of this plan (O-5). This workstream creates no artifact in
   that repo and edits nothing there.
 - **Auto-adopt, auto-merge, panel approval.** The two human checkpoints are
-  ADOPT and MERGE (Decision 1). The merge is the deploy here.
+  ADOPT and MERGE (Decision 1). With no deploy approval left, the merge is
+  the deploy, so any future auto-merge proposal carries production on its
+  own.
+- **Building the router, or split and combine.** The routing decision runs
+  in the orchestrator, and split / combine are devx engine primitives. Both
+  are external gates. This workstream supplies signals and row bookkeeping.
+- **AWS-side fault sources** (CloudWatch alarms, the `palateful-prod-alerts`
+  SNS topic, ECS events). The laptop reads them with its own AWS
+  credentials, so collecting them is the bridge's work. Palateful supplies
+  the database-side source.
+- **Client-reported errors as fault signals.** `client` rows are written
+  through a user endpoint, so their fields are user-controlled. Slice 2
+  uses server-emitted rows only.
+- **Routing by classifying text.** An LLM reading unadopted text breaks
+  containment, and admin or stack-trace text is the weakest signal there
+  is (FR-21).
 - **The design's slices 2 and 3:** the CI `request-guard`, the request-tab
   environment scrub and hook, identity separation, feedback-to-request
   promotion. They bound autonomy that slice 1 does not grant.
@@ -91,6 +151,11 @@ approves it. Every PR this workstream causes will wait on him.
 - **Secondary — the bridge**: a non-LLM launchd program in the orchestrator
   repo. It reads and writes rows only through the operator channel, under
   the contract below.
+- **Secondary — the running system**: the API, worker and push services,
+  whose server-side errors in `error_logs` become fault signals.
+- **Secondary — the router**: orchestrator logic (external) that decides
+  fit / create / split / combine from the signals this workstream supplies,
+  with Leo confirming at adoption.
 - **Anti-persona**: non-admin users; any LLM session before adoption; anyone
   holding a stolen admin session (Leo's included). None of them may cause
   agent work.
@@ -98,7 +163,9 @@ approves it. Every PR this workstream causes will wait on him.
 ## Use cases
 
 Tags: **[slice]** is the thin vertical slice that proves the whole path;
-**[widening]** follows once the slice works live.
+**[widening]** follows once the slice works live; **[slice 2]** is the fault
+intake, after the widening; **[routing]** is the row bookkeeping routing
+needs, alongside slice 2.
 
 - **UC-1** [slice]: An admin files a request (title, body, optional
   done-when) from the panel and gets back its id.
@@ -117,6 +184,18 @@ Tags: **[slice]** is the thin vertical slice that proves the whole path;
   the panel, and can cancel one before adoption.
 - **UC-8** [widening]: The bridge reflects pipeline progress (scoping …
   shipped, waiting on Leo) onto the row, and the panel shows it.
+- **UC-9** [slice 2]: A new server-side error signature appears, and the
+  bridge receives one collapsed signal for it (service, error type, route
+  template, code locations, count) with no message or trace text.
+- **UC-10** [slice 2]: Leo adopts a fault. Its sample messages and traces
+  cross to the laptop once, into quarantine, and it becomes a tracked row
+  like a request.
+- **UC-11** [routing]: When Leo adopts an item, the router proposes fit
+  (with the overlapping workstream and the shared files) or create, and Leo
+  confirms.
+- **UC-12** [routing]: When a workstream is split or two are combined, each
+  affected row follows its work, so the panel and the signature index
+  still say where every item lives.
 
 ## Capabilities
 
@@ -133,6 +212,11 @@ Tags: **[slice]** is the thin vertical slice that proves the whole path;
   audit row per applied change.
 - **CAP-6** [widening]: Panel visibility of requests and their state, with a
   staleness hint when the listener is quiet.
+- **CAP-7** [slice 2]: Bounded, deduplicated fault signals built only from
+  fields server code chose.
+- **CAP-8** [routing]: Routing signals (code locations, signatures, the
+  workstream each row belongs to) and a validated way to move a row
+  between workstreams.
 
 ## Feature requirements
 
@@ -142,15 +226,17 @@ A new table `dev_requests`, created by one migration, holding:
 
 | Group | Columns |
 |---|---|
-| Identity | `id` (UUID PK), `submitter_id` (FK `users.id`, `ON DELETE SET NULL`; null reads as revoked) |
+| Identity | `id` (UUID PK), `submitter_id` (FK `users.id`, `ON DELETE SET NULL`; for an admin row, null reads as revoked) |
+| Source | `source` (CHECK `admin`/`fault`, default `admin`), `fault_signature` (64 hex; CHECK: present exactly when `source = 'fault'`) |
 | Submitter-written, immutable | `title` (1–120 chars), `body` (1–4000), `done_when` (null or 1–1000) |
 | Integrity | `content_sha256` (64 lowercase hex, FR-2) |
 | Labels | `target` (CHECK `= 'palateful'`), `priority` (null or `low`/`normal`/`high`, advisory) |
 | Pipeline | `status` (CHECK over the full FR-12 enum from day one), `status_detail` (null; written only by FR-17), `workstream`, `spec_hash`, `pr_urls` (JSONB list, default `[]`) |
 | Timestamps | `created_at`, `updated_at`, `adopted_at`, `synced_at` |
 
-The status CHECK carries every status in FR-12 from the first migration, so
-the widening needs no second migration. Length limits are CHECK constraints
+The status CHECK carries every status in FR-12, and the source columns
+exist, from the first migration, so neither the widening nor slice 2 needs
+a second migration. Slice 1 writes only `source = 'admin'`. Length limits are CHECK constraints
 as well as API validation.
 
 ### FR-2: Normalization and content hash [slice]
@@ -199,7 +285,7 @@ interpolation.
 
 `bin/prod-script` returns the task's stdout and stderr merged through a TTY,
 with CRLF line ends, keepalive escape codes (`\x1b[0C`, every 0.5 s,
-`bin/prod-script:63-74`) and the runner's own banner lines. So every
+`bin/prod-script:85-95`) and the runner's own banner lines. So every
 machine-readable line the two scripts print is:
 
 - the literal prefix `DEVREQ1 ` followed by one JSON object, serialized with
@@ -226,7 +312,7 @@ can carry row data.
 no write of any kind) emits one record per row whose status is not terminal
 (FR-12), ordered by `created_at`:
 
-`{"kind":"request","v":1,"id","id8","status","content_sha256","submitter_id","submitter_is_admin","created_at","updated_at","adopted_at","workstream","spec_hash","pr_urls"}`
+`{"kind":"request","v":1,"id","id8","source","fault_signature","status","content_sha256","submitter_id","submitter_is_admin","created_at","updated_at","adopted_at","workstream","spec_hash","pr_urls"}`
 
 `submitter_is_admin` is `false` when `submitter_id` is null. Timestamps are
 ISO-8601 UTC. The record carries **no** `title`, `body`, `done_when`,
@@ -379,13 +465,103 @@ becomes Leo's reading surface, replacing FR-9 in day-to-day use.
 ### FR-17: Pipeline reflection fields [widening]
 
 The write script gains the widening edges of FR-12 and the arguments they
-carry: `--workstream` (`^admin-req-[0-9a-f]{8}$`), `--spec-hash`
+carry: `--workstream` (a devx slug, `^[a-z0-9][a-z0-9-]{0,49}$`, since
+fit routes items into workstreams with ordinary names), `--spec-hash`
 (`^[a-z0-9]{6}$`), `--pr` (`^https://github\.com/LeoTheMighty/palateful/pull/[1-9][0-9]*$`,
 appended to `pr_urls` without duplicates), and `--detail <code>` with
 `--gate` and `--count`. The script composes `status_detail` itself from a
 fixed template per code (`pr_held`, `gate_fail`, `gate_concerns`,
 `blocking_question`, `plan_review`, `submitter_revoked`, `stalled`). No
 argument carries free text.
+
+### FR-18: Fault signals — `faults` [slice 2]
+
+`dev_requests_read.py faults <window>` (`window` ∈ {`1h`, `24h`, `7d`};
+read-only, no audit row) groups `error_logs` rows from the server-emitted
+services (`api`, `worker`, `push_notifications`; never `audit` or
+`client`) inside the window by **signature**, and emits at most 50 `fault`
+records, highest count first:
+
+`{"kind":"fault","v":1,"signature","sig8","service","error_type","status_code","method","route","frames","count","first_seen","last_seen"}`
+
+- `route` is the API route template the request path matched, or
+  `unmatched`. Never the raw path.
+- `frames` is up to 3 in-repo stack frames, innermost first, each
+  `<repo-relative path>:<function>`. Frames outside `services/` and
+  `libraries/` are dropped. Line numbers are not included.
+- `error_type` is emitted only when it is a Python identifier path of at
+  most 80 characters, otherwise `other`.
+- `signature` is the SHA-256 of `service`, `error_type`, `status_code`,
+  `method`, `route` and the innermost frame, so it survives edits that move
+  lines.
+- No `error_message`, no `stack_trace` text, no raw `path`, no
+  `request_id`, no `user_id`.
+
+When more than 50 signatures exist, the 51st onward are summed into one
+`{"kind":"fault_overflow","v":1,"signatures","count"}` record, so the bridge
+knows it saw a cap and not the whole picture.
+
+### FR-19: Fault detail at adoption — `fault-adopt` [slice 2]
+
+`dev_requests_read.py fault-adopt <signature>` (read-only) emits one
+`fault_detail` record carrying the signature's fields plus up to 3 of its
+most recent rows' `error_message` and `stack_trace`. It is the only call
+that moves fault text to the laptop, and the bridge calls it only after Leo
+adopts the fault. An unknown signature ends `ok: false`, `error:
+not_found`.
+
+### FR-20: An adopted fault becomes a row [slice 2]
+
+`dev_requests_write.py open-fault <signature> <window>` re-derives the
+signature from `error_logs` and inserts one `dev_requests` row with
+`source = 'fault'`, `status = 'accepted'`, `submitter_id` null, and a title
+and body the script composes from the signature's validated fields (no
+error text). If an open row already holds the signature, it reports that
+row with `changed: false` and inserts nothing. One audit row per insert.
+From there the row follows FR-12 like any request, and `metrics` (FR-10)
+gains `faults_open` and `signatures_multi_workstream`.
+
+### FR-21: Routing signals [routing]
+
+The router routes from code locations, never from text:
+
+- **Fault**: its `frames` paths and its `signature`.
+- **Request**: nothing before adoption, since all it has is text. Leo
+  routes it at adoption (create, or fit into a workstream he names); after
+  the PRD and design stages, the files they cite become its code locations
+  for later combine proposals.
+- **Overlap rule (the recommendation)**: an item fits an open workstream
+  when it shares at least 1 non-hub file with that workstream's plan
+  `Files:` lists, or its signature is already attached to that workstream.
+  Hub files (touched by 3 or more open workstreams, plus a fixed list:
+  `services/api/src/dependencies.py`, `services/api/src/main.py`,
+  `services/api/tests/conftest.py`) never count, so one shared module
+  cannot pull everything into one workstream.
+
+What it costs when wrong:
+
+| Error | Cost | Recovery |
+|---|---|---|
+| Wrong fit | An unrelated item revises a workstream's PRD; `devx revise` resets all 4 gates and its next PR mixes concerns | Leo confirms every fit at adoption; split |
+| Wrong create | Duplicate workstreams for one cause — the bloat Leo named | Combine, proposed when two workstreams' files overlap |
+| Accretion | A hub file makes everything overlap, so one workstream absorbs all | Hub exclusion; split |
+
+The router consumes `poll` (each row's `workstream`, `source`,
+`fault_signature`), `faults`, and devx's own plan files at `origin/main`.
+
+### FR-22: Routing operations and their owners [routing]
+
+| Operation | Exists today? | Decided by | Palateful's part |
+|---|---|---|---|
+| Create | yes: `devx workstream new` | router proposes, Leo confirms | `--workstream` on `accepted` → `scoping` (FR-17) |
+| Fit | in parts: `devx revise <hash> --touched prd` plus a PRD amendment | router proposes, Leo confirms | same as create |
+| Split | **no devx primitive** (external gate) | router proposes, Leo decides | `move` (below) for each row that changes workstream |
+| Combine | **no devx primitive** (external gate) | router proposes, Leo decides | `move` for each row of the absorbed workstream |
+
+`dev_requests_write.py move <id> <from_workstream> <to_workstream>` is
+compare-and-set on `workstream` (`conflict` when the row is elsewhere),
+validates both slugs, leaves `status` alone, and writes one audit row. It
+is the only write routing needs from Palateful.
 
 ## Bridge contract
 
@@ -398,10 +574,16 @@ Summary of what crosses the boundary:
 | bridge → Palateful (read) | `… dev_requests_read.py adopt <id> <sha>` | yes, once, at adoption (FR-8) |
 | bridge → Palateful (read) | `… dev_requests_read.py metrics` | no (FR-10) |
 | bridge → Palateful (write) | `bin/prod-script …/dev_requests_write.py transition …` | no; every argument is an enum, UUID, hash or validated slug (FR-11) |
+| bridge → Palateful (read) | `… dev_requests_read.py faults <window>` | no; server-chosen fields only (FR-18) |
+| bridge → Palateful (read) | `… dev_requests_read.py fault-adopt <signature>` | yes, once, at fault adoption (FR-19) |
+| bridge → Palateful (write) | `… dev_requests_write.py open-fault …` / `move …` | no (FR-20, FR-22) |
 | human → Palateful (read) | `… dev_requests_read.py show <id>`, in a plain terminal | yes, to Leo only (FR-9) |
 
-The write path carries no free text, and the read path carries text exactly
-once, inside `adopt`, after Leo has chosen to adopt.
+The write path carries no free text, and the read path carries text only
+inside `adopt` and `fault-adopt`, after Leo has chosen to adopt. FR-13's
+bridge obligations apply to every call here; `faults`, `fault-adopt`,
+`open-fault` and `move` join the list of calls the bridge may make (FR-13.2)
+when slice 2 and routing land.
 
 ## Evals seed
 
@@ -413,6 +595,17 @@ complete.
 
 None of these blocks Gate 1. Each has a recommended default that this PRD
 already uses.
+
+- **Where the slice line falls.** Default: slice 1 stays the admin-request
+  path only (Leo's "literally just want this working"); faults are slice 2
+  and routing ships with it, after slice 1 works live. Folding faults into
+  slice 1 would roughly double it. — owner: user
+- Should an adopted fault become a `dev_requests` row (FR-20), or stay
+  bridge-side? Default: a row, so faults share the states, panel and
+  signature index. — owner: user
+- The hub-file list and the threshold of 3 workstreams (FR-21) are guesses
+  until the router has run on real items. — owner: research (revisit at
+  slice 2)
 
 - Leo reads a request in the slice with `show` in a plain terminal (FR-9),
   because the panel detail screen is widening. Acceptable until FR-16

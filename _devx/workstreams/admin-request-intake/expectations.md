@@ -194,3 +194,52 @@
   codes render their template; foreign PR URL and bad slug →
   `invalid_argument`; a repeated PR URL is stored once.
 - **Verified by:** `services/api/tests/test_dev_requests_pipeline_fields.py`
+
+## E-12: Fault signals carry no caller-written text and are bounded
+
+- **Priority:** P1
+- **Covers:** `G-6, UC-9, CAP-7, FR-18`
+- **Trigger:** `error_logs` seeded with server rows whose `error_message`,
+  `stack_trace` and `path` each carry a canary, `client` rows carrying a
+  canary in every field, and 60 distinct signatures in one window.
+- **Expectation (EARS):** When the bridge asks for fault signals, the
+  system SHALL return one record per server-side signature, at most 50 plus
+  one overflow record, containing none of the rows' message, trace or path
+  text and nothing from `client` rows.
+- **Threshold:** 0 canary occurrences in `faults` output; 50 `fault` records
+  plus 1 `fault_overflow` with `signatures` = 10; 0 records with `service`
+  = `client` or `audit`; negative control: `fault-adopt` on one signature
+  returns its canary.
+- **Measure:** `bin/prod-script services/api/scripts/dev_requests_read.py metrics` · window: slice 2 live → 2027-04-30 (G-6: `faults_open` tracked; leak count 0 from this eval on every CI run)
+- **Verified by:** `services/api/tests/test_dev_requests_faults.py`
+
+## E-13: A fault's signature is stable and its signals are code-derived
+
+- **Priority:** P2
+- **Covers:** `UC-9, CAP-8, FR-18, FR-21`
+- **Trigger:** The same exception raised from the same function before and
+  after an edit that moves its line; request paths with UUID and integer
+  segments, and a path matching no route.
+- **Expectation (EARS):** When the same fault recurs after its code moves,
+  the system SHALL report the same signature, with routes reduced to
+  registered templates and frames reduced to repo-relative paths.
+- **Threshold:** 1 signature across the line move; 3 of 3 parameterized
+  paths → their template; unknown path → `unmatched`; 0 frames outside
+  `services/` or `libraries/`; 0 line numbers in `frames`.
+- **Verified by:** `services/api/tests/test_dev_requests_fault_signature.py`
+
+## E-14: Routing writes keep every row pointing at its work
+
+- **Priority:** P2
+- **Covers:** `G-7, UC-10, UC-11, UC-12, CAP-8, FR-20, FR-22`
+- **Trigger:** `open-fault` twice for one signature; `move` with the right
+  and a stale `from_workstream`; `move` with a slug outside the devx
+  pattern.
+- **Expectation (EARS):** When the bridge opens a fault or moves a row
+  between workstreams, the system SHALL keep one open row per signature and
+  apply a move only from the workstream the row is in.
+- **Threshold:** second `open-fault` → `changed: false`, 0 new rows; good
+  `move` → 1 audit row and `status` unchanged; stale `from` → `conflict`;
+  bad slug → `invalid_argument`.
+- **Measure:** `bin/prod-script services/api/scripts/dev_requests_read.py metrics` · window: router live → 2027-05-31 (G-7: `signatures_multi_workstream` = 0)
+- **Verified by:** `services/api/tests/test_dev_requests_routing_writes.py`
